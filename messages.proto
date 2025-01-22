@@ -1,0 +1,10 @@
+syntax = "proto2";
+package messages;
+
+import public "myl_vehicle.proto";
+
+enum ProtoIds {
+  RESERVED = 0;
+  MYL_VEHICLE = 1;
+}
+

@@ -1,0 +1,10 @@
+{
+  "devDependencies": {
+    "@types/node": "^22.10.7",
+    "typed-struct": "^2.5.2",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "ts-node": "^10.9.2"
+  }
+}
