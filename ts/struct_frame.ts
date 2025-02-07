@@ -2,7 +2,7 @@ import { Struct } from 'typed-struct';
 import * as sf_types from './struct_frame_types';
 
 function fletcher_checksum_calculation(buffer: Uint8Array, data_length: number): sf_types.checksum_t {
-    let checksum: sf_types.checksum_t = { byte1: 0, byte2: 0 };
+    const checksum: sf_types.checksum_t = { byte1: 0, byte2: 0 };
 
     for (let i = 0; i < data_length; i++) {
         checksum.byte1 += buffer[i];
@@ -25,15 +25,15 @@ export function msg_encode(buffer: sf_types.struct_frame_buffer, msg: any, msgid
     }
 
     if (buffer.config.has_crc) {
-        let crc = fletcher_checksum_calculation(buffer.data.slice(buffer.crc_start_loc), buffer.crc_start_loc + rawData.length);
+        const crc = fletcher_checksum_calculation(buffer.data.slice(buffer.crc_start_loc), buffer.crc_start_loc + rawData.length);
         buffer.data[buffer.size++] = crc.byte1;
         buffer.data[buffer.size++] = crc.byte2;
     }
 }
 
 export function msg_reserve(buffer: sf_types.struct_frame_buffer, msg_id: number, msg_size: number) {
-    throw new Error("Function Unimplemented");
-    
+    throw new Error('Function Unimplemented');
+
     if (buffer.in_progress) {
         return;
     }
@@ -45,7 +45,7 @@ export function msg_reserve(buffer: sf_types.struct_frame_buffer, msg_id: number
         buffer.data[buffer.size++] = msg_size;
     }
 
-    let ret = Buffer.from(buffer.data, buffer.size, msg_size);
+    const ret = Buffer.from(buffer.data, buffer.size, msg_size);
     buffer.size += msg_size;
     return ret;
 }
@@ -53,10 +53,10 @@ export function msg_reserve(buffer: sf_types.struct_frame_buffer, msg_id: number
 
 
 export function msg_finish(buffer: sf_types.struct_frame_buffer) {
-    throw new Error("Function Unimplemented");
-    
+    throw new Error('Function Unimplemented');
+
     if (buffer.config.has_crc) {
-        let crc = fletcher_checksum_calculation(buffer.data.slice(buffer.crc_start_loc), buffer.crc_start_loc - buffer.size);
+        const crc = fletcher_checksum_calculation(buffer.data.slice(buffer.crc_start_loc), buffer.crc_start_loc - buffer.size);
         buffer.data[buffer.size++] = crc.byte1;
         buffer.data[buffer.size++] = crc.byte2;
         buffer.size += 2

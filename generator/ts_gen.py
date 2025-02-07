@@ -143,7 +143,7 @@ class MessageTsGen():
             result = '%s\n' % leading_comment
 
         struct_name = Globals.naming_style.type_name(msg.name)
-        result += 'export const %s = new Struct(\'%s\') ' % (
+        result += 'export const %s = new typed_struct.Struct(\'%s\') ' % (
             struct_name, struct_name)
         if trailing_comment:
             result += " " + trailing_comment
@@ -166,13 +166,13 @@ class MessageTsGen():
         if hasattr(msg, 'msgid'):
             result += 'export const %s_msgid = %d\n' % (msg.name, msg.msgid)
 
-            result += 'export function %s_encode(buffer: struct_frame_buffer, msg: ExtractType<typeof %s>) {\n' % (
+            result += 'export function %s_encode(buffer: struct_frame_buffer, msg: any) {\n' % (
                 msg.name, msg.name)
             result += '    msg_encode(buffer, msg, %s_msgid)\n}\n' % (msg.name)
 
             result += 'export function %s_reserve(buffer: struct_frame_buffer) {\n' % (
                 msg.name)
-            result += '    let msg_buffer = msg_reserve(buffer, %s_msgid, %s_max_size);\n' % (
+            result += '    const msg_buffer = msg_reserve(buffer, %s_msgid, %s_max_size);\n' % (
                 msg.name, msg.name)
             result += '    if (msg_buffer){\n'
             result += '        return new %s(msg_buffer)\n    }\n    return;\n}\n' % (
@@ -289,7 +289,12 @@ class FileTsGen():
             symbol = make_identifier(file.fdesc.package + '_' + headername)
         else:
             symbol = make_identifier(headername)
-        yield 'import { Struct, typed, type ExtractType } from \'typed-struct\';\n'
+
+        yield 'const typed_struct = require(\'typed-struct\')\n'
+        yield 'const ExtractType = typeof typed_struct.ExtractType;\n'
+        yield 'const type = typeof typed_struct.ExtractType;\n\n'
+
+
 
         yield "import { struct_frame_buffer } from './struct_frame_types';\n"
 

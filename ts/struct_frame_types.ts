@@ -1,8 +1,8 @@
 
 export class msg_id_len_t {
-  valid: boolean = false;
-  len: number = 0;
-  msg_id: number = 0;
+  valid = false;
+  len = 0;
+  msg_id = 0;
 }
 
 export type GetMsgIdLenType = (c: number, msg_id_len: msg_id_len_t) => boolean;
@@ -32,15 +32,15 @@ export class struct_frame_buffer {
   // Used for framing and parsing
   config: struct_frame_config = basic_frame_config;
   data: Uint8Array;
-  size: number = 0;
-  in_progress: boolean = false;
+  size = 0;
+  in_progress = false;
 
   // Used for framing
-  crc_start_loc: number = 0;
+  crc_start_loc = 0;
 
   // Used for parsing
   state: ParserState = ParserState.LOOKING_FOR_START_BYTE;
-  payload_len: number = 0;
+  payload_len = 0;
   msg_id_len: msg_id_len_t = new msg_id_len_t();
   msg_data: Buffer = Buffer.allocUnsafe(0);
 
@@ -55,11 +55,11 @@ export class struct_frame_buffer {
 
 export class buffer_parser_result_t {
   config: struct_frame_config = basic_frame_config;
-  found: boolean = false;
-  valid: boolean = false;
+  found = false;
+  valid = false;
   msg_data: Buffer = Buffer.allocUnsafe(0);
-  r_loc: number = 0;
-  finished: boolean = false;
+  r_loc = 0;
+  finished = false;
   msg_id_len: msg_id_len_t = new msg_id_len_t();
 }
 

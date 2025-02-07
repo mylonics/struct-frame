@@ -41,7 +41,7 @@ export function parse_char(pb: sf_types.struct_frame_buffer, c: number): boolean
     case sf_types.ParserState.GETTING_PAYLOAD:
       pb.data[pb.size] = c;
       pb.size++;
-      if (pb.size == pb.msg_id_len.len) {
+      if (pb.size >= pb.msg_id_len.len) {
         pb.msg_data = Buffer.from(pb.data, 0, pb.size)
         pb.state = sf_types.ParserState.LOOKING_FOR_START_BYTE;
         if (pb.config.parser_funcs) {
