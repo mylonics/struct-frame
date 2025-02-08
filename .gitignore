@@ -2,3 +2,6 @@ ts_out
 node_modules
 .vscode
 main.exe
+dist
+generated
+__pycache__/

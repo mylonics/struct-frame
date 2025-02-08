@@ -17,22 +17,6 @@ enum TransImpedanceGain {
   R_10k = 3;
 }
 
-//Preceeding Message comment
-//2nd line comment
-message RawData2 {
-//In Message comment
-  option msgid = 1;
-  float refV = 1;
-  float drnC = 2;
-//Field comment
-  float srcV = 3;
-  float drnV = 4;
-  float gteV = 5;
-  float phsV = 6;
-  RawData gteC = 7;
-  float temp = 8;
-  float time = 9;
-}
 
 message RawData {
   option msgid = 1;
