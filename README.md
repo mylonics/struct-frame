@@ -11,11 +11,3 @@ node index.js
 npx tsc --project tsconfig.json; node index.js
 
 
-building package
-py -m build
-py -m twine upload dist/*
-
-py -m pip install --upgrade twine
-
-
-run locally python .\src\main.py

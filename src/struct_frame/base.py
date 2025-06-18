@@ -52,7 +52,7 @@ class NamingStyleC(NamingStyle):
         return self.underscore(name)
 
     def enum_entry(self, name):
-        return self.underscore(name).upper()
+        return name.upper()
 
     def func_name(self, name):
         return self.underscore(name)

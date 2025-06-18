@@ -251,6 +251,8 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('filename')
 parser.add_argument('--debug', action='store_true')
+parser.add_argument('--build_c', action='store_true')
+parser.add_argument('--build_ts', action='store_true')
 parser.add_argument('--c_path', nargs=1, type=str, default=['c/'])
 parser.add_argument('--ts_path', nargs=1, type=str, default=['ts/'])
 
@@ -332,14 +334,21 @@ def main():
     args = parser.parse_args()
     parseFile(args.filename)
 
+    if (not args.build_c and not args.build_ts):
+        print("Select at least one build argument")
+        return
+
     try:
         validatePackages()
     except RecursionError as err:
         print(
             f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {recErrCurrentMessage} and Field: {recErrCurrentField}')
 
-    files = generateCFileStrings(args.c_path[0])
-    files.update(generateTsFileStrings(args.ts_path[0]))
+    if (args.build_c):
+        files = generateCFileStrings(args.c_path[0])
+    
+    if (args.build_ts):
+        files.update(generateTsFileStrings(args.ts_path[0]))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)
@@ -350,11 +359,17 @@ def main():
                     f.write(filedata)
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    shutil.copytree(os.path.join(dir_path,"boilerplate/c"), args.c_path[0], dirs_exist_ok=True)
-    shutil.copytree(os.path.join(dir_path,"boilerplate/ts"), args.ts_path[0], dirs_exist_ok=True)
+
+    if (args.build_c):
+        shutil.copytree(os.path.join(dir_path,"boilerplate/c"), args.c_path[0], dirs_exist_ok=True)
+    
+    if (args.build_ts):
+        shutil.copytree(os.path.join(dir_path,"boilerplate/ts"), args.ts_path[0], dirs_exist_ok=True)
     
     if args.debug:
         printPackages()
+    print("Struct Frame successfully completed")
+    
 
 
 if __name__ == '__main__':

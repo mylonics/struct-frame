@@ -94,8 +94,7 @@ class MessageCGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        
-        structName = '%s%s' % (pascalCase(msg.package), msg.name.title())
+        structName = '%s%s' % (pascalCase(msg.package), msg.name)
         result += 'typedef struct %s {' % structName
 
         result += '\n'
@@ -120,7 +119,8 @@ class MessageCGen():
 
         
         funcName = defineName.lower()
-        result += 'MESSAGE_HELPER(%s, %s, %d, %d);\n\n' % (funcName, structName,
+        if msg.id:
+            result += 'MESSAGE_HELPER(%s, %s, %d, %d);\n\n' % (funcName, structName,
                                                        size, msg.id)
 
         return result + '\n'
@@ -177,7 +177,8 @@ class FileCGen():
             yield 'uint8_t get_message_length(uint8_t msg_id){\n switch (msg_id)\n {\n'
             for key, msg in package.sortedMessages().items():
                 name = '%s_%s' % (CamelToSnakeCase(msg.package).upper(), CamelToSnakeCase(msg.name).upper())
-                yield '  case %s_MSG_ID: return %s_MAX_SIZE;\n' % (name, name)
+                if msg.id:
+                    yield '  case %s_MSG_ID: return %s_MAX_SIZE;\n' % (name, name)
 
             yield '  default: break;\n } return 0;\n}'
             yield '\n'
