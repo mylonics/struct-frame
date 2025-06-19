@@ -17,11 +17,9 @@ static inline bool parse_default_format_char_for_len_id(msg_id_len_t *msg_id_len
   return true;
 }
 
-parser_functions_t default_parser_functions = {parse_default_format_char_for_len_id,
-                                                      parse_default_format_validate};
+parser_functions_t default_parser_functions = {parse_default_format_char_for_len_id, parse_default_format_validate};
 
-static inline parser_functions_t *parse_char_for_start_byte(const struct_frame_config config,
-                                                     const uint8_t c) {
+static inline parser_functions_t *parse_char_for_start_byte(const struct_frame_config config, const uint8_t c) {
   if (config.start_byte == c) {
     return &default_parser_functions;
   }

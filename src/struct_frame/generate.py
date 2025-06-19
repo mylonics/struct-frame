@@ -23,7 +23,9 @@ default_types = {
     "int32": {"size": 4},
     "bool": {"size": 1},
     "float": {"size": 4},
-    "double": {"size": 8}
+    "double": {"size": 8},
+    "int64": {"size": 8},
+    "uint64": {"size": 8}
 }
 
 

@@ -60,8 +60,7 @@ typedef struct _buffer_parser_result_t {
 
 #define CREATE_DEFAULT_STRUCT_BUFFER(name, size) \
   uint8_t name##_buffer[size];                   \
-  struct_buffer name = {                         \
-      default_parser, name##_buffer, size, 0, false, 0, LOOKING_FOR_START_BYTE, 0, {false, 0, 0}}
+  struct_buffer name = {default_parser, name##_buffer, size, 0, false, 0, LOOKING_FOR_START_BYTE, 0, {false, 0, 0}};
 
 typedef struct checksum_t {
   uint8_t byte1;

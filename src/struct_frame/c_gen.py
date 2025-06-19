@@ -15,8 +15,8 @@ c_types = {"uint8": "uint8_t",
            "bool": "bool",
            "float": "float",
            "double": "double",
-           "uint64": 'BigInt64LE',
-           "int64":  'BigUInt64LE',
+           "uint64": 'uint64_t',
+           "int64":  'int64_t',
            }
 
 
@@ -117,7 +117,7 @@ class MessageCGen():
 
         defineName = '%s_%s' % (CamelToSnakeCase(
             msg.package).upper(), CamelToSnakeCase(msg.name).upper())
-        result += '#define %s_MAX_SIZE %d;\n' % (defineName, size)
+        result += '#define %s_MAX_SIZE %d\n' % (defineName, size)
 
         if msg.id:
             result += '#define %s_MSG_ID %d\n' % (defineName, msg.id)
