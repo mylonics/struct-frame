@@ -43,7 +43,6 @@ typedef struct _struct_frame_buffer {
 
 typedef struct _buffer_parser_result_t {
   struct_frame_config config;
-  bool found;
   bool valid;
   uint8_t *msg_loc;
   size_t r_loc;
@@ -56,7 +55,7 @@ typedef struct _buffer_parser_result_t {
 
 #define default_parser {0, 0, 0x90}
 
-#define zero_initialized_parser_result {default_parser, false, false, 0, 0, false, {0, 0}};
+#define zero_initialized_parser_result {default_parser, false, 0, 0, false, {0, 0}}
 
 #define CREATE_DEFAULT_STRUCT_BUFFER(name, size) \
   uint8_t name##_buffer[size];                   \

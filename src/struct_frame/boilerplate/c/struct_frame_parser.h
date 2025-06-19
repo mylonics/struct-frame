@@ -63,6 +63,7 @@ static inline bool parse_char(struct_buffer *pb, uint8_t c) {
 static inline bool parse_buffer(uint8_t *buffer, size_t size, buffer_parser_result_t *parser_result) {
   enum ParserState state = LOOKING_FOR_START_BYTE;
   parser_functions_t *parse_func_ptr;
+  parser_result->finished = false;
   for (size_t i = parser_result->r_loc; i < size; i++) {
     switch (state) {
       case LOOKING_FOR_START_BYTE:
@@ -81,7 +82,6 @@ static inline bool parse_buffer(uint8_t *buffer, size_t size, buffer_parser_resu
       case GETTING_PAYLOAD:
         parser_result->msg_loc = buffer + i;
         parser_result->r_loc = i + parser_result->msg_id_len.len;
-        parser_result->found = true;
         if (parse_func_ptr->validate_packet(parser_result->msg_loc, &parser_result->msg_id_len)) {
           parser_result->valid = true;
           return true;
@@ -95,5 +95,7 @@ static inline bool parse_buffer(uint8_t *buffer, size_t size, buffer_parser_resu
         break;
     }
   }
+  parser_result->finished = true;
+  parser_result->r_loc = 0;
   return false;
 }
