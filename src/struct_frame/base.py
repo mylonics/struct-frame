@@ -3,6 +3,7 @@ import re
 
 version = "0.0.1"
 
+
 class NamingStyle:
     def enum_name(self, name):
         return "_%s" % (name)
@@ -66,15 +67,19 @@ class NamingStyleC(NamingStyle):
         word = re.sub(r"([a-z\d])([A-Z])", r'\1_\2', word)
         word = word.replace("-", "_")
         return word.lower()
-    
+
+
 def camelCase(st):
     output = ''.join(x for x in st.title() if x.isalnum())
     return output[0].lower() + output[1:]
 
+
 def pascalCase(st):
     return ''.join(x for x in st.title() if x.isalnum())
 
+
 pattern = re.compile(r'(?<!^)(?=[A-Z])')
+
 
 def CamelToSnakeCase(data):
     return pattern.sub('_', data).lower()

@@ -7,18 +7,19 @@ import time
 StyleC = NamingStyleC()
 
 ts_types = {
-    "int8_t":     'Int8',
-    "uint8_t":    'UInt8',
-    "int16_t":    'Int16LE',
-    "uint16_t":   'UInt16LE',
+    "int8":     'Int8',
+    "uint8":    'UInt8',
+    "int16":    'Int16LE',
+    "uint16":   'UInt16LE',
     "bool":     'Boolean8',
     "double":   'Float64LE',
     "float":    'Float32LE',
-    "int32_t":  'Int32LE',
-    "uint32_t": 'UInt32LE',
-    "uint64_t": 'BigInt64LE',
-    "int64_t":  'BigUInt64LE',
+    "int32":  'Int32LE',
+    "uint32": 'UInt32LE',
+    "uint64": 'BigInt64LE',
+    "int64":  'BigUInt64LE',
 }
+
 
 class EnumTsGen():
     @staticmethod
@@ -29,7 +30,8 @@ class EnumTsGen():
             for c in leading_comment:
                 result = '%s\n' % c
 
-        result += 'export enum %s%s' % (packageName, StyleC.enum_name(field.name))
+        result += 'export enum %s%s' % (packageName,
+                                        StyleC.enum_name(field.name))
 
         result += ' {\n'
 
@@ -49,7 +51,7 @@ class EnumTsGen():
 
             enum_value = "    %s = %d%s" % (
                 StyleC.enum_entry(d), field.data[d][0], comma)
-           
+
             enum_values.append(enum_value)
 
         result += '\n'.join(enum_values)
@@ -65,7 +67,7 @@ class FieldTsGen():
         isEnum = False
 #        isEnum = field.pbtype in ('ENUM', 'UENUM')
         var_name = StyleC.var_name(field.name)
-        type_name = field.fieldType 
+        type_name = field.fieldType
         if type_name in ts_types:
             type_name = ts_types[type_name]
         else:
@@ -98,7 +100,7 @@ class MessageTsGen():
         if leading_comment:
             for c in msg.comments:
                 result = '%s\n' % c
-                
+
         struct_name = '%s_%s' % (packageName, StyleC.type_name(msg.name))
         result += 'export const %s = new typed_struct.Struct(\'%s\') ' % (
             struct_name, struct_name)
@@ -113,7 +115,8 @@ class MessageTsGen():
         else:
             size = msg.size
 
-        result += '\n'.join([FieldTsGen.generate(f, packageName) for key, f in msg.fields.items()])
+        result += '\n'.join([FieldTsGen.generate(f, packageName)
+                            for key, f in msg.fields.items()])
         result += '\n    .compile();\n\n'
 
         result += 'export const %s_max_size = %d;\n' % (struct_name, size)
@@ -147,7 +150,7 @@ class MessageTsGen():
         for field in msg.fields:
             parts.append(field.get_initializer(null_init))
         return '{' + ', '.join(parts) + '}'
-    
+
 
 class FileTsGen():
     @staticmethod
@@ -163,8 +166,8 @@ class FileTsGen():
 
         yield "import { msg_encode, msg_reserve, msg_finish } from './struct_frame';\n\n"
 
-        #include additional header files here if available in the future
-        
+        # include additional header files here if available in the future
+
         if package.enums:
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():

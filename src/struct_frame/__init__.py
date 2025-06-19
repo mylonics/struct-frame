@@ -5,4 +5,5 @@ from .ts_gen import FileTsGen
 
 from .generate import main
 
-__all__ = ["main", "FileCGen", "FileTsGen", "version", "NamingStyleC", "CamelToSnakeCase", "pascalCase"]
+__all__ = ["main", "FileCGen", "FileTsGen", "version",
+           "NamingStyleC", "CamelToSnakeCase", "pascalCase"]

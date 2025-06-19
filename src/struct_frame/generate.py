@@ -2,6 +2,8 @@
 # kate: replace-tabs on; indent-width 4;
 
 
+import os
+import shutil
 from struct_frame import FileCGen
 from struct_frame import FileTsGen
 from proto_schema_parser.parser import Parser
@@ -241,6 +243,7 @@ class Package:
             output = output + value.__str__() + "\n"
         return output
 
+
 packages = {}
 processed_file = []
 required_file = []
@@ -309,8 +312,6 @@ def printPackages():
     for key, value in packages.items():
         print(value)
 
-import os
-import shutil
 
 def generateCFileStrings(path):
     out = {}
@@ -320,6 +321,7 @@ def generateCFileStrings(path):
         out[name] = data
 
     return out
+
 
 def generateTsFileStrings(path):
     out = {}
@@ -346,7 +348,7 @@ def main():
 
     if (args.build_c):
         files = generateCFileStrings(args.c_path[0])
-    
+
     if (args.build_ts):
         files.update(generateTsFileStrings(args.ts_path[0]))
 
@@ -355,21 +357,22 @@ def main():
         if dirname and not os.path.exists(dirname):
             os.makedirs(dirname)
 
-        with open(filename , 'w', encoding='utf-8') as f:
-                    f.write(filedata)
+        with open(filename, 'w', encoding='utf-8') as f:
+            f.write(filedata)
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
 
     if (args.build_c):
-        shutil.copytree(os.path.join(dir_path,"boilerplate/c"), args.c_path[0], dirs_exist_ok=True)
-    
+        shutil.copytree(os.path.join(dir_path, "boilerplate/c"),
+                        args.c_path[0], dirs_exist_ok=True)
+
     if (args.build_ts):
-        shutil.copytree(os.path.join(dir_path,"boilerplate/ts"), args.ts_path[0], dirs_exist_ok=True)
-    
+        shutil.copytree(os.path.join(dir_path, "boilerplate/ts"),
+                        args.ts_path[0], dirs_exist_ok=True)
+
     if args.debug:
         printPackages()
     print("Struct Frame successfully completed")
-    
 
 
 if __name__ == '__main__':

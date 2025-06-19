@@ -14,7 +14,10 @@ c_types = {"uint8": "uint8_t",
            "int32": "int32_t",
            "bool": "bool",
            "float": "float",
-           "double": "double"}
+           "double": "double",
+           "uint64": 'BigInt64LE',
+           "int64":  'BigUInt64LE',
+           }
 
 
 class EnumCGen():
@@ -26,7 +29,7 @@ class EnumCGen():
         if leading_comment:
             for c in leading_comment:
                 result = '%s\n' % c
-        
+
         enumName = '%s%s' % (pascalCase(field.package), field.name)
         result += 'typedef enum %s' % (enumName)
 
@@ -46,8 +49,9 @@ class EnumCGen():
                 # last enum member should not end with a comma
                 comma = ""
 
-            enum_value = "    %s_%s = %d%s" % (CamelToSnakeCase(field.name).upper(),StyleC.enum_entry(d), field.data[d][0], comma)
-            
+            enum_value = "    %s_%s = %d%s" % (CamelToSnakeCase(
+                field.name).upper(), StyleC.enum_entry(d), field.data[d][0], comma)
+
             enum_values.append(enum_value)
 
         result += '\n'.join(enum_values)
@@ -65,7 +69,7 @@ class FieldCGen():
         result = ''
 
         var_name = field.name
-        type_name = field.fieldType 
+        type_name = field.fieldType
         if type_name in c_types:
             type_name = c_types[type_name]
         else:
@@ -73,7 +77,6 @@ class FieldCGen():
             if field.isEnum:
                 type_name = '%s_t' % type_name
 
-        
         result += '    %s %s%s;' % (type_name, var_name, "")
 
         leading_comment = field.comments
@@ -106,25 +109,26 @@ class MessageCGen():
             result += '    char dummy_field;'
         else:
             size = msg.size
-        
-        result += '\n'.join([FieldCGen.generate(f) for key, f in msg.fields.items()])
+
+        result += '\n'.join([FieldCGen.generate(f)
+                            for key, f in msg.fields.items()])
         result += '\n}'
         result += ' %s;\n\n' % structName
-        
-        defineName = '%s_%s' % (CamelToSnakeCase(msg.package).upper(), CamelToSnakeCase(msg.name).upper())
+
+        defineName = '%s_%s' % (CamelToSnakeCase(
+            msg.package).upper(), CamelToSnakeCase(msg.name).upper())
         result += '#define %s_MAX_SIZE %d;\n' % (defineName, size)
 
         if msg.id:
             result += '#define %s_MSG_ID %d\n' % (defineName, msg.id)
 
-        
         funcName = defineName.lower()
         if msg.id:
             result += 'MESSAGE_HELPER(%s, %s, %d, %d);\n\n' % (funcName, structName,
-                                                       size, msg.id)
+                                                               size, msg.id)
 
         return result + '\n'
-    
+
     @staticmethod
     def get_initializer(msg, null_init):
         if not msg.fields:
@@ -147,7 +151,7 @@ class FileCGen():
 
         yield '#include "struct_frame.h"\n'
 
-        #include additional header files if available in the future
+        # include additional header files if available in the future
 
         if package.enums:
             yield '/* Enum definitions */\n'
@@ -163,7 +167,7 @@ class FileCGen():
             yield '\n'
 
         # Add default initializers if needed
-        #if package.messages:
+        # if package.messages:
         #    yield '/* Initializer values for message structs */\n'
         #    for key, msg in package.messages.items():
         #        identifier = '%s_%s_init_default' % (package.name, StyleC.struct_name(msg.name))
@@ -176,10 +180,10 @@ class FileCGen():
         if package.messages:
             yield 'uint8_t get_message_length(uint8_t msg_id){\n switch (msg_id)\n {\n'
             for key, msg in package.sortedMessages().items():
-                name = '%s_%s' % (CamelToSnakeCase(msg.package).upper(), CamelToSnakeCase(msg.name).upper())
+                name = '%s_%s' % (CamelToSnakeCase(
+                    msg.package).upper(), CamelToSnakeCase(msg.name).upper())
                 if msg.id:
                     yield '  case %s_MSG_ID: return %s_MAX_SIZE;\n' % (name, name)
 
             yield '  default: break;\n } return 0;\n}'
             yield '\n'
-
