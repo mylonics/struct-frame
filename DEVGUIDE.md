@@ -13,4 +13,8 @@ Update version in pyproject.toml if needed
 
 
 ### Running Locally
+Install dependancies
+```py -m pip install proto-schema-parser```
+
+Run module
 ```py .\src\main.py ```

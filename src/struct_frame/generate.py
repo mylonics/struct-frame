@@ -6,6 +6,7 @@ import os
 import shutil
 from struct_frame import FileCGen
 from struct_frame import FileTsGen
+from struct_frame import FilePyGen
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 
@@ -258,8 +259,10 @@ parser.add_argument('filename')
 parser.add_argument('--debug', action='store_true')
 parser.add_argument('--build_c', action='store_true')
 parser.add_argument('--build_ts', action='store_true')
+parser.add_argument('--build_py', action='store_true')
 parser.add_argument('--c_path', nargs=1, type=str, default=['c/'])
 parser.add_argument('--ts_path', nargs=1, type=str, default=['ts/'])
+parser.add_argument('--py_path', nargs=1, type=str, default=['py/'])
 
 
 def parseFile(filename):
@@ -334,11 +337,20 @@ def generateTsFileStrings(path):
     return out
 
 
+def generatePyFileStrings(path):
+    out = {}
+    for key, value in packages.items():
+        name = os.path.join(path, value.name + ".sf.py")
+        data = ''.join(FilePyGen.generate(value))
+        out[name] = data
+    return out
+
+
 def main():
     args = parser.parse_args()
     parseFile(args.filename)
 
-    if (not args.build_c and not args.build_ts):
+    if (not args.build_c and not args.build_ts and not args.build_py):
         print("Select at least one build argument")
         return
 
@@ -348,11 +360,15 @@ def main():
         print(
             f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {recErrCurrentMessage} and Field: {recErrCurrentField}')
 
+    files = {}
     if (args.build_c):
-        files = generateCFileStrings(args.c_path[0])
+        files.update(generateCFileStrings(args.c_path[0]))
 
     if (args.build_ts):
         files.update(generateTsFileStrings(args.ts_path[0]))
+
+    if (args.build_py):
+        files.update(generatePyFileStrings(args.py_path[0]))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)
@@ -371,6 +387,10 @@ def main():
     if (args.build_ts):
         shutil.copytree(os.path.join(dir_path, "boilerplate/ts"),
                         args.ts_path[0], dirs_exist_ok=True)
+
+    if (args.build_py):
+        shutil.copytree(os.path.join(dir_path, "boilerplate/py"),
+                        args.py_path[0], dirs_exist_ok=True)
 
     if args.debug:
         printPackages()

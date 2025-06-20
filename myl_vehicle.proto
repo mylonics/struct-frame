@@ -2,13 +2,13 @@ syntax = "proto3";
 import "nanopb.proto";
 package myl_vehicle;
 
-enum VehicleType {
-  VEHICLE_TYPE_UNSPECIFIED = 0;
-  VEHICLE_TYPE_ROVER = 1;
-  VEHICLE_TYPE_BOAT = 2;
-  VEHICLE_TYPE_FW = 3;
-  VEHICLE_TYPE_MR = 4;
-  VEHICLE_TYPE_CAR = 5;
+enum Type {
+  UNSPECIFIED = 0;
+  ROVER = 1;
+  BOAT = 2;
+  FW = 3;
+  MR = 4;
+  CAR = 5;
 }
 
 message position {
@@ -35,7 +35,7 @@ message pose {
 
 message heartbeat {
   option msgid = 3;
-  VehicleType type = 1;
+  Type type = 1;
   int32 id = 2;
 }
 

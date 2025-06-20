@@ -101,9 +101,10 @@ class MessageTsGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        struct_name = '%s_%s' % (packageName, StyleC.type_name(msg.name))
+        package_msg_name = '%s_%s' % (packageName, msg.name)
+
         result += 'export const %s = new typed_struct.Struct(\'%s\') ' % (
-            struct_name, struct_name)
+            package_msg_name, package_msg_name)
 
         result += '\n'
 
@@ -119,25 +120,26 @@ class MessageTsGen():
                             for key, f in msg.fields.items()])
         result += '\n    .compile();\n\n'
 
-        result += 'export const %s_max_size = %d;\n' % (struct_name, size)
+        result += 'export const %s_max_size = %d;\n' % (package_msg_name, size)
 
         if msg.id:
-            result += 'export const %s_msgid = %d\n' % (msg.name, msg.id)
+            result += 'export const %s_msgid = %d\n' % (
+                package_msg_name, msg.id)
 
             result += 'export function %s_encode(buffer: struct_frame_buffer, msg: any) {\n' % (
-                msg.name)
-            result += '    msg_encode(buffer, msg, %s_msgid)\n}\n' % (msg.name)
+                package_msg_name)
+            result += '    msg_encode(buffer, msg, %s_msgid)\n}\n' % (package_msg_name)
 
             result += 'export function %s_reserve(buffer: struct_frame_buffer) {\n' % (
-                msg.name)
+                package_msg_name)
             result += '    const msg_buffer = msg_reserve(buffer, %s_msgid, %s_max_size);\n' % (
-                msg.name, msg.name)
+                package_msg_name, package_msg_name)
             result += '    if (msg_buffer){\n'
             result += '        return new %s(msg_buffer)\n    }\n    return;\n}\n' % (
-                msg.name)
+                package_msg_name)
 
             result += 'export function %s_finish(buffer: struct_frame_buffer) {\n' % (
-                msg.name)
+                package_msg_name)
             result += '    msg_finish(buffer);\n}\n'
         return result + '\n'
 
@@ -182,8 +184,9 @@ class FileTsGen():
         if package.messages:
             yield 'export function get_message_length(msg_id : number){\n switch (msg_id)\n {\n'
             for key, msg in package.sortedMessages().items():
-                name = StyleC.type_name(msg.name)
-                yield '  case %s_msgid: return %s_max_size;\n' % (name, name)
+
+                package_msg_name = '%s_%s' % (package.name, msg.name)
+                yield '  case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
 
             yield '  default: break;\n } return 0;\n}'
             yield '\n'

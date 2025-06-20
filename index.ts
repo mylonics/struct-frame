@@ -1,6 +1,6 @@
-import * as mv from './ts/myl_vehicle.sf';
-import { parse_char, parse_buffer } from './ts/struct_frame_parser';
-import { struct_frame_buffer, buffer_parser_result_t, } from './ts/struct_frame_types';
+import * as mv from './gen/ts/myl_vehicle.sf';
+import { parse_char, parse_buffer } from './gen/ts/struct_frame_parser';
+import { struct_frame_buffer, buffer_parser_result_t, } from './gen/ts/struct_frame_types';
 import { type ExtractType } from 'typed-struct';
 
 let tx_buffer = new struct_frame_buffer(256)
@@ -15,7 +15,7 @@ mv.myl_vehicle_pose_encode(tx_buffer, msg);
 let hb = new mv.myl_vehicle_heartbeat();
 
 hb.id = 23;
-hb.type = mv.myl_vehicle_VehicleType.myl_vehicle_VEHICLE_TYPE_FW;
+hb.type = mv.myl_vehicletype.FW;
 mv.myl_vehicle_heartbeat_encode(tx_buffer, hb);
 
 
@@ -61,6 +61,9 @@ while (parse_buffer(tx_buffer.data, tx_buffer.max_size, result)) {
 }
 
 if (hb && hb3 && hb5) {
-  console.log("%d %d  %d %d", hb.id, hb.type, hb3.id, hb3.type, hb5.id, hb5.type);
+  //console.log("%d %d  %d %d", hb.id, hb.type, hb3.id, hb3.type, hb5.id, hb5.type);
+  console.log(hb)
+  console.log(hb3)
+  console.log(hb5)
 }
 

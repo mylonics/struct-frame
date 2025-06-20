@@ -88,11 +88,16 @@ static inline bool msg_finish(struct_buffer *buffer) {
     name msg = *(name *)(buffer->data);                                                            \
     return msg;                                                                                    \
   }                                                                                                \
+  static inline name funcname##_get(uint8_t *buffer) {                                             \
+    name msg = *(name *)(buffer);                                                                  \
+    return msg;                                                                                    \
+  }                                                                                                \
   static inline name funcname##_get_from_buffer_result(buffer_parser_result_t result) {            \
     name msg = *(name *)(result.msg_loc);                                                          \
     return msg;                                                                                    \
   }                                                                                                \
   static inline name *funcname##_get_ref(struct_buffer *buffer) { return (name *)(buffer->data); } \
+  static inline name *funcname##_get_ref(uint8_t *buffer) { return (name *)(buffer); }             \
   static inline name *funcname##_get_ref_from_buffer_result(buffer_parser_result_t result) {       \
     return (name *)(result.msg_loc);                                                               \
   }

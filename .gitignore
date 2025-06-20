@@ -5,3 +5,4 @@ main.exe
 dist
 generated
 __pycache__/
+gen
