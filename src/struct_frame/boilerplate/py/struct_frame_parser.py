@@ -4,10 +4,10 @@ from enum import Enum
 
 def fletcher_checksum_calculation(buffer, start=0, end=None):
     if end == None:
-        end = buffer.length
+        end = len(buffer)
 
     byte1 = 0
-    byte2 = 2
+    byte2 = 0
 
     for x in range(start, end):
         byte1 += buffer[x]
@@ -17,26 +17,26 @@ def fletcher_checksum_calculation(buffer, start=0, end=None):
 
 
 class BasicPacket:
-    start_byte = None
+    start_byte = 0x90
     header_length = 0
     footer_length = 0
 
     desired_packet_length = 0
     packet = []
 
-    def __init__(self, start_byte, header_length, footer_length):
+    def __init__(self, start_byte=0x90, header_length=2, footer_length=2):
         self.start_byte = start_byte
         self.header_length = header_length
         self.footer_length = footer_length
 
-    def add_header_byte(self, byte, clear):
+    def add_header_byte(self, byte, clear=False):
         if clear:
             self.packet.clear()
-        self.packet.push(byte)
+        self.packet.append(byte)
         return len(self.packet) == self.header_length
 
     def add_packet_byte(self, byte):
-        self.packet.push(byte)
+        self.packet.append(byte)
         return len(self.packet) == self.desired_packet_length
 
     def get_msg_id(self):
@@ -54,15 +54,20 @@ class BasicPacket:
     def get_msg_buffer(self):
         return self.packet[self.header_length:self.desired_packet_length - self.footer_length]
 
+    def encode_msg(self, msg):
+        return self.encode(msg.pack(), msg.msg_id)
+
     def encode(self, data, msg_id):
         output = []
-        output.push(self.start_byte)
-        output.push(msg_id)
-        output.push(data)
+        output.append(self.start_byte)
+        output.append(msg_id)
+        if (len(data)):
+            for b in data:
+                output.append(b)
         checksum = fletcher_checksum_calculation(data)
 
-        output.push(checksum[0])
-        output.push(checksum[1])
+        output.append(checksum[0])
+        output.append(checksum[1])
         return output
 
 
@@ -75,44 +80,39 @@ class ParserState(Enum):
 class FrameParser:
     state = ParserState.LOOKING_FOR_START_BYTE
     buffer = []
-    parser = None
+    packetFormat = None
     msg_definitions = None
     msg_id_loc = None
     msg_type = None
 
-    def __init__(self, parsers, msg_definitions):
-        self.parsers = parsers
+    def __init__(self, packetFormats, msg_definitions):
+        self.packetFormats = packetFormats
         self.msg_definitions = msg_definitions
 
     def parse_char(self, c):
-        if state == ParserState.LOOKING_FOR_START_BYTE:
-            self.parser = self.parsers[c]
-            if self.parser:
-                if self.parser.add_header_byte(c, True):
-                    state = ParserState.GETTING_PACKET
+        if self.state == ParserState.LOOKING_FOR_START_BYTE:
+            self.packetFormat = self.packetFormats[c]
+            if self.packetFormat:
+                if self.packetFormat.add_header_byte(c, True):
+                    self.state = ParserState.GETTING_PACKET
                 else:
-                    state = ParserState.GETTING_HEADER
+                    self.state = ParserState.GETTING_HEADER
 
-        elif state == ParserState.GETTING_HEADER:
-            if self.parser.add_header_byte(c):
-                msg_id = self.parser.get_msg_id()
+        elif self.state == ParserState.GETTING_HEADER:
+            if self.packetFormat.add_header_byte(c):
+                msg_id = self.packetFormat.get_msg_id()
                 self.msg_type = self.msg_definitions[msg_id]
                 if self.msg_type:
-                    self.parser.get_full_packet_length(self.msg_type.msg_size)
-                    state = ParserState.GETTING_PACKET
+                    self.packetFormat.get_full_packet_length(
+                        self.msg_type.msg_size)
+                    self.state = ParserState.GETTING_PACKET
                 else:
-                    state = ParserState.LOOKING_FOR_START_BYTE
+                    self.state = ParserState.LOOKING_FOR_START_BYTE
 
-        elif state == ParserState.GETTING_PACKET:
-            if self.parser.add_packet_byte(c):
-                state = ParserState.LOOKING_FOR_START_BYTE
-                if self.parser.validatePackage:
-                    return self.msg_type.create_unpack(self.parser.get_msg_buffer())
+        elif self.state == ParserState.GETTING_PACKET:
+            if self.packetFormat.add_packet_byte(c):
+                self.state = ParserState.LOOKING_FOR_START_BYTE
+                if self.packetFormat.validate_packet():
+                    return self.msg_type.create_unpack(bytes(self.packetFormat.get_msg_buffer()))
 
         return False
-
-
-def TestFunction():
-    parsers = {BasicPacket.start_byte, BasicPacket()}
-    frameParser = FrameParser(parsers)
-    frameParser.parse_char

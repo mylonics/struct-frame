@@ -340,7 +340,7 @@ def generateTsFileStrings(path):
 def generatePyFileStrings(path):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.py")
+        name = os.path.join(path, value.name + "_sf.py")
         data = ''.join(FilePyGen.generate(value))
         out[name] = data
     return out

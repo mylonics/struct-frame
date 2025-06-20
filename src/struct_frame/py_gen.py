@@ -88,32 +88,12 @@ class MessagePyGen():
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
         result += 'class %s(Structured):\n' % structName
         result += '    msg_size = %s\n' % msg.size
-        if msg.id:
+        if msg.id != None:
             result += '    msg_id = %s\n' % msg.id
-
-        size = 1
-        if not msg.fields:
-            # Empty structs are not allowed in C standard.
-            # Therefore add a dummy field if an empty message occurs.
-            result += '    dummy_field: pad'
-        else:
-            size = msg.size
 
         result += '\n'.join([FieldPyGen.generate(f)
                             for key, f in msg.fields.items()])
 
-        # defineName = '%s_%s' % (CamelToSnakeCase(
-        #    msg.package).upper(), CamelToSnakeCase(msg.name).upper())
-        # result += '#define %s_MAX_SIZE %d\n' % (defineName, size)
-#
-        # if msg.id:
-        #    result += '#define %s_MSG_ID %d\n' % (defineName, msg.id)
-#
-        # funcName = defineName.lower()
-        # if msg.id:
-        #    result += 'MESSAGE_HELPER(%s, %s, %d, %d);\n\n' % (funcName, structName,
-        #                                                       size, msg.id)
-#
         return result + '\n'
 
     @staticmethod
@@ -153,7 +133,7 @@ class FilePyGen():
 
             yield '%s_definitions = {\n' % package.name
             for key, msg in package.sortedMessages().items():
-                if msg.id:
+                if msg.id != None:
                     structName = '%s%s' % (pascalCase(msg.package), msg.name)
                     yield '    %s: %s,\n' % (msg.id, structName)
 
