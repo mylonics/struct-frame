@@ -27,11 +27,14 @@ class StructFrameDevice : public struct_buffer {
   void RunTx() { PutArray(struct_buffer::data, struct_buffer::max_size, struct_buffer::size); }
 
  protected:
-  void Init() { PutArray(struct_buffer::data, struct_buffer::max_size, 0); }
+  void Init() {
+    size_t dummy = 0;
+    PutArray(struct_buffer::data, struct_buffer::max_size, dummy);
+  }
 
   // Put Array must accept the full buffer of data and returns a pointer to either a new buffer or the same buffer
   // that is free
-  virtual void PutArray(uint8_t *&buffer, size_t &max_length, size_t length) = 0;
+  virtual void PutArray(uint8_t *&buffer, size_t &max_length, size_t &length) = 0;
 
   // Get array, a pointer to an array and refernce to the array length is pased and mutated by this function
   virtual void GetArray(uint8_t *&buffer, size_t &length) = 0;

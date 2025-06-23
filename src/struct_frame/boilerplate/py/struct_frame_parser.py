@@ -10,8 +10,8 @@ def fletcher_checksum_calculation(buffer, start=0, end=None):
     byte2 = 0
 
     for x in range(start, end):
-        byte1 += buffer[x]
-        byte2 += byte1
+        byte1 = (byte1 + buffer[x]) % 256
+        byte2 = (byte2 + byte1) % 256
 
     return [byte1, byte2]
 
@@ -33,7 +33,7 @@ class BasicPacket:
         if clear:
             self.packet.clear()
         self.packet.append(byte)
-        return len(self.packet) == self.header_length
+        return len(self.packet) >= self.header_length
 
     def add_packet_byte(self, byte):
         self.packet.append(byte)
@@ -48,7 +48,7 @@ class BasicPacket:
 
     def validate_packet(self):
         checksum = fletcher_checksum_calculation(
-            self.packet, self.header_length, self.desired_packet_length - self.footer_length)
+            self.packet, self.header_length - 1, self.desired_packet_length - self.footer_length)
         return checksum[0] == self.packet[-2] and checksum[1] == self.packet[-1]
 
     def get_msg_buffer(self):
@@ -91,8 +91,8 @@ class FrameParser:
 
     def parse_char(self, c):
         if self.state == ParserState.LOOKING_FOR_START_BYTE:
-            self.packetFormat = self.packetFormats[c]
-            if self.packetFormat:
+            if c in self.packetFormats:
+                self.packetFormat = self.packetFormats[c]
                 if self.packetFormat.add_header_byte(c, True):
                     self.state = ParserState.GETTING_PACKET
                 else:
@@ -101,13 +101,14 @@ class FrameParser:
         elif self.state == ParserState.GETTING_HEADER:
             if self.packetFormat.add_header_byte(c):
                 msg_id = self.packetFormat.get_msg_id()
-                self.msg_type = self.msg_definitions[msg_id]
-                if self.msg_type:
-                    self.packetFormat.get_full_packet_length(
-                        self.msg_type.msg_size)
-                    self.state = ParserState.GETTING_PACKET
-                else:
-                    self.state = ParserState.LOOKING_FOR_START_BYTE
+                if msg_id in self.msg_definitions:
+                    self.msg_type = self.msg_definitions[msg_id]
+                    if self.msg_type:
+                        self.packetFormat.get_full_packet_length(
+                            self.msg_type.msg_size)
+                        self.state = ParserState.GETTING_PACKET
+                    else:
+                        self.state = ParserState.LOOKING_FOR_START_BYTE
 
         elif self.state == ParserState.GETTING_PACKET:
             if self.packetFormat.add_packet_byte(c):

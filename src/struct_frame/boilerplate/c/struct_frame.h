@@ -5,7 +5,7 @@
 #include "struct_frame_types.h"
 
 static inline struct checksum_t fletcher_checksum_calculation(uint8_t *buffer, uint8_t data_length) {
-  checksum_t checksum;
+  checksum_t checksum{};
 
   for (int i = 0; i < data_length; i++) {
     checksum.byte1 += buffer[i];
@@ -27,11 +27,12 @@ static inline bool msg_encode(struct_buffer *buffer, void *msg_buffer, uint8_t m
   if (buffer->config.has_len) {
     buffer->data[buffer->size++] = size;
   }
+
   memcpy(buffer->data + buffer->size, (uint8_t *)msg_buffer, size);
   buffer->size += size;
   if (buffer->config.has_crc) {
     checksum_t crc =
-        fletcher_checksum_calculation(buffer->data + buffer->crc_start_loc, buffer->crc_start_loc - buffer->size);
+        fletcher_checksum_calculation(buffer->data + buffer->crc_start_loc, buffer->size - buffer->crc_start_loc);
     buffer->data[buffer->size++] = crc.byte1;
     buffer->data[buffer->size++] = crc.byte2;
   }
