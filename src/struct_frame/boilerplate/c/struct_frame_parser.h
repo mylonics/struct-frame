@@ -1,94 +1,50 @@
 #pragma once
 #include "stdint.h"
-#include "struct_frame_gen.h"
 #include "struct_frame_types.h"
 
 // https://github.com/serge-sans-paille/frozen
 
-static inline bool parse_default_format_validate(uint8_t *data, msg_id_len_t *msg_id_len) {
-  (void)data;
-  (void)msg_id_len;
-  return true;
-}
-
-static inline bool parse_default_format_char_for_len_id(msg_id_len_t *msg_id_len, const uint8_t c) {
-  msg_id_len->msg_id = c;
-  msg_id_len->len = get_message_length(c);
-  return true;
-}
-
-parser_functions_t default_parser_functions = {parse_default_format_char_for_len_id, parse_default_format_validate};
-
-static inline parser_functions_t *parse_char_for_start_byte(const struct_frame_config config, const uint8_t c) {
-  if (config.start_byte == c) {
-    return &default_parser_functions;
-  }
-  return NULL;
-}
-
-static inline bool parse_char(struct_buffer *pb, uint8_t c) {
-  parser_functions_t *parse_func_ptr = NULL;
-  switch (pb->state) {
-    case LOOKING_FOR_START_BYTE:
-      parse_func_ptr = parse_char_for_start_byte(pb->config, c);
-      if (parse_func_ptr) {
-        pb->config.parser_funcs = parse_func_ptr;
-        pb->state = GETTING_LENGTH_MSG_AND_ID;
-      }
-      break;
-
-    case GETTING_LENGTH_MSG_AND_ID:
-      if (pb->config.parser_funcs->get_msg_id_len(&pb->msg_id_len, c)) {
-        pb->state = GETTING_PAYLOAD;
-        pb->size = 0;
-      }
-      break;
-
-    case GETTING_PAYLOAD:
-      pb->data[pb->size++] = c;
-      if (pb->size >= pb->msg_id_len.len) {
-        pb->state = LOOKING_FOR_START_BYTE;
-        return pb->config.parser_funcs->validate_packet(pb->data, &pb->msg_id_len);
-      }
-
-      break;
-
-    default:
-      break;
-  }
-
-  return false;
-}
-
-static inline bool parse_buffer(uint8_t *buffer, size_t size, buffer_parser_result_t *parser_result) {
+static inline msg_info_t parse_buffer(uint8_t *buffer, size_t size, buffer_parser_result_t *parser_result) {
   enum ParserState state = LOOKING_FOR_START_BYTE;
-  parser_functions_t *parse_func_ptr;
   parser_result->finished = false;
   for (size_t i = parser_result->r_loc; i < size; i++) {
+    uint8_t c = buffer[i];
     switch (state) {
       case LOOKING_FOR_START_BYTE:
-        parse_func_ptr = parse_char_for_start_byte(parser_result->config, buffer[i]);
-        if (parse_func_ptr) {
-          state = GETTING_LENGTH_MSG_AND_ID;
+        parser_result->format = parser_result->defines->get_packet_formats(c);
+        if (parser_result->format) {
+          parser_result->packet_start_index = i;
+          if (parser_result->format->process_header_byte(c, true)) {
+            parser_result->state = GETTING_PAYLOAD;
+          } else {
+            parser_result->state = GETTING_HEADER;
+          }
         }
         break;
 
-      case GETTING_LENGTH_MSG_AND_ID:
-        if (parse_func_ptr->get_msg_id_len(&parser_result->msg_id_len, buffer[i])) {
-          state = GETTING_PAYLOAD;
+      case GETTING_HEADER:
+        if (parser_result->format->process_header_byte(c, false)) {
+          size_t msg_id = parser_result->format->get_msg_id(buffer + parser_result->packet_start_index);
+          size_t length = 0;
+          if (parser_result->defines->get_message_length(msg_id, &length)) {
+            parser_result->packet_size = parser_result->format->get_full_packet_length(length);
+            parser_result->state = GETTING_PAYLOAD;
+          } else {
+            parser_result->state = LOOKING_FOR_START_BYTE;
+          }
         }
         break;
 
       case GETTING_PAYLOAD:
-        parser_result->msg_loc = buffer + i;
-        parser_result->r_loc = i + parser_result->msg_id_len.len;
-        if (parse_func_ptr->validate_packet(parser_result->msg_loc, &parser_result->msg_id_len)) {
-          parser_result->valid = true;
-          return true;
+        if ((parser_result->packet_start_index + parser_result->packet_size) > size) {
+          parser_result->state = LOOKING_FOR_START_BYTE;
+          msg_info_t info = parser_result->format->validate_packet(buffer + parser_result->packet_start_index,
+                                                                   parser_result->packet_size);
+          return info;
         } else {
-          parser_result->valid = false;
-          return true;
+          parser_result->state = LOOKING_FOR_START_BYTE;
         }
+
         break;
 
       default:
@@ -97,5 +53,101 @@ static inline bool parse_buffer(uint8_t *buffer, size_t size, buffer_parser_resu
   }
   parser_result->finished = true;
   parser_result->r_loc = 0;
-  return false;
+
+  msg_info_t info = {0, 0, 0, 0};
+  return info;
+}
+
+msg_info_t parse_char(packet_state_t *state, const uint8_t c) {
+  state->buffer[state->buffer_size] = c;
+  state->buffer_size = (state->buffer_size + 1) % state->buffer_max_size;
+
+  switch (state->state) {
+    case LOOKING_FOR_START_BYTE:;
+      state->format = state->defines->get_packet_formats(c);
+      if (state->format) {
+        state->buffer[0] = state->buffer[state->buffer_size];
+        state->buffer_size = 0;
+        if (state->format->process_header_byte(c, true)) {
+          state->state = GETTING_PAYLOAD;
+        } else {
+          state->state = GETTING_HEADER;
+        }
+      }
+      break;
+
+    case GETTING_HEADER:
+      if (state->format->process_header_byte(c, false)) {
+        size_t msg_id = state->format->get_msg_id(state->buffer);
+        size_t length = 0;
+        if (state->defines->get_message_length(msg_id, &length)) {
+          state->packet_size = state->format->get_full_packet_length(length);
+          state->state = GETTING_PAYLOAD;
+        } else {
+          state->state = LOOKING_FOR_START_BYTE;
+        }
+      }
+      break;
+
+    case GETTING_PAYLOAD:
+      if (state->buffer_size >= state->packet_size) {
+        state->state = LOOKING_FOR_START_BYTE;
+        msg_info_t info = state->format->validate_packet(state->buffer, state->buffer_size);
+        return;
+      }
+      break;
+
+    default:
+      break;
+  }
+
+  msg_info_t info = {0, 0, 0, 0};
+  return info;
+}
+
+msg_info_t parse_buffer(packet_state_t *state, const uint8_t c) {
+  state->buffer[state->buffer_size] = c;
+  state->buffer_size = (state->buffer_size + 1) % state->buffer_max_size;
+
+  switch (state->state) {
+    case LOOKING_FOR_START_BYTE:;
+      state->format = state->defines->get_packet_formats(c);
+      if (state->format) {
+        state->buffer[0] = state->buffer[state->buffer_size];
+        state->buffer_size = 0;
+        if (state->format->process_header_byte(c, true)) {
+          state->state = GETTING_PAYLOAD;
+        } else {
+          state->state = GETTING_HEADER;
+        }
+      }
+      break;
+
+    case GETTING_HEADER:
+      if (state->format->process_header_byte(c, false)) {
+        size_t msg_id = state->format->get_msg_id();
+        size_t length = 0;
+        if (state->defines->get_message_length(msg_id, &length)) {
+          state->packet_size = state->format->get_full_packet_length(length);
+          state->state = GETTING_PAYLOAD;
+        } else {
+          state->state = LOOKING_FOR_START_BYTE;
+        }
+      }
+      break;
+
+    case GETTING_PAYLOAD:
+      if (state->buffer_size >= state->packet_size) {
+        state->state = LOOKING_FOR_START_BYTE;
+        msg_info_t info = state->format->validate_packet(state->buffer, state->packet_size);
+        return info;
+      }
+      break;
+
+    default:
+      break;
+  }
+
+  msg_info_t info = {0, 0, 0, 0};
+  return info;
 }
