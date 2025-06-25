@@ -20,17 +20,18 @@ static inline bool msg_encode(msg_encode_buffer *buffer, packet_format_t *format
     return false;
   }
   buffer->in_progress = true;
-  buffer->size += format->encode(buffer, msg_id, msg, msg_size);
+  buffer->size += format->encode(buffer->data, msg_id, (uint8_t *)msg, msg_size);
   buffer->in_progress = false;
   return true;
 }
 
-static inline bool *msg_reserve(msg_encode_buffer *buffer, packet_format_t *format, uint8_t msg_id, uint8_t msg_size) {
+static inline uint8_t *msg_reserve(msg_encode_buffer *buffer, packet_format_t *format, uint8_t msg_id,
+                                   uint8_t msg_size) {
   if (buffer->in_progress) {
-    return false;
+    return NULL;
   }
   buffer->in_progress = true;
-  void *out = format->encode_reserve(buffer, msg_id, msg_size);
+  uint8_t *out = format->encode_reserve(buffer->data, msg_id, msg_size);
   return out;
 }
 
@@ -39,31 +40,33 @@ static inline bool msg_finish(msg_encode_buffer *buffer, packet_format_t *format
     return false;
   }
 
-  buffer->size += format->encode_finsish(buffer, msg_size);
+  buffer->size += format->encode_finsish(buffer->data, msg_size);
   buffer->in_progress = false;
   return true;
 }
 
-#define MESSAGE_HELPER(funcname, name, msg_size, msg_id)                                     \
-  static inline bool funcname##_encode(struct_buffer *buffer, name *name##_obj) {            \
-    return msg_encode(buffer, name##_obj, msg_id, msg_size);                                 \
-  }                                                                                          \
-  static inline bool funcname##_reserve(struct_buffer *buffer, name **msg) {                 \
-    void *ptr = msg_reserve(buffer, msg_id, msg_size);                                       \
-    if (ptr) {                                                                               \
-      *msg = (name *)ptr;                                                                    \
-      return true;                                                                           \
-    }                                                                                        \
-    return false;                                                                            \
-  }                                                                                          \
-  static inline bool funcname##_finish(struct_buffer *buffer) { return msg_finish(buffer); } \
-  static inline name funcname##_get(uint8_t *buffer) {                                       \
-    name msg = *(name *)(buffer);                                                            \
-    return msg;                                                                              \
-  }                                                                                          \
-  static inline name funcname##_get(msg_info_t result) {                                     \
-    name msg = *(name *)(result.msg_loc);                                                    \
-    return msg;                                                                              \
-  }                                                                                          \
-  static inline name *funcname##_get_ref(uint8_t *buffer) { return (name *)(buffer); }       \
+#define MESSAGE_HELPER(funcname, name, msg_size, msg_id)                                                       \
+  static inline bool funcname##_encode(msg_encode_buffer *buffer, packet_format_t *format, name *name##_obj) { \
+    return msg_encode(buffer, format, name##_obj, msg_id, msg_size);                                           \
+  }                                                                                                            \
+  static inline bool funcname##_reserve(msg_encode_buffer *buffer, packet_format_t *format, name **msg) {      \
+    void *ptr = msg_reserve(buffer, format, msg_id, msg_size);                                                 \
+    if (ptr) {                                                                                                 \
+      *msg = (name *)ptr;                                                                                      \
+      return true;                                                                                             \
+    }                                                                                                          \
+    return false;                                                                                              \
+  }                                                                                                            \
+  static inline bool funcname##_finish(msg_encode_buffer *buffer, packet_format_t *format) {                   \
+    return msg_finish(buffer, format, msg_size);                                                               \
+  }                                                                                                            \
+  static inline name funcname##_get(uint8_t *buffer) {                                                         \
+    name msg = *(name *)(buffer);                                                                              \
+    return msg;                                                                                                \
+  }                                                                                                            \
+  static inline name funcname##_get(msg_info_t result) {                                                       \
+    name msg = *(name *)(result.msg_loc);                                                                      \
+    return msg;                                                                                                \
+  }                                                                                                            \
+  static inline name *funcname##_get_ref(uint8_t *buffer) { return (name *)(buffer); }                         \
   static inline name *funcname##_get_ref(msg_info_t result) { return (name *)(result.msg_loc); }

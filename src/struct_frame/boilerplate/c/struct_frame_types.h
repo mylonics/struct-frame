@@ -10,8 +10,8 @@
 //
 // #define zero_initialized_parser_result {default_parser, false, 0, 0, false, {0, 0}}
 //
-// #d efine CREATE_DEFAULT_STRUCT_BUFFER(name, size) \
-//  uint8_t name##_buffer[size];                   \
+// #define CREATE_DEFAULT_STRUCT_BUFFER(name, size)
+//  uint8_t name##_buffer[size];
 //  struct_buffer name = {default_parser, name##_buffer, size, 0, false, 0, LOOKING_FOR_START_BYTE, 0, {false, 0, 0}};
 
 typedef struct checksum_t {
@@ -42,35 +42,28 @@ enum parser_state_enum { LOOKING_FOR_START_BYTE = 0, GETTING_HEADER = 1, GETTING
 
 typedef struct _definitions {
   bool (*get_message_length)(size_t, size_t *);
-  bool (*get_packet_formats)(uint8_t);
+  packet_format_t *(*get_packet_formats)(uint8_t);
 } packet_definitions_t;
 
 typedef struct packet_state_t {
   enum parser_state_enum state;
   size_t packet_size;
   packet_format_t *format;
-  uint8_t *buffer;
-  size_t buffer_size;
-  size_t buffer_max_size;
   packet_definitions_t *defines;
-} packet_state_t;
 
-typedef struct buffer_parser_result_t {
-  enum parser_state_enum state;
-  size_t packet_size;
-  packet_format_t *format;
   uint8_t *buffer;
-  size_t packet_start_index;
   size_t buffer_size;
+
+  // for parse buffer
   size_t buffer_max_size;
-  packet_definitions_t *defines;
+  size_t packet_start_index;
   bool finished;
   size_t r_loc;
-
-} buffer_parser_result_t;
+} packet_state_t;
 
 typedef struct _msg_encode_buffer {
   uint8_t *data;
+  size_t max_size;
   size_t size;
   bool in_progress;
 } msg_encode_buffer;
@@ -81,12 +74,3 @@ typedef struct _struct_frame_parse_char_impl {
   packet_state_t parser_state;
 
 } struct_frame_parse_char_impl;
-
-// typedef struct _buffer_parser_result_t {
-//   struct_frame_config config;
-//   bool valid;
-//   uint8_t *msg_loc;
-//   size_t r_loc;
-//   bool finished;
-//   msg_id_len_t msg_id_len;
-// } buffer_parser_result_t;

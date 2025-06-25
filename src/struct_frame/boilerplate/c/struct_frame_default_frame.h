@@ -40,7 +40,7 @@ size_t basic_frame_encode(uint8_t *buffer, uint8_t msg_id, uint8_t *msg, uint8_t
   buffer[0] = 0x90;
   buffer[1] = msg_id;
   memcpy(buffer + 2, msg, msg_size);
-  basic_frame_finish(buffer, msg_size);
+  return basic_frame_finish(buffer, msg_size);
 }
 
 uint8_t *basic_frame_reserve(uint8_t *buffer, uint8_t msg_id, uint8_t msg_size) {
