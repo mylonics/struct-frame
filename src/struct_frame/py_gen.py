@@ -94,6 +94,14 @@ class MessagePyGen():
         result += '\n'.join([FieldPyGen.generate(f)
                             for key, f in msg.fields.items()])
 
+        result += '\n\n    def __str__(self):\n'
+        result += f'        out = "{msg.name} Msg, ID {msg.id}, Size {msg.size} \\n"\n'
+        for key, f in msg.fields.items():
+            result += f'        out += f"{key} = '
+            result += '{self.' + key + '}\\n"\n'
+        result += f'        out += "\\n"\n'
+        result += f'        return out\n'
+
         return result + '\n'
 
     @staticmethod
