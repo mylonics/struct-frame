@@ -38,9 +38,9 @@ Always reference these instructions first and fallback to search or bash command
   - Example code in main.c is incompatible with generated headers
 
 ### Running Tests and Validation
-- **Python validation**: Run `python3 test_python.py` -- validates core functionality
 - **No formal test suite exists** in the repository
-- Manual validation is required for TypeScript and C components
+- Manual validation is required for all components (Python, TypeScript, and C)
+- Test Python code generation by running the main command and verifying output
 
 ### Build Times and Timeouts
 - Python dependencies install: ~30 seconds (may fail due to network timeouts)
@@ -54,7 +54,7 @@ Always reference these instructions first and fallback to search or bash command
 - **Test with the provided myl_vehicle.proto file** as the reference example
 - **Validate that generated Python files import successfully**
 - **DO NOT rely on TypeScript or C compilation** for validation due to known runtime/compilation issues
-- Run `python3 test_python.py` to validate the core functionality works
+- Manually validate core functionality by generating code and checking output
 
 ## Common Issues and Workarounds
 - **Python package build fails**: Network timeouts are common - use `PYTHONPATH=src` approach instead
@@ -89,7 +89,7 @@ Always reference these instructions first and fallback to search or bash command
 ## Quick Start for New Developers
 1. Install dependencies: `python3 -m pip install proto-schema-parser structured-classes && npm install`
 2. Generate code: `PYTHONPATH=src python3 src/main.py myl_vehicle.proto --build_py --py_path gen/py`  
-3. Validate: `python3 test_python.py`
+3. Validate: Check that generated files are created in gen/py directory
 4. For development: Always test Python generation, ignore C/TypeScript runtime errors
 
 ## Common Tasks Reference
@@ -97,6 +97,7 @@ Always reference these instructions first and fallback to search or bash command
 ### Repository Root Contents
 ```
 .clang-format       # C formatting config
+.github/            # GitHub configuration including copilot-instructions.md
 .gitignore         # Git ignore rules
 DEVGUIDE.md        # Basic development guide (minimal)
 LICENSE            # MIT license
@@ -106,8 +107,9 @@ index.ts           # TypeScript example (broken)
 main.c             # C example (broken) 
 myl_vehicle.proto  # Proto definition example
 package.json       # Node.js config
+package-lock.json  # Node.js lockfile
 pyproject.toml     # Python package config
-src/               # Source code
+src/               # Source code directory
 tsconfig.json      # TypeScript config
 ```
 
