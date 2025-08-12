@@ -3,6 +3,10 @@ node_modules
 .vscode
 main.exe
 dist
-generated
+generated/
 __pycache__/
-gen
+gen/
+# Generated output directories in root (legacy)
+c/
+py/
+ts/

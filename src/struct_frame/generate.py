@@ -260,9 +260,9 @@ parser.add_argument('--debug', action='store_true')
 parser.add_argument('--build_c', action='store_true')
 parser.add_argument('--build_ts', action='store_true')
 parser.add_argument('--build_py', action='store_true')
-parser.add_argument('--c_path', nargs=1, type=str, default=['c/'])
-parser.add_argument('--ts_path', nargs=1, type=str, default=['ts/'])
-parser.add_argument('--py_path', nargs=1, type=str, default=['py/'])
+parser.add_argument('--c_path', nargs=1, type=str, default=['generated/c/'])
+parser.add_argument('--ts_path', nargs=1, type=str, default=['generated/ts/'])
+parser.add_argument('--py_path', nargs=1, type=str, default=['generated/py/'])
 
 
 def parseFile(filename):
