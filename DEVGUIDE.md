@@ -17,9 +17,9 @@ Install dependencies
 ```py -m pip install proto-schema-parser```
 
 Run module with example
-```python src/main.py examples/myl_vehicle.proto --build_c --build_ts --build_py```
+```python src/main.py examples/myl_vehicle.proto --build_c --build_ts --build_py --build_gql```
 
-The generated files will be placed in the `generated/` directory with subdirectories for each language (`c/`, `ts/`, `py/`).
+The generated files will be placed in the `generated/` directory with subdirectories for each language (`c/`, `ts/`, `py/`, `gql/`). GraphQL schemas are written with a `.graphql` extension.
 
 ### Testing Examples
 After generating code, you can test the examples:

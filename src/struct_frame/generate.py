@@ -7,6 +7,7 @@ import shutil
 from struct_frame import FileCGen
 from struct_frame import FileTsGen
 from struct_frame import FilePyGen
+from struct_frame import FileGqlGen
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 
@@ -263,6 +264,9 @@ parser.add_argument('--build_py', action='store_true')
 parser.add_argument('--c_path', nargs=1, type=str, default=['generated/c/'])
 parser.add_argument('--ts_path', nargs=1, type=str, default=['generated/ts/'])
 parser.add_argument('--py_path', nargs=1, type=str, default=['generated/py/'])
+parser.add_argument('--build_gql', action='store_true')
+parser.add_argument('--gql_path', nargs=1, type=str,
+                    default=['generated/gql/'])
 
 
 def parseFile(filename):
@@ -350,7 +354,7 @@ def main():
     args = parser.parse_args()
     parseFile(args.filename)
 
-    if (not args.build_c and not args.build_ts and not args.build_py):
+    if (not args.build_c and not args.build_ts and not args.build_py and not args.build_gql):
         print("Select at least one build argument")
         return
 
@@ -369,6 +373,12 @@ def main():
 
     if (args.build_py):
         files.update(generatePyFileStrings(args.py_path[0]))
+
+    if (args.build_gql):
+        for key, value in packages.items():
+            name = os.path.join(args.gql_path[0], value.name + '.graphql')
+            data = ''.join(FileGqlGen.generate(value))
+            files[name] = data
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)
@@ -391,6 +401,8 @@ def main():
     if (args.build_py):
         shutil.copytree(os.path.join(dir_path, "boilerplate/py"),
                         args.py_path[0], dirs_exist_ok=True)
+
+    # No boilerplate for GraphQL currently
 
     if args.debug:
         printPackages()
