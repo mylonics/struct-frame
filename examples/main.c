@@ -1,7 +1,7 @@
 #include <stdio.h>
 
-#include "c/struct_frame_gen.h"
-#include "c/struct_frame_parser.h"
+#include "../generated/c/struct_frame_gen.h"
+#include "../generated/c/struct_frame_parser.h"
 
 // CREATE_DEFAULT_STRUCT_BUFFER(tx_buffer, 256);
 uint8_t tx_buffer_buffer[256];
