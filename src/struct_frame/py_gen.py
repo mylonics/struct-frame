@@ -100,9 +100,20 @@ class MessagePyGen():
             result += f'        out += f"{key} = '
             result += '{self.' + key + '}\\n"\n'
         result += f'        out += "\\n"\n'
+        result += f'        return out'
+
+        result += '\n\n    def to_dict(self, include_name = True, include_id = True):\n'
+        result += f'        out = {{'
+        for key, f in msg.fields.items():
+            result += f' "{key}" : self.{key}{"" if f.isDefaultType | f.isEnum else ".to_dict(False, False)"  }, '
+        result += f'}}\n'
+        result += f'        if include_name:\n'
+        result += f'            out["name"] = "{msg.name}"\n'
+        result += f'        if include_id:\n'
+        result += f'            out["msg_id"] = "{msg.id}"\n'
         result += f'        return out\n'
 
-        return result + '\n'
+        return result
 
     @staticmethod
     def get_initializer(msg, null_init):
