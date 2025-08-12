@@ -35,7 +35,7 @@ Always reference these instructions first and fallback to search or bash command
 - **C code generation**: GENERATES BUT HAS ISSUES
   - Headers are generated but have compilation errors
   - Conflicts between different API versions in generated macros
-  - Example code in main.c is incompatible with generated headers
+  - Example code in examples/main.c is incompatible with generated headers
 
 ### Running Tests and Validation
 - **No formal test suite exists** in the repository
@@ -51,7 +51,7 @@ Always reference these instructions first and fallback to search or bash command
 
 ## Validation Scenarios
 - **ALWAYS test Python code generation** after making changes to the core generator
-- **Test with the provided myl_vehicle.proto file** as the reference example
+- **Test with the provided examples/myl_vehicle.proto file** as the reference example
 - **Validate that generated Python files import successfully**
 - **DO NOT rely on TypeScript or C compilation** for validation due to known runtime/compilation issues
 - Manually validate core functionality by generating code and checking output
@@ -60,20 +60,23 @@ Always reference these instructions first and fallback to search or bash command
 - **Python package build fails**: Network timeouts are common - use `PYTHONPATH=src` approach instead
 - **TypeScript runtime errors**: Generated code calls undefined methods like `.myl_vehicle_type()` - this is a code generation bug
 - **C compilation fails**: Generated headers have macro conflicts and syntax errors (C99 vs C++ style initialization)
-- **Example code is outdated**: main.c and index.ts examples don't match current generated code APIs
+- **Example code is outdated**: examples/main.c and examples/index.ts examples don't match current generated code APIs
 
 ## Repository Structure
 ```
 /
-├── src/struct_frame/          # Python code generator (WORKING)
-│   ├── generate.py           # Main generation logic
-│   ├── c_gen.py             # C code generator  
-│   ├── ts_gen.py            # TypeScript code generator
-│   ├── py_gen.py            # Python code generator
-│   └── boilerplate/         # Template files for each language
-├── myl_vehicle.proto         # Example proto file
-├── index.ts                 # TypeScript example (INCOMPATIBLE with generated code)
-├── main.c                   # C example (INCOMPATIBLE with generated code)  
+├── src/                      # Source code directory
+│   ├── main.py              # CLI entry point
+│   └── struct_frame/        # Python code generator (WORKING)
+│       ├── generate.py      # Main generation logic
+│       ├── c_gen.py         # C code generator  
+│       ├── ts_gen.py        # TypeScript code generator
+│       ├── py_gen.py        # Python code generator
+│       └── boilerplate/     # Template files for each language
+├── examples/                # Example files directory
+│   ├── myl_vehicle.proto    # Example proto file
+│   ├── index.ts             # TypeScript example (INCOMPATIBLE with generated code)
+│   └── main.c               # C example (INCOMPATIBLE with generated code)
 ├── package.json             # Node.js dependencies
 ├── tsconfig.json            # TypeScript configuration
 ├── pyproject.toml           # Python package configuration
@@ -88,7 +91,7 @@ Always reference these instructions first and fallback to search or bash command
 
 ## Quick Start for New Developers
 1. Install dependencies: `python3 -m pip install proto-schema-parser structured-classes && npm install`
-2. Generate code: `PYTHONPATH=src python3 src/main.py myl_vehicle.proto --build_py --py_path gen/py`  
+2. Generate code: `PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_py --py_path gen/py`  
 3. Validate: Check that generated files are created in gen/py directory
 4. For development: Always test Python generation, ignore C/TypeScript runtime errors
 
@@ -103,9 +106,10 @@ DEVGUIDE.md        # Basic development guide (minimal)
 LICENSE            # MIT license
 README.md          # Basic setup instructions (minimal)
 TODO               # Single item: "Check if message id is repeated"
-index.ts           # TypeScript example (broken)
-main.c             # C example (broken) 
-myl_vehicle.proto  # Proto definition example
+examples/          # Example files directory
+├── index.ts       # TypeScript example (broken)
+├── main.c         # C example (broken) 
+└── myl_vehicle.proto  # Proto definition example
 package.json       # Node.js config
 package-lock.json  # Node.js lockfile
 pyproject.toml     # Python package config
@@ -113,10 +117,10 @@ src/               # Source code directory
 tsconfig.json      # TypeScript config
 ```
 
-### Example proto file content (myl_vehicle.proto)
+### Example proto file content (examples/myl_vehicle.proto)
 Contains definitions for vehicle communication messages including position, pose, heartbeat with message IDs and field types.
 
 ### Working Python Generation Command
 ```bash
-PYTHONPATH=src python3 src/main.py myl_vehicle.proto --build_py --py_path gen/py
+PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_py --py_path gen/py
 ```
