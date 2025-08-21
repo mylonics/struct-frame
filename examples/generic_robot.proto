@@ -1,0 +1,76 @@
+package generic_robot;
+
+enum GpsFix {
+  NO_FIX = 0;
+  FIX_2D = 1;
+  FIX_3D = 2;
+  FLOAT_RTK = 3;
+  FIXED_RTK = 4;
+  RTK_BASE = 5;
+}
+
+message Accuracy {
+  float x_acc_mm = 1;
+  float y_acc_mm = 2;
+  GpsFix fix = 3;
+  uint8 n_sats = 4;
+  uint8 corr_age = 5;
+}
+
+message Point {
+  double lat = 1;
+  double lon = 2;
+  float alt = 3;
+}
+
+message Position {
+  int64 time = 1;
+  Point point = 2;
+  Accuracy acc = 3;
+}
+
+message Reserved {
+  option msgid = 0;
+}
+
+message Rtcm {
+  option msgid = 1;
+}
+
+message LoraNetworkId {
+  option msgid = 2;
+  uint32 mac_id = 2;
+  uint8 node_id = 3;
+}
+
+message BaseStationStatus {
+  option msgid = 3;
+  int64 sys_time = 1;
+  uint32 mac_id = 2;
+  Position position = 3;
+  float rtcm_data_rate = 4;
+  float temp = 5;
+  uint8 rssi = 6;
+}
+
+message RobotStatus {
+  option msgid = 4;
+  int64 sys_time = 1;
+  Position position = 2;
+  uint32 mac_id = 3;
+  uint8 node_id = 4;
+  float temp = 5;
+  uint8 rssi = 6;
+}
+
+message RobotStatusEntry{
+  int32 time = 1;
+  uint32 mac_id = 2;
+  RobotStatus status = 3 [flatten=true]; 
+}
+
+message BaseStationStatusEntry{
+  int32 time = 1;
+  uint32 mac_id = 2;
+  BaseStationStatus status = 3; 
+}

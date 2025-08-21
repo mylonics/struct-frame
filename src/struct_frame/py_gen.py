@@ -103,15 +103,22 @@ class MessagePyGen():
         result += f'        return out'
 
         result += '\n\n    def to_dict(self, include_name = True, include_id = True):\n'
-        result += f'        out = {{'
+        result += '        out = {}\n'
+        # Regular fields or flattened nested messages
         for key, f in msg.fields.items():
-            result += f' "{key}" : self.{key}{"" if f.isDefaultType | f.isEnum else ".to_dict(False, False)"  }, '
-        result += f'}}\n'
-        result += f'        if include_name:\n'
+            if f.isDefaultType or f.isEnum:
+                result += f'        out["{key}"] = self.{key}\n'
+            else:
+                if getattr(f, 'flatten', False):
+                    # Merge nested dict into parent
+                    result += f'        out.update(self.{key}.to_dict(False, False))\n'
+                else:
+                    result += f'        out["{key}"] = self.{key}.to_dict(False, False)\n'
+        result += '        if include_name:\n'
         result += f'            out["name"] = "{msg.name}"\n'
-        result += f'        if include_id:\n'
+        result += '        if include_id:\n'
         result += f'            out["msg_id"] = "{msg.id}"\n'
-        result += f'        return out\n'
+        result += '        return out\n'
 
         return result
 

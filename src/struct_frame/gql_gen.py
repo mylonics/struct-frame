@@ -84,19 +84,35 @@ class FieldGqlGen:
         return f"{pascalCase(field.package)}{t}"
 
     @staticmethod
-    def generate(field):
+    def generate(field, name_override=None):
         lines = []
         if field.comments:
             desc = _single_quote_line(field.comments)
             if desc:
                 lines.append(f"  {desc}")
-        lines.append(f"  {field.name}: {FieldGqlGen.type_name(field)}")
+        fname = name_override if name_override else field.name
+        lines.append(f"  {fname}: {FieldGqlGen.type_name(field)}")
         return '\n'.join(lines)
+
+    @staticmethod
+    def generate_flattened_children(field, package, parent_msg):
+        # Expand a message-typed field into its child fields.
+        # If a child field name collides, raise an error and fail generation.
+        t = field.fieldType
+        child_msg = package.messages.get(t)
+        if not child_msg:
+            # Fallback to normal generation if unknown
+            return [FieldGqlGen.generate(field)]
+
+        out_lines = []
+        for ck, cf in child_msg.fields.items():
+            out_lines.append(FieldGqlGen.generate(cf, name_override=ck))
+        return out_lines
 
 
 class MessageGqlGen:
     @staticmethod
-    def generate(msg):
+    def generate(package, msg):
         lines = []
         if msg.comments:
             desc = _triple_quote_block(msg.comments)
@@ -108,7 +124,11 @@ class MessageGqlGen:
             lines.append("  _empty: Boolean")
         else:
             for key, f in msg.fields.items():
-                lines.append(FieldGqlGen.generate(f))
+                if getattr(f, 'flatten', False) and f.fieldType not in gql_types:
+                    lines.extend(
+                        FieldGqlGen.generate_flattened_children(f, package, msg))
+                else:
+                    lines.append(FieldGqlGen.generate(f))
         lines.append("}\n")
         return '\n'.join(lines)
 
@@ -132,7 +152,7 @@ class FileGqlGen:
             if not first_block:
                 yield '\n'
             first_block = False
-            yield MessageGqlGen.generate(msg).rstrip() + '\n'
+            yield MessageGqlGen.generate(package, msg).rstrip() + '\n'
 
         # Root Query type
         if package.messages:

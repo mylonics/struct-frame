@@ -80,6 +80,7 @@ class Field:
         self.comments = comments
         self.package = package
         self.isEnum = False
+        self.flatten = False
 
     def parse(self, field):
         self.name = field.name
@@ -88,6 +89,22 @@ class Field:
             self.isDefaultType = True
             self.size = default_types[self.fieldType]["size"]
             self.validated = True
+        try:
+            if hasattr(field, 'options') and field.options:
+                # options is typically a list of ast.Option
+                for opt in field.options:
+                    oname = getattr(opt, 'name', None)
+                    ovalue = getattr(opt, 'value', None)
+                    if not oname:
+                        continue
+                    lname = str(oname).strip()
+                    # Support unqualified and a couple of qualified names
+                    if lname in ('flatten', '(sf.flatten)', '(struct_frame.flatten)'):
+                        sval = str(ovalue).strip().lower()
+                        if sval in ('true', '1', 'yes', 'on') or ovalue is True:
+                            self.flatten = True
+        except Exception:
+            pass
         return True
 
     def validate(self, currentPackage, packages):
@@ -166,6 +183,25 @@ class Message:
                     f"Failed To validate Field: {key}, in Message {self.name}\n")
                 return False
             self.size = self.size + value.size
+
+        # Flatten collision detection: if a field is marked as flatten and is a message,
+        # ensure none of the child field names collide with fields in this message.
+        parent_field_names = set(self.fields.keys())
+        for key, value in self.fields.items():
+            if getattr(value, 'flatten', False):
+                # Only meaningful for non-default, non-enum message types
+                if value.isDefaultType or value.isEnum:
+                    # Flatten has no effect on primitives/enums; skip
+                    continue
+                child = currentPackage.findFieldType(value.fieldType)
+                if not child or getattr(child, 'isEnum', False) or not hasattr(child, 'fields'):
+                    # Unknown or non-message type; skip
+                    continue
+                for ck in child.fields.keys():
+                    if ck in parent_field_names:
+                        print(
+                            f"Flatten collision in Message {self.name}: field '{key}.{ck}' collides with existing field '{ck}'.")
+                        return False
 
         self.validated = True
         return True
@@ -358,11 +394,17 @@ def main():
         print("Select at least one build argument")
         return
 
+    valid = False
     try:
-        validatePackages()
+        valid = validatePackages()
     except RecursionError as err:
         print(
             f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {recErrCurrentMessage} and Field: {recErrCurrentField}')
+        return
+
+    if not valid:
+        print("Validation failed; aborting code generation.")
+        return
 
     files = {}
     if (args.build_c):
