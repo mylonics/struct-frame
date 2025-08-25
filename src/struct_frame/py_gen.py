@@ -86,7 +86,7 @@ class MessagePyGen():
                 result = '#%s\n' % c
 
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
-        result += 'class %s(Structured):\n' % structName
+        result += 'class %s(Structured, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):\n' % structName
         result += '    msg_size = %s\n' % msg.size
         if msg.id != None:
             result += '    msg_id = %s\n' % msg.id
