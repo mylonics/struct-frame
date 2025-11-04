@@ -4,7 +4,7 @@
 #include "string.h"
 #include "struct_frame_types.h"
 
-static inline struct checksum_t fletcher_checksum_calculation(uint8_t *buffer, uint8_t data_length) {
+static inline struct checksum_t fletcher_checksum_calculation(uint8_t* buffer, uint8_t data_length) {
   checksum_t checksum = {0};
 
   for (int i = 0; i < data_length; i++) {
@@ -14,28 +14,28 @@ static inline struct checksum_t fletcher_checksum_calculation(uint8_t *buffer, u
   return checksum;
 }
 
-static inline bool msg_encode(msg_encode_buffer *buffer, packet_format_t *format, void *msg, uint8_t msg_id,
+static inline bool msg_encode(msg_encode_buffer* buffer, packet_format_t* format, void* msg, uint8_t msg_id,
                               uint8_t msg_size) {
   if (buffer->in_progress) {
     return false;
   }
   buffer->in_progress = true;
-  buffer->size += format->encode(buffer->data, msg_id, (uint8_t *)msg, msg_size);
+  buffer->size += format->encode(buffer->data, msg_id, (uint8_t*)msg, msg_size);
   buffer->in_progress = false;
   return true;
 }
 
-static inline uint8_t *msg_reserve(msg_encode_buffer *buffer, packet_format_t *format, uint8_t msg_id,
+static inline uint8_t* msg_reserve(msg_encode_buffer* buffer, packet_format_t* format, uint8_t msg_id,
                                    uint8_t msg_size) {
   if (buffer->in_progress) {
     return NULL;
   }
   buffer->in_progress = true;
-  uint8_t *out = format->encode_reserve(buffer->data, msg_id, msg_size);
+  uint8_t* out = format->encode_reserve(buffer->data, msg_id, msg_size);
   return out;
 }
 
-static inline bool msg_finish(msg_encode_buffer *buffer, packet_format_t *format, uint8_t msg_size) {
+static inline bool msg_finish(msg_encode_buffer* buffer, packet_format_t* format, uint8_t msg_size) {
   if (buffer->in_progress == false) {
     return false;
   }
@@ -46,27 +46,27 @@ static inline bool msg_finish(msg_encode_buffer *buffer, packet_format_t *format
 }
 
 #define MESSAGE_HELPER(funcname, name, msg_size, msg_id)                                                       \
-  static inline bool funcname##_encode(msg_encode_buffer *buffer, packet_format_t *format, name *name##_obj) { \
+  static inline bool funcname##_encode(msg_encode_buffer* buffer, packet_format_t* format, name* name##_obj) { \
     return msg_encode(buffer, format, name##_obj, msg_id, msg_size);                                           \
   }                                                                                                            \
-  static inline bool funcname##_reserve(msg_encode_buffer *buffer, packet_format_t *format, name **msg) {      \
-    void *ptr = msg_reserve(buffer, format, msg_id, msg_size);                                                 \
+  static inline bool funcname##_reserve(msg_encode_buffer* buffer, packet_format_t* format, name** msg) {      \
+    void* ptr = msg_reserve(buffer, format, msg_id, msg_size);                                                 \
     if (ptr) {                                                                                                 \
-      *msg = (name *)ptr;                                                                                      \
+      *msg = (name*)ptr;                                                                                       \
       return true;                                                                                             \
     }                                                                                                          \
     return false;                                                                                              \
   }                                                                                                            \
-  static inline bool funcname##_finish(msg_encode_buffer *buffer, packet_format_t *format) {                   \
+  static inline bool funcname##_finish(msg_encode_buffer* buffer, packet_format_t* format) {                   \
     return msg_finish(buffer, format, msg_size);                                                               \
   }                                                                                                            \
-  static inline name funcname##_get_from_buffer(uint8_t *buffer) {                                             \
-    name msg = *(name *)(buffer);                                                                              \
+  static inline name funcname##_get_from_buffer(uint8_t* buffer) {                                             \
+    name msg = *(name*)(buffer);                                                                               \
     return msg;                                                                                                \
   }                                                                                                            \
   static inline name funcname##_get(msg_info_t result) {                                                       \
-    name msg = *(name *)(result.msg_loc);                                                                      \
+    name msg = *(name*)(result.msg_loc);                                                                       \
     return msg;                                                                                                \
   }                                                                                                            \
-  static inline name *funcname##_get_ref_from_buffer(uint8_t *buffer) { return (name *)(buffer); }            \
-  static inline name *funcname##_get_ref(msg_info_t result) { return (name *)(result.msg_loc); }
+  static inline name* funcname##_get_ref_from_buffer(uint8_t* buffer) { return (name*)(buffer); }              \
+  static inline name* funcname##_get_ref(msg_info_t result) { return (name*)(result.msg_loc); }

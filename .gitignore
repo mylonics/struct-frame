@@ -29,6 +29,7 @@ debug*.exe
 error.txt
 *.log
 InstallationLog.txt
+simple_test.c
 
 # IDE and OS files
 .DS_Store
