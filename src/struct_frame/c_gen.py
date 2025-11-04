@@ -17,6 +17,7 @@ c_types = {"uint8": "uint8_t",
            "double": "double",
            "uint64": 'uint64_t',
            "int64":  'int64_t',
+           "string": "char",  # Add string type support
            }
 
 
@@ -67,18 +68,70 @@ class FieldCGen():
     @staticmethod
     def generate(field):
         result = ''
-
         var_name = field.name
         type_name = field.fieldType
+
+        # Handle basic type resolution
         if type_name in c_types:
-            type_name = c_types[type_name]
+            base_type = c_types[type_name]
         else:
-            type_name = '%s%s' % (pascalCase(field.package), type_name)
             if field.isEnum:
-                type_name = '%s_t' % type_name
+                base_type = '%s%s_t' % (pascalCase(field.package), type_name)
+            else:
+                base_type = '%s%s' % (pascalCase(field.package), type_name)
 
-        result += '    %s %s%s;' % (type_name, var_name, "")
+        # Handle arrays
+        if field.is_array:
+            if field.fieldType == "string":
+                # String arrays need both array size and individual string size
+                if field.size_option is not None:
+                    # Fixed string array: size_option strings, each element_size chars
+                    declaration = f"char {var_name}[{field.size_option}][{field.element_size}];"
+                    comment = f"  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars"
+                elif field.max_size is not None:
+                    # Variable string array: count byte + max_size strings of element_size chars each
+                    declaration = f"struct {{ uint8_t count; char data[{field.max_size}][{field.element_size}]; }} {var_name};"
+                    comment = f"  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars"
+                else:
+                    declaration = f"char {var_name}[1][1];"  # Fallback
+                    comment = "  // String array (error in size specification)"
+            else:
+                # Non-string arrays
+                if field.size_option is not None:
+                    # Fixed array: always exact size
+                    declaration = f"{base_type} {var_name}[{field.size_option}];"
+                    comment = f"  // Fixed array: always {field.size_option} elements"
+                elif field.max_size is not None:
+                    # Variable array: count byte + max elements
+                    declaration = f"struct {{ uint8_t count; {base_type} data[{field.max_size}]; }} {var_name};"
+                    comment = f"  // Variable array: up to {field.max_size} elements"
+                else:
+                    declaration = f"{base_type} {var_name}[1];"  # Fallback
+                    comment = "  // Array (error in size specification)"
 
+            result += f"    {declaration}{comment}"
+
+        # Handle regular strings
+        elif field.fieldType == "string":
+            if field.size_option is not None:
+                # Fixed string: exactly size_option characters
+                declaration = f"char {var_name}[{field.size_option}];"
+                comment = f"  // Fixed string: exactly {field.size_option} chars"
+            elif field.max_size is not None:
+                # Variable string: length byte + max characters
+                declaration = f"struct {{ uint8_t length; char data[{field.max_size}]; }} {var_name};"
+                comment = f"  // Variable string: up to {field.max_size} chars"
+            else:
+                declaration = f"char {var_name}[1];"  # Fallback
+                comment = "  // String (error in size specification)"
+
+            result += f"    {declaration}{comment}"
+
+        # Handle regular fields
+        else:
+            result += f"    {base_type} {var_name};"
+
+        # Add leading comments
         leading_comment = field.comments
         if leading_comment:
             for c in leading_comment:

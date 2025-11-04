@@ -19,6 +19,9 @@ npm install
 # Generate code for all languages
 python src/main.py examples/myl_vehicle.proto --build_c --build_ts --build_py --build_gql
 
+# Try comprehensive array examples
+python src/main.py examples/array_test.proto --build_c --build_ts --build_py --build_gql
+
 # Generated files will be in the generated/ directory
 ```
 
@@ -54,19 +57,19 @@ python src/main.py examples/myl_vehicle.proto --build_gql
 
 | Feature | C | TypeScript | Python | GraphQL | Status |
 |---------|---|------------|--------|---------|--------|
-| **Core Types** | Yes | Yes | Yes | Yes | Stable |
-| **String** | No | No | Python ✅ | No | C, TS, GraphQL Pending |
-| **Enums** | Yes | Yes | Yes | Yes | Stable |
-| **Nested Messages** | Yes | Yes | Yes | Yes | Stable |
-| **Message IDs** | Yes | Yes | Yes | N/A | Stable |
-| **Message Serialization** | Yes | Yes | Yes | N/A | Stable |
-| **Flatten** | N/A | N/A | Yes | Yes | Partial |
-| **Arrays** | Parsing ✅ | No | Python ✅ | No | C, TS, GraphQL Pending |
+| **Core Types** | ✓ | ✓ | ✓ | ✓ | Stable |
+| **String** | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enums** | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Message IDs** | ✓ | ✓ | ✓ | N/A | Stable |
+| **Message Serialization** | ✓ | ✓ | ✓ | N/A | Stable |
+| **Flatten** | N/A | N/A | ✓ | ✓ | Partial |
+| **Arrays** | ✓ | ✓ | ✓ | ✓ | Stable |
 
 **Legend:**
-- **Yes** - Feature works as documented
+- **✓** - Feature works as documented
 - **Partial** - Basic functionality works, some limitations  
-- **No** - Feature not yet available
+- **✗** - Feature not yet available
 - **N/A** - Not applicable for this language
 
 ## Project Structure
@@ -104,9 +107,9 @@ python src/main.py examples/myl_vehicle.proto --build_gql
 
 > **Note:** All types use little-endian byte order for cross-platform compatibility.
 
-### Array Support (In Development)
+### Array Support
 
-Arrays (repeated fields) support all data types - primitives, enums, and messages.
+Arrays (repeated fields) support all data types - primitives, enums, and messages across all target languages.
 
 | Array Type | Syntax | Memory Usage | Use Case |
 |------------|--------|--------------|----------|
@@ -122,11 +125,17 @@ message ArrayExample {
 }
 ```
 
+**Generated Output** (all languages now supported):
+- **Python**: `matrix: list[float]`, `names: list[str]`, `values: list[int]`
+- **C**: `float matrix[9]`, `struct { uint8_t count; char data[10][32]; } names`
+- **TypeScript**: `Array('matrix', 'Float32LE', 9)`, `Array('names_data', 'String', 10)`  
+- **GraphQL**: `matrix: [Float!]!`, `names: [String!]!`, `values: [Int!]!`
+
 > **Important**: String arrays require both `max_size` (or `size`) AND `element_size` parameters because they are "arrays of arrays" - you need to specify both how many strings AND the maximum size of each individual string. This ensures predictable memory layout and prevents buffer overflows.
 
-### String Type (In Development)
+### String Type
 
-Strings are a special case of bounded character arrays with built-in UTF-8 encoding and null-termination handling.
+Strings are a special case of bounded character arrays with built-in UTF-8 encoding and null-termination handling across all target languages.
 
 | String Type | Syntax | Memory Usage | Use Case |
 |-------------|--------|--------------|----------|
@@ -257,3 +266,7 @@ python src/main.py schema.proto --build_c --c_path output/c/
 python src/main.py schema.proto --build_ts --ts_path output/typescript/
 python src/main.py schema.proto --build_gql --gql_path output/graphql/
 ```
+
+## Additional Documentation
+
+- **[Array Implementation Guide](ARRAY_IMPLEMENTATION.md)** - Comprehensive documentation of array features, syntax, and generated code examples across all languages

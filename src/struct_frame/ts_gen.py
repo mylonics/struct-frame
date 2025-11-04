@@ -18,6 +18,23 @@ ts_types = {
     "uint32": 'UInt32LE',
     "uint64": 'BigInt64LE',
     "int64":  'BigUInt64LE',
+    "string":   'String',
+}
+
+# TypeScript type mappings for array declarations
+ts_array_types = {
+    "int8":     'number',
+    "uint8":    'number',
+    "int16":    'number',
+    "uint16":   'number',
+    "bool":     'boolean',
+    "double":   'number',
+    "float":    'number',
+    "int32":    'number',
+    "uint32":   'number',
+    "uint64":   'bigint',
+    "int64":    'bigint',
+    "string":   'string',
 }
 
 
@@ -65,18 +82,66 @@ class FieldTsGen():
     def generate(field, packageName):
         result = ''
         isEnum = False
-#        isEnum = field.pbtype in ('ENUM', 'UENUM')
         var_name = StyleC.var_name(field.name)
         type_name = field.fieldType
-        if type_name in ts_types:
-            type_name = ts_types[type_name]
-        else:
-            type_name = '%s_%s' % (packageName, StyleC.struct_name(type_name))
 
-        if isEnum:
-            result += '    .UInt8(\'%s\', typed<%s>())' % (var_name, type_name)
+        # Handle arrays
+        if field.is_array:
+            if field.fieldType == "string":
+                if field.size_option is not None:  # Fixed size array [size=X]
+                    # Fixed string array: string[size] -> Array<string> with fixed length
+                    result += f'    // Fixed string array: {field.size_option} strings, each exactly {field.element_size} chars\n'
+                    result += f'    .Array(\'{var_name}\', \'String\', {field.size_option})'
+                else:  # Variable size array [max_size=X]
+                    # Variable string array: string[max_size=X, element_size=Y] -> Array<string> with count
+                    result += f'    // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
+                    result += f'    .UInt8(\'{var_name}_count\')\n'
+                    result += f'    .Array(\'{var_name}_data\', \'String\', {field.max_size})'
+            else:
+                # Regular type arrays
+                if type_name in ts_types:
+                    base_type = ts_types[type_name]
+                else:
+                    base_type = f'{packageName.lower()}_{StyleC.struct_name(type_name).lower()}'
+
+                if field.size_option is not None:  # Fixed size array [size=X]
+                    # Fixed array: type[size] -> Array<type> with fixed length
+                    # For fixed arrays, size_option contains the exact size
+                    array_size = field.size_option
+                    result += f'    // Fixed array: always {array_size} elements\n'
+                    result += f'    .Array(\'{var_name}\', \'{base_type}\', {array_size})'
+                else:  # Variable size array [max_size=X]
+                    # Variable array: type[max_size=X] -> count + Array<type>
+                    max_count = field.max_size  # For variable arrays, max_size is the maximum count
+                    result += f'    // Variable array: up to {max_count} elements\n'
+                    result += f'    .UInt8(\'{var_name}_count\')\n'
+                    result += f'    .Array(\'{var_name}_data\', \'{base_type}\', {max_count})'
         else:
-            result += '    .%s(\'%s\')' % (type_name, var_name)
+            # Non-array fields (existing logic)
+            if field.fieldType == "string":
+                if hasattr(field, 'size_option') and field.size_option is not None:
+                    # Fixed string: string[size] -> fixed length string
+                    result += f'    // Fixed string: exactly {field.size_option} chars\n'
+                    result += f'    .String(\'{var_name}\', {field.size_option})'
+                elif hasattr(field, 'max_size') and field.max_size is not None:
+                    # Variable string: string[max_size=X] -> length + data
+                    result += f'    // Variable string: up to {field.max_size} chars\n'
+                    result += f'    .UInt8(\'{var_name}_length\')\n'
+                    result += f'    .String(\'{var_name}_data\', {field.max_size})'
+                else:
+                    # Default string handling (should not occur with new parser)
+                    result += f'    .String(\'{var_name}\')'
+            else:
+                # Regular types
+                if type_name in ts_types:
+                    type_name = ts_types[type_name]
+                else:
+                    type_name = f'{packageName}_{StyleC.struct_name(type_name)}'
+
+                if isEnum:
+                    result += f'    .UInt8(\'{var_name}\', typed<{type_name}>())'
+                else:
+                    result += f'    .{type_name}(\'{var_name}\')'
 
         leading_comment = field.comments
         if leading_comment:
@@ -182,11 +247,14 @@ class FileTsGen():
             yield '\n'
 
         if package.messages:
-            yield 'export function get_message_length(msg_id : number){\n switch (msg_id)\n {\n'
-            for key, msg in package.sortedMessages().items():
+            # Only generate get_message_length if there are messages with IDs
+            messages_with_id = [
+                msg for key, msg in package.sortedMessages().items() if msg.id]
+            if messages_with_id:
+                yield 'export function get_message_length(msg_id : number){\n switch (msg_id)\n {\n'
+                for msg in messages_with_id:
+                    package_msg_name = '%s_%s' % (package.name, msg.name)
+                    yield '  case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
 
-                package_msg_name = '%s_%s' % (package.name, msg.name)
-                yield '  case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
-
-            yield '  default: break;\n } return 0;\n}'
+                yield '  default: break;\n } return 0;\n}'
             yield '\n'

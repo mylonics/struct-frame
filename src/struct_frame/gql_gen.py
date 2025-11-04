@@ -17,6 +17,7 @@ gql_types = {
     "bool": "Boolean",
     "float": "Float",
     "double": "Float",
+    "string": "String",
 }
 
 
@@ -79,17 +80,58 @@ class FieldGqlGen:
     @staticmethod
     def type_name(field):
         t = field.fieldType
-        if t in gql_types:
-            return gql_types[t]
-        return f"{pascalCase(field.package)}{t}"
+        base_type = gql_types.get(t, f"{pascalCase(field.package)}{t}")
+
+        # Handle arrays
+        if getattr(field, 'is_array', False):
+            # Arrays in GraphQL are represented as [Type!]! for non-null arrays of non-null elements
+            # or [Type] for nullable arrays, etc. We'll use [Type!]! as the standard
+            return f"[{base_type}!]!"
+
+        return base_type
 
     @staticmethod
     def generate(field, name_override=None):
         lines = []
-        if field.comments:
-            desc = _single_quote_line(field.comments)
+
+        # Generate clean comments with size information, preferring our generated descriptions over proto comments
+        if getattr(field, 'is_array', False):
+            # Array field - use our size descriptions
+            if getattr(field, 'size_option', None) is not None:
+                # Fixed array
+                if field.fieldType == "string":
+                    comment_lines = [
+                        f"Fixed string array: {field.size_option} strings, each {getattr(field, 'element_size', 'N/A')} chars"]
+                else:
+                    comment_lines = [
+                        f"Fixed array: always {field.size_option} elements"]
+            else:
+                # Variable array
+                if field.fieldType == "string":
+                    comment_lines = [
+                        f"Variable string array: up to {getattr(field, 'max_size', 'N/A')} strings, each max {getattr(field, 'element_size', 'N/A')} chars"]
+                else:
+                    comment_lines = [
+                        f"Variable array: up to {getattr(field, 'max_size', 'N/A')} elements"]
+        elif field.fieldType == "string":
+            # Non-array string field
+            if getattr(field, 'size_option', None) is not None:
+                comment_lines = [
+                    f"Fixed string: exactly {field.size_option} characters"]
+            elif getattr(field, 'max_size', None) is not None:
+                comment_lines = [
+                    f"Variable string: up to {field.max_size} characters"]
+            else:
+                comment_lines = field.comments[:] if field.comments else []
+        else:
+            # Regular field - use original comments
+            comment_lines = field.comments[:] if field.comments else []
+
+        if comment_lines:
+            desc = _single_quote_line(comment_lines)
             if desc:
                 lines.append(f"  {desc}")
+
         fname = name_override if name_override else field.name
         lines.append(f"  {fname}: {FieldGqlGen.type_name(field)}")
         return '\n'.join(lines)
