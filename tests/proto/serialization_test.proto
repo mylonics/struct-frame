@@ -1,0 +1,12 @@
+package serialization_test;
+
+// A simple message for cross-language serialization testing
+message SerializationTestMessage {
+  option msgid = 204;
+  
+  uint32 magic_number = 1;
+  string test_string = 2 [max_size=64];
+  float test_float = 3;
+  bool test_bool = 4;
+  repeated int32 test_array = 5 [max_size=5];
+}

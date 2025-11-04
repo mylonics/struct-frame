@@ -1,0 +1,30 @@
+package nested_messages;
+
+enum Priority {
+  LOW = 0;
+  MEDIUM = 1;
+  HIGH = 2;
+  CRITICAL = 3;
+}
+
+message Header {
+  uint32 sequence = 1;
+  uint64 timestamp = 2;
+  Priority priority = 3;
+  string source = 4 [size=16];
+}
+
+message Payload {
+  string data = 1 [max_size=256];
+  uint32 checksum = 2;
+}
+
+message NestedMessage {
+  option msgid = 202;
+  
+  Header header = 1;
+  Payload payload = 2;
+  
+  // Test flatten attribute
+  Header flattened_header = 3 [flatten=true];
+}

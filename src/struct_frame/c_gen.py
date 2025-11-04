@@ -61,6 +61,16 @@ class EnumCGen():
         result += ' %s;\n' % (enumName)
 
         result += 'typedef uint8_t %s_t;' % (enumName)
+        
+        # Add module-prefixed enum constants for compatibility
+        result += '\n\n/* Enum constants with module prefix */\n'
+        module_prefix = CamelToSnakeCase(field.package).upper()
+        for d in field.data:
+            # Use the already correct enum constant name
+            enum_constant = f"{CamelToSnakeCase(field.name).upper()}_{StyleC.enum_entry(d)}"
+            module_constant = f"{module_prefix}_{enum_constant}"
+            result += f'#define {module_constant:<35} {enum_constant}\n'
+        
         return result
 
 

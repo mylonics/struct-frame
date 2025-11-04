@@ -8,7 +8,7 @@ A multi-language code generation framework that converts Protocol Buffer (.proto
 ### Installation
 ```bash
 # Install Python dependencies
-pip install -e .
+pip install proto-schema-parser structured-classes
 
 # Install Node.js dependencies (for TypeScript)
 npm install
@@ -17,13 +17,33 @@ npm install
 ### Basic Usage
 ```bash
 # Generate code for all languages
-python src/main.py examples/myl_vehicle.proto --build_c --build_ts --build_py --build_gql
+PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_c --build_ts --build_py --build_gql
 
-# Try comprehensive array examples
-python src/main.py examples/array_test.proto --build_c --build_ts --build_py --build_gql
+# Run comprehensive test suite
+python test_all.py
 
 # Generated files will be in the generated/ directory
 ```
+
+### Test Suite
+
+The project includes a comprehensive test suite that validates code generation, compilation, and serialization across all supported languages:
+
+```bash
+# Run all tests
+python test_all.py
+
+# Run with verbose output
+python tests/run_tests.py --verbose
+
+# Skip specific languages
+python tests/run_tests.py --skip-ts --skip-c
+
+# Generate code only (no compilation/execution)
+python tests/run_tests.py --generate-only
+```
+
+See `tests/README.md` for detailed test documentation.
 
 ### Language-Specific Examples
 
@@ -79,6 +99,9 @@ python src/main.py examples/myl_vehicle.proto --build_gql
   - `*_gen.py` - Language-specific code generators
   - `boilerplate/` - Runtime libraries for each language
 - `examples/` - Example .proto files and usage demos
+  - `main.c` - C API demonstration (encoding/decoding, parsing)
+  - `index.ts` - TypeScript API demonstration (similar functionality)  
+  - `*.proto` - Protocol Buffer definitions for examples
 - `generated/` - Output directory for generated code (git-ignored)
 
 ## Protocol Buffer Schema Reference

@@ -1,0 +1,42 @@
+package comprehensive_arrays;
+
+enum Status {
+  INACTIVE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+  MAINTENANCE = 3;
+}
+
+message Sensor {
+  uint8 id = 1;
+  float value = 2;
+  Status status = 3;
+  string name = 4 [size=16];
+}
+
+message ComprehensiveArrayMessage {
+  option msgid = 203;
+  
+  // Fixed arrays of primitives
+  repeated int32 fixed_ints = 1 [size=5];
+  repeated float fixed_floats = 2 [size=3];
+  repeated bool fixed_bools = 3 [size=8];
+  
+  // Bounded arrays of primitives
+  repeated uint16 bounded_uints = 4 [max_size=10];
+  repeated double bounded_doubles = 5 [max_size=7];
+  
+  // Fixed string arrays
+  repeated string fixed_strings = 6 [size=4, element_size=20];
+  
+  // Bounded string arrays
+  repeated string bounded_strings = 7 [max_size=6, element_size=32];
+  
+  // Enum arrays
+  repeated Status fixed_statuses = 8 [size=3];
+  repeated Status bounded_statuses = 9 [max_size=5];
+  
+  // Nested message arrays
+  repeated Sensor fixed_sensors = 10 [size=2];
+  repeated Sensor bounded_sensors = 11 [max_size=4];
+}

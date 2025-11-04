@@ -5,7 +5,7 @@
 #include "struct_frame_types.h"
 
 static inline struct checksum_t fletcher_checksum_calculation(uint8_t *buffer, uint8_t data_length) {
-  checksum_t checksum{};
+  checksum_t checksum = {0};
 
   for (int i = 0; i < data_length; i++) {
     checksum.byte1 += buffer[i];
@@ -60,7 +60,7 @@ static inline bool msg_finish(msg_encode_buffer *buffer, packet_format_t *format
   static inline bool funcname##_finish(msg_encode_buffer *buffer, packet_format_t *format) {                   \
     return msg_finish(buffer, format, msg_size);                                                               \
   }                                                                                                            \
-  static inline name funcname##_get(uint8_t *buffer) {                                                         \
+  static inline name funcname##_get_from_buffer(uint8_t *buffer) {                                             \
     name msg = *(name *)(buffer);                                                                              \
     return msg;                                                                                                \
   }                                                                                                            \
@@ -68,5 +68,5 @@ static inline bool msg_finish(msg_encode_buffer *buffer, packet_format_t *format
     name msg = *(name *)(result.msg_loc);                                                                      \
     return msg;                                                                                                \
   }                                                                                                            \
-  static inline name *funcname##_get_ref(uint8_t *buffer) { return (name *)(buffer); }                         \
+  static inline name *funcname##_get_ref_from_buffer(uint8_t *buffer) { return (name *)(buffer); }            \
   static inline name *funcname##_get_ref(msg_info_t result) { return (name *)(result.msg_loc); }

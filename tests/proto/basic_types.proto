@@ -1,0 +1,31 @@
+package basic_types;
+
+// Test all basic data types
+message BasicTypesMessage {
+  option msgid = 201;
+  
+  // Integer types
+  int8 small_int = 1;
+  int16 medium_int = 2;
+  int32 regular_int = 3;
+  int64 large_int = 4;
+  
+  // Unsigned integer types
+  uint8 small_uint = 5;
+  uint16 medium_uint = 6;
+  uint32 regular_uint = 7;
+  uint64 large_uint = 8;
+  
+  // Floating point types
+  float single_precision = 9;
+  double double_precision = 10;
+  
+  // Boolean type
+  bool flag = 11;
+  
+  // Fixed string
+  string device_id = 12 [size=32];
+  
+  // Variable string
+  string description = 13 [max_size=128];
+}
