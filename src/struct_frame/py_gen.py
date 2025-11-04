@@ -17,6 +17,7 @@ py_types = {"uint8": "uint8",
             "double": "float64",
             "uint64": 'uint64',
             "int64":  'int64',
+            "string": "str",  # Add string type support
             }
 
 
@@ -58,14 +59,51 @@ class FieldPyGen():
 
         var_name = field.name
         type_name = field.fieldType
-        if type_name in py_types:
-            type_name = py_types[type_name]
-        else:
-            type_name = '%s%s' % (pascalCase(field.package), type_name)
-            if field.isEnum:
-                type_name = 'uint8 #%s' % type_name
 
-        result += '    %s: %s' % (var_name, type_name)
+        # Handle basic type resolution
+        if type_name in py_types:
+            base_type = py_types[type_name]
+        else:
+            if field.isEnum:
+                # For enums, use the full enum class name for better type safety
+                base_type = '%s%s' % (pascalCase(field.package), type_name)
+            else:
+                base_type = '%s%s' % (pascalCase(field.package), type_name)
+
+        # Handle arrays
+        if field.is_array:
+            if field.fieldType == "string":
+                # String arrays require both array size and individual element size
+                if field.size_option is not None:
+                    type_annotation = f"list[{base_type}]  # Fixed string array size={field.size_option}, each max {field.element_size} chars"
+                elif field.max_size is not None:
+                    type_annotation = f"list[{base_type}]  # Bounded string array max_size={field.max_size}, each max {field.element_size} chars"
+                else:
+                    type_annotation = f"list[{base_type}]  # String array"
+            else:
+                # Non-string arrays
+                if field.size_option is not None:
+                    type_annotation = f"list[{base_type}]  # Fixed array size={field.size_option}"
+                elif field.max_size is not None:
+                    type_annotation = f"list[{base_type}]  # Bounded array max_size={field.max_size}"
+                else:
+                    type_annotation = f"list[{base_type}]  # Array"
+        # Handle strings with size info
+        elif field.fieldType == "string":
+            if field.size_option is not None:
+                # Fixed string - exact length
+                type_annotation = f"str  # Fixed string size={field.size_option}"
+            elif field.max_size is not None:
+                # Variable string - up to max length
+                type_annotation = f"str  # Variable string max_size={field.max_size}"
+            else:
+                # Fallback (shouldn't happen with validation)
+                type_annotation = "str  # String"
+        else:
+            # Regular field
+            type_annotation = base_type
+
+        result += '    %s: %s' % (var_name, type_annotation)
 
         leading_comment = field.comments
         if leading_comment:
@@ -104,11 +142,20 @@ class MessagePyGen():
 
         result += '\n\n    def to_dict(self, include_name = True, include_id = True):\n'
         result += '        out = {}\n'
-        # Regular fields or flattened nested messages
+        # Handle all field types including arrays
         for key, f in msg.fields.items():
-            if f.isDefaultType or f.isEnum:
+            if f.is_array:
+                if f.isDefaultType or f.isEnum or f.fieldType == "string":
+                    # Array of primitives, enums, or strings
+                    result += f'        out["{key}"] = self.{key}\n'
+                else:
+                    # Array of nested messages - convert each element
+                    result += f'        out["{key}"] = [item.to_dict(False, False) for item in self.{key}]\n'
+            elif f.isDefaultType or f.isEnum or f.fieldType == "string":
+                # Regular primitive, enum, or string field
                 result += f'        out["{key}"] = self.{key}\n'
             else:
+                # Nested message field
                 if getattr(f, 'flatten', False):
                     # Merge nested dict into parent
                     result += f'        out.update(self.{key}.to_dict(False, False))\n'

@@ -1,0 +1,35 @@
+package array_test;
+
+enum TestEnum {
+  VALUE_A = 0;
+  VALUE_B = 1;
+  VALUE_C = 2;
+}
+
+message SubMessage {
+  int32 id = 1;
+  string name = 2 [max_size=50];
+}
+
+message ArrayTestMessage {
+  option msgid = 100;
+  
+  // Fixed string (exact length)
+  string robot_id = 1 [size=16];
+  
+  // Variable string (up to max length)  
+  string description = 2 [max_size=255];
+  
+  // Fixed arrays (always exact size - no count byte needed)
+  repeated float joint_positions = 3 [size=6];   // Always 6 joints
+  repeated bool sensor_states = 4 [size=8];      // Always 8 sensors
+  repeated float transformation = 5 [size=16];   // 4x4 matrix
+  
+  // Bounded arrays (variable count up to max - includes count byte)
+  repeated string joint_names = 6 [max_size=10, element_size=32];    // Up to 10 names, each 32 chars max
+  repeated int32 measurements = 7 [max_size=100];   // Up to 100 readings
+  repeated TestEnum enum_values = 8 [max_size=5];   // Up to 5 enums
+  
+  // Nested message arrays
+  repeated SubMessage messages = 9 [max_size=5];    // Up to 5 submessages
+}

@@ -10,6 +10,7 @@ from struct_frame import FilePyGen
 from struct_frame import FileGqlGen
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
+from proto_schema_parser.ast import FieldCardinality
 
 import argparse
 
@@ -27,7 +28,8 @@ default_types = {
     "float": {"size": 4},
     "double": {"size": 8},
     "int64": {"size": 8},
-    "uint64": {"size": 8}
+    "uint64": {"size": 8},
+    "string": {"size": 4}  # Variable length, estimated size for length prefix
 }
 
 
@@ -81,14 +83,25 @@ class Field:
         self.package = package
         self.isEnum = False
         self.flatten = False
+        self.is_array = False
+        self.size_option = None   # Fixed size using [size=X]
+        self.max_size = None      # Variable size using [max_size=X]
+        # Element size for repeated string arrays [element_size=X]
+        self.element_size = None
 
     def parse(self, field):
         self.name = field.name
         self.fieldType = field.type
+
+        # Check if this is a repeated field (array)
+        if hasattr(field, 'cardinality') and field.cardinality == FieldCardinality.REPEATED:
+            self.is_array = True
+
         if self.fieldType in default_types:
             self.isDefaultType = True
             self.size = default_types[self.fieldType]["size"]
             self.validated = True
+
         try:
             if hasattr(field, 'options') and field.options:
                 # options is typically a list of ast.Option
@@ -103,6 +116,42 @@ class Field:
                         sval = str(ovalue).strip().lower()
                         if sval in ('true', '1', 'yes', 'on') or ovalue is True:
                             self.flatten = True
+                    elif lname in ('size', '(sf.size)', '(struct_frame.size)'):
+                        # Fixed size for arrays or strings
+                        try:
+                            self.size_option = int(ovalue)
+                            if self.size_option <= 0 or self.size_option > 255:
+                                print(
+                                    f"Invalid size {self.size_option} for field {self.name}, must be 1-255")
+                                return False
+                        except (ValueError, TypeError):
+                            print(
+                                f"Invalid size value {ovalue} for field {self.name}, must be an integer")
+                            return False
+                    elif lname in ('max_size', '(sf.max_size)', '(struct_frame.max_size)'):
+                        # Variable size for arrays or strings
+                        try:
+                            self.max_size = int(ovalue)
+                            if self.max_size <= 0 or self.max_size > 255:
+                                print(
+                                    f"Invalid max_size {self.max_size} for field {self.name}, must be 1-255")
+                                return False
+                        except (ValueError, TypeError):
+                            print(
+                                f"Invalid max_size value {ovalue} for field {self.name}, must be an integer")
+                            return False
+                    elif lname in ('element_size', '(sf.element_size)', '(struct_frame.element_size)'):
+                        # Individual element size for repeated string arrays
+                        try:
+                            self.element_size = int(ovalue)
+                            if self.element_size <= 0 or self.element_size > 255:
+                                print(
+                                    f"Invalid element_size {self.element_size} for field {self.name}, must be 1-255")
+                                return False
+                        except (ValueError, TypeError):
+                            print(
+                                f"Invalid element_size value {ovalue} for field {self.name}, must be an integer")
+                            return False
         except Exception:
             pass
         return True
@@ -117,8 +166,8 @@ class Field:
             if ret:
                 if ret.validate(currentPackage, packages):
                     self.isEnum = ret.isEnum
-                    self.validate = True
-                    self.size = ret.size
+                    self.validated = True
+                    base_size = ret.size
                 else:
                     print(
                         f"Failed to validate Field: {self.name} of Type: {self.fieldType} in Package: {currentPackage.name}")
@@ -127,6 +176,77 @@ class Field:
                 print(
                     f"Failed to find Field: {self.name} of Type: {self.fieldType} in Package: {currentPackage.name}")
                 return False
+        else:
+            base_size = self.size
+
+        # Calculate size for arrays and strings
+        if self.is_array:
+            if self.fieldType == "string":
+                # String arrays need both array size AND individual element size
+                if self.element_size is None:
+                    print(
+                        f"String array field {self.name} missing required element_size option")
+                    return False
+
+                if self.size_option is not None:
+                    # Fixed string array: size_option strings, each element_size bytes
+                    self.size = self.size_option * self.element_size
+                elif self.max_size is not None:
+                    # Variable string array: 1 byte count + max_size strings of element_size bytes each
+                    self.size = 1 + (self.max_size * self.element_size)
+                else:
+                    print(
+                        f"String array field {self.name} missing required size or max_size option")
+                    return False
+            else:
+                # Non-string arrays
+                if self.size_option is not None:
+                    # Fixed array: always full, no count byte needed
+                    self.size = base_size * self.size_option
+                elif self.max_size is not None:
+                    # Variable array: 1 byte for count + max space
+                    self.size = 1 + (base_size * self.max_size)
+                else:
+                    print(
+                        f"Array field {self.name} missing required size or max_size option")
+                    return False
+        elif self.fieldType == "string":
+            if self.size_option is not None:
+                # Fixed string: exactly size_option characters
+                self.size = self.size_option
+            elif self.max_size is not None:
+                # Variable string: 1 byte length + max characters
+                self.size = 1 + self.max_size
+            else:
+                print(
+                    f"String field {self.name} missing required size or max_size option")
+                return False
+        else:
+            self.size = base_size
+
+        # Debug output
+        array_info = ""
+        if self.is_array:
+            if self.fieldType == "string":
+                # String arrays show both array size and individual element size
+                if self.size_option is not None:
+                    array_info = f", fixed_string_array size={self.size_option}, element_size={self.element_size}"
+                elif self.max_size is not None:
+                    array_info = f", bounded_string_array max_size={self.max_size}, element_size={self.element_size}"
+            else:
+                # Regular arrays
+                if self.size_option is not None:
+                    array_info = f", fixed_array size={self.size_option}"
+                elif self.max_size is not None:
+                    array_info = f", bounded_array max_size={self.max_size}"
+        elif self.fieldType == "string":
+            # Regular strings
+            if self.size_option is not None:
+                array_info = f", fixed_string size={self.size_option}"
+            elif self.max_size is not None:
+                array_info = f", variable_string max_size={self.max_size}"
+        print(
+            f"  Field {self.name}: type={self.fieldType}, is_array={self.is_array}{array_info}, calculated_size={self.size}")
 
         return True
 
@@ -134,8 +254,21 @@ class Field:
         output = ""
         for c in self.comments:
             output = output + c + "\n"
+        array_info = ""
+        if self.is_array:
+            if self.size_option is not None:
+                array_info = f", Array[size={self.size_option}]"
+            elif self.max_size is not None:
+                array_info = f", Array[max_size={self.max_size}]"
+            else:
+                array_info = ", Array[no size specified]"
+        elif self.fieldType == "string":
+            if self.size_option is not None:
+                array_info = f", String[size={self.size_option}]"
+            elif self.max_size is not None:
+                array_info = f", String[max_size={self.max_size}]"
         output = output + \
-            f"Field: {self.name}, Type:{self.fieldType}, Size:{self.size}"
+            f"Field: {self.name}, Type:{self.fieldType}, Size:{self.size}{array_info}"
         return output
 
 
@@ -202,6 +335,25 @@ class Message:
                         print(
                             f"Flatten collision in Message {self.name}: field '{key}.{ck}' collides with existing field '{ck}'.")
                         return False
+
+        # Array validation
+        for key, value in self.fields.items():
+            if value.is_array:
+                # All arrays must have size or max_size specified
+                if value.size_option is None and value.max_size is None:
+                    print(
+                        f"Array field {key} in Message {self.name}: must specify size or max_size option")
+                    return False
+            elif value.fieldType == "string":
+                # Strings must have size or max_size specified
+                if value.size_option is None and value.max_size is None:
+                    print(
+                        f"String field {key} in Message {self.name}: must specify size or max_size option")
+                    return False
+            elif value.max_size is not None or value.size_option is not None or value.element_size is not None:
+                print(
+                    f"Field {key} in Message {self.name}: size/max_size/element_size options can only be used with repeated fields or strings")
+                return False
 
         self.validated = True
         return True
