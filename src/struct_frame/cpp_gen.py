@@ -155,8 +155,8 @@ class MessageCppGen():
 
         size = 1
         if not msg.fields:
-            # Empty structs are not allowed in C standard but OK in C++
-            # Add a dummy field for consistency with C
+            # Empty structs are allowed in C++ but we add a dummy field
+            # for consistency with the C implementation
             result += '    char dummy_field;\n'
         else:
             size = msg.size
