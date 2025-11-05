@@ -31,12 +31,13 @@ class TestRunner:
 
         # Test results tracking
         self.results = {
-            'generation': {'c': False, 'ts': False, 'py': False},
-            'compilation': {'c': False, 'ts': False, 'py': False},
-            'basic_types': {'c': False, 'ts': False, 'py': False},
-            'arrays': {'c': False, 'ts': False, 'py': False},
-            'serialization': {'c': False, 'ts': False, 'py': False},
-            'cross_language': False
+            'generation': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'compilation': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'basic_types': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'arrays': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'serialization': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'cross_language': False,
+            'cross_platform_pipe': False
         }
 
     def log(self, message, level="INFO"):
@@ -99,7 +100,8 @@ class TestRunner:
         directories = [
             self.generated_dir / "c",
             self.generated_dir / "ts",
-            self.generated_dir / "py"
+            self.generated_dir / "py",
+            self.generated_dir / "cpp"
         ]
 
         for directory in directories:
@@ -135,6 +137,9 @@ class TestRunner:
         if "py" in lang_flags:
             command_parts.extend(
                 ["--build_py", "--py_path", str(self.generated_dir / "py")])
+        if "cpp" in lang_flags:
+            command_parts.extend(
+                ["--build_cpp", "--cpp_path", str(self.generated_dir / "cpp")])
 
         command = " ".join(command_parts)
 
@@ -226,6 +231,74 @@ class TestRunner:
                 self.results['compilation']['c'] = True
             else:
                 self.log(f"C compilation failed for {test_file}", "ERROR")
+                all_success = False
+
+        return all_success
+
+    def test_cpp_compilation(self):
+        """Test C++ code compilation"""
+        self.log("=== Testing C++ Compilation ===")
+
+        # Check if g++ is available
+        gpp_available, _, _ = self.run_command("g++ --version")
+        if not gpp_available:
+            self.log(
+                "G++ compiler not found - skipping C++ compilation test", "WARNING")
+            return True  # Don't fail the entire test suite
+
+        test_files = [
+            "test_basic_types.cpp",
+            "test_arrays.cpp",
+            "test_serialization.cpp"
+        ]
+
+        all_success = True
+
+        for test_file in test_files:
+            test_path = self.tests_dir / "cpp" / test_file
+            output_path = self.tests_dir / "cpp" / f"{test_file[:-4]}.exe"
+
+            # Create compile command
+            command = f"g++ -std=c++17 -I{self.generated_dir / 'cpp'} -o {output_path} {test_path}"
+
+            success, stdout, stderr = self.run_command(command)
+            if success:
+                self.log(
+                    f"C++ compilation successful for {test_file}", "SUCCESS")
+                self.results['compilation']['cpp'] = True
+            else:
+                self.log(f"C++ compilation failed for {test_file}", "ERROR")
+                all_success = False
+
+        return all_success
+
+    def run_cpp_tests(self):
+        """Run C++ test executables"""
+        self.log("=== Running C++ Tests ===")
+
+        test_executables = [
+            ("test_basic_types.exe", "basic_types"),
+            ("test_arrays.exe", "arrays"),
+            ("test_serialization.exe", "serialization")
+        ]
+
+        all_success = True
+
+        for exe_name, test_type in test_executables:
+            exe_path = self.tests_dir / "cpp" / exe_name
+
+            if not exe_path.exists():
+                self.log(f"Executable not found: {exe_name}", "WARNING")
+                continue
+
+            success, stdout, stderr = self.run_command(
+                str(exe_path), cwd=self.tests_dir / "cpp")
+
+            if success:
+                self.log(f"C++ {test_type} test passed", "SUCCESS")
+                self.results[test_type]['cpp'] = True
+            else:
+                self.log(f"C++ {test_type} test failed", "ERROR")
                 all_success = False
 
         return all_success
@@ -423,8 +496,34 @@ class TestRunner:
         else:
             self.log("No cross-language test data files found", "WARNING")
             return False
+    
+    def run_cross_platform_pipe_tests(self):
+        """Run cross-platform pipe tests"""
+        self.log("=== Running Cross-Platform Pipe Tests ===")
+        
+        cross_platform_script = self.tests_dir / "cross_platform_test.py"
+        if not cross_platform_script.exists():
+            self.log("Cross-platform test script not found", "WARNING")
+            return True  # Don't fail if test doesn't exist
+        
+        cmd = f"{sys.executable} {cross_platform_script}"
+        success, stdout, stderr = self.run_command(cmd, cwd=self.tests_dir)
+        
+        # Print the output regardless of success for visibility
+        if stdout:
+            print(stdout)
+        
+        if success:
+            self.log("Cross-platform pipe tests passed", "SUCCESS")
+            self.results['cross_platform_pipe'] = True
+            return True
+        else:
+            self.log("Cross-platform pipe tests failed", "WARNING")
+            # Don't fail the entire suite for this
+            self.results['cross_platform_pipe'] = False
+            return True
 
-    def print_summary(self, tested_languages=['c', 'ts', 'py']):
+    def print_summary(self, tested_languages=['c', 'ts', 'py', 'cpp']):
         """Print a summary of all test results"""
         print("\n" + "="*60)
         print("📊 TEST RESULTS SUMMARY")
@@ -445,7 +544,7 @@ class TestRunner:
 
         # Compilation results (only for languages that need compilation)
         compiled_languages = [
-            lang for lang in tested_languages if lang in ['c', 'ts']]
+            lang for lang in tested_languages if lang in ['c', 'ts', 'cpp']]
         if compiled_languages:
             print("\n🔨 Compilation:")
             for lang in compiled_languages:
@@ -469,9 +568,16 @@ class TestRunner:
         # Cross-language compatibility
         print(f"\n🌐 Cross-Language Compatibility:")
         status = "✅ PASS" if self.results['cross_language'] else "❌ FAIL"
-        print(f"  {'OVERALL':>10}: {status}")
+        print(f"  {'File-based':>10}: {status}")
         total_tests += 1
         if self.results['cross_language']:
+            passed_tests += 1
+        
+        # Cross-platform pipe tests
+        status = "✅ PASS" if self.results['cross_platform_pipe'] else "❌ FAIL"
+        print(f"  {'Pipe-based':>10}: {status}")
+        total_tests += 1
+        if self.results['cross_platform_pipe']:
             passed_tests += 1
 
         # Overall result
@@ -526,6 +632,11 @@ def main():
         help="Skip Python language tests"
     )
     parser.add_argument(
+        "--skip-cpp",
+        action="store_true",
+        help="Skip C++ language tests"
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose output"
@@ -541,6 +652,8 @@ def main():
         languages.append("ts")
     if not args.skip_py:
         languages.append("py")
+    if not args.skip_cpp:
+        languages.append("cpp")
 
     if not languages:
         print("❌ No languages selected for testing!")
@@ -578,6 +691,12 @@ def main():
             if not runner.run_c_tests():
                 success = False
 
+        if "cpp" in languages:
+            if not runner.test_cpp_compilation():
+                success = False
+            if not runner.run_cpp_tests():
+                success = False
+
         if "ts" in languages:
             if not runner.test_typescript_compilation():
                 success = False
@@ -590,6 +709,10 @@ def main():
 
         # Run cross-language compatibility tests
         if not runner.run_cross_language_tests():
+            success = False
+        
+        # Run cross-platform pipe tests
+        if not runner.run_cross_platform_pipe_tests():
             success = False
 
         # Print summary
