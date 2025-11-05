@@ -36,7 +36,8 @@ class TestRunner:
             'basic_types': {'c': False, 'ts': False, 'py': False, 'cpp': False},
             'arrays': {'c': False, 'ts': False, 'py': False, 'cpp': False},
             'serialization': {'c': False, 'ts': False, 'py': False, 'cpp': False},
-            'cross_language': False
+            'cross_language': False,
+            'cross_platform_pipe': False
         }
 
     def log(self, message, level="INFO"):
