@@ -31,11 +31,11 @@ class TestRunner:
 
         # Test results tracking
         self.results = {
-            'generation': {'c': False, 'ts': False, 'py': False},
-            'compilation': {'c': False, 'ts': False, 'py': False},
-            'basic_types': {'c': False, 'ts': False, 'py': False},
-            'arrays': {'c': False, 'ts': False, 'py': False},
-            'serialization': {'c': False, 'ts': False, 'py': False},
+            'generation': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'compilation': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'basic_types': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'arrays': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'serialization': {'c': False, 'ts': False, 'py': False, 'cpp': False},
             'cross_language': False
         }
 
@@ -99,7 +99,8 @@ class TestRunner:
         directories = [
             self.generated_dir / "c",
             self.generated_dir / "ts",
-            self.generated_dir / "py"
+            self.generated_dir / "py",
+            self.generated_dir / "cpp"
         ]
 
         for directory in directories:
@@ -135,6 +136,9 @@ class TestRunner:
         if "py" in lang_flags:
             command_parts.extend(
                 ["--build_py", "--py_path", str(self.generated_dir / "py")])
+        if "cpp" in lang_flags:
+            command_parts.extend(
+                ["--build_cpp", "--cpp_path", str(self.generated_dir / "cpp")])
 
         command = " ".join(command_parts)
 
@@ -224,6 +228,14 @@ class TestRunner:
                 shutil.copy2(file, dest)
                 self.log(f"Copied TypeScript boilerplate: {file.name}")
 
+        # Copy C++ boilerplate files
+        cpp_boilerplate = boilerplate_dir / "cpp"
+        if cpp_boilerplate.exists():
+            for file in cpp_boilerplate.glob("*.hpp"):
+                dest = self.generated_dir / "cpp" / file.name
+                shutil.copy2(file, dest)
+                self.log(f"Copied C++ boilerplate: {file.name}")
+
     def test_c_compilation(self):
         """Test C code compilation"""
         self.log("=== Testing C Compilation ===")
@@ -260,6 +272,59 @@ class TestRunner:
                 all_success = False
 
         return all_success
+
+    def test_cpp_compilation(self):
+        """Test C++ code compilation"""
+        self.log("=== Testing C++ Compilation ===")
+
+        # Check if g++ is available
+        gpp_available, _, _ = self.run_command("g++ --version")
+        if not gpp_available:
+            self.log(
+                "G++ compiler not found - skipping C++ compilation test", "WARNING")
+            return True  # Don't fail the entire test suite
+
+        # Create a simple test file
+        test_file = self.generated_dir / "cpp" / "test_cpp_basic.cpp"
+        test_code = """
+#include "basic_types.sf.hpp"
+#include <iostream>
+
+int main() {
+    BasicTypesBasicTypesMessage msg;
+    msg.small_int = 42;
+    msg.flag = true;
+    
+    size_t msg_size = 0;
+    if (StructFrame::get_message_length(BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID, &msg_size)) {
+        std::cout << "C++ compilation test passed!" << std::endl;
+        return 0;
+    }
+    return 1;
+}
+"""
+        with open(test_file, 'w') as f:
+            f.write(test_code)
+
+        output_path = self.generated_dir / "cpp" / "test_cpp_basic.exe"
+
+        # Create compile command
+        command = f"g++ -std=c++17 -I{self.generated_dir / 'cpp'} -o {output_path} {test_file}"
+
+        success, stdout, stderr = self.run_command(command)
+        if success:
+            self.log("C++ compilation successful", "SUCCESS")
+            self.results['compilation']['cpp'] = True
+            
+            # Try to run the test
+            run_success, _, _ = self.run_command(str(output_path))
+            if run_success:
+                self.log("C++ test execution successful", "SUCCESS")
+                self.results['basic_types']['cpp'] = True
+            return True
+        else:
+            self.log("C++ compilation failed", "ERROR")
+            return False
 
     def test_typescript_compilation(self):
         """Test TypeScript code compilation"""
@@ -467,7 +532,7 @@ class TestRunner:
 
         # Code generation results
         print("\n🔧 Code Generation:")
-        for lang in ['c', 'ts', 'py']:
+        for lang in ['c', 'ts', 'py', 'cpp']:
             status = "✅ PASS" if self.results['generation'][lang] else "❌ FAIL"
             print(f"  {lang.upper():>10}: {status}")
             total_tests += 1
@@ -476,7 +541,7 @@ class TestRunner:
 
         # Compilation results
         print("\n🔨 Compilation:")
-        for lang in ['c', 'ts', 'py']:
+        for lang in ['c', 'ts', 'py', 'cpp']:
             status = "✅ PASS" if self.results['compilation'][lang] else "❌ FAIL"
             print(f"  {lang.upper():>10}: {status}")
             total_tests += 1
@@ -487,7 +552,7 @@ class TestRunner:
         test_types = ['basic_types', 'arrays', 'serialization']
         for test_type in test_types:
             print(f"\n🧪 {test_type.replace('_', ' ').title()} Tests:")
-            for lang in ['c', 'ts', 'py']:
+            for lang in ['c', 'ts', 'py', 'cpp']:
                 status = "✅ PASS" if self.results[test_type][lang] else "❌ FAIL"
                 print(f"  {lang.upper():>10}: {status}")
                 total_tests += 1
@@ -554,6 +619,11 @@ def main():
         help="Skip Python language tests"
     )
     parser.add_argument(
+        "--skip-cpp",
+        action="store_true",
+        help="Skip C++ language tests"
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose output"
@@ -569,6 +639,8 @@ def main():
         languages.append("ts")
     if not args.skip_py:
         languages.append("py")
+    if not args.skip_cpp:
+        languages.append("cpp")
 
     if not languages:
         print("❌ No languages selected for testing!")
@@ -604,6 +676,10 @@ def main():
             if not runner.test_c_compilation():
                 success = False
             if not runner.run_c_tests():
+                success = False
+
+        if "cpp" in languages:
+            if not runner.test_cpp_compilation():
                 success = False
 
         if "ts" in languages:
