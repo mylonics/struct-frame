@@ -23,35 +23,35 @@ typedef struct msg_info_t {
   bool valid;
   uint8_t len;
   uint8_t msg_id;
-  uint8_t *msg_loc;
+  uint8_t* msg_loc;
 } msg_info_t;
 
 typedef struct _packet_format {
   bool (*check_start_bytes)(uint8_t);
   bool (*process_header_byte)(uint8_t, size_t);
-  size_t (*get_msg_id)(uint8_t *data);
+  size_t (*get_msg_id)(uint8_t* data);
   size_t (*get_full_packet_length)(size_t);
-  struct msg_info_t (*validate_packet)(uint8_t *, size_t);
-  size_t (*encode)(uint8_t *buffer, uint8_t msg_id, uint8_t *msg, uint8_t msg_size);
-  uint8_t *(*encode_reserve)(uint8_t *buffer, uint8_t msg_id, uint8_t msg_size);
-  uint8_t (*encode_finsish)(uint8_t *buffer, uint8_t msg_size);
+  struct msg_info_t (*validate_packet)(uint8_t*, size_t);
+  size_t (*encode)(uint8_t* buffer, uint8_t msg_id, uint8_t* msg, uint8_t msg_size);
+  uint8_t* (*encode_reserve)(uint8_t* buffer, uint8_t msg_id, uint8_t msg_size);
+  uint8_t (*encode_finsish)(uint8_t* buffer, uint8_t msg_size);
 
 } packet_format_t;
 
 enum parser_state_enum { LOOKING_FOR_START_BYTE = 0, GETTING_HEADER = 1, GETTING_PAYLOAD = 2 };
 
 typedef struct _definitions {
-  bool (*get_message_length)(size_t, size_t *);
-  packet_format_t *(*get_packet_formats)(uint8_t);
+  bool (*get_message_length)(size_t, size_t*);
+  packet_format_t* (*get_packet_formats)(uint8_t);
 } packet_definitions_t;
 
 typedef struct packet_state_t {
   enum parser_state_enum state;
   size_t packet_size;
-  packet_format_t *format;
-  packet_definitions_t *defines;
+  packet_format_t* format;
+  packet_definitions_t* defines;
 
-  uint8_t *buffer;
+  uint8_t* buffer;
   size_t buffer_size;
 
   // for parse buffer
@@ -62,7 +62,7 @@ typedef struct packet_state_t {
 } packet_state_t;
 
 typedef struct _msg_encode_buffer {
-  uint8_t *data;
+  uint8_t* data;
   size_t max_size;
   size_t size;
   bool in_progress;

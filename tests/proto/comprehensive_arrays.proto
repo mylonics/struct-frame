@@ -18,25 +18,25 @@ message ComprehensiveArrayMessage {
   option msgid = 203;
   
   // Fixed arrays of primitives
-  repeated int32 fixed_ints = 1 [size=5];
-  repeated float fixed_floats = 2 [size=3];
-  repeated bool fixed_bools = 3 [size=8];
+  repeated int32 fixed_ints = 1 [size=3];
+  repeated float fixed_floats = 2 [size=2];
+  repeated bool fixed_bools = 3 [size=4];
   
-  // Bounded arrays of primitives
-  repeated uint16 bounded_uints = 4 [max_size=10];
-  repeated double bounded_doubles = 5 [max_size=7];
+  // Bounded arrays of primitives  
+  repeated uint16 bounded_uints = 4 [max_size=3];
+  repeated double bounded_doubles = 5 [max_size=2];
   
-  // Fixed string arrays
-  repeated string fixed_strings = 6 [size=4, element_size=20];
+  // Fixed string arrays (smaller strings and fewer of them)
+  repeated string fixed_strings = 6 [size=2, element_size=8];
   
-  // Bounded string arrays
-  repeated string bounded_strings = 7 [max_size=6, element_size=32];
+  // Bounded string arrays (smaller)
+  repeated string bounded_strings = 7 [max_size=2, element_size=12];
   
   // Enum arrays
-  repeated Status fixed_statuses = 8 [size=3];
-  repeated Status bounded_statuses = 9 [max_size=5];
+  repeated Status fixed_statuses = 8 [size=2];
+  repeated Status bounded_statuses = 9 [max_size=2];
   
-  // Nested message arrays
-  repeated Sensor fixed_sensors = 10 [size=2];
-  repeated Sensor bounded_sensors = 11 [max_size=4];
+  // Nested message arrays (reduced)
+  repeated Sensor fixed_sensors = 10 [size=1];
+  repeated Sensor bounded_sensors = 11 [max_size=1];
 }

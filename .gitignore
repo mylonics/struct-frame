@@ -11,10 +11,6 @@ generated/
 gen/
 tests/generated/
 
-# Legacy generated output directories (cleanup)
-c/
-py/
-ts/
 
 # Test artifacts
 tests/c/*.exe
