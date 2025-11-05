@@ -1,7 +1,7 @@
 
 # Struct Frame
 
-A multi-language code generation framework that converts Protocol Buffer (.proto) files into serialization/deserialization code for C, TypeScript, Python, and GraphQL. It provides framing and parsing utilities for structured message communication.
+A multi-language code generation framework that converts Protocol Buffer (.proto) files into serialization/deserialization code for C, C++, TypeScript, Python, and GraphQL. It provides framing and parsing utilities for structured message communication.
 
 ## Quick Start
 
@@ -17,7 +17,7 @@ npm install
 ### Basic Usage
 ```bash
 # Generate code for all languages
-PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_c --build_ts --build_py --build_gql
+PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_c --build_cpp --build_ts --build_py --build_gql
 
 # Run test suite
 python test_all.py
@@ -37,7 +37,7 @@ python test_all.py
 python tests/run_tests.py --verbose
 
 # Skip specific languages
-python tests/run_tests.py --skip-ts --skip-c
+python tests/run_tests.py --skip-ts --skip-c --skip-cpp
 
 # Generate code only (no compilation/execution)
 python tests/run_tests.py --generate-only
@@ -126,6 +126,13 @@ gcc examples/main.c -I generated/c -o main
 ./main
 ```
 
+#### C++
+```bash
+python src/main.py examples/myl_vehicle.proto --build_cpp
+g++ -std=c++17 examples/main.cpp -I generated/cpp -o main
+./main
+```
+
 #### GraphQL
 ```bash
 python src/main.py examples/myl_vehicle.proto --build_gql
@@ -134,16 +141,17 @@ python src/main.py examples/myl_vehicle.proto --build_gql
 
 ## Feature Compatibility Matrix
 
-| Feature | C | TypeScript | Python | GraphQL | Status |
-|---------|---|------------|--------|---------|--------|
-| **Core Types** | ✓ | ✓ | ✓ | ✓ | Stable |
-| **String** | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Enums** | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Message IDs** | ✓ | ✓ | ✓ | N/A | Stable |
-| **Message Serialization** | ✓ | ✓ | ✓ | N/A | Stable |
-| **Flatten** | N/A | N/A | ✓ | ✓ | Partial |
-| **Arrays** | ✓ | ✓ | ✓ | ✓ | Stable |
+| Feature | C | C++ | TypeScript | Python | GraphQL | Status |
+|---------|---|-----|------------|--------|---------|--------|
+| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **String** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enums** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enum Classes** | N/A | ✓ | N/A | N/A | N/A | Stable |
+| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Message IDs** | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
+| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
+| **Flatten** | N/A | N/A | N/A | ✓ | ✓ | Partial |
+| **Arrays** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
 
 **Legend:**
 - **✓** - Feature works as documented
@@ -198,16 +206,16 @@ message SimpleHeartbeat {
 
 ### Framing Compatibility Matrix
 
-| Feature | C | TypeScript | Python | Status | Notes |
-|---------|---|------------|--------|---------|-------|
-| **Frame Encoding** | ✓ | ✓ | ✓ | Stable | All languages can create frames |
-| **Frame Parsing** | ✓ | ✓ | ✓ | Stable | State machine implementation |
-| **Checksum Validation** | ✓ | ✓ | ✓ | Stable | Fletcher-16 algorithm |
-| **Sync Recovery** | ✓ | ✓ | ✓ | Stable | Auto-recovery from corruption |
-| **Partial Frame Handling** | ✓ | ✓ | ✓ | Stable | Handles chunked data streams |
-| **Message ID Routing** | ✓ | ✓ | ✓ | Stable | Automatic message type detection |
-| **Buffer Management** | ✓ | ✓ | ✓ | Stable | Fixed-size buffers prevent overflow |
-| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | Stable | Frames interoperate between languages |
+| Feature | C | C++ | TypeScript | Python | Status | Notes |
+|---------|---|-----|------------|--------|---------|-------|
+| **Frame Encoding** | ✓ | ✓ | ✓ | ✓ | Stable | All languages can create frames |
+| **Frame Parsing** | ✓ | ✓ | ✓ | ✓ | Stable | State machine implementation |
+| **Checksum Validation** | ✓ | ✓ | ✓ | ✓ | Stable | Fletcher-16 algorithm |
+| **Sync Recovery** | ✓ | ✓ | ✓ | ✓ | Stable | Auto-recovery from corruption |
+| **Partial Frame Handling** | ✓ | ✓ | ✓ | ✓ | Stable | Handles chunked data streams |
+| **Message ID Routing** | ✓ | ✓ | ✓ | ✓ | Stable | Automatic message type detection |
+| **Buffer Management** | ✓ | ✓ | ✓ | ✓ | Stable | Fixed-size buffers prevent overflow |
+| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | ✓ | Stable | Frames interoperate between languages |
 
 ### Extended Frame Format Options
 
@@ -348,6 +356,40 @@ for (size_t i = 0; i < frame_size; i++) {
 }
 ```
 
+#### C++ Frame Handling
+
+```cpp
+#include "myl_vehicle.sf.hpp"
+#include "struct_frame.hpp"
+
+// Create message
+VehicleStatus msg{};
+msg.vehicle_id = 1234;
+msg.speed = 65.5f;
+msg.engine_on = true;
+
+// Encode to frame
+uint8_t frame_buffer[256];
+StructFrame::BasicPacket format;
+StructFrame::EncodeBuffer encoder(frame_buffer, sizeof(frame_buffer));
+
+bool success = encoder.encode(&format, VEHICLE_STATUS_MSG_ID, &msg, sizeof(msg));
+
+// Parse frame using FrameParser
+StructFrame::FrameParser parser(&format, [](size_t msg_id, size_t* size) {
+    return StructFrame::get_message_length(msg_id, size);
+});
+
+for (size_t i = 0; i < encoder.size(); i++) {
+    StructFrame::MessageInfo info = parser.parse_byte(frame_buffer[i]);
+    if (info.valid) {
+        VehicleStatus* parsed = reinterpret_cast<VehicleStatus*>(info.msg_location);
+        std::cout << "Parsed: vehicle_id=" << parsed->vehicle_id 
+                  << ", speed=" << parsed->speed << std::endl;
+    }
+}
+```
+
 ### Real-World Integration Patterns
 
 #### Serial Communication
@@ -447,6 +489,7 @@ message ArrayExample {
 **Generated Output** (all languages now supported):
 - **Python**: `matrix: list[float]`, `names: list[str]`, `values: list[int]`
 - **C**: `float matrix[9]`, `struct { uint8_t count; char data[10][32]; } names`
+- **C++**: `float matrix[9]`, `struct { uint8_t count; char data[10][32]; } names` (with enum classes)
 - **TypeScript**: `Array('matrix', 'Float32LE', 9)`, `Array('names_data', 'String', 10)`  
 - **GraphQL**: `matrix: [Float!]!`, `names: [String!]!`, `values: [Int!]!`
 
@@ -577,13 +620,117 @@ message DeviceStatus {
 
 ```bash
 # Generate all languages
-python src/main.py schema.proto --build_c --build_ts --build_py --build_gql
+python src/main.py schema.proto --build_c --build_cpp --build_ts --build_py --build_gql
 
 # Language-specific paths
 python src/main.py schema.proto --build_py --py_path output/python/
 python src/main.py schema.proto --build_c --c_path output/c/
+python src/main.py schema.proto --build_cpp --cpp_path output/cpp/
 python src/main.py schema.proto --build_ts --ts_path output/typescript/
 python src/main.py schema.proto --build_gql --gql_path output/graphql/
+```
+
+## C++ Implementation
+
+The C++ implementation provides modern C++ features while maintaining compatibility with the same binary message formats used by the C implementation:
+
+### Key Features
+
+- **Enum Classes**: Enums are generated as strongly-typed `enum class` types instead of plain enums
+- **Modern C++ Style**: Uses classes, namespaces, templates, and RAII patterns
+- **Binary Compatibility**: Generated structs use the same memory layout as C (via `__attribute__((packed))`)
+- **Type Safety**: Leverages C++ templates for type-safe message helpers
+- **STL Integration**: Uses standard library features like `<cstdint>`, `<functional>`, and `<span>`
+
+### Example
+
+```proto
+package robot;
+
+enum RobotStatus : uint8_t {
+  IDLE = 0;
+  MOVING = 1;
+  ERROR = 2;
+}
+
+message RobotState {
+  option msgid = 10;
+  uint32 robot_id = 1;
+  RobotStatus status = 2;
+  float battery_level = 3;
+}
+```
+
+**Generated C++ Code:**
+
+```cpp
+// Enum class instead of plain enum
+enum class RobotRobotStatus : uint8_t {
+    IDLE = 0,
+    MOVING = 1,
+    ERROR = 2
+};
+
+// Packed struct compatible with C
+struct RobotRobotState {
+    uint32_t robot_id;
+    RobotRobotStatus status;
+    float battery_level;
+} __attribute__((packed));
+
+constexpr size_t ROBOT_ROBOT_STATE_MAX_SIZE = 9;
+constexpr size_t ROBOT_ROBOT_STATE_MSG_ID = 10;
+
+// Helper function in namespace
+namespace StructFrame {
+inline bool get_message_length(size_t msg_id, size_t* size) {
+    switch (msg_id) {
+        case ROBOT_ROBOT_STATE_MSG_ID: 
+            *size = ROBOT_ROBOT_STATE_MAX_SIZE; 
+            return true;
+        default: break;
+    }
+    return false;
+}
+}  // namespace StructFrame
+```
+
+**Usage:**
+
+```cpp
+#include "robot.sf.hpp"
+#include "struct_frame.hpp"
+
+// Create and initialize message
+RobotRobotState state{};
+state.robot_id = 123;
+state.status = RobotRobotStatus::MOVING;  // Type-safe enum class
+state.battery_level = 85.5f;
+
+// Encode with modern C++ API
+uint8_t buffer[256];
+StructFrame::BasicPacket format;
+StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
+
+if (encoder.encode(&format, ROBOT_ROBOT_STATE_MSG_ID, &state, sizeof(state))) {
+    // Frame encoded successfully
+    std::cout << "Encoded " << encoder.size() << " bytes\n";
+}
+
+// Parse with lambda callback
+StructFrame::FrameParser parser(&format, [](size_t msg_id, size_t* size) {
+    return StructFrame::get_message_length(msg_id, size);
+});
+
+// Process received bytes
+for (size_t i = 0; i < encoder.size(); i++) {
+    auto info = parser.parse_byte(buffer[i]);
+    if (info.valid) {
+        auto* msg = reinterpret_cast<RobotRobotState*>(info.msg_location);
+        std::cout << "Robot ID: " << msg->robot_id 
+                  << ", Status: " << static_cast<int>(msg->status) << "\n";
+    }
+}
 ```
 
 ## Additional Documentation
