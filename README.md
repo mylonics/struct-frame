@@ -19,7 +19,7 @@ npm install
 # Generate code for all languages
 PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_c --build_ts --build_py --build_gql
 
-# Run comprehensive test suite
+# Run test suite
 python test_all.py
 
 # Generated files will be in the generated/ directory
@@ -27,7 +27,7 @@ python test_all.py
 
 ### Test Suite
 
-The project includes a comprehensive test suite that validates code generation, compilation, and serialization across all supported languages:
+The project includes a test suite that validates code generation, compilation, and serialization across all supported languages:
 
 ```bash
 # Run all tests
@@ -44,6 +44,65 @@ python tests/run_tests.py --generate-only
 ```
 
 See `tests/README.md` for detailed test documentation.
+
+## Framing System
+
+Struct Frame provides a message framing system for reliable communication over serial links, network sockets, or any byte stream. Framing solves the fundamental problem of determining where messages begin and end in a continuous data stream.
+
+### What is Message Framing?
+
+When sending structured data over a communication channel, you need to:
+1. **Identify message boundaries** - Where does one message end and the next begin?
+2. **Validate message integrity** - Is the received data complete and uncorrupted?
+3. **Route messages by type** - What kind of message is this and how should it be processed?
+
+Struct Frame's framing system addresses these challenges with a cross-platform implementation.
+
+### Basic Frame Format
+
+The default frame format uses a simple but effective structure:
+
+```
+[Start Byte] [Message ID] [Payload Data...] [Checksum 1] [Checksum 2]
+     0x90        1 byte     Variable Length     1 byte      1 byte
+```
+
+**Frame Components:**
+- **Start Byte (0x90)**: Synchronization marker to identify frame boundaries
+- **Message ID**: Unique identifier (0-255) that maps to specific message types  
+- **Payload**: The actual serialized message data (variable length)
+- **Fletcher Checksum**: 2-byte error detection using Fletcher-16 algorithm
+
+**Example Frame Breakdown:**
+```
+Message: vehicle_heartbeat (ID=42) with 4 bytes of data [0x01, 0x02, 0x03, 0x04]
+Frame:   [0x90] [0x2A] [0x01, 0x02, 0x03, 0x04] [0x7F] [0x8A]
+          Start   ID=42        Payload Data        Checksum
+```
+
+### Parser State Machine
+
+The frame parser implements a state machine to handle partial data and synchronization recovery:
+
+```mermaid
+stateDiagram-v2
+    [*] --> LOOKING_FOR_START_BYTE
+    LOOKING_FOR_START_BYTE --> GETTING_HEADER: Found 0x90
+    GETTING_HEADER --> GETTING_PAYLOAD: Got Message ID
+    GETTING_PAYLOAD --> LOOKING_FOR_START_BYTE: Complete Frame
+    GETTING_HEADER --> LOOKING_FOR_START_BYTE: Invalid Message ID
+    GETTING_PAYLOAD --> LOOKING_FOR_START_BYTE: Checksum Failure
+```
+
+**State Descriptions:**
+- **LOOKING_FOR_START_BYTE**: Scanning for frame start marker (0x90)
+- **GETTING_HEADER**: Processing message ID and calculating expected frame length
+- **GETTING_PAYLOAD**: Collecting payload data and checksum bytes
+
+This design handles common real-world issues like:
+- **Partial frame reception** (data arrives in chunks)
+- **Frame corruption** (invalid start bytes, checksum mismatches)
+- **Synchronization loss** (automatic recovery when frames are corrupted)
 
 ### Language-Specific Examples
 
@@ -91,6 +150,243 @@ python src/main.py examples/myl_vehicle.proto --build_gql
 - **Partial** - Basic functionality works, some limitations  
 - **✗** - Feature not yet available
 - **N/A** - Not applicable for this language
+
+## Frame Format and Header Types
+
+### Header Structure Details
+
+The Basic Frame format provides a minimal framing protocol:
+
+#### Header Layout (2 bytes)
+```
+Byte 0: Start Byte (0x90)
+  - Fixed synchronization marker
+  - Allows parser to identify frame boundaries
+  - Recovery point after frame corruption
+
+Byte 1: Message ID (0x00-0xFF) 
+  - Maps to specific message types in proto definitions
+  - Used for routing and deserialization
+  - Must match `option msgid = X` in proto message
+```
+
+#### Footer Layout (2 bytes)
+```
+Byte N+2: Fletcher Checksum Byte 1
+Byte N+3: Fletcher Checksum Byte 2
+  - Fletcher-16 checksum algorithm
+  - Calculated over Message ID + Payload
+  - Provides error detection for corruption
+```
+
+### Frame Size Calculation
+
+**Total Frame Size = Header + Payload + Footer**
+- **Header**: 2 bytes (start byte + message ID)
+- **Payload**: Variable (depends on message content)  
+- **Footer**: 2 bytes (Fletcher checksum)
+
+**Example Calculations:**
+```proto
+message SimpleHeartbeat {
+  option msgid = 1;
+  uint32 device_id = 1;    // 4 bytes
+  bool alive = 2;          // 1 byte
+}
+// Total: 2 (header) + 5 (payload) + 2 (footer) = 9 bytes
+```
+
+### Framing Compatibility Matrix
+
+| Feature | C | TypeScript | Python | Status | Notes |
+|---------|---|------------|--------|---------|-------|
+| **Frame Encoding** | ✓ | ✓ | ✓ | Stable | All languages can create frames |
+| **Frame Parsing** | ✓ | ✓ | ✓ | Stable | State machine implementation |
+| **Checksum Validation** | ✓ | ✓ | ✓ | Stable | Fletcher-16 algorithm |
+| **Sync Recovery** | ✓ | ✓ | ✓ | Stable | Auto-recovery from corruption |
+| **Partial Frame Handling** | ✓ | ✓ | ✓ | Stable | Handles chunked data streams |
+| **Message ID Routing** | ✓ | ✓ | ✓ | Stable | Automatic message type detection |
+| **Buffer Management** | ✓ | ✓ | ✓ | Stable | Fixed-size buffers prevent overflow |
+| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | Stable | Frames interoperate between languages |
+
+### Extended Frame Format Options
+
+While struct-frame currently implements the Basic Frame format, the architecture supports extensible frame types:
+
+**Current Implementation:**
+- **Basic Frame**: Simple start byte + message ID + checksum
+- **Start Byte**: 0x90 (fixed)
+- **Header Length**: 2 bytes
+- **Footer Length**: 2 bytes (Fletcher checksum)
+
+**Potential Extensions** (Framework Ready):
+- **Length-Prefixed Frames**: Include explicit length field in header
+- **Multi-Byte Start Sequences**: Enhanced synchronization
+- **CRC32 Checksums**: Stronger error detection
+- **Protocol Versions**: Support multiple frame format versions
+
+## Frame Format Examples and Usage
+
+### Frame Breakdown Example
+
+Let's trace through a message encoding and parsing example:
+
+**Proto Definition:**
+```proto
+message VehicleStatus {
+  option msgid = 42;
+  uint32 vehicle_id = 1;
+  float speed = 2;  
+  bool engine_on = 3;
+}
+```
+
+**Message Data:**
+```
+vehicle_id = 1234 (0x04D2)    -> [0xD2, 0x04, 0x00, 0x00] (little-endian)
+speed = 65.5                  -> [0x00, 0x00, 0x83, 0x42] (IEEE 754 float)  
+engine_on = true              -> [0x01]
+Total payload: 9 bytes
+```
+
+**Frame Structure:**
+```
+Position: [0] [1] [2] [3] [4] [5] [6] [7] [8] [9] [10] [11] [12] [13]
+Data:     90  2A  D2  04  00  00  00  00  83  42  01   7E   C9
+          │   │   └─────── Payload (9 bytes) ──────────┘   │    │
+          │   └─ Message ID (42 = 0x2A)                    │    │
+          └─ Start Byte (0x90)                             └────┘
+                                                         Checksum
+```
+
+**Checksum Calculation (Fletcher-16):**
+```
+Input: [0x2A, 0xD2, 0x04, 0x00, 0x00, 0x00, 0x00, 0x83, 0x42, 0x01]
+Byte1 = (0x2A + 0xD2 + 0x04 + ... + 0x01) % 256 = 0x7E
+Byte2 = (0x2A + 0xFC + 0x00 + ... + 0xFD) % 256 = 0xC9  
+Result: [0x7E, 0xC9]
+```
+
+### Language-Specific Usage Examples
+
+#### Python Frame Handling
+
+```python
+# Import generated classes  
+from myl_vehicle_sf import VehicleStatus
+from struct_frame_parser import FrameParser, BasicPacket
+
+# Create message
+msg = VehicleStatus()
+msg.vehicle_id = 1234
+msg.speed = 65.5  
+msg.engine_on = True
+
+# Encode to frame
+packet = BasicPacket()
+frame_bytes = packet.encode_msg(msg)
+print(f"Frame: {[hex(b) for b in frame_bytes]}")
+
+# Parse frame (simulate byte-by-byte reception)
+parser = FrameParser({0x90: BasicPacket()}, {42: VehicleStatus})
+for byte in frame_bytes:
+    result = parser.parse_char(byte)
+    if result:
+        print(f"Parsed: vehicle_id={result.vehicle_id}, speed={result.speed}")
+```
+
+#### TypeScript Frame Handling
+
+```typescript
+import * as mv from './generated/ts/myl_vehicle.sf';
+import { struct_frame_buffer, parse_char } from './generated/ts/struct_frame_parser';
+
+// Create and encode message
+let tx_buffer = new struct_frame_buffer(256);
+let msg = new mv.VehicleStatus();
+msg.vehicle_id = 1234;
+msg.speed = 65.5;
+msg.engine_on = true;
+mv.VehicleStatus_encode(tx_buffer, msg);
+
+// Parse frame  
+let rx_buffer = new struct_frame_buffer(256);
+for (let i = 0; i < tx_buffer.size; i++) {
+  if (parse_char(rx_buffer, tx_buffer.data[i])) {
+    let parsed = mv.VehicleStatus_decode(rx_buffer.msg_data);
+    console.log(`Parsed: vehicle_id=${parsed.vehicle_id}, speed=${parsed.speed}`);
+  }
+}
+```
+
+#### C Frame Handling  
+
+```c
+#include "myl_vehicle.sf.h"
+#include "struct_frame_parser.h"
+
+// Create message
+VehicleStatus msg = {0};
+msg.vehicle_id = 1234;
+msg.speed = 65.5f;
+msg.engine_on = true;
+
+// Encode to frame
+uint8_t frame_buffer[256];
+size_t frame_size = basic_frame_encode(frame_buffer, 42, (uint8_t*)&msg, sizeof(msg));
+
+// Parse frame
+packet_state_t parser = {0};
+// ... initialize parser ...
+
+for (size_t i = 0; i < frame_size; i++) {
+  msg_info_t info = parse_char(&parser, frame_buffer[i]);
+  if (info.valid) {
+    VehicleStatus* parsed = (VehicleStatus*)info.msg_loc;
+    printf("Parsed: vehicle_id=%d, speed=%.1f\n", parsed->vehicle_id, parsed->speed);
+  }
+}
+```
+
+### Real-World Integration Patterns
+
+#### Serial Communication
+```python
+import serial
+from struct_frame_parser import FrameParser
+
+# Setup serial connection
+ser = serial.Serial('/dev/ttyUSB0', 115200)
+parser = FrameParser(packet_formats, message_definitions)
+
+# Continuous parsing loop
+while True:
+    if ser.in_waiting:
+        byte = ser.read(1)[0] 
+        result = parser.parse_char(byte)
+        if result:
+            handle_message(result)
+```
+
+#### TCP Socket Communication  
+```typescript
+import * as net from 'net';
+import { struct_frame_buffer, parse_char } from './struct_frame_parser';
+
+const client = net.createConnection({port: 8080}, () => {
+  console.log('Connected to server');
+});
+
+let rx_buffer = new struct_frame_buffer(1024);
+client.on('data', (data: Buffer) => {
+  for (let byte of data) {
+    if (parse_char(rx_buffer, byte)) {
+      // Process complete message
+      handleMessage(rx_buffer.msg_data);
+    }
+  }
+});
+```
 
 ## Project Structure
 
@@ -173,7 +469,7 @@ message StringExample {
 }
 ```
 
-**String Benefits:**
+**String Features:**
 - **Simplified Schema**: No need to specify `repeated uint8` for text data
 - **Automatic Encoding**: UTF-8 encoding/decoding handled by generators  
 - **Null Handling**: Proper null-termination and padding for fixed strings
@@ -216,7 +512,7 @@ message Data {
 }
 ```
 
-## Complete Example
+## Usage Example
 
 ```proto
 package sensor_system;
@@ -292,4 +588,4 @@ python src/main.py schema.proto --build_gql --gql_path output/graphql/
 
 ## Additional Documentation
 
-- **[Array Implementation Guide](ARRAY_IMPLEMENTATION.md)** - Comprehensive documentation of array features, syntax, and generated code examples across all languages
+- **[Array Implementation Guide](ARRAY_IMPLEMENTATION.md)** - Documentation of array features, syntax, and generated code examples across all languages
