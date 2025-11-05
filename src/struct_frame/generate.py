@@ -57,7 +57,7 @@ class Enum:
 
         return True
 
-    def validate(self, currentPackage, packages):
+    def validate(self, currentPackage, packages, debug=False):
         return True
 
     def __str__(self):
@@ -156,7 +156,7 @@ class Field:
             pass
         return True
 
-    def validate(self, currentPackage, packages):
+    def validate(self, currentPackage, packages, debug=False):
 
         global recErrCurrentField
         recErrCurrentField = self.name
@@ -164,7 +164,7 @@ class Field:
             ret = currentPackage.findFieldType(self.fieldType)
 
             if ret:
-                if ret.validate(currentPackage, packages):
+                if ret.validate(currentPackage, packages, debug):
                     self.isEnum = ret.isEnum
                     self.validated = True
                     base_size = ret.size
@@ -224,29 +224,30 @@ class Field:
         else:
             self.size = base_size
 
-        # Debug output
-        array_info = ""
-        if self.is_array:
-            if self.fieldType == "string":
-                # String arrays show both array size and individual element size
+        # Debug output - only show when debug flag is enabled
+        if debug:
+            array_info = ""
+            if self.is_array:
+                if self.fieldType == "string":
+                    # String arrays show both array size and individual element size
+                    if self.size_option is not None:
+                        array_info = f", fixed_string_array size={self.size_option}, element_size={self.element_size}"
+                    elif self.max_size is not None:
+                        array_info = f", bounded_string_array max_size={self.max_size}, element_size={self.element_size}"
+                else:
+                    # Regular arrays
+                    if self.size_option is not None:
+                        array_info = f", fixed_array size={self.size_option}"
+                    elif self.max_size is not None:
+                        array_info = f", bounded_array max_size={self.max_size}"
+            elif self.fieldType == "string":
+                # Regular strings
                 if self.size_option is not None:
-                    array_info = f", fixed_string_array size={self.size_option}, element_size={self.element_size}"
+                    array_info = f", fixed_string size={self.size_option}"
                 elif self.max_size is not None:
-                    array_info = f", bounded_string_array max_size={self.max_size}, element_size={self.element_size}"
-            else:
-                # Regular arrays
-                if self.size_option is not None:
-                    array_info = f", fixed_array size={self.size_option}"
-                elif self.max_size is not None:
-                    array_info = f", bounded_array max_size={self.max_size}"
-        elif self.fieldType == "string":
-            # Regular strings
-            if self.size_option is not None:
-                array_info = f", fixed_string size={self.size_option}"
-            elif self.max_size is not None:
-                array_info = f", variable_string max_size={self.max_size}"
-        print(
-            f"  Field {self.name}: type={self.fieldType}, is_array={self.is_array}{array_info}, calculated_size={self.size}")
+                    array_info = f", variable_string max_size={self.max_size}"
+            print(
+                f"  Field {self.name}: type={self.fieldType}, is_array={self.is_array}{array_info}, calculated_size={self.size}")
 
         return True
 
@@ -304,14 +305,14 @@ class Message:
                     return False
         return True
 
-    def validate(self, currentPackage, packages):
+    def validate(self, currentPackage, packages, debug=False):
         if self.validated:
             return True
 
         global recErrCurrentMessage
         recErrCurrentMessage = self.name
         for key, value in self.fields.items():
-            if not value.validate(currentPackage, packages):
+            if not value.validate(currentPackage, packages, debug):
                 print(
                     f"Failed To validate Field: {key}, in Message {self.name}\n")
                 return False
@@ -391,7 +392,7 @@ class Package:
         self.messages[message.name] = Message(self.name, comments)
         return self.messages[message.name].parse(message)
 
-    def validatePackage(self, allPackages):
+    def validatePackage(self, allPackages, debug=False):
         names = []
         for key, value in self.enums.items():
             if value.name in names:
@@ -407,7 +408,7 @@ class Package:
             names.append(value.name)
 
         for key, value in self.messages.items():
-            if not value.validate(self, allPackages):
+            if not value.validate(self, allPackages, debug):
                 print(
                     f"Failed To validate Message: {key}, in Package {self.name}\n")
                 return False
@@ -446,6 +447,8 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('filename')
 parser.add_argument('--debug', action='store_true')
+parser.add_argument('--validate', action='store_true',
+                    help='Validate the proto file without generating any output files')
 parser.add_argument('--build_c', action='store_true')
 parser.add_argument('--build_ts', action='store_true')
 parser.add_argument('--build_py', action='store_true')
@@ -496,9 +499,9 @@ def parseFile(filename):
                 comments.append(e.text)
 
 
-def validatePackages():
+def validatePackages(debug=False):
     for key, value in packages.items():
-        if not value.validatePackage(packages):
+        if not value.validatePackage(packages, debug):
             print(f"Failed To Validate Package: {key}")
             return False
 
@@ -542,22 +545,33 @@ def main():
     args = parser.parse_args()
     parseFile(args.filename)
 
-    if (not args.build_c and not args.build_ts and not args.build_py and not args.build_gql):
+    # If validate mode is specified, skip build argument check and file generation
+    if args.validate:
+        print("Running in validate mode - no files will be generated")
+    elif (not args.build_c and not args.build_ts and not args.build_py and not args.build_gql):
         print("Select at least one build argument")
         return
 
     valid = False
     try:
-        valid = validatePackages()
+        valid = validatePackages(args.debug)
     except RecursionError as err:
         print(
             f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {recErrCurrentMessage} and Field: {recErrCurrentField}')
         return
 
     if not valid:
-        print("Validation failed; aborting code generation.")
+        print("Validation failed")
         return
 
+    if args.validate:
+        # In validate mode, only perform validation - no file generation
+        print("Validation successful")
+        if args.debug:
+            printPackages()
+        return
+
+    # Normal mode: generate files
     files = {}
     if (args.build_c):
         files.update(generateCFileStrings(args.c_path[0]))
