@@ -222,8 +222,14 @@ class CrossPlatformTest:
         success, decoded_data = self.run_decoder(decoder_lang, binary_data, framed)
         if not success:
             self.log(f"{test_name}: Decoder failed", "ERROR")
-            if self.verbose and binary_data:
-                self.log(f"Raw data (hex): {binary_data.hex()}", "INFO")
+            # Print debugging information on failure
+            print(f"\n  🔍 Failure Details:")
+            print(f"    Encoded by: {encoder_lang}")
+            print(f"    Decoded by: {decoder_lang}")
+            print(f"    Raw data length: {len(binary_data)} bytes")
+            print(f"    Raw data (hex): {binary_data.hex()}")
+            if binary_data:
+                print(f"    Raw data (bytes): {list(binary_data)}")
             self.failed_tests += 1
             self.results[test_name] = False
             return False
@@ -238,9 +244,15 @@ class CrossPlatformTest:
             return True
         else:
             self.log(f"{test_name}: Verification failed", "ERROR")
-            if self.verbose:
-                self.log(f"Decoded data: {decoded_data}", "INFO")
-                self.log(f"Raw data (hex): {binary_data.hex()}", "INFO")
+            # Print debugging information on verification failure
+            print(f"\n  🔍 Verification Failure Details:")
+            print(f"    Encoded by: {encoder_lang}")
+            print(f"    Decoded by: {decoder_lang}")
+            print(f"    Decoded data: {decoded_data}")
+            print(f"    Raw data length: {len(binary_data)} bytes")
+            print(f"    Raw data (hex): {binary_data.hex()}")
+            if binary_data:
+                print(f"    Raw data (bytes): {list(binary_data)}")
             self.failed_tests += 1
             self.results[test_name] = False
             return False

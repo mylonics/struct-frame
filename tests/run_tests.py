@@ -36,7 +36,8 @@ class TestRunner:
             'basic_types': {'c': False, 'ts': False, 'py': False},
             'arrays': {'c': False, 'ts': False, 'py': False},
             'serialization': {'c': False, 'ts': False, 'py': False},
-            'cross_language': False
+            'cross_language': False,
+            'cross_platform_pipe': False
         }
 
     def log(self, message, level="INFO"):
@@ -423,6 +424,32 @@ class TestRunner:
         else:
             self.log("No cross-language test data files found", "WARNING")
             return False
+    
+    def run_cross_platform_pipe_tests(self):
+        """Run cross-platform pipe tests"""
+        self.log("=== Running Cross-Platform Pipe Tests ===")
+        
+        cross_platform_script = self.tests_dir / "cross_platform_test.py"
+        if not cross_platform_script.exists():
+            self.log("Cross-platform test script not found", "WARNING")
+            return True  # Don't fail if test doesn't exist
+        
+        cmd = f"{sys.executable} {cross_platform_script}"
+        success, stdout, stderr = self.run_command(cmd, cwd=self.tests_dir)
+        
+        # Print the output regardless of success for visibility
+        if stdout:
+            print(stdout)
+        
+        if success:
+            self.log("Cross-platform pipe tests passed", "SUCCESS")
+            self.results['cross_platform_pipe'] = True
+            return True
+        else:
+            self.log("Cross-platform pipe tests failed", "WARNING")
+            # Don't fail the entire suite for this
+            self.results['cross_platform_pipe'] = False
+            return True
 
     def print_summary(self, tested_languages=['c', 'ts', 'py']):
         """Print a summary of all test results"""
@@ -469,9 +496,16 @@ class TestRunner:
         # Cross-language compatibility
         print(f"\n🌐 Cross-Language Compatibility:")
         status = "✅ PASS" if self.results['cross_language'] else "❌ FAIL"
-        print(f"  {'OVERALL':>10}: {status}")
+        print(f"  {'File-based':>10}: {status}")
         total_tests += 1
         if self.results['cross_language']:
+            passed_tests += 1
+        
+        # Cross-platform pipe tests
+        status = "✅ PASS" if self.results['cross_platform_pipe'] else "❌ FAIL"
+        print(f"  {'Pipe-based':>10}: {status}")
+        total_tests += 1
+        if self.results['cross_platform_pipe']:
             passed_tests += 1
 
         # Overall result
@@ -590,6 +624,10 @@ def main():
 
         # Run cross-language compatibility tests
         if not runner.run_cross_language_tests():
+            success = False
+        
+        # Run cross-platform pipe tests
+        if not runner.run_cross_platform_pipe_tests():
             success = False
 
         # Print summary
