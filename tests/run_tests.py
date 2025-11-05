@@ -180,9 +180,6 @@ class TestRunner:
             "serialization_test.proto"
         ]
 
-        # Copy required boilerplate files
-        self.copy_boilerplate_files()
-
         all_success = True
         for proto_file in proto_files:
             success = self.generate_code(proto_file, languages)
@@ -195,34 +192,6 @@ class TestRunner:
                     self.results['generation'][lang] = True
 
         return all_success
-
-    def copy_boilerplate_files(self):
-        """Copy boilerplate files to the generated directories"""
-        boilerplate_dir = self.src_dir / "struct_frame" / "boilerplate"
-
-        # Copy C boilerplate files
-        c_boilerplate = boilerplate_dir / "c"
-        if c_boilerplate.exists():
-            for file in c_boilerplate.glob("*.h"):
-                dest = self.generated_dir / "c" / file.name
-                shutil.copy2(file, dest)
-                self.log(f"Copied C boilerplate: {file.name}")
-
-        # Copy Python boilerplate files
-        py_boilerplate = boilerplate_dir / "py"
-        if py_boilerplate.exists():
-            for file in py_boilerplate.glob("*.py"):
-                dest = self.generated_dir / "py" / file.name
-                shutil.copy2(file, dest)
-                self.log(f"Copied Python boilerplate: {file.name}")
-
-        # Copy TypeScript boilerplate files
-        ts_boilerplate = boilerplate_dir / "ts"
-        if ts_boilerplate.exists():
-            for file in ts_boilerplate.glob("*.ts"):
-                dest = self.generated_dir / "ts" / file.name
-                shutil.copy2(file, dest)
-                self.log(f"Copied TypeScript boilerplate: {file.name}")
 
     def test_c_compilation(self):
         """Test C code compilation"""
@@ -455,7 +424,7 @@ class TestRunner:
             self.log("No cross-language test data files found", "WARNING")
             return False
 
-    def print_summary(self):
+    def print_summary(self, tested_languages=['c', 'ts', 'py']):
         """Print a summary of all test results"""
         print("\n" + "="*60)
         print("📊 TEST RESULTS SUMMARY")
@@ -467,27 +436,30 @@ class TestRunner:
 
         # Code generation results
         print("\n🔧 Code Generation:")
-        for lang in ['c', 'ts', 'py']:
+        for lang in tested_languages:
             status = "✅ PASS" if self.results['generation'][lang] else "❌ FAIL"
             print(f"  {lang.upper():>10}: {status}")
             total_tests += 1
             if self.results['generation'][lang]:
                 passed_tests += 1
 
-        # Compilation results
-        print("\n🔨 Compilation:")
-        for lang in ['c', 'ts', 'py']:
-            status = "✅ PASS" if self.results['compilation'][lang] else "❌ FAIL"
-            print(f"  {lang.upper():>10}: {status}")
-            total_tests += 1
-            if self.results['compilation'][lang]:
-                passed_tests += 1
+        # Compilation results (only for languages that need compilation)
+        compiled_languages = [
+            lang for lang in tested_languages if lang in ['c', 'ts']]
+        if compiled_languages:
+            print("\n🔨 Compilation:")
+            for lang in compiled_languages:
+                status = "✅ PASS" if self.results['compilation'][lang] else "❌ FAIL"
+                print(f"  {lang.upper():>10}: {status}")
+                total_tests += 1
+                if self.results['compilation'][lang]:
+                    passed_tests += 1
 
         # Test execution results
         test_types = ['basic_types', 'arrays', 'serialization']
         for test_type in test_types:
             print(f"\n🧪 {test_type.replace('_', ' ').title()} Tests:")
-            for lang in ['c', 'ts', 'py']:
+            for lang in tested_languages:
                 status = "✅ PASS" if self.results[test_type][lang] else "❌ FAIL"
                 print(f"  {lang.upper():>10}: {status}")
                 total_tests += 1
@@ -621,7 +593,7 @@ def main():
             success = False
 
         # Print summary
-        overall_success = runner.print_summary()
+        overall_success = runner.print_summary(languages)
 
         end_time = time.time()
         print(f"\n⏱️  Total test time: {end_time - start_time:.2f} seconds")

@@ -82,7 +82,7 @@ Each language directory contains parallel test implementations:
 #### C Compilation Issues
 - **Missing GCC**: Test runner gracefully skips if GCC unavailable
 - **Header Issues**: Check generated files in `tests/generated/c/`
-- **Boilerplate Problems**: Verify `copy_boilerplate_files()` execution
+- **Boilerplate Problems**: Verify boilerplate files are automatically copied by the main generation script
 - **C++ Syntax**: Look for aggregate initialization (`{}`) instead of C-compatible `{0}`
 
 #### Python Test Issues  
