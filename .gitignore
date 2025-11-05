@@ -19,6 +19,8 @@ ts/
 # Test artifacts
 tests/c/*.exe
 tests/c/*.bin
+tests/cpp/*.exe
+tests/cpp/*.bin
 tests/py/*.bin
 tests/ts/*.bin
 *_test_data.bin
