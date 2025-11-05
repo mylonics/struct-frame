@@ -8,6 +8,35 @@
 #include "basic_types.sf.h"
 #include "struct_frame_default_frame.h"
 
+// Debug printing function for BasicTypesMessage
+void print_basic_types_message(const char* label, const BasicTypesBasicTypesMessage* msg) {
+  printf("=== %s ===\n", label);
+  printf("  small_int: %d\n", msg->small_int);
+  printf("  medium_int: %d\n", msg->medium_int);
+  printf("  regular_int: %d\n", msg->regular_int);
+  printf("  large_int: %lld\n", msg->large_int);
+  printf("  small_uint: %u\n", msg->small_uint);
+  printf("  medium_uint: %u\n", msg->medium_uint);
+  printf("  regular_uint: %u\n", msg->regular_uint);
+  printf("  large_uint: %llu\n", msg->large_uint);
+  printf("  single_precision: %.6f\n", msg->single_precision);
+  printf("  double_precision: %.15f\n", msg->double_precision);
+  printf("  flag: %s\n", msg->flag ? "true" : "false");
+  printf("  device_id: '%s'\n", msg->device_id);
+  printf("  description: '%s'\n", msg->description);
+  printf("\n");
+}
+
+#define ASSERT_WITH_DEBUG(condition, msg1, msg2)           \
+  do {                                                     \
+    if (!(condition)) {                                    \
+      printf("❌ ASSERTION FAILED: %s\n", #condition);     \
+      print_basic_types_message("ORIGINAL MESSAGE", msg1); \
+      print_basic_types_message("DECODED MESSAGE", msg2);  \
+      assert(condition);                                   \
+    }                                                      \
+  } while (0)
+
 int test_basic_types() {
   printf("Testing Basic Types C Implementation...\n");
 
@@ -65,25 +94,26 @@ int test_basic_types() {
   BasicTypesBasicTypesMessage decoded_msg = basic_types_basic_types_message_get(decode_result);
 
   // Verify the data
-  assert(decoded_msg.small_int == -42);
-  assert(decoded_msg.medium_int == -1000);
-  assert(decoded_msg.regular_int == -100000);
-  assert(decoded_msg.large_int == -1000000000LL);
+  ASSERT_WITH_DEBUG(decoded_msg.small_int == -42, &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(decoded_msg.medium_int == -1000, &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(decoded_msg.regular_int == -100000, &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(decoded_msg.large_int == -1000000000LL, &msg, &decoded_msg);
 
-  assert(decoded_msg.small_uint == 255);
-  assert(decoded_msg.medium_uint == 65535);
-  assert(decoded_msg.regular_uint == 4294967295U);
-  assert(decoded_msg.large_uint == 18446744073709551615ULL);
+  ASSERT_WITH_DEBUG(decoded_msg.small_uint == 255, &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(decoded_msg.medium_uint == 65535, &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(decoded_msg.regular_uint == 4294967295U, &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(decoded_msg.large_uint == 18446744073709551615ULL, &msg, &decoded_msg);
 
-  assert(decoded_msg.single_precision == 3.14159f);
-  assert(decoded_msg.double_precision == 2.718281828459045);
+  ASSERT_WITH_DEBUG(decoded_msg.single_precision == 3.14159f, &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(decoded_msg.double_precision == 2.718281828459045, &msg, &decoded_msg);
 
-  assert(decoded_msg.flag == true);
+  ASSERT_WITH_DEBUG(decoded_msg.flag == true, &msg, &decoded_msg);
 
-  assert(strncmp(decoded_msg.device_id, "TEST_DEVICE_12345678901234567890", 32) == 0);
-  assert(decoded_msg.description.length == strlen("Test description for basic types"));
-  assert(strncmp(decoded_msg.description.data, "Test description for basic types", decoded_msg.description.length) ==
-         0);
+  ASSERT_WITH_DEBUG(strncmp(decoded_msg.device_id, "TEST_DEVICE_12345678901234567890", 32) == 0, &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(decoded_msg.description.length == strlen("Test description for basic types"), &msg, &decoded_msg);
+  ASSERT_WITH_DEBUG(
+      strncmp(decoded_msg.description.data, "Test description for basic types", decoded_msg.description.length) == 0,
+      &msg, &decoded_msg);
 
   printf("✅ All basic types serialization/deserialization tests passed!\n");
   return 1;

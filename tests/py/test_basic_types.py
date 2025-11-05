@@ -7,6 +7,34 @@ import sys
 import os
 
 
+def print_basic_types_message(label, msg):
+    """Debug printing function for BasicTypesMessage"""
+    print(f"=== {label} ===")
+    print(f"  small_int: {msg.small_int}")
+    print(f"  medium_int: {msg.medium_int}")
+    print(f"  regular_int: {msg.regular_int}")
+    print(f"  large_int: {msg.large_int}")
+    print(f"  small_uint: {msg.small_uint}")
+    print(f"  medium_uint: {msg.medium_uint}")
+    print(f"  regular_uint: {msg.regular_uint}")
+    print(f"  large_uint: {msg.large_uint}")
+    print(f"  single_precision: {msg.single_precision:.6f}")
+    print(f"  double_precision: {msg.double_precision:.15f}")
+    print(f"  flag: {msg.flag}")
+    print(f"  device_id: '{msg.device_id}'")
+    print(f"  description: '{msg.description}'")
+    print()
+
+
+def assert_with_debug(condition, msg1, msg2, description):
+    """Assert with debug output for Python tests"""
+    if not condition:
+        print(f"❌ ASSERTION FAILED: {description}")
+        print_basic_types_message("ORIGINAL MESSAGE", msg1)
+        print_basic_types_message("DECODED MESSAGE", msg2)
+        assert condition, description
+
+
 def test_basic_types():
     """Test basic data types serialization and deserialization"""
     print("Testing Basic Types Python Implementation...")

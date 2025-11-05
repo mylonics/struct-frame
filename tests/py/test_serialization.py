@@ -7,6 +7,29 @@ import sys
 import os
 
 
+def print_serialization_message(label, msg):
+    """Debug printing function for SerializationTestMessage"""
+    print(f"=== {label} ===")
+    print(f"  magic_number: 0x{msg.magic_number:X}")
+    print(f"  test_string: '{msg.test_string}'")
+    print(f"  test_float: {msg.test_float:.6f}")
+    print(f"  test_bool: {msg.test_bool}")
+    if hasattr(msg, 'test_enum'):
+        print(f"  test_enum: {msg.test_enum}")
+    if hasattr(msg, 'test_array'):
+        print(f"  test_array: {msg.test_array}")
+    print()
+
+
+def assert_serialization_with_debug(condition, msg1, msg2, description):
+    """Assert with debug output for Python serialization tests"""
+    if not condition:
+        print(f"❌ ASSERTION FAILED: {description}")
+        print_serialization_message("ORIGINAL MESSAGE", msg1)
+        print_serialization_message("DECODED MESSAGE", msg2)
+        assert condition, description
+
+
 def create_test_data():
     """Create test data for cross-language compatibility testing"""
     print("Creating test data for cross-language compatibility...")

@@ -1,6 +1,36 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+// Debug printing function for BasicTypesMessage
+function printBasicTypesMessage(label: string, msg: any): void {
+  console.log(`=== ${label} ===`);
+  console.log(`  small_int: ${msg.small_int}`);
+  console.log(`  medium_int: ${msg.medium_int}`);
+  console.log(`  regular_int: ${msg.regular_int}`);
+  console.log(`  large_int: ${msg.large_int}`);
+  console.log(`  small_uint: ${msg.small_uint}`);
+  console.log(`  medium_uint: ${msg.medium_uint}`);
+  console.log(`  regular_uint: ${msg.regular_uint}`);
+  console.log(`  large_uint: ${msg.large_uint}`);
+  console.log(`  single_precision: ${msg.single_precision?.toFixed(6)}`);
+  console.log(`  double_precision: ${msg.double_precision?.toFixed(15)}`);
+  console.log(`  flag: ${msg.flag}`);
+  console.log(`  device_id: '${msg.device_id}'`);
+  console.log(`  description_length: ${msg.description_length}`);
+  console.log(`  description_data: '${msg.description_data}'`);
+  console.log('');
+}
+
+// Assert with debug output for TypeScript basic types tests
+function assertWithDebug(condition: boolean, msg1: any, msg2: any, description: string): void {
+  if (!condition) {
+    console.log(`❌ ASSERTION FAILED: ${description}`);
+    printBasicTypesMessage("ORIGINAL MESSAGE", msg1);
+    printBasicTypesMessage("DECODED MESSAGE", msg2);
+    throw new Error(description);
+  }
+}
+
 // Import generated types - these will be generated when the test suite runs
 // Note: These imports will work after code generation
 let basic_types_BasicTypesMessage: any;

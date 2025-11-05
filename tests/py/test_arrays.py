@@ -7,6 +7,34 @@ import sys
 import os
 
 
+def print_arrays_message(label, msg):
+    """Debug printing function for ComprehensiveArrayMessage"""
+    print(f"=== {label} ===")
+    print(f"  fixed_ints: {msg.fixed_ints}")
+    print(f"  fixed_floats: {msg.fixed_floats}")
+    print(f"  fixed_bools: {msg.fixed_bools}")
+    print(f"  bounded_uints: {msg.bounded_uints}")
+    print(f"  bounded_doubles: {msg.bounded_doubles}")
+    print(f"  fixed_strings: {msg.fixed_strings}")
+    print(f"  bounded_strings: {msg.bounded_strings}")
+    print(f"  fixed_statuses: {msg.fixed_statuses}")
+    print(f"  bounded_statuses: {msg.bounded_statuses}")
+    print(
+        f"  fixed_sensors: {[f'{{id:{s.id}, value:{s.value}, status:{s.status}, name:{s.name}}}' for s in msg.fixed_sensors]}")
+    print(
+        f"  bounded_sensors: {[f'{{id:{s.id}, value:{s.value}, status:{s.status}, name:{s.name}}}' for s in msg.bounded_sensors]}")
+    print()
+
+
+def assert_arrays_with_debug(condition, msg1, msg2, description):
+    """Assert with debug output for Python arrays tests"""
+    if not condition:
+        print(f"❌ ASSERTION FAILED: {description}")
+        print_arrays_message("ORIGINAL MESSAGE", msg1)
+        print_arrays_message("DECODED MESSAGE", msg2)
+        assert condition, description
+
+
 def test_array_operations():
     """Test array operations serialization and deserialization"""
     print("Testing Array Operations Python Implementation...")

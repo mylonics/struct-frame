@@ -1,5 +1,31 @@
 import * as fs from 'fs';
 
+// Debug printing function for SerializationTestMessage
+function printSerializationMessage(label: string, msg: any): void {
+  console.log(`=== ${label} ===`);
+  console.log(`  magic_number: 0x${msg.magic_number?.toString(16).toUpperCase()}`);
+  console.log(`  test_string_length: ${msg.test_string_length}`);
+  console.log(`  test_string_data: '${msg.test_string_data}'`);
+  console.log(`  test_float: ${msg.test_float?.toFixed(6)}`);
+  console.log(`  test_bool: ${msg.test_bool}`);
+  if (msg.test_enum !== undefined) {
+    console.log(`  test_enum: ${msg.test_enum}`);
+  }
+  console.log(`  test_array_count: ${msg.test_array_count}`);
+  console.log(`  test_array_data: [${msg.test_array_data?.join(', ') || 'null'}]`);
+  console.log('');
+}
+
+// Assert with debug output for TypeScript serialization tests
+function assertSerializationWithDebug(condition: boolean, msg1: any, msg2: any, description: string): void {
+  if (!condition) {
+    console.log(`❌ ASSERTION FAILED: ${description}`);
+    printSerializationMessage("ORIGINAL MESSAGE", msg1);
+    printSerializationMessage("DECODED MESSAGE", msg2);
+    throw new Error(description);
+  }
+}
+
 // Import generated types - these will be generated when the test suite runs
 let serialization_test_SerializationTestMessage: any;
 let msg_encode: any;

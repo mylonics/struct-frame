@@ -1,5 +1,34 @@
 import * as fs from 'fs';
 
+// Debug printing function for ComprehensiveArrayMessage
+function printArraysMessage(label: string, msg: any): void {
+  console.log(`=== ${label} ===`);
+  console.log(`  fixed_ints: [${msg.fixed_ints?.join(', ') || 'null'}]`);
+  console.log(`  fixed_floats: [${msg.fixed_floats?.map((f: number) => f.toFixed(1)).join(', ') || 'null'}]`);
+  console.log(`  fixed_bools: [${msg.fixed_bools?.join(', ') || 'null'}]`);
+  console.log(`  bounded_uints_count: ${msg.bounded_uints_count}`);
+  console.log(`  bounded_uints_data: [${msg.bounded_uints_data?.join(', ') || 'null'}]`);
+  console.log(`  bounded_doubles_count: ${msg.bounded_doubles_count}`);
+  console.log(`  bounded_doubles_data: [${msg.bounded_doubles_data?.map((d: number) => d.toFixed(3)).join(', ') || 'null'}]`);
+  console.log(`  fixed_strings: [${msg.fixed_strings?.map((s: string) => `'${s}'`).join(', ') || 'null'}]`);
+  console.log(`  bounded_strings_count: ${msg.bounded_strings_count}`);
+  console.log(`  bounded_strings_data: [${msg.bounded_strings_data?.map((s: string) => `'${s}'`).join(', ') || 'null'}]`);
+  console.log(`  fixed_statuses: [${msg.fixed_statuses?.join(', ') || 'null'}]`);
+  console.log(`  bounded_statuses_count: ${msg.bounded_statuses_count}`);
+  console.log(`  bounded_statuses_data: [${msg.bounded_statuses_data?.join(', ') || 'null'}]`);
+  console.log('');
+}
+
+// Assert with debug output for TypeScript arrays tests
+function assertArraysWithDebug(condition: boolean, msg1: any, msg2: any, description: string): void {
+  if (!condition) {
+    console.log(`❌ ASSERTION FAILED: ${description}`);
+    printArraysMessage("ORIGINAL MESSAGE", msg1);
+    printArraysMessage("DECODED MESSAGE", msg2);
+    throw new Error(description);
+  }
+}
+
 // Import generated types - these will be generated when the test suite runs
 let comprehensive_arrays_ComprehensiveArrayMessage: any;
 let msg_encode: any;

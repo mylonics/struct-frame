@@ -6,6 +6,28 @@
 #include "serialization_test.sf.h"
 #include "struct_frame_default_frame.h"
 
+// Debug printing function for SerializationTestMessage
+void print_serialization_message(const char* label, const SerializationTestSerializationTestMessage* msg) {
+  printf("=== %s ===\n", label);
+  printf("  magic_number: 0x%X\n", msg->magic_number);
+  printf("  test_string: length=%d, data='%.*s'\n", msg->test_string.length, msg->test_string.length,
+         msg->test_string.data);
+  printf("  test_float: %.6f\n", msg->test_float);
+  printf("  test_bool: %s\n", msg->test_bool ? "true" : "false");
+  printf("  test_enum: %d\n", msg->test_enum);
+  printf("\n");
+}
+
+#define ASSERT_SERIALIZATION_WITH_DEBUG(condition, msg1, msg2) \
+  do {                                                         \
+    if (!(condition)) {                                        \
+      printf("❌ ASSERTION FAILED: %s\n", #condition);         \
+      print_serialization_message("ORIGINAL MESSAGE", msg1);   \
+      print_serialization_message("DECODED MESSAGE", msg2);    \
+      assert(condition);                                       \
+    }                                                          \
+  } while (0)
+
 // This program creates a test message and serializes it to a binary file
 // that can be used for cross-language compatibility testing
 int create_test_data() {
@@ -65,15 +87,16 @@ int create_test_data() {
       serialization_test_serialization_test_message_get(decode_result);
 
   // Verify the decoded data matches
-  assert(decoded_msg.magic_number == 0xDEADBEEF);
-  assert(decoded_msg.test_string.length == strlen("Hello from C!"));
-  assert(strncmp(decoded_msg.test_string.data, "Hello from C!", decoded_msg.test_string.length) == 0);
-  assert(decoded_msg.test_float == 3.14159f);
-  assert(decoded_msg.test_bool == true);
-  assert(decoded_msg.test_array.count == 3);
-  assert(decoded_msg.test_array.data[0] == 100);
-  assert(decoded_msg.test_array.data[1] == 200);
-  assert(decoded_msg.test_array.data[2] == 300);
+  ASSERT_SERIALIZATION_WITH_DEBUG(decoded_msg.magic_number == 0xDEADBEEF, &msg, &decoded_msg);
+  ASSERT_SERIALIZATION_WITH_DEBUG(decoded_msg.test_string.length == strlen("Hello from C!"), &msg, &decoded_msg);
+  ASSERT_SERIALIZATION_WITH_DEBUG(
+      strncmp(decoded_msg.test_string.data, "Hello from C!", decoded_msg.test_string.length) == 0, &msg, &decoded_msg);
+  ASSERT_SERIALIZATION_WITH_DEBUG(decoded_msg.test_float == 3.14159f, &msg, &decoded_msg);
+  ASSERT_SERIALIZATION_WITH_DEBUG(decoded_msg.test_bool == true, &msg, &decoded_msg);
+  ASSERT_SERIALIZATION_WITH_DEBUG(decoded_msg.test_array.count == 3, &msg, &decoded_msg);
+  ASSERT_SERIALIZATION_WITH_DEBUG(decoded_msg.test_array.data[0] == 100, &msg, &decoded_msg);
+  ASSERT_SERIALIZATION_WITH_DEBUG(decoded_msg.test_array.data[1] == 200, &msg, &decoded_msg);
+  ASSERT_SERIALIZATION_WITH_DEBUG(decoded_msg.test_array.data[2] == 300, &msg, &decoded_msg);
 
   printf("✅ Self-verification passed!\n");
   return 1;
