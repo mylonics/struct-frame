@@ -284,47 +284,62 @@ class TestRunner:
                 "G++ compiler not found - skipping C++ compilation test", "WARNING")
             return True  # Don't fail the entire test suite
 
-        # Create a simple test file
-        test_file = self.generated_dir / "cpp" / "test_cpp_basic.cpp"
-        test_code = """
-#include "basic_types.sf.hpp"
-#include <iostream>
+        test_files = [
+            "test_basic_types.cpp",
+            "test_arrays.cpp",
+            "test_serialization.cpp"
+        ]
 
-int main() {
-    BasicTypesBasicTypesMessage msg;
-    msg.small_int = 42;
-    msg.flag = true;
-    
-    size_t msg_size = 0;
-    if (StructFrame::get_message_length(BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID, &msg_size)) {
-        std::cout << "C++ compilation test passed!" << std::endl;
-        return 0;
-    }
-    return 1;
-}
-"""
-        with open(test_file, 'w') as f:
-            f.write(test_code)
+        all_success = True
 
-        output_path = self.generated_dir / "cpp" / "test_cpp_basic.exe"
+        for test_file in test_files:
+            test_path = self.tests_dir / "cpp" / test_file
+            output_path = self.tests_dir / "cpp" / f"{test_file[:-4]}.exe"
 
-        # Create compile command
-        command = f"g++ -std=c++17 -I{self.generated_dir / 'cpp'} -o {output_path} {test_file}"
+            # Create compile command
+            command = f"g++ -std=c++17 -I{self.generated_dir / 'cpp'} -o {output_path} {test_path}"
 
-        success, stdout, stderr = self.run_command(command)
-        if success:
-            self.log("C++ compilation successful", "SUCCESS")
-            self.results['compilation']['cpp'] = True
-            
-            # Try to run the test
-            run_success, _, _ = self.run_command(str(output_path))
-            if run_success:
-                self.log("C++ test execution successful", "SUCCESS")
-                self.results['basic_types']['cpp'] = True
-            return True
-        else:
-            self.log("C++ compilation failed", "ERROR")
-            return False
+            success, stdout, stderr = self.run_command(command)
+            if success:
+                self.log(
+                    f"C++ compilation successful for {test_file}", "SUCCESS")
+                self.results['compilation']['cpp'] = True
+            else:
+                self.log(f"C++ compilation failed for {test_file}", "ERROR")
+                all_success = False
+
+        return all_success
+
+    def run_cpp_tests(self):
+        """Run C++ test executables"""
+        self.log("=== Running C++ Tests ===")
+
+        test_executables = [
+            ("test_basic_types.exe", "basic_types"),
+            ("test_arrays.exe", "arrays"),
+            ("test_serialization.exe", "serialization")
+        ]
+
+        all_success = True
+
+        for exe_name, test_type in test_executables:
+            exe_path = self.tests_dir / "cpp" / exe_name
+
+            if not exe_path.exists():
+                self.log(f"Executable not found: {exe_name}", "WARNING")
+                continue
+
+            success, stdout, stderr = self.run_command(
+                str(exe_path), cwd=self.tests_dir / "cpp")
+
+            if success:
+                self.log(f"C++ {test_type} test passed", "SUCCESS")
+                self.results[test_type]['cpp'] = True
+            else:
+                self.log(f"C++ {test_type} test failed", "ERROR")
+                all_success = False
+
+        return all_success
 
     def test_typescript_compilation(self):
         """Test TypeScript code compilation"""
@@ -680,6 +695,8 @@ def main():
 
         if "cpp" in languages:
             if not runner.test_cpp_compilation():
+                success = False
+            if not runner.run_cpp_tests():
                 success = False
 
         if "ts" in languages:
