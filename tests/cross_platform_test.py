@@ -53,6 +53,8 @@ class CrossPlatformTest:
         else:
             mode = "struct"
             
+        env = os.environ.copy()
+            
         if language == "c":
             encoder_path = self.c_dir / f"encoder_{mode}"
             if not encoder_path.exists():
@@ -66,7 +68,6 @@ class CrossPlatformTest:
                 self.log(f"Python encoder not found: {encoder_path}", "ERROR")
                 return None
             # Set PYTHONPATH to include generated code
-            env = os.environ.copy()
             env["PYTHONPATH"] = str(self.gen_py_dir)
             cmd = [sys.executable, str(encoder_path)]
             cwd = self.py_dir
@@ -77,20 +78,14 @@ class CrossPlatformTest:
                 return None
             cmd = ["node", str(encoder_path)]
             cwd = self.ts_dir
-            env = os.environ.copy()
         else:
             self.log(f"Unknown language: {language}", "ERROR")
             return None
         
         try:
-            if language == "python":
-                result = subprocess.run(
-                    cmd, cwd=cwd, capture_output=True, timeout=5, env=env
-                )
-            else:
-                result = subprocess.run(
-                    cmd, cwd=cwd, capture_output=True, timeout=5
-                )
+            result = subprocess.run(
+                cmd, cwd=cwd, capture_output=True, timeout=5, env=env
+            )
             
             if result.returncode != 0:
                 self.log(f"{language.capitalize()} encoder failed", "ERROR")
@@ -112,6 +107,8 @@ class CrossPlatformTest:
             mode = "framed"
         else:
             mode = "struct"
+        
+        env = os.environ.copy()
             
         if language == "c":
             decoder_path = self.c_dir / f"decoder_{mode}"
@@ -125,7 +122,6 @@ class CrossPlatformTest:
             if not decoder_path.exists():
                 self.log(f"Python decoder not found: {decoder_path}", "ERROR")
                 return False, None
-            env = os.environ.copy()
             env["PYTHONPATH"] = str(self.gen_py_dir)
             cmd = [sys.executable, str(decoder_path)]
             cwd = self.py_dir
@@ -136,22 +132,15 @@ class CrossPlatformTest:
                 return False, None
             cmd = ["node", str(decoder_path)]
             cwd = self.ts_dir
-            env = os.environ.copy()
         else:
             self.log(f"Unknown language: {language}", "ERROR")
             return False, None
         
         try:
-            if language == "python":
-                result = subprocess.run(
-                    cmd, input=binary_data, cwd=cwd, 
-                    capture_output=True, timeout=5, env=env
-                )
-            else:
-                result = subprocess.run(
-                    cmd, input=binary_data, cwd=cwd, 
-                    capture_output=True, timeout=5
-                )
+            result = subprocess.run(
+                cmd, input=binary_data, cwd=cwd, 
+                capture_output=True, timeout=5, env=env
+            )
             
             if result.returncode != 0:
                 self.log(f"{language.capitalize()} decoder failed", "ERROR")
@@ -259,9 +248,16 @@ class CrossPlatformTest:
     
     def check_language_available(self, language: str, mode: str = "framed") -> bool:
         """Check if encoder/decoder for a language are available"""
-        # Skip Python and TypeScript for now due to known limitations
-        # Python: structured-classes library doesn't properly serialize variable-length fields
-        # TypeScript: Generated code has runtime errors with Array() method
+        # NOTE: Python and TypeScript are currently disabled due to known limitations:
+        # - Python: The structured-classes library's pack() method doesn't properly 
+        #   serialize variable-length strings and arrays. Only fixed-size primitive 
+        #   fields are included in the packed output, preventing proper cross-platform
+        #   message encoding.
+        # - TypeScript: Generated code has a runtime error where the .Array() method
+        #   doesn't exist on the typed-struct builder object. This is a code generation
+        #   bug in struct-frame's TypeScript generator.
+        # 
+        # Once these issues are resolved, remove the early return below.
         if language in ["python", "typescript"]:
             return False
             
