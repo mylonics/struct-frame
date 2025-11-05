@@ -39,6 +39,9 @@ class TestRunner:
             'cross_language': False,
             'cross_platform_pipe': False
         }
+        
+        # Cross-language compatibility matrix
+        self.cross_language_matrix = {}
 
     def log(self, message, level="INFO"):
         """Log a message with optional verbose output"""
@@ -121,9 +124,9 @@ class TestRunner:
         """Generate code for a specific proto file"""
         proto_path = self.tests_dir / "proto" / proto_file
 
-        # Build the command
+        # Build the command - use sys.executable to get the correct Python interpreter
         command_parts = [
-            "python", "-m", "struct_frame",
+            sys.executable, "-m", "struct_frame",
             str(proto_path)
         ]
 
@@ -258,8 +261,8 @@ class TestRunner:
             test_path = self.tests_dir / "cpp" / test_file
             output_path = self.tests_dir / "cpp" / f"{test_file[:-4]}.exe"
 
-            # Create compile command
-            command = f"g++ -std=c++17 -I{self.generated_dir / 'cpp'} -o {output_path} {test_path}"
+            # Create compile command - use C++14 for compatibility with older GCC
+            command = f"g++ -std=c++14 -I{self.generated_dir / 'cpp'} -o {output_path} {test_path}"
 
             success, stdout, stderr = self.run_command(command)
             if success:
@@ -469,33 +472,217 @@ class TestRunner:
         """Run cross-language compatibility tests"""
         self.log("=== Running Cross-Language Compatibility Tests ===")
 
-        # First, run all serialization tests to generate binary files
-        self.log("Generating cross-language test data...")
+        # Initialize cross-language compatibility matrix
+        # Structure: encoder_language -> {decoder_language: success_status}
+        self.cross_language_matrix = {}
 
-        # Run tests that create binary files (these should have already run)
-        binary_files = [
-            "c_test_data.bin",
-            "python_test_data.bin",
-            "typescript_test_data.bin"
-        ]
+        # Define available languages and their test data files
+        languages = {
+            'C': {
+                'data_file': 'c_test_data.bin',
+                'data_locations': [self.tests_dir / "c"],
+                'test_exe': self.tests_dir / "c" / "test_serialization.exe"
+            },
+            'Python': {
+                'data_file': 'python_test_data.bin', 
+                'data_locations': [self.tests_dir / "py"],
+                'test_script': self.tests_dir / "py" / "test_serialization.py"
+            },
+            'TypeScript': {
+                'data_file': 'typescript_test_data.bin',
+                'data_locations': [self.generated_dir / "ts"],
+                'test_script': None  # TypeScript tests might not be available
+            }
+        }
 
-        found_files = []
-        for file in binary_files:
-            if (self.tests_dir / "c" / file).exists():
-                found_files.append(f"C: {file}")
-            if (self.tests_dir / "py" / file).exists():
-                found_files.append(f"Python: {file}")
-            if (self.generated_dir / "ts" / file).exists():
-                found_files.append(f"TypeScript: {file}")
+        # First, check which languages have generated test data files
+        available_encoders = []
+        for lang_name, lang_info in languages.items():
+            for location in lang_info['data_locations']:
+                data_path = location / lang_info['data_file']
+                if data_path.exists():
+                    available_encoders.append(lang_name)
+                    self.log(f"Found {lang_name} test data: {data_path}", "SUCCESS")
+                    break
 
-        if found_files:
-            self.log(
-                f"Found test data files: {', '.join(found_files)}", "SUCCESS")
+        if not available_encoders:
+            self.log("No cross-language test data files found", "WARNING") 
+            return False
+
+        # Test cross-language decoding for each available encoder/decoder pair
+        for encoder_lang in available_encoders:
+            self.cross_language_matrix[encoder_lang] = {}
+            
+            # Test decoding with each available language
+            for decoder_lang in available_encoders:
+                if decoder_lang == encoder_lang:
+                    # Same language encoding/decoding should always work (tested in serialization tests)
+                    self.cross_language_matrix[encoder_lang][decoder_lang] = True
+                    continue
+                
+                # Test cross-language compatibility
+                success = self._test_cross_decode(encoder_lang, decoder_lang, languages)
+                self.cross_language_matrix[encoder_lang][decoder_lang] = success
+
+        # Print detailed compatibility matrix
+        self._print_cross_language_matrix()
+
+        # Determine overall success
+        total_tests = 0
+        successful_tests = 0
+        for encoder_lang, decoder_results in self.cross_language_matrix.items():
+            for decoder_lang, success in decoder_results.items():
+                if encoder_lang != decoder_lang:  # Skip self-tests
+                    total_tests += 1
+                    if success:
+                        successful_tests += 1
+
+        if successful_tests > 0:
             self.results['cross_language'] = True
+            self.log(f"Cross-language compatibility: {successful_tests}/{total_tests} tests passed", "SUCCESS")
             return True
         else:
-            self.log("No cross-language test data files found", "WARNING")
+            self.results['cross_language'] = False
+            self.log("No cross-language compatibility tests passed", "WARNING")
             return False
+
+    def _test_cross_decode(self, encoder_lang, decoder_lang, languages):
+        """Test if decoder_lang can decode data from encoder_lang"""
+        try:
+            encoder_info = languages[encoder_lang]
+            decoder_info = languages[decoder_lang]
+            
+            # Find the encoder's data file
+            encoder_data_path = None
+            for location in encoder_info['data_locations']:
+                potential_path = location / encoder_info['data_file']
+                if potential_path.exists():
+                    encoder_data_path = potential_path
+                    break
+                    
+            if not encoder_data_path:
+                return False
+
+            # Test decoding based on decoder language
+            if decoder_lang == 'C' and 'test_exe' in decoder_info:
+                return self._test_c_cross_decode(encoder_data_path, encoder_lang, decoder_info['test_exe'])
+            elif decoder_lang == 'Python' and 'test_script' in decoder_info:
+                return self._test_python_cross_decode(encoder_data_path, encoder_lang, decoder_info['test_script'])
+            else:
+                # Language decoder not available
+                return False
+                
+        except Exception as e:
+            self.log(f"Exception testing {decoder_lang} decode of {encoder_lang} data: {e}", "WARNING")
+            return False
+
+    def _test_c_cross_decode(self, data_file_path, encoder_lang, test_exe_path):
+        """Test C decoder with data from another language"""
+        if not test_exe_path.exists():
+            return False
+            
+        # Copy the data file to where the C test expects it
+        target_file = self.tests_dir / "c" / data_file_path.name
+        try:
+            import shutil
+            shutil.copy2(data_file_path, target_file)
+            
+            # Run the C test (it will try to decode the copied file)
+            success, stdout, stderr = self.run_command(str(test_exe_path), cwd=self.tests_dir / "c")
+            return success
+            
+        except Exception as e:
+            self.log(f"C cross-decode test failed: {e}", "WARNING")
+            return False
+        finally:
+            # Clean up the copied file
+            try:
+                if target_file.exists():
+                    target_file.unlink()
+            except:
+                pass
+
+    def _test_python_cross_decode(self, data_file_path, encoder_lang, test_script_path):
+        """Test Python decoder with data from another language"""
+        if not test_script_path.exists():
+            return False
+            
+        # Copy the data file to where the Python test expects it
+        target_file = self.tests_dir / "py" / data_file_path.name
+        try:
+            import shutil
+            shutil.copy2(data_file_path, target_file)
+            
+            # Set up Python environment and run the test
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(self.generated_dir / "py")
+            
+            result = subprocess.run(
+                [sys.executable, str(test_script_path)],
+                cwd=self.tests_dir / "py",
+                capture_output=True,
+                text=True,
+                env=env,
+                timeout=30
+            )
+            
+            return result.returncode == 0
+            
+        except Exception as e:
+            self.log(f"Python cross-decode test failed: {e}", "WARNING")
+            return False
+        finally:
+            # Clean up the copied file
+            try:
+                if target_file.exists():
+                    target_file.unlink()
+            except:
+                pass
+
+    def _print_cross_language_matrix(self):
+        """Print a detailed cross-language compatibility matrix"""
+        if not self.cross_language_matrix:
+            return
+            
+        print("\n🔀 CROSS-LANGUAGE COMPATIBILITY MATRIX")
+        print("="*50)
+        print("Format: [Encoder Language] → [Decoder Language]")
+        print()
+        
+        # Get all languages involved
+        all_languages = set()
+        for encoder_lang, decoder_results in self.cross_language_matrix.items():
+            all_languages.add(encoder_lang)
+            all_languages.update(decoder_results.keys())
+        
+        # Sort for consistent output
+        sorted_languages = sorted(all_languages)
+        
+        # Print header
+        header = "Encoder\\Decoder".ljust(15)
+        for lang in sorted_languages:
+            header += lang[:8].ljust(10)
+        print(header)
+        print("-" * len(header))
+        
+        # Print matrix rows
+        for encoder_lang in sorted_languages:
+            if encoder_lang in self.cross_language_matrix:
+                row = encoder_lang.ljust(15)
+                for decoder_lang in sorted_languages:
+                    if decoder_lang in self.cross_language_matrix[encoder_lang]:
+                        success = self.cross_language_matrix[encoder_lang][decoder_lang]
+                        symbol = "✅" if success else "❌"
+                        if encoder_lang == decoder_lang:
+                            symbol = "🔄"  # Self-test symbol
+                    else:
+                        symbol = "⚫"  # Not tested
+                    row += f"{symbol:>8}  "
+                print(row)
+        
+        print()
+        print("Legend: ✅ = Success  ❌ = Failed  🔄 = Self-test  ⚫ = Not tested")
+        print()
     
     def run_cross_platform_pipe_tests(self):
         """Run cross-platform pipe tests"""
@@ -568,10 +755,32 @@ class TestRunner:
         # Cross-language compatibility
         print(f"\n🌐 Cross-Language Compatibility:")
         status = "✅ PASS" if self.results['cross_language'] else "❌ FAIL"
-        print(f"  {'File-based':>10}: {status}")
+        print(f"  {'Overall':>10}: {status}")
         total_tests += 1
         if self.results['cross_language']:
             passed_tests += 1
+        
+        # Print detailed cross-language matrix if available
+        if hasattr(self, 'cross_language_matrix') and self.cross_language_matrix:
+            print("\n📋 Detailed Cross-Language Test Results:")
+            for encoder_lang, decoder_results in self.cross_language_matrix.items():
+                for decoder_lang, success in decoder_results.items():
+                    if encoder_lang != decoder_lang:  # Skip self-tests in summary
+                        status_symbol = "✅" if success else "❌"
+                        print(f"    {encoder_lang} → {decoder_lang}: {status_symbol}")
+            
+            # Count cross-language specific results
+            cross_success = sum(1 for encoder_lang, decoder_results in self.cross_language_matrix.items()
+                              for decoder_lang, success in decoder_results.items() 
+                              if encoder_lang != decoder_lang and success)
+            cross_total = sum(1 for encoder_lang, decoder_results in self.cross_language_matrix.items()
+                            for decoder_lang, success in decoder_results.items() 
+                            if encoder_lang != decoder_lang)
+            
+            if cross_total > 0:
+                print(f"    Cross-language decode success rate: {cross_success}/{cross_total} ({100*cross_success/cross_total:.1f}%)")
+            else:
+                print("    No cross-language tests available")
         
         # Cross-platform pipe tests
         status = "✅ PASS" if self.results['cross_platform_pipe'] else "❌ FAIL"

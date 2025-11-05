@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstring>
 #include <array>
-#include <span>
 
 namespace StructFrame {
 

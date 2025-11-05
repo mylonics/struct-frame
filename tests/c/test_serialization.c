@@ -14,7 +14,6 @@ void print_serialization_message(const char* label, const SerializationTestSeria
          msg->test_string.data);
   printf("  test_float: %.6f\n", msg->test_float);
   printf("  test_bool: %s\n", msg->test_bool ? "true" : "false");
-  printf("  test_enum: %d\n", msg->test_enum);
   printf("\n");
 }
 
