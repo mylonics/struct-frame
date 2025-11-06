@@ -460,7 +460,7 @@ class TestRunner:
             if js_path.exists():
                 success, stdout, stderr = self.run_command(
                     f"node {js_path}",
-                    cwd=self.generated_dir / "ts" / "js",
+                    cwd=self.project_root,  # Run from project root to find node_modules
                     show_command=False
                 )
 
@@ -507,8 +507,8 @@ class TestRunner:
             },
             'TypeScript': {
                 'data_file': 'typescript_test_data.bin',
-                'data_locations': [self.generated_dir / "ts"],
-                'test_script': None  # TypeScript tests might not be available
+                'data_locations': [self.generated_dir / "ts" / "js", self.generated_dir / "ts"],
+                'test_script': self.generated_dir / "ts" / "js" / "test_serialization.js"
             }
         }
 
@@ -585,6 +585,8 @@ class TestRunner:
                 return self._test_c_cpp_cross_decode(encoder_data_path, encoder_lang, decoder_info['test_exe'], decoder_lang)
             elif decoder_lang == 'Python' and 'test_script' in decoder_info:
                 return self._test_python_cross_decode(encoder_data_path, encoder_lang, decoder_info['test_script'])
+            elif decoder_lang == 'TypeScript' and 'test_script' in decoder_info:
+                return self._test_typescript_cross_decode(encoder_data_path, encoder_lang, decoder_info['test_script'])
             else:
                 # Language decoder not available
                 return False
@@ -649,6 +651,40 @@ class TestRunner:
             
         except Exception as e:
             self.log(f"Python cross-decode test failed: {e}", "WARNING")
+            return False
+        finally:
+            # Clean up the copied file
+            try:
+                if target_file.exists():
+                    target_file.unlink()
+            except:
+                pass
+
+    def _test_typescript_cross_decode(self, data_file_path, encoder_lang, test_script_path):
+        """Test TypeScript decoder with data from another language"""
+        if not test_script_path.exists():
+            return False
+            
+        # Copy the data file to where the TypeScript test expects it (running from project root now)
+        target_dir = self.project_root / "tests" / "generated" / "ts" / "js"
+        target_file = target_dir / data_file_path.name
+        try:
+            import shutil
+            shutil.copy2(data_file_path, target_file)
+            
+            # Run the TypeScript test from project root
+            result = subprocess.run(
+                ["node", str(test_script_path)],
+                cwd=self.project_root,  # Run from project root
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            return result.returncode == 0
+            
+        except Exception as e:
+            self.log(f"TypeScript cross-decode test failed: {e}", "WARNING")
             return False
         finally:
             # Clean up the copied file
