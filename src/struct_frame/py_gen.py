@@ -206,16 +206,27 @@ class MessagePyGen():
                 else:
                     # Numeric/enum/struct array
                     fmt = MessagePyGen.get_struct_format(f)
-                    if fmt and f.size_option is not None:
-                        # Fixed array of primitives/enums
-                        result += f'        # Fixed array: {f.name}\n'
-                        result += f'        for i in range({f.size_option}):\n'
-                        result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
-                        if f.isEnum:
-                            result += f'            data += struct.pack("<B", int(val))\n'
+                    if f.size_option is not None:
+                        # Fixed array
+                        if fmt:
+                            # Fixed array of primitives/enums
+                            result += f'        # Fixed array: {f.name}\n'
+                            result += f'        for i in range({f.size_option}):\n'
+                            result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
+                            if f.isEnum:
+                                result += f'            data += struct.pack("<B", int(val))\n'
+                            else:
+                                base_fmt = py_struct_format[f.fieldType]
+                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
                         else:
-                            base_fmt = py_struct_format[f.fieldType]
-                            result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                            # Fixed array of nested messages
+                            type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                            result += f'        # Fixed nested message array: {f.name}\n'
+                            result += f'        for i in range({f.size_option}):\n'
+                            result += f'            if i < len(self.{f.name}):\n'
+                            result += f'                data += self.{f.name}[i].pack()\n'
+                            result += f'            else:\n'
+                            result += f'                data += {type_name}().pack()\n'
                     elif f.max_size is not None:
                         # Bounded array
                         if f.isDefaultType or f.isEnum:
@@ -306,20 +317,31 @@ class MessagePyGen():
                 else:
                     # Numeric/enum/struct array
                     fmt = MessagePyGen.get_struct_format(f)
-                    if fmt and f.size_option is not None:
-                        # Fixed array of primitives/enums
-                        result += f'        # Fixed array: {f.name}\n'
-                        result += f'        fields["{f.name}"] = []\n'
-                        result += f'        for i in range({f.size_option}):\n'
-                        if f.isEnum:
-                            result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
-                            result += f'            offset += 1\n'
+                    if f.size_option is not None:
+                        # Fixed array
+                        if fmt:
+                            # Fixed array of primitives/enums
+                            result += f'        # Fixed array: {f.name}\n'
+                            result += f'        fields["{f.name}"] = []\n'
+                            result += f'        for i in range({f.size_option}):\n'
+                            if f.isEnum:
+                                result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
+                                result += f'            offset += 1\n'
+                            else:
+                                base_fmt = py_struct_format[f.fieldType]
+                                size = {'b': 1, 'B': 1, 'h': 2, 'H': 2, 'i': 4, 'I': 4, 'q': 8, 'Q': 8, 'f': 4, 'd': 8, '?': 1}[base_fmt]
+                                result += f'            val = struct.unpack_from("<{base_fmt}", data, offset)[0]\n'
+                                result += f'            offset += {size}\n'
+                            result += f'            fields["{f.name}"].append(val)\n'
                         else:
-                            base_fmt = py_struct_format[f.fieldType]
-                            size = {'b': 1, 'B': 1, 'h': 2, 'H': 2, 'i': 4, 'I': 4, 'q': 8, 'Q': 8, 'f': 4, 'd': 8, '?': 1}[base_fmt]
-                            result += f'            val = struct.unpack_from("<{base_fmt}", data, offset)[0]\n'
-                            result += f'            offset += {size}\n'
-                        result += f'            fields["{f.name}"].append(val)\n'
+                            # Fixed array of nested messages
+                            type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                            result += f'        # Fixed nested message array: {f.name}\n'
+                            result += f'        fields["{f.name}"] = []\n'
+                            result += f'        for i in range({f.size_option}):\n'
+                            result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            fields["{f.name}"].append(msg)\n'
+                            result += f'            offset += {type_name}.msg_size\n'
                     elif f.max_size is not None:
                         # Bounded array
                         if f.isDefaultType or f.isEnum:
