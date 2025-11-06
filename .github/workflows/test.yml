@@ -36,7 +36,7 @@ jobs:
         pip install proto-schema-parser structured-classes
     
     - name: Install Node.js dependencies
-      run: npm install
+      run: npm ci
     
     - name: Run test suite
       run: python test_all.py
