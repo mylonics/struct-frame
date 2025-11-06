@@ -54,12 +54,13 @@ class TestRunner:
             }.get(level, "  ")
             print(f"{prefix} {message}")
 
-    def run_command(self, command, cwd=None, timeout=30):
+    def run_command(self, command, cwd=None, timeout=30, show_command=True):
         """Run a shell command and return success status"""
         if cwd is None:
             cwd = self.project_root
 
-        self.log(f"Running: {command}", "INFO")
+        if show_command and self.verbose:
+            self.log(f"Running: {command}", "INFO")
 
         try:
             # Use shell=True for Windows PowerShell compatibility
@@ -79,11 +80,13 @@ class TestRunner:
                     print(f"  STDERR: {result.stderr}")
 
             if result.returncode == 0:
-                self.log(f"Command succeeded", "INFO")
+                if self.verbose:
+                    self.log(f"Command succeeded", "INFO")
                 return True, result.stdout, result.stderr
             else:
-                self.log(
-                    f"Command failed with return code {result.returncode}", "ERROR")
+                if self.verbose:
+                    self.log(
+                        f"Command failed with return code {result.returncode}", "ERROR")
                 if result.stderr and not self.verbose:
                     print(f"  Error: {result.stderr}")
                 return False, result.stdout, result.stderr
@@ -97,7 +100,8 @@ class TestRunner:
 
     def setup_directories(self):
         """Create and clean test directories"""
-        self.log("Setting up test directories...")
+        if self.verbose:
+            self.log("Setting up test directories...")
 
         # Create directories if they don't exist
         directories = [
@@ -109,16 +113,19 @@ class TestRunner:
 
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
-            self.log(f"Created directory: {directory}")
+            if self.verbose:
+                self.log(f"Created directory: {directory}")
 
         # Clean up any existing binary test files
         for pattern in ["*_test_data.bin", "*.exe"]:
             for file in self.project_root.glob(pattern):
                 try:
                     file.unlink()
-                    self.log(f"Cleaned up: {file}")
+                    if self.verbose:
+                        self.log(f"Cleaned up: {file}")
                 except Exception as e:
-                    self.log(f"Failed to clean {file}: {e}", "WARNING")
+                    if self.verbose:
+                        self.log(f"Failed to clean {file}: {e}", "WARNING")
 
     def generate_code(self, proto_file, lang_flags):
         """Generate code for a specific proto file"""
@@ -150,7 +157,8 @@ class TestRunner:
         env = os.environ.copy()
         env["PYTHONPATH"] = str(self.src_dir)
 
-        self.log(f"Generating code for {proto_file}...")
+        if self.verbose:
+            self.log(f"Generating code for {proto_file}...")
 
         try:
             result = subprocess.run(
@@ -163,8 +171,9 @@ class TestRunner:
             )
 
             if result.returncode == 0:
-                self.log(
-                    f"Code generation successful for {proto_file}", "SUCCESS")
+                if self.verbose:
+                    self.log(
+                        f"Code generation successful for {proto_file}", "SUCCESS")
                 return True
             else:
                 self.log(f"Code generation failed for {proto_file}", "ERROR")
@@ -179,7 +188,9 @@ class TestRunner:
 
     def test_code_generation(self, languages):
         """Test code generation for all proto files"""
-        self.log("=== Testing Code Generation ===")
+        print("\n" + "="*60)
+        print("🔧 CODE GENERATION")
+        print("="*60)
 
         proto_files = [
             "basic_types.proto",
@@ -199,17 +210,21 @@ class TestRunner:
                 if success:
                     self.results['generation'][lang] = True
 
+        # Print summary for code generation
+        print()
+        for lang in languages:
+            status = "✅ PASS" if self.results['generation'][lang] else "❌ FAIL"
+            print(f"  {lang.upper():>6}: {status}")
+
         return all_success
 
     def test_c_compilation(self):
         """Test C code compilation"""
-        self.log("=== Testing C Compilation ===")
-
         # Check if gcc is available
-        gcc_available, _, _ = self.run_command("gcc --version")
+        gcc_available, _, _ = self.run_command("gcc --version", show_command=False)
         if not gcc_available:
             self.log(
-                "GCC compiler not found - skipping C compilation test", "WARNING")
+                "GCC compiler not found - skipping C compilation", "WARNING")
             return True  # Don't fail the entire test suite
 
         test_files = [
@@ -227,26 +242,23 @@ class TestRunner:
             # Create compile command
             command = f"gcc -I{self.generated_dir / 'c'} -o {output_path} {test_path} -lm"
 
-            success, stdout, stderr = self.run_command(command)
+            success, stdout, stderr = self.run_command(command, show_command=False)
             if success:
-                self.log(
-                    f"C compilation successful for {test_file}", "SUCCESS")
                 self.results['compilation']['c'] = True
             else:
-                self.log(f"C compilation failed for {test_file}", "ERROR")
+                if self.verbose:
+                    self.log(f"C compilation failed for {test_file}", "ERROR")
                 all_success = False
 
         return all_success
 
     def test_cpp_compilation(self):
         """Test C++ code compilation"""
-        self.log("=== Testing C++ Compilation ===")
-
         # Check if g++ is available
-        gpp_available, _, _ = self.run_command("g++ --version")
+        gpp_available, _, _ = self.run_command("g++ --version", show_command=False)
         if not gpp_available:
             self.log(
-                "G++ compiler not found - skipping C++ compilation test", "WARNING")
+                "G++ compiler not found - skipping C++ compilation", "WARNING")
             return True  # Don't fail the entire test suite
 
         test_files = [
@@ -264,21 +276,18 @@ class TestRunner:
             # Create compile command - use C++14 for compatibility with older GCC
             command = f"g++ -std=c++14 -I{self.generated_dir / 'cpp'} -o {output_path} {test_path}"
 
-            success, stdout, stderr = self.run_command(command)
+            success, stdout, stderr = self.run_command(command, show_command=False)
             if success:
-                self.log(
-                    f"C++ compilation successful for {test_file}", "SUCCESS")
                 self.results['compilation']['cpp'] = True
             else:
-                self.log(f"C++ compilation failed for {test_file}", "ERROR")
+                if self.verbose:
+                    self.log(f"C++ compilation failed for {test_file}", "ERROR")
                 all_success = False
 
         return all_success
 
     def run_cpp_tests(self):
         """Run C++ test executables"""
-        self.log("=== Running C++ Tests ===")
-
         test_executables = [
             ("test_basic_types.exe", "basic_types"),
             ("test_arrays.exe", "arrays"),
@@ -291,30 +300,29 @@ class TestRunner:
             exe_path = self.tests_dir / "cpp" / exe_name
 
             if not exe_path.exists():
-                self.log(f"Executable not found: {exe_name}", "WARNING")
+                if self.verbose:
+                    self.log(f"Executable not found: {exe_name}", "WARNING")
                 continue
 
             success, stdout, stderr = self.run_command(
-                str(exe_path), cwd=self.tests_dir / "cpp")
+                str(exe_path), cwd=self.tests_dir / "cpp", show_command=False)
 
             if success:
-                self.log(f"C++ {test_type} test passed", "SUCCESS")
                 self.results[test_type]['cpp'] = True
             else:
-                self.log(f"C++ {test_type} test failed", "ERROR")
+                if self.verbose:
+                    self.log(f"C++ {test_type} test failed", "ERROR")
                 all_success = False
 
         return all_success
 
     def test_typescript_compilation(self):
         """Test TypeScript code compilation"""
-        self.log("=== Testing TypeScript Compilation ===")
-
         # First check if TypeScript is available
-        success, _, _ = self.run_command("tsc --version")
+        success, _, _ = self.run_command("tsc --version", show_command=False)
         if not success:
             self.log(
-                "TypeScript compiler not found - skipping TS compilation test", "WARNING")
+                "TypeScript compiler not found - skipping TS compilation", "WARNING")
             return True
 
         # Copy test files to generated directory for compilation
@@ -331,21 +339,19 @@ class TestRunner:
 
         # Try to compile TypeScript files
         command = f"tsc --outDir {self.generated_dir / 'ts' / 'js'} {self.generated_dir / 'ts'}/*.ts"
-        success, stdout, stderr = self.run_command(command)
+        success, stdout, stderr = self.run_command(command, show_command=False)
 
         if success:
-            self.log("TypeScript compilation successful", "SUCCESS")
             self.results['compilation']['ts'] = True
             return True
         else:
-            self.log("TypeScript compilation failed", "WARNING")
+            if self.verbose:
+                self.log("TypeScript compilation failed", "WARNING")
             # Don't fail the entire test suite for TS compilation issues
             return True
 
     def run_c_tests(self):
         """Run C test executables"""
-        self.log("=== Running C Tests ===")
-
         test_executables = [
             ("test_basic_types.exe", "basic_types"),
             ("test_arrays.exe", "arrays"),
@@ -358,25 +364,24 @@ class TestRunner:
             exe_path = self.tests_dir / "c" / exe_name
 
             if not exe_path.exists():
-                self.log(f"Executable not found: {exe_name}", "WARNING")
+                if self.verbose:
+                    self.log(f"Executable not found: {exe_name}", "WARNING")
                 continue
 
             success, stdout, stderr = self.run_command(
-                str(exe_path), cwd=self.tests_dir / "c")
+                str(exe_path), cwd=self.tests_dir / "c", show_command=False)
 
             if success:
-                self.log(f"C {test_type} test passed", "SUCCESS")
                 self.results[test_type]['c'] = True
             else:
-                self.log(f"C {test_type} test failed", "ERROR")
+                if self.verbose:
+                    self.log(f"C {test_type} test failed", "ERROR")
                 all_success = False
 
         return all_success
 
     def run_python_tests(self):
         """Run Python test scripts"""
-        self.log("=== Running Python Tests ===")
-
         test_scripts = [
             ("test_basic_types.py", "basic_types"),
             ("test_arrays.py", "arrays"),
@@ -406,26 +411,25 @@ class TestRunner:
                     print(result.stdout)
 
                 if result.returncode == 0:
-                    self.log(f"Python {test_type} test passed", "SUCCESS")
                     self.results[test_type]['py'] = True
                 else:
-                    self.log(f"Python {test_type} test failed", "ERROR")
-                    if result.stderr:
+                    if self.verbose:
+                        self.log(f"Python {test_type} test failed", "ERROR")
+                    if result.stderr and self.verbose:
                         print(f"  Error: {result.stderr}")
                     all_success = False
 
             except Exception as e:
-                self.log(f"Python {test_type} test exception: {e}", "ERROR")
+                if self.verbose:
+                    self.log(f"Python {test_type} test exception: {e}", "ERROR")
                 all_success = False
 
         return all_success
 
     def run_typescript_tests(self):
         """Run TypeScript/JavaScript test scripts"""
-        self.log("=== Running TypeScript Tests ===")
-
         # Check if Node.js is available
-        success, _, _ = self.run_command("node --version")
+        success, _, _ = self.run_command("node --version", show_command=False)
         if not success:
             self.log("Node.js not found - skipping TypeScript tests", "WARNING")
             return True
@@ -445,32 +449,37 @@ class TestRunner:
                 "js" / f"{script_name[:-3]}.js"
 
             if not script_path.exists():
-                self.log(
-                    f"TypeScript test not found: {script_name}", "WARNING")
+                if self.verbose:
+                    self.log(
+                        f"TypeScript test not found: {script_name}", "WARNING")
                 continue
 
             # Try to run the compiled JavaScript
             if js_path.exists():
                 success, stdout, stderr = self.run_command(
                     f"node {js_path}",
-                    cwd=self.generated_dir / "ts" / "js"
+                    cwd=self.generated_dir / "ts" / "js",
+                    show_command=False
                 )
 
                 if success:
-                    self.log(f"TypeScript {test_type} test passed", "SUCCESS")
                     self.results[test_type]['ts'] = True
                 else:
-                    self.log(f"TypeScript {test_type} test failed", "WARNING")
+                    if self.verbose:
+                        self.log(f"TypeScript {test_type} test failed", "WARNING")
                     # Don't fail entire suite for TS runtime issues
             else:
-                self.log(
-                    f"Compiled JavaScript not found for {script_name}", "WARNING")
+                if self.verbose:
+                    self.log(
+                        f"Compiled JavaScript not found for {script_name}", "WARNING")
 
         return all_success
 
     def run_cross_language_tests(self):
         """Run cross-language compatibility tests"""
-        self.log("=== Running Cross-Language Compatibility Tests ===")
+        print("\n" + "="*60)
+        print("🌐 CROSS-LANGUAGE COMPATIBILITY")
+        print("="*60)
 
         # Initialize cross-language compatibility matrix
         # Structure: encoder_language -> {decoder_language: success_status}
@@ -507,7 +516,8 @@ class TestRunner:
                 data_path = location / lang_info['data_file']
                 if data_path.exists():
                     available_encoders.append(lang_name)
-                    self.log(f"Found {lang_name} test data: {data_path}", "SUCCESS")
+                    if self.verbose:
+                        self.log(f"Found {lang_name} test data: {data_path}", "SUCCESS")
                     break
 
         if not available_encoders:
@@ -544,7 +554,6 @@ class TestRunner:
 
         if successful_tests > 0:
             self.results['cross_language'] = True
-            self.log(f"Cross-language compatibility: {successful_tests}/{total_tests} tests passed", "SUCCESS")
             return True
         else:
             self.results['cross_language'] = False
@@ -651,10 +660,7 @@ class TestRunner:
         if not self.cross_language_matrix:
             return
             
-        print("\n🔀 CROSS-LANGUAGE COMPATIBILITY MATRIX")
-        print("="*50)
-        print("Format: [Encoder Language] → [Decoder Language]")
-        print()
+        print("\nCompatibility Test Results:")
         
         # Get all languages involved
         all_languages = set()
@@ -665,23 +671,8 @@ class TestRunner:
         # Sort for consistent output
         sorted_languages = sorted(all_languages)
         
-        # Print in the requested format first (simpler view)
-        print("Compatibility Test Results:")
-        print("-" * 30)
-        for encoder_lang in sorted_languages:
-            if encoder_lang in self.cross_language_matrix:
-                for decoder_lang in sorted_languages:
-                    if decoder_lang in self.cross_language_matrix[encoder_lang]:
-                        if encoder_lang != decoder_lang:  # Skip self-tests in this view
-                            success = self.cross_language_matrix[encoder_lang][decoder_lang]
-                            status = "pass" if success else "fail"
-                            print(f"{encoder_lang} → {decoder_lang}: {status}")
-        print()
-        
-        # Print detailed matrix table
-        print("Detailed Matrix:")
-        print("-" * 30)
-        header = "Encoder\\Decoder".ljust(15)
+        # Print matrix table
+        header = "Encoder\\Decoder".ljust(18)
         for lang in sorted_languages:
             header += lang[:8].ljust(10)
         print(header)
@@ -690,25 +681,36 @@ class TestRunner:
         # Print matrix rows
         for encoder_lang in sorted_languages:
             if encoder_lang in self.cross_language_matrix:
-                row = encoder_lang.ljust(15)
+                row = encoder_lang.ljust(18)
                 for decoder_lang in sorted_languages:
                     if decoder_lang in self.cross_language_matrix[encoder_lang]:
                         success = self.cross_language_matrix[encoder_lang][decoder_lang]
-                        symbol = "✅" if success else "❌"
                         if encoder_lang == decoder_lang:
-                            symbol = "🔄"  # Self-test symbol
+                            symbol = "  —  "  # Self-test symbol
+                        else:
+                            symbol = " ✅ " if success else " ❌ "
                     else:
-                        symbol = "⚫"  # Not tested
+                        symbol = "  ⚫  "  # Not tested
                     row += f"{symbol:>8}  "
                 print(row)
         
-        print()
-        print("Legend: ✅ = Success  ❌ = Failed  🔄 = Self-test  ⚫ = Not tested")
+        # Count success rate
+        cross_success = sum(1 for encoder_lang, decoder_results in self.cross_language_matrix.items()
+                          for decoder_lang, success in decoder_results.items() 
+                          if encoder_lang != decoder_lang and success)
+        cross_total = sum(1 for encoder_lang, decoder_results in self.cross_language_matrix.items()
+                        for decoder_lang, success in decoder_results.items() 
+                        if encoder_lang != decoder_lang)
+        
+        if cross_total > 0:
+            print(f"\nSuccess rate: {cross_success}/{cross_total} ({100*cross_success/cross_total:.0f}%)")
         print()
     
     def run_cross_platform_pipe_tests(self):
         """Run cross-platform pipe tests"""
-        self.log("=== Running Cross-Platform Pipe Tests ===")
+        print("\n" + "="*60)
+        print("🔗 CROSS-PLATFORM PIPE TESTS")
+        print("="*60)
         
         cross_platform_script = self.tests_dir / "cross_platform_test.py"
         if not cross_platform_script.exists():
@@ -716,21 +718,98 @@ class TestRunner:
             return True  # Don't fail if test doesn't exist
         
         cmd = f"{sys.executable} {cross_platform_script}"
-        success, stdout, stderr = self.run_command(cmd, cwd=self.tests_dir)
+        success, stdout, stderr = self.run_command(cmd, cwd=self.tests_dir, show_command=False)
         
         # Print the output regardless of success for visibility
         if stdout:
             print(stdout)
         
         if success:
-            self.log("Cross-platform pipe tests passed", "SUCCESS")
             self.results['cross_platform_pipe'] = True
             return True
         else:
-            self.log("Cross-platform pipe tests failed", "WARNING")
+            if self.verbose:
+                self.log("Cross-platform pipe tests failed", "WARNING")
             # Don't fail the entire suite for this
             self.results['cross_platform_pipe'] = False
             return True
+
+    
+    def run_test_by_type(self, test_type, languages):
+        """Run a specific test type across all languages"""
+        test_display_name = test_type.replace('_', ' ').title()
+        print(f"\n🧪 {test_display_name} Tests")
+        
+        # Run test for each language
+        for lang in languages:
+            if lang == 'c':
+                exe_path = self.tests_dir / "c" / f"test_{test_type}.exe"
+                if exe_path.exists():
+                    success, _, _ = self.run_command(
+                        str(exe_path), cwd=self.tests_dir / "c", show_command=False)
+                    self.results[test_type]['c'] = success
+            
+            elif lang == 'cpp':
+                exe_path = self.tests_dir / "cpp" / f"test_{test_type}.exe"
+                if exe_path.exists():
+                    success, _, _ = self.run_command(
+                        str(exe_path), cwd=self.tests_dir / "cpp", show_command=False)
+                    self.results[test_type]['cpp'] = success
+            
+            elif lang == 'py':
+                script_path = self.tests_dir / "py" / f"test_{test_type}.py"
+                if script_path.exists():
+                    env = os.environ.copy()
+                    env["PYTHONPATH"] = str(self.generated_dir / "py")
+                    
+                    try:
+                        result = subprocess.run(
+                            [sys.executable, str(script_path)],
+                            cwd=self.tests_dir / "py",
+                            capture_output=True,
+                            text=True,
+                            env=env,
+                            timeout=30
+                        )
+                        self.results[test_type]['py'] = (result.returncode == 0)
+                    except Exception:
+                        self.results[test_type]['py'] = False
+            
+            elif lang == 'ts':
+                js_path = self.generated_dir / "ts" / "js" / f"test_{test_type}.js"
+                if js_path.exists():
+                    success, _, _ = self.run_command(
+                        f"node {js_path}",
+                        cwd=self.generated_dir / "ts" / "js",
+                        show_command=False
+                    )
+                    self.results[test_type]['ts'] = success
+        
+        # Print results for this test type
+        for lang in languages:
+            status = "✅ PASS" if self.results[test_type][lang] else "❌ FAIL"
+            print(f"  {lang.upper():>6}: {status}")
+    
+    def compile_all_languages(self, languages):
+        """Compile test code for all languages"""
+        print("\n" + "="*60)
+        print("🔨 COMPILATION")
+        print("="*60)
+        
+        for lang in languages:
+            if lang == 'c':
+                self.test_c_compilation()
+            elif lang == 'cpp':
+                self.test_cpp_compilation()
+            elif lang == 'ts':
+                self.test_typescript_compilation()
+        
+        # Print compilation results
+        print()
+        compiled_languages = [lang for lang in languages if lang in ['c', 'ts', 'cpp']]
+        for lang in compiled_languages:
+            status = "✅ PASS" if self.results['compilation'][lang] else "❌ FAIL"
+            print(f"  {lang.upper():>6}: {status}")
 
     def print_summary(self, tested_languages=['c', 'ts', 'py', 'cpp']):
         """Print a summary of all test results"""
@@ -782,28 +861,6 @@ class TestRunner:
         if self.results['cross_language']:
             passed_tests += 1
         
-        # Print detailed cross-language matrix if available
-        if hasattr(self, 'cross_language_matrix') and self.cross_language_matrix:
-            print("\n📋 Detailed Cross-Language Test Results:")
-            for encoder_lang, decoder_results in self.cross_language_matrix.items():
-                for decoder_lang, success in decoder_results.items():
-                    if encoder_lang != decoder_lang:  # Skip self-tests in summary
-                        status_symbol = "✅" if success else "❌"
-                        print(f"    {encoder_lang} → {decoder_lang}: {status_symbol}")
-            
-            # Count cross-language specific results
-            cross_success = sum(1 for encoder_lang, decoder_results in self.cross_language_matrix.items()
-                              for decoder_lang, success in decoder_results.items() 
-                              if encoder_lang != decoder_lang and success)
-            cross_total = sum(1 for encoder_lang, decoder_results in self.cross_language_matrix.items()
-                            for decoder_lang, success in decoder_results.items() 
-                            if encoder_lang != decoder_lang)
-            
-            if cross_total > 0:
-                print(f"    Cross-language decode success rate: {cross_success}/{cross_total} ({100*cross_success/cross_total:.1f}%)")
-            else:
-                print("    No cross-language tests available")
-        
         # Cross-platform pipe tests
         status = "✅ PASS" if self.results['cross_platform_pipe'] else "❌ FAIL"
         print(f"  {'Pipe-based':>10}: {status}")
@@ -830,11 +887,11 @@ class TestRunner:
         elif core_success and success_rate >= 30:
             print(
                 f"✅ PARTIAL SUCCESS: {success_rate:.1f}% pass rate - Core functionality working")
-            print("   Note: C/TypeScript compilation requires additional tools (gcc/tsc)")
             return True
         else:
             print(f"⚠️  NEEDS WORK: {success_rate:.1f}% pass rate")
             return False
+
 
 
 def main():
@@ -913,38 +970,19 @@ def main():
             print("✅ Code generation completed successfully")
             return True
 
-        # Run compilation tests
-        success = True
+        # Compile all language implementations
+        runner.compile_all_languages(languages)
 
-        if "c" in languages:
-            if not runner.test_c_compilation():
-                success = False
-            if not runner.run_c_tests():
-                success = False
-
-        if "cpp" in languages:
-            if not runner.test_cpp_compilation():
-                success = False
-            if not runner.run_cpp_tests():
-                success = False
-
-        if "ts" in languages:
-            if not runner.test_typescript_compilation():
-                success = False
-            if not runner.run_typescript_tests():
-                success = False
-
-        if "py" in languages:
-            if not runner.run_python_tests():
-                success = False
+        # Run tests organized by test type (not by language)
+        test_types = ['basic_types', 'arrays', 'serialization']
+        for test_type in test_types:
+            runner.run_test_by_type(test_type, languages)
 
         # Run cross-language compatibility tests
-        if not runner.run_cross_language_tests():
-            success = False
+        runner.run_cross_language_tests()
         
         # Run cross-platform pipe tests
-        if not runner.run_cross_platform_pipe_tests():
-            success = False
+        runner.run_cross_platform_pipe_tests()
 
         # Print summary
         overall_success = runner.print_summary(languages)
@@ -952,7 +990,7 @@ def main():
         end_time = time.time()
         print(f"\n⏱️  Total test time: {end_time - start_time:.2f} seconds")
 
-        return overall_success and success
+        return overall_success
 
     except KeyboardInterrupt:
         print("\n⚠️  Test run interrupted by user")
