@@ -11,24 +11,17 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../generated/py'))
 
 try:
-    from serialization_test_sf import SerializationTestSerializationTestMessage, _VariableString_test_string, _BoundedArray_test_array
+    from serialization_test_sf import SerializationTestSerializationTestMessage
     from struct_frame_parser import BasicPacket
 
-    # Create variable string for test_string (matching the test_serialization.py format)
-    test_string = _VariableString_test_string(
-        18, b"Hello from Python!")  # length=18, data
-
-    # Create bounded array for test_array (matching the test_serialization.py format)
-    test_array = _BoundedArray_test_array(
-        3, [100, 200, 300, 0, 0])  # 3 elements in use, max 5
-
     # Create test message with known values
+    # The new struct-based generator uses direct values instead of wrapper classes
     msg = SerializationTestSerializationTestMessage(
-        0xDEADBEEF,  # magic_number
-        test_string,  # test_string
-        3.14159,     # test_float
-        True,        # test_bool
-        test_array   # test_array
+        magic_number=0xDEADBEEF,
+        test_string=b"Hello from Python!",
+        test_float=3.14159,
+        test_bool=True,
+        test_array=[100, 200, 300]
     )
 
     # Serialize with framing using BasicPacket

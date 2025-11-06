@@ -64,7 +64,9 @@ class BasicPacket:
         if (len(data)):
             for b in data:
                 output.append(b)
-        checksum = fletcher_checksum_calculation(data)
+        # Calculate checksum on msg_id + data (consistent with validate_packet)
+        checksum_data = [msg_id] + list(data)
+        checksum = fletcher_checksum_calculation(checksum_data)
 
         output.append(checksum[0])
         output.append(checksum[1])

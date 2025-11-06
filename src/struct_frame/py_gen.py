@@ -388,11 +388,12 @@ class MessagePyGen():
                 fmt = MessagePyGen.get_struct_format(f)
                 if fmt:
                     # Simple type
-                    size = struct_format_sizes.get(fmt, 0)
-                    if f.fieldType == "string":
-                        result += f'        fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]\n'
+                    # Handle multi-character struct formats like '16s'
+                    if fmt.endswith('s') and len(fmt) > 1 and fmt[:-1].isdigit():
+                        size = int(fmt[:-1])
                     else:
-                        result += f'        fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]\n'
+                        size = struct_format_sizes.get(fmt, 0)
+                    result += f'        fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]\n'
                     result += f'        offset += {size}\n'
                 else:
                     # Nested message
