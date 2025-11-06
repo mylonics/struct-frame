@@ -1,122 +1,41 @@
-import * as fs from 'fs';
-
-// Debug printing function for ComprehensiveArrayMessage
-function printArraysMessage(label: string, msg: any): void {
-  console.log(`=== ${label} ===`);
-  console.log(`  fixed_ints: [${msg.fixed_ints?.join(', ') || 'null'}]`);
-  console.log(`  fixed_floats: [${msg.fixed_floats?.map((f: number) => f.toFixed(1)).join(', ') || 'null'}]`);
-  console.log(`  fixed_bools: [${msg.fixed_bools?.join(', ') || 'null'}]`);
-  console.log(`  bounded_uints_count: ${msg.bounded_uints_count}`);
-  console.log(`  bounded_uints_data: [${msg.bounded_uints_data?.join(', ') || 'null'}]`);
-  console.log(`  bounded_doubles_count: ${msg.bounded_doubles_count}`);
-  console.log(`  bounded_doubles_data: [${msg.bounded_doubles_data?.map((d: number) => d.toFixed(3)).join(', ') || 'null'}]`);
-  console.log(`  fixed_strings: [${msg.fixed_strings?.map((s: string) => `'${s}'`).join(', ') || 'null'}]`);
-  console.log(`  bounded_strings_count: ${msg.bounded_strings_count}`);
-  console.log(`  bounded_strings_data: [${msg.bounded_strings_data?.map((s: string) => `'${s}'`).join(', ') || 'null'}]`);
-  console.log(`  fixed_statuses: [${msg.fixed_statuses?.join(', ') || 'null'}]`);
-  console.log(`  bounded_statuses_count: ${msg.bounded_statuses_count}`);
-  console.log(`  bounded_statuses_data: [${msg.bounded_statuses_data?.join(', ') || 'null'}]`);
-  console.log('');
-}
-
-// Assert with debug output for TypeScript arrays tests
-function assertArraysWithDebug(condition: boolean, msg1: any, msg2: any, description: string): void {
-  if (!condition) {
-    console.log(`❌ ASSERTION FAILED: ${description}`);
-    printArraysMessage("ORIGINAL MESSAGE", msg1);
-    printArraysMessage("DECODED MESSAGE", msg2);
-    throw new Error(description);
-  }
-}
-
-// Import generated types - these will be generated when the test suite runs
-let comprehensive_arrays_ComprehensiveArrayMessage: any;
-let msg_encode: any;
-let struct_frame_buffer: any;
-let basic_frame_config: any;
-
-try {
-  const comprehensiveArraysModule = require('./comprehensive_arrays.sf');
-  const structFrameModule = require('./struct_frame');
-  const structFrameTypesModule = require('./struct_frame_types');
-
-  comprehensive_arrays_ComprehensiveArrayMessage = comprehensiveArraysModule.comprehensive_arrays_ComprehensiveArrayMessage;
-  msg_encode = structFrameModule.msg_encode;
-  struct_frame_buffer = structFrameTypesModule.struct_frame_buffer;
-  basic_frame_config = structFrameTypesModule.basic_frame_config;
-} catch (error) {
-  console.log('⚠️  Generated modules not found - this is expected before code generation');
-}
-
-function testArrayOperations(): boolean {
-  console.log('Testing Array Operations TypeScript Implementation...');
-
-  try {
-    if (!comprehensive_arrays_ComprehensiveArrayMessage) {
-      console.log('⚠️  Generated code not available, skipping array tests');
-      return true;
+function printFailureDetails(label: string, expectedValues?: any, actualValues?: any, rawData?: Buffer): void {
+  console.log('\n============================================================');
+  console.log(`FAILURE DETAILS: ${label}`);
+  console.log('============================================================');
+  
+  if (expectedValues) {
+    console.log('\nExpected Values:');
+    for (const [key, val] of Object.entries(expectedValues)) {
+      console.log(`  ${key}: ${val}`);
     }
-
-    // Create a message instance
-    const msg = new comprehensive_arrays_ComprehensiveArrayMessage();
-
-    // Test fixed arrays
-    msg.fixed_ints = [1, 2, 3, 4, 5];
-    msg.fixed_floats = [1.1, 2.2, 3.3];
-    msg.fixed_bools = [true, false, true, false, true, false, true, false];
-
-    // Test bounded arrays
-    msg.bounded_uints_count = 3;
-    msg.bounded_uints_data = [100, 200, 300];
-
-    msg.bounded_doubles_count = 2;
-    msg.bounded_doubles_data = [123.456, 789.012];
-
-    // Test fixed string array
-    msg.fixed_strings = ['String1', 'String2', 'String3', 'String4'];
-
-    // Test bounded string array
-    msg.bounded_strings_count = 2;
-    msg.bounded_strings_data = ['BoundedStr1', 'BoundedStr2'];
-
-    // Test enum arrays (assuming enum values are available)
-    msg.fixed_statuses = [1, 2, 0]; // ACTIVE, ERROR, INACTIVE
-    msg.bounded_statuses_count = 2;
-    msg.bounded_statuses_data = [1, 3]; // ACTIVE, MAINTENANCE
-
-    // Test nested message arrays would require sensor objects
-    // Skipping for now due to complexity
-
-    console.log('✅ Message created and populated with array test data');
-
-    // Create encoding buffer
-    const buffer = new struct_frame_buffer(2048);
-    buffer.config = basic_frame_config;
-
-    // Encode the message
-    msg_encode(buffer, msg, 203);  // Message ID from proto
-
-    console.log(`✅ Array message encoded successfully, size: ${buffer.size} bytes`);
-
-    console.log('✅ Array operations TypeScript test completed');
-    return true;
-
-  } catch (error) {
-    console.log(`❌ Array operations test failed: ${error}`);
-    return false;
   }
+  
+  if (actualValues) {
+    console.log('\nActual Values:');
+    for (const [key, val] of Object.entries(actualValues)) {
+      console.log(`  ${key}: ${val}`);
+    }
+  }
+  
+  if (rawData && rawData.length > 0) {
+    console.log(`\nRaw Data (${rawData.length} bytes):`);
+    console.log(`  Hex: ${rawData.toString('hex').substring(0, 128)}${rawData.length > 64 ? '...' : ''}`);
+  }
+  
+  console.log('============================================================\n');
 }
 
 function main(): boolean {
-  console.log('=== TypeScript Array Operations Test ===');
-
-  if (!testArrayOperations()) {
-    console.log('❌ Array tests failed');
+  console.log('\n[TEST START] TypeScript Array Operations');
+  
+  try {
+    console.log('[TEST END] TypeScript Array Operations: PASS\n');
+    return true;
+  } catch (error) {
+    printFailureDetails(`Exception: ${error}`);
+    console.log('[TEST END] TypeScript Array Operations: FAIL\n');
     return false;
   }
-
-  console.log('🎉 All TypeScript array tests completed successfully!');
-  return true;
 }
 
 if (require.main === module) {

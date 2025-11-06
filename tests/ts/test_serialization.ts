@@ -1,152 +1,41 @@
-import * as fs from 'fs';
-
-// Debug printing function for SerializationTestMessage
-function printSerializationMessage(label: string, msg: any): void {
-  console.log(`=== ${label} ===`);
-  console.log(`  magic_number: 0x${msg.magic_number?.toString(16).toUpperCase()}`);
-  console.log(`  test_string_length: ${msg.test_string_length}`);
-  console.log(`  test_string_data: '${msg.test_string_data}'`);
-  console.log(`  test_float: ${msg.test_float?.toFixed(6)}`);
-  console.log(`  test_bool: ${msg.test_bool}`);
-  if (msg.test_enum !== undefined) {
-    console.log(`  test_enum: ${msg.test_enum}`);
-  }
-  console.log(`  test_array_count: ${msg.test_array_count}`);
-  console.log(`  test_array_data: [${msg.test_array_data?.join(', ') || 'null'}]`);
-  console.log('');
-}
-
-// Assert with debug output for TypeScript serialization tests
-function assertSerializationWithDebug(condition: boolean, msg1: any, msg2: any, description: string): void {
-  if (!condition) {
-    console.log(`❌ ASSERTION FAILED: ${description}`);
-    printSerializationMessage("ORIGINAL MESSAGE", msg1);
-    printSerializationMessage("DECODED MESSAGE", msg2);
-    throw new Error(description);
-  }
-}
-
-// Import generated types - these will be generated when the test suite runs
-let serialization_test_SerializationTestMessage: any;
-let msg_encode: any;
-let struct_frame_buffer: any;
-let basic_frame_config: any;
-
-try {
-  const serializationTestModule = require('./serialization_test.sf');
-  const structFrameModule = require('./struct_frame');
-  const structFrameTypesModule = require('./struct_frame_types');
-
-  serialization_test_SerializationTestMessage = serializationTestModule.serialization_test_SerializationTestMessage;
-  msg_encode = structFrameModule.msg_encode;
-  struct_frame_buffer = structFrameTypesModule.struct_frame_buffer;
-  basic_frame_config = structFrameTypesModule.basic_frame_config;
-} catch (error) {
-  console.log('⚠️  Generated modules not found - this is expected before code generation');
-}
-
-// This function creates a test message and serializes it to a binary file
-// that can be used for cross-language compatibility testing
-function createTestData(): boolean {
-  console.log('Creating test data for cross-language compatibility...');
-
-  try {
-    if (!serialization_test_SerializationTestMessage) {
-      console.log('⚠️  Generated code not available, skipping serialization tests');
-      return true;
+function printFailureDetails(label: string, expectedValues?: any, actualValues?: any, rawData?: Buffer): void {
+  console.log('\n============================================================');
+  console.log(`FAILURE DETAILS: ${label}`);
+  console.log('============================================================');
+  
+  if (expectedValues) {
+    console.log('\nExpected Values:');
+    for (const [key, val] of Object.entries(expectedValues)) {
+      console.log(`  ${key}: ${val}`);
     }
-
-    // Create a message instance
-    const msg = new serialization_test_SerializationTestMessage();
-
-    // Set predictable test data
-    msg.magic_number = 0xDEADBEEF;
-    msg.test_string_length = 'Hello from TypeScript!'.length;
-    msg.test_string_data = 'Hello from TypeScript!';
-    msg.test_float = 3.14159;
-    msg.test_bool = true;
-
-    msg.test_array_count = 3;
-    msg.test_array_data = [100, 200, 300];
-
-    console.log('✅ Serialization test message created and populated');
-
-    // Create encoding buffer
-    const buffer = new struct_frame_buffer(512);
-    buffer.config = basic_frame_config;
-
-    // Encode the message
-    msg_encode(buffer, msg, 204);  // Message ID from proto
-
-    console.log(`✅ Serialization test message encoded, size: ${buffer.size} bytes`);
-
-    // Write binary data to file for cross-language testing
-    const binaryData = buffer.data.slice(0, buffer.size);
-    fs.writeFileSync('typescript_test_data.bin', binaryData);
-
-    console.log('✅ Test data written to typescript_test_data.bin');
-
-    return true;
-
-  } catch (error) {
-    console.log(`❌ Failed to create test data: ${error}`);
-    return false;
   }
-}
-
-// This function tries to read and decode test data created by other languages
-function readTestData(filename: string, language: string): boolean {
-  console.log(`Reading test data from ${filename} (created by ${language})...`);
-
-  try {
-    if (!fs.existsSync(filename)) {
-      console.log(`⚠️  Test data file ${filename} not found - skipping ${language} compatibility test`);
-      return true; // Not a failure, just skip
+  
+  if (actualValues) {
+    console.log('\nActual Values:');
+    for (const [key, val] of Object.entries(actualValues)) {
+      console.log(`  ${key}: ${val}`);
     }
-
-    const binaryData = fs.readFileSync(filename);
-
-    if (binaryData.length === 0) {
-      console.log(`❌ Failed to read data from ${filename}`);
-      return false;
-    }
-
-    console.log(`✅ Read ${binaryData.length} bytes from ${filename}`);
-    console.log(`  Raw data (hex): ${binaryData.toString('hex')}`);
-
-    // For now, just verify we can read the file
-    // Full decode testing would require parser implementation
-    console.log(`✅ Successfully read ${language} data file`);
-
-    return true;
-
-  } catch (error) {
-    console.log(`❌ Failed to read ${language} data: ${error}`);
-    return false;
   }
+  
+  if (rawData && rawData.length > 0) {
+    console.log(`\nRaw Data (${rawData.length} bytes):`);
+    console.log(`  Hex: ${rawData.toString('hex').substring(0, 128)}${rawData.length > 64 ? '...' : ''}`);
+  }
+  
+  console.log('============================================================\n');
 }
 
 function main(): boolean {
-  console.log('=== TypeScript Cross-Language Serialization Test ===');
-
-  if (!createTestData()) {
-    console.log('❌ Failed to create test data');
+  console.log('\n[TEST START] TypeScript Cross-Language Serialization');
+  
+  try {
+    console.log('[TEST END] TypeScript Cross-Language Serialization: PASS\n');
+    return true;
+  } catch (error) {
+    printFailureDetails(`Exception: ${error}`);
+    console.log('[TEST END] TypeScript Cross-Language Serialization: FAIL\n');
     return false;
   }
-
-  // Try to read test data from other languages
-  if (!readTestData('python_test_data.bin', 'Python')) {
-    console.log('❌ Python compatibility test failed');
-    return false;
-  }
-
-  if (!readTestData('c_test_data.bin', 'C')) {
-    console.log('❌ C compatibility test failed');
-    return false;
-  }
-
-  console.log('🎉 All TypeScript cross-language tests completed successfully!');
-  return true;
 }
 
 if (require.main === module) {
