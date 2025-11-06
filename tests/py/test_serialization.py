@@ -37,19 +37,27 @@ def create_test_data():
     try:
         # Import generated modules (will be generated when test runs)
         sys.path.insert(0, '../generated/py')
-        from serialization_test_sf import SerializationTestSerializationTestMessage
+        from serialization_test_sf import (
+            SerializationTestSerializationTestMessage, 
+            _BoundedArray_test_array,
+            _VariableString_test_string
+        )
         from struct_frame_parser import BasicPacket
 
-        # Create a message instance with required constructor args (positional only)
+        # Create variable string for test_string
+        test_string = _VariableString_test_string(18, b"Hello from Python!")  # length=18, data
+
+        # Create bounded array for test_array
+        test_array = _BoundedArray_test_array(3, [100, 200, 300, 0, 0])  # 3 elements in use, max 5
+
+        # Create a message instance with all required constructor args
         msg = SerializationTestSerializationTestMessage(
             0xDEADBEEF,  # magic_number
+            test_string,  # test_string (variable string struct)
             3.14159,     # test_float
-            True         # test_bool
+            True,        # test_bool
+            test_array   # test_array (bounded array struct)
         )
-
-        # Set string and array fields after creation
-        msg.test_string = "Hello from Python!"
-        msg.test_array = [100, 200, 300]
 
         print("OK Serialization test message created and populated")
 

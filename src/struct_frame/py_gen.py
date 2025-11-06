@@ -65,43 +65,66 @@ class FieldPyGen():
             base_type = py_types[type_name]
         else:
             if field.isEnum:
-                # For enums, use the full enum class name for better type safety
-                base_type = '%s%s' % (pascalCase(field.package), type_name)
+                # For enums, use uint8 as the serialization type (enums are stored as uint8)
+                # but keep the enum class name for documentation
+                base_type = 'uint8'
+                enum_class_name = '%s%s' % (pascalCase(field.package), type_name)
             else:
                 base_type = '%s%s' % (pascalCase(field.package), type_name)
 
         # Handle arrays
         if field.is_array:
             if field.fieldType == "string":
-                # String arrays require both array size and individual element size
+                # String arrays use char arrays
                 if field.size_option is not None:
-                    type_annotation = f"list[{base_type}]  # Fixed string array size={field.size_option}, each max {field.element_size} chars"
+                    # Fixed string array: char[array_size][string_size]
+                    element_size = field.element_size if field.element_size else 16
+                    # Use Annotated with StaticStructArraySerializer for array of char arrays
+                    type_annotation = f"Annotated[list[bytes], StaticStructArraySerializer({field.size_option}, typing.get_args(char[{element_size}])[1])]  # Fixed string array: {field.size_option} strings, each {element_size} chars"
                 elif field.max_size is not None:
-                    type_annotation = f"list[{base_type}]  # Bounded string array max_size={field.max_size}, each max {field.element_size} chars"
+                    # Bounded string array - use nested struct
+                    type_annotation = f"_BoundedStringArray_{var_name}"
                 else:
-                    type_annotation = f"list[{base_type}]  # String array"
+                    type_annotation = f"list[{base_type}]  # String array (unbounded)"
             else:
                 # Non-string arrays
                 if field.size_option is not None:
-                    type_annotation = f"list[{base_type}]  # Fixed array size={field.size_option}"
+                    # Fixed array: Use StaticStructArraySerializer
+                    if field.isEnum or field.isDefaultType:
+                        # For enums and primitives, use Annotated with StaticStructArraySerializer
+                        # For enums, they're stored as uint8
+                        serializer_type = 'uint8' if field.isEnum else base_type
+                        if field.isEnum:
+                            type_annotation = f"Annotated[list, StaticStructArraySerializer({field.size_option}, typing.get_args(uint8)[1])]  # Fixed array of {enum_class_name}: {field.size_option} elements"
+                        else:
+                            type_annotation = f"Annotated[list, StaticStructArraySerializer({field.size_option}, typing.get_args({base_type})[1])]  # Fixed array: {field.size_option} elements"
+                    else:
+                        # For nested structs, we need to inline them (arrays of structs not directly supported)
+                        # Mark this for special handling in MessagePyGen
+                        type_annotation = f"_INLINE_STRUCT_ARRAY_{base_type}_{field.size_option}"
                 elif field.max_size is not None:
-                    type_annotation = f"list[{base_type}]  # Bounded array max_size={field.max_size}"
+                    # Bounded array - use nested struct
+                    type_annotation = f"_BoundedArray_{var_name}"
                 else:
-                    type_annotation = f"list[{base_type}]  # Array"
+                    type_annotation = f"list[{base_type}]  # Array (unbounded)"
         # Handle strings with size info
         elif field.fieldType == "string":
             if field.size_option is not None:
-                # Fixed string - exact length
-                type_annotation = f"str  # Fixed string size={field.size_option}"
+                # Fixed string - use char array (this works natively in structured library)
+                type_annotation = f"char[{field.size_option}]  # Fixed string: {field.size_option} chars"
             elif field.max_size is not None:
-                # Variable string - up to max length
-                type_annotation = f"str  # Variable string max_size={field.max_size}"
+                # Variable string - needs a nested struct with length prefix (like C)
+                type_annotation = f"_VariableString_{var_name}"
             else:
                 # Fallback (shouldn't happen with validation)
-                type_annotation = "str  # String"
+                type_annotation = "str  # String (unbounded)"
         else:
             # Regular field
-            type_annotation = base_type
+            if field.isEnum:
+                # For enum fields, add comment about the enum type
+                type_annotation = f"{base_type}  # Enum: {enum_class_name}"
+            else:
+                type_annotation = base_type
 
         result += '    %s: %s' % (var_name, type_annotation)
 
@@ -115,6 +138,59 @@ class FieldPyGen():
 
 class MessagePyGen():
     @staticmethod
+    def generate_variable_string_struct(field, msg_name):
+        """Generate a nested struct for variable-size strings"""
+        var_name = field.name
+        struct_name = f"_VariableString_{var_name}"
+        max_size = field.max_size
+        
+        result = f'class {struct_name}(Structured, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):\n'
+        result += f'    length: uint8  # Actual length of the string\n'
+        result += f'    data: char[{max_size}]  # String data (null-padded)\n'
+        
+        return result + '\n'
+    
+    @staticmethod
+    def generate_bounded_array_struct(field, msg_name):
+        """Generate a nested struct for bounded/variable arrays"""
+        var_name = field.name
+        type_name = field.fieldType
+        
+        # Determine the base type
+        if type_name in py_types:
+            base_type = py_types[type_name]
+        else:
+            if field.isEnum:
+                base_type = '%s%s' % (pascalCase(field.package), type_name)
+            else:
+                base_type = '%s%s' % (pascalCase(field.package), type_name)
+        
+        if field.fieldType == "string":
+            # Bounded string array
+            struct_name = f"_BoundedStringArray_{var_name}"
+            element_size = field.element_size if field.element_size else 16
+            result = f'class {struct_name}(Structured, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):\n'
+            result += f'    count: uint8\n'
+            result += f'    data: Annotated[list[bytes], StaticStructArraySerializer({field.max_size}, typing.get_args(char[{element_size}])[1])]\n'
+        else:
+            # Bounded numeric/enum/struct array
+            struct_name = f"_BoundedArray_{var_name}"
+            result = f'class {struct_name}(Structured, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):\n'
+            result += f'    count: uint8\n'
+            
+            if field.isEnum or field.isDefaultType:
+                # For enums and primitives
+                serializer_type = 'uint8' if field.isEnum else base_type
+                result += f'    data: Annotated[list, StaticStructArraySerializer({field.max_size}, typing.get_args({serializer_type})[1])]\n'
+            else:
+                # For nested structs, inline them
+                # Since we can't easily create arrays of Structured objects, we inline the fields
+                for i in range(field.max_size):
+                    result += f'    item{i}: {base_type}\n'
+        
+        return result + '\n'
+    
+    @staticmethod
     def generate(msg):
         leading_comment = msg.comments
 
@@ -123,14 +199,42 @@ class MessagePyGen():
             for c in msg.comments:
                 result = '#%s\n' % c
 
+        # First, generate nested structs for variable strings and bounded arrays
+        for key, f in msg.fields.items():
+            if f.fieldType == "string" and f.max_size is not None and not f.is_array:
+                # Variable-size string field
+                result += MessagePyGen.generate_variable_string_struct(f, msg.name)
+            elif f.is_array and f.max_size is not None:
+                # Bounded array
+                result += MessagePyGen.generate_bounded_array_struct(f, msg.name)
+        
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
         result += 'class %s(Structured, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):\n' % structName
         result += '    msg_size = %s\n' % msg.size
         if msg.id != None:
             result += '    msg_id = %s\n' % msg.id
 
-        result += '\n'.join([FieldPyGen.generate(f)
-                            for key, f in msg.fields.items()])
+        # Generate fields, handling special cases
+        field_lines = []
+        for key, f in msg.fields.items():
+            field_code = FieldPyGen.generate(f)
+            
+            # Handle inline struct arrays (fixed-size arrays of nested structs)
+            if "_INLINE_STRUCT_ARRAY_" in field_code:
+                # Extract struct name and count
+                import re
+                match = re.search(r'_INLINE_STRUCT_ARRAY_(\w+)_(\d+)', field_code)
+                if match:
+                    struct_name = match.group(1)
+                    count = int(match.group(2))
+                    # Generate inlined fields
+                    for i in range(count):
+                        field_lines.append(f'    {f.name}{i}: {struct_name}  # Inlined struct array element {i}')
+                    continue
+            
+            field_lines.append(field_code)
+        
+        result += '\n'.join(field_lines)
 
         result += '\n\n    def __str__(self):\n'
         result += f'        out = "{msg.name} Msg, ID {msg.id}, Size {msg.size} \\n"\n'
@@ -187,7 +291,10 @@ class FilePyGen():
         yield '# Generated by %s at %s. \n\n' % (version, time.asctime())
 
         yield 'from structured import *\n'
-        yield 'from enum import Enum\n\n'
+        yield 'from enum import Enum\n'
+        yield 'import typing\n'
+        yield 'from typing import Annotated\n'
+        yield 'from structured.hint_types.arrays import StaticStructArraySerializer\n\n'
 
         if package.enums:
             yield '# Enum definitions\n'

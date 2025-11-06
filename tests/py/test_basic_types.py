@@ -45,7 +45,7 @@ def test_basic_types():
         from basic_types_sf import BasicTypesBasicTypesMessage
         from struct_frame_parser import BasicPacket
 
-        # Create a message instance with required constructor args (positional only)
+        # Create a message instance with all required constructor args
         msg = BasicTypesBasicTypesMessage(
             -42,        # small_int
             -1000,      # medium_int
@@ -57,12 +57,10 @@ def test_basic_types():
             18446744073709551615,  # large_uint
             3.14159,    # single_precision
             2.718281828459045,  # double_precision
-            True        # flag
+            True,       # flag
+            b"TEST_DEVICE_12345678901234567890",  # device_id (bytes, 32 chars)
+            b"Test description for basic types"  # description (bytes, max 128 chars)
         )
-
-        # Set string fields after creation
-        msg.device_id = "TEST_DEVICE_12345678901234567890"
-        msg.description = "Test description for basic types"
 
         print("OK Message created and populated with test data")
 
