@@ -42,8 +42,16 @@ def test_basic_types():
     try:
         # Import generated modules (will be generated when test runs)
         sys.path.insert(0, '../generated/py')
-        from basic_types_sf import BasicTypesBasicTypesMessage
+        from basic_types_sf import BasicTypesBasicTypesMessage, _VariableString_description
         from struct_frame_parser import BasicPacket
+
+        # Create the variable string structure for description
+        desc_text = b"Test description for basic types"
+        description = _VariableString_description(
+            length=len(desc_text),
+            # Pad to 128 chars with null bytes
+            data=desc_text.ljust(128, b'\x00')
+        )
 
         # Create a message instance with all required constructor args
         msg = BasicTypesBasicTypesMessage(
@@ -59,7 +67,7 @@ def test_basic_types():
             2.718281828459045,  # double_precision
             True,       # flag
             b"TEST_DEVICE_12345678901234567890",  # device_id (bytes, 32 chars)
-            b"Test description for basic types"  # description (bytes, max 128 chars)
+            description  # description (structured variable string)
         )
 
         print("OK Message created and populated with test data")
