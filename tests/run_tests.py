@@ -54,7 +54,7 @@ class TestRunner:
             }.get(level, "  ")
             print(f"{prefix} {message}")
 
-    def run_command(self, command, cwd=None, timeout=30):
+    def run_command(self, command, cwd=None, timeout=30, suppress_error_log=False):
         """Run a shell command and return success status"""
         if cwd is None:
             cwd = self.project_root
@@ -82,10 +82,11 @@ class TestRunner:
                 self.log(f"Command succeeded", "INFO")
                 return True, result.stdout, result.stderr
             else:
-                self.log(
-                    f"Command failed with return code {result.returncode}", "ERROR")
-                if result.stderr and not self.verbose:
-                    print(f"  Error: {result.stderr}")
+                if not suppress_error_log:
+                    self.log(
+                        f"Command failed with return code {result.returncode}", "ERROR")
+                    if result.stderr and not self.verbose:
+                        print(f"  Error: {result.stderr}")
                 return False, result.stdout, result.stderr
 
         except subprocess.TimeoutExpired:
@@ -331,7 +332,7 @@ class TestRunner:
 
         # Try to compile TypeScript files
         command = f"tsc --outDir {self.generated_dir / 'ts' / 'js'} {self.generated_dir / 'ts'}/*.ts"
-        success, stdout, stderr = self.run_command(command)
+        success, stdout, stderr = self.run_command(command, suppress_error_log=True)
 
         if success:
             self.log("TypeScript compilation successful", "SUCCESS")
@@ -453,7 +454,8 @@ class TestRunner:
             if js_path.exists():
                 success, stdout, stderr = self.run_command(
                     f"node {js_path}",
-                    cwd=self.generated_dir / "ts" / "js"
+                    cwd=self.generated_dir / "ts" / "js",
+                    suppress_error_log=True
                 )
 
                 if success:
