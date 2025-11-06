@@ -34,18 +34,17 @@ def create_test_data():
     """Create test data for cross-language compatibility testing"""
     try:
         sys.path.insert(0, '../generated/py')
-        from serialization_test_sf import (
-            SerializationTestSerializationTestMessage, 
-            _BoundedArray_test_array,
-            _VariableString_test_string
-        )
+        from serialization_test_sf import SerializationTestSerializationTestMessage
         from struct_frame_parser import BasicPacket
 
-        test_string = _VariableString_test_string(18, b"Hello from Python!")
-        test_array = _BoundedArray_test_array(3, [100, 200, 300, 0, 0])
-
+        # Create test message with known values
+        # The new struct-based generator uses direct values instead of wrapper classes
         msg = SerializationTestSerializationTestMessage(
-            0xDEADBEEF, test_string, 3.14159, True, test_array
+            magic_number=0xDEADBEEF,
+            test_string=b"Hello from Python!",
+            test_float=3.14159,
+            test_bool=True,
+            test_array=[100, 200, 300]
         )
 
         packet = BasicPacket()

@@ -14,15 +14,14 @@ try:
     from serialization_test_sf import SerializationTestSerializationTestMessage
     
     # Create test message with known values
+    # The new struct-based generator uses bytes for strings
     msg = SerializationTestSerializationTestMessage(
-        0xDEADBEEF,  # magic_number
-        3.14159,     # test_float
-        True         # test_bool
+        magic_number=0xDEADBEEF,
+        test_string=b"Hello from Python!",
+        test_float=3.14159,
+        test_bool=True,
+        test_array=[100, 200, 300]
     )
-    
-    # Set string and array fields
-    msg.test_string = "Hello from Python!"
-    msg.test_array = [100, 200, 300]
     
     # Serialize to struct bytes (no framing) using pack()
     struct_bytes = msg.pack()

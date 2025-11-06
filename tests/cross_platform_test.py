@@ -266,17 +266,13 @@ class CrossPlatformTest:
 
     def check_language_available(self, language: str, mode: str = "framed") -> bool:
         """Check if encoder/decoder for a language are available"""
-        # NOTE: Python and TypeScript are currently disabled due to known limitations:
-        # - Python: The structured-classes library's pack() method doesn't properly
-        #   serialize variable-length strings and arrays. Only fixed-size primitive
-        #   fields are included in the packed output, preventing proper cross-platform
-        #   message encoding.
+        # NOTE: TypeScript is currently disabled due to known limitations:
         # - TypeScript: Generated code has a runtime error where the .Array() method
         #   doesn't exist on the typed-struct builder object. This is a code generation
         #   bug in struct-frame's TypeScript generator.
         #
         # Once these issues are resolved, remove the early return below.
-        if language in ["python", "typescript"]:
+        if language in ["typescript"]:
             return False
 
         if language == "c":
@@ -327,8 +323,8 @@ class CrossPlatformTest:
             print("="*60)
             self.log("Struct-based tests are currently NOT IMPLEMENTED", "WARNING")
             self.log(
-                "This is due to limitations in variable-length field serialization", "WARNING")
-            self.log("in the Python structured-classes library.", "WARNING")
+                "This is due to encoder/decoder implementations not being complete", "WARNING")
+            self.log("for all languages in struct mode.", "WARNING")
             self.log("TEST FAILED: Struct-based tests not implemented", "ERROR")
 
         # Test framed mode
