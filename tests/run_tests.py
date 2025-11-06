@@ -659,6 +659,9 @@ class TestRunner:
         """Print a detailed cross-language compatibility matrix"""
         if not self.cross_language_matrix:
             return
+        
+        # Column width for consistent formatting
+        ENCODER_COL_WIDTH = 18
             
         print("\nCompatibility Test Results:")
         
@@ -672,7 +675,7 @@ class TestRunner:
         sorted_languages = sorted(all_languages)
         
         # Print matrix table
-        header = "Encoder\\Decoder".ljust(18)
+        header = "Encoder\\Decoder".ljust(ENCODER_COL_WIDTH)
         for lang in sorted_languages:
             header += lang[:8].ljust(10)
         print(header)
@@ -681,7 +684,7 @@ class TestRunner:
         # Print matrix rows
         for encoder_lang in sorted_languages:
             if encoder_lang in self.cross_language_matrix:
-                row = encoder_lang.ljust(18)
+                row = encoder_lang.ljust(ENCODER_COL_WIDTH)
                 for decoder_lang in sorted_languages:
                     if decoder_lang in self.cross_language_matrix[encoder_lang]:
                         success = self.cross_language_matrix[encoder_lang][decoder_lang]
@@ -887,6 +890,7 @@ class TestRunner:
         elif core_success and success_rate >= 30:
             print(
                 f"✅ PARTIAL SUCCESS: {success_rate:.1f}% pass rate - Core functionality working")
+            print("   Note: C/C++/TypeScript tests may require additional tools (gcc/g++/tsc)")
             return True
         else:
             print(f"⚠️  NEEDS WORK: {success_rate:.1f}% pass rate")

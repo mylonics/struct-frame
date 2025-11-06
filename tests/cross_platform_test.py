@@ -337,7 +337,7 @@ class CrossPlatformTest:
         print()
         if self.total_tests > 0:
             pass_rate = (self.passed_tests / self.total_tests) * 100
-            print(f"Pipe tests: {self.passed_tests}/{self.total_tests} passed ({pass_rate:.0f}%)")
+            print(f"Pipe tests: {self.passed_tests}/{self.total_tests} passed ({pass_rate:.1f}%)")
 
             if pass_rate == 100:
                 return True
