@@ -37,6 +37,22 @@ ts_array_types = {
     "string":   'string',
 }
 
+# TypeScript typed array methods for array fields
+ts_typed_array_methods = {
+    "int8":     'Int8Array',
+    "uint8":    'UInt8Array',
+    "int16":    'Int16Array',
+    "uint16":   'UInt16Array',
+    "bool":     'UInt8Array',  # Boolean arrays stored as UInt8Array
+    "double":   'Float64Array',
+    "float":    'Float32Array',
+    "int32":    'Int32Array',
+    "uint32":   'UInt32Array',
+    "int64":    'BigInt64Array',
+    "uint64":   'BigUInt64Array',
+    "string":   'StructArray',  # String arrays use StructArray
+}
+
 
 class EnumTsGen():
     @staticmethod
@@ -89,33 +105,42 @@ class FieldTsGen():
         if field.is_array:
             if field.fieldType == "string":
                 if field.size_option is not None:  # Fixed size array [size=X]
-                    # Fixed string array: string[size] -> Array<string> with fixed length
+                    # Fixed string array: string[size] -> StructArray with fixed length
                     result += f'    // Fixed string array: {field.size_option} strings, each exactly {field.element_size} chars\n'
-                    result += f'    .Array(\'{var_name}\', \'String\', {field.size_option})'
+                    # For string arrays, we need to use StructArray with String elements
+                    result += f'    .StructArray(\'{var_name}\', {field.size_option}, new typed_struct.Struct().String(\'value\', {field.element_size}).compile())'
                 else:  # Variable size array [max_size=X]
-                    # Variable string array: string[max_size=X, element_size=Y] -> Array<string> with count
+                    # Variable string array: string[max_size=X, element_size=Y] -> count + StructArray
                     result += f'    // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
                     result += f'    .UInt8(\'{var_name}_count\')\n'
-                    result += f'    .Array(\'{var_name}_data\', \'String\', {field.max_size})'
+                    result += f'    .StructArray(\'{var_name}_data\', {field.max_size}, new typed_struct.Struct().String(\'value\', {field.element_size}).compile())'
             else:
                 # Regular type arrays
                 if type_name in ts_types:
                     base_type = ts_types[type_name]
+                    array_method = ts_typed_array_methods.get(type_name, 'StructArray')
                 else:
                     base_type = f'{packageName.lower()}_{StyleC.struct_name(type_name).lower()}'
+                    array_method = 'StructArray'
 
                 if field.size_option is not None:  # Fixed size array [size=X]
-                    # Fixed array: type[size] -> Array<type> with fixed length
+                    # Fixed array: type[size] -> TypedArray with fixed length
                     # For fixed arrays, size_option contains the exact size
                     array_size = field.size_option
                     result += f'    // Fixed array: always {array_size} elements\n'
-                    result += f'    .Array(\'{var_name}\', \'{base_type}\', {array_size})'
+                    if array_method == 'StructArray':
+                        result += f'    .{array_method}(\'{var_name}\', {array_size}, {base_type})'
+                    else:
+                        result += f'    .{array_method}(\'{var_name}\', {array_size})'
                 else:  # Variable size array [max_size=X]
-                    # Variable array: type[max_size=X] -> count + Array<type>
+                    # Variable array: type[max_size=X] -> count + TypedArray
                     max_count = field.max_size  # For variable arrays, max_size is the maximum count
                     result += f'    // Variable array: up to {max_count} elements\n'
                     result += f'    .UInt8(\'{var_name}_count\')\n'
-                    result += f'    .Array(\'{var_name}_data\', \'{base_type}\', {max_count})'
+                    if array_method == 'StructArray':
+                        result += f'    .{array_method}(\'{var_name}_data\', {max_count}, {base_type})'
+                    else:
+                        result += f'    .{array_method}(\'{var_name}_data\', {max_count})'
         else:
             # Non-array fields (existing logic)
             if field.fieldType == "string":
