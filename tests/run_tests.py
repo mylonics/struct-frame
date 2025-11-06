@@ -329,7 +329,9 @@ class TestRunner:
         test_files = [
             "test_basic_types.ts",
             "test_arrays.ts",
-            "test_serialization.ts"
+            "test_serialization.ts",
+            "encoder_framed.ts",
+            "decoder_framed.ts"
         ]
 
         for test_file in test_files:
