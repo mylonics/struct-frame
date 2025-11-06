@@ -97,7 +97,7 @@ class FieldTsGen():
     @staticmethod
     def generate(field, packageName):
         result = ''
-        isEnum = False
+        isEnum = field.isEnum if hasattr(field, 'isEnum') else False
         var_name = StyleC.var_name(field.name)
         type_name = field.fieldType
 
@@ -119,8 +119,13 @@ class FieldTsGen():
                 if type_name in ts_types:
                     base_type = ts_types[type_name]
                     array_method = ts_typed_array_methods.get(type_name, 'StructArray')
+                elif field.isEnum if hasattr(field, 'isEnum') else False:
+                    # Enum arrays are stored as UInt8Array
+                    base_type = 'UInt8'
+                    array_method = 'UInt8Array'
                 else:
-                    base_type = f'{packageName.lower()}_{StyleC.struct_name(type_name).lower()}'
+                    # Struct arrays - use the type name as-is (not lowercased)
+                    base_type = f'{packageName}_{type_name}'
                     array_method = 'StructArray'
 
                 if field.size_option is not None:  # Fixed size array [size=X]
@@ -164,7 +169,8 @@ class FieldTsGen():
                     type_name = f'{packageName}_{StyleC.struct_name(type_name)}'
 
                 if isEnum:
-                    result += f'    .UInt8(\'{var_name}\', typed<{type_name}>())'
+                    # Enums are stored as UInt8 in TypeScript
+                    result += f'    .UInt8(\'{var_name}\')'
                 else:
                     result += f'    .{type_name}(\'{var_name}\')'
 
