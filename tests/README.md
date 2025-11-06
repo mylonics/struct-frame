@@ -1,6 +1,6 @@
 # struct-frame Test Suite
 
-This directory contains a comprehensive test suite for the struct-frame project that validates code generation and serialization/deserialization functionality across all supported languages (C, TypeScript, and Python).
+Comprehensive test suite for struct-frame that validates code generation and serialization/deserialization across all supported languages (C, C++, TypeScript, and Python).
 
 ## Quick Start
 
@@ -16,59 +16,96 @@ Or run the test suite directly:
 python tests/run_tests.py
 ```
 
-## Test Structure
+## Test Output Format
 
-### Test Organization
+Tests follow a consistent format across all languages:
+
+```
+[TEST START] <Language> <Test Type>
+[TEST END] <Language> <Test Type>: PASS/FAIL
+```
+
+- **Success**: Only start and end messages are printed
+- **Failure**: Detailed failure information including expected values, actual values, and raw data hex dump
+
+## Test Types
+
+### 1. Basic Types Test
+**Purpose**: Validates serialization and deserialization of primitive data types
+
+**What it tests**:
+- Integer types: int8, int16, int32, int64, uint8, uint16, uint32, uint64
+- Floating point types: float32, float64
+- Boolean type: bool
+- String types: fixed-size strings and variable-length strings
+
+**Test flow**:
+1. Create a message with sample values for all basic types
+2. Serialize the message to binary format
+3. Deserialize the binary data back to a message
+4. Verify all values match the original
+
+**Files**:
+- C: `tests/c/test_basic_types.c`
+- C++: `tests/cpp/test_basic_types.cpp`
+- Python: `tests/py/test_basic_types.py`
+- TypeScript: `tests/ts/test_basic_types.ts`
+
+### 2. Array Operations Test
+**Purpose**: Validates array serialization for both fixed and bounded arrays
+
+**What it tests**:
+- Fixed arrays: Arrays with a predetermined, unchanging size
+- Bounded arrays: Arrays with variable count up to a maximum size
+- Array element types: primitives, strings, enums, and nested messages
+
+**Test flow**:
+1. Create a message containing various array types
+2. Populate arrays with test data
+3. Serialize the message to binary format
+4. Deserialize and verify array counts and values
+
+**Files**:
+- C: `tests/c/test_arrays.c`
+- C++: `tests/cpp/test_arrays.cpp`
+- Python: `tests/py/test_arrays.py`
+- TypeScript: `tests/ts/test_arrays.ts`
+
+### 3. Cross-Language Serialization Test
+**Purpose**: Ensures data serialized in one language can be deserialized in another
+
+**What it tests**:
+- Binary format compatibility across language implementations
+- Correct encoding/decoding of message framing
+- Data integrity across language boundaries
+
+**Test flow**:
+1. Each language creates a test message and serializes it to a binary file
+2. Each language attempts to read and deserialize binary files from other languages
+3. Verify decoded values match expected values
+
+**Files**:
+- C: `tests/c/test_serialization.c` → creates `c_test_data.bin`
+- C++: `tests/cpp/test_serialization.cpp` → creates `cpp_test_data.bin`
+- Python: `tests/py/test_serialization.py` → creates `python_test_data.bin`
+- TypeScript: `tests/ts/test_serialization.ts` → creates `typescript_test_data.bin`
+
+## Test Organization
 
 ```
 tests/
-├── run_tests.py              # Main test runner script
-├── proto/                    # Test protocol buffer definitions
-│   ├── basic_types.proto     # Tests all basic data types
-│   ├── nested_messages.proto # Tests nested message structures
-│   ├── comprehensive_arrays.proto # Tests all array types
-│   └── serialization_test.proto   # Cross-language compatibility
-├── c/                        # C language test programs
-│   ├── test_basic_types.c    # Basic types serialization tests
-│   ├── test_arrays.c         # Array operations tests
-│   └── test_serialization.c  # Cross-language compatibility
-├── ts/                       # TypeScript test programs
-│   ├── test_basic_types.ts   # Basic types serialization tests
-│   ├── test_arrays.ts        # Array operations tests
-│   └── test_serialization.ts # Cross-language compatibility
-├── py/                       # Python test programs
-│   ├── test_basic_types.py   # Basic types serialization tests
-│   ├── test_arrays.py        # Array operations tests
-│   └── test_serialization.py # Cross-language compatibility
-└── generated/                # Generated code output directory
-    ├── c/                    # Generated C headers
-    ├── ts/                   # Generated TypeScript modules
-    └── py/                   # Generated Python classes
+├── run_tests.py              # Main test runner
+├── proto/                    # Proto definitions for tests
+│   ├── basic_types.proto     # Defines all basic data types
+│   ├── nested_messages.proto # Defines nested message structures
+│   ├── comprehensive_arrays.proto # Defines all array types
+│   └── serialization_test.proto   # Defines cross-language test message
+├── c/                        # C language tests
+├── cpp/                      # C++ language tests
+├── ts/                       # TypeScript tests
+├── py/                       # Python tests
+└── generated/                # Generated code output
 ```
-
-### Test Categories
-
-1. **Code Generation Tests**
-   - Verifies that proto files generate valid code for all languages
-   - Tests all basic data types, arrays, nested messages, and enums
-   - Ensures generated code compiles without errors
-
-2. **Basic Types Tests**
-   - Tests serialization/deserialization of all primitive types
-   - Covers int8, int16, int32, int64, uint8, uint16, uint32, uint64
-   - Tests float32, float64, bool, and string types
-   - Validates fixed-size vs variable-size strings
-
-3. **Array Tests**
-   - Tests fixed arrays (always exact size)
-   - Tests bounded arrays (variable count up to maximum)
-   - Covers primitive arrays, string arrays, enum arrays
-   - Tests nested message arrays
-
-4. **Cross-Language Compatibility Tests**
-   - Verifies data serialized in one language can be deserialized in another
-   - Creates binary test files that are shared between language tests
-   - Ensures protocol compatibility across all implementations
 
 ## Command Line Options
 
@@ -78,137 +115,89 @@ python tests/run_tests.py [options]
 Options:
   --generate-only    Only run code generation tests
   --skip-c          Skip C language tests
+  --skip-cpp        Skip C++ language tests
   --skip-ts         Skip TypeScript language tests  
   --skip-py         Skip Python language tests
-  --verbose, -v     Enable verbose output
+  --verbose, -v     Enable verbose output for debugging
 
 Examples:
   python tests/run_tests.py                    # Run all tests
   python tests/run_tests.py --generate-only   # Just generate code
   python tests/run_tests.py --skip-ts         # Skip TypeScript tests
-  python tests/run_tests.py --verbose         # Detailed output
+  python tests/run_tests.py --verbose         # Show detailed output
 ```
 
 ## Prerequisites
 
-### Required Dependencies
+**Python 3.8+** with packages:
+```bash
+pip install proto-schema-parser structured-classes
+```
 
-- **Python 3.8+** with packages:
-  - `proto-schema-parser`
-  - `structured-classes`
+**For C tests**:
+- GCC compiler
 
-- **For C tests:**
-  - GCC compiler or equivalent
-  - Standard C library
+**For C++ tests**:
+- G++ compiler with C++14 support
 
-- **For TypeScript tests:**
-  - Node.js runtime
-  - TypeScript compiler (`npm install -g typescript`)
-  - typed-struct package (`npm install`)
+**For TypeScript tests**:
+- Node.js
+- TypeScript compiler: `npm install -g typescript`
+- Dependencies: `npm install` in project root
 
-### Installation
+## Understanding Test Results
 
-1. Install Python dependencies:
-   ```bash
-   pip install proto-schema-parser structured-classes
-   ```
+The test runner provides a summary showing:
 
-2. Install Node.js dependencies:
-   ```bash
-   npm install
-   ```
+```
+🔧 Code Generation: PASS/FAIL for each language
+🔨 Compilation: PASS/FAIL for compiled languages
+🧪 Basic Types Tests: PASS/FAIL for each language
+🧪 Arrays Tests: PASS/FAIL for each language
+�� Serialization Tests: PASS/FAIL for each language
+🌐 Cross-Language Compatibility: Cross-language decode matrix
+```
 
-3. Ensure GCC is available (Windows users may need MinGW)
-
-## Test Workflow
-
-The test runner executes the following sequence:
-
-1. **Setup**: Creates test directories and cleans previous output
-2. **Code Generation**: Generates C, TypeScript, and Python code from proto files
-3. **Compilation**: Compiles generated code to verify syntax correctness
-4. **Basic Tests**: Runs fundamental serialization/deserialization tests
-5. **Array Tests**: Runs comprehensive array operation tests  
-6. **Cross-Language Tests**: Verifies inter-language compatibility
-7. **Summary**: Reports pass/fail status for all test categories
-
-## Understanding Results
-
-The test runner provides detailed output showing:
-
-- ✅ **PASS**: Test completed successfully
-- ❌ **FAIL**: Test failed - check error messages
-- ⚠️  **WARNING**: Test skipped or had non-critical issues
-
-### Expected Behavior
-
-- **Code Generation**: Should always pass for all languages
-- **C Tests**: Should compile and run successfully
-- **Python Tests**: Should always pass (most reliable implementation)
-- **TypeScript Tests**: May have warnings due to runtime complexity
-- **Cross-Language**: Should create compatible binary data
+Expected behavior:
+- **Code Generation**: Should always pass if dependencies are installed
+- **C/C++ Tests**: Should pass if compilers are available
+- **Python Tests**: Should pass (most reliable implementation)
+- **TypeScript Tests**: May have issues due to runtime complexity
+- **Cross-Language Tests**: Should show high compatibility rate
 
 ## Debugging Failed Tests
 
-### Code Generation Failures
-- Check that proto files are valid
-- Verify Python dependencies are installed
-- Ensure `PYTHONPATH` includes the `src` directory
+When a test fails, it prints detailed failure information:
 
-### C Compilation Failures
-- Verify GCC is installed and available in PATH
-- Check that generated headers exist in `tests/generated/c/`
-- Look for missing boilerplate files
+```
+============================================================
+FAILURE DETAILS: <Description>
+============================================================
 
-### Python Test Failures
-- Verify `structured-classes` package is installed
-- Check that generated Python files exist
-- Ensure imports can resolve generated modules
+Expected Values:
+  field1: value1
+  field2: value2
 
-### TypeScript Test Failures
-- Verify Node.js and TypeScript are installed
-- Check that `npm install` completed successfully
-- Review TypeScript compiler errors in verbose mode
+Actual Values:
+  field1: wrong_value1
+  field2: wrong_value2
+
+Raw Data (N bytes):
+  Hex: deadbeef...
+============================================================
+```
+
+This information helps diagnose:
+- Which specific values don't match
+- The exact binary data that was encoded/decoded
+- Whether the issue is in encoding or decoding
 
 ## Adding New Tests
 
-### Adding a New Proto File
+To add a new test type:
 
-1. Create `tests/proto/your_test.proto`
-2. Add appropriate message definitions with msgid
-3. The test runner will automatically generate code for it
-
-### Adding Language-Specific Tests
-
-1. Create test program in appropriate language directory
-2. Follow the naming convention: `test_<category>.ext`
-3. Import generated modules and test serialization/deserialization
-4. Update test runner if needed for new test categories
-
-### Test Program Structure
-
-Each test program should:
-- Import generated code modules
-- Create message instances with test data  
-- Serialize messages to binary format
-- Deserialize and verify data integrity
-- Handle missing modules gracefully (before code generation)
-- Return appropriate exit codes (0 = success, 1 = failure)
-
-## Known Issues and Limitations
-
-- **TypeScript**: Generated code may have runtime issues with method calls
-- **C**: Some generated macro conflicts may occur
-- **Cross-Language**: Binary compatibility depends on consistent framing
-- **Windows**: Path handling may require PowerShell or cmd adjustments
-
-## Contributing
-
-When adding new features to struct-frame:
-
-1. Add appropriate test proto definitions
-2. Create test programs for each supported language
-3. Verify cross-language compatibility
-4. Update this documentation
-
-The comprehensive test suite helps ensure that changes don't break existing functionality across all supported languages and use cases.
+1. Create a new proto file in `tests/proto/`
+2. Add test programs for each language following the naming convention: `test_<name>.<ext>`
+3. Use the standard test output format with `[TEST START]` and `[TEST END]`
+4. Print failure details only when tests fail
+5. Test programs should return exit code 0 on success, 1 on failure

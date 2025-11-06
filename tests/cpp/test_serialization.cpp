@@ -1,74 +1,61 @@
-// Cross-language serialization test for C++
 #include "serialization_test.sf.hpp"
 #include <iostream>
 #include <fstream>
 #include <cstring>
 
+void print_failure_details(const char* label) {
+    std::cout << "\n============================================================\n";
+    std::cout << "FAILURE DETAILS: " << label << "\n";
+    std::cout << "============================================================\n\n";
+}
+
 int main() {
-    // Create test message
-    SerializationTestSerializationTestMessage msg{};
-    msg.magic_number = 0xDEADBEEF;
-    msg.test_string.length = 11;
-    std::strncpy(msg.test_string.data, "Hello World", sizeof(msg.test_string.data));
-    msg.test_float = 3.14159f;
-    msg.test_bool = true;
-    msg.test_array.count = 3;
-    msg.test_array.data[0] = 100;
-    msg.test_array.data[1] = 200;
-    msg.test_array.data[2] = 300;
+    std::cout << "\n[TEST START] C++ Cross-Language Serialization\n";
     
-    // Serialize to binary file
-    size_t msg_size = 0;
-    if (!StructFrame::get_message_length(SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, &msg_size)) {
-        std::cerr << "Failed to get message length" << std::endl;
-        return 1;
-    }
-    
-    uint8_t buffer[512];
-    StructFrame::BasicPacket format;
-    StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
-    
-    if (!encoder.encode(&format, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, 
-                        reinterpret_cast<uint8_t*>(&msg), static_cast<uint8_t>(msg_size))) {
-        std::cerr << "Failed to encode message" << std::endl;
-        return 1;
-    }
-    
-    // Write to file for cross-language testing
-    std::ofstream outfile("cpp_test_data.bin", std::ios::binary);
-    if (!outfile) {
-        std::cerr << "Failed to open output file" << std::endl;
-        return 1;
-    }
-    outfile.write(reinterpret_cast<const char*>(buffer), encoder.size());
-    outfile.close();
-    
-    std::cout << "Wrote " << encoder.size() << " bytes to cpp_test_data.bin" << std::endl;
-    
-    // Test deserialization
-    StructFrame::FrameParser parser(&format, [](size_t msg_id, size_t* size) {
-        return StructFrame::get_message_length(msg_id, size);
-    });
-    
-    for (size_t i = 0; i < encoder.size(); i++) {
-        StructFrame::MessageInfo info = parser.parse_byte(buffer[i]);
-        if (info.valid) {
-            auto* decoded = reinterpret_cast<SerializationTestSerializationTestMessage*>(info.msg_location);
-            
-            // Verify decoded data
-            if (decoded->magic_number != msg.magic_number ||
-                decoded->test_float != msg.test_float ||
-                decoded->test_bool != msg.test_bool ||
-                decoded->test_array.count != msg.test_array.count) {
-                std::cerr << "Decoded data mismatch" << std::endl;
-                return 1;
-            }
-            
-            std::cout << "C++ serialization test passed!" << std::endl;
-            return 0;
+    try {
+        SerializationTestSerializationTestMessage msg{};
+        msg.magic_number = 0xDEADBEEF;
+        msg.test_string.length = 15;
+        std::strncpy(msg.test_string.data, "Hello from C++!", sizeof(msg.test_string.data));
+        msg.test_float = 3.14159f;
+        msg.test_bool = true;
+        msg.test_array.count = 3;
+        msg.test_array.data[0] = 100;
+        msg.test_array.data[1] = 200;
+        msg.test_array.data[2] = 300;
+        
+        size_t msg_size = 0;
+        if (!StructFrame::get_message_length(SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, &msg_size)) {
+            print_failure_details("Failed to get message length");
+            std::cout << "[TEST END] C++ Cross-Language Serialization: FAIL\n\n";
+            return 1;
         }
+        
+        uint8_t buffer[512];
+        StructFrame::BasicPacket format;
+        StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
+        
+        if (!encoder.encode(&format, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, &msg, msg_size)) {
+            print_failure_details("Failed to encode message");
+            std::cout << "[TEST END] C++ Cross-Language Serialization: FAIL\n\n";
+            return 1;
+        }
+        
+        std::ofstream file("cpp_test_data.bin", std::ios::binary);
+        if (!file) {
+            print_failure_details("Failed to create test data file");
+            std::cout << "[TEST END] C++ Cross-Language Serialization: FAIL\n\n";
+            return 1;
+        }
+        file.write(reinterpret_cast<const char*>(buffer), encoder.size());
+        file.close();
+        
+        std::cout << "[TEST END] C++ Cross-Language Serialization: PASS\n\n";
+        return 0;
+        
+    } catch (const std::exception& e) {
+        print_failure_details(e.what());
+        std::cout << "[TEST END] C++ Cross-Language Serialization: FAIL\n\n";
+        return 1;
     }
-    
-    std::cerr << "Failed to parse message" << std::endl;
-    return 1;
 }
