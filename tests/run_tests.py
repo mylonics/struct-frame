@@ -823,7 +823,7 @@ class TestRunner:
                 if js_path.exists():
                     success, _, _ = self.run_command(
                         f"node {js_path}",
-                        cwd=self.generated_dir / "ts" / "js",
+                        cwd=self.project_root,  # Run from project root to find node_modules
                         show_command=False
                     )
                     self.results[test_type]['ts'] = success
