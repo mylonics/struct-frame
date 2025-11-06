@@ -45,6 +45,22 @@ python tests/run_tests.py --generate-only
 
 See `tests/README.md` for detailed test documentation.
 
+### Continuous Integration
+
+The project uses GitHub Actions to automatically run the full test suite on:
+- Every push to the `main` branch
+- Every pull request targeting the `main` branch
+
+The CI pipeline:
+1. Sets up Python 3.11 and Node.js 20
+2. Installs system dependencies (GCC, G++)
+3. Installs Python dependencies (proto-schema-parser, structured-classes)
+4. Installs Node.js dependencies
+5. Runs the complete test suite (`python test_all.py`)
+6. Uploads test artifacts for debugging
+
+You can view test results in the "Actions" tab of the GitHub repository. Test artifacts (generated code and binary files) are available for download for 5 days after each run.
+
 ## Framing System
 
 Struct Frame provides a message framing system for reliable communication over serial links, network sockets, or any byte stream. Framing solves the fundamental problem of determining where messages begin and end in a continuous data stream.
