@@ -210,7 +210,8 @@ class CrossPlatformTest:
         test_name = f"{encoder_lang}→{decoder_lang} ({mode})"
         self.total_tests += 1
 
-        self.log(f"Testing {test_name}...")
+        if self.verbose:
+            self.log(f"Testing {test_name}...")
 
         # Encode
         binary_data = self.run_encoder(encoder_lang, framed)
@@ -230,21 +231,22 @@ class CrossPlatformTest:
         if not success:
             self.log(f"{test_name}: Decoder failed", "ERROR")
             # Print debugging information on failure
-            print(f"\n  🔍 Failure Details:")
-            print(f"    Encoded by: {encoder_lang}")
-            print(f"    Decoded by: {decoder_lang}")
-            print(f"    Raw data length: {len(binary_data)} bytes")
-            print(f"    Raw data (hex): {binary_data.hex()}")
-            if binary_data:
-                print(f"    Raw data (bytes): {list(binary_data)}")
+            if self.verbose:
+                print(f"\n  🔍 Failure Details:")
+                print(f"    Encoded by: {encoder_lang}")
+                print(f"    Decoded by: {decoder_lang}")
+                print(f"    Raw data length: {len(binary_data)} bytes")
+                print(f"    Raw data (hex): {binary_data.hex()}")
+                if binary_data:
+                    print(f"    Raw data (bytes): {list(binary_data)}")
             self.failed_tests += 1
             self.results[test_name] = False
             return False
 
         # Verify
         if decoded_data and self.verify_decoded_data(decoded_data):
-            self.log(f"{test_name}: PASS", "SUCCESS")
             if self.verbose:
+                self.log(f"{test_name}: PASS", "SUCCESS")
                 self.log(f"Decoded data: {decoded_data}", "INFO")
             self.passed_tests += 1
             self.results[test_name] = True
@@ -252,14 +254,15 @@ class CrossPlatformTest:
         else:
             self.log(f"{test_name}: Verification failed", "ERROR")
             # Print debugging information on verification failure
-            print(f"\n  🔍 Verification Failure Details:")
-            print(f"    Encoded by: {encoder_lang}")
-            print(f"    Decoded by: {decoder_lang}")
-            print(f"    Decoded data: {decoded_data}")
-            print(f"    Raw data length: {len(binary_data)} bytes")
-            print(f"    Raw data (hex): {binary_data.hex()}")
-            if binary_data:
-                print(f"    Raw data (bytes): {list(binary_data)}")
+            if self.verbose:
+                print(f"\n  🔍 Verification Failure Details:")
+                print(f"    Encoded by: {encoder_lang}")
+                print(f"    Decoded by: {decoder_lang}")
+                print(f"    Decoded data: {decoded_data}")
+                print(f"    Raw data length: {len(binary_data)} bytes")
+                print(f"    Raw data (hex): {binary_data.hex()}")
+                if binary_data:
+                    print(f"    Raw data (bytes): {list(binary_data)}")
             self.failed_tests += 1
             self.results[test_name] = False
             return False
@@ -297,10 +300,6 @@ class CrossPlatformTest:
 
     def run_all_tests(self, test_struct=True, test_framed=True):
         """Run all cross-platform tests"""
-        print("="*60)
-        print("CROSS-PLATFORM PIPE TEST")
-        print("="*60)
-
         # Detect available languages
         available_languages = []
         for lang in ["c", "python", "typescript"]:
@@ -309,30 +308,25 @@ class CrossPlatformTest:
                 self.log(
                     f"{lang.capitalize()} encoder/decoder available", "SUCCESS")
             else:
-                self.log(
-                    f"{lang.capitalize()} encoder/decoder not available", "SKIP")
+                if self.verbose:
+                    self.log(
+                        f"{lang.capitalize()} encoder/decoder not available", "SKIP")
 
         if len(available_languages) == 0:
             self.log("No languages available for testing!", "ERROR")
             return False
 
-        # Test struct mode (no framing)
+        # Test struct mode (no framing) - currently not implemented
         if test_struct:
-            print("\n" + "="*60)
-            print("STRUCT-BASED TESTS (NO FRAMING)")
-            print("="*60)
-            self.log("Struct-based tests are currently NOT IMPLEMENTED", "WARNING")
-            self.log(
-                "This is due to encoder/decoder implementations not being complete", "WARNING")
-            self.log("for all languages in struct mode.", "WARNING")
-            self.log("TEST FAILED: Struct-based tests not implemented", "ERROR")
+            if self.verbose:
+                print("\nStruct-based tests: NOT IMPLEMENTED")
+                self.log("Struct-based tests are currently not implemented", "WARNING")
+                self.log(
+                    "This is due to encoder/decoder implementations not being complete", "WARNING")
+                self.log("for all languages in struct mode.", "WARNING")
 
         # Test framed mode
         if test_framed:
-            print("\n" + "="*60)
-            print("FRAMED TESTS (WITH HEADERS/CHECKSUMS)")
-            print("="*60)
-
             # Test each language encoding to all languages
             for encoder_lang in available_languages:
                 for decoder_lang in available_languages:
@@ -340,25 +334,16 @@ class CrossPlatformTest:
                         encoder_lang, decoder_lang, framed=True)
 
         # Print summary
-        print("\n" + "="*60)
-        print("TEST RESULTS SUMMARY")
-        print("="*60)
-        print(f"Total tests: {self.total_tests}")
-        print(f"Passed: {self.passed_tests}")
-        print(f"Failed: {self.failed_tests}")
-
+        print()
         if self.total_tests > 0:
             pass_rate = (self.passed_tests / self.total_tests) * 100
-            print(f"Pass rate: {pass_rate:.1f}%")
+            print(f"Pipe tests: {self.passed_tests}/{self.total_tests} passed ({pass_rate:.0f}%)")
 
             if pass_rate == 100:
-                print("ALL TESTS PASSED!")
                 return True
             elif pass_rate >= 80:
-                print("MOST TESTS PASSED")
                 return True
             else:
-                print("SOME TESTS FAILED")
                 return False
         else:
             print("NO TESTS RUN")
