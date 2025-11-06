@@ -97,6 +97,7 @@ class FieldTsGen():
     @staticmethod
     def generate(field, packageName):
         result = ''
+        # Check if field is an enum type
         isEnum = field.isEnum if hasattr(field, 'isEnum') else False
         var_name = StyleC.var_name(field.name)
         type_name = field.fieldType
@@ -119,12 +120,12 @@ class FieldTsGen():
                 if type_name in ts_types:
                     base_type = ts_types[type_name]
                     array_method = ts_typed_array_methods.get(type_name, 'StructArray')
-                elif field.isEnum if hasattr(field, 'isEnum') else False:
+                elif isEnum:
                     # Enum arrays are stored as UInt8Array
                     base_type = 'UInt8'
                     array_method = 'UInt8Array'
                 else:
-                    # Struct arrays - use the type name as-is (not lowercased)
+                    # Struct arrays - use the original type name (e.g., 'Sensor' not 'sensor')
                     base_type = f'{packageName}_{type_name}'
                     array_method = 'StructArray'
 
