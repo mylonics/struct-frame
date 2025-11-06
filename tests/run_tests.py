@@ -478,8 +478,9 @@ class TestRunner:
     def run_cross_language_tests(self):
         """Run cross-language compatibility tests"""
         print("\n" + "="*60)
-        print("🌐 CROSS-LANGUAGE COMPATIBILITY")
+        print("🔄 CROSS-LANGUAGE DATA INTERCHANGE")
         print("="*60)
+        print("Testing if data serialized in one language can be decoded in another\n")
 
         # Initialize cross-language compatibility matrix
         # Structure: encoder_language -> {decoder_language: success_status}
@@ -712,8 +713,9 @@ class TestRunner:
     def run_cross_platform_pipe_tests(self):
         """Run cross-platform pipe tests"""
         print("\n" + "="*60)
-        print("🔗 CROSS-PLATFORM PIPE TESTS")
+        print("🔗 STDIN/STDOUT STREAMING TESTS")
         print("="*60)
+        print("Testing data piping between language implementations via stdin/stdout\n")
         
         cross_platform_script = self.tests_dir / "cross_platform_test.py"
         if not cross_platform_script.exists():
@@ -824,56 +826,40 @@ class TestRunner:
         total_tests = 0
         passed_tests = 0
 
-        # Code generation results
-        print("\n🔧 Code Generation:")
+        # Count code generation results
         for lang in tested_languages:
-            status = "✅ PASS" if self.results['generation'][lang] else "❌ FAIL"
-            print(f"  {lang.upper():>10}: {status}")
             total_tests += 1
             if self.results['generation'][lang]:
                 passed_tests += 1
 
-        # Compilation results (only for languages that need compilation)
+        # Count compilation results (only for languages that need compilation)
         compiled_languages = [
             lang for lang in tested_languages if lang in ['c', 'ts', 'cpp']]
-        if compiled_languages:
-            print("\n🔨 Compilation:")
-            for lang in compiled_languages:
-                status = "✅ PASS" if self.results['compilation'][lang] else "❌ FAIL"
-                print(f"  {lang.upper():>10}: {status}")
-                total_tests += 1
-                if self.results['compilation'][lang]:
-                    passed_tests += 1
+        for lang in compiled_languages:
+            total_tests += 1
+            if self.results['compilation'][lang]:
+                passed_tests += 1
 
-        # Test execution results
+        # Count test execution results
         test_types = ['basic_types', 'arrays', 'serialization']
         for test_type in test_types:
-            print(f"\n🧪 {test_type.replace('_', ' ').title()} Tests:")
             for lang in tested_languages:
-                status = "✅ PASS" if self.results[test_type][lang] else "❌ FAIL"
-                print(f"  {lang.upper():>10}: {status}")
                 total_tests += 1
                 if self.results[test_type][lang]:
                     passed_tests += 1
 
         # Cross-language compatibility
-        print(f"\n🌐 Cross-Language Compatibility:")
-        status = "✅ PASS" if self.results['cross_language'] else "❌ FAIL"
-        print(f"  {'Overall':>10}: {status}")
         total_tests += 1
         if self.results['cross_language']:
             passed_tests += 1
         
         # Cross-platform pipe tests
-        status = "✅ PASS" if self.results['cross_platform_pipe'] else "❌ FAIL"
-        print(f"  {'Pipe-based':>10}: {status}")
         total_tests += 1
         if self.results['cross_platform_pipe']:
             passed_tests += 1
 
         # Overall result
-        print(
-            f"\n📈 Overall Results: {passed_tests}/{total_tests} tests passed")
+        print(f"\n📈 {passed_tests}/{total_tests} tests passed")
 
         success_rate = (passed_tests / total_tests) * 100
 
