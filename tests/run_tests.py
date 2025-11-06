@@ -483,6 +483,11 @@ class TestRunner:
                 'data_locations': [self.tests_dir / "c"],
                 'test_exe': self.tests_dir / "c" / "test_serialization.exe"
             },
+            'C++': {
+                'data_file': 'cpp_test_data.bin',
+                'data_locations': [self.tests_dir / "cpp"],
+                'test_exe': self.tests_dir / "cpp" / "test_serialization.exe"
+            },
             'Python': {
                 'data_file': 'python_test_data.bin', 
                 'data_locations': [self.tests_dir / "py"],
@@ -564,8 +569,8 @@ class TestRunner:
                 return False
 
             # Test decoding based on decoder language
-            if decoder_lang == 'C' and 'test_exe' in decoder_info:
-                return self._test_c_cross_decode(encoder_data_path, encoder_lang, decoder_info['test_exe'])
+            if decoder_lang in ['C', 'C++'] and 'test_exe' in decoder_info:
+                return self._test_c_cpp_cross_decode(encoder_data_path, encoder_lang, decoder_info['test_exe'], decoder_lang)
             elif decoder_lang == 'Python' and 'test_script' in decoder_info:
                 return self._test_python_cross_decode(encoder_data_path, encoder_lang, decoder_info['test_script'])
             else:
@@ -576,23 +581,25 @@ class TestRunner:
             self.log(f"Exception testing {decoder_lang} decode of {encoder_lang} data: {e}", "WARNING")
             return False
 
-    def _test_c_cross_decode(self, data_file_path, encoder_lang, test_exe_path):
-        """Test C decoder with data from another language"""
+    def _test_c_cpp_cross_decode(self, data_file_path, encoder_lang, test_exe_path, decoder_lang):
+        """Test C/C++ decoder with data from another language"""
         if not test_exe_path.exists():
             return False
             
-        # Copy the data file to where the C test expects it
-        target_file = self.tests_dir / "c" / data_file_path.name
+        # Determine the target directory based on decoder language
+        target_dir = self.tests_dir / ("c" if decoder_lang == "C" else "cpp")
+        target_file = target_dir / data_file_path.name
+        
         try:
             import shutil
             shutil.copy2(data_file_path, target_file)
             
-            # Run the C test (it will try to decode the copied file)
-            success, stdout, stderr = self.run_command(str(test_exe_path), cwd=self.tests_dir / "c")
+            # Run the C/C++ test (it will try to decode the copied file)
+            success, stdout, stderr = self.run_command(str(test_exe_path), cwd=target_dir)
             return success
             
         except Exception as e:
-            self.log(f"C cross-decode test failed: {e}", "WARNING")
+            self.log(f"{decoder_lang} cross-decode test failed: {e}", "WARNING")
             return False
         finally:
             # Clean up the copied file
@@ -658,7 +665,22 @@ class TestRunner:
         # Sort for consistent output
         sorted_languages = sorted(all_languages)
         
-        # Print header
+        # Print in the requested format first (simpler view)
+        print("Compatibility Test Results:")
+        print("-" * 30)
+        for encoder_lang in sorted_languages:
+            if encoder_lang in self.cross_language_matrix:
+                for decoder_lang in sorted_languages:
+                    if decoder_lang in self.cross_language_matrix[encoder_lang]:
+                        if encoder_lang != decoder_lang:  # Skip self-tests in this view
+                            success = self.cross_language_matrix[encoder_lang][decoder_lang]
+                            status = "pass" if success else "fail"
+                            print(f"{encoder_lang} → {decoder_lang}: {status}")
+        print()
+        
+        # Print detailed matrix table
+        print("Detailed Matrix:")
+        print("-" * 30)
         header = "Encoder\\Decoder".ljust(15)
         for lang in sorted_languages:
             header += lang[:8].ljust(10)

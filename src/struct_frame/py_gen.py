@@ -113,8 +113,8 @@ class FieldPyGen():
                 # Fixed string - use char array (this works natively in structured library)
                 type_annotation = f"char[{field.size_option}]  # Fixed string: {field.size_option} chars"
             elif field.max_size is not None:
-                # Variable string - use char array with max size
-                type_annotation = f"char[{field.max_size}]  # Variable string: max {field.max_size} chars"
+                # Variable string - needs a nested struct with length prefix (like C)
+                type_annotation = f"_VariableString_{var_name}"
             else:
                 # Fallback (shouldn't happen with validation)
                 type_annotation = "str  # String (unbounded)"
@@ -137,6 +137,19 @@ class FieldPyGen():
 
 
 class MessagePyGen():
+    @staticmethod
+    def generate_variable_string_struct(field, msg_name):
+        """Generate a nested struct for variable-size strings"""
+        var_name = field.name
+        struct_name = f"_VariableString_{var_name}"
+        max_size = field.max_size
+        
+        result = f'class {struct_name}(Structured, byte_order=ByteOrder.LE, byte_order_mode=ByteOrderMode.OVERRIDE):\n'
+        result += f'    length: uint8  # Actual length of the string\n'
+        result += f'    data: char[{max_size}]  # String data (null-padded)\n'
+        
+        return result + '\n'
+    
     @staticmethod
     def generate_bounded_array_struct(field, msg_name):
         """Generate a nested struct for bounded/variable arrays"""
@@ -186,9 +199,13 @@ class MessagePyGen():
             for c in msg.comments:
                 result = '#%s\n' % c
 
-        # First, generate nested structs for bounded arrays
+        # First, generate nested structs for variable strings and bounded arrays
         for key, f in msg.fields.items():
-            if f.is_array and f.max_size is not None:
+            if f.fieldType == "string" and f.max_size is not None and not f.is_array:
+                # Variable-size string field
+                result += MessagePyGen.generate_variable_string_struct(f, msg.name)
+            elif f.is_array and f.max_size is not None:
+                # Bounded array
                 result += MessagePyGen.generate_bounded_array_struct(f, msg.name)
         
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
