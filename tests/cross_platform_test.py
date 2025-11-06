@@ -269,15 +269,7 @@ class CrossPlatformTest:
 
     def check_language_available(self, language: str, mode: str = "framed") -> bool:
         """Check if encoder/decoder for a language are available"""
-        # NOTE: TypeScript is currently disabled due to known limitations:
-        # - TypeScript: Generated code has a runtime error where the .Array() method
-        #   doesn't exist on the typed-struct builder object. This is a code generation
-        #   bug in struct-frame's TypeScript generator.
-        #
-        # Once these issues are resolved, remove the early return below.
-        if language in ["typescript"]:
-            return False
-
+        
         if language == "c":
             encoder = self.c_dir / f"encoder_{mode}"
             decoder = self.c_dir / f"decoder_{mode}"

@@ -157,17 +157,17 @@ python src/main.py examples/myl_vehicle.proto --build_gql
 
 ## Feature Compatibility Matrix
 
-| Feature | C | C++ | TypeScript | Python | GraphQL | Status |
-|---------|---|-----|------------|--------|---------|--------|
-| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
-| **String** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Enums** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Enum Classes** | N/A | ✓ | N/A | N/A | N/A | Stable |
-| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Message IDs** | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
-| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
-| **Flatten** | N/A | N/A | N/A | ✓ | ✓ | Partial |
-| **Arrays** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| Feature | C | C++ | TypeScript | Python | C# | GraphQL | Status |
+|---------|---|-----|------------|--------|----|---------|--------|
+| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
+| **String** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
+| **Enums** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
+| **Enum Classes** | N/A | ✓ | N/A | N/A | ✗ | N/A | Stable |
+| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
+| **Message IDs** | ✓ | ✓ | ✓ | ✓ | ✗ | N/A | Stable |
+| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | ✗ | N/A | Stable |
+| **Flatten** | N/A | N/A | N/A | ✓ | ✗ | ✓ | Partial |
+| **Arrays** | ✓ | ✓ | Partial | ✓ | ✗ | ✓ | Stable |
 
 **Legend:**
 - **✓** - Feature works as documented
@@ -222,16 +222,16 @@ message SimpleHeartbeat {
 
 ### Framing Compatibility Matrix
 
-| Feature | C | C++ | TypeScript | Python | Status | Notes |
-|---------|---|-----|------------|--------|---------|-------|
-| **Frame Encoding** | ✓ | ✓ | ✓ | ✓ | Stable | All languages can create frames |
-| **Frame Parsing** | ✓ | ✓ | ✓ | ✓ | Stable | State machine implementation |
-| **Checksum Validation** | ✓ | ✓ | ✓ | ✓ | Stable | Fletcher-16 algorithm |
-| **Sync Recovery** | ✓ | ✓ | ✓ | ✓ | Stable | Auto-recovery from corruption |
-| **Partial Frame Handling** | ✓ | ✓ | ✓ | ✓ | Stable | Handles chunked data streams |
-| **Message ID Routing** | ✓ | ✓ | ✓ | ✓ | Stable | Automatic message type detection |
-| **Buffer Management** | ✓ | ✓ | ✓ | ✓ | Stable | Fixed-size buffers prevent overflow |
-| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | ✓ | Stable | Frames interoperate between languages |
+| Feature | C | C++ | TypeScript | Python | C# | Status | Notes |
+|---------|---|-----|------------|--------|----|---------|-------|
+| **Frame Encoding** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | All languages can create frames |
+| **Frame Parsing** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | State machine implementation |
+| **Checksum Validation** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Fletcher-16 algorithm |
+| **Sync Recovery** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Auto-recovery from corruption |
+| **Partial Frame Handling** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Handles chunked data streams |
+| **Message ID Routing** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Automatic message type detection |
+| **Buffer Management** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Fixed-size buffers prevent overflow |
+| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Frames interoperate between languages |
 
 ### Extended Frame Format Options
 
