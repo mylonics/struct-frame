@@ -18,15 +18,29 @@ python tests/run_tests.py
 
 ## Test Output Format
 
-Tests follow a consistent format across all languages:
+The test runner provides a clean, organized output showing test results by test type across all languages:
 
 ```
-[TEST START] <Language> <Test Type>
-[TEST END] <Language> <Test Type>: PASS/FAIL
+🔧 CODE GENERATION
+     C: ✅ PASS
+    TS: ✅ PASS
+    PY: ✅ PASS
+   CPP: ✅ PASS
+
+🧪 Basic Types Tests
+     C: ✅ PASS
+    TS: ✅ PASS
+    PY: ✅ PASS
+   CPP: ✅ PASS
 ```
 
+Tests are now organized by **test type** rather than by language, providing a clearer view of functionality across all languages. Each test type (basic types, arrays, serialization) runs for all languages before moving to the next test type.
+
+Individual test programs follow this format:
 - **Success**: Only start and end messages are printed
 - **Failure**: Detailed failure information including expected values, actual values, and raw data hex dump
+
+**Verbose Mode**: Use `--verbose` or `-v` flag to see detailed output for all operations, including successful ones.
 
 ## Test Types
 
