@@ -45,45 +45,41 @@ def test_array_operations():
         from comprehensive_arrays_sf import (
             ComprehensiveArraysComprehensiveArrayMessage,
             ComprehensiveArraysSensor,
-            ComprehensiveArraysStatus
+            ComprehensiveArraysStatus,
+            _BoundedArray_bounded_uints,
+            _BoundedArray_bounded_doubles,
+            _BoundedStringArray_bounded_strings,
+            _BoundedArray_bounded_statuses,
+            _BoundedArray_bounded_sensors
         )
         from struct_frame_parser import BasicPacket, FrameParser
 
-        # Create sensor objects first (using positional args)
-        sensor1 = ComprehensiveArraysSensor(1, 25.5)  # id, value
-        sensor1.status = ComprehensiveArraysStatus.STATUS_ACTIVE
-        sensor1.name = "Temp1"
+        # Create sensor objects first (with all required positional args)
+        sensor1 = ComprehensiveArraysSensor(1, 25.5, 1, b"Temp1")  # id, value, status (enum=1), name
+        sensor2 = ComprehensiveArraysSensor(2, 30.0, 1, b"Temp2")  # id, value, status (enum=1), name
+        sensor3 = ComprehensiveArraysSensor(3, 15.5, 2, b"Pressure")  # id, value, status (enum=2), name
 
-        sensor2 = ComprehensiveArraysSensor(2, 30.0)  # id, value
-        sensor2.status = ComprehensiveArraysStatus.STATUS_ACTIVE
-        sensor2.name = "Temp2"
+        # Create bounded array structures
+        bounded_uints = _BoundedArray_bounded_uints(3, [100, 200, 300])
+        bounded_doubles = _BoundedArray_bounded_doubles(2, [123.456, 789.012])
+        bounded_strings = _BoundedStringArray_bounded_strings(2, [b"BoundedStr1", b"BoundedStr2"])
+        bounded_statuses = _BoundedArray_bounded_statuses(2, [1, 3])  # ACTIVE=1, MAINTENANCE=3
+        bounded_sensors = _BoundedArray_bounded_sensors(1, sensor3)
 
-        sensor3 = ComprehensiveArraysSensor(3, 15.5)  # id, value
-        sensor3.status = ComprehensiveArraysStatus.STATUS_ERROR
-        sensor3.name = "Pressure"
-
-        # Create a message instance (no constructor args)
-        msg = ComprehensiveArraysComprehensiveArrayMessage()
-
-        # Set all fields after creation
-        msg.fixed_ints = [1, 2, 3, 4, 5]
-        msg.fixed_floats = [1.1, 2.2, 3.3]
-        msg.fixed_bools = [True, False, True, False, True, False, True, False]
-        msg.bounded_uints = [100, 200, 300]
-        msg.bounded_doubles = [123.456, 789.012]
-        msg.fixed_strings = ["String1", "String2", "String3", "String4"]
-        msg.bounded_strings = ["BoundedStr1", "BoundedStr2"]
-        msg.fixed_statuses = [
-            ComprehensiveArraysStatus.STATUS_ACTIVE,
-            ComprehensiveArraysStatus.STATUS_ERROR,
-            ComprehensiveArraysStatus.STATUS_INACTIVE
-        ]
-        msg.bounded_statuses = [
-            ComprehensiveArraysStatus.STATUS_ACTIVE,
-            ComprehensiveArraysStatus.STATUS_MAINTENANCE
-        ]
-        msg.fixed_sensors = [sensor1, sensor2]
-        msg.bounded_sensors = [sensor3]
+        # Create a message instance with all required arguments
+        msg = ComprehensiveArraysComprehensiveArrayMessage(
+            [1, 2, 3],  # fixed_ints (3 elements)
+            [1.1, 2.2],  # fixed_floats (2 elements)
+            [True, False, True, False],  # fixed_bools (4 elements)
+            bounded_uints,  # bounded_uints struct
+            bounded_doubles,  # bounded_doubles struct
+            [b"String1", b"String2"],  # fixed_strings (2 strings, 8 chars each)
+            bounded_strings,  # bounded_strings struct
+            [1, 2],  # fixed_statuses (2 enums: ACTIVE=1, ERROR=2)
+            bounded_statuses,  # bounded_statuses struct
+            sensor1,  # fixed_sensors0 (inlined)
+            bounded_sensors  # bounded_sensors struct
+        )
 
         print("OK Message created and populated with array test data")
 
