@@ -21,6 +21,16 @@ py_struct_format = {
     "int64": "q",
 }
 
+# Mapping from struct format characters to their sizes in bytes
+struct_format_sizes = {
+    'b': 1, 'B': 1,
+    'h': 2, 'H': 2,
+    'i': 4, 'I': 4,
+    'q': 8, 'Q': 8,
+    'f': 4, 'd': 8,
+    '?': 1
+}
+
 # Python type hints for fields
 py_type_hints = {
     "uint8": "int",
@@ -329,7 +339,7 @@ class MessagePyGen():
                                 result += f'            offset += 1\n'
                             else:
                                 base_fmt = py_struct_format[f.fieldType]
-                                size = {'b': 1, 'B': 1, 'h': 2, 'H': 2, 'i': 4, 'I': 4, 'q': 8, 'Q': 8, 'f': 4, 'd': 8, '?': 1}[base_fmt]
+                                size = struct_format_sizes[base_fmt]
                                 result += f'            val = struct.unpack_from("<{base_fmt}", data, offset)[0]\n'
                                 result += f'            offset += {size}\n'
                             result += f'            fields["{f.name}"].append(val)\n'
@@ -356,7 +366,7 @@ class MessagePyGen():
                                 result += f'            offset += 1\n'
                             else:
                                 base_fmt = py_struct_format[f.fieldType]
-                                size = {'b': 1, 'B': 1, 'h': 2, 'H': 2, 'i': 4, 'I': 4, 'q': 8, 'Q': 8, 'f': 4, 'd': 8, '?': 1}[base_fmt]
+                                size = struct_format_sizes[base_fmt]
                                 result += f'            val = struct.unpack_from("<{base_fmt}", data, offset)[0]\n'
                                 result += f'            offset += {size}\n'
                             result += f'            if i < count:\n'
@@ -378,7 +388,7 @@ class MessagePyGen():
                 fmt = MessagePyGen.get_struct_format(f)
                 if fmt:
                     # Simple type
-                    size = {'b': 1, 'B': 1, 'h': 2, 'H': 2, 'i': 4, 'I': 4, 'q': 8, 'Q': 8, 'f': 4, 'd': 8, '?': 1}.get(fmt, 0)
+                    size = struct_format_sizes.get(fmt, 0)
                     if f.fieldType == "string":
                         result += f'        fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]\n'
                     else:
