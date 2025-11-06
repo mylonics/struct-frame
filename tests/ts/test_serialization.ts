@@ -1,6 +1,27 @@
-function printFailureDetails(label: string): void {
+function printFailureDetails(label: string, expectedValues?: any, actualValues?: any, rawData?: Buffer): void {
   console.log('\n============================================================');
   console.log(`FAILURE DETAILS: ${label}`);
+  console.log('============================================================');
+  
+  if (expectedValues) {
+    console.log('\nExpected Values:');
+    for (const [key, val] of Object.entries(expectedValues)) {
+      console.log(`  ${key}: ${val}`);
+    }
+  }
+  
+  if (actualValues) {
+    console.log('\nActual Values:');
+    for (const [key, val] of Object.entries(actualValues)) {
+      console.log(`  ${key}: ${val}`);
+    }
+  }
+  
+  if (rawData && rawData.length > 0) {
+    console.log(`\nRaw Data (${rawData.length} bytes):`);
+    console.log(`  Hex: ${rawData.toString('hex').substring(0, 128)}${rawData.length > 64 ? '...' : ''}`);
+  }
+  
   console.log('============================================================\n');
 }
 

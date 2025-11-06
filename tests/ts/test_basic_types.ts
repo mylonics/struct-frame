@@ -29,7 +29,7 @@ try {
   struct_frame_buffer = structFrameTypesModule.struct_frame_buffer;
   basic_frame_config = structFrameTypesModule.basic_frame_config;
 } catch (error) {
-  // Skip if modules not available
+  // Skip test if generated modules are not available (before code generation)
 }
 
 function testBasicTypes(): boolean {
