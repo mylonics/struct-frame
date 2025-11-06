@@ -45,7 +45,7 @@ export function msg_reserve(buffer: sf_types.struct_frame_buffer, msg_id: number
         buffer.data[buffer.size++] = msg_size;
     }
 
-    const ret = Buffer.from(buffer.data, buffer.size, msg_size);
+    const ret = Buffer.from(buffer.data.slice(buffer.size, buffer.size + msg_size));
     buffer.size += msg_size;
     return ret;
 }

@@ -42,7 +42,7 @@ export function parse_char(pb: sf_types.struct_frame_buffer, c: number): boolean
       pb.data[pb.size] = c;
       pb.size++;
       if (pb.size >= pb.msg_id_len.len) {
-        pb.msg_data = Buffer.from(pb.data, 0, pb.size)
+        pb.msg_data = Buffer.from(pb.data.slice(0, pb.size))
         pb.state = sf_types.ParserState.LOOKING_FOR_START_BYTE;
         if (pb.config.parser_funcs) {
           return pb.config.parser_funcs.validate_packet(pb.data, pb.msg_id_len);
@@ -77,7 +77,7 @@ export function parse_buffer(buffer: Uint8Array, size: number, parser_result: sf
         break;
 
       case sf_types.ParserState.GETTING_PAYLOAD:
-        parser_result.msg_data = Buffer.from(buffer, i, (i + parser_result.msg_id_len.len));
+        parser_result.msg_data = Buffer.from(buffer.slice(i, i + parser_result.msg_id_len.len));
         parser_result.r_loc = i + parser_result.msg_id_len.len;
         parser_result.found = true;
         if (parse_func_ptr && parse_func_ptr.validate_packet(parser_result.msg_data, parser_result.msg_id_len)) {
