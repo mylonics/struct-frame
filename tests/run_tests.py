@@ -333,9 +333,7 @@ class TestRunner:
             "test_basic_types.ts",
             "test_arrays.ts",
             "test_cross_platform_serialization.ts",
-            "test_cross_platform_deserialization.ts",
-            "encoder_framed.ts",
-            "decoder_framed.ts"
+            "test_cross_platform_deserialization.ts"
         ]
 
         for test_file in test_files:
@@ -506,22 +504,22 @@ class TestRunner:
             'C': {
                 'data_file': 'c_test_data.bin',
                 'data_locations': [self.tests_dir / "c"],
-                'test_exe': self.tests_dir / "c" / "test_serialization.exe"
+                'test_exe': self.tests_dir / "c" / "test_cross_platform_deserialization.exe"
             },
             'C++': {
                 'data_file': 'cpp_test_data.bin',
                 'data_locations': [self.tests_dir / "cpp"],
-                'test_exe': self.tests_dir / "cpp" / "test_serialization.exe"
+                'test_exe': self.tests_dir / "cpp" / "test_cross_platform_deserialization.exe"
             },
             'Python': {
                 'data_file': 'python_test_data.bin', 
                 'data_locations': [self.tests_dir / "py"],
-                'test_script': self.tests_dir / "py" / "test_serialization.py"
+                'test_script': self.tests_dir / "py" / "test_cross_platform_deserialization.py"
             },
             'TypeScript': {
                 'data_file': 'typescript_test_data.bin',
                 'data_locations': [self.generated_dir / "ts" / "js", self.generated_dir / "ts"],
-                'test_script': self.generated_dir / "ts" / "js" / "test_serialization.js"
+                'test_script': self.generated_dir / "ts" / "js" / "test_cross_platform_deserialization.js"
             }
         }
 
