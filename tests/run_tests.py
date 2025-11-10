@@ -620,10 +620,13 @@ class TestRunner:
                 # Copy the encoder's data file to the decoder's directory
                 import shutil
                 target_file = decoder_spec['test_dir'] / encoder_data_path.name
+                file_copied = False
                 
                 try:
-                    # Copy the test data file
-                    shutil.copy2(encoder_data_path, target_file)
+                    # Copy the test data file only if source and destination are different
+                    if encoder_data_path.resolve() != target_file.resolve():
+                        shutil.copy2(encoder_data_path, target_file)
+                        file_copied = True
                     
                     # Run the appropriate decoder test
                     success = False
@@ -664,9 +667,9 @@ class TestRunner:
                         self.log(f"{decoder_lang_name} decode of {encoder_lang} failed: {e}", "WARNING")
                     self.cross_platform_matrix[encoder_lang][decoder_lang_name] = False
                 finally:
-                    # Clean up the copied file
+                    # Clean up the copied file (only if we copied it)
                     try:
-                        if target_file.exists():
+                        if file_copied and target_file.exists():
                             target_file.unlink()
                     except:
                         pass
