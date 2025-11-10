@@ -48,7 +48,7 @@ try {
 
 function loadExpectedValues(): any {
   try {
-    const jsonPath = path.join(__dirname, '../../expected_values.json');
+    const jsonPath = path.join(__dirname, '../../../expected_values.json');
     const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
     return data.serialization_test;
   } catch (error) {
@@ -59,12 +59,6 @@ function loadExpectedValues(): any {
 
 function createTestData(): boolean {
   try {
-    // Check if required modules are loaded
-    if (!serialization_test_SerializationTestMessage || !msg_encode || 
-        !struct_frame_buffer || !basic_frame_config) {
-      return true; // Skip if modules not available
-    }
-
     // Load expected values from JSON
     const expected = loadExpectedValues();
     if (!expected) {
