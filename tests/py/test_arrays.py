@@ -31,7 +31,7 @@ def print_failure_details(label, expected_values=None, actual_values=None, raw_d
 
 
 def test_array_operations():
-    """Test array operations serialization and deserialization"""
+    """Test array operations serialization and deserialization with BasicPacket"""
     try:
         sys.path.insert(0, '../generated/py')
         from comprehensive_arrays_sf import (
@@ -63,6 +63,7 @@ def test_array_operations():
             sensor1, bounded_sensors
         )
 
+        # Encode message into BasicPacket format
         packet = BasicPacket()
         encoded_data = packet.encode_msg(msg)
 
@@ -71,6 +72,52 @@ def test_array_operations():
                 "Empty encoded data",
                 expected_values={"encoded_size": ">0"},
                 actual_values={"encoded_size": len(encoded_data)}
+            )
+            return False
+
+        # Decode the BasicPacket back into a message
+        packet_formats = {0x90: BasicPacket()}
+        msg_definitions = {203: ComprehensiveArraysComprehensiveArrayMessage}
+        parser = FrameParser(packet_formats, msg_definitions)
+
+        decoded_msg = None
+        for byte in encoded_data:
+            result = parser.parse_char(byte)
+            if result:
+                decoded_msg = result
+                break
+
+        if not decoded_msg:
+            print_failure_details(
+                "Failed to decode message",
+                expected_values={"decoded_message": "valid"},
+                actual_values={"decoded_message": None},
+                raw_data=encoded_data
+            )
+            return False
+
+        # Compare original and decoded messages
+        if decoded_msg.fixed_uints != msg.fixed_uints:
+            print_failure_details(
+                "Value mismatch: fixed_uints",
+                expected_values={"fixed_uints": msg.fixed_uints},
+                actual_values={"fixed_uints": decoded_msg.fixed_uints}
+            )
+            return False
+
+        if decoded_msg.bounded_uints.count != msg.bounded_uints.count:
+            print_failure_details(
+                "Value mismatch: bounded_uints.count",
+                expected_values={"count": msg.bounded_uints.count},
+                actual_values={"count": decoded_msg.bounded_uints.count}
+            )
+            return False
+
+        if decoded_msg.sensor.id != msg.sensor.id:
+            print_failure_details(
+                "Value mismatch: sensor.id",
+                expected_values={"sensor.id": msg.sensor.id},
+                actual_values={"sensor.id": decoded_msg.sensor.id}
             )
             return False
 

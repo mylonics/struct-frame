@@ -31,12 +31,52 @@ int main() {
             return 1;
         }
         
+        // Encode message into BasicPacket format
         uint8_t buffer[1024];
         StructFrame::BasicPacket format;
         StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(&format, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID, &msg, msg_size)) {
             print_failure_details("Failed to encode message");
+            std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
+            return 1;
+        }
+        
+        // Decode the BasicPacket back into a message
+        StructFrame::FrameParser parser;
+        parser.register_format(0x90, &format);
+        parser.register_msg_definition(COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID, msg_size);
+        
+        ComprehensiveArraysComprehensiveArrayMessage* decoded_msg = nullptr;
+        for (size_t i = 0; i < encoder.size(); i++) {
+            auto result = parser.parse_char(buffer[i]);
+            if (result.msg_id == COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID) {
+                decoded_msg = reinterpret_cast<ComprehensiveArraysComprehensiveArrayMessage*>(result.data);
+                break;
+            }
+        }
+        
+        if (!decoded_msg) {
+            print_failure_details("Failed to decode message");
+            std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
+            return 1;
+        }
+        
+        // Compare original and decoded messages
+        if (decoded_msg->fixed_ints[0] != msg.fixed_ints[0]) {
+            print_failure_details("Value mismatch: fixed_ints[0]");
+            std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
+            return 1;
+        }
+        
+        if (decoded_msg->bounded_uints.count != msg.bounded_uints.count) {
+            print_failure_details("Value mismatch: bounded_uints.count");
+            std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
+            return 1;
+        }
+        
+        if (decoded_msg->bounded_uints.data[0] != msg.bounded_uints.data[0]) {
+            print_failure_details("Value mismatch: bounded_uints.data[0]");
             std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
             return 1;
         }

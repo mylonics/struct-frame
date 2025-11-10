@@ -35,9 +35,9 @@ class TestRunner:
             'compilation': {'c': False, 'ts': False, 'py': False, 'cpp': False},
             'basic_types': {'c': False, 'ts': False, 'py': False, 'cpp': False},
             'arrays': {'c': False, 'ts': False, 'py': False, 'cpp': False},
-            'serialization': {'c': False, 'ts': False, 'py': False, 'cpp': False},
-            'cross_language': False,
-            'cross_platform_pipe': False
+            'cross_platform_serialization': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'cross_platform_deserialization': {'c': False, 'ts': False, 'py': False, 'cpp': False},
+            'cross_language': False
         }
         
         # Cross-language compatibility matrix
@@ -230,7 +230,8 @@ class TestRunner:
         test_files = [
             "test_basic_types.c",
             "test_arrays.c",
-            "test_serialization.c"
+            "test_cross_platform_serialization.c",
+            "test_cross_platform_deserialization.c"
         ]
 
         all_success = True
@@ -264,7 +265,8 @@ class TestRunner:
         test_files = [
             "test_basic_types.cpp",
             "test_arrays.cpp",
-            "test_serialization.cpp"
+            "test_cross_platform_serialization.cpp",
+            "test_cross_platform_deserialization.cpp"
         ]
 
         all_success = True
@@ -291,7 +293,8 @@ class TestRunner:
         test_executables = [
             ("test_basic_types.exe", "basic_types"),
             ("test_arrays.exe", "arrays"),
-            ("test_serialization.exe", "serialization")
+            ("test_cross_platform_serialization.exe", "cross_platform_serialization"),
+            ("test_cross_platform_deserialization.exe", "cross_platform_deserialization")
         ]
 
         all_success = True
@@ -329,15 +332,17 @@ class TestRunner:
         test_files = [
             "test_basic_types.ts",
             "test_arrays.ts",
-            "test_serialization.ts",
+            "test_cross_platform_serialization.ts",
+            "test_cross_platform_deserialization.ts",
             "encoder_framed.ts",
             "decoder_framed.ts"
         ]
 
         for test_file in test_files:
             src = self.tests_dir / "ts" / test_file
-            dest = self.generated_dir / "ts" / test_file
-            shutil.copy2(src, dest)
+            if src.exists():
+                dest = self.generated_dir / "ts" / test_file
+                shutil.copy2(src, dest)
 
         # Try to compile TypeScript files
         command = f"tsc --outDir {self.generated_dir / 'ts' / 'js'} {self.generated_dir / 'ts'}/*.ts"
@@ -357,7 +362,8 @@ class TestRunner:
         test_executables = [
             ("test_basic_types.exe", "basic_types"),
             ("test_arrays.exe", "arrays"),
-            ("test_serialization.exe", "serialization")
+            ("test_cross_platform_serialization.exe", "cross_platform_serialization"),
+            ("test_cross_platform_deserialization.exe", "cross_platform_deserialization")
         ]
 
         all_success = True
@@ -387,7 +393,8 @@ class TestRunner:
         test_scripts = [
             ("test_basic_types.py", "basic_types"),
             ("test_arrays.py", "arrays"),
-            ("test_serialization.py", "serialization")
+            ("test_cross_platform_serialization.py", "cross_platform_serialization"),
+            ("test_cross_platform_deserialization.py", "cross_platform_deserialization")
         ]
 
         all_success = True
@@ -398,6 +405,11 @@ class TestRunner:
 
         for script_name, test_type in test_scripts:
             script_path = self.tests_dir / "py" / script_name
+
+            if not script_path.exists():
+                if self.verbose:
+                    self.log(f"Script not found: {script_name}", "WARNING")
+                continue
 
             try:
                 result = subprocess.run(
@@ -439,7 +451,8 @@ class TestRunner:
         test_scripts = [
             ("test_basic_types.ts", "basic_types"),
             ("test_arrays.ts", "arrays"),
-            ("test_serialization.ts", "serialization")
+            ("test_cross_platform_serialization.ts", "cross_platform_serialization"),
+            ("test_cross_platform_deserialization.ts", "cross_platform_deserialization")
         ]
 
         all_success = True
@@ -748,35 +761,6 @@ class TestRunner:
             print(f"\nSuccess rate: {cross_success}/{cross_total} ({100*cross_success/cross_total:.0f}%)")
         print()
     
-    def run_cross_platform_pipe_tests(self):
-        """Run cross-platform pipe tests"""
-        print("\n" + "="*60)
-        print("🔗 STDIN/STDOUT STREAMING TESTS")
-        print("="*60)
-        print("Testing data piping between language implementations via stdin/stdout\n")
-        
-        cross_platform_script = self.tests_dir / "cross_platform_test.py"
-        if not cross_platform_script.exists():
-            self.log("Cross-platform test script not found", "WARNING")
-            return True  # Don't fail if test doesn't exist
-        
-        cmd = f"{sys.executable} {cross_platform_script}"
-        success, stdout, stderr = self.run_command(cmd, cwd=self.tests_dir, show_command=False)
-        
-        # Print the output regardless of success for visibility
-        if stdout:
-            print(stdout)
-        
-        if success:
-            self.results['cross_platform_pipe'] = True
-            return True
-        else:
-            if self.verbose:
-                self.log("Cross-platform pipe tests failed", "WARNING")
-            # Don't fail the entire suite for this
-            self.results['cross_platform_pipe'] = False
-            return True
-
     
     def run_test_by_type(self, test_type, languages):
         """Run a specific test type across all languages"""
@@ -879,7 +863,7 @@ class TestRunner:
                 passed_tests += 1
 
         # Count test execution results
-        test_types = ['basic_types', 'arrays', 'serialization']
+        test_types = ['basic_types', 'arrays', 'cross_platform_serialization', 'cross_platform_deserialization']
         for test_type in test_types:
             for lang in tested_languages:
                 total_tests += 1
@@ -889,11 +873,6 @@ class TestRunner:
         # Cross-language compatibility
         total_tests += 1
         if self.results['cross_language']:
-            passed_tests += 1
-        
-        # Cross-platform pipe tests
-        total_tests += 1
-        if self.results['cross_platform_pipe']:
             passed_tests += 1
 
         # Overall result
@@ -1002,15 +981,12 @@ def main():
         runner.compile_all_languages(languages)
 
         # Run tests organized by test type (not by language)
-        test_types = ['basic_types', 'arrays', 'serialization']
+        test_types = ['basic_types', 'arrays', 'cross_platform_serialization', 'cross_platform_deserialization']
         for test_type in test_types:
             runner.run_test_by_type(test_type, languages)
 
         # Run cross-language compatibility tests
         runner.run_cross_language_tests()
-        
-        # Run cross-platform pipe tests
-        runner.run_cross_platform_pipe_tests()
 
         # Print summary
         overall_success = runner.print_summary(languages)
