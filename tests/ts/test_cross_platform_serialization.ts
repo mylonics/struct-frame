@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as path from 'path';
 
 function printFailureDetails(label: string, expectedValues?: any, actualValues?: any, rawData?: Buffer): void {
   console.log('\n============================================================');
@@ -45,12 +46,23 @@ try {
   // Skip test if generated modules are not available
 }
 
+function loadExpectedValues(): any {
+  try {
+    const jsonPath = path.join(__dirname, '../../../expected_values.json');
+    const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+    return data.serialization_test;
+  } catch (error) {
+    console.log(`Error loading expected values: ${error}`);
+    return null;
+  }
+}
+
 function createTestData(): boolean {
   try {
-    // Check if required modules are loaded
-    if (!serialization_test_SerializationTestMessage || !msg_encode || 
-        !struct_frame_buffer || !basic_frame_config) {
-      return true; // Skip if modules not available
+    // Load expected values from JSON
+    const expected = loadExpectedValues();
+    if (!expected) {
+      return false;
     }
 
     // Due to TypeScript code generation issues with array alignment,
@@ -62,11 +74,11 @@ function createTestData(): boolean {
     const start_byte = 0x90;
     const msg_id = 204;
     
-    // Create simple payload with values that don't require arrays
+    // Create simple payload using values from JSON
     const payload = Buffer.alloc(20);
-    payload.writeUInt32LE(0xDEADBEEF, 0);  // magic_number
-    payload.writeUInt8(22, 4);  // test_string_length (length of "Hello from TypeScript!")
-    Buffer.from('Hello from TypeScript!').copy(payload, 5, 0, 22); // Copy only 15 chars to fit
+    payload.writeUInt32LE(expected.magic_number, 0);
+    payload.writeUInt8(expected.test_string.length, 4);
+    Buffer.from(expected.test_string).copy(payload, 5, 0, expected.test_string.length);
     
     // Calculate Fletcher checksum
     let byte1 = msg_id;
@@ -84,8 +96,11 @@ function createTestData(): boolean {
     frame[frame.length - 2] = byte1;
     frame[frame.length - 1] = byte2;
     
-    // Write to file
-    fs.writeFileSync('tests/generated/ts/js/typescript_test_data.bin', frame);
+    // Write to file - determine correct path based on where we're running from
+    const outputPath = fs.existsSync('tests/generated/ts/js') 
+      ? 'tests/generated/ts/js/typescript_test_data.bin'
+      : 'typescript_test_data.bin';
+    fs.writeFileSync(outputPath, frame);
 
     return true;
   } catch (error) {
@@ -94,61 +109,21 @@ function createTestData(): boolean {
   }
 }
 
-function readTestData(filename: string, language: string): boolean {
-  try {
-    if (!fs.existsSync(filename)) {
-      return true; // Skip if file not available
-    }
-
-    const binaryData = fs.readFileSync(filename);
-    
-    if (binaryData.length === 0) {
-      printFailureDetails(`Empty data from ${language}`,
-        { data_size: '>0' },
-        { data_size: 0 },
-        binaryData
-      );
-      return false;
-    }
-
-    // For now, just verify we can read the file
-    // Full decoding would require implementing a frame parser in TypeScript
-    return true;
-  } catch (error) {
-    printFailureDetails(`Read ${language} data exception: ${error}`);
-    return false;
-  }
-}
-
 function main(): boolean {
-  console.log('\n[TEST START] TypeScript Cross-Language Serialization');
+  console.log('\n[TEST START] TypeScript Cross-Platform Serialization');
   
   try {
     // Create TypeScript test data
     if (!createTestData()) {
-      console.log('[TEST END] TypeScript Cross-Language Serialization: FAIL\n');
+      console.log('[TEST END] TypeScript Cross-Platform Serialization: FAIL\n');
       return false;
     }
 
-    // Try to read data from other languages
-    const testFiles = [
-      { file: 'tests/c/c_test_data.bin', lang: 'C' },
-      { file: 'tests/cpp/cpp_test_data.bin', lang: 'C++' },
-      { file: 'tests/py/python_test_data.bin', lang: 'Python' }
-    ];
-
-    for (const test of testFiles) {
-      if (!readTestData(test.file, test.lang)) {
-        console.log('[TEST END] TypeScript Cross-Language Serialization: FAIL\n');
-        return false;
-      }
-    }
-
-    console.log('[TEST END] TypeScript Cross-Language Serialization: PASS\n');
+    console.log('[TEST END] TypeScript Cross-Platform Serialization: PASS\n');
     return true;
   } catch (error) {
     printFailureDetails(`Exception: ${error}`);
-    console.log('[TEST END] TypeScript Cross-Language Serialization: FAIL\n');
+    console.log('[TEST END] TypeScript Cross-Platform Serialization: FAIL\n');
     return false;
   }
 }

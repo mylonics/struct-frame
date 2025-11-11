@@ -31,12 +31,20 @@ int main() {
             return 1;
         }
         
+        // Encode message into BasicPacket format
         uint8_t buffer[1024];
         StructFrame::BasicPacket format;
         StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(&format, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID, &msg, msg_size)) {
             print_failure_details("Failed to encode message");
+            std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
+            return 1;
+        }
+        
+        // Verify encoding produced data
+        if (encoder.size() == 0) {
+            print_failure_details("Encoded data is empty");
             std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
             return 1;
         }

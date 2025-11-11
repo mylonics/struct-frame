@@ -59,6 +59,7 @@ int test_basic_types() {
   msg.description.length = strlen("Test description for basic types");
   strncpy(msg.description.data, "Test description for basic types", msg.description.length);
 
+  // Encode message into BasicPacket format
   uint8_t encode_buffer[1024];
   msg_encode_buffer buffer = {0};
   buffer.data = encode_buffer;
@@ -71,6 +72,7 @@ int test_basic_types() {
     return 0;
   }
 
+  // Validate and decode the BasicPacket
   msg_info_t decode_result = format->validate_packet(encode_buffer, buffer.size);
   if (!decode_result.valid) {
     print_failure_details("Validation failed", &msg, NULL, encode_buffer, buffer.size);
@@ -79,9 +81,24 @@ int test_basic_types() {
 
   BasicTypesBasicTypesMessage decoded_msg = basic_types_basic_types_message_get(decode_result);
 
-  if (decoded_msg.small_int != -42 || decoded_msg.medium_int != -1000 || 
-      decoded_msg.flag != true) {
-    print_failure_details("Value mismatch", &msg, &decoded_msg, encode_buffer, buffer.size);
+  // Compare original and decoded messages
+  if (decoded_msg.small_int != msg.small_int) {
+    print_failure_details("Value mismatch: small_int", &msg, &decoded_msg, encode_buffer, buffer.size);
+    return 0;
+  }
+
+  if (decoded_msg.medium_int != msg.medium_int) {
+    print_failure_details("Value mismatch: medium_int", &msg, &decoded_msg, encode_buffer, buffer.size);
+    return 0;
+  }
+  
+  if (decoded_msg.flag != msg.flag) {
+    print_failure_details("Value mismatch: flag", &msg, &decoded_msg, encode_buffer, buffer.size);
+    return 0;
+  }
+
+  if (decoded_msg.single_precision != msg.single_precision) {
+    print_failure_details("Value mismatch: single_precision", &msg, &decoded_msg, encode_buffer, buffer.size);
     return 0;
   }
 

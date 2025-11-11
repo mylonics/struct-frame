@@ -31,11 +31,11 @@ def print_failure_details(label, msg, expected_values=None, actual_values=None, 
 
 
 def test_basic_types():
-    """Test basic data types serialization and deserialization"""
+    """Test basic data types serialization and deserialization with BasicPacket"""
     try:
         sys.path.insert(0, '../generated/py')
         from basic_types_sf import BasicTypesBasicTypesMessage, _VariableString_description
-        from struct_frame_parser import BasicPacket
+        from struct_frame_parser import BasicPacket, FrameParser
 
         desc_text = b"Test description for basic types"
         description = _VariableString_description(
@@ -51,6 +51,7 @@ def test_basic_types():
             description
         )
 
+        # Encode message into BasicPacket format
         packet = BasicPacket()
         encoded_data = packet.encode_msg(msg)
 
@@ -61,6 +62,52 @@ def test_basic_types():
                 msg,
                 expected_values={"encoded_size": ">0"},
                 actual_values={"encoded_size": len(encoded_data)}
+            )
+            return False
+
+        # Decode the BasicPacket back into a message
+        packet_formats = {0x90: BasicPacket()}
+        msg_definitions = {201: BasicTypesBasicTypesMessage}
+        parser = FrameParser(packet_formats, msg_definitions)
+
+        decoded_msg = None
+        for byte in encoded_data:
+            result = parser.parse_char(byte)
+            if result:
+                decoded_msg = result
+                break
+
+        if not decoded_msg:
+            print_failure_details(
+                "Failed to decode message",
+                expected_values={"decoded_message": "valid"},
+                actual_values={"decoded_message": None},
+                raw_data=encoded_data
+            )
+            return False
+
+        # Compare original and decoded messages
+        if decoded_msg.small_int != msg.small_int:
+            print_failure_details(
+                "Value mismatch: small_int",
+                expected_values={"small_int": msg.small_int},
+                actual_values={"small_int": decoded_msg.small_int}
+            )
+            return False
+
+        if decoded_msg.medium_int != msg.medium_int:
+            print_failure_details(
+                "Value mismatch: medium_int",
+                expected_values={"medium_int": msg.medium_int},
+                actual_values={"medium_int": decoded_msg.medium_int}
+            )
+            return False
+
+        if decoded_msg.flag != msg.flag:
+            print_failure_details(
+                "Value mismatch: flag",
+                expected_values={"flag": msg.flag},
+                actual_values={"flag": decoded_msg.flag}
             )
             return False
 

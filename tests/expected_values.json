@@ -1,0 +1,10 @@
+{
+  "serialization_test": {
+    "magic_number": 3735928559,
+    "magic_number_hex": "0xDEADBEEF",
+    "test_string": "Cross-platform test!",
+    "test_float": 3.14159,
+    "test_bool": true,
+    "test_array": [100, 200, 300]
+  }
+}

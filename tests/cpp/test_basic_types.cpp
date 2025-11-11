@@ -48,12 +48,27 @@ int main() {
             return 1;
         }
         
+        // Encode message into BasicPacket format
         uint8_t buffer[512];
         StructFrame::BasicPacket format;
         StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(&format, BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID, &msg, msg_size)) {
             print_failure_details("Failed to encode message", buffer, encoder.size());
+            std::cout << "[TEST END] C++ Basic Types: FAIL\n\n";
+            return 1;
+        }
+        
+        // Verify encoding produced data
+        if (encoder.size() == 0) {
+            print_failure_details("Encoded data is empty", buffer, encoder.size());
+            std::cout << "[TEST END] C++ Basic Types: FAIL\n\n";
+            return 1;
+        }
+        
+        // Verify minimum packet structure (start byte + msg_id + data + checksums)
+        if (encoder.size() < 4) {
+            print_failure_details("Encoded data too small", buffer, encoder.size());
             std::cout << "[TEST END] C++ Basic Types: FAIL\n\n";
             return 1;
         }

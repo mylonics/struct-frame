@@ -72,6 +72,7 @@ int test_array_operations() {
   msg.bounded_sensors.data[0].status = 2;
   strncpy(msg.bounded_sensors.data[0].name, "Pressure", 16);
 
+  // Encode message into BasicPacket format
   uint8_t encode_buffer[1024];
   msg_encode_buffer buffer = {0};
   buffer.data = encode_buffer;
@@ -84,6 +85,7 @@ int test_array_operations() {
     return 0;
   }
 
+  // Validate and decode the BasicPacket
   msg_info_t decode_result = format->validate_packet(encode_buffer, buffer.size);
   if (!decode_result.valid) {
     print_failure_details("Validation failed", encode_buffer, buffer.size);
@@ -93,8 +95,24 @@ int test_array_operations() {
   ComprehensiveArraysComprehensiveArrayMessage decoded_msg = 
       comprehensive_arrays_comprehensive_array_message_get(decode_result);
 
-  if (decoded_msg.fixed_ints[0] != 1 || decoded_msg.bounded_uints.count != 3) {
-    print_failure_details("Value mismatch", encode_buffer, buffer.size);
+  // Compare original and decoded messages
+  if (decoded_msg.fixed_ints[0] != msg.fixed_ints[0]) {
+    print_failure_details("Value mismatch: fixed_ints[0]", encode_buffer, buffer.size);
+    return 0;
+  }
+
+  if (decoded_msg.bounded_uints.count != msg.bounded_uints.count) {
+    print_failure_details("Value mismatch: bounded_uints.count", encode_buffer, buffer.size);
+    return 0;
+  }
+
+  if (decoded_msg.bounded_uints.data[0] != msg.bounded_uints.data[0]) {
+    print_failure_details("Value mismatch: bounded_uints.data[0]", encode_buffer, buffer.size);
+    return 0;
+  }
+
+  if (decoded_msg.fixed_sensors[0].id != msg.fixed_sensors[0].id) {
+    print_failure_details("Value mismatch: fixed_sensors[0].id", encode_buffer, buffer.size);
     return 0;
   }
 
