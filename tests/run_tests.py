@@ -471,7 +471,7 @@ class TestRunner:
             if js_path.exists():
                 success, stdout, stderr = self.run_command(
                     f"node {js_path}",
-                    cwd=self.project_root,  # Run from project root to find node_modules
+                    cwd=self.generated_dir / "ts" / "js",
                     show_command=False
                 )
 
@@ -553,7 +553,7 @@ class TestRunner:
                 if js_path.exists():
                     success, _, _ = self.run_command(
                         f"node {js_path}",
-                        cwd=self.project_root,
+                        cwd=self.generated_dir / "ts" / "js",
                         show_command=False
                     )
                     serialization_results[lang_name] = success
@@ -653,7 +653,7 @@ class TestRunner:
                         elif decoder_lang_name == 'TypeScript':
                             result = subprocess.run(
                                 ["node", str(decoder_spec['test_script'])],
-                                cwd=self.project_root,
+                                cwd=decoder_spec['test_dir'],
                                 capture_output=True,
                                 text=True,
                                 timeout=30
@@ -791,7 +791,7 @@ class TestRunner:
                 if js_path.exists():
                     success, _, _ = self.run_command(
                         f"node {js_path}",
-                        cwd=self.project_root,  # Run from project root to find node_modules
+                        cwd=self.generated_dir / "ts" / "js",
                         show_command=False
                     )
                     self.results[test_type]['ts'] = success
