@@ -15,27 +15,28 @@ def print_failure_details(label, expected_values=None, actual_values=None, raw_d
     print(f"\n{'='*60}")
     print(f"FAILURE DETAILS: {label}")
     print(f"{'='*60}")
-    
+
     if expected_values:
         print("\nExpected Values:")
         for key, val in expected_values.items():
             print(f"  {key}: {val}")
-    
+
     if actual_values:
         print("\nActual Values:")
         for key, val in actual_values.items():
             print(f"  {key}: {val}")
-    
+
     if raw_data:
         print(f"\nRaw Data ({len(raw_data)} bytes):")
         print(f"  Hex: {raw_data.hex()}")
-    
+
     print(f"{'='*60}\n")
 
 
 def load_expected_values():
     """Load expected values from JSON file"""
-    json_path = os.path.join(os.path.dirname(__file__), '..', 'expected_values.json')
+    json_path = os.path.join(os.path.dirname(
+        __file__), '..', 'expected_values.json')
     try:
         with open(json_path, 'r') as f:
             data = json.load(f)
@@ -56,7 +57,8 @@ def validate_message(msg, expected):
         return False
 
     # Compare string (bytes vs string)
-    test_string = msg.test_string.decode('utf-8').rstrip('\x00') if isinstance(msg.test_string, bytes) else str(msg.test_string).rstrip('\x00')
+    test_string = msg.test_string.decode('utf-8').rstrip('\x00') if isinstance(
+        msg.test_string, bytes) else str(msg.test_string).rstrip('\x00')
     if test_string != expected['test_string']:
         print_failure_details(
             "Value mismatch: test_string",
@@ -146,7 +148,7 @@ def read_and_validate_test_data(filename, language):
             print(f"  Validation failed for {language} data")
             return False
 
-        print(f"  ✓ {language} data validated successfully")
+        print(f"  [OK] {language} data validated successfully")
         return True
 
     except ImportError:
@@ -166,16 +168,19 @@ def read_and_validate_test_data(filename, language):
 def main():
     """Main test function"""
     print("\n[TEST START] Python Cross-Platform Deserialization")
-    
+
     success = True
-    success = success and read_and_validate_test_data('python_test_data.bin', 'Python')
+    success = success and read_and_validate_test_data(
+        'python_test_data.bin', 'Python')
     success = success and read_and_validate_test_data('c_test_data.bin', 'C')
-    success = success and read_and_validate_test_data('cpp_test_data.bin', 'C++')
-    success = success and read_and_validate_test_data('typescript_test_data.bin', 'TypeScript')
-    
+    success = success and read_and_validate_test_data(
+        'cpp_test_data.bin', 'C++')
+    success = success and read_and_validate_test_data(
+        'typescript_test_data.bin', 'TypeScript')
+
     status = "PASS" if success else "FAIL"
     print(f"[TEST END] Python Cross-Platform Deserialization: {status}\n")
-    
+
     return success
 
 

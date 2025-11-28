@@ -49,38 +49,17 @@ def clean_test_files(config_path: str, verbose: bool = False) -> bool:
             shutil.rmtree(gen_dir)
             cleaned_count += 1
 
-    # Clean compiled files and binary outputs in test directories
+    # Clean build directories (executables and binary outputs)
     for lang_id, lang_config in config['languages'].items():
-        # Skip languages without test directories (e.g., generation_only languages)
-        if 'test_dir' not in lang_config:
+        # Skip languages without build directories
+        if 'build_dir' not in lang_config:
             continue
 
-        test_dir = project_root / lang_config['test_dir']
-        if not test_dir.exists():
-            continue
-
-        # Clean executable files
-        comp = lang_config.get('compilation', {})
-        if comp.get('executable_extension'):
-            for exe in test_dir.glob(f"*{comp['executable_extension']}"):
-                if verbose:
-                    print(f"  Removing executable: {exe}")
-                exe.unlink()
-                cleaned_count += 1
-
-        # Clean compiled JS files for TypeScript
-        if comp.get('compiled_extension'):
-            for compiled in test_dir.glob(f"*{comp['compiled_extension']}"):
-                if verbose:
-                    print(f"  Removing compiled file: {compiled}")
-                compiled.unlink()
-                cleaned_count += 1
-
-        # Clean binary output files
-        for bin_file in test_dir.glob("*.bin"):
+        build_dir = project_root / lang_config['build_dir']
+        if build_dir.exists():
             if verbose:
-                print(f"  Removing binary file: {bin_file}")
-            bin_file.unlink()
+                print(f"  Removing build directory: {build_dir}")
+            shutil.rmtree(build_dir)
             cleaned_count += 1
 
     print(f"Cleaned {cleaned_count} items")

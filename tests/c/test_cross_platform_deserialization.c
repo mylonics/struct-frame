@@ -1,7 +1,7 @@
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #include "serialization_test.sf.h"
 #include "struct_frame_default_frame.h"
@@ -11,7 +11,7 @@ void print_failure_details(const char* label, const void* raw_data, size_t raw_d
   printf("============================================================\n");
   printf("FAILURE DETAILS: %s\n", label);
   printf("============================================================\n");
-  
+
   if (raw_data && raw_data_size > 0) {
     printf("\nRaw Data (%zu bytes):\n  Hex: ", raw_data_size);
     for (size_t i = 0; i < raw_data_size && i < 64; i++) {
@@ -20,7 +20,7 @@ void print_failure_details(const char* label, const void* raw_data, size_t raw_d
     if (raw_data_size > 64) printf("...");
     printf("\n");
   }
-  
+
   printf("============================================================\n\n");
 }
 
@@ -33,8 +33,7 @@ int validate_message(SerializationTestSerializationTestMessage* msg) {
   int expected_array[3] = {100, 200, 300};
 
   if (msg->magic_number != expected_magic) {
-    printf("  Value mismatch: magic_number (expected %u, got %u)\n", 
-           expected_magic, msg->magic_number);
+    printf("  Value mismatch: magic_number (expected %u, got %u)\n", expected_magic, msg->magic_number);
     return 0;
   }
 
@@ -44,8 +43,7 @@ int validate_message(SerializationTestSerializationTestMessage* msg) {
   }
 
   if (fabs(msg->test_float - expected_float) > 0.0001f) {
-    printf("  Value mismatch: test_float (expected %f, got %f)\n", 
-           expected_float, msg->test_float);
+    printf("  Value mismatch: test_float (expected %f, got %f)\n", expected_float, msg->test_float);
     return 0;
   }
 
@@ -55,15 +53,13 @@ int validate_message(SerializationTestSerializationTestMessage* msg) {
   }
 
   if (msg->test_array.count != 3) {
-    printf("  Value mismatch: test_array.count (expected 3, got %u)\n", 
-           msg->test_array.count);
+    printf("  Value mismatch: test_array.count (expected 3, got %u)\n", msg->test_array.count);
     return 0;
   }
 
   for (int i = 0; i < 3; i++) {
     if (msg->test_array.data[i] != expected_array[i]) {
-      printf("  Value mismatch: test_array[%d] (expected %d, got %d)\n", 
-             i, expected_array[i], msg->test_array.data[i]);
+      printf("  Value mismatch: test_array[%d] (expected %d, got %d)\n", i, expected_array[i], msg->test_array.data[i]);
       return 0;
     }
   }
@@ -105,21 +101,21 @@ int read_and_validate_test_data(const char* filename, const char* language) {
     return 0;
   }
 
-  printf("  ✓ %s data validated successfully\n", language);
+  printf("  [OK] %s data validated successfully\n", language);
   return 1;
 }
 
 int main() {
   printf("\n[TEST START] C Cross-Platform Deserialization\n");
-  
+
   int success = 1;
   success = success && read_and_validate_test_data("python_test_data.bin", "Python");
   success = success && read_and_validate_test_data("c_test_data.bin", "C");
   success = success && read_and_validate_test_data("cpp_test_data.bin", "C++");
   success = success && read_and_validate_test_data("typescript_test_data.bin", "TypeScript");
-  
+
   const char* status = success ? "PASS" : "FAIL";
   printf("[TEST END] C Cross-Platform Deserialization: %s\n\n", status);
-  
+
   return success ? 0 : 1;
 }

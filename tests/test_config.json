@@ -27,7 +27,8 @@
         "source_extension": ".c",
         "executable_extension": ".exe"
       },
-      "test_dir": "tests/c"
+      "test_dir": "tests/c",
+      "build_dir": "tests/c/build"
     },
     
     "cpp": {
@@ -47,7 +48,8 @@
         "source_extension": ".cpp",
         "executable_extension": ".exe"
       },
-      "test_dir": "tests/cpp"
+      "test_dir": "tests/cpp",
+      "build_dir": "tests/cpp/build"
     },
     
     "py": {
@@ -68,7 +70,8 @@
           "PYTHONPATH": "{generated_dir}"
         }
       },
-      "test_dir": "tests/py"
+      "test_dir": "tests/py",
+      "build_dir": "tests/py/build"
     },
     
     "ts": {
@@ -81,18 +84,20 @@
       },
       "compilation": {
         "enabled": true,
-        "compiler": "tsc",
-        "compiler_check": "tsc --version",
-        "command": "tsc --outDir {output_dir} {generated_dir}/*.ts",
+        "compiler": "npx tsc",
+        "compiler_check": "npx tsc --version",
+        "command": "npx tsc --project {generated_dir}/tsconfig.json",
         "output_dir": "tests/generated/ts/js",
         "source_extension": ".ts",
-        "compiled_extension": ".js"
+        "compiled_extension": ".js",
+        "working_dir": "tests/ts"
       },
       "execution": {
         "interpreter": "node",
         "script_dir": "tests/generated/ts/js"
       },
-      "test_dir": "tests/ts"
+      "test_dir": "tests/ts",
+      "build_dir": "tests/ts/build"
     },
     
     "gql": {

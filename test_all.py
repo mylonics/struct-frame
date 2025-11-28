@@ -18,9 +18,9 @@ try:
     success = run_tests_main()
     sys.exit(0 if success else 1)
 except ImportError:
-    print("❌ Failed to import test runner")
+    print("[ERROR] Failed to import test runner")
     print("Make sure you're running this from the project root directory")
     sys.exit(1)
 except Exception as e:
-    print(f"❌ Test run failed: {e}")
+    print(f"[ERROR] Test run failed: {e}")
     sys.exit(1)

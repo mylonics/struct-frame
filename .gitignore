@@ -1,5 +1,6 @@
 # Build outputs and temporary files
 ts_out/
+tests/ts_out/
 node_modules/
 .vscode/
 main.exe
@@ -22,6 +23,11 @@ tests/c/*.sf.h
 tests/cpp/*.sf.hpp
 tests/py/*.sf.py
 
+# Build directories (executables and binaries)
+tests/c/build/
+tests/cpp/build/
+tests/py/build/
+tests/ts/build/
 
 # Test artifacts
 tests/c/*.exe

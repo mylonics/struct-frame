@@ -44,7 +44,7 @@ function validateBasicFrame(buffer: Buffer, language: string, expected: any): bo
     return false;
   }
 
-  console.log(`  ✓ ${language} data validated successfully`);
+  console.log(`  [OK] ${language} data validated successfully`);
   return true;
 }
 
@@ -56,7 +56,7 @@ function readAndValidateTestData(filename: string, language: string): boolean {
     }
 
     const binaryData = fs.readFileSync(filename);
-    
+
     if (binaryData.length === 0) {
       printFailureDetails(`Empty data from ${language}`);
       return false;
@@ -81,14 +81,14 @@ function readAndValidateTestData(filename: string, language: string): boolean {
 
 function main(): boolean {
   console.log('\n[TEST START] TypeScript Cross-Platform Deserialization');
-  
+
   try {
     let success = true;
     success = success && readAndValidateTestData('python_test_data.bin', 'Python');
     success = success && readAndValidateTestData('c_test_data.bin', 'C');
     success = success && readAndValidateTestData('cpp_test_data.bin', 'C++');
     success = success && readAndValidateTestData('typescript_test_data.bin', 'TypeScript');
-    
+
     console.log(`[TEST END] TypeScript Cross-Platform Deserialization: ${success ? 'PASS' : 'FAIL'}\n`);
     return success;
   } catch (error) {
