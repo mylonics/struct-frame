@@ -1,7 +1,7 @@
 import * as mv from '../generated/ts/myl_vehicle.sf';
 import { parse_char, parse_buffer } from '../generated/ts/struct_frame_parser';
 import { struct_frame_buffer, buffer_parser_result_t, } from '../generated/ts/struct_frame_types';
-import { type ExtractType } from 'typed-struct';
+import { type ExtractType } from '../generated/ts/struct_base';
 
 let tx_buffer = new struct_frame_buffer(256)
 let rx_buffer = new struct_frame_buffer(256)

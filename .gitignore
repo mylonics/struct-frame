@@ -11,6 +11,17 @@ generated/
 gen/
 tests/generated/
 
+# Generated boilerplate files in tests
+tests/ts/struct_base.ts
+tests/ts/struct_frame.ts
+tests/ts/struct_frame_gen.ts
+tests/ts/struct_frame_parser.ts
+tests/ts/struct_frame_types.ts
+tests/ts/*.sf.ts
+tests/c/*.sf.h
+tests/cpp/*.sf.hpp
+tests/py/*.sf.py
+
 
 # Test artifacts
 tests/c/*.exe
