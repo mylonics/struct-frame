@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "description": "Test configuration for struct-frame code generation framework",
+  "version": "1.0",
+  
+  "proto_files": [
+    "basic_types.proto",
+    "nested_messages.proto",
+    "comprehensive_arrays.proto",
+    "serialization_test.proto"
+  ],
+  
+  "languages": {
+    "c": {
+      "name": "C",
+      "enabled": true,
+      "code_generation": {
+        "flag": "--build_c",
+        "output_path_flag": "--c_path",
+        "output_dir": "generated/c"
+      },
+      "compilation": {
+        "enabled": true,
+        "compiler": "gcc",
+        "compiler_check": "gcc --version",
+        "flags": ["-I{generated_dir}", "-o", "{output}", "{source}", "-lm"],
+        "extension": ".exe"
+      },
+      "test_dir": "tests/c"
+    },
+    
+    "cpp": {
+      "name": "C++",
+      "enabled": true,
+      "code_generation": {
+        "flag": "--build_cpp",
+        "output_path_flag": "--cpp_path",
+        "output_dir": "generated/cpp"
+      },
+      "compilation": {
+        "enabled": true,
+        "compiler": "g++",
+        "compiler_check": "g++ --version",
+        "flags": ["-std=c++14", "-I{generated_dir}", "-o", "{output}", "{source}"],
+        "extension": ".exe"
+      },
+      "test_dir": "tests/cpp"
+    },
+    
+    "py": {
+      "name": "Python",
+      "enabled": true,
+      "code_generation": {
+        "flag": "--build_py",
+        "output_path_flag": "--py_path",
+        "output_dir": "generated/py"
+      },
+      "compilation": {
+        "enabled": false
+      },
+      "execution": {
+        "interpreter": "python",
+        "env": {
+          "PYTHONPATH": "{generated_dir}"
+        }
+      },
+      "test_dir": "tests/py"
+    },
+    
+    "ts": {
+      "name": "TypeScript",
+      "enabled": true,
+      "code_generation": {
+        "flag": "--build_ts",
+        "output_path_flag": "--ts_path",
+        "output_dir": "generated/ts"
+      },
+      "compilation": {
+        "enabled": true,
+        "compiler": "tsc",
+        "compiler_check": "tsc --version",
+        "command": "tsc --outDir {output_dir} {generated_dir}/*.ts",
+        "output_dir": "generated/ts/js"
+      },
+      "execution": {
+        "interpreter": "node",
+        "script_extension": ".js",
+        "script_dir": "generated/ts/js"
+      },
+      "test_dir": "tests/ts"
+    }
+  },
+  
+  "test_suites": [
+    {
+      "name": "basic_types",
+      "description": "Tests basic integer, float, and boolean types",
+      "proto_files": ["basic_types.proto"],
+      "tests": {
+        "c": {
+          "source_file": "test_basic_types.c",
+          "executable": "test_basic_types.exe",
+          "type": "standalone"
+        },
+        "cpp": {
+          "source_file": "test_basic_types.cpp",
+          "executable": "test_basic_types.exe",
+          "type": "standalone"
+        },
+        "py": {
+          "source_file": "test_basic_types.py",
+          "type": "standalone"
+        },
+        "ts": {
+          "source_file": "test_basic_types.ts",
+          "compiled_file": "test_basic_types.js",
+          "type": "standalone"
+        }
+      }
+    },
+    
+    {
+      "name": "arrays",
+      "description": "Tests array serialization and deserialization",
+      "proto_files": ["comprehensive_arrays.proto"],
+      "tests": {
+        "c": {
+          "source_file": "test_arrays.c",
+          "executable": "test_arrays.exe",
+          "type": "standalone"
+        },
+        "cpp": {
+          "source_file": "test_arrays.cpp",
+          "executable": "test_arrays.exe",
+          "type": "standalone"
+        },
+        "py": {
+          "source_file": "test_arrays.py",
+          "type": "standalone"
+        },
+        "ts": {
+          "source_file": "test_arrays.ts",
+          "compiled_file": "test_arrays.js",
+          "type": "standalone"
+        }
+      }
+    },
+    
+    {
+      "name": "cross_platform",
+      "description": "Cross-platform serialization and deserialization compatibility tests",
+      "proto_files": ["serialization_test.proto"],
+      "tests": {
+        "c": {
+          "encode": {
+            "source_file": "test_cross_platform_serialization.c",
+            "executable": "test_cross_platform_serialization.exe",
+            "output_file": "c_test_data.bin"
+          },
+          "decode": {
+            "source_file": "test_cross_platform_deserialization.c",
+            "executable": "test_cross_platform_deserialization.exe",
+            "input_patterns": ["*_test_data.bin"]
+          }
+        },
+        "cpp": {
+          "encode": {
+            "source_file": "test_cross_platform_serialization.cpp",
+            "executable": "test_cross_platform_serialization.exe",
+            "output_file": "cpp_test_data.bin"
+          },
+          "decode": {
+            "source_file": "test_cross_platform_deserialization.cpp",
+            "executable": "test_cross_platform_deserialization.exe",
+            "input_patterns": ["*_test_data.bin"]
+          }
+        },
+        "py": {
+          "encode": {
+            "source_file": "test_cross_platform_serialization.py",
+            "output_file": "python_test_data.bin"
+          },
+          "decode": {
+            "source_file": "test_cross_platform_deserialization.py",
+            "input_patterns": ["*_test_data.bin"]
+          }
+        },
+        "ts": {
+          "encode": {
+            "source_file": "test_cross_platform_serialization.ts",
+            "compiled_file": "test_cross_platform_serialization.js",
+            "output_file": "typescript_test_data.bin"
+          },
+          "decode": {
+            "source_file": "test_cross_platform_deserialization.ts",
+            "compiled_file": "test_cross_platform_deserialization.js",
+            "input_patterns": ["*_test_data.bin"]
+          }
+        }
+      }
+    }
+  ],
+  
+  "test_execution_order": [
+    "code_generation",
+    "compilation",
+    "basic_types",
+    "arrays",
+    "cross_platform_encode",
+    "cross_platform_decode"
+  ]
+}
