@@ -54,8 +54,23 @@ const ARRAY_ELEMENT_SIZES: Record<string, number> = {
 
 // Compiled struct interface used for StructArray
 export interface CompiledStruct {
-  new (buffer?: Buffer): any;
+  new (buffer?: Buffer): StructInstance;
   getSize(): number;
+}
+
+/**
+ * Interface for struct instances that have an internal buffer
+ */
+export interface StructInstance {
+  _buffer: Buffer;
+  getSize(): number;
+}
+
+/**
+ * Type guard to check if an object is a struct instance
+ */
+function isStructInstance(obj: unknown): obj is StructInstance {
+  return typeof obj === 'object' && obj !== null && '_buffer' in obj && Buffer.isBuffer((obj as StructInstance)._buffer);
 }
 
 /**
@@ -197,9 +212,6 @@ export class Struct {
     return this;
   }
 
-  // Nested struct field - allows embedding another compiled struct
-  [key: string]: any; // Dynamic struct field accessor
-
   private addField(fieldName: string, type: FieldType, size: number): void {
     this.fields.push({
       name: fieldName,
@@ -231,8 +243,10 @@ export class Struct {
     const structName = this.name;
 
     // Create a class that can be instantiated with optional buffer
-    const CompiledStructClass = class {
-      private _buffer: Buffer;
+    const CompiledStructClass = class implements StructInstance {
+      // Note: _buffer needs to be public to satisfy the StructInstance interface
+      // and allow Struct.raw() to access it
+      _buffer: Buffer;
       private static _fields: FieldDefinition[] = fields;
       private static _size: number = totalSize;
       private static _structName: string = structName;
@@ -485,7 +499,7 @@ export class Struct {
         }
       }
 
-      private _writeStructArray(field: FieldDefinition, value: any[]): void {
+      private _writeStructArray(field: FieldDefinition, value: unknown[]): void {
         const buffer = this._buffer;
         const offset = field.offset;
         const length = field.arrayLength || 0;
@@ -498,16 +512,23 @@ export class Struct {
           if (i < arr.length && arr[i]) {
             // Check if it's a struct instance (has _buffer) or a plain object
             let srcRaw: Buffer;
-            if (arr[i]._buffer) {
+            const element = arr[i];
+            if (isStructInstance(element)) {
               // It's a struct instance, get its raw buffer
-              srcRaw = Struct.raw(arr[i]);
-            } else {
+              srcRaw = Struct.raw(element);
+            } else if (typeof element === 'object' && element !== null) {
               // It's a plain object, create a new struct and copy properties
               const tempStruct = new structType();
-              for (const key of Object.keys(arr[i])) {
-                (tempStruct as any)[key] = arr[i][key];
+              const elemObj = element as Record<string, unknown>;
+              const tempStructObj = tempStruct as unknown as Record<string, unknown>;
+              for (const key of Object.keys(elemObj)) {
+                tempStructObj[key] = elemObj[key];
               }
               srcRaw = Struct.raw(tempStruct);
+            } else {
+              // Invalid element, zero-fill
+              buffer.fill(0, elemOffset, elemOffset + elementSize);
+              continue;
             }
             srcRaw.copy(buffer, elemOffset, 0, elementSize);
           } else {
@@ -533,8 +554,8 @@ export class Struct {
    * Get raw buffer from a struct instance.
    * Static method for compatibility with typed-struct API.
    */
-  static raw(instance: any): Buffer {
-    if (instance && instance._buffer) {
+  static raw(instance: StructInstance | unknown): Buffer {
+    if (isStructInstance(instance)) {
       return instance._buffer;
     }
     throw new Error('Cannot get raw buffer from non-struct instance');
