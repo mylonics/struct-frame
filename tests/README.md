@@ -1,46 +1,91 @@
 # struct-frame Test Suite
 
-Comprehensive test suite for struct-frame that validates code generation and serialization/deserialization across all supported languages (C, C++, TypeScript, and Python).
+Comprehensive test suite for struct-frame that validates code generation and serialization/deserialization across all supported languages (C, C++, Python, TypeScript, and GraphQL).
 
 ## Quick Start
 
 Run all tests from the project root:
 
 ```bash
-python test_all.py
+python tests/run_tests.py
 ```
 
-Or run the test suite directly:
+Or use the wrapper script:
 
 ```bash
-python tests/run_tests.py
+python test_all.py
 ```
 
 ## Test Output Format
 
-The test runner provides a clean, organized output showing test results by test type across all languages:
+The test runner provides clean, organized output:
 
 ```
-🔧 CODE GENERATION
-     C: ✅ PASS
-    TS: ✅ PASS
-    PY: ✅ PASS
-   CPP: ✅ PASS
+============================================================
+TOOL AVAILABILITY CHECK
+============================================================
 
-🧪 Basic Types Tests
-     C: ✅ PASS
-    TS: ✅ PASS
-    PY: ✅ PASS
-   CPP: ✅ PASS
+  [OK] C
+      Compiler:    [OK] gcc (gcc 6.3.0)
+
+  [OK] C++
+      Compiler:    [OK] g++ (g++ 6.3.0)
+
+  [OK] Python
+      Interpreter: [OK] python (Python 3.11.8)
+
+  [OK] TypeScript
+      Compiler:    [OK] npx tsc (Version 5.7.3)
+      Interpreter: [OK] node (v24.4.1)
+
+  [OK] GraphQL
+      (generation only)
+
+============================================================
+CODE GENERATION
+============================================================
+
+           C: PASS
+         C++: PASS
+      Python: PASS
+  TypeScript: PASS
+     GraphQL: PASS
+
+============================================================
+COMPILATION (all test files)
+============================================================
+
+           C: PASS
+         C++: PASS
+  TypeScript: PASS
+
+============================================================
+TEST EXECUTION
+============================================================
+
+[TEST] Tests basic integer, float, and boolean types
+
+           C: PASS
+         C++: PASS
+      Python: PASS
+  TypeScript: PASS
 ```
 
-Tests are now organized by **test type** rather than by language, providing a clearer view of functionality across all languages. Each test type (basic types, arrays, serialization) runs for all languages before moving to the next test type.
+## Cross-Platform Compatibility Matrix
 
-Individual test programs follow this format:
-- **Success**: Only start and end messages are printed
-- **Failure**: Detailed failure information including expected values, actual values, and raw data hex dump
+The test suite includes cross-platform serialization tests that produce a compatibility matrix:
 
-**Verbose Mode**: Use `--verbose` or `-v` flag to see detailed output for all operations, including successful ones.
+```
+Compatibility Matrix:
+Encoder\Decoder     C          C++        Python    TypeScript
+---------------------------------------------------------------
+C                  OK          OK          OK         FAIL
+C++               FAIL         OK         FAIL        FAIL
+Python             OK          OK          OK         FAIL
+TypeScript        FAIL         OK         FAIL        FAIL
+
+Success rate: 8/16 (50%)
+```
 
 ## Test Types
 
@@ -51,13 +96,7 @@ Individual test programs follow this format:
 - Integer types: int8, int16, int32, int64, uint8, uint16, uint32, uint64
 - Floating point types: float32, float64
 - Boolean type: bool
-- String types: fixed-size strings and variable-length strings
-
-**Test flow**:
-1. Create a message with sample values for all basic types
-2. Serialize the message to binary format
-3. Deserialize the binary data back to a message
-4. Verify all values match the original
+- String types: fixed-size strings
 
 **Files**:
 - C: `tests/c/test_basic_types.c`
@@ -73,52 +112,79 @@ Individual test programs follow this format:
 - Bounded arrays: Arrays with variable count up to a maximum size
 - Array element types: primitives, strings, enums, and nested messages
 
-**Test flow**:
-1. Create a message containing various array types
-2. Populate arrays with test data
-3. Serialize the message to binary format
-4. Deserialize and verify array counts and values
-
 **Files**:
 - C: `tests/c/test_arrays.c`
 - C++: `tests/cpp/test_arrays.cpp`
 - Python: `tests/py/test_arrays.py`
 - TypeScript: `tests/ts/test_arrays.ts`
 
-### 3. Cross-Language Serialization Test
+### 3. Cross-Platform Serialization Test
+**Purpose**: Validates data serialization format consistency
+
+**What it tests**:
+- Binary format compatibility
+- Correct encoding/decoding of message framing
+- Data integrity
+
+**Files**:
+- C: `tests/c/test_cross_platform_serialization.c`
+- C++: `tests/cpp/test_cross_platform_serialization.cpp`
+- Python: `tests/py/test_cross_platform_serialization.py`
+- TypeScript: `tests/ts/test_cross_platform_serialization.ts`
+
+### 4. Cross-Platform Deserialization Test
 **Purpose**: Ensures data serialized in one language can be deserialized in another
 
 **What it tests**:
 - Binary format compatibility across language implementations
-- Correct encoding/decoding of message framing
-- Data integrity across language boundaries
-
-**Test flow**:
-1. Each language creates a test message and serializes it to a binary file
-2. Each language attempts to read and deserialize binary files from other languages
-3. Verify decoded values match expected values
+- Correct decoding across language boundaries
+- Produces compatibility matrix
 
 **Files**:
-- C: `tests/c/test_serialization.c` → creates `c_test_data.bin`
-- C++: `tests/cpp/test_serialization.cpp` → creates `cpp_test_data.bin`
-- Python: `tests/py/test_serialization.py` → creates `python_test_data.bin`
-- TypeScript: `tests/ts/test_serialization.ts` → creates `typescript_test_data.bin`
+- C: `tests/c/test_cross_platform_deserialization.c`
+- C++: `tests/cpp/test_cross_platform_deserialization.cpp`
+- Python: `tests/py/test_cross_platform_deserialization.py`
+- TypeScript: `tests/ts/test_cross_platform_deserialization.ts`
 
 ## Test Organization
 
 ```
 tests/
-├── run_tests.py              # Main test runner
+├── run_tests.py              # Main test runner entry point
+├── test_config.json          # Test configuration (languages, tests, paths)
+├── expected_values.json      # Expected values for cross-platform tests
+├── README.md                 # This file
+├── runner/                   # Modular test runner components
+│   ├── __init__.py
+│   ├── base.py               # Base utilities (logging, config, commands)
+│   ├── tool_checker.py       # Tool availability checking
+│   ├── code_generator.py     # Code generation from proto files
+│   ├── compiler.py           # Compilation for C, C++, TypeScript
+│   ├── test_executor.py      # Test execution
+│   ├── output_formatter.py   # Result formatting
+│   ├── plugins.py            # Test plugins (StandardTestPlugin, CrossPlatformMatrixPlugin)
+│   └── runner.py             # Main ConfigDrivenTestRunner
 ├── proto/                    # Proto definitions for tests
-│   ├── basic_types.proto     # Defines all basic data types
-│   ├── nested_messages.proto # Defines nested message structures
-│   ├── comprehensive_arrays.proto # Defines all array types
-│   └── serialization_test.proto   # Defines cross-language test message
+│   ├── basic_types.proto
+│   ├── comprehensive_arrays.proto
+│   ├── nested_messages.proto
+│   └── serialization_test.proto
 ├── c/                        # C language tests
+│   └── build/                # Compiled C executables
 ├── cpp/                      # C++ language tests
-├── ts/                       # TypeScript tests
+│   └── build/                # Compiled C++ executables
 ├── py/                       # Python tests
+├── ts/                       # TypeScript tests
+│   ├── package.json          # Node.js dependencies
+│   ├── tsconfig.json         # TypeScript configuration
+│   ├── node_modules/         # Node.js modules
+│   └── build/                # Compiled JS files
 └── generated/                # Generated code output
+    ├── c/                    # Generated C headers
+    ├── cpp/                  # Generated C++ headers
+    ├── py/                   # Generated Python modules
+    ├── ts/                   # Generated TypeScript modules
+    └── gql/                  # Generated GraphQL schemas
 ```
 
 ## Command Line Options
@@ -127,18 +193,20 @@ tests/
 python tests/run_tests.py [options]
 
 Options:
-  --generate-only    Only run code generation tests
-  --skip-c          Skip C language tests
-  --skip-cpp        Skip C++ language tests
-  --skip-ts         Skip TypeScript language tests  
-  --skip-py         Skip Python language tests
-  --verbose, -v     Enable verbose output for debugging
+  --config CONFIG     Path to test configuration file (default: tests/test_config.json)
+  --verbose, -v       Enable verbose output for debugging
+  --skip-lang LANG    Skip specific language (can be used multiple times)
+  --only-generate     Only run code generation, skip tests
+  --check-tools       Only check tool availability, don't run tests
+  --clean             Clean all generated and compiled test files
 
 Examples:
   python tests/run_tests.py                    # Run all tests
-  python tests/run_tests.py --generate-only   # Just generate code
-  python tests/run_tests.py --skip-ts         # Skip TypeScript tests
-  python tests/run_tests.py --verbose         # Show detailed output
+  python tests/run_tests.py --clean            # Clean generated files
+  python tests/run_tests.py --only-generate    # Just generate code
+  python tests/run_tests.py --skip-lang ts     # Skip TypeScript tests
+  python tests/run_tests.py --verbose          # Show detailed output
+  python tests/run_tests.py --check-tools      # Check available tools
 ```
 
 ## Prerequisites
@@ -156,28 +224,30 @@ pip install proto-schema-parser structured-classes
 
 **For TypeScript tests**:
 - Node.js
-- TypeScript compiler: `npm install -g typescript`
-- Dependencies: `npm install` in project root
+- Install dependencies: `cd tests/ts && npm install`
 
-## Understanding Test Results
+## Configuration
 
-The test runner provides a summary showing:
+Tests are configured via `test_config.json`. Key sections:
 
-```
-🔧 Code Generation: PASS/FAIL for each language
-🔨 Compilation: PASS/FAIL for compiled languages
-🧪 Basic Types Tests: PASS/FAIL for each language
-🧪 Arrays Tests: PASS/FAIL for each language
-�� Serialization Tests: PASS/FAIL for each language
-🌐 Cross-Language Compatibility: Cross-language decode matrix
-```
+- **languages**: Defines each language's compiler, interpreter, flags, and paths
+- **test_suites**: Defines test cases with names, descriptions, and plugins
+- **proto_files**: Proto files to generate code from
 
-Expected behavior:
-- **Code Generation**: Should always pass if dependencies are installed
-- **C/C++ Tests**: Should pass if compilers are available
-- **Python Tests**: Should pass (most reliable implementation)
-- **TypeScript Tests**: May have issues due to runtime complexity
-- **Cross-Language Tests**: Should show high compatibility rate
+### Adding a New Language
+
+1. Add language configuration to `test_config.json` under `languages`
+2. Define code generation flags, compilation settings, and execution interpreter
+3. Create test files following the naming convention
+
+### Adding a New Test
+
+1. Add a new entry to `test_suites` in `test_config.json`
+2. Create test files for each language: `test_<name>.<ext>`
+3. Use the standard test output format:
+   - Print `[TEST START] <Language> <Test Name>`
+   - Print `[TEST END] <Language> <Test Name>: PASS` or `FAIL`
+4. Return exit code 0 on success, 1 on failure
 
 ## Debugging Failed Tests
 
@@ -201,17 +271,24 @@ Raw Data (N bytes):
 ============================================================
 ```
 
-This information helps diagnose:
-- Which specific values don't match
-- The exact binary data that was encoded/decoded
-- Whether the issue is in encoding or decoding
+Use `--verbose` flag to see all command output including successful operations.
 
-## Adding New Tests
+## Test Runner Architecture
 
-To add a new test type:
+The test runner uses a modular, plugin-based architecture:
 
-1. Create a new proto file in `tests/proto/`
-2. Add test programs for each language following the naming convention: `test_<name>.<ext>`
-3. Use the standard test output format with `[TEST START]` and `[TEST END]`
-4. Print failure details only when tests fail
-5. Test programs should return exit code 0 on success, 1 on failure
+```
+ConfigDrivenTestRunner
+├── ToolChecker        # Verifies compilers/interpreters are available
+├── CodeGenerator      # Generates code from proto files
+├── Compiler           # Compiles C, C++, TypeScript
+├── TestExecutor       # Runs test suites with plugins
+│   ├── StandardTestPlugin           # Standard test execution
+│   └── CrossPlatformMatrixPlugin    # Cross-platform compatibility matrix
+└── OutputFormatter    # Formats and prints results
+```
+
+This architecture allows:
+- Easy addition of new languages via configuration
+- Custom test behavior via plugins
+- Clean separation of concerns
