@@ -44,12 +44,10 @@ def main():
     runner.skipped_languages = args.skip_languages or []
 
     if args.check_tools:
-        all_available = runner.print_tool_availability()
-        sys.exit(0 if all_available else 1)
+        return runner.print_tool_availability()
 
-    sys.exit(0 if runner.run_all_tests(
-        generate_only=args.only_generate) else 1)
+    return runner.run_all_tests(generate_only=args.only_generate)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(0 if main() else 1)
