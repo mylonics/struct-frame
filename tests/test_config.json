@@ -17,7 +17,7 @@
       "code_generation": {
         "flag": "--build_c",
         "output_path_flag": "--c_path",
-        "output_dir": "generated/c"
+        "output_dir": "tests/generated/c"
       },
       "compilation": {
         "enabled": true,
@@ -37,7 +37,7 @@
       "code_generation": {
         "flag": "--build_cpp",
         "output_path_flag": "--cpp_path",
-        "output_dir": "generated/cpp"
+        "output_dir": "tests/generated/cpp"
       },
       "compilation": {
         "enabled": true,
@@ -56,7 +56,7 @@
       "code_generation": {
         "flag": "--build_py",
         "output_path_flag": "--py_path",
-        "output_dir": "generated/py"
+        "output_dir": "tests/generated/py"
       },
       "compilation": {
         "enabled": false
@@ -77,22 +77,36 @@
       "code_generation": {
         "flag": "--build_ts",
         "output_path_flag": "--ts_path",
-        "output_dir": "generated/ts"
+        "output_dir": "tests/generated/ts"
       },
       "compilation": {
         "enabled": true,
         "compiler": "tsc",
         "compiler_check": "tsc --version",
         "command": "tsc --outDir {output_dir} {generated_dir}/*.ts",
-        "output_dir": "generated/ts/js",
+        "output_dir": "tests/generated/ts/js",
         "source_extension": ".ts",
         "compiled_extension": ".js"
       },
       "execution": {
         "interpreter": "node",
-        "script_dir": "generated/ts/js"
+        "script_dir": "tests/generated/ts/js"
       },
       "test_dir": "tests/ts"
+    },
+    
+    "gql": {
+      "name": "GraphQL",
+      "enabled": true,
+      "code_generation": {
+        "flag": "--build_gql",
+        "output_path_flag": "--gql_path",
+        "output_dir": "tests/generated/gql"
+      },
+      "compilation": {
+        "enabled": false
+      },
+      "generation_only": true
     }
   },
   

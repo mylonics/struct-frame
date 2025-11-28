@@ -56,7 +56,7 @@ class StandardTestPlugin(TestPlugin):
         results = {}
         output_files = {}
 
-        for lang_id in self.executor.get_active_languages():
+        for lang_id in self.executor.get_testable_languages():
             test_config = self.executor.build_test_config(lang_id, suite)
             if not test_config:
                 continue
@@ -72,7 +72,7 @@ class StandardTestPlugin(TestPlugin):
                     output_files[lang_id] = output_path
 
         self.formatter.print_lang_results(
-            self.executor.get_active_languages(), results)
+            self.executor.get_testable_languages(), results)
 
         return {
             'results': {lang_id: {suite['name']: r} for lang_id, r in results.items()},
@@ -119,19 +119,19 @@ class CrossPlatformMatrixPlugin(TestPlugin):
 
         encoded_files = self.executor.get_output_files(input_suite)
 
-        active = self.executor.get_active_languages()
+        testable = self.executor.get_testable_languages()
         matrix = {}
-        results = {lang_id: {} for lang_id in active}
+        results = {lang_id: {} for lang_id in testable}
 
-        # Iterate over ALL active languages as encoders, not just those with files
-        for enc_lang in active:
+        # Iterate over ALL testable languages as encoders, not just those with files
+        for enc_lang in testable:
             enc_name = self.config['languages'][enc_lang]['name']
             matrix[enc_name] = {}
 
             # Check if this encoder produced a file
             data_file = encoded_files.get(enc_lang)
 
-            for dec_lang in active:
+            for dec_lang in testable:
                 dec_name = self.config['languages'][dec_lang]['name']
 
                 # If encoder didn't produce a file, mark all decoders as None (N/A)

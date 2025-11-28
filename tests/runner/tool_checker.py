@@ -40,6 +40,12 @@ class ToolChecker(TestRunnerBase):
                 'interpreter': None,
             }
 
+            # Generation-only languages don't need tools checked
+            if lang_config.get('generation_only'):
+                info['generation_only'] = True
+                results[lang_id] = info
+                continue
+
             # Check compiler if compilation is enabled
             info = self._check_compiler(lang_config, info)
 
@@ -117,6 +123,11 @@ class ToolChecker(TestRunnerBase):
         for lang_id, info in availability.items():
             status = "[OK]" if info['available'] else "[FAIL]"
             print(f"\n  {status} {info['name']}")
+
+            # Generation-only languages just show that status
+            if info.get('generation_only'):
+                print(f"      (generation only)")
+                continue
 
             if info['compiler']:
                 comp = info['compiler']

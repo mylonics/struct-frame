@@ -7,6 +7,8 @@ and executes all tests without any hardcoded knowledge of what tests exist.
 
 Usage:
     python run_tests.py [--config CONFIG] [--verbose] [--skip-lang LANG] [--only-generate]
+    python run_tests.py --clean          # Clean all generated/compiled files
+    python run_tests.py --check-tools    # Check tool availability
 
 The test runner functionality has been split into modular components:
     - runner/base.py: Base utilities (logging, command execution, config loading)
@@ -19,10 +21,70 @@ The test runner functionality has been split into modular components:
 """
 
 import argparse
+import shutil
 import sys
+from pathlib import Path
 
 # Import the modular test runner
 from runner import ConfigDrivenTestRunner
+
+
+def clean_test_files(config_path: str, verbose: bool = False) -> bool:
+    """Clean all generated and compiled test files."""
+    from runner.base import TestRunnerBase
+
+    project_root = Path(__file__).parent.parent
+    config = TestRunnerBase.load_config(Path(config_path), verbose)
+
+    cleaned_count = 0
+
+    print("Cleaning test files...")
+
+    # Clean generated code directories
+    for lang_id, lang_config in config['languages'].items():
+        gen_dir = project_root / lang_config['code_generation']['output_dir']
+        if gen_dir.exists():
+            if verbose:
+                print(f"  Removing generated directory: {gen_dir}")
+            shutil.rmtree(gen_dir)
+            cleaned_count += 1
+
+    # Clean compiled files and binary outputs in test directories
+    for lang_id, lang_config in config['languages'].items():
+        # Skip languages without test directories (e.g., generation_only languages)
+        if 'test_dir' not in lang_config:
+            continue
+
+        test_dir = project_root / lang_config['test_dir']
+        if not test_dir.exists():
+            continue
+
+        # Clean executable files
+        comp = lang_config.get('compilation', {})
+        if comp.get('executable_extension'):
+            for exe in test_dir.glob(f"*{comp['executable_extension']}"):
+                if verbose:
+                    print(f"  Removing executable: {exe}")
+                exe.unlink()
+                cleaned_count += 1
+
+        # Clean compiled JS files for TypeScript
+        if comp.get('compiled_extension'):
+            for compiled in test_dir.glob(f"*{comp['compiled_extension']}"):
+                if verbose:
+                    print(f"  Removing compiled file: {compiled}")
+                compiled.unlink()
+                cleaned_count += 1
+
+        # Clean binary output files
+        for bin_file in test_dir.glob("*.bin"):
+            if verbose:
+                print(f"  Removing binary file: {bin_file}")
+            bin_file.unlink()
+            cleaned_count += 1
+
+    print(f"Cleaned {cleaned_count} items")
+    return True
 
 
 def main():
@@ -38,8 +100,14 @@ def main():
                         help="Only run code generation")
     parser.add_argument("--check-tools", action="store_true",
                         help="Only check tool availability, don't run tests")
+    parser.add_argument("--clean", action="store_true",
+                        help="Clean all generated and compiled test files")
 
     args = parser.parse_args()
+
+    if args.clean:
+        return clean_test_files(args.config, verbose=args.verbose)
+
     runner = ConfigDrivenTestRunner(args.config, verbose=args.verbose)
     runner.skipped_languages = args.skip_languages or []
 

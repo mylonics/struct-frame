@@ -92,6 +92,13 @@ class TestRunnerBase:
         return [lang_id for lang_id, cfg in self.config['languages'].items()
                 if cfg.get('enabled', True) and lang_id not in self.skipped_languages]
 
+    def get_testable_languages(self) -> List[str]:
+        """Get list of enabled languages that can run tests (excludes generation_only)"""
+        return [lang_id for lang_id, cfg in self.config['languages'].items()
+                if cfg.get('enabled', True)
+                and lang_id not in self.skipped_languages
+                and not cfg.get('generation_only', False)]
+
     @contextmanager
     def temp_copy(self, src: Path, dst: Path):
         """Context manager to temporarily copy a file and clean up"""
