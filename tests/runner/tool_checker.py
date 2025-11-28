@@ -64,7 +64,14 @@ class ToolChecker(TestRunnerBase):
 
         compiler = comp.get('compiler', '')
         check_cmd = comp.get('compiler_check', f"{compiler} --version")
-        success, stdout, stderr = self.run_command(check_cmd, timeout=5)
+
+        # Use working_dir if specified (for npm/npx commands)
+        working_dir = None
+        if comp.get('working_dir'):
+            working_dir = self.project_root / comp['working_dir']
+
+        success, stdout, stderr = self.run_command(
+            check_cmd, cwd=working_dir, timeout=5)
 
         version = ""
         if success:

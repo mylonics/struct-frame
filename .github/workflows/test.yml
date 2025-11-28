@@ -40,6 +40,7 @@ jobs:
 
       - name: Install Node.js dependencies
         run: npm ci
+        working-directory: tests/ts
 
       - name: Run test suite
         run: python test_all.py
@@ -51,7 +52,7 @@ jobs:
           name: test-results
           path: |
             tests/generated/
-            tests/c/*.bin
-            tests/cpp/*.bin
-            tests/py/*.bin
+            tests/c/build/
+            tests/cpp/build/
+            tests/py/build/
           retention-days: 5

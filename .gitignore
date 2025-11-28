@@ -1,5 +1,6 @@
 # Build outputs and temporary files
 ts_out/
+tests/ts_out/
 node_modules/
 .vscode/
 main.exe
@@ -11,15 +12,11 @@ generated/
 gen/
 tests/generated/
 
-
-# Test artifacts
-tests/c/*.exe
-tests/c/*.bin
-tests/cpp/*.exe
-tests/cpp/*.bin
-tests/py/*.bin
-tests/ts/*.bin
-*_test_data.bin
+# Build directories (executables and binaries)
+tests/c/build/
+tests/cpp/build/
+tests/py/build/
+tests/ts/build/
 
 # Debug and temporary files
 debug*.c

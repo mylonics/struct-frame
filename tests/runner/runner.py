@@ -63,9 +63,9 @@ class ConfigDrivenTestRunner:
         return [lang_id for lang_id, cfg in self.config['languages'].items()
                 if cfg.get('enabled', True) and lang_id not in self.skipped_languages]
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # Delegated Methods (for backward compatibility)
-    # ─────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
 
     def check_tool_availability(self) -> Dict[str, Dict[str, Any]]:
         """Check which compilers/interpreters are available"""
@@ -110,9 +110,9 @@ class ConfigDrivenTestRunner:
             self._get_active_languages()
         )
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # Results Access (for backward compatibility)
-    # ─────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
 
     @property
     def results(self) -> Dict[str, Any]:
@@ -124,9 +124,9 @@ class ConfigDrivenTestRunner:
             'cross_platform': self.test_executor.cross_platform_results
         }
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # Main Entry Point
-    # ─────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
 
     def run_all_tests(self, generate_only: bool = False) -> bool:
         """Run the complete test suite"""

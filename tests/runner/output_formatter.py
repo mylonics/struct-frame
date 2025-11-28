@@ -33,24 +33,25 @@ class OutputFormatter(TestRunnerBase):
         all_langs = sorted(set(matrix.keys()) | set().union(
             *[set(d.keys()) for d in matrix.values()]))
 
+        col_width = 12
         print("\nCompatibility Matrix:")
         header = "Encoder\\Decoder".ljust(
-            18) + "".join(l[:8].ljust(10) for l in all_langs)
+            14) + "".join(l.center(col_width) for l in all_langs)
         print(header)
         print("-" * len(header))
 
         for encoder in all_langs:
             if encoder in matrix:
-                row = encoder.ljust(18)
+                row = encoder.ljust(14)
                 for d in all_langs:
                     val = matrix[encoder].get(d)
                     if val is None:
-                        cell = " N/A "
+                        cell = "N/A"
                     elif val:
-                        cell = " OK "
+                        cell = "OK"
                     else:
-                        cell = " FAIL "
-                    row += cell.rjust(10)
+                        cell = "FAIL"
+                    row += cell.center(col_width)
                 print(row)
 
         # Count only non-None entries for success rate

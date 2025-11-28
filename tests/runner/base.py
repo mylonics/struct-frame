@@ -115,9 +115,9 @@ class TestRunnerBase:
                 except:
                     pass
 
-    # ─────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # File name resolution from test_name + language extensions
-    # ─────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
 
     def get_source_extension(self, lang_id: str) -> str:
         """Get source file extension for a language"""
@@ -180,12 +180,14 @@ class TestRunnerBase:
         """Run a test script for any language - unified execution logic"""
         lang_config = self.config['languages'][lang_id]
         test_dir = test_dir or (self.project_root / lang_config['test_dir'])
+        build_dir = self.project_root / \
+            lang_config.get('build_dir', lang_config['test_dir'])
         execution = lang_config.get('execution', {})
 
         # Compiled executable (C, C++)
         if 'executable' in test_config:
-            exe_path = test_dir / test_config['executable']
-            return exe_path.exists() and self.run_command(str(exe_path), cwd=test_dir)[0]
+            exe_path = build_dir / test_config['executable']
+            return exe_path.exists() and self.run_command(str(exe_path), cwd=build_dir)[0]
 
         # TypeScript (runs compiled JS)
         if lang_id == 'ts' and 'compiled_file' in test_config:
@@ -204,8 +206,10 @@ class TestRunnerBase:
             interpreter = execution.get('interpreter')
             if not interpreter:
                 return False
+            # Ensure build_dir exists and run from there
+            build_dir.mkdir(parents=True, exist_ok=True)
             return self.run_command(
-                f"{interpreter} {source_path.name}",
-                cwd=test_dir, env=self.get_lang_env(lang_id))[0]
+                f"{interpreter} {source_path}",
+                cwd=build_dir, env=self.get_lang_env(lang_id))[0]
 
         return False

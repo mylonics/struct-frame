@@ -80,11 +80,12 @@ class StandardTestPlugin(TestPlugin):
         }
 
     def _get_output_dir(self, lang_id: str) -> Path:
-        """Get the output directory for a language"""
+        """Get the output directory for a language (build_dir for binaries)"""
         lang_config = self.config['languages'][lang_id]
         if lang_id == 'ts':
             return self.project_root / lang_config['execution'].get('script_dir', '')
-        return self.project_root / lang_config['test_dir']
+        # Use build_dir for output files
+        return self.project_root / lang_config.get('build_dir', lang_config['test_dir'])
 
     def _get_output_file_name(self, suite: Dict[str, Any], lang_id: str) -> str:
         """Get the output file name for a language"""
@@ -166,8 +167,12 @@ class CrossPlatformMatrixPlugin(TestPlugin):
                                data_file: Path) -> bool:
         """Run a decoder test with a specific input file"""
         lang_config = self.config['languages'][lang_id]
-        test_dir = self.project_root / lang_config['test_dir']
-        target_file = test_dir / data_file.name
+        build_dir = self.project_root / \
+            lang_config.get('build_dir', lang_config['test_dir'])
+        target_file = build_dir / data_file.name
+
+        # Ensure build directory exists
+        build_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             with self.executor.temp_copy(data_file, target_file):
@@ -177,9 +182,9 @@ class CrossPlatformMatrixPlugin(TestPlugin):
                         lang_config['execution'].get('script_dir', '')
                     ts_target = script_dir / data_file.name
                     with self.executor.temp_copy(data_file, ts_target):
-                        return self.executor.run_test_script(lang_id, test_config, test_dir)
+                        return self.executor.run_test_script(lang_id, test_config)
                 else:
-                    return self.executor.run_test_script(lang_id, test_config, test_dir)
+                    return self.executor.run_test_script(lang_id, test_config)
         except Exception as e:
             if self.verbose:
                 self.log(f"Decode failed: {e}", "WARNING")
