@@ -21,8 +21,5 @@ jobs:
 
       - name: Publish wiki
         uses: Andrew-Chen-Wang/github-wiki-action@v4
-        env:
-          WIKI_DIR: docs/
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_MAIL: github-actions[bot]@users.noreply.github.com
-          GH_NAME: github-actions[bot]
+        with:
+          path: docs
