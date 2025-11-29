@@ -47,11 +47,12 @@ bool validate_basic_frame(const uint8_t* buffer, size_t size, const char* langua
   return true;
 }
 
-bool read_and_validate_test_data(const char* filename, const char* language) {
+// Return values: 1 = validated successfully, 0 = validation failed, -1 = skipped (file not found)
+int read_and_validate_test_data(const char* filename, const char* language) {
   std::ifstream file(filename, std::ios::binary);
   if (!file) {
     std::cout << "  Skipping " << language << " - file not found: " << filename << "\n";
-    return true;  // Skip if file not available
+    return -1;  // Skip if file not available
   }
 
   uint8_t buffer[512];
@@ -61,7 +62,7 @@ bool read_and_validate_test_data(const char* filename, const char* language) {
 
   if (size == 0) {
     print_failure_details("Empty file");
-    return false;
+    return 0;
   }
 
   // Expected values from expected_values.json
@@ -69,20 +70,43 @@ bool read_and_validate_test_data(const char* filename, const char* language) {
 
   if (!validate_basic_frame(buffer, size, language, expected_magic)) {
     std::cout << "  Validation failed for " << language << " data\n";
-    return false;
+    return 0;
   }
 
-  return true;
+  return 1;
 }
 
 int main() {
   std::cout << "\n[TEST START] C++ Cross-Platform Deserialization\n";
 
-  bool success = true;
-  success = success && read_and_validate_test_data("python_test_data.bin", "Python");
-  success = success && read_and_validate_test_data("c_test_data.bin", "C");
-  success = success && read_and_validate_test_data("cpp_test_data.bin", "C++");
-  success = success && read_and_validate_test_data("typescript_test_data.bin", "TypeScript");
+  bool any_failed = false;
+  int validated_count = 0;
+
+  int result;
+
+  result = read_and_validate_test_data("python_test_data.bin", "Python");
+  if (result == 0) any_failed = true;
+  if (result == 1) validated_count++;
+
+  result = read_and_validate_test_data("c_test_data.bin", "C");
+  if (result == 0) any_failed = true;
+  if (result == 1) validated_count++;
+
+  result = read_and_validate_test_data("cpp_test_data.bin", "C++");
+  if (result == 0) any_failed = true;
+  if (result == 1) validated_count++;
+
+  result = read_and_validate_test_data("typescript_test_data.bin", "TypeScript");
+  if (result == 0) any_failed = true;
+  if (result == 1) validated_count++;
+
+  bool success = !any_failed && (validated_count > 0);
+
+  if (validated_count == 0) {
+    std::cout << "  [WARN] No files were validated - at least one input file is required\n";
+  } else {
+    std::cout << "  Validated " << validated_count << " file(s) successfully\n";
+  }
 
   std::cout << "[TEST END] C++ Cross-Platform Deserialization: " << (success ? "PASS" : "FAIL") << "\n\n";
 

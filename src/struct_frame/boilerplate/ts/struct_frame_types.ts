@@ -64,7 +64,6 @@ export class buffer_parser_result_t {
 }
 
 // https://github.com/serge-sans-paille/frozen
-// https://www.npmjs.com/package/typed-struct
 
 //#define default_parser { 0, 0, 0x90 }
 //

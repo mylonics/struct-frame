@@ -1,4 +1,4 @@
-import { Struct } from 'typed-struct';
+import { Struct } from './struct_base';
 import * as sf_types from './struct_frame_types';
 
 function fletcher_checksum_calculation(buffer: Uint8Array, data_length: number): sf_types.checksum_t {

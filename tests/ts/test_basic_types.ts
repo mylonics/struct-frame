@@ -35,23 +35,16 @@ try {
 function testBasicTypes(): boolean {
   console.log('\n[TEST START] TypeScript Basic Types');
   
-  // KNOWN ISSUE: typed-struct 2.5.2 has a bug with String field setters
-  // Skipping this test until the library is fixed
-  console.log('[TEST SKIP] TypeScript Basic Types test skipped due to typed-struct library String setter bug');
-  console.log('[TEST END] TypeScript Basic Types: PASS (SKIPPED)\n');
-  return true;
-  
-  /* Original test code - disabled due to typed-struct String setter bug
   try {
     const msg = new basic_types_BasicTypesMessage();
     msg.small_int = -42;
     msg.medium_int = -1000;
     msg.regular_int = -100000;
-    msg.large_int = -1000000000;
+    msg.large_int = BigInt(-1000000000);
     msg.small_uint = 255;
     msg.medium_uint = 65535;
     msg.regular_uint = 4294967295;
-    msg.large_uint = 1844674407370955;
+    msg.large_uint = BigInt(1844674407370955);
     msg.single_precision = 3.14159;
     msg.double_precision = 2.718281828459045;
     msg.flag = true;
@@ -71,7 +64,6 @@ function testBasicTypes(): boolean {
     console.log('[TEST END] TypeScript Basic Types: FAIL\n');
     return false;
   }
-  */
 }
 
 if (require.main === module) {
