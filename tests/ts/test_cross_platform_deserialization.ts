@@ -9,7 +9,7 @@ function printFailureDetails(label: string): void {
 
 function loadExpectedValues(): any {
   try {
-    const jsonPath = path.join(__dirname, '../../expected_values.json');
+    const jsonPath = path.join(__dirname, '../../../expected_values.json');
     const data = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
     return data.serialization_test;
   } catch (error) {
