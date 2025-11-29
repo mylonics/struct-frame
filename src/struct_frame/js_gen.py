@@ -4,46 +4,24 @@
 JavaScript code generator for struct-frame.
 
 This module generates human-readable JavaScript code for struct serialization.
-It reuses the TypeScript generator's type mappings and logic but outputs
-JavaScript syntax (CommonJS) instead of TypeScript.
+It reuses the shared TypeScript/JavaScript base module for common logic
+but outputs JavaScript syntax (CommonJS) instead of TypeScript.
 """
 
 from struct_frame import version, NamingStyleC
+from struct_frame.ts_js_base import (
+    common_types,
+    common_typed_array_methods,
+    BaseFieldGen,
+    BaseEnumGen,
+)
 import time
 
 StyleC = NamingStyleC()
 
-# Reuse type mappings from TypeScript generator
-js_types = {
-    "int8":     'Int8',
-    "uint8":    'UInt8',
-    "int16":    'Int16LE',
-    "uint16":   'UInt16LE',
-    "bool":     'Boolean8',
-    "double":   'Float64LE',
-    "float":    'Float32LE',
-    "int32":  'Int32LE',
-    "uint32": 'UInt32LE',
-    "int64":  'BigInt64LE',
-    "uint64": 'BigUInt64LE',
-    "string":   'String',
-}
-
-# JavaScript typed array methods for array fields
-js_typed_array_methods = {
-    "int8":     'Int8Array',
-    "uint8":    'UInt8Array',
-    "int16":    'Int16Array',
-    "uint16":   'UInt16Array',
-    "bool":     'UInt8Array',  # Boolean arrays stored as UInt8Array
-    "double":   'Float64Array',
-    "float":    'Float32Array',
-    "int32":    'Int32Array',
-    "uint32":   'UInt32Array',
-    "int64":    'BigInt64Array',
-    "uint64":   'BigUInt64Array',
-    "string":   'StructArray',  # String arrays use StructArray
-}
+# Use shared type mappings
+js_types = common_types
+js_typed_array_methods = common_typed_array_methods
 
 
 class EnumJsGen():
@@ -87,92 +65,14 @@ class EnumJsGen():
 
 
 class FieldJsGen():
+    """JavaScript field generator using shared base logic."""
+
     @staticmethod
     def generate(field, packageName):
-        result = ''
-        # Check if field is an enum type
-        isEnum = field.isEnum if hasattr(field, 'isEnum') else False
-        var_name = StyleC.var_name(field.name)
-        type_name = field.fieldType
-
-        # Handle arrays
-        if field.is_array:
-            if field.fieldType == "string":
-                if field.size_option is not None:  # Fixed size array [size=X]
-                    # Fixed string array: string[size] -> StructArray with fixed length
-                    result += "    // Fixed string array: %d strings, each exactly %d chars\n" % (field.size_option, field.element_size)
-                    # For string arrays, we need to use StructArray with String elements
-                    result += "    .StructArray('%s', %d, new Struct().String('value', %d).compile())" % (var_name, field.size_option, field.element_size)
-                else:  # Variable size array [max_size=X]
-                    # Variable string array: string[max_size=X, element_size=Y] -> count + StructArray
-                    result += "    // Variable string array: up to %d strings, each max %d chars\n" % (field.max_size, field.element_size)
-                    result += "    .UInt8('%s_count')\n" % var_name
-                    result += "    .StructArray('%s_data', %d, new Struct().String('value', %d).compile())" % (var_name, field.max_size, field.element_size)
-            else:
-                # Regular type arrays
-                if type_name in js_types:
-                    base_type = js_types[type_name]
-                    array_method = js_typed_array_methods.get(type_name, 'StructArray')
-                elif isEnum:
-                    # Enum arrays are stored as UInt8Array
-                    base_type = 'UInt8'
-                    array_method = 'UInt8Array'
-                else:
-                    # Struct arrays - use the original type name (e.g., 'Sensor' not 'sensor')
-                    base_type = '%s_%s' % (packageName, type_name)
-                    array_method = 'StructArray'
-
-                if field.size_option is not None:  # Fixed size array [size=X]
-                    # Fixed array: type[size] -> TypedArray with fixed length
-                    array_size = field.size_option
-                    result += '    // Fixed array: always %d elements\n' % array_size
-                    if array_method == 'StructArray':
-                        result += "    .%s('%s', %d, %s)" % (array_method, var_name, array_size, base_type)
-                    else:
-                        result += "    .%s('%s', %d)" % (array_method, var_name, array_size)
-                else:  # Variable size array [max_size=X]
-                    # Variable array: type[max_size=X] -> count + TypedArray
-                    max_count = field.max_size
-                    result += '    // Variable array: up to %d elements\n' % max_count
-                    result += "    .UInt8('%s_count')\n" % var_name
-                    if array_method == 'StructArray':
-                        result += "    .%s('%s_data', %d, %s)" % (array_method, var_name, max_count, base_type)
-                    else:
-                        result += "    .%s('%s_data', %d)" % (array_method, var_name, max_count)
-        else:
-            # Non-array fields (existing logic)
-            if field.fieldType == "string":
-                if hasattr(field, 'size_option') and field.size_option is not None:
-                    # Fixed string: string[size] -> fixed length string
-                    result += '    // Fixed string: exactly %d chars\n' % field.size_option
-                    result += "    .String('%s', %d)" % (var_name, field.size_option)
-                elif hasattr(field, 'max_size') and field.max_size is not None:
-                    # Variable string: string[max_size=X] -> length + data
-                    result += '    // Variable string: up to %d chars\n' % field.max_size
-                    result += "    .UInt8('%s_length')\n" % var_name
-                    result += "    .String('%s_data', %d)" % (var_name, field.max_size)
-                else:
-                    # Default string handling (should not occur with new parser)
-                    result += "    .String('%s')" % var_name
-            else:
-                # Regular types
-                if type_name in js_types:
-                    type_name = js_types[type_name]
-                else:
-                    type_name = '%s_%s' % (packageName, StyleC.struct_name(type_name))
-
-                if isEnum:
-                    # Enums are stored as UInt8 in JavaScript
-                    result += "    .UInt8('%s')" % var_name
-                else:
-                    result += "    .%s('%s')" % (type_name, var_name)
-
-        leading_comment = field.comments
-        if leading_comment:
-            for c in leading_comment:
-                result = c + "\n" + result
-
-        return result
+        """Generate JavaScript field definition using shared base."""
+        return BaseFieldGen.generate(
+            field, packageName, js_types, js_typed_array_methods
+        )
 
 
 # ---------------------------------------------------------------------------
