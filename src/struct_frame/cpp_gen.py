@@ -88,7 +88,8 @@ class FieldCppGen():
                     comment = f"  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars"
                 elif field.max_size is not None:
                     # Variable string array: count byte + max_size strings of element_size chars each
-                    declaration = f"struct {{ uint8_t count; char data[{field.max_size}][{field.element_size}]; }} {var_name};"
+                    # Add __attribute__((packed)) to ensure no padding between count and data
+                    declaration = f"struct __attribute__((packed)) {{ uint8_t count; char data[{field.max_size}][{field.element_size}]; }} {var_name};"
                     comment = f"  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars"
                 else:
                     declaration = f"char {var_name}[1][1];"  # Fallback
@@ -101,7 +102,8 @@ class FieldCppGen():
                     comment = f"  // Fixed array: always {field.size_option} elements"
                 elif field.max_size is not None:
                     # Variable array: count byte + max elements
-                    declaration = f"struct {{ uint8_t count; {base_type} data[{field.max_size}]; }} {var_name};"
+                    # Add __attribute__((packed)) to ensure no padding between count and data
+                    declaration = f"struct __attribute__((packed)) {{ uint8_t count; {base_type} data[{field.max_size}]; }} {var_name};"
                     comment = f"  // Variable array: up to {field.max_size} elements"
                 else:
                     declaration = f"{base_type} {var_name}[1];"  # Fallback
@@ -117,7 +119,8 @@ class FieldCppGen():
                 comment = f"  // Fixed string: exactly {field.size_option} chars"
             elif field.max_size is not None:
                 # Variable string: length byte + max characters
-                declaration = f"struct {{ uint8_t length; char data[{field.max_size}]; }} {var_name};"
+                # Add __attribute__((packed)) to ensure no padding between length and data
+                declaration = f"struct __attribute__((packed)) {{ uint8_t length; char data[{field.max_size}]; }} {var_name};"
                 comment = f"  // Variable string: up to {field.max_size} chars"
             else:
                 declaration = f"char {var_name}[1];"  # Fallback
