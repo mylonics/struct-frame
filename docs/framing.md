@@ -2,6 +2,32 @@
 
 Framing wraps messages with headers and checksums so receivers can identify message boundaries and verify integrity.
 
+## Frame Format Definitions
+
+All supported frame formats are defined in [`examples/frame_formats.proto`](../examples/frame_formats.proto). This file provides:
+
+- Protocol Buffer definitions for each frame format
+- Detailed documentation of use cases and tradeoffs
+- Enumeration of all frame format types
+- Configuration message for runtime format selection
+
+## Frame Format Overview
+
+| Format | Header | Footer | Length Field | Use Case |
+|--------|--------|--------|--------------|----------|
+| NoFormat | 0 | 0 | None | Trusted links, nested protocols |
+| MsgIdFrame | 1 | 2 | None | Minimal framing with CRC |
+| MsgIdFrameNoCrc | 1 | 0 | None | Minimal framing, trusted link |
+| BasicFrame | 2 | 2 | None | Standard reliable communication |
+| BasicFrameNoCrc | 2 | 0 | None | Sync recovery, no CRC |
+| TinyFrame | 1 | 2 | None | Low overhead with CRC |
+| TinyFrameNoCrc | 1 | 0 | None | Minimal overhead |
+| *Len8 variants | +1 | same | 8-bit | Variable length up to 255 bytes |
+| *Len16 variants | +2 | same | 16-bit | Variable length up to 64KB |
+| UBX | 6 | 2 | 16-bit | u-blox GPS compatibility |
+| MavlinkV1 | 6 | 2 | 8-bit | Legacy drone communication |
+| MavlinkV2 | 10 | 2-15 | 8-bit | Modern drone communication |
+
 ## No Frame Format
 
 For trusted point-to-point links where you control both ends, you can skip framing entirely. Messages are sent as raw bytes with no header or checksum.
@@ -62,6 +88,47 @@ Total bytes = 2 (header) + payload size + 2 (checksum)
 
 For a message with 5 bytes of data: 2 + 5 + 2 = 9 bytes total
 
+## MSG ID Frame Variants
+
+Minimal framing with just message ID and optional CRC:
+
+**MsgIdFrame**: `[MSG_ID (1)] [PAYLOAD] [CRC (2)]`
+- 3 bytes overhead
+- For synchronized links with error detection
+
+**MsgIdFrameNoCrc**: `[MSG_ID (1)] [PAYLOAD]`
+- 1 byte overhead
+- For trusted, synchronized links
+
+## Tiny Frame Variants
+
+Low overhead framing for constrained environments:
+
+**TinyFrame**: `[START (1)] [MSG_ID (1)] [PAYLOAD] [CRC (2)]`
+- 4 bytes overhead
+- Battery-powered devices, high message rates
+
+**TinyFrameNoCrc**: `[START (1)] [MSG_ID (1)] [PAYLOAD]`
+- 2 bytes overhead
+- Minimal overhead with sync recovery
+
+## Length-Prefixed Variants
+
+All frame formats have variants with explicit length fields:
+
+**8-bit length (Len8)**: Supports payloads up to 255 bytes
+- Adds 1 byte to header
+- Use for variable-length messages
+
+**16-bit length (Len16)**: Supports payloads up to 65,535 bytes
+- Adds 2 bytes to header (little-endian)
+- Use for large data transfers, firmware updates
+
+Example: `BasicFrameLen16`
+```
+[START (1)] [MSG_ID (1)] [LEN_LO (1)] [LEN_HI (1)] [PAYLOAD] [CRC (2)]
+```
+
 ## Parser State Machine
 
 The parser implements a state machine to handle partial data and recover from corruption:
@@ -109,29 +176,48 @@ for each byte in (message_id + payload):
 checksum = [sum1, sum2]
 ```
 
-## Custom Frame Formats
+## Industry Standard Protocols
 
-The architecture supports alternative frame formats. Planned implementations:
+### UBX Format
 
-**UBX Format**
-- Used by u-blox GPS receivers
-- 2-byte sync sequence (0xB5, 0x62)
-- Class + ID message identification
-- Little-endian 2-byte length field
+u-blox proprietary binary protocol for GPS/GNSS receivers:
+
+```
+[SYNC1 (0xB5)] [SYNC2 (0x62)] [CLASS (1)] [ID (1)] [LEN (2)] [PAYLOAD] [CK_A] [CK_B]
+```
+
+- 8 bytes overhead
+- Class + ID for message routing
 - Fletcher-8 checksum
+- Use for u-blox GPS integration
 
-**Mavlink v1**
-- Used by ArduPilot and PX4
-- 0xFE start byte
-- Sequence counter
-- System ID and Component ID
-- CRC-16 checksum
+### MAVLink v1
 
-**Mavlink v2**
-- 0xFD start byte
-- Incompatibility flags
-- Compatibility flags
-- Optional signature for authentication
+Legacy drone communication protocol:
+
+```
+[STX (0xFE)] [LEN (1)] [SEQ (1)] [SYS (1)] [COMP (1)] [MSG (1)] [PAYLOAD] [CRC (2)]
+```
+
+- 8 bytes overhead
+- Sequence counter for packet loss detection
+- System ID and Component ID for multi-vehicle networks
+- CRC-16/X.25 checksum
+- Use for ArduPilot/PX4 compatibility
+
+### MAVLink v2
+
+Modern drone communication with extended features:
+
+```
+[STX (0xFD)] [LEN (1)] [INCOMPAT (1)] [COMPAT (1)] [SEQ (1)] [SYS (1)] [COMP (1)] [MSG_ID (3)] [PAYLOAD] [CRC (2)] [SIGNATURE (13, optional)]
+```
+
+- 12-25 bytes overhead
+- 24-bit message ID (16.7M message types)
+- Incompatibility/compatibility flags for version negotiation
+- Optional 13-byte signature for authentication
+- Use for secure drone communication
 
 ## Framing Compatibility
 
@@ -139,8 +225,15 @@ The architecture supports alternative frame formats. Planned implementations:
 |--------------|---|-----|------------|--------|
 | No Header (No Framing) | Yes | Yes | Yes | Yes |
 | Basic Frame Format | Yes | Yes | Yes | Yes |
-| UBX | Planned | Planned | Planned | Planned |
-| Mavlink v1 | Planned | Planned | Planned | Planned |
-| Mavlink v2 | Planned | Planned | Planned | Planned |
+| MSG ID Frames | Defined | Defined | Defined | Defined |
+| Tiny Frames | Defined | Defined | Defined | Defined |
+| Length-Prefixed | Defined | Defined | Defined | Defined |
+| UBX | Defined | Defined | Defined | Defined |
+| Mavlink v1 | Defined | Defined | Defined | Defined |
+| Mavlink v2 | Defined | Defined | Defined | Defined |
+
+**Legend:**
+- **Yes**: Fully implemented runtime support
+- **Defined**: Frame format defined in proto, implementation pending
 
 All frame formats are binary compatible across languages. A frame created in Python can be parsed in C and vice versa.

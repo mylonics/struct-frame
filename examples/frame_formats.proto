@@ -1,0 +1,840 @@
+// Frame Format Definitions for struct-frame
+// 
+// This file defines various message framing formats that can be used for
+// reliable communication over serial links, network sockets, or any byte stream.
+//
+// Each frame format provides different tradeoffs between:
+// - Overhead (header/footer bytes)
+// - Error detection (CRC/checksum)
+// - Message boundary detection
+// - Length-prefixed vs fixed-length messages
+//
+// Use Case Summary:
+// ================
+// NoFormat: Direct point-to-point trusted links, shared memory, nested protocols
+// MsgIdFrame: Minimal framing with error detection
+// MsgIdFrameNoCrc: Minimal framing for trusted links
+// BasicFrame: Standard reliable communication with sync recovery
+// BasicFrameNoCrc: Reduced overhead when CRC handled elsewhere
+// TinyFrame: Low overhead for constrained environments
+// TinyFrameNoCrc: Minimal overhead for trusted constrained links
+// *WithLength variants: Variable length messages, streaming data
+// UBX: u-blox GPS receiver compatibility
+// MavlinkV1: ArduPilot/PX4 legacy drone communication
+// MavlinkV2: Modern ArduPilot/PX4 drone communication with authentication
+
+package frame_formats;
+
+// ============================================================================
+// Frame Format Enumeration
+// ============================================================================
+
+// Enumeration of all supported frame format types.
+// Used to identify and configure the framing protocol.
+enum FrameFormatType {
+  // No framing - raw message bytes only
+  NO_FORMAT = 0;
+  
+  // Message ID + Message + 2-byte CRC
+  MSG_ID_FRAME = 1;
+  
+  // Message ID + Message (no CRC)
+  MSG_ID_FRAME_NO_CRC = 2;
+  
+  // 2-byte header + Message ID + Message + 2-byte CRC
+  BASIC_FRAME = 3;
+  
+  // 2-byte header + Message ID + Message (no CRC)
+  BASIC_FRAME_NO_CRC = 4;
+  
+  // 1-byte header + Message ID + Message + 2-byte CRC
+  TINY_FRAME = 5;
+  
+  // 1-byte header + Message ID + Message (no CRC)
+  TINY_FRAME_NO_CRC = 6;
+  
+  // Message ID + 1-byte length + Message + 2-byte CRC
+  MSG_ID_FRAME_LEN8 = 7;
+  
+  // Message ID + 1-byte length + Message (no CRC)
+  MSG_ID_FRAME_LEN8_NO_CRC = 8;
+  
+  // Message ID + 2-byte length + Message + 2-byte CRC
+  MSG_ID_FRAME_LEN16 = 9;
+  
+  // Message ID + 2-byte length + Message (no CRC)
+  MSG_ID_FRAME_LEN16_NO_CRC = 10;
+  
+  // 2-byte header + Message ID + 1-byte length + Message + 2-byte CRC
+  BASIC_FRAME_LEN8 = 11;
+  
+  // 2-byte header + Message ID + 1-byte length + Message (no CRC)
+  BASIC_FRAME_LEN8_NO_CRC = 12;
+  
+  // 2-byte header + Message ID + 2-byte length + Message + 2-byte CRC
+  BASIC_FRAME_LEN16 = 13;
+  
+  // 2-byte header + Message ID + 2-byte length + Message (no CRC)
+  BASIC_FRAME_LEN16_NO_CRC = 14;
+  
+  // 1-byte header + Message ID + 1-byte length + Message + 2-byte CRC
+  TINY_FRAME_LEN8 = 15;
+  
+  // 1-byte header + Message ID + 1-byte length + Message (no CRC)
+  TINY_FRAME_LEN8_NO_CRC = 16;
+  
+  // 1-byte header + Message ID + 2-byte length + Message + 2-byte CRC
+  TINY_FRAME_LEN16 = 17;
+  
+  // 1-byte header + Message ID + 2-byte length + Message (no CRC)
+  TINY_FRAME_LEN16_NO_CRC = 18;
+  
+  // u-blox UBX protocol format
+  UBX = 19;
+  
+  // MAVLink v1 protocol format
+  MAVLINK_V1 = 20;
+  
+  // MAVLink v2 protocol format
+  MAVLINK_V2 = 21;
+}
+
+// ============================================================================
+// NO FORMAT (Raw Message)
+// ============================================================================
+//
+// Format: [MSG]
+// 
+// No framing at all - messages are sent as raw bytes with no header, footer,
+// or checksum. Message boundaries must be determined by external means.
+//
+// Use Cases:
+// - Direct function calls between components in same process
+// - Shared memory communication between processes
+// - When another protocol layer already provides framing
+// - Testing and debugging message payloads
+// - Maximum throughput when reliability is guaranteed
+//
+// Limitations:
+// - No message boundary detection
+// - No error detection or correction
+// - Message type must be known externally
+// - Cannot recover from lost bytes
+//
+// Header Length: 0 bytes
+// Footer Length: 0 bytes
+// Overhead: 0 bytes
+
+message NoFormat {
+  option msgid = 1;
+  
+  // Reserved byte for compatibility (not used in actual frame)
+  // NoFormat has no actual framing - this field is just for struct-frame compatibility
+  uint8 reserved = 1;
+}
+
+// ============================================================================
+// MSG ID FRAME (Minimal with CRC)
+// ============================================================================
+//
+// Format: [MSG_ID (1 byte)] [MSG (N bytes)] [CRC (2 bytes)]
+//
+// Minimal framing with message identification and error detection.
+// No start byte synchronization - relies on message length being known.
+//
+// Use Cases:
+// - Point-to-point links where framing is synchronized
+// - Protocol layers that already handle synchronization
+// - Low overhead requirements with error detection
+// - Applications where message size is fixed and known
+//
+// Limitations:
+// - No automatic synchronization recovery
+// - Requires known message sizes
+// - Cannot detect lost start of frame
+//
+// Header Length: 1 byte (MSG_ID)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 3 bytes total
+
+message MsgIdFrame {
+  option msgid = 2;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 1;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 2;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 3;
+}
+
+// ============================================================================
+// MSG ID FRAME NO CRC
+// ============================================================================
+//
+// Format: [MSG_ID (1 byte)] [MSG (N bytes)]
+//
+// Minimal framing with message identification but no error checking.
+// For use on trusted links or when CRC is handled at another layer.
+//
+// Use Cases:
+// - Trusted point-to-point connections
+// - When transport layer provides error checking (TCP, ECC memory)
+// - Maximum efficiency when corruption is not a concern
+// - Debug/development environments
+//
+// Limitations:
+// - No error detection
+// - No synchronization support
+// - Corrupted messages will not be detected
+//
+// Header Length: 1 byte (MSG_ID)
+// Footer Length: 0 bytes
+// Overhead: 1 byte total
+
+message MsgIdFrameNoCrc {
+  option msgid = 3;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 1;
+}
+
+// ============================================================================
+// BASIC FRAME (Standard with Sync and CRC)
+// ============================================================================
+//
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [MSG (N bytes)] [CRC (2 bytes)]
+//
+// Standard frame format with start byte for synchronization and CRC for
+// error detection. Allows recovery from corrupted frames.
+//
+// Default start byte: 0x90
+//
+// Use Cases:
+// - Serial communication (UART, RS-232, RS-485)
+// - Wireless links (LoRa, Bluetooth, WiFi)
+// - Any byte stream where synchronization is needed
+// - General purpose reliable messaging
+//
+// Advantages:
+// - Automatic frame synchronization
+// - Recovery from corruption/lost bytes
+// - Error detection for data integrity
+// - Well-balanced overhead vs reliability
+//
+// Header Length: 2 bytes (START + MSG_ID)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 4 bytes total
+
+message BasicFrame {
+  option msgid = 4;
+  
+  // Synchronization start byte (default 0x90)
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 3;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 4;
+}
+
+// ============================================================================
+// BASIC FRAME NO CRC
+// ============================================================================
+//
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [MSG (N bytes)]
+//
+// Frame format with synchronization but no error checking.
+// For use when error detection is handled elsewhere.
+//
+// Use Cases:
+// - Links with hardware error correction
+// - When performance is critical and errors are rare
+// - Layered protocols where outer layer has CRC
+// - Development/debugging scenarios
+//
+// Header Length: 2 bytes (START + MSG_ID)
+// Footer Length: 0 bytes
+// Overhead: 2 bytes total
+
+message BasicFrameNoCrc {
+  option msgid = 5;
+  
+  // Synchronization start byte (default 0x90)
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+}
+
+// ============================================================================
+// TINY FRAME (Minimal Header with CRC)
+// ============================================================================
+//
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [MSG (N bytes)] [CRC (2 bytes)]
+//
+// Compact frame format using single start byte combined with message ID.
+// Provides synchronization and error detection with minimal overhead.
+//
+// Note: In this implementation, TINY_FRAME is structurally identical to
+// BASIC_FRAME but may use a different start byte scheme in future versions.
+//
+// Use Cases:
+// - Bandwidth-constrained links
+// - Battery-powered devices
+// - High message rate applications
+// - Embedded systems with limited memory
+//
+// Header Length: 1 byte (combined START/MSG_ID or START alone)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 3 bytes total
+
+message TinyFrame {
+  option msgid = 6;
+  
+  // Start byte / sync marker
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 3;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 4;
+}
+
+// ============================================================================
+// TINY FRAME NO CRC
+// ============================================================================
+//
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [MSG (N bytes)]
+//
+// Minimal frame format with sync but no error detection.
+// Absolute minimum overhead for reliable links.
+//
+// Use Cases:
+// - Point-to-point wired connections
+// - Time-critical applications
+// - When payload includes its own integrity check
+// - Extremely constrained bandwidth scenarios
+//
+// Header Length: 1 byte (combined START/MSG_ID or START alone)
+// Footer Length: 0 bytes
+// Overhead: 1 byte total
+
+message TinyFrameNoCrc {
+  option msgid = 7;
+  
+  // Start byte / sync marker
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+}
+
+// ============================================================================
+// LENGTH-PREFIXED VARIANTS (8-bit length field)
+// ============================================================================
+//
+// These variants add a 1-byte length field after the header.
+// Supports message payloads up to 255 bytes.
+// Enables variable-length messages without predefined size tables.
+
+// Format: [MSG_ID (1 byte)] [LEN (1 byte)] [MSG (LEN bytes)] [CRC (2 bytes)]
+//
+// Use Cases:
+// - Variable-length messages
+// - Dynamic payload sizes
+// - Streaming data with packet boundaries
+// - When message size table is not available at receiver
+//
+// Header Length: 2 bytes (MSG_ID + LEN)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 4 bytes total
+
+message MsgIdFrameLen8 {
+  option msgid = 8;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 1;
+  
+  // Payload length (0-255 bytes)
+  uint8 length = 2;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 3;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 4;
+}
+
+// Format: [MSG_ID (1 byte)] [LEN (1 byte)] [MSG (LEN bytes)]
+
+message MsgIdFrameLen8NoCrc {
+  option msgid = 9;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 1;
+  
+  // Payload length (0-255 bytes)
+  uint8 length = 2;
+}
+
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [LEN (1 byte)] [MSG (LEN bytes)] [CRC (2 bytes)]
+//
+// Header Length: 3 bytes (START + MSG_ID + LEN)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 5 bytes total
+
+message BasicFrameLen8 {
+  option msgid = 10;
+  
+  // Synchronization start byte
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Payload length (0-255 bytes)
+  uint8 length = 3;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 4;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 5;
+}
+
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [LEN (1 byte)] [MSG (LEN bytes)]
+
+message BasicFrameLen8NoCrc {
+  option msgid = 11;
+  
+  // Synchronization start byte
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Payload length (0-255 bytes)
+  uint8 length = 3;
+}
+
+// Format: [START (1 byte)] [LEN (1 byte)] [MSG_ID (1 byte)] [MSG (LEN bytes)] [CRC (2 bytes)]
+//
+// Header Length: 2 bytes (START + LEN)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 4 bytes total
+
+message TinyFrameLen8 {
+  option msgid = 12;
+  
+  // Start byte / sync marker
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Payload length (0-255 bytes)
+  uint8 length = 3;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 4;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 5;
+}
+
+// Format: [START (1 byte)] [LEN (1 byte)] [MSG_ID (1 byte)] [MSG (LEN bytes)]
+
+message TinyFrameLen8NoCrc {
+  option msgid = 13;
+  
+  // Start byte / sync marker
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Payload length (0-255 bytes)
+  uint8 length = 3;
+}
+
+// ============================================================================
+// LENGTH-PREFIXED VARIANTS (16-bit length field)
+// ============================================================================
+//
+// These variants add a 2-byte length field after the header.
+// Supports message payloads up to 65535 bytes.
+// For large data transfers and streaming applications.
+
+// Format: [MSG_ID (1 byte)] [LEN (2 bytes)] [MSG (LEN bytes)] [CRC (2 bytes)]
+//
+// Use Cases:
+// - Large payload messages (up to 64KB)
+// - File transfer protocols
+// - Firmware update protocols
+// - Bulk data streaming
+//
+// Header Length: 3 bytes (MSG_ID + LEN16)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 5 bytes total
+
+message MsgIdFrameLen16 {
+  option msgid = 14;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 1;
+  
+  // Payload length (0-65535 bytes), little-endian
+  uint16 length = 2;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 3;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 4;
+}
+
+// Format: [MSG_ID (1 byte)] [LEN (2 bytes)] [MSG (LEN bytes)]
+
+message MsgIdFrameLen16NoCrc {
+  option msgid = 15;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 1;
+  
+  // Payload length (0-65535 bytes), little-endian
+  uint16 length = 2;
+}
+
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [LEN (2 bytes)] [MSG (LEN bytes)] [CRC (2 bytes)]
+//
+// Header Length: 4 bytes (START + MSG_ID + LEN16)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 6 bytes total
+
+message BasicFrameLen16 {
+  option msgid = 16;
+  
+  // Synchronization start byte
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Payload length (0-65535 bytes), little-endian
+  uint16 length = 3;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 4;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 5;
+}
+
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [LEN (2 bytes)] [MSG (LEN bytes)]
+
+message BasicFrameLen16NoCrc {
+  option msgid = 17;
+  
+  // Synchronization start byte
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Payload length (0-65535 bytes), little-endian
+  uint16 length = 3;
+}
+
+// Format: [START (1 byte)] [LEN (2 bytes)] [MSG_ID (1 byte)] [MSG (LEN bytes)] [CRC (2 bytes)]
+//
+// Header Length: 3 bytes (START + LEN16)
+// Footer Length: 2 bytes (Fletcher-16 CRC)
+// Overhead: 5 bytes total
+
+message TinyFrameLen16 {
+  option msgid = 18;
+  
+  // Start byte / sync marker
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Payload length (0-65535 bytes), little-endian
+  uint16 length = 3;
+  
+  // Fletcher-16 checksum byte 1
+  uint8 crc_byte1 = 4;
+  
+  // Fletcher-16 checksum byte 2
+  uint8 crc_byte2 = 5;
+}
+
+// Format: [START (1 byte)] [LEN (2 bytes)] [MSG_ID (1 byte)] [MSG (LEN bytes)]
+
+message TinyFrameLen16NoCrc {
+  option msgid = 19;
+  
+  // Start byte / sync marker
+  uint8 start_byte = 1;
+  
+  // Message identifier (0-255)
+  uint8 msg_id = 2;
+  
+  // Payload length (0-65535 bytes), little-endian
+  uint16 length = 3;
+}
+
+// ============================================================================
+// UBX FRAME FORMAT
+// ============================================================================
+//
+// u-blox proprietary binary protocol used by GPS/GNSS receivers.
+//
+// Format: [SYNC1 (1 byte)] [SYNC2 (1 byte)] [CLASS (1 byte)] [ID (1 byte)] 
+//         [LEN_LO (1 byte)] [LEN_HI (1 byte)] [PAYLOAD (LEN bytes)] 
+//         [CK_A (1 byte)] [CK_B (1 byte)]
+//
+// SYNC1: 0xB5 (μ in ISO 8859-1)
+// SYNC2: 0x62 ('b')
+// CLASS: Message class
+// ID: Message ID within class
+// LEN: 16-bit payload length, little-endian
+// PAYLOAD: Variable length message data
+// CK_A, CK_B: Fletcher-8 checksum over CLASS, ID, LEN, and PAYLOAD
+//
+// Use Cases:
+// - u-blox GPS receiver communication
+// - GNSS data logging and configuration
+// - Position/navigation applications
+// - Timing and synchronization systems
+//
+// Header Length: 6 bytes (SYNC1 + SYNC2 + CLASS + ID + LEN)
+// Footer Length: 2 bytes (Fletcher-8 checksum)
+// Overhead: 8 bytes total
+// Max Payload: 65535 bytes
+
+message UbxFrame {
+  option msgid = 20;
+  
+  // Sync byte 1 (always 0xB5)
+  uint8 sync1 = 1;
+  
+  // Sync byte 2 (always 0x62)
+  uint8 sync2 = 2;
+  
+  // Message class (e.g., NAV=0x01, RXM=0x02, INF=0x04, ACK=0x05, etc.)
+  uint8 msg_class = 3;
+  
+  // Message ID within class
+  uint8 msg_id = 4;
+  
+  // Payload length low byte (little-endian)
+  uint8 length_lo = 5;
+  
+  // Payload length high byte (little-endian)
+  uint8 length_hi = 6;
+  
+  // Fletcher-8 checksum A
+  uint8 ck_a = 7;
+  
+  // Fletcher-8 checksum B
+  uint8 ck_b = 8;
+}
+
+// ============================================================================
+// MAVLINK V1 FRAME FORMAT
+// ============================================================================
+//
+// MAVLink Micro Air Vehicle Link protocol version 1.0
+// Used by ArduPilot, PX4, and other drone/UAV flight controllers.
+//
+// Format: [STX (1 byte)] [LEN (1 byte)] [SEQ (1 byte)] [SYS (1 byte)]
+//         [COMP (1 byte)] [MSG (1 byte)] [PAYLOAD (LEN bytes)] [CRC (2 bytes)]
+//
+// STX: Start of frame (0xFE)
+// LEN: Payload length (0-255)
+// SEQ: Sequence number (0-255, wrapping)
+// SYS: System ID (1-255)
+// COMP: Component ID (1-255)
+// MSG: Message ID (0-255)
+// PAYLOAD: Message data
+// CRC: X.25 CRC-16 checksum
+//
+// Use Cases:
+// - Drone/UAV communication
+// - Ground control station links
+// - Autopilot telemetry
+// - MAVLink 1.0 compatible devices
+//
+// Header Length: 6 bytes (STX + LEN + SEQ + SYS + COMP + MSG)
+// Footer Length: 2 bytes (CRC-16)
+// Overhead: 8 bytes total
+// Max Payload: 255 bytes
+
+message MavlinkV1Frame {
+  option msgid = 21;
+  
+  // Start of frame marker (always 0xFE)
+  uint8 stx = 1;
+  
+  // Payload length (0-255 bytes)
+  uint8 length = 2;
+  
+  // Packet sequence number (0-255, wrapping counter)
+  uint8 sequence = 3;
+  
+  // System ID (identifies the vehicle/GCS, 1-255)
+  uint8 system_id = 4;
+  
+  // Component ID (identifies component on system, 1-255)
+  uint8 component_id = 5;
+  
+  // Message ID (0-255)
+  uint8 msg_id = 6;
+  
+  // CRC-16/X.25 checksum low byte
+  uint8 crc_lo = 7;
+  
+  // CRC-16/X.25 checksum high byte
+  uint8 crc_hi = 8;
+}
+
+// ============================================================================
+// MAVLINK V2 FRAME FORMAT
+// ============================================================================
+//
+// MAVLink Micro Air Vehicle Link protocol version 2.0
+// Extended version with more message IDs and optional message signing.
+//
+// Format: [STX (1 byte)] [LEN (1 byte)] [INCOMPAT (1 byte)] [COMPAT (1 byte)]
+//         [SEQ (1 byte)] [SYS (1 byte)] [COMP (1 byte)] [MSG_ID (3 bytes)]
+//         [PAYLOAD (LEN bytes)] [CRC (2 bytes)] [SIGNATURE (13 bytes, optional)]
+//
+// STX: Start of frame (0xFD)
+// LEN: Payload length (0-255)
+// INCOMPAT: Incompatibility flags (must understand to parse)
+// COMPAT: Compatibility flags (can ignore if unknown)
+// SEQ: Sequence number (0-255)
+// SYS: System ID (1-255)
+// COMP: Component ID (1-255)
+// MSG_ID: 24-bit message ID (0-16777215)
+// PAYLOAD: Message data
+// CRC: CRC-16 checksum
+// SIGNATURE: Optional 13-byte message signature for authentication
+//
+// Incompatibility Flags:
+//   0x01 - MAVLINK_IFLAG_SIGNED - Message is signed
+//
+// Use Cases:
+// - Modern drone/UAV communication
+// - Extended message ID space (16.7M messages)
+// - Authenticated communication
+// - High-security applications
+//
+// Header Length: 10 bytes (STX + LEN + INCOMPAT + COMPAT + SEQ + SYS + COMP + MSG_ID)
+// Footer Length: 2 bytes CRC + optional 13 bytes signature
+// Overhead: 12-25 bytes total
+// Max Payload: 255 bytes
+
+message MavlinkV2Frame {
+  option msgid = 22;
+  
+  // Start of frame marker (always 0xFD)
+  uint8 stx = 1;
+  
+  // Payload length (0-255 bytes)
+  uint8 length = 2;
+  
+  // Incompatibility flags (must be understood to parse message)
+  // Bit 0 (0x01): MAVLINK_IFLAG_SIGNED - message is signed
+  uint8 incompat_flags = 3;
+  
+  // Compatibility flags (can be ignored if unknown)
+  uint8 compat_flags = 4;
+  
+  // Packet sequence number (0-255, wrapping counter)
+  uint8 sequence = 5;
+  
+  // System ID (identifies the vehicle/GCS, 1-255)
+  uint8 system_id = 6;
+  
+  // Component ID (identifies component on system, 1-255)
+  uint8 component_id = 7;
+  
+  // 24-bit message ID, byte 0 (low byte)
+  uint8 msg_id_0 = 8;
+  
+  // 24-bit message ID, byte 1 (middle byte)
+  uint8 msg_id_1 = 9;
+  
+  // 24-bit message ID, byte 2 (high byte)
+  uint8 msg_id_2 = 10;
+  
+  // CRC-16 checksum low byte
+  uint8 crc_lo = 11;
+  
+  // CRC-16 checksum high byte
+  uint8 crc_hi = 12;
+}
+
+// MAVLink v2 signature for authenticated messages
+// Appended after CRC when MAVLINK_IFLAG_SIGNED is set
+message MavlinkV2Signature {
+  option msgid = 23;
+  
+  // Link ID (identifies the communication link)
+  uint8 link_id = 1;
+  
+  // Timestamp (48-bit Unix epoch in 10us units, bytes 0-5)
+  uint8 timestamp_0 = 2;
+  uint8 timestamp_1 = 3;
+  uint8 timestamp_2 = 4;
+  uint8 timestamp_3 = 5;
+  uint8 timestamp_4 = 6;
+  uint8 timestamp_5 = 7;
+  
+  // SHA-256 signature (first 6 bytes)
+  uint8 signature_0 = 8;
+  uint8 signature_1 = 9;
+  uint8 signature_2 = 10;
+  uint8 signature_3 = 11;
+  uint8 signature_4 = 12;
+  uint8 signature_5 = 13;
+}
+
+// ============================================================================
+// FRAME FORMAT CONFIGURATION
+// ============================================================================
+//
+// Configuration message to select and configure frame format at runtime
+
+message FrameFormatConfig {
+  option msgid = 24;
+  
+  // Selected frame format type
+  FrameFormatType format_type = 1;
+  
+  // Start byte(s) for formats that use them (0x90 default)
+  uint8 start_byte = 2;
+  
+  // Secondary start byte for UBX and similar (0x62 default for UBX)
+  uint8 start_byte_2 = 3;
+  
+  // Enable CRC checking (for formats that support optional CRC)
+  bool crc_enabled = 4;
+  
+  // Enable message signing (MAVLink v2 only)
+  bool signing_enabled = 5;
+}
