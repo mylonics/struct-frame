@@ -67,11 +67,12 @@ int validate_message(SerializationTestSerializationTestMessage* msg) {
   return 1;
 }
 
+// Return values: 1 = validated successfully, 0 = validation failed, -1 = skipped (file not found)
 int read_and_validate_test_data(const char* filename, const char* language) {
   FILE* file = fopen(filename, "rb");
   if (!file) {
     printf("  Skipping %s - file not found: %s\n", language, filename);
-    return 1;  // Skip if file not available
+    return -1;  // Skip if file not available
   }
 
   uint8_t buffer[512];
@@ -108,11 +109,33 @@ int read_and_validate_test_data(const char* filename, const char* language) {
 int main() {
   printf("\n[TEST START] C Cross-Platform Deserialization\n");
 
-  int success = 1;
-  success = success && read_and_validate_test_data("python_test_data.bin", "Python");
-  success = success && read_and_validate_test_data("c_test_data.bin", "C");
-  success = success && read_and_validate_test_data("cpp_test_data.bin", "C++");
-  success = success && read_and_validate_test_data("typescript_test_data.bin", "TypeScript");
+  int any_failed = 0;
+  int validated_count = 0;
+  int result;
+
+  result = read_and_validate_test_data("python_test_data.bin", "Python");
+  if (result == 0) any_failed = 1;
+  if (result == 1) validated_count++;
+
+  result = read_and_validate_test_data("c_test_data.bin", "C");
+  if (result == 0) any_failed = 1;
+  if (result == 1) validated_count++;
+
+  result = read_and_validate_test_data("cpp_test_data.bin", "C++");
+  if (result == 0) any_failed = 1;
+  if (result == 1) validated_count++;
+
+  result = read_and_validate_test_data("typescript_test_data.bin", "TypeScript");
+  if (result == 0) any_failed = 1;
+  if (result == 1) validated_count++;
+
+  int success = !any_failed && (validated_count > 0);
+
+  if (validated_count == 0) {
+    printf("  [WARN] No files were validated - at least one input file is required\n");
+  } else {
+    printf("  Validated %d file(s) successfully\n", validated_count);
+  }
 
   const char* status = success ? "PASS" : "FAIL";
   printf("[TEST END] C Cross-Platform Deserialization: %s\n\n", status);
