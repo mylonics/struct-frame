@@ -6,6 +6,7 @@ import os
 import shutil
 from struct_frame import FileCGen
 from struct_frame import FileTsGen
+from struct_frame import FileJsGen
 from struct_frame import FilePyGen
 from struct_frame import FileGqlGen
 from struct_frame import FileCppGen
@@ -452,10 +453,12 @@ parser.add_argument('--validate', action='store_true',
                     help='Validate the proto file without generating any output files')
 parser.add_argument('--build_c', action='store_true')
 parser.add_argument('--build_ts', action='store_true')
+parser.add_argument('--build_js', action='store_true')
 parser.add_argument('--build_py', action='store_true')
 parser.add_argument('--build_cpp', action='store_true')
 parser.add_argument('--c_path', nargs=1, type=str, default=['generated/c/'])
 parser.add_argument('--ts_path', nargs=1, type=str, default=['generated/ts/'])
+parser.add_argument('--js_path', nargs=1, type=str, default=['generated/js/'])
 parser.add_argument('--py_path', nargs=1, type=str, default=['generated/py/'])
 parser.add_argument('--cpp_path', nargs=1, type=str, default=['generated/cpp/'])
 parser.add_argument('--build_gql', action='store_true')
@@ -535,6 +538,15 @@ def generateTsFileStrings(path):
     return out
 
 
+def generateJsFileStrings(path):
+    out = {}
+    for key, value in packages.items():
+        name = os.path.join(path, value.name + ".sf.js")
+        data = ''.join(FileJsGen.generate(value))
+        out[name] = data
+    return out
+
+
 def generatePyFileStrings(path):
     out = {}
     for key, value in packages.items():
@@ -560,7 +572,7 @@ def main():
     # If validate mode is specified, skip build argument check and file generation
     if args.validate:
         print("Running in validate mode - no files will be generated")
-    elif (not args.build_c and not args.build_ts and not args.build_py and not args.build_cpp and not args.build_gql):
+    elif (not args.build_c and not args.build_ts and not args.build_js and not args.build_py and not args.build_cpp and not args.build_gql):
         print("Select at least one build argument")
         return
 
@@ -591,6 +603,9 @@ def main():
     if (args.build_ts):
         files.update(generateTsFileStrings(args.ts_path[0]))
 
+    if (args.build_js):
+        files.update(generateJsFileStrings(args.js_path[0]))
+
     if (args.build_py):
         files.update(generatePyFileStrings(args.py_path[0]))
 
@@ -620,6 +635,10 @@ def main():
     if (args.build_ts):
         shutil.copytree(os.path.join(dir_path, "boilerplate/ts"),
                         args.ts_path[0], dirs_exist_ok=True)
+
+    if (args.build_js):
+        shutil.copytree(os.path.join(dir_path, "boilerplate/js"),
+                        args.js_path[0], dirs_exist_ok=True)
 
     if (args.build_py):
         shutil.copytree(os.path.join(dir_path, "boilerplate/py"),

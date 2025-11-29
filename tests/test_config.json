@@ -100,6 +100,26 @@
       "build_dir": "tests/ts/build"
     },
     
+    "js": {
+      "name": "JavaScript",
+      "enabled": true,
+      "code_generation": {
+        "flag": "--build_js",
+        "output_path_flag": "--js_path",
+        "output_dir": "tests/generated/js"
+      },
+      "compilation": {
+        "enabled": false
+      },
+      "execution": {
+        "interpreter": "node",
+        "source_extension": ".js",
+        "script_dir": "tests/generated/js"
+      },
+      "test_dir": "tests/js",
+      "build_dir": "tests/js/build"
+    },
+    
     "gql": {
       "name": "GraphQL",
       "enabled": true,

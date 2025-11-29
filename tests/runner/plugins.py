@@ -84,6 +84,11 @@ class StandardTestPlugin(TestPlugin):
         lang_config = self.config['languages'][lang_id]
         if lang_id == 'ts':
             return self.project_root / lang_config['execution'].get('script_dir', '')
+        # JavaScript also uses script_dir for output
+        if lang_id == 'js' and 'execution' in lang_config:
+            script_dir = lang_config['execution'].get('script_dir')
+            if script_dir:
+                return self.project_root / script_dir
         # Use build_dir for output files
         return self.project_root / lang_config.get('build_dir', lang_config['test_dir'])
 
@@ -182,6 +187,14 @@ class CrossPlatformMatrixPlugin(TestPlugin):
                         lang_config['execution'].get('script_dir', '')
                     ts_target = script_dir / data_file.name
                     with self.executor.temp_copy(data_file, ts_target):
+                        return self.executor.run_test_script(
+                            lang_id, test_config, args=data_file.name)
+                # JavaScript also needs file in script_dir
+                elif lang_id == 'js' and 'script_dir' in lang_config.get('execution', {}):
+                    script_dir = self.project_root / \
+                        lang_config['execution'].get('script_dir', '')
+                    js_target = script_dir / data_file.name
+                    with self.executor.temp_copy(data_file, js_target):
                         return self.executor.run_test_script(
                             lang_id, test_config, args=data_file.name)
                 else:
