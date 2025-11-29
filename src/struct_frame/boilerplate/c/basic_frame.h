@@ -64,6 +64,7 @@ typedef struct basic_frame_encode_buffer {
     size_t max_size;
     size_t size;
     bool in_progress;
+    size_t reserved_msg_size;  /* Stored for finish() */
 } basic_frame_encode_buffer_t;
 
 /*===========================================================================
@@ -94,6 +95,7 @@ static inline void basic_frame_encode_init(basic_frame_encode_buffer_t* buf, uin
     buf->max_size = max_size;
     buf->size = 0;
     buf->in_progress = false;
+    buf->reserved_msg_size = 0;
 }
 
 /**
@@ -102,6 +104,7 @@ static inline void basic_frame_encode_init(basic_frame_encode_buffer_t* buf, uin
 static inline void basic_frame_encode_reset(basic_frame_encode_buffer_t* buf) {
     buf->size = 0;
     buf->in_progress = false;
+    buf->reserved_msg_size = 0;
 }
 
 /**
@@ -176,18 +179,20 @@ static inline uint8_t* basic_frame_encode_reserve(basic_frame_encode_buffer_t* b
     packet_start[2] = msg_id;
     
     buf->in_progress = true;
+    buf->reserved_msg_size = msg_size;
     return packet_start + BASIC_FRAME_HEADER_SIZE;
 }
 
 /**
  * Finish a reserved encoding by adding checksum
  */
-static inline bool basic_frame_encode_finish(basic_frame_encode_buffer_t* buf, size_t msg_size) {
+static inline bool basic_frame_encode_finish(basic_frame_encode_buffer_t* buf) {
     if (!buf->in_progress) {
         return false;
     }
     
     uint8_t* packet_start = buf->data + buf->size;
+    size_t msg_size = buf->reserved_msg_size;
     
     /* Calculate checksum over msg_id + msg data */
     basic_frame_checksum_t ck = basic_frame_checksum(packet_start + 2, msg_size + 1);
@@ -391,7 +396,7 @@ static inline basic_frame_msg_info_t basic_frame_validate_packet(const uint8_t* 
         return false;                                                                                              \
     }                                                                                                              \
     static inline bool funcname##_finish(basic_frame_encode_buffer_t* buf) {                                       \
-        return basic_frame_encode_finish(buf, (msg_size));                                                         \
+        return basic_frame_encode_finish(buf);                                                                     \
     }                                                                                                              \
     static inline typename funcname##_get(basic_frame_msg_info_t info) {                                           \
         return *(typename*)(info.msg_data);                                                                        \

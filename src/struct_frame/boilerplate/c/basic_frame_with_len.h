@@ -64,6 +64,7 @@ typedef struct basic_frame_with_len_encode_buffer {
     size_t max_size;
     size_t size;
     bool in_progress;
+    uint8_t reserved_msg_size;  /* Stored for finish() */
 } basic_frame_with_len_encode_buffer_t;
 
 /*===========================================================================
@@ -95,6 +96,7 @@ static inline void basic_frame_with_len_encode_init(basic_frame_with_len_encode_
     buf->max_size = max_size;
     buf->size = 0;
     buf->in_progress = false;
+    buf->reserved_msg_size = 0;
 }
 
 /**
@@ -103,6 +105,7 @@ static inline void basic_frame_with_len_encode_init(basic_frame_with_len_encode_
 static inline void basic_frame_with_len_encode_reset(basic_frame_with_len_encode_buffer_t* buf) {
     buf->size = 0;
     buf->in_progress = false;
+    buf->reserved_msg_size = 0;
 }
 
 /**
@@ -179,18 +182,20 @@ static inline uint8_t* basic_frame_with_len_encode_reserve(basic_frame_with_len_
     packet_start[3] = msg_size;
     
     buf->in_progress = true;
+    buf->reserved_msg_size = msg_size;
     return packet_start + BASIC_FRAME_WITH_LEN_HEADER_SIZE;
 }
 
 /**
  * Finish a reserved encoding by adding checksum
  */
-static inline bool basic_frame_with_len_encode_finish(basic_frame_with_len_encode_buffer_t* buf, uint8_t msg_size) {
+static inline bool basic_frame_with_len_encode_finish(basic_frame_with_len_encode_buffer_t* buf) {
     if (!buf->in_progress) {
         return false;
     }
     
     uint8_t* packet_start = buf->data + buf->size;
+    uint8_t msg_size = buf->reserved_msg_size;
     
     /* Calculate checksum over msg_id + len + msg data */
     basic_frame_with_len_checksum_t ck = basic_frame_with_len_checksum(packet_start + 2, msg_size + 2);
@@ -281,14 +286,7 @@ static inline basic_frame_with_len_msg_info_t basic_frame_with_len_parse_byte(
             parser->packet_size = BASIC_FRAME_WITH_LEN_OVERHEAD + byte;
             
             if (parser->packet_size <= parser->buffer_max_size) {
-                if (byte == 0) {
-                    /* Zero-length message, go straight to validation */
-                    basic_frame_with_len_checksum_t ck = basic_frame_with_len_checksum(parser->buffer + 2, 2);
-                    /* Need to wait for CRC bytes still */
-                    parser->state = BASIC_FRAME_WITH_LEN_GETTING_PAYLOAD;
-                } else {
-                    parser->state = BASIC_FRAME_WITH_LEN_GETTING_PAYLOAD;
-                }
+                parser->state = BASIC_FRAME_WITH_LEN_GETTING_PAYLOAD;
             } else {
                 /* Packet too large for buffer */
                 parser->state = BASIC_FRAME_WITH_LEN_LOOKING_FOR_START1;
@@ -412,7 +410,7 @@ static inline basic_frame_with_len_msg_info_t basic_frame_with_len_validate_pack
         return false;                                                                                           \
     }                                                                                                           \
     static inline bool funcname##_finish(basic_frame_with_len_encode_buffer_t* buf) {                           \
-        return basic_frame_with_len_encode_finish(buf, (msg_size));                                             \
+        return basic_frame_with_len_encode_finish(buf);                                                         \
     }                                                                                                           \
     static inline typename funcname##_get(basic_frame_with_len_msg_info_t info) {                               \
         return *(typename*)(info.msg_data);                                                                     \
