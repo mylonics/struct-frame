@@ -23,3 +23,5 @@ jobs:
         uses: Andrew-Chen-Wang/github-wiki-action@v4
         with:
           path: docs
+          strategy: clone
+          preprocess: true
