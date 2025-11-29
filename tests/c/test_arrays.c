@@ -47,12 +47,12 @@ int test_array_operations() {
   msg.bounded_doubles.data[0] = 123.456;
   msg.bounded_doubles.data[1] = 789.012;
 
-  strncpy(msg.fixed_strings[0], "String1", 8);
-  strncpy(msg.fixed_strings[1], "String2", 8);
+  strncpy(msg.fixed_strings[0], "String1", sizeof(msg.fixed_strings[0]));
+  strncpy(msg.fixed_strings[1], "String2", sizeof(msg.fixed_strings[1]));
 
   msg.bounded_strings.count = 2;
-  strncpy(msg.bounded_strings.data[0], "BoundedStr1", 12);
-  strncpy(msg.bounded_strings.data[1], "BoundedStr2", 12);
+  strncpy(msg.bounded_strings.data[0], "BoundedStr1", sizeof(msg.bounded_strings.data[0]));
+  strncpy(msg.bounded_strings.data[1], "BoundedStr2", sizeof(msg.bounded_strings.data[1]));
 
   msg.fixed_statuses[0] = 1;
   msg.fixed_statuses[1] = 2;
