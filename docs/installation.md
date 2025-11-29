@@ -274,7 +274,7 @@ TypeScript example with TCP:
 
 ```typescript
 import * as net from 'net';
-import { struct_frame_buffer, parse_char } from './struct_frame_parser';
+import { struct_frame_buffer, parse_char } from './generated/ts/struct_frame_parser';
 
 const client = net.createConnection({port: 8080});
 let rx_buffer = new struct_frame_buffer(1024);

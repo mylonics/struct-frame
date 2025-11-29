@@ -196,7 +196,7 @@ Flatten is supported in Python and GraphQL only.
 
 The generator enforces these rules:
 
-- Message IDs must be unique within a package (0-65535 range)
+- Message IDs must be unique within a package (0-255 for basic frame format)
 - Field numbers must be unique within a message
 - All repeated fields must have size or max_size
 - All string fields must have size or max_size
