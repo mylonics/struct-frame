@@ -16,7 +16,7 @@ enum FrameFormatType {
   MSG_ID_FRAME_LEN8_NO_CRC = 8;
   MSG_ID_FRAME_LEN16 = 9;
   MSG_ID_FRAME_LEN16_NO_CRC = 10;
-  BASIC_FRAME_LEN8 = 11;
+  BASIC_FRAME_WITH_LEN = 11;
   BASIC_FRAME_LEN8_NO_CRC = 12;
   BASIC_FRAME_LEN16 = 13;
   BASIC_FRAME_LEN16_NO_CRC = 14;
@@ -119,10 +119,10 @@ message MsgIdFrameLen8NoCrc {
   uint8 length = 2;
 }
 
-// BASIC FRAME LEN8 (Recommended for variable length)
+// BASIC FRAME WITH LEN (Recommended for variable length)
 // Format: [START=0x90] [MSG_ID] [LEN] [MSG] [CRC1] [CRC2]
 // Overhead: 5 bytes
-message BasicFrameLen8 {
+message BasicFrameWithLen {
   uint8 start_byte = 1 [(hex) = 0x90];
   BasicMessage payload = 2;
   uint8 length = 3;
