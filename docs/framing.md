@@ -7,26 +7,40 @@ Framing wraps messages with headers and checksums so receivers can identify mess
 All supported frame formats are defined in [`examples/frame_formats.proto`](../examples/frame_formats.proto). This file provides:
 
 - Protocol Buffer definitions for each frame format
-- Detailed documentation of use cases and tradeoffs
 - Enumeration of all frame format types
 - Configuration message for runtime format selection
 
-## Frame Format Overview
+## Recommended Frame Formats
 
-| Format | Header | Footer | Length Field | Use Case |
-|--------|--------|--------|--------------|----------|
-| NoFormat | 0 | 0 | None | Trusted links, nested protocols |
-| MsgIdFrame | 1 | 2 | None | Minimal framing with CRC |
-| MsgIdFrameNoCrc | 1 | 0 | None | Minimal framing, trusted link |
-| BasicFrame | 2 | 2 | None | Standard reliable communication |
-| BasicFrameNoCrc | 2 | 0 | None | Sync recovery, no CRC |
-| TinyFrame | 2 | 2 | None | Constrained environments |
-| TinyFrameNoCrc | 2 | 0 | None | Minimal overhead |
-| *Len8 variants | +1 | same | 8-bit | Variable length up to 255 bytes |
-| *Len16 variants | +2 | same | 16-bit | Variable length up to 64KB |
-| UBX | 6 | 2 | 16-bit | u-blox GPS compatibility |
-| MavlinkV1 | 6 | 2 | 8-bit | Legacy drone communication |
-| MavlinkV2 | 10 | 2-15 | 8-bit | Modern drone communication |
+| Format | Preamble | Header | CRC | Length | Total Overhead | Use Case |
+|--------|----------|--------|-----|--------|----------------|----------|
+| NoFormat | 0 | 0 | 0 | None | 0 | Trusted links, nested protocols |
+| BasicFrame | 1 | 2 | 2 | None | 4 | Standard reliable communication |
+| BasicFrameLen8 | 1 | 3 | 2 | 8-bit | 5 | Variable length messages |
+
+## All Frame Formats
+
+| Format | Preamble | Header | CRC | Length | Total Overhead | Use Case |
+|--------|----------|--------|-----|--------|----------------|----------|
+| NoFormat | 0 | 0 | 0 | None | 0 | Trusted links, nested protocols |
+| MsgIdFrame | 0 | 1 | 2 | None | 3 | Minimal framing with CRC |
+| MsgIdFrameNoCrc | 0 | 1 | 0 | None | 1 | Minimal framing, trusted link |
+| MsgIdFrameLen8 | 0 | 2 | 2 | 8-bit | 4 | Variable length, minimal |
+| MsgIdFrameLen8NoCrc | 0 | 2 | 0 | 8-bit | 2 | Variable length, no CRC |
+| MsgIdFrameLen16 | 0 | 3 | 2 | 16-bit | 5 | Large payloads, minimal |
+| MsgIdFrameLen16NoCrc | 0 | 3 | 0 | 16-bit | 3 | Large payloads, no CRC |
+| BasicFrame | 1 | 2 | 2 | None | 4 | Standard reliable communication |
+| BasicFrameNoCrc | 1 | 2 | 0 | None | 2 | Sync recovery, no CRC |
+| BasicFrameLen8 | 1 | 3 | 2 | 8-bit | 5 | Variable length messages |
+| BasicFrameLen8NoCrc | 1 | 3 | 0 | 8-bit | 3 | Variable length, no CRC |
+| BasicFrameLen16 | 1 | 4 | 2 | 16-bit | 6 | Large payload messages |
+| BasicFrameLen16NoCrc | 1 | 4 | 0 | 16-bit | 4 | Large payloads, no CRC |
+| TinyFrame | 1 | 2 | 2 | None | 4 | Constrained environments |
+| TinyFrameNoCrc | 1 | 2 | 0 | None | 2 | Minimal overhead |
+| TinyFrameLen8 | 1 | 3 | 2 | 8-bit | 5 | Variable length, constrained |
+| TinyFrameLen8NoCrc | 1 | 3 | 0 | 8-bit | 3 | Variable, minimal overhead |
+| TinyFrameLen16 | 1 | 4 | 2 | 16-bit | 6 | Large payloads, constrained |
+| TinyFrameLen16NoCrc | 1 | 4 | 0 | 16-bit | 4 | Large, minimal overhead |
 
 ## No Frame Format
 
@@ -176,7 +190,13 @@ for each byte in (message_id + payload):
 checksum = [sum1, sum2]
 ```
 
-## Industry Standard Protocols
+## Third Party Protocols
+
+| Format | Preamble | Header | CRC | Length | Total Overhead | Use Case |
+|--------|----------|--------|-----|--------|----------------|----------|
+| UBX | 2 | 6 | 2 | 16-bit | 8 | u-blox GPS compatibility |
+| MavlinkV1 | 1 | 6 | 2 | 8-bit | 8 | Legacy drone communication |
+| MavlinkV2 | 1 | 10 | 2-15 | 8-bit | 12-25 | Modern drone communication |
 
 ### UBX Format
 
