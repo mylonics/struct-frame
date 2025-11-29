@@ -1,6 +1,6 @@
 # What is Struct Frame
 
-Struct Frame is a code generation framework that converts Protocol Buffer (.proto) files into serialization code for C, C++, TypeScript, Python, and GraphQL. It provides message framing and parsing for structured communication over serial links, sockets, or any byte stream.
+Struct Frame is a cross-platform packeting, framing, and parsing framework. It uses .proto files to define message structures and generates code for C, C++, TypeScript, Python, and GraphQL.
 
 ## Why Message Framing
 
@@ -16,7 +16,7 @@ These are problems that framing solves. Without framing, raw binary data is just
 
 ### No Encoding/Decoding Overhead in C/C++
 
-C and C++ implementations use packed structs that map directly to memory. Messages can be cast to/from byte arrays without any encoding or decoding step. This reduces CPU usage and code complexity.
+C and C++ implementations use packed structs that map directly to memory. Messages can be cast to/from byte arrays without any encoding or decoding step. This reduces CPU and memory usage.
 
 ```c
 // Direct memory access - no encode/decode
@@ -44,9 +44,9 @@ Different frame formats support different tradeoffs:
 - Basic frame: 4 bytes overhead, for most applications
 - Custom formats: UBX, Mavlink v1/v2 support planned
 
-### Simpler Than Protobuf and Cap'n Proto
+### More Memory and CPU Efficient Than Protobuf and Cap'n Proto
 
-Protobuf and Cap'n Proto are designed for general-purpose serialization with variable-length encoding, schema evolution, and RPC. This adds complexity and CPU overhead.
+Protobuf and Cap'n Proto are designed for general-purpose serialization with variable-length encoding, schema evolution, and RPC.
 
 Struct Frame is simpler:
 - Fixed-size messages with known layouts
@@ -86,8 +86,3 @@ Use Struct Frame when:
 - You want direct memory access without encoding overhead
 - You have bandwidth constraints
 - You need a simple, predictable message format
-
-Consider alternatives when:
-- You need schema evolution (use Protobuf)
-- You need RPC (use gRPC)
-- You need maximum flexibility (use JSON)

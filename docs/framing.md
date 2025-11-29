@@ -9,7 +9,7 @@ For trusted point-to-point links where you control both ends, you can skip frami
 Use cases:
 - Direct function calls between components
 - Shared memory between processes
-- When another protocol already handles framing
+- When another protocol already handles framing and packeting
 
 Limitations:
 - No message boundary detection
@@ -109,14 +109,6 @@ for each byte in (message_id + payload):
 checksum = [sum1, sum2]
 ```
 
-Detection capabilities:
-- All single-bit errors
-- Most multi-bit errors
-- All odd-number of bit errors
-- Most burst errors
-
-For applications requiring stronger error detection, CRC32 or custom checksums can be implemented.
-
 ## Custom Frame Formats
 
 The architecture supports alternative frame formats. Planned implementations:
@@ -143,15 +135,12 @@ The architecture supports alternative frame formats. Planned implementations:
 
 ## Framing Compatibility
 
-| Feature | C | C++ | TypeScript | Python |
-|---------|---|-----|------------|--------|
-| Frame Encoding | Yes | Yes | Yes | Yes |
-| Frame Parsing | Yes | Yes | Yes | Yes |
-| Checksum Validation | Yes | Yes | Yes | Yes |
-| Sync Recovery | Yes | Yes | Yes | Yes |
-| Partial Frame Handling | Yes | Yes | Yes | Yes |
-| Message ID Routing | Yes | Yes | Yes | Yes |
-| Buffer Management | Yes | Yes | Yes | Yes |
-| Cross-Language | Yes | Yes | Yes | Yes |
+| Frame Format | C | C++ | TypeScript | Python |
+|--------------|---|-----|------------|--------|
+| No Header (No Framing) | Yes | Yes | Yes | Yes |
+| Basic Frame Format | Yes | Yes | Yes | Yes |
+| UBX | Planned | Planned | Planned | Planned |
+| Mavlink v1 | Planned | Planned | Planned | Planned |
+| Mavlink v2 | Planned | Planned | Planned | Planned |
 
 All frame formats are binary compatible across languages. A frame created in Python can be parsed in C and vice versa.

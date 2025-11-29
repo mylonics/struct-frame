@@ -66,20 +66,6 @@ Generator must implement:
 
 ## Making Changes
 
-### Modifying Type Mappings
-
-Type mappings are defined in each generator:
-
-```python
-# c_gen.py
-TYPE_MAP = {
-    'int8': 'int8_t',
-    'uint8': 'uint8_t',
-    'int16': 'int16_t',
-    # ...
-}
-```
-
 ### Modifying Frame Format
 
 Frame encoding/decoding is in boilerplate files:
@@ -136,16 +122,11 @@ PYTHONPATH=src python src/main.py examples/array_test.proto --build_py
 python -c "import sys; sys.path.insert(0, 'generated/py'); import array_test_sf"
 ```
 
-### Debug Generation
-
-Add print statements in generators or use verbose mode if available.
-
 ## Code Style
 
 - Python: Follow existing style in codebase
 - C: See .clang-format
 - Generated code should be readable and debuggable
-- Avoid unnecessary complexity in generated output
 
 ## Error Handling
 

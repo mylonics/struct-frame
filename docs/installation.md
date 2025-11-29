@@ -7,24 +7,6 @@
 pip install proto-schema-parser structured-classes
 ```
 
-**Node.js (for TypeScript)**
-```
-npm install
-```
-
-**GCC (for C)**
-
-Install via system package manager:
-- Ubuntu/Debian: `apt install gcc`
-- macOS: `xcode-select --install`
-- Windows: Install MinGW or use WSL
-
-**G++ (for C++)**
-
-Install via system package manager:
-- Ubuntu/Debian: `apt install g++`
-- macOS: `xcode-select --install`
-
 ## Code Generation
 
 Run the generator with your proto file:
@@ -46,7 +28,9 @@ Default output is `generated/<language>/`.
 
 ## Build Integration
 
-### Make
+Build integration allows generated code to automatically reflect changes to proto files during your build process. When proto files change, the build system regenerates the corresponding code.
+
+### Make (C/C++)
 
 ```makefile
 PROTO_FILES := $(wildcard proto/*.proto)
@@ -61,7 +45,7 @@ generated/py/%.sf.py: proto/%.proto
 all: $(PROTO_FILES:proto/%.proto=generated/c/%.sf.h)
 ```
 
-### CMake
+### CMake (C/C++)
 
 ```cmake
 find_package(Python3 REQUIRED)
@@ -85,6 +69,44 @@ foreach(PROTO_FILE ${PROTO_FILES})
 endforeach()
 
 add_custom_target(generate_structs DEPENDS ${GENERATED_HEADERS})
+```
+
+### npm scripts (TypeScript)
+
+Add to package.json:
+
+```json
+{
+  "scripts": {
+    "generate": "python src/main.py proto/messages.proto --build_ts --ts_path src/generated/",
+    "build": "npm run generate && tsc",
+    "watch": "tsc --watch"
+  }
+}
+```
+
+### Python setuptools
+
+Add to setup.py or pyproject.toml:
+
+```python
+# setup.py
+from setuptools import setup
+from setuptools.command.build_py import build_py
+import subprocess
+
+class BuildWithGenerate(build_py):
+    def run(self):
+        subprocess.run([
+            'python', 'src/main.py', 'proto/messages.proto',
+            '--build_py', '--py_path', 'src/generated/'
+        ])
+        super().run()
+
+setup(
+    cmdclass={'build_py': BuildWithGenerate},
+    # ...
+)
 ```
 
 ## Language-Specific Usage
