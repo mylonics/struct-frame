@@ -121,7 +121,7 @@ class ToolChecker(TestRunnerBase):
         """Print a summary of available tools and return True if all tools available."""
         from .output_formatter import OutputFormatter
         formatter = OutputFormatter(
-            self.config, self.project_root, self.verbose)
+            self.config, self.project_root, self.verbose, self.verbose_failure)
         formatter.print_section("TOOL AVAILABILITY CHECK")
 
         availability = self.check_tool_availability()

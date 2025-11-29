@@ -13,8 +13,9 @@ from .base import TestRunnerBase
 class TestExecutor(TestRunnerBase):
     """Handles execution of test suites using plugins for custom behavior."""
 
-    def __init__(self, config: Dict[str, Any], project_root: Path, verbose: bool = False):
-        super().__init__(config, project_root, verbose)
+    def __init__(self, config: Dict[str, Any], project_root: Path, verbose: bool = False,
+                 verbose_failure: bool = False):
+        super().__init__(config, project_root, verbose, verbose_failure)
         self.results: Dict[str, Dict[str, bool]] = {}
         for lang_id in self.config['languages']:
             self.results[lang_id] = {}
@@ -36,7 +37,7 @@ class TestExecutor(TestRunnerBase):
         from .plugins import get_plugin
 
         formatter = OutputFormatter(
-            self.config, self.project_root, self.verbose)
+            self.config, self.project_root, self.verbose, self.verbose_failure)
 
         formatter.print_section("TEST EXECUTION")
 

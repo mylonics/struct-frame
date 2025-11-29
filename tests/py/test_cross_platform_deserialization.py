@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Test script for cross-platform deserialization - reads and validates test data from files.
-This test reads binary files created by different language implementations and validates
-them against expected_values.json.
+This test reads a binary file and validates it against expected_values.json.
 """
 
 import sys
@@ -96,19 +95,19 @@ def validate_message(msg, expected):
     return True
 
 
-def read_and_validate_test_data(filename, language):
-    """Read and validate test data created by a specific language"""
+def read_and_validate_test_data(filename):
+    """Read and validate test data from a binary file"""
     try:
         if not os.path.exists(filename):
-            print(f"  Skipping {language} - file not found: {filename}")
-            return True  # Skip if file not available
+            print(f"  Error: file not found: {filename}")
+            return False
 
         with open(filename, 'rb') as f:
             binary_data = f.read()
 
         if len(binary_data) == 0:
             print_failure_details(
-                f"Empty data from {language}",
+                "Empty file",
                 expected_values={"data_size": ">0"},
                 actual_values={"data_size": 0},
                 raw_data=binary_data
@@ -132,7 +131,7 @@ def read_and_validate_test_data(filename, language):
 
         if not decoded_msg:
             print_failure_details(
-                f"Failed to decode {language} data",
+                "Failed to decode data",
                 expected_values={"decoded_message": "valid"},
                 actual_values={"decoded_message": None},
                 raw_data=binary_data
@@ -145,18 +144,19 @@ def read_and_validate_test_data(filename, language):
             return False
 
         if not validate_message(decoded_msg, expected):
-            print(f"  Validation failed for {language} data")
+            print("  Validation failed")
             return False
 
-        print(f"  [OK] {language} data validated successfully")
+        print("  [OK] Data validated successfully")
         return True
 
     except ImportError:
-        return True  # Skip if generated code not available
+        print("  Error: Generated code not available")
+        return False
 
     except Exception as e:
         print_failure_details(
-            f"Read {language} data exception: {type(e).__name__}",
+            f"Read data exception: {type(e).__name__}",
             expected_values={"result": "success"},
             actual_values={"exception": str(e)}
         )
@@ -169,14 +169,12 @@ def main():
     """Main test function"""
     print("\n[TEST START] Python Cross-Platform Deserialization")
 
-    success = True
-    success = success and read_and_validate_test_data(
-        'python_test_data.bin', 'Python')
-    success = success and read_and_validate_test_data('c_test_data.bin', 'C')
-    success = success and read_and_validate_test_data(
-        'cpp_test_data.bin', 'C++')
-    success = success and read_and_validate_test_data(
-        'typescript_test_data.bin', 'TypeScript')
+    if len(sys.argv) != 2:
+        print(f"  Usage: {sys.argv[0]} <binary_file>")
+        print("[TEST END] Python Cross-Platform Deserialization: FAIL\n")
+        return False
+
+    success = read_and_validate_test_data(sys.argv[1])
 
     status = "PASS" if success else "FAIL"
     print(f"[TEST END] Python Cross-Platform Deserialization: {status}\n")

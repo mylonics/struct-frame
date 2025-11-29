@@ -14,8 +14,9 @@ from .base import TestRunnerBase
 class Compiler(TestRunnerBase):
     """Handles compilation of generated code"""
 
-    def __init__(self, config: Dict[str, Any], project_root: Path, verbose: bool = False):
-        super().__init__(config, project_root, verbose)
+    def __init__(self, config: Dict[str, Any], project_root: Path, verbose: bool = False,
+                 verbose_failure: bool = False):
+        super().__init__(config, project_root, verbose, verbose_failure)
         self.results: Dict[str, bool] = {}
         for lang_id in self.config['languages']:
             self.results[lang_id] = False
@@ -24,7 +25,7 @@ class Compiler(TestRunnerBase):
         """Compile code for all languages that require compilation"""
         from .output_formatter import OutputFormatter
         formatter = OutputFormatter(
-            self.config, self.project_root, self.verbose)
+            self.config, self.project_root, self.verbose, self.verbose_failure)
         formatter.print_section("COMPILATION (all test files)")
 
         compiled = [l for l in self.get_active_languages()

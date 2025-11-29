@@ -17,11 +17,13 @@ from typing import Any, Dict, List, Optional, Tuple
 class TestRunnerBase:
     """Base class with common utilities for test runner components"""
 
-    def __init__(self, config: Dict[str, Any], project_root: Path, verbose: bool = False):
+    def __init__(self, config: Dict[str, Any], project_root: Path, verbose: bool = False,
+                 verbose_failure: bool = False):
         self.config = config
         self.project_root = project_root
         self.tests_dir = project_root / "tests"
         self.verbose = verbose
+        self.verbose_failure = verbose_failure
         self.skipped_languages: List[str] = []
 
     @classmethod
@@ -62,12 +64,18 @@ class TestRunnerBase:
                 command, shell=True, cwd=cwd or self.project_root,
                 capture_output=True, text=True, timeout=timeout, env=cmd_env
             )
+            success = result.returncode == 0
             if self.verbose:
                 if result.stdout:
                     print(f"  STDOUT: {result.stdout}")
                 if result.stderr:
                     print(f"  STDERR: {result.stderr}")
-            return result.returncode == 0, result.stdout, result.stderr
+            elif self.verbose_failure and not success:
+                if result.stdout:
+                    print(f"  STDOUT: {result.stdout}")
+                if result.stderr:
+                    print(f"  STDERR: {result.stderr}")
+            return success, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
             self.log(f"Command timed out after {timeout}s", "ERROR")
             return False, "", "Timeout"
@@ -176,8 +184,15 @@ class TestRunnerBase:
         return self.get_test_files(lang_id, test_name)
 
     def run_test_script(self, lang_id: str, test_config: Dict[str, Any],
-                        test_dir: Path = None) -> bool:
-        """Run a test script for any language - unified execution logic"""
+                        test_dir: Path = None, args: str = "") -> bool:
+        """Run a test script for any language - unified execution logic
+        
+        Args:
+            lang_id: Language identifier
+            test_config: Test configuration with file paths
+            test_dir: Optional test directory override
+            args: Optional command-line arguments to pass to the test
+        """
         lang_config = self.config['languages'][lang_id]
         test_dir = test_dir or (self.project_root / lang_config['test_dir'])
         build_dir = self.project_root / \
@@ -187,7 +202,10 @@ class TestRunnerBase:
         # Compiled executable (C, C++)
         if 'executable' in test_config:
             exe_path = build_dir / test_config['executable']
-            return exe_path.exists() and self.run_command(str(exe_path), cwd=build_dir)[0]
+            cmd = str(exe_path)
+            if args:
+                cmd = f"{cmd} {args}"
+            return exe_path.exists() and self.run_command(cmd, cwd=build_dir)[0]
 
         # TypeScript (runs compiled JS)
         if lang_id == 'ts' and 'compiled_file' in test_config:
@@ -195,8 +213,10 @@ class TestRunnerBase:
             script_path = script_dir / test_config['compiled_file']
             if not script_path.exists():
                 return False
-            return self.run_command(
-                f"{execution['interpreter']} {script_path.name}", cwd=script_dir)[0]
+            cmd = f"{execution['interpreter']} {script_path.name}"
+            if args:
+                cmd = f"{cmd} {args}"
+            return self.run_command(cmd, cwd=script_dir)[0]
 
         # Interpreted language (Python, etc.)
         if 'source_file' in test_config:
@@ -208,8 +228,11 @@ class TestRunnerBase:
                 return False
             # Ensure build_dir exists and run from there
             build_dir.mkdir(parents=True, exist_ok=True)
+            cmd = f"{interpreter} {source_path}"
+            if args:
+                cmd = f"{cmd} {args}"
             return self.run_command(
-                f"{interpreter} {source_path}",
+                cmd,
                 cwd=build_dir, env=self.get_lang_env(lang_id))[0]
 
         return False

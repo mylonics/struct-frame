@@ -29,8 +29,10 @@ class ConfigDrivenTestRunner:
     - OutputFormatter: Formats and prints results
     """
 
-    def __init__(self, config_path: str, verbose: bool = False):
+    def __init__(self, config_path: str, verbose: bool = False,
+                 verbose_failure: bool = False):
         self.verbose = verbose
+        self.verbose_failure = verbose_failure
         self.project_root = Path(__file__).parent.parent.parent
         self.tests_dir = self.project_root / "tests"
         self.config = TestRunnerBase.load_config(Path(config_path), verbose)
@@ -42,15 +44,15 @@ class ConfigDrivenTestRunner:
     def _init_components(self):
         """Initialize all component instances"""
         self.tool_checker = ToolChecker(
-            self.config, self.project_root, self.verbose)
+            self.config, self.project_root, self.verbose, self.verbose_failure)
         self.code_generator = CodeGenerator(
-            self.config, self.project_root, self.verbose)
+            self.config, self.project_root, self.verbose, self.verbose_failure)
         self.compiler = Compiler(
-            self.config, self.project_root, self.verbose)
+            self.config, self.project_root, self.verbose, self.verbose_failure)
         self.test_executor = TestExecutor(
-            self.config, self.project_root, self.verbose)
+            self.config, self.project_root, self.verbose, self.verbose_failure)
         self.formatter = OutputFormatter(
-            self.config, self.project_root, self.verbose)
+            self.config, self.project_root, self.verbose, self.verbose_failure)
 
     def _sync_skipped_languages(self):
         """Sync skipped languages to all components"""

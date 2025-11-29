@@ -67,12 +67,11 @@ int validate_message(SerializationTestSerializationTestMessage* msg) {
   return 1;
 }
 
-// Return values: 1 = validated successfully, 0 = validation failed, -1 = skipped (file not found)
-int read_and_validate_test_data(const char* filename, const char* language) {
+int read_and_validate_test_data(const char* filename) {
   FILE* file = fopen(filename, "rb");
   if (!file) {
-    printf("  Skipping %s - file not found: %s\n", language, filename);
-    return -1;  // Skip if file not available
+    printf("  Error: file not found: %s\n", filename);
+    return 0;
   }
 
   uint8_t buffer[512];
@@ -88,9 +87,7 @@ int read_and_validate_test_data(const char* filename, const char* language) {
   msg_info_t decode_result = format->validate_packet(buffer, size);
 
   if (!decode_result.valid) {
-    char label[256];
-    snprintf(label, sizeof(label), "Failed to decode %s data", language);
-    print_failure_details(label, buffer, size);
+    print_failure_details("Failed to decode data", buffer, size);
     return 0;
   }
 
@@ -98,44 +95,24 @@ int read_and_validate_test_data(const char* filename, const char* language) {
       serialization_test_serialization_test_message_get(decode_result);
 
   if (!validate_message(&decoded_msg)) {
-    printf("  Validation failed for %s data\n", language);
+    printf("  Validation failed\n");
     return 0;
   }
 
-  printf("  [OK] %s data validated successfully\n", language);
+  printf("  [OK] Data validated successfully\n");
   return 1;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
   printf("\n[TEST START] C Cross-Platform Deserialization\n");
 
-  int any_failed = 0;
-  int validated_count = 0;
-  int result;
-
-  result = read_and_validate_test_data("python_test_data.bin", "Python");
-  if (result == 0) any_failed = 1;
-  if (result == 1) validated_count++;
-
-  result = read_and_validate_test_data("c_test_data.bin", "C");
-  if (result == 0) any_failed = 1;
-  if (result == 1) validated_count++;
-
-  result = read_and_validate_test_data("cpp_test_data.bin", "C++");
-  if (result == 0) any_failed = 1;
-  if (result == 1) validated_count++;
-
-  result = read_and_validate_test_data("typescript_test_data.bin", "TypeScript");
-  if (result == 0) any_failed = 1;
-  if (result == 1) validated_count++;
-
-  int success = !any_failed && (validated_count > 0);
-
-  if (validated_count == 0) {
-    printf("  [WARN] No files were validated - at least one input file is required\n");
-  } else {
-    printf("  Validated %d file(s) successfully\n", validated_count);
+  if (argc != 2) {
+    printf("  Usage: %s <binary_file>\n", argv[0]);
+    printf("[TEST END] C Cross-Platform Deserialization: FAIL\n\n");
+    return 1;
   }
+
+  int success = read_and_validate_test_data(argv[1]);
 
   const char* status = success ? "PASS" : "FAIL";
   printf("[TEST END] C Cross-Platform Deserialization: %s\n\n", status);

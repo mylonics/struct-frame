@@ -182,9 +182,11 @@ class CrossPlatformMatrixPlugin(TestPlugin):
                         lang_config['execution'].get('script_dir', '')
                     ts_target = script_dir / data_file.name
                     with self.executor.temp_copy(data_file, ts_target):
-                        return self.executor.run_test_script(lang_id, test_config)
+                        return self.executor.run_test_script(
+                            lang_id, test_config, args=data_file.name)
                 else:
-                    return self.executor.run_test_script(lang_id, test_config)
+                    return self.executor.run_test_script(
+                        lang_id, test_config, args=target_file.name)
         except Exception as e:
             if self.verbose:
                 self.log(f"Decode failed: {e}", "WARNING")

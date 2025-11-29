@@ -73,6 +73,8 @@ def main():
                         help="Path to test configuration file")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="Enable verbose output")
+    parser.add_argument("--verbose-failure", action="store_true",
+                        help="Show output only when tests fail")
     parser.add_argument("--skip-lang", action="append",
                         dest="skip_languages", help="Skip specific language")
     parser.add_argument("--only-generate", action="store_true",
@@ -87,7 +89,8 @@ def main():
     if args.clean:
         return clean_test_files(args.config, verbose=args.verbose)
 
-    runner = ConfigDrivenTestRunner(args.config, verbose=args.verbose)
+    runner = ConfigDrivenTestRunner(args.config, verbose=args.verbose,
+                                    verbose_failure=args.verbose_failure)
     runner.skipped_languages = args.skip_languages or []
 
     if args.check_tools:
