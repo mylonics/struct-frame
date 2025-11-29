@@ -54,6 +54,10 @@ Struct Frame is simpler:
 - No variable-length integer encoding
 - No schema evolution complexity
 
+### No Runtime Dependencies
+
+Everything needed to use struct-frame is generated or included with the boilerplate code. There are no external libraries to link against at runtime. The C/C++ implementation is header-only.
+
 ### Memory Options
 
 C/C++ parsers can:
