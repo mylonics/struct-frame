@@ -232,7 +232,7 @@ message UbxFrame {
   uint8 sync1 = 1 [(hex) = 0xB5];
   uint8 sync2 = 2 [(hex) = 0x62];
   uint8 msg_class = 3;
-  BasicMessage payload = 4;
+  uint8 msg_id = 4;
   uint8 length_lo = 5;
   uint8 length_hi = 6;
   uint8 ck_a = 7;
@@ -248,7 +248,7 @@ message MavlinkV1Frame {
   uint8 sequence = 3;
   uint8 system_id = 4;
   uint8 component_id = 5;
-  BasicMessage payload = 6;
+  uint8 msg_id = 6;
   uint8 crc_lo = 7;
   uint8 crc_hi = 8;
 }
