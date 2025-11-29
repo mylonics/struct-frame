@@ -225,7 +225,6 @@ class TestRunnerBase:
             # Copy test file to generated directory for execution
             target_path = script_dir / test_config['source_file']
             if source_path.exists():
-                import shutil
                 script_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(source_path, target_path)
             if not target_path.exists():
