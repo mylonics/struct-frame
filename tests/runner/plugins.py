@@ -133,7 +133,10 @@ class CrossPlatformMatrixPlugin(TestPlugin):
 
         # Use C as the base language for cross-platform testing
         base_lang = 'c'
-        base_name = self.config['languages'][base_lang]['name']
+        if base_lang not in testable:
+            self.log(
+                f"Base language '{base_lang}' is not available for testing", "ERROR")
+            return {'results': {}, 'matrix': {}}
 
         # Test all encoders against C decoder, and C encoder against all decoders
         for enc_lang in testable:
