@@ -1,4 +1,5 @@
 #include "comprehensive_arrays.sf.hpp"
+#include "basic_frame.hpp"
 #include <iostream>
 #include <cstring>
 
@@ -24,19 +25,12 @@ int main() {
         msg.bounded_uints.data[1] = 200;
         msg.bounded_uints.data[2] = 300;
         
-        size_t msg_size = 0;
-        if (!StructFrame::get_message_length(COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID, &msg_size)) {
-            print_failure_details("Failed to get message length");
-            std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
-            return 1;
-        }
-        
-        // Encode message into BasicPacket format
+        // Encode message into BasicFrame format
         uint8_t buffer[1024];
-        StructFrame::BasicPacket format;
-        StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
+        StructFrame::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
         
-        if (!encoder.encode(&format, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID, &msg, msg_size)) {
+        if (!encoder.encode(COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID, &msg, 
+                            COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MAX_SIZE)) {
             print_failure_details("Failed to encode message");
             std::cout << "[TEST END] C++ Array Operations: FAIL\n\n";
             return 1;

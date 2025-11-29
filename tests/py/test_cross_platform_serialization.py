@@ -49,7 +49,7 @@ def create_test_data():
     try:
         sys.path.insert(0, '../generated/py')
         from serialization_test_sf import SerializationTestSerializationTestMessage
-        from struct_frame_parser import BasicPacket
+        from struct_frame_parser import BasicFrame
 
         # Load expected values from JSON
         expected = load_expected_values()
@@ -65,7 +65,7 @@ def create_test_data():
             test_array=expected['test_array']
         )
 
-        packet = BasicPacket()
+        packet = BasicFrame()
         encoded_data = packet.encode_msg(msg)
 
         with open('python_test_data.bin', 'wb') as f:

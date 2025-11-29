@@ -28,23 +28,11 @@ function printFailureDetails(label: string, expectedValues?: any, actualValues?:
   console.log('============================================================\n');
 }
 
-let serialization_test_SerializationTestMessage: any;
-let msg_encode: any;
-let struct_frame_buffer: any;
-let basic_frame_config: any;
-
-try {
-  const serializationTestModule = require('./serialization_test.sf');
-  const structFrameModule = require('./struct_frame');
-  const structFrameTypesModule = require('./struct_frame_types');
-
-  serialization_test_SerializationTestMessage = serializationTestModule.serialization_test_SerializationTestMessage;
-  msg_encode = structFrameModule.msg_encode;
-  struct_frame_buffer = structFrameTypesModule.struct_frame_buffer;
-  basic_frame_config = structFrameTypesModule.basic_frame_config;
-} catch (error) {
-  // Skip test if generated modules are not available
-}
+// BasicFrame constants
+const BASIC_FRAME_START_BYTE1 = 0x90;
+const BASIC_FRAME_START_BYTE2 = 0x91;
+const BASIC_FRAME_HEADER_SIZE = 3;  // start1 + start2 + msg_id
+const BASIC_FRAME_FOOTER_SIZE = 2;  // crc1 + crc2
 
 function loadExpectedValues(): any {
   try {
@@ -65,9 +53,8 @@ function createTestData(): boolean {
       return false;
     }
 
-    // Create a full framed message manually that matches C/Python format
-    // Frame format: [start_byte] [msg_id] [payload] [checksum1] [checksum2]
-    const start_byte = 0x90;
+    // Create a full BasicFrame message that matches C/Python format
+    // Frame format: [START1=0x90] [START2=0x91] [MSG_ID] [payload] [checksum1] [checksum2]
     const msg_id = 204;
     
     // Create full payload matching the message structure:
@@ -114,7 +101,7 @@ function createTestData(): boolean {
       offset += 4;
     }
     
-    // Calculate Fletcher checksum on msg_id + payload (consistent with C and Python)
+    // Calculate Fletcher checksum on msg_id + payload (consistent with C and Python BasicFrame)
     let byte1 = msg_id;  // Start with msg_id
     let byte2 = msg_id;
     for (let i = 0; i < payload.length; i++) {
@@ -122,11 +109,12 @@ function createTestData(): boolean {
       byte2 = (byte2 + byte1) & 0xFF;
     }
     
-    // Build complete frame
-    const frame = Buffer.alloc(2 + payloadSize + 2);
-    frame[0] = start_byte;
-    frame[1] = msg_id;
-    payload.copy(frame, 2);
+    // Build complete frame with BasicFrame format
+    const frame = Buffer.alloc(BASIC_FRAME_HEADER_SIZE + payloadSize + BASIC_FRAME_FOOTER_SIZE);
+    frame[0] = BASIC_FRAME_START_BYTE1;
+    frame[1] = BASIC_FRAME_START_BYTE2;
+    frame[2] = msg_id;
+    payload.copy(frame, BASIC_FRAME_HEADER_SIZE);
     frame[frame.length - 2] = byte1;
     frame[frame.length - 1] = byte2;
     

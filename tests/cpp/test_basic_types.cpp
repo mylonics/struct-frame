@@ -1,4 +1,5 @@
 #include "basic_types.sf.hpp"
+#include "basic_frame.hpp"
 #include <iostream>
 #include <cstring>
 
@@ -41,19 +42,12 @@ int main() {
         msg.description.length = 12;
         std::strncpy(msg.description.data, "Test message", sizeof(msg.description.data));
         
-        size_t msg_size = 0;
-        if (!StructFrame::get_message_length(BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID, &msg_size)) {
-            print_failure_details("Failed to get message length");
-            std::cout << "[TEST END] C++ Basic Types: FAIL\n\n";
-            return 1;
-        }
-        
-        // Encode message into BasicPacket format
+        // Encode message into BasicFrame format
         uint8_t buffer[512];
-        StructFrame::BasicPacket format;
-        StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
+        StructFrame::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
         
-        if (!encoder.encode(&format, BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID, &msg, msg_size)) {
+        if (!encoder.encode(BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID, &msg, 
+                            BASIC_TYPES_BASIC_TYPES_MESSAGE_MAX_SIZE)) {
             print_failure_details("Failed to encode message", buffer, encoder.size());
             std::cout << "[TEST END] C++ Basic Types: FAIL\n\n";
             return 1;
@@ -66,8 +60,8 @@ int main() {
             return 1;
         }
         
-        // Verify minimum packet structure (start byte + msg_id + data + checksums)
-        if (encoder.size() < 4) {
+        // Verify minimum packet structure (start bytes + msg_id + data + checksums)
+        if (encoder.size() < 5) {
             print_failure_details("Encoded data too small", buffer, encoder.size());
             std::cout << "[TEST END] C++ Basic Types: FAIL\n\n";
             return 1;

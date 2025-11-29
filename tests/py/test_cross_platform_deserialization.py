@@ -116,20 +116,13 @@ def read_and_validate_test_data(filename):
 
         sys.path.insert(0, '../generated/py')
         from serialization_test_sf import SerializationTestSerializationTestMessage
-        from struct_frame_parser import BasicPacket, FrameParser
+        from struct_frame_parser import BasicFrame
 
-        packet_formats = {0x90: BasicPacket()}
-        msg_definitions = {204: SerializationTestSerializationTestMessage}
-        parser = FrameParser(packet_formats, msg_definitions)
-
-        decoded_msg = None
-        for byte in binary_data:
-            result = parser.parse_char(byte)
-            if result:
-                decoded_msg = result
-                break
-
-        if not decoded_msg:
+        # Validate and decode using BasicFrame
+        basic_frame = BasicFrame()
+        result = basic_frame.validate_packet(list(binary_data))
+        
+        if not result or not result['valid']:
             print_failure_details(
                 "Failed to decode data",
                 expected_values={"decoded_message": "valid"},
@@ -137,6 +130,10 @@ def read_and_validate_test_data(filename):
                 raw_data=binary_data
             )
             return False
+
+        # Decode the message data
+        msg_data = bytes(result['msg_data'])
+        decoded_msg = SerializationTestSerializationTestMessage.create_unpack(msg_data)
 
         # Load expected values and validate
         expected = load_expected_values()

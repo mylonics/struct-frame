@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "serialization_test.sf.hpp"
+#include "basic_frame.hpp"
 
 void print_failure_details(const char* label) {
   std::cout << "\n============================================================\n";
@@ -11,35 +12,48 @@ void print_failure_details(const char* label) {
   std::cout << "============================================================\n\n";
 }
 
-bool validate_basic_frame(const uint8_t* buffer, size_t size, uint32_t expected_magic) {
-  // Very basic frame validation
-  if (size < 4) {
-    std::cout << "  Data too short\n";
+bool validate_message(const SerializationTestSerializationTestMessage* msg) {
+  // Expected values from expected_values.json
+  uint32_t expected_magic = 3735928559;  // 0xDEADBEEF
+  const char* expected_string = "Cross-platform test!";
+  float expected_float = 3.14159f;
+  bool expected_bool = true;
+  int expected_array[3] = {100, 200, 300};
+
+  if (msg->magic_number != expected_magic) {
+    std::cout << "  Value mismatch: magic_number (expected " << expected_magic 
+              << ", got " << msg->magic_number << ")\n";
     return false;
   }
 
-  // Check start byte (BasicPacket uses 0x90)
-  if (buffer[0] != 0x90) {
-    std::cout << "  Invalid start byte\n";
+  if (std::strncmp(msg->test_string.data, expected_string, msg->test_string.length) != 0) {
+    std::cout << "  Value mismatch: test_string\n";
     return false;
   }
 
-  // Check message ID (SerializationTestMessage is 204)
-  if (buffer[1] != 204) {
-    std::cout << "  Invalid message ID\n";
+  if (std::fabs(msg->test_float - expected_float) > 0.0001f) {
+    std::cout << "  Value mismatch: test_float (expected " << expected_float 
+              << ", got " << msg->test_float << ")\n";
     return false;
   }
 
-  // Extract magic number from payload (starts at byte 2, little-endian)
-  if (size < 6) {
-    std::cout << "  Data too short for magic number\n";
+  if (msg->test_bool != expected_bool) {
+    std::cout << "  Value mismatch: test_bool\n";
     return false;
   }
 
-  uint32_t magic_number = buffer[2] | (buffer[3] << 8) | (buffer[4] << 16) | (buffer[5] << 24);
-  if (magic_number != expected_magic) {
-    std::cout << "  Magic number mismatch (expected " << expected_magic << ", got " << magic_number << ")\n";
+  if (msg->test_array.count != 3) {
+    std::cout << "  Value mismatch: test_array.count (expected 3, got " 
+              << (int)msg->test_array.count << ")\n";
     return false;
+  }
+
+  for (int i = 0; i < 3; i++) {
+    if (msg->test_array.data[i] != expected_array[i]) {
+      std::cout << "  Value mismatch: test_array[" << i << "] (expected " 
+                << expected_array[i] << ", got " << msg->test_array.data[i] << ")\n";
+      return false;
+    }
   }
 
   std::cout << "  [OK] Data validated successfully\n";
@@ -63,10 +77,17 @@ bool read_and_validate_test_data(const char* filename) {
     return false;
   }
 
-  // Expected values from expected_values.json
-  uint32_t expected_magic = 3735928559;  // 0xDEADBEEF
+  StructFrame::BasicFrameMsgInfo decode_result = StructFrame::basic_frame_validate_packet(buffer, size);
 
-  if (!validate_basic_frame(buffer, size, expected_magic)) {
+  if (!decode_result.valid) {
+    print_failure_details("Failed to decode data");
+    return false;
+  }
+
+  const SerializationTestSerializationTestMessage* decoded_msg =
+      reinterpret_cast<const SerializationTestSerializationTestMessage*>(decode_result.msg_data);
+
+  if (!validate_message(decoded_msg)) {
     std::cout << "  Validation failed\n";
     return false;
   }

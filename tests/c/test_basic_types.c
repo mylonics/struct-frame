@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "basic_types.sf.h"
-#include "struct_frame_default_frame.h"
+#include "basic_frame.h"
 
 void print_failure_details(const char* label, const BasicTypesBasicTypesMessage* expected, 
                           const BasicTypesBasicTypesMessage* actual, 
@@ -59,46 +59,46 @@ int test_basic_types() {
   msg.description.length = strlen("Test description for basic types");
   strncpy(msg.description.data, "Test description for basic types", msg.description.length);
 
-  // Encode message into BasicPacket format
+  // Encode message into BasicFrame format
   uint8_t encode_buffer[1024];
-  msg_encode_buffer buffer = {0};
-  buffer.data = encode_buffer;
+  basic_frame_encode_buffer_t buffer;
+  basic_frame_encode_init(&buffer, encode_buffer, sizeof(encode_buffer));
 
-  packet_format_t* format = &default_frame_format;
-  bool encoded = basic_types_basic_types_message_encode(&buffer, format, &msg);
+  bool encoded = basic_frame_encode_msg(&buffer, BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID,
+                                         &msg, BASIC_TYPES_BASIC_TYPES_MESSAGE_MAX_SIZE);
 
   if (!encoded) {
     print_failure_details("Encoding failed", &msg, NULL, NULL, 0);
     return 0;
   }
 
-  // Validate and decode the BasicPacket
-  msg_info_t decode_result = format->validate_packet(encode_buffer, buffer.size);
+  // Validate and decode the BasicFrame
+  basic_frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, buffer.size);
   if (!decode_result.valid) {
     print_failure_details("Validation failed", &msg, NULL, encode_buffer, buffer.size);
     return 0;
   }
 
-  BasicTypesBasicTypesMessage decoded_msg = basic_types_basic_types_message_get(decode_result);
+  BasicTypesBasicTypesMessage* decoded_msg = (BasicTypesBasicTypesMessage*)decode_result.msg_data;
 
   // Compare original and decoded messages
-  if (decoded_msg.small_int != msg.small_int) {
-    print_failure_details("Value mismatch: small_int", &msg, &decoded_msg, encode_buffer, buffer.size);
+  if (decoded_msg->small_int != msg.small_int) {
+    print_failure_details("Value mismatch: small_int", &msg, decoded_msg, encode_buffer, buffer.size);
     return 0;
   }
 
-  if (decoded_msg.medium_int != msg.medium_int) {
-    print_failure_details("Value mismatch: medium_int", &msg, &decoded_msg, encode_buffer, buffer.size);
+  if (decoded_msg->medium_int != msg.medium_int) {
+    print_failure_details("Value mismatch: medium_int", &msg, decoded_msg, encode_buffer, buffer.size);
     return 0;
   }
   
-  if (decoded_msg.flag != msg.flag) {
-    print_failure_details("Value mismatch: flag", &msg, &decoded_msg, encode_buffer, buffer.size);
+  if (decoded_msg->flag != msg.flag) {
+    print_failure_details("Value mismatch: flag", &msg, decoded_msg, encode_buffer, buffer.size);
     return 0;
   }
 
-  if (decoded_msg.single_precision != msg.single_precision) {
-    print_failure_details("Value mismatch: single_precision", &msg, &decoded_msg, encode_buffer, buffer.size);
+  if (decoded_msg->single_precision != msg.single_precision) {
+    print_failure_details("Value mismatch: single_precision", &msg, decoded_msg, encode_buffer, buffer.size);
     return 0;
   }
 
