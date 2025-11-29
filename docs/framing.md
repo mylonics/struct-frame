@@ -20,8 +20,8 @@ All supported frame formats are defined in [`examples/frame_formats.proto`](../e
 | MsgIdFrameNoCrc | 1 | 0 | None | Minimal framing, trusted link |
 | BasicFrame | 2 | 2 | None | Standard reliable communication |
 | BasicFrameNoCrc | 2 | 0 | None | Sync recovery, no CRC |
-| TinyFrame | 1 | 2 | None | Low overhead with CRC |
-| TinyFrameNoCrc | 1 | 0 | None | Minimal overhead |
+| TinyFrame | 2 | 2 | None | Constrained environments |
+| TinyFrameNoCrc | 2 | 0 | None | Minimal overhead |
 | *Len8 variants | +1 | same | 8-bit | Variable length up to 255 bytes |
 | *Len16 variants | +2 | same | 16-bit | Variable length up to 64KB |
 | UBX | 6 | 2 | 16-bit | u-blox GPS compatibility |

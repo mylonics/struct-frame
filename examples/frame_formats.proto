@@ -279,11 +279,9 @@ message BasicFrameNoCrc {
 //
 // Format: [START (1 byte)] [MSG_ID (1 byte)] [MSG (N bytes)] [CRC (2 bytes)]
 //
-// Compact frame format using single start byte combined with message ID.
-// Provides synchronization and error detection with minimal overhead.
-//
-// Note: In this implementation, TINY_FRAME is structurally identical to
-// BASIC_FRAME but may use a different start byte scheme in future versions.
+// Compact frame format with synchronization and error detection.
+// Structurally similar to BasicFrame but intended for constrained environments
+// where a smaller start byte vocabulary may be used.
 //
 // Use Cases:
 // - Bandwidth-constrained links
@@ -291,9 +289,9 @@ message BasicFrameNoCrc {
 // - High message rate applications
 // - Embedded systems with limited memory
 //
-// Header Length: 1 byte (combined START/MSG_ID or START alone)
+// Header Length: 2 bytes (START + MSG_ID)
 // Footer Length: 2 bytes (Fletcher-16 CRC)
-// Overhead: 3 bytes total
+// Overhead: 4 bytes total
 
 message TinyFrame {
   option msgid = 6;
@@ -318,7 +316,7 @@ message TinyFrame {
 // Format: [START (1 byte)] [MSG_ID (1 byte)] [MSG (N bytes)]
 //
 // Minimal frame format with sync but no error detection.
-// Absolute minimum overhead for reliable links.
+// Minimum overhead for reliable links with synchronization support.
 //
 // Use Cases:
 // - Point-to-point wired connections
@@ -326,9 +324,9 @@ message TinyFrame {
 // - When payload includes its own integrity check
 // - Extremely constrained bandwidth scenarios
 //
-// Header Length: 1 byte (combined START/MSG_ID or START alone)
+// Header Length: 2 bytes (START + MSG_ID)
 // Footer Length: 0 bytes
-// Overhead: 1 byte total
+// Overhead: 2 bytes total
 
 message TinyFrameNoCrc {
   option msgid = 7;
@@ -428,11 +426,11 @@ message BasicFrameLen8NoCrc {
   uint8 length = 3;
 }
 
-// Format: [START (1 byte)] [LEN (1 byte)] [MSG_ID (1 byte)] [MSG (LEN bytes)] [CRC (2 bytes)]
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [LEN (1 byte)] [MSG (LEN bytes)] [CRC (2 bytes)]
 //
-// Header Length: 2 bytes (START + LEN)
+// Header Length: 3 bytes (START + MSG_ID + LEN)
 // Footer Length: 2 bytes (Fletcher-16 CRC)
-// Overhead: 4 bytes total
+// Overhead: 5 bytes total
 
 message TinyFrameLen8 {
   option msgid = 12;
@@ -453,7 +451,11 @@ message TinyFrameLen8 {
   uint8 crc_byte2 = 5;
 }
 
-// Format: [START (1 byte)] [LEN (1 byte)] [MSG_ID (1 byte)] [MSG (LEN bytes)]
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [LEN (1 byte)] [MSG (LEN bytes)]
+//
+// Header Length: 3 bytes (START + MSG_ID + LEN)
+// Footer Length: 0 bytes
+// Overhead: 3 bytes total
 
 message TinyFrameLen8NoCrc {
   option msgid = 13;
@@ -556,11 +558,11 @@ message BasicFrameLen16NoCrc {
   uint16 length = 3;
 }
 
-// Format: [START (1 byte)] [LEN (2 bytes)] [MSG_ID (1 byte)] [MSG (LEN bytes)] [CRC (2 bytes)]
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [LEN (2 bytes)] [MSG (LEN bytes)] [CRC (2 bytes)]
 //
-// Header Length: 3 bytes (START + LEN16)
+// Header Length: 4 bytes (START + MSG_ID + LEN16)
 // Footer Length: 2 bytes (Fletcher-16 CRC)
-// Overhead: 5 bytes total
+// Overhead: 6 bytes total
 
 message TinyFrameLen16 {
   option msgid = 18;
@@ -581,7 +583,11 @@ message TinyFrameLen16 {
   uint8 crc_byte2 = 5;
 }
 
-// Format: [START (1 byte)] [LEN (2 bytes)] [MSG_ID (1 byte)] [MSG (LEN bytes)]
+// Format: [START (1 byte)] [MSG_ID (1 byte)] [LEN (2 bytes)] [MSG (LEN bytes)]
+//
+// Header Length: 4 bytes (START + MSG_ID + LEN16)
+// Footer Length: 0 bytes
+// Overhead: 4 bytes total
 
 message TinyFrameLen16NoCrc {
   option msgid = 19;
