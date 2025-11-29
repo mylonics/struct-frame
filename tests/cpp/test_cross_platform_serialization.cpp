@@ -1,4 +1,5 @@
 #include "serialization_test.sf.hpp"
+#include "basic_frame.hpp"
 #include <iostream>
 #include <fstream>
 #include <cstring>
@@ -25,18 +26,11 @@ int main() {
         msg.test_array.data[1] = 200;
         msg.test_array.data[2] = 300;
         
-        size_t msg_size = 0;
-        if (!StructFrame::get_message_length(SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, &msg_size)) {
-            print_failure_details("Failed to get message length");
-            std::cout << "[TEST END] C++ Cross-Platform Serialization: FAIL\n\n";
-            return 1;
-        }
-        
         uint8_t buffer[512];
-        StructFrame::BasicPacket format;
-        StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
+        StructFrame::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
         
-        if (!encoder.encode(&format, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, &msg, msg_size)) {
+        if (!encoder.encode(SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, &msg, 
+                            SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE)) {
             print_failure_details("Failed to encode message");
             std::cout << "[TEST END] C++ Cross-Platform Serialization: FAIL\n\n";
             return 1;

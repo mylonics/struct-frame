@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "serialization_test.sf.h"
-#include "struct_frame_default_frame.h"
+#include "basic_frame.h"
 
 void print_failure_details(const char* label, const void* raw_data, size_t raw_data_size) {
   printf("\n");
@@ -83,18 +83,17 @@ int read_and_validate_test_data(const char* filename) {
     return 0;
   }
 
-  packet_format_t* format = &default_frame_format;
-  msg_info_t decode_result = format->validate_packet(buffer, size);
+  basic_frame_msg_info_t decode_result = basic_frame_validate_packet(buffer, size);
 
   if (!decode_result.valid) {
     print_failure_details("Failed to decode data", buffer, size);
     return 0;
   }
 
-  SerializationTestSerializationTestMessage decoded_msg =
-      serialization_test_serialization_test_message_get(decode_result);
+  SerializationTestSerializationTestMessage* decoded_msg =
+      (SerializationTestSerializationTestMessage*)decode_result.msg_data;
 
-  if (!validate_message(&decoded_msg)) {
+  if (!validate_message(decoded_msg)) {
     printf("  Validation failed\n");
     return 0;
   }

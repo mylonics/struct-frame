@@ -1,6 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+// BasicFrame constants
+const BASIC_FRAME_START_BYTE1 = 0x90;
+const BASIC_FRAME_START_BYTE2 = 0x91;
+const BASIC_FRAME_HEADER_SIZE = 3;  // start1 + start2 + msg_id
+const BASIC_FRAME_FOOTER_SIZE = 2;  // crc1 + crc2
+
 function printFailureDetails(label: string): void {
   console.log('\n============================================================');
   console.log(`FAILURE DETAILS: ${label}`);
@@ -19,26 +25,40 @@ function loadExpectedValues(): any {
 }
 
 function validateBasicFrame(buffer: Buffer, expected: any): boolean {
-  // Very basic frame validation
-  if (buffer.length < 4) {
+  // BasicFrame validation with 2 start bytes
+  if (buffer.length < BASIC_FRAME_HEADER_SIZE + BASIC_FRAME_FOOTER_SIZE) {
     console.log('  Data too short');
     return false;
   }
 
-  // Check start byte
-  if (buffer[0] !== 0x90) {
-    console.log('  Invalid start byte');
+  // Check start bytes
+  if (buffer[0] !== BASIC_FRAME_START_BYTE1 || buffer[1] !== BASIC_FRAME_START_BYTE2) {
+    console.log(`  Invalid start bytes (expected 0x90 0x91, got 0x${buffer[0].toString(16)} 0x${buffer[1].toString(16)})`);
     return false;
   }
 
-  // Check message ID
-  if (buffer[1] !== 204) {
-    console.log('  Invalid message ID');
+  // Check message ID (at offset 2 in BasicFrame)
+  if (buffer[2] !== 204) {
+    console.log(`  Invalid message ID (expected 204, got ${buffer[2]})`);
     return false;
   }
 
-  // Extract magic number from payload (starts at byte 2)
-  const magicNumber = buffer.readUInt32LE(2);
+  // Validate checksum
+  const msgLen = buffer.length - BASIC_FRAME_HEADER_SIZE - BASIC_FRAME_FOOTER_SIZE;
+  let byte1 = buffer[2];  // Start with msg_id
+  let byte2 = buffer[2];
+  for (let i = 0; i < msgLen; i++) {
+    byte1 = (byte1 + buffer[BASIC_FRAME_HEADER_SIZE + i]) & 0xFF;
+    byte2 = (byte2 + byte1) & 0xFF;
+  }
+  
+  if (byte1 !== buffer[buffer.length - 2] || byte2 !== buffer[buffer.length - 1]) {
+    console.log(`  Checksum mismatch`);
+    return false;
+  }
+
+  // Extract magic number from payload (starts at offset 3 in BasicFrame)
+  const magicNumber = buffer.readUInt32LE(BASIC_FRAME_HEADER_SIZE);
   if (magicNumber !== expected.magic_number) {
     console.log(`  Magic number mismatch (expected ${expected.magic_number}, got ${magicNumber})`);
     return false;

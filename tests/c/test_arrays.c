@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "comprehensive_arrays.sf.h"
-#include "struct_frame_default_frame.h"
+#include "basic_frame.h"
 
 void print_failure_details(const char* label, const void* raw_data, size_t raw_data_size) {
   printf("\n");
@@ -51,8 +51,8 @@ int test_array_operations() {
   strncpy(msg.fixed_strings[1], "String2", 8);
 
   msg.bounded_strings.count = 2;
-  strncpy(msg.bounded_strings.data[0], "BoundedStr1", 16);
-  strncpy(msg.bounded_strings.data[1], "BoundedStr2", 16);
+  strncpy(msg.bounded_strings.data[0], "BoundedStr1", 12);
+  strncpy(msg.bounded_strings.data[1], "BoundedStr2", 12);
 
   msg.fixed_statuses[0] = 1;
   msg.fixed_statuses[1] = 2;
@@ -72,46 +72,46 @@ int test_array_operations() {
   msg.bounded_sensors.data[0].status = 2;
   strncpy(msg.bounded_sensors.data[0].name, "Pressure", 16);
 
-  // Encode message into BasicPacket format
+  // Encode message into BasicFrame format
   uint8_t encode_buffer[1024];
-  msg_encode_buffer buffer = {0};
-  buffer.data = encode_buffer;
+  basic_frame_encode_buffer_t buffer;
+  basic_frame_encode_init(&buffer, encode_buffer, sizeof(encode_buffer));
 
-  packet_format_t* format = &default_frame_format;
-  bool encoded = comprehensive_arrays_comprehensive_array_message_encode(&buffer, format, &msg);
+  bool encoded = basic_frame_encode_msg(&buffer, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID,
+                                         &msg, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MAX_SIZE);
 
   if (!encoded) {
     print_failure_details("Encoding failed", NULL, 0);
     return 0;
   }
 
-  // Validate and decode the BasicPacket
-  msg_info_t decode_result = format->validate_packet(encode_buffer, buffer.size);
+  // Validate and decode the BasicFrame
+  basic_frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, buffer.size);
   if (!decode_result.valid) {
     print_failure_details("Validation failed", encode_buffer, buffer.size);
     return 0;
   }
 
-  ComprehensiveArraysComprehensiveArrayMessage decoded_msg = 
-      comprehensive_arrays_comprehensive_array_message_get(decode_result);
+  ComprehensiveArraysComprehensiveArrayMessage* decoded_msg = 
+      (ComprehensiveArraysComprehensiveArrayMessage*)decode_result.msg_data;
 
   // Compare original and decoded messages
-  if (decoded_msg.fixed_ints[0] != msg.fixed_ints[0]) {
+  if (decoded_msg->fixed_ints[0] != msg.fixed_ints[0]) {
     print_failure_details("Value mismatch: fixed_ints[0]", encode_buffer, buffer.size);
     return 0;
   }
 
-  if (decoded_msg.bounded_uints.count != msg.bounded_uints.count) {
+  if (decoded_msg->bounded_uints.count != msg.bounded_uints.count) {
     print_failure_details("Value mismatch: bounded_uints.count", encode_buffer, buffer.size);
     return 0;
   }
 
-  if (decoded_msg.bounded_uints.data[0] != msg.bounded_uints.data[0]) {
+  if (decoded_msg->bounded_uints.data[0] != msg.bounded_uints.data[0]) {
     print_failure_details("Value mismatch: bounded_uints.data[0]", encode_buffer, buffer.size);
     return 0;
   }
 
-  if (decoded_msg.fixed_sensors[0].id != msg.fixed_sensors[0].id) {
+  if (decoded_msg->fixed_sensors[0].id != msg.fixed_sensors[0].id) {
     print_failure_details("Value mismatch: fixed_sensors[0].id", encode_buffer, buffer.size);
     return 0;
   }

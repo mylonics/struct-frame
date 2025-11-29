@@ -16,6 +16,74 @@ def fletcher_checksum_calculation(buffer, start=0, end=None):
     return [byte1, byte2]
 
 
+class BasicFrame:
+    """
+    BasicFrame - Simple frame format with CRC
+    
+    Format: [START1=0x90] [START2=0x91] [MSG_ID] [MSG...] [CRC1] [CRC2]
+    
+    This frame format requires a message ID to message length lookup function
+    since the length is not included in the packet.
+    """
+    
+    START_BYTE1 = 0x90
+    START_BYTE2 = 0x91
+    HEADER_SIZE = 3  # start1 + start2 + msg_id
+    FOOTER_SIZE = 2  # crc1 + crc2
+    
+    def __init__(self):
+        self.packet = []
+        self.desired_packet_length = 0
+        self.state = 0  # 0: looking for start1, 1: looking for start2, 2: getting msg_id, 3: getting payload
+    
+    def encode_msg(self, msg):
+        """Encode a message object into a framed byte list"""
+        return self.encode(msg.pack(), msg.msg_id)
+    
+    def encode(self, data, msg_id):
+        """Encode data with a message ID into a framed byte list"""
+        output = []
+        output.append(self.START_BYTE1)
+        output.append(self.START_BYTE2)
+        output.append(msg_id)
+        if len(data):
+            for b in data:
+                output.append(b)
+        # Calculate checksum on msg_id + data
+        checksum_data = [msg_id] + list(data)
+        checksum = fletcher_checksum_calculation(checksum_data)
+        output.append(checksum[0])
+        output.append(checksum[1])
+        return output
+    
+    def validate_packet(self, buffer):
+        """Validate a complete packet in a buffer"""
+        if len(buffer) < self.HEADER_SIZE + self.FOOTER_SIZE:
+            return None
+        
+        # Check start bytes
+        if buffer[0] != self.START_BYTE1 or buffer[1] != self.START_BYTE2:
+            return None
+        
+        msg_length = len(buffer) - self.HEADER_SIZE - self.FOOTER_SIZE
+        
+        # Validate checksum over msg_id + msg data
+        checksum = fletcher_checksum_calculation(buffer, 2, len(buffer) - self.FOOTER_SIZE)
+        if checksum[0] != buffer[-2] or checksum[1] != buffer[-1]:
+            return None
+        
+        return {
+            'valid': True,
+            'msg_id': buffer[2],
+            'msg_len': msg_length,
+            'msg_data': buffer[self.HEADER_SIZE:len(buffer) - self.FOOTER_SIZE]
+        }
+    
+    def get_msg_buffer(self, buffer):
+        """Get the message data portion from a validated buffer"""
+        return buffer[self.HEADER_SIZE:len(buffer) - self.FOOTER_SIZE]
+
+
 class BasicPacket:
     start_byte = 0x90
     header_length = 0
