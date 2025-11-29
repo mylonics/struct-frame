@@ -45,8 +45,8 @@ public:
         
         size_t msg_length = length - header_length_ - footer_length_;
         
-        // Calculate checksum
-        Checksum calc = fletcher_checksum(buffer + header_length_, msg_length);
+        // Calculate checksum on msg_id + msg data (buffer + 1 includes msg_id byte)
+        Checksum calc = fletcher_checksum(buffer + 1, msg_length + 1);
         
         // Validate checksum
         if (calc.byte1 == buffer[length - 2] && calc.byte2 == buffer[length - 1]) {
@@ -67,7 +67,8 @@ public:
             std::memcpy(buffer + 2, msg, msg_size);
         }
         
-        Checksum checksum = fletcher_checksum(msg, msg_size);
+        // Calculate checksum on msg_id + msg data (consistent with C and Python)
+        Checksum checksum = fletcher_checksum(buffer + 1, msg_size + 1);
         buffer[2 + msg_size] = checksum.byte1;
         buffer[2 + msg_size + 1] = checksum.byte2;
         
@@ -81,7 +82,8 @@ public:
     }
     
     uint8_t encode_finish(uint8_t* buffer, uint8_t msg_size) override {
-        Checksum checksum = fletcher_checksum(buffer + header_length_, msg_size);
+        // Calculate checksum on msg_id + msg data (buffer + 1 includes msg_id byte)
+        Checksum checksum = fletcher_checksum(buffer + 1, msg_size + 1);
         buffer[header_length_ + msg_size] = checksum.byte1;
         buffer[header_length_ + msg_size + 1] = checksum.byte2;
         return header_length_ + msg_size + footer_length_;
