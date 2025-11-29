@@ -218,6 +218,22 @@ class TestRunnerBase:
                 cmd = f"{cmd} {args}"
             return self.run_command(cmd, cwd=script_dir)[0]
 
+        # JavaScript (runs test files from script_dir - generated code directory)
+        if lang_id == 'js' and 'script_dir' in execution:
+            script_dir = self.project_root / execution.get('script_dir', '')
+            source_path = test_dir / test_config['source_file']
+            # Copy test file to generated directory for execution
+            target_path = script_dir / test_config['source_file']
+            if source_path.exists():
+                script_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, target_path)
+            if not target_path.exists():
+                return False
+            cmd = f"{execution['interpreter']} {target_path.name}"
+            if args:
+                cmd = f"{cmd} {args}"
+            return self.run_command(cmd, cwd=script_dir)[0]
+
         # Interpreted language (Python, etc.)
         if 'source_file' in test_config:
             source_path = test_dir / test_config['source_file']
