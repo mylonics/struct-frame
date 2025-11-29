@@ -14,35 +14,36 @@ All supported frame formats are defined in [`examples/frame_formats.proto`](../e
 
 | Format | Start Bytes | Length | CRC | Total Overhead | Use Case |
 |--------|-------------|--------|-----|----------------|----------|
-| BasicFrame | 1 (0x90) | 0 | 2 | 4 | When all messages are known to both systems |
-| BasicFrameWithLen | 1 (0x90) | 1 | 2 | 5 | When systems may not have matching message definitions. Recommended if unknown messages may be sent. |
+| BasicFrame | 2 (0x90, 0x91) | 0 | 2 | 5 | When all messages are known to both systems |
+| TinyFrame | 1 (0x70) | 0 | 2 | 4 | Constrained environments with known messages |
+| BasicFrameWithLen | 2 (0x90, 0x92) | 1 | 2 | 6 | When systems may not have matching message definitions |
+| TinyFrameWithLen | 1 (0x71) | 1 | 2 | 5 | Constrained environments with variable messages |
+| BasicFrameWithLen16 | 2 (0x90, 0x93) | 2 | 2 | 7 | Large payloads up to 64KB |
+| BasicFrameWithSysComp | 2 (0x90, 0x94) | 0 | 2 | 7 | Multi-system networks with system and component IDs |
 
 ## Extended Frame Formats
 
 | Format | Start Bytes | Length | CRC | Total Overhead | Use Case |
 |--------|-------------|--------|-----|----------------|----------|
-| BasicFrameNoCrc | 1 (0x90) | 0 | 0 | 2 | Sync recovery, no CRC |
-| BasicFrameLen16 | 1 (0x90) | 2 | 2 | 6 | Large payload messages |
-| BasicFrameLen16NoCrc | 1 (0x90) | 2 | 0 | 4 | Large payloads, no CRC |
-| BasicFrameLen8NoCrc | 1 (0x90) | 1 | 0 | 3 | Variable length, no CRC |
+| NoFormat | 0 | 0 | 0 | 0 | Trusted links, nested protocols |
+| MinimalFrame | 0 | 0 | 2 | 3 | Minimal framing with CRC |
+| MinimalFrameNoCrc | 0 | 0 | 0 | 1 | Minimal framing, trusted link |
+| MinimalFrameWithLen | 0 | 1 | 2 | 4 | Variable length, minimal |
 
 ## Parametric Frame Formats
 
 | Format | Start Bytes | Length | CRC | Total Overhead | Use Case |
 |--------|-------------|--------|-----|----------------|----------|
-| NoFormat | 0 | 0 | 0 | 0 | Trusted links, nested protocols |
-| MsgIdFrame | 0 | 0 | 2 | 3 | Minimal framing with CRC |
-| MsgIdFrameNoCrc | 0 | 0 | 0 | 1 | Minimal framing, trusted link |
-| MsgIdFrameLen8 | 0 | 1 | 2 | 4 | Variable length, minimal |
-| MsgIdFrameLen8NoCrc | 0 | 1 | 0 | 2 | Variable length, no CRC |
-| MsgIdFrameLen16 | 0 | 2 | 2 | 5 | Large payloads, minimal |
-| MsgIdFrameLen16NoCrc | 0 | 2 | 0 | 3 | Large payloads, no CRC |
-| TinyFrame | 1 | 0 | 2 | 4 | Constrained environments |
-| TinyFrameNoCrc | 1 | 0 | 0 | 2 | Minimal overhead |
-| TinyFrameLen8 | 1 | 1 | 2 | 5 | Variable length, constrained |
-| TinyFrameLen8NoCrc | 1 | 1 | 0 | 3 | Variable, minimal overhead |
-| TinyFrameLen16 | 1 | 2 | 2 | 6 | Large payloads, constrained |
-| TinyFrameLen16NoCrc | 1 | 2 | 0 | 4 | Large, minimal overhead |
+| BasicFrameNoCrc | 2 (0x90, 0x95) | 0 | 0 | 3 | Sync recovery, no CRC |
+| BasicFrameWithLenNoCrc | 2 (0x90, 0x96) | 1 | 0 | 4 | Variable length, no CRC |
+| BasicFrameWithLen16NoCrc | 2 (0x90, 0x97) | 2 | 0 | 5 | Large payloads, no CRC |
+| TinyFrameNoCrc | 1 (0x72) | 0 | 0 | 2 | Minimal overhead |
+| TinyFrameWithLenNoCrc | 1 (0x73) | 1 | 0 | 3 | Variable, minimal overhead |
+| TinyFrameWithLen16 | 1 (0x74) | 2 | 2 | 6 | Large payloads, constrained |
+| TinyFrameWithLen16NoCrc | 1 (0x75) | 2 | 0 | 4 | Large, minimal overhead |
+| MinimalFrameWithLenNoCrc | 0 | 1 | 0 | 2 | Variable length, no CRC |
+| MinimalFrameWithLen16 | 0 | 2 | 2 | 5 | Large payloads, minimal |
+| MinimalFrameWithLen16NoCrc | 0 | 2 | 0 | 3 | Large payloads, no CRC |
 
 ## No Frame Format
 
@@ -63,16 +64,16 @@ Limitations:
 The default frame format used by Struct Frame:
 
 ```
-[Start Byte] [Message ID] [Payload Data...] [Checksum 1] [Checksum 2]
-     0x90        1 byte     Variable Length     1 byte      1 byte
+[Start Byte 1] [Start Byte 2] [Message ID] [Payload Data...] [Checksum 1] [Checksum 2]
+     0x90           0x91         1 byte     Variable Length     1 byte      1 byte
 ```
 
 ### Components
 
-**Start Byte (0x90)**
-- Fixed marker to identify frame boundaries
-- Parser scans for this byte to synchronize
-- Allows recovery after corruption
+**Start Bytes (0x90, 0x91)**
+- Two-byte marker to identify frame boundaries
+- Parser scans for this sequence to synchronize
+- Second byte varies by frame type (0x91=Basic, 0x92=WithLen, etc.)
 
 **Message ID (1 byte)**
 - Maps to specific message type defined in proto
@@ -94,37 +95,37 @@ The default frame format used by Struct Frame:
 Message: VehicleHeartbeat (ID=42) with payload [0x01, 0x02, 0x03, 0x04]
 
 ```
-Frame: [0x90] [0x2A] [0x01, 0x02, 0x03, 0x04] [0x7F] [0x8A]
-        Start   ID         Payload              Checksum
+Frame: [0x90] [0x91] [0x2A] [0x01, 0x02, 0x03, 0x04] [0x7F] [0x8A]
+        Start1 Start2  ID         Payload              Checksum
 ```
 
 ### Frame Size
 
-Total bytes = 2 (header) + payload size + 2 (checksum)
+Total bytes = 3 (header) + payload size + 2 (checksum)
 
-For a message with 5 bytes of data: 2 + 5 + 2 = 9 bytes total
+For a message with 5 bytes of data: 3 + 5 + 2 = 10 bytes total
 
-## MSG ID Frame Variants
+## Minimal Frame Variants
 
-Minimal framing with just message ID and optional CRC:
+Minimal framing with just message ID and optional CRC (0 start bytes):
 
-**MsgIdFrame**: `[MSG_ID (1)] [PAYLOAD] [CRC (2)]`
+**MinimalFrame**: `[MSG_ID (1)] [PAYLOAD] [CRC (2)]`
 - 3 bytes overhead
 - For synchronized links with error detection
 
-**MsgIdFrameNoCrc**: `[MSG_ID (1)] [PAYLOAD]`
+**MinimalFrameNoCrc**: `[MSG_ID (1)] [PAYLOAD]`
 - 1 byte overhead
 - For trusted, synchronized links
 
 ## Tiny Frame Variants
 
-Low overhead framing for constrained environments:
+Low overhead framing for constrained environments (1 start byte):
 
-**TinyFrame**: `[START (1)] [MSG_ID (1)] [PAYLOAD] [CRC (2)]`
+**TinyFrame**: `[START (0x70)] [MSG_ID (1)] [PAYLOAD] [CRC (2)]`
 - 4 bytes overhead
 - Battery-powered devices, high message rates
 
-**TinyFrameNoCrc**: `[START (1)] [MSG_ID (1)] [PAYLOAD]`
+**TinyFrameNoCrc**: `[START (0x72)] [MSG_ID (1)] [PAYLOAD]`
 - 2 bytes overhead
 - Minimal overhead with sync recovery
 
@@ -132,18 +133,28 @@ Low overhead framing for constrained environments:
 
 All frame formats have variants with explicit length fields:
 
-**8-bit length (Len8)**: Supports payloads up to 255 bytes
+**1-byte length (WithLen)**: Supports payloads up to 255 bytes
 - Adds 1 byte to header
 - Use for variable-length messages
 
-**16-bit length (Len16)**: Supports payloads up to 65,535 bytes
+**2-byte length (WithLen16)**: Supports payloads up to 65,535 bytes
 - Adds 2 bytes to header (little-endian)
 - Use for large data transfers, firmware updates
 
-Example: `BasicFrameLen16`
+Example: `BasicFrameWithLen16`
 ```
-[START (1)] [MSG_ID (1)] [LEN_LO (1)] [LEN_HI (1)] [PAYLOAD] [CRC (2)]
+[START1 (0x90)] [START2 (0x93)] [MSG_ID (1)] [LEN_LO (1)] [LEN_HI (1)] [PAYLOAD] [CRC (2)]
 ```
+
+## System/Component ID Variant
+
+**BasicFrameWithSysComp**: For multi-system networks
+```
+[START1 (0x90)] [START2 (0x94)] [SYS_ID (1)] [COMP_ID (1)] [MSG_ID (1)] [PAYLOAD] [CRC (2)]
+```
+- 7 bytes overhead
+- System ID identifies the vehicle/ground station
+- Component ID identifies the component (autopilot, camera, etc.)
 
 ## Parser State Machine
 

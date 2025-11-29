@@ -6,27 +6,28 @@ package frame_formats;
 // Frame format type enumeration
 enum FrameFormatType {
   NO_FORMAT = 0;
-  MSG_ID_FRAME = 1;
-  MSG_ID_FRAME_NO_CRC = 2;
+  MINIMAL_FRAME = 1;
+  MINIMAL_FRAME_NO_CRC = 2;
   BASIC_FRAME = 3;
   BASIC_FRAME_NO_CRC = 4;
   TINY_FRAME = 5;
   TINY_FRAME_NO_CRC = 6;
-  MSG_ID_FRAME_LEN8 = 7;
-  MSG_ID_FRAME_LEN8_NO_CRC = 8;
-  MSG_ID_FRAME_LEN16 = 9;
-  MSG_ID_FRAME_LEN16_NO_CRC = 10;
+  MINIMAL_FRAME_WITH_LEN = 7;
+  MINIMAL_FRAME_WITH_LEN_NO_CRC = 8;
+  MINIMAL_FRAME_WITH_LEN16 = 9;
+  MINIMAL_FRAME_WITH_LEN16_NO_CRC = 10;
   BASIC_FRAME_WITH_LEN = 11;
-  BASIC_FRAME_LEN8_NO_CRC = 12;
-  BASIC_FRAME_LEN16 = 13;
-  BASIC_FRAME_LEN16_NO_CRC = 14;
-  TINY_FRAME_LEN8 = 15;
-  TINY_FRAME_LEN8_NO_CRC = 16;
-  TINY_FRAME_LEN16 = 17;
-  TINY_FRAME_LEN16_NO_CRC = 18;
-  UBX = 19;
-  MAVLINK_V1 = 20;
-  MAVLINK_V2 = 21;
+  BASIC_FRAME_WITH_LEN_NO_CRC = 12;
+  BASIC_FRAME_WITH_LEN16 = 13;
+  BASIC_FRAME_WITH_LEN16_NO_CRC = 14;
+  TINY_FRAME_WITH_LEN = 15;
+  TINY_FRAME_WITH_LEN_NO_CRC = 16;
+  TINY_FRAME_WITH_LEN16 = 17;
+  TINY_FRAME_WITH_LEN16_NO_CRC = 18;
+  BASIC_FRAME_WITH_SYS_COMP = 19;
+  UBX = 20;
+  MAVLINK_V1 = 21;
+  MAVLINK_V2 = 22;
 }
 
 // Basic message payload included in all frame formats
@@ -43,182 +44,205 @@ message NoFormat {
 }
 
 // ============================================================================
-// MSG ID FRAME - Minimal framing with CRC
+// MINIMAL FRAME - No start bytes, just MSG_ID with CRC
 // Format: [MSG_ID] [MSG] [CRC1] [CRC2]
 // Overhead: 3 bytes
-message MsgIdFrame {
+message MinimalFrame {
   BasicMessage payload = 1;
   uint8 crc_byte1 = 2;
   uint8 crc_byte2 = 3;
 }
 
-// MSG ID FRAME NO CRC
+// MINIMAL FRAME NO CRC
 // Format: [MSG_ID] [MSG]
 // Overhead: 1 byte
-message MsgIdFrameNoCrc {
+message MinimalFrameNoCrc {
   BasicMessage payload = 1;
 }
 
 // ============================================================================
-// BASIC FRAME - Standard framing with sync and CRC (Recommended)
-// Format: [START=0x90] [MSG_ID] [MSG] [CRC1] [CRC2]
-// Overhead: 4 bytes
+// BASIC FRAME - 2 start bytes with CRC (Recommended)
+// Format: [START1=0x90] [START2=0x91] [MSG_ID] [MSG] [CRC1] [CRC2]
+// Overhead: 5 bytes
 message BasicFrame {
-  uint8 start_byte = 1 [(hex) = 0x90];
-  BasicMessage payload = 2;
-  uint8 crc_byte1 = 3;
-  uint8 crc_byte2 = 4;
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x91];
+  BasicMessage payload = 3;
+  uint8 crc_byte1 = 4;
+  uint8 crc_byte2 = 5;
 }
 
 // BASIC FRAME NO CRC
-// Format: [START=0x90] [MSG_ID] [MSG]
-// Overhead: 2 bytes
+// Format: [START1=0x90] [START2=0x95] [MSG_ID] [MSG]
+// Overhead: 3 bytes
 message BasicFrameNoCrc {
-  uint8 start_byte = 1 [(hex) = 0x90];
-  BasicMessage payload = 2;
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x95];
+  BasicMessage payload = 3;
 }
 
 // ============================================================================
-// TINY FRAME - Compact framing for constrained environments
-// Format: [START] [MSG_ID] [MSG] [CRC1] [CRC2]
+// TINY FRAME - 1 start byte with CRC (Recommended)
+// Format: [START=0x70] [MSG_ID] [MSG] [CRC1] [CRC2]
 // Overhead: 4 bytes
 message TinyFrame {
-  uint8 start_byte = 1 [(hex) = 0x90];
+  uint8 start_byte = 1 [(hex) = 0x70];
   BasicMessage payload = 2;
   uint8 crc_byte1 = 3;
   uint8 crc_byte2 = 4;
 }
 
 // TINY FRAME NO CRC
-// Format: [START] [MSG_ID] [MSG]
+// Format: [START=0x72] [MSG_ID] [MSG]
 // Overhead: 2 bytes
 message TinyFrameNoCrc {
-  uint8 start_byte = 1 [(hex) = 0x90];
+  uint8 start_byte = 1 [(hex) = 0x72];
   BasicMessage payload = 2;
 }
 
 // ============================================================================
-// LENGTH-PREFIXED VARIANTS (8-bit length, up to 255 bytes)
+// LENGTH-PREFIXED VARIANTS (1-byte length, up to 255 bytes)
 // ============================================================================
 
-// MSG ID FRAME LEN8
+// MINIMAL FRAME WITH LEN
 // Format: [MSG_ID] [LEN] [MSG] [CRC1] [CRC2]
 // Overhead: 4 bytes
-message MsgIdFrameLen8 {
+message MinimalFrameWithLen {
   BasicMessage payload = 1;
   uint8 length = 2;
   uint8 crc_byte1 = 3;
   uint8 crc_byte2 = 4;
 }
 
-// MSG ID FRAME LEN8 NO CRC
+// MINIMAL FRAME WITH LEN NO CRC
 // Format: [MSG_ID] [LEN] [MSG]
 // Overhead: 2 bytes
-message MsgIdFrameLen8NoCrc {
+message MinimalFrameWithLenNoCrc {
   BasicMessage payload = 1;
   uint8 length = 2;
 }
 
 // BASIC FRAME WITH LEN (Recommended for variable length)
-// Format: [START=0x90] [MSG_ID] [LEN] [MSG] [CRC1] [CRC2]
-// Overhead: 5 bytes
+// Format: [START1=0x90] [START2=0x92] [MSG_ID] [LEN] [MSG] [CRC1] [CRC2]
+// Overhead: 6 bytes
 message BasicFrameWithLen {
-  uint8 start_byte = 1 [(hex) = 0x90];
-  BasicMessage payload = 2;
-  uint8 length = 3;
-  uint8 crc_byte1 = 4;
-  uint8 crc_byte2 = 5;
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x92];
+  BasicMessage payload = 3;
+  uint8 length = 4;
+  uint8 crc_byte1 = 5;
+  uint8 crc_byte2 = 6;
 }
 
-// BASIC FRAME LEN8 NO CRC
-// Format: [START=0x90] [MSG_ID] [LEN] [MSG]
-// Overhead: 3 bytes
-message BasicFrameLen8NoCrc {
-  uint8 start_byte = 1 [(hex) = 0x90];
-  BasicMessage payload = 2;
-  uint8 length = 3;
+// BASIC FRAME WITH LEN NO CRC
+// Format: [START1=0x90] [START2=0x96] [MSG_ID] [LEN] [MSG]
+// Overhead: 4 bytes
+message BasicFrameWithLenNoCrc {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x96];
+  BasicMessage payload = 3;
+  uint8 length = 4;
 }
 
-// TINY FRAME LEN8
-// Format: [START] [MSG_ID] [LEN] [MSG] [CRC1] [CRC2]
+// TINY FRAME WITH LEN (Recommended)
+// Format: [START=0x71] [MSG_ID] [LEN] [MSG] [CRC1] [CRC2]
 // Overhead: 5 bytes
-message TinyFrameLen8 {
-  uint8 start_byte = 1 [(hex) = 0x90];
+message TinyFrameWithLen {
+  uint8 start_byte = 1 [(hex) = 0x71];
   BasicMessage payload = 2;
   uint8 length = 3;
   uint8 crc_byte1 = 4;
   uint8 crc_byte2 = 5;
 }
 
-// TINY FRAME LEN8 NO CRC
-// Format: [START] [MSG_ID] [LEN] [MSG]
+// TINY FRAME WITH LEN NO CRC
+// Format: [START=0x73] [MSG_ID] [LEN] [MSG]
 // Overhead: 3 bytes
-message TinyFrameLen8NoCrc {
-  uint8 start_byte = 1 [(hex) = 0x90];
+message TinyFrameWithLenNoCrc {
+  uint8 start_byte = 1 [(hex) = 0x73];
   BasicMessage payload = 2;
   uint8 length = 3;
 }
 
 // ============================================================================
-// LENGTH-PREFIXED VARIANTS (16-bit length, up to 65535 bytes)
+// LENGTH-PREFIXED VARIANTS (2-byte length, up to 65535 bytes)
 // ============================================================================
 
-// MSG ID FRAME LEN16
+// MINIMAL FRAME WITH LEN16
 // Format: [MSG_ID] [LEN_LO] [LEN_HI] [MSG] [CRC1] [CRC2]
 // Overhead: 5 bytes
-message MsgIdFrameLen16 {
+message MinimalFrameWithLen16 {
   BasicMessage payload = 1;
   uint16 length = 2;
   uint8 crc_byte1 = 3;
   uint8 crc_byte2 = 4;
 }
 
-// MSG ID FRAME LEN16 NO CRC
+// MINIMAL FRAME WITH LEN16 NO CRC
 // Format: [MSG_ID] [LEN_LO] [LEN_HI] [MSG]
 // Overhead: 3 bytes
-message MsgIdFrameLen16NoCrc {
+message MinimalFrameWithLen16NoCrc {
   BasicMessage payload = 1;
   uint16 length = 2;
 }
 
-// BASIC FRAME LEN16
-// Format: [START=0x90] [MSG_ID] [LEN_LO] [LEN_HI] [MSG] [CRC1] [CRC2]
+// BASIC FRAME WITH LEN16 (Recommended for large payloads)
+// Format: [START1=0x90] [START2=0x93] [MSG_ID] [LEN_LO] [LEN_HI] [MSG] [CRC1] [CRC2]
+// Overhead: 7 bytes
+message BasicFrameWithLen16 {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x93];
+  BasicMessage payload = 3;
+  uint16 length = 4;
+  uint8 crc_byte1 = 5;
+  uint8 crc_byte2 = 6;
+}
+
+// BASIC FRAME WITH LEN16 NO CRC
+// Format: [START1=0x90] [START2=0x97] [MSG_ID] [LEN_LO] [LEN_HI] [MSG]
+// Overhead: 5 bytes
+message BasicFrameWithLen16NoCrc {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x97];
+  BasicMessage payload = 3;
+  uint16 length = 4;
+}
+
+// TINY FRAME WITH LEN16
+// Format: [START=0x74] [MSG_ID] [LEN_LO] [LEN_HI] [MSG] [CRC1] [CRC2]
 // Overhead: 6 bytes
-message BasicFrameLen16 {
-  uint8 start_byte = 1 [(hex) = 0x90];
+message TinyFrameWithLen16 {
+  uint8 start_byte = 1 [(hex) = 0x74];
   BasicMessage payload = 2;
   uint16 length = 3;
   uint8 crc_byte1 = 4;
   uint8 crc_byte2 = 5;
 }
 
-// BASIC FRAME LEN16 NO CRC
-// Format: [START=0x90] [MSG_ID] [LEN_LO] [LEN_HI] [MSG]
+// TINY FRAME WITH LEN16 NO CRC
+// Format: [START=0x75] [MSG_ID] [LEN_LO] [LEN_HI] [MSG]
 // Overhead: 4 bytes
-message BasicFrameLen16NoCrc {
-  uint8 start_byte = 1 [(hex) = 0x90];
+message TinyFrameWithLen16NoCrc {
+  uint8 start_byte = 1 [(hex) = 0x75];
   BasicMessage payload = 2;
   uint16 length = 3;
 }
 
-// TINY FRAME LEN16
-// Format: [START] [MSG_ID] [LEN_LO] [LEN_HI] [MSG] [CRC1] [CRC2]
-// Overhead: 6 bytes
-message TinyFrameLen16 {
-  uint8 start_byte = 1 [(hex) = 0x90];
-  BasicMessage payload = 2;
-  uint16 length = 3;
-  uint8 crc_byte1 = 4;
-  uint8 crc_byte2 = 5;
-}
+// ============================================================================
+// SYSTEM/COMPONENT ID VARIANT (Recommended for multi-system networks)
+// ============================================================================
 
-// TINY FRAME LEN16 NO CRC
-// Format: [START] [MSG_ID] [LEN_LO] [LEN_HI] [MSG]
-// Overhead: 4 bytes
-message TinyFrameLen16NoCrc {
-  uint8 start_byte = 1 [(hex) = 0x90];
-  BasicMessage payload = 2;
-  uint16 length = 3;
+// BASIC FRAME WITH SYS COMP
+// Format: [START1=0x90] [START2=0x94] [SYS_ID] [COMP_ID] [MSG_ID] [MSG] [CRC1] [CRC2]
+// Overhead: 7 bytes
+message BasicFrameWithSysComp {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x94];
+  uint8 system_id = 3;
+  uint8 component_id = 4;
+  BasicMessage payload = 5;
+  uint8 crc_byte1 = 6;
+  uint8 crc_byte2 = 7;
 }
 
 // ============================================================================
@@ -295,8 +319,8 @@ message MavlinkV2Signature {
 // Runtime frame format configuration
 message FrameFormatConfig {
   FrameFormatType format_type = 1;
-  uint8 start_byte = 2 [(hex) = 0x90];
-  uint8 start_byte_2 = 3 [(hex) = 0x62];
+  uint8 start_byte1 = 2 [(hex) = 0x90];
+  uint8 start_byte2 = 3 [(hex) = 0x91];
   bool crc_enabled = 4;
   bool signing_enabled = 5;
 }
