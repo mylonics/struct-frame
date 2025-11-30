@@ -6,5 +6,38 @@
     "test_float": 3.14159,
     "test_bool": true,
     "test_array": [100, 200, 300]
+  },
+  "basic_types": {
+    "small_int": -42,
+    "medium_int": -1000,
+    "regular_int": -100000,
+    "large_int": -1000000000,
+    "small_uint": 255,
+    "medium_uint": 65535,
+    "regular_uint": 4294967295,
+    "large_uint": "18446744073709551615",
+    "single_precision": 3.14159,
+    "double_precision": 2.718281828459045,
+    "flag": true,
+    "device_id": "TEST_DEVICE_12345678901234567890",
+    "description": "Test description for basic types"
+  },
+  "nested_messages": {
+    "header": {
+      "sequence": 12345,
+      "timestamp": 1234567890123,
+      "priority": 2,
+      "source": "CROSS_PLATFORM"
+    },
+    "payload": {
+      "data": "Cross-platform nested message test data",
+      "checksum": 987654321
+    },
+    "flattened_header": {
+      "sequence": 54321,
+      "timestamp": 9876543210987,
+      "priority": 1,
+      "source": "FLATTENED_SRC"
+    }
   }
 }

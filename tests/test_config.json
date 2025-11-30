@@ -148,16 +148,29 @@
     },
     {
       "name": "cross_platform_encode",
-      "description": "Cross-platform serialization",
+      "description": "Cross-platform serialization (SerializationTestMessage)",
       "test_name": "test_cross_platform_serialization",
       "output_file": "{lang_name}_test_data.bin"
     },
     {
       "name": "cross_platform_decode",
-      "description": "Cross-platform deserialization",
+      "description": "Cross-platform deserialization (SerializationTestMessage)",
       "test_name": "test_cross_platform_deserialization",
       "plugin": "cross_platform_matrix",
       "input_from": "cross_platform_encode"
+    },
+    {
+      "name": "cross_platform_basic_types_encode",
+      "description": "Cross-platform serialization (BasicTypesMessage)",
+      "test_name": "test_cross_platform_basic_types_serialization",
+      "output_file": "{lang_name}_basic_types_test_data.bin"
+    },
+    {
+      "name": "cross_platform_basic_types_decode",
+      "description": "Cross-platform deserialization (BasicTypesMessage)",
+      "test_name": "test_cross_platform_basic_types_deserialization",
+      "plugin": "cross_platform_matrix",
+      "input_from": "cross_platform_basic_types_encode"
     }
   ]
 }
