@@ -195,10 +195,11 @@ class FrameMsgInfo:
                 yield f'                self.state = {class_name}ParserState.{next_state}\n'
                 
                 # Handle seeing start byte 1 while looking for later bytes
+                # This code only runs when len(fmt.start_bytes) > 1 (i.e., i > 0 is only possible with 2+ start bytes)
                 if i > 0:
                     yield f'            elif byte == self.START_BYTE1:\n'
                     yield f'                self.buffer = [byte]\n'
-                    yield f'                self.state = {class_name}ParserState.LOOKING_FOR_START{2 if len(fmt.start_bytes) > 1 else ""}\n'
+                    yield f'                self.state = {class_name}ParserState.LOOKING_FOR_START2\n'
                     yield f'            else:\n'
                     yield f'                self.state = {class_name}ParserState.LOOKING_FOR_START1\n'
                 yield '\n'

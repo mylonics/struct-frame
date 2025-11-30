@@ -261,12 +261,12 @@ struct FrameMsgInfo {
                 yield f'                    state_ = {class_name}ParserState::{next_state};\n'
                 yield f'                }}'
                 
+                # This code only runs when len(fmt.start_bytes) > 1 (i.e., i > 0 is only possible with 2+ start bytes)
                 if i > 0:
                     yield f' else if (byte == {PREFIX}_START_BYTE1) {{\n'
                     yield f'                    buffer_[0] = byte;\n'
                     yield f'                    buffer_index_ = 1;\n'
-                    next_state = 'LookingForStart2' if len(fmt.start_bytes) > 1 else 'LookingForStart'
-                    yield f'                    state_ = {class_name}ParserState::{next_state};\n'
+                    yield f'                    state_ = {class_name}ParserState::LookingForStart2;\n'
                     yield f'                }} else {{\n'
                     yield f'                    state_ = {class_name}ParserState::LookingForStart1;\n'
                     yield f'                }}\n'

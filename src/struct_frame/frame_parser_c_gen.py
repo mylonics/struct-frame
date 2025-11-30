@@ -239,11 +239,12 @@ typedef struct frame_msg_info {
                 yield f'            }}'
                 
                 # Handle case where we see start byte 1 while looking for start byte 2
+                # This code only runs when len(fmt.start_bytes) > 1 (i.e., i > 0 is only possible with 2+ start bytes)
                 if i > 0:
                     yield f' else if (byte == {PREFIX}_START_BYTE1) {{\n'
                     yield f'                parser->buffer[0] = byte;\n'
                     yield f'                parser->buffer_index = 1;\n'
-                    yield f'                parser->state = {PREFIX}_LOOKING_FOR_START{2 if len(fmt.start_bytes) > 1 else ""};\n'
+                    yield f'                parser->state = {PREFIX}_LOOKING_FOR_START2;\n'
                     yield f'            }} else {{\n'
                     yield f'                parser->state = {PREFIX}_LOOKING_FOR_START1;\n'
                     yield f'            }}\n'
