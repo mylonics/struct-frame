@@ -676,25 +676,75 @@ def main():
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
 
-    if (args.build_c):
-        shutil.copytree(os.path.join(dir_path, "boilerplate/c"),
-                        args.c_path[0], dirs_exist_ok=True)
+    # When --frame_formats is provided, the frame parser boilerplate files are
+    # replaced by the generated frame parsers, so we only copy utility files.
+    # Otherwise, copy all boilerplate files including hand-coded frame parsers.
+    if args.frame_formats:
+        # Frame parser files to exclude when generating frame parsers
+        frame_parser_files = {
+            'c': ['basic_frame.h', 'basic_frame_with_len.h', 'struct_frame_parser.h'],
+            'cpp': ['basic_frame.hpp', 'basic_frame_with_len.hpp', 'struct_frame_parser.hpp'],
+            'ts': ['struct_frame_parser.ts'],
+            'js': ['struct_frame_parser.js'],
+            'py': ['struct_frame_parser.py']
+        }
 
-    if (args.build_ts):
-        shutil.copytree(os.path.join(dir_path, "boilerplate/ts"),
-                        args.ts_path[0], dirs_exist_ok=True)
+        def copy_boilerplate_selective(src_dir, dst_dir, exclude_files):
+            """Copy boilerplate files excluding frame parser files"""
+            if not os.path.exists(dst_dir):
+                os.makedirs(dst_dir)
+            for item in os.listdir(src_dir):
+                if item not in exclude_files:
+                    src_path = os.path.join(src_dir, item)
+                    dst_path = os.path.join(dst_dir, item)
+                    if os.path.isfile(src_path):
+                        shutil.copy2(src_path, dst_path)
 
-    if (args.build_js):
-        shutil.copytree(os.path.join(dir_path, "boilerplate/js"),
-                        args.js_path[0], dirs_exist_ok=True)
+        if args.build_c:
+            copy_boilerplate_selective(
+                os.path.join(dir_path, "boilerplate/c"),
+                args.c_path[0], frame_parser_files['c'])
 
-    if (args.build_py):
-        shutil.copytree(os.path.join(dir_path, "boilerplate/py"),
-                        args.py_path[0], dirs_exist_ok=True)
+        if args.build_ts:
+            copy_boilerplate_selective(
+                os.path.join(dir_path, "boilerplate/ts"),
+                args.ts_path[0], frame_parser_files['ts'])
 
-    if (args.build_cpp):
-        shutil.copytree(os.path.join(dir_path, "boilerplate/cpp"),
-                        args.cpp_path[0], dirs_exist_ok=True)
+        if args.build_js:
+            copy_boilerplate_selective(
+                os.path.join(dir_path, "boilerplate/js"),
+                args.js_path[0], frame_parser_files['js'])
+
+        if args.build_py:
+            copy_boilerplate_selective(
+                os.path.join(dir_path, "boilerplate/py"),
+                args.py_path[0], frame_parser_files['py'])
+
+        if args.build_cpp:
+            copy_boilerplate_selective(
+                os.path.join(dir_path, "boilerplate/cpp"),
+                args.cpp_path[0], frame_parser_files['cpp'])
+    else:
+        # Copy all boilerplate files (default behavior)
+        if (args.build_c):
+            shutil.copytree(os.path.join(dir_path, "boilerplate/c"),
+                            args.c_path[0], dirs_exist_ok=True)
+
+        if (args.build_ts):
+            shutil.copytree(os.path.join(dir_path, "boilerplate/ts"),
+                            args.ts_path[0], dirs_exist_ok=True)
+
+        if (args.build_js):
+            shutil.copytree(os.path.join(dir_path, "boilerplate/js"),
+                            args.js_path[0], dirs_exist_ok=True)
+
+        if (args.build_py):
+            shutil.copytree(os.path.join(dir_path, "boilerplate/py"),
+                            args.py_path[0], dirs_exist_ok=True)
+
+        if (args.build_cpp):
+            shutil.copytree(os.path.join(dir_path, "boilerplate/cpp"),
+                            args.cpp_path[0], dirs_exist_ok=True)
 
     # No boilerplate for GraphQL currently
 
