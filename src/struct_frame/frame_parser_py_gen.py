@@ -180,7 +180,9 @@ class FrameMsgInfo:
                 state_name = f'LOOKING_FOR_START{i + 1}' if len(fmt.start_bytes) > 1 else 'LOOKING_FOR_START'
                 const_name = f'self.START_BYTE{i + 1}' if len(fmt.start_bytes) > 1 else 'self.START_BYTE'
                 
-                yield f'        if self.state == {class_name}ParserState.{state_name}:\n'
+                # First state uses 'if', subsequent states use 'elif'
+                keyword = 'if' if i == 0 else 'elif'
+                yield f'        {keyword} self.state == {class_name}ParserState.{state_name}:\n'
                 yield f'            if byte == {const_name}:\n'
                 
                 if i == 0:
