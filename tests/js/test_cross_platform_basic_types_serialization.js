@@ -97,9 +97,7 @@ function createTestData() {
     offset += 4;
     
     // large_uint (uint64, little-endian) - handle string representation
-    const largeUint = typeof expected.large_uint === 'string' 
-      ? BigInt(expected.large_uint) 
-      : BigInt(expected.large_uint);
+    const largeUint = BigInt(expected.large_uint);
     payload.writeBigUInt64LE(largeUint, offset);
     offset += 8;
     
