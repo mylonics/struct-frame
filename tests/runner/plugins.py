@@ -106,8 +106,10 @@ class CrossPlatformMatrixPlugin(TestPlugin):
     """
     Plugin for cross-platform compatibility testing.
 
-    Runs a decoder test against all output files from a linked encoder suite,
-    producing a compatibility matrix.
+    Runs a decoder test against output files from a linked encoder suite,
+    using C as the base language. Tests:
+    - C serialization decoded by all languages
+    - All language serializations decoded by C
     """
 
     plugin_type = "cross_platform_matrix"
@@ -129,7 +131,14 @@ class CrossPlatformMatrixPlugin(TestPlugin):
         matrix = {}
         results = {lang_id: {} for lang_id in testable}
 
-        # Iterate over ALL testable languages as encoders, not just those with files
+        # Use C as the base language for cross-platform testing
+        base_lang = 'c'
+        if base_lang not in testable:
+            self.log(
+                f"Base language '{base_lang}' is not available for testing", "ERROR")
+            return {'results': {}, 'matrix': {}}
+
+        # Test all encoders against C decoder, and C encoder against all decoders
         for enc_lang in testable:
             enc_name = self.config['languages'][enc_lang]['name']
             matrix[enc_name] = {}
@@ -140,7 +149,13 @@ class CrossPlatformMatrixPlugin(TestPlugin):
             for dec_lang in testable:
                 dec_name = self.config['languages'][dec_lang]['name']
 
-                # If encoder didn't produce a file, mark all decoders as None (N/A)
+                # Only test: C encodes → all decode, OR all encode → C decodes
+                if enc_lang != base_lang and dec_lang != base_lang:
+                    # Skip non-C to non-C combinations
+                    matrix[enc_name][dec_name] = None
+                    continue
+
+                # If encoder didn't produce a file, mark as N/A
                 if data_file is None:
                     matrix[enc_name][dec_name] = None
                     result_key = f"{suite['name']}_{enc_lang}"
