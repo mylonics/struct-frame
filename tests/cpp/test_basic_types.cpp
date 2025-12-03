@@ -1,5 +1,5 @@
 #include "basic_types.sf.hpp"
-#include "frame_parsers_gen.hpp"
+#include "frame_parsers.hpp"
 #include <iostream>
 #include <cstring>
 

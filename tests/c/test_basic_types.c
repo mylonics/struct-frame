@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "basic_types.sf.h"
-#include "frame_parsers_gen.h"
+#include "frame_parsers.h"
 
 void print_failure_details(const char* label, const BasicTypesBasicTypesMessage* expected, 
                           const BasicTypesBasicTypesMessage* actual, 

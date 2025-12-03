@@ -1,5 +1,5 @@
 #include "comprehensive_arrays.sf.hpp"
-#include "frame_parsers_gen.hpp"
+#include "frame_parsers.hpp"
 #include <iostream>
 #include <cstring>
 

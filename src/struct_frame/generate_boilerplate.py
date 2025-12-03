@@ -32,10 +32,11 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 from struct_frame.frame_format import parse_frame_formats
-from struct_frame.frame_parser_c_gen import generate_c_frame_parsers
-from struct_frame.frame_parser_py_gen import generate_py_frame_parsers
-from struct_frame.frame_parser_ts_gen import generate_ts_frame_parsers, generate_js_frame_parsers
-from struct_frame.frame_parser_cpp_gen import generate_cpp_frame_parsers
+from struct_frame.frame_parser_c_gen import generate_c_frame_parsers, generate_c_frame_parsers_multi
+from struct_frame.frame_parser_py_gen import generate_py_frame_parsers, generate_py_frame_parsers_multi
+from struct_frame.frame_parser_ts_gen import (generate_ts_frame_parsers, generate_js_frame_parsers,
+                                               generate_ts_frame_parsers_multi, generate_js_frame_parsers_multi)
+from struct_frame.frame_parser_cpp_gen import generate_cpp_frame_parsers, generate_cpp_frame_parsers_multi
 
 
 def get_default_frame_formats_path():
@@ -61,7 +62,8 @@ def write_file(path, content):
 
 
 def generate_boilerplate_to_paths(frame_formats_file, c_path=None, ts_path=None, 
-                                   js_path=None, py_path=None, cpp_path=None):
+                                   js_path=None, py_path=None, cpp_path=None,
+                                   multi_file=True):
     """
     Generate frame parser boilerplate code from a frame_formats.proto file.
     
@@ -72,6 +74,7 @@ def generate_boilerplate_to_paths(frame_formats_file, c_path=None, ts_path=None,
         js_path: Output directory for JavaScript code (if None, skip JS generation)
         py_path: Output directory for Python code (if None, skip Python generation)
         cpp_path: Output directory for C++ code (if None, skip C++ generation)
+        multi_file: If True, generate multiple files per language (default: True)
     
     Returns:
         dict: Dictionary mapping output paths to generated content
@@ -80,24 +83,49 @@ def generate_boilerplate_to_paths(frame_formats_file, c_path=None, ts_path=None,
     files = {}
     
     if c_path:
-        name = os.path.join(c_path, "frame_parsers_gen.h")
-        files[name] = generate_c_frame_parsers(formats)
+        if multi_file:
+            c_files = generate_c_frame_parsers_multi(formats)
+            for filename, content in c_files.items():
+                files[os.path.join(c_path, filename)] = content
+        else:
+            name = os.path.join(c_path, "frame_parsers_gen.h")
+            files[name] = generate_c_frame_parsers(formats)
     
     if ts_path:
-        name = os.path.join(ts_path, "frame_parsers_gen.ts")
-        files[name] = generate_ts_frame_parsers(formats)
+        if multi_file:
+            ts_files = generate_ts_frame_parsers_multi(formats)
+            for filename, content in ts_files.items():
+                files[os.path.join(ts_path, filename)] = content
+        else:
+            name = os.path.join(ts_path, "frame_parsers_gen.ts")
+            files[name] = generate_ts_frame_parsers(formats)
     
     if js_path:
-        name = os.path.join(js_path, "frame_parsers_gen.js")
-        files[name] = generate_js_frame_parsers(formats)
+        if multi_file:
+            js_files = generate_js_frame_parsers_multi(formats)
+            for filename, content in js_files.items():
+                files[os.path.join(js_path, filename)] = content
+        else:
+            name = os.path.join(js_path, "frame_parsers_gen.js")
+            files[name] = generate_js_frame_parsers(formats)
     
     if py_path:
-        name = os.path.join(py_path, "frame_parsers_gen.py")
-        files[name] = generate_py_frame_parsers(formats)
+        if multi_file:
+            py_files = generate_py_frame_parsers_multi(formats)
+            for filename, content in py_files.items():
+                files[os.path.join(py_path, filename)] = content
+        else:
+            name = os.path.join(py_path, "frame_parsers_gen.py")
+            files[name] = generate_py_frame_parsers(formats)
     
     if cpp_path:
-        name = os.path.join(cpp_path, "frame_parsers_gen.hpp")
-        files[name] = generate_cpp_frame_parsers(formats)
+        if multi_file:
+            cpp_files = generate_cpp_frame_parsers_multi(formats)
+            for filename, content in cpp_files.items():
+                files[os.path.join(cpp_path, filename)] = content
+        else:
+            name = os.path.join(cpp_path, "frame_parsers_gen.hpp")
+            files[name] = generate_cpp_frame_parsers(formats)
     
     return files
 
