@@ -4,7 +4,7 @@
 #include <iostream>
 
 #include "serialization_test.sf.hpp"
-#include "frame_parsers_gen.hpp"
+#include "frame_parsers.hpp"
 
 void print_failure_details(const char* label) {
   std::cout << "\n============================================================\n";

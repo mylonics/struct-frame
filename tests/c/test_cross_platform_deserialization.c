@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "serialization_test.sf.h"
-#include "frame_parsers_gen.h"
+#include "frame_parsers.h"
 
 void print_failure_details(const char* label, const void* raw_data, size_t raw_data_size) {
   printf("\n");

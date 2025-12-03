@@ -1,5 +1,5 @@
 #include "serialization_test.sf.hpp"
-#include "frame_parsers_gen.hpp"
+#include "frame_parsers.hpp"
 #include <iostream>
 #include <fstream>
 #include <cstring>

@@ -729,25 +729,16 @@ def main():
 
     # When --frame_formats is provided, the frame parser boilerplate files are
     # replaced by the generated frame parsers, so we only copy utility files.
-    # Otherwise, copy only essential boilerplate files.
-    
-    # Files to copy for each language (frame_parsers_gen files are always copied)
-    # TypeScript/JavaScript need struct_base and struct_frame utilities
-    essential_files = {
-        'c': ['frame_parsers_gen.h'],
-        'cpp': ['frame_parsers_gen.hpp'],
-        'ts': ['frame_parsers_gen.ts', 'struct_base.ts', 'struct_frame.ts', 'struct_frame_types.ts'],
-        'js': ['frame_parsers_gen.js', 'struct_base.js', 'struct_frame.js', 'struct_frame_types.js'],
-        'py': ['frame_parsers_gen.py', '__init__.py']
-    }
+    # Otherwise, copy all boilerplate files (now multi-file structure).
     
     # Utility files that should be copied even when generating custom frame parsers
+    # (files that are not frame format specific)
     utility_files = {
-        'c': [],
-        'cpp': [],
-        'ts': ['struct_base.ts', 'struct_frame.ts', 'struct_frame_types.ts'],
-        'js': ['struct_base.js', 'struct_frame.js', 'struct_frame_types.js'],
-        'py': ['__init__.py']
+        'c': ['frame_base.h'],
+        'cpp': ['frame_base.hpp'],
+        'ts': ['struct_base.ts', 'struct_frame.ts', 'struct_frame_types.ts', 'frame_base.ts'],
+        'js': ['struct_base.js', 'struct_frame.js', 'struct_frame_types.js', 'frame_base.js'],
+        'py': []  # __init__.py will be generated with the custom frame formats
     }
     
     def copy_files_list(src_dir, dst_dir, files_to_copy):
@@ -759,6 +750,17 @@ def main():
             dst_path = os.path.join(dst_dir, item)
             if os.path.isfile(src_path):
                 shutil.copy2(src_path, dst_path)
+
+    def copy_all_files(src_dir, dst_dir):
+        """Copy all files from src_dir to dst_dir"""
+        if not os.path.exists(dst_dir):
+            os.makedirs(dst_dir)
+        if os.path.exists(src_dir):
+            for item in os.listdir(src_dir):
+                src_path = os.path.join(src_dir, item)
+                dst_path = os.path.join(dst_dir, item)
+                if os.path.isfile(src_path):
+                    shutil.copy2(src_path, dst_path)
 
     if args.frame_formats:
         # When generating custom frame parsers, only copy utility files
@@ -788,31 +790,31 @@ def main():
                 os.path.join(dir_path, "boilerplate/cpp"),
                 args.cpp_path[0], utility_files['cpp'])
     else:
-        # Copy essential boilerplate files (default behavior)
+        # Copy all boilerplate files (multi-file structure)
         if (args.build_c):
-            copy_files_list(
+            copy_all_files(
                 os.path.join(dir_path, "boilerplate/c"),
-                args.c_path[0], essential_files['c'])
+                args.c_path[0])
 
         if (args.build_ts):
-            copy_files_list(
+            copy_all_files(
                 os.path.join(dir_path, "boilerplate/ts"),
-                args.ts_path[0], essential_files['ts'])
+                args.ts_path[0])
 
         if (args.build_js):
-            copy_files_list(
+            copy_all_files(
                 os.path.join(dir_path, "boilerplate/js"),
-                args.js_path[0], essential_files['js'])
+                args.js_path[0])
 
         if (args.build_py):
-            copy_files_list(
+            copy_all_files(
                 os.path.join(dir_path, "boilerplate/py"),
-                args.py_path[0], essential_files['py'])
+                args.py_path[0])
 
         if (args.build_cpp):
-            copy_files_list(
+            copy_all_files(
                 os.path.join(dir_path, "boilerplate/cpp"),
-                args.cpp_path[0], essential_files['cpp'])
+                args.cpp_path[0])
 
     # No boilerplate for GraphQL currently
 
