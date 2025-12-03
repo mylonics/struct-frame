@@ -189,8 +189,7 @@ class FileCppGen():
 
         yield '#pragma once\n'
         yield '#include <cstdint>\n'
-        yield '#include <cstddef>\n'
-        yield '#include "struct_frame.hpp"\n\n'
+        yield '#include <cstddef>\n\n'
 
         # include additional header files if available in the future
 
@@ -209,7 +208,7 @@ class FileCppGen():
 
         # Generate get_message_length function
         if package.messages:
-            yield 'namespace StructFrame {\n\n'
+            yield 'namespace FrameParsers {\n\n'
             yield 'inline bool get_message_length(size_t msg_id, size_t* size) {\n'
             yield '    switch (msg_id) {\n'
             for key, msg in package.sortedMessages().items():
@@ -222,4 +221,4 @@ class FileCppGen():
             yield '    }\n'
             yield '    return false;\n'
             yield '}\n\n'
-            yield '}  // namespace StructFrame\n'
+            yield '}  // namespace FrameParsers\n'

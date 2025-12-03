@@ -4,7 +4,7 @@
 #include <iostream>
 
 #include "serialization_test.sf.hpp"
-#include "basic_frame.hpp"
+#include "frame_parsers_gen.hpp"
 
 void print_failure_details(const char* label) {
   std::cout << "\n============================================================\n";
@@ -77,7 +77,7 @@ bool read_and_validate_test_data(const char* filename) {
     return false;
   }
 
-  StructFrame::BasicFrameMsgInfo decode_result = StructFrame::basic_frame_validate_packet(buffer, size);
+  FrameParsers::FrameMsgInfo decode_result = FrameParsers::basic_frame_validate_packet(buffer, size);
 
   if (!decode_result.valid) {
     print_failure_details("Failed to decode data");

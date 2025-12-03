@@ -1,5 +1,5 @@
 #include "basic_types.sf.hpp"
-#include "basic_frame.hpp"
+#include "frame_parsers_gen.hpp"
 #include <iostream>
 #include <cstring>
 
@@ -44,7 +44,7 @@ int main() {
         
         // Encode message into BasicFrame format
         uint8_t buffer[512];
-        StructFrame::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
+        FrameParsers::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID, &msg, 
                             BASIC_TYPES_BASIC_TYPES_MESSAGE_MAX_SIZE)) {

@@ -1,5 +1,5 @@
 #include "comprehensive_arrays.sf.hpp"
-#include "basic_frame.hpp"
+#include "frame_parsers_gen.hpp"
 #include <iostream>
 #include <cstring>
 
@@ -27,7 +27,7 @@ int main() {
         
         // Encode message into BasicFrame format
         uint8_t buffer[1024];
-        StructFrame::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
+        FrameParsers::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID, &msg, 
                             COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MAX_SIZE)) {

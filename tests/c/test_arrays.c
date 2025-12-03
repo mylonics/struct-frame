@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "comprehensive_arrays.sf.h"
-#include "basic_frame.h"
+#include "frame_parsers_gen.h"
 
 void print_failure_details(const char* label, const void* raw_data, size_t raw_data_size) {
   printf("\n");
@@ -74,21 +74,19 @@ int test_array_operations() {
 
   // Encode message into BasicFrame format
   uint8_t encode_buffer[1024];
-  basic_frame_encode_buffer_t buffer;
-  basic_frame_encode_init(&buffer, encode_buffer, sizeof(encode_buffer));
+  size_t encoded_size = basic_frame_encode(encode_buffer, sizeof(encode_buffer),
+                                           COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID,
+                                           (const uint8_t*)&msg, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MAX_SIZE);
 
-  bool encoded = basic_frame_encode_msg(&buffer, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID,
-                                         &msg, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MAX_SIZE);
-
-  if (!encoded) {
+  if (encoded_size == 0) {
     print_failure_details("Encoding failed", NULL, 0);
     return 0;
   }
 
   // Validate and decode the BasicFrame
-  basic_frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, buffer.size);
+  frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, encoded_size);
   if (!decode_result.valid) {
-    print_failure_details("Validation failed", encode_buffer, buffer.size);
+    print_failure_details("Validation failed", encode_buffer, encoded_size);
     return 0;
   }
 
@@ -97,22 +95,22 @@ int test_array_operations() {
 
   // Compare original and decoded messages
   if (decoded_msg->fixed_ints[0] != msg.fixed_ints[0]) {
-    print_failure_details("Value mismatch: fixed_ints[0]", encode_buffer, buffer.size);
+    print_failure_details("Value mismatch: fixed_ints[0]", encode_buffer, encoded_size);
     return 0;
   }
 
   if (decoded_msg->bounded_uints.count != msg.bounded_uints.count) {
-    print_failure_details("Value mismatch: bounded_uints.count", encode_buffer, buffer.size);
+    print_failure_details("Value mismatch: bounded_uints.count", encode_buffer, encoded_size);
     return 0;
   }
 
   if (decoded_msg->bounded_uints.data[0] != msg.bounded_uints.data[0]) {
-    print_failure_details("Value mismatch: bounded_uints.data[0]", encode_buffer, buffer.size);
+    print_failure_details("Value mismatch: bounded_uints.data[0]", encode_buffer, encoded_size);
     return 0;
   }
 
   if (decoded_msg->fixed_sensors[0].id != msg.fixed_sensors[0].id) {
-    print_failure_details("Value mismatch: fixed_sensors[0].id", encode_buffer, buffer.size);
+    print_failure_details("Value mismatch: fixed_sensors[0].id", encode_buffer, encoded_size);
     return 0;
   }
 
