@@ -447,7 +447,8 @@ parser = argparse.ArgumentParser(
     prog='struct_frame',
     description='Message serialization and header generation program')
 
-parser.add_argument('filename')
+parser.add_argument('filename', nargs='?', default=None,
+                    help='Proto file to process (required unless --regenerate_boiler_plate is used)')
 parser.add_argument('--debug', action='store_true')
 parser.add_argument('--validate', action='store_true',
                     help='Validate the proto file without generating any output files')
@@ -460,12 +461,16 @@ parser.add_argument('--c_path', nargs=1, type=str, default=['generated/c/'])
 parser.add_argument('--ts_path', nargs=1, type=str, default=['generated/ts/'])
 parser.add_argument('--js_path', nargs=1, type=str, default=['generated/js/'])
 parser.add_argument('--py_path', nargs=1, type=str, default=['generated/py/'])
-parser.add_argument('--cpp_path', nargs=1, type=str, default=['generated/cpp/'])
+parser.add_argument('--cpp_path', nargs=1, type=str,
+                    default=['generated/cpp/'])
 parser.add_argument('--build_gql', action='store_true')
 parser.add_argument('--gql_path', nargs=1, type=str,
                     default=['generated/gql/'])
 parser.add_argument('--frame_formats', nargs=1, type=str,
                     help='Proto file containing frame format definitions to generate frame parsers')
+parser.add_argument('--regenerate_boiler_plate', action='store_true',
+                    help='Regenerate boilerplate code. Uses --frame_formats file if provided, '
+                         'otherwise uses default frame_formats.proto')
 
 
 def parseFile(filename):
@@ -568,7 +573,7 @@ def generateCppFileStrings(path):
 
 
 def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_path, cpp_path,
-                              build_c, build_ts, build_js, build_py, build_cpp):
+                             build_c, build_ts, build_js, build_py, build_cpp):
     """Generate frame parser files from frame format definitions"""
     from struct_frame.frame_format import parse_frame_formats
     from struct_frame.frame_parser_c_gen import generate_c_frame_parsers
@@ -603,7 +608,53 @@ def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_pa
 
 
 def main():
+    from struct_frame.generate_boilerplate import update_src_boilerplate, generate_boilerplate_to_paths, get_default_frame_formats_path
+
     args = parser.parse_args()
+
+    # Handle --regenerate_boiler_plate mode
+    if args.regenerate_boiler_plate:
+        # Determine which frame_formats file to use
+        if args.frame_formats:
+            frame_formats_file = args.frame_formats[0]
+            print(f"Regenerating boilerplate from: {frame_formats_file}")
+            # Generate to boilerplate directory using custom frame_formats file
+            from struct_frame.generate_boilerplate import get_boilerplate_dir, write_file
+            boilerplate_dir = get_boilerplate_dir()
+
+            if not os.path.exists(frame_formats_file):
+                print(
+                    f"Error: frame_formats file not found at {frame_formats_file}")
+                return
+
+            files = generate_boilerplate_to_paths(
+                frame_formats_file,
+                c_path=os.path.join(boilerplate_dir, 'c'),
+                ts_path=os.path.join(boilerplate_dir, 'ts'),
+                js_path=os.path.join(boilerplate_dir, 'js'),
+                py_path=os.path.join(boilerplate_dir, 'py'),
+                cpp_path=os.path.join(boilerplate_dir, 'cpp')
+            )
+
+            for path, content in files.items():
+                write_file(path, content)
+
+            print(f"Successfully regenerated {len(files)} boilerplate files")
+        else:
+            # Use default frame_formats.proto
+            print("Regenerating boilerplate from default frame_formats.proto")
+            success = update_src_boilerplate()
+            if not success:
+                print("Failed to regenerate boilerplate")
+                return
+        return
+
+    # Normal mode requires a filename
+    if not args.filename:
+        print("Error: filename is required unless --regenerate_boiler_plate is used")
+        parser.print_help()
+        return
+
     parseFile(args.filename)
 
     # If validate mode is specified, skip build argument check and file generation
