@@ -741,8 +741,17 @@ def main():
         'py': ['frame_parsers_gen.py', '__init__.py']
     }
     
-    def copy_essential_boilerplate(src_dir, dst_dir, files_to_copy):
-        """Copy only essential boilerplate files"""
+    # Utility files that should be copied even when generating custom frame parsers
+    utility_files = {
+        'c': [],
+        'cpp': [],
+        'ts': ['struct_base.ts', 'struct_frame.ts', 'struct_frame_types.ts'],
+        'js': ['struct_base.js', 'struct_frame.js', 'struct_frame_types.js'],
+        'py': ['__init__.py']
+    }
+    
+    def copy_files_list(src_dir, dst_dir, files_to_copy):
+        """Copy specified files from src_dir to dst_dir"""
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         for item in files_to_copy:
@@ -752,75 +761,56 @@ def main():
                 shutil.copy2(src_path, dst_path)
 
     if args.frame_formats:
-        # When generating frame parsers, only copy non-frame-parser files
+        # When generating custom frame parsers, only copy utility files
         # (the generated frame parsers will be written separately)
-        frame_parser_files = {
-            'c': ['frame_parsers_gen.h'],
-            'cpp': ['frame_parsers_gen.hpp'],
-            'ts': ['frame_parsers_gen.ts'],
-            'js': ['frame_parsers_gen.js'],
-            'py': ['frame_parsers_gen.py', '__init__.py']
-        }
-
-        def copy_boilerplate_selective(src_dir, dst_dir, exclude_files, essential):
-            """Copy boilerplate files excluding frame parser files"""
-            if not os.path.exists(dst_dir):
-                os.makedirs(dst_dir)
-            for item in essential:
-                if item not in exclude_files:
-                    src_path = os.path.join(src_dir, item)
-                    dst_path = os.path.join(dst_dir, item)
-                    if os.path.isfile(src_path):
-                        shutil.copy2(src_path, dst_path)
-
         if args.build_c:
-            copy_boilerplate_selective(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/c"),
-                args.c_path[0], frame_parser_files['c'], essential_files['c'])
+                args.c_path[0], utility_files['c'])
 
         if args.build_ts:
-            copy_boilerplate_selective(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/ts"),
-                args.ts_path[0], frame_parser_files['ts'], essential_files['ts'])
+                args.ts_path[0], utility_files['ts'])
 
         if args.build_js:
-            copy_boilerplate_selective(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/js"),
-                args.js_path[0], frame_parser_files['js'], essential_files['js'])
+                args.js_path[0], utility_files['js'])
 
         if args.build_py:
-            copy_boilerplate_selective(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/py"),
-                args.py_path[0], frame_parser_files['py'], essential_files['py'])
+                args.py_path[0], utility_files['py'])
 
         if args.build_cpp:
-            copy_boilerplate_selective(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/cpp"),
-                args.cpp_path[0], frame_parser_files['cpp'], essential_files['cpp'])
+                args.cpp_path[0], utility_files['cpp'])
     else:
         # Copy essential boilerplate files (default behavior)
         if (args.build_c):
-            copy_essential_boilerplate(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/c"),
                 args.c_path[0], essential_files['c'])
 
         if (args.build_ts):
-            copy_essential_boilerplate(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/ts"),
                 args.ts_path[0], essential_files['ts'])
 
         if (args.build_js):
-            copy_essential_boilerplate(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/js"),
                 args.js_path[0], essential_files['js'])
 
         if (args.build_py):
-            copy_essential_boilerplate(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/py"),
                 args.py_path[0], essential_files['py'])
 
         if (args.build_cpp):
-            copy_essential_boilerplate(
+            copy_files_list(
                 os.path.join(dir_path, "boilerplate/cpp"),
                 args.cpp_path[0], essential_files['cpp'])
 

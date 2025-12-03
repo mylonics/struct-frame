@@ -237,12 +237,15 @@ class FileCGen():
         #    yield '\n'
 
         if package.messages:
-            yield 'static inline bool get_message_length(size_t msg_id, size_t* size){\n switch (msg_id)\n {\n'
+            yield 'static inline bool get_message_length(size_t msg_id, size_t* size) {\n'
+            yield '    switch (msg_id) {\n'
             for key, msg in package.sortedMessages().items():
                 name = '%s_%s' % (CamelToSnakeCase(
                     msg.package).upper(), CamelToSnakeCase(msg.name).upper())
                 if msg.id:
-                    yield '  case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
+                    yield '        case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
 
-            yield '  default: break;\n } return false;\n}'
-            yield '\n'
+            yield '        default: break;\n'
+            yield '    }\n'
+            yield '    return false;\n'
+            yield '}\n'

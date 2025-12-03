@@ -121,7 +121,7 @@ def read_and_validate_test_data(filename):
         # Validate and decode using BasicFrame
         result = BasicFrame.validate_packet(list(binary_data))
         
-        if not result or not result.valid:
+        if not result.valid:
             print_failure_details(
                 "Failed to decode data",
                 expected_values={"decoded_message": "valid"},
