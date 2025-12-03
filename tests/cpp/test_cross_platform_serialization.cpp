@@ -1,5 +1,5 @@
 #include "serialization_test.sf.hpp"
-#include "basic_frame.hpp"
+#include "frame_parsers_gen.hpp"
 #include <iostream>
 #include <fstream>
 #include <cstring>
@@ -27,7 +27,7 @@ int main() {
         msg.test_array.data[2] = 300;
         
         uint8_t buffer[512];
-        StructFrame::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
+        FrameParsers::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, &msg, 
                             SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE)) {

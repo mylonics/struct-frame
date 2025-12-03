@@ -3,7 +3,7 @@
 #include <string.h>
 
 #include "serialization_test.sf.h"
-#include "basic_frame.h"
+#include "frame_parsers_gen.h"
 
 void print_failure_details(const char* label, const void* raw_data, size_t raw_data_size) {
   printf("\n");
@@ -38,13 +38,11 @@ int create_test_data() {
   msg.test_array.data[2] = 300;
 
   uint8_t encode_buffer[512];
-  basic_frame_encode_buffer_t buffer;
-  basic_frame_encode_init(&buffer, encode_buffer, sizeof(encode_buffer));
+  size_t encoded_size = basic_frame_encode(encode_buffer, sizeof(encode_buffer),
+                                           SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                           (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
 
-  bool encoded = basic_frame_encode_msg(&buffer, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
-                                         &msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
-
-  if (!encoded) {
+  if (encoded_size == 0) {
     print_failure_details("Encoding failed", NULL, 0);
     return 0;
   }
@@ -55,13 +53,13 @@ int create_test_data() {
     return 0;
   }
 
-  fwrite(encode_buffer, 1, buffer.size, file);
+  fwrite(encode_buffer, 1, encoded_size, file);
   fclose(file);
 
   // Self-validate
-  basic_frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, buffer.size);
+  frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, encoded_size);
   if (!decode_result.valid) {
-    print_failure_details("Self-validation failed", encode_buffer, buffer.size);
+    print_failure_details("Self-validation failed", encode_buffer, encoded_size);
     return 0;
   }
 
@@ -69,7 +67,7 @@ int create_test_data() {
       (SerializationTestSerializationTestMessage*)decode_result.msg_data;
 
   if (decoded_msg->magic_number != 3735928559 || decoded_msg->test_array.count != 3) {
-    print_failure_details("Self-verification failed", encode_buffer, buffer.size);
+    print_failure_details("Self-verification failed", encode_buffer, encoded_size);
     return 0;
   }
 

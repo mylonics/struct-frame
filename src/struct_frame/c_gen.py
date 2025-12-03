@@ -185,11 +185,6 @@ class MessageCGen():
         if msg.id:
             result += '#define %s_MSG_ID %d\n' % (defineName, msg.id)
 
-        funcName = defineName.lower()
-        if msg.id:
-            result += 'MESSAGE_HELPER(%s, %s, %d, %d);\n\n' % (funcName, structName,
-                                                               size, msg.id)
-
         return result + '\n'
 
     @staticmethod
@@ -211,8 +206,9 @@ class FileCGen():
 
         yield '#pragma once\n'
         yield '#pragma pack(1)\n'
-
-        yield '#include "struct_frame.h"\n'
+        yield '#include <stdbool.h>\n'
+        yield '#include <stdint.h>\n'
+        yield '#include <stddef.h>\n\n'
 
         # include additional header files if available in the future
 
@@ -241,12 +237,15 @@ class FileCGen():
         #    yield '\n'
 
         if package.messages:
-            yield 'bool get_message_length(size_t msg_id, size_t* size){\n switch (msg_id)\n {\n'
+            yield 'static inline bool get_message_length(size_t msg_id, size_t* size) {\n'
+            yield '    switch (msg_id) {\n'
             for key, msg in package.sortedMessages().items():
                 name = '%s_%s' % (CamelToSnakeCase(
                     msg.package).upper(), CamelToSnakeCase(msg.name).upper())
                 if msg.id:
-                    yield '  case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
+                    yield '        case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
 
-            yield '  default: break;\n } return false;\n}'
-            yield '\n'
+            yield '        default: break;\n'
+            yield '    }\n'
+            yield '    return false;\n'
+            yield '}\n'
