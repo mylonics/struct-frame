@@ -28,11 +28,11 @@ function printFailureDetails(label: string, expectedValues?: any, actualValues?:
   console.log('============================================================\n');
 }
 
-// BasicFrame constants
-const BASIC_FRAME_START_BYTE1 = 0x90;
-const BASIC_FRAME_START_BYTE2 = 0x91;
-const BASIC_FRAME_HEADER_SIZE = 3;  // start1 + start2 + msg_id
-const BASIC_FRAME_FOOTER_SIZE = 2;  // crc1 + crc2
+// BasicDefault constants
+const BASIC_DEFAULT_START_BYTE1 = 0x90;
+const BASIC_DEFAULT_START_BYTE2 = 0x71;
+const BASIC_DEFAULT_HEADER_SIZE = 4;  // start1 + start2 + length + msg_id
+const BASIC_DEFAULT_FOOTER_SIZE = 2;  // crc1 + crc2
 
 function loadExpectedValues(): any {
   try {
@@ -53,8 +53,8 @@ function createTestData(): boolean {
       return false;
     }
 
-    // Create a full BasicFrame message that matches C/Python format
-    // Frame format: [START1=0x90] [START2=0x91] [MSG_ID] [payload] [checksum1] [checksum2]
+    // Create a full BasicDefault message that matches C/Python format
+    // Frame format: [START1=0x90] [START2=0x71] [LEN] [MSG_ID] [payload] [checksum1] [checksum2]
     const msg_id = 204;
     
     // Create full payload matching the message structure:
@@ -101,20 +101,23 @@ function createTestData(): boolean {
       offset += 4;
     }
     
-    // Calculate Fletcher checksum on msg_id + payload (consistent with C and Python BasicFrame)
-    let byte1 = msg_id;  // Start with msg_id
-    let byte2 = msg_id;
+    // Calculate Fletcher checksum on length + msg_id + payload (consistent with BasicDefault)
+    let byte1 = payloadSize & 0xFF;  // Start with length byte
+    let byte2 = payloadSize & 0xFF;
+    byte1 = (byte1 + msg_id) & 0xFF;  // Add msg_id
+    byte2 = (byte2 + byte1) & 0xFF;
     for (let i = 0; i < payload.length; i++) {
       byte1 = (byte1 + payload[i]) & 0xFF;
       byte2 = (byte2 + byte1) & 0xFF;
     }
     
-    // Build complete frame with BasicFrame format
-    const frame = Buffer.alloc(BASIC_FRAME_HEADER_SIZE + payloadSize + BASIC_FRAME_FOOTER_SIZE);
-    frame[0] = BASIC_FRAME_START_BYTE1;
-    frame[1] = BASIC_FRAME_START_BYTE2;
-    frame[2] = msg_id;
-    payload.copy(frame, BASIC_FRAME_HEADER_SIZE);
+    // Build complete frame with BasicDefault format
+    const frame = Buffer.alloc(BASIC_DEFAULT_HEADER_SIZE + payloadSize + BASIC_DEFAULT_FOOTER_SIZE);
+    frame[0] = BASIC_DEFAULT_START_BYTE1;
+    frame[1] = BASIC_DEFAULT_START_BYTE2;
+    frame[2] = payloadSize & 0xFF;  // Length byte
+    frame[3] = msg_id;
+    payload.copy(frame, BASIC_DEFAULT_HEADER_SIZE);
     frame[frame.length - 2] = byte1;
     frame[frame.length - 1] = byte2;
     

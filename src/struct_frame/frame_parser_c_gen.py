@@ -448,9 +448,8 @@ typedef struct frame_msg_info {
         for i, (sb_name, sb_value) in enumerate(fmt.start_bytes):
             yield f'    buffer[{idx}] = {PREFIX}_START_BYTE{i + 1 if len(fmt.start_bytes) > 1 else ""};\n'
             idx += 1
-        yield f'    buffer[{idx}] = msg_id;\n'
-        idx += 1
         
+        # Write length BEFORE msg_id (per frame_formats.proto definition)
         if fmt.has_length:
             if fmt.length_bytes == 1:
                 yield f'    buffer[{idx}] = (uint8_t)msg_size;\n'
@@ -458,6 +457,9 @@ typedef struct frame_msg_info {
                 yield f'    buffer[{idx}] = (uint8_t)(msg_size & 0xFF);\n'
                 yield f'    buffer[{idx + 1}] = (uint8_t)((msg_size >> 8) & 0xFF);\n'
             idx += fmt.length_bytes
+        
+        yield f'    buffer[{idx}] = msg_id;\n'
+        idx += 1
         
         yield f'\n    /* Write message data */\n'
         yield f'    if (msg_size > 0 && msg != NULL) {{\n'
@@ -495,6 +497,9 @@ typedef struct frame_msg_info {
         
         yield f'\n    size_t msg_length = length - {PREFIX}_OVERHEAD;\n\n'
         
+        # Calculate msg_id offset: start_bytes + length_bytes (if has_length)
+        msg_id_offset = len(fmt.start_bytes) + (fmt.length_bytes if fmt.has_length else 0)
+        
         if fmt.has_crc:
             yield f'    /* Validate checksum */\n'
             yield f'    frame_checksum_t ck = frame_fletcher_checksum(buffer + {len(fmt.start_bytes)}, msg_length + 1'
@@ -503,13 +508,13 @@ typedef struct frame_msg_info {
             yield f');\n'
             yield f'    if (ck.byte1 == buffer[length - 2] && ck.byte2 == buffer[length - 1]) {{\n'
             yield f'        result.valid = true;\n'
-            yield f'        result.msg_id = buffer[{len(fmt.start_bytes)}];\n'
+            yield f'        result.msg_id = buffer[{msg_id_offset}];\n'
             yield f'        result.msg_len = msg_length;\n'
             yield f'        result.msg_data = (uint8_t*)(buffer + {PREFIX}_HEADER_SIZE);\n'
             yield f'    }}\n'
         else:
             yield f'    result.valid = true;\n'
-            yield f'    result.msg_id = buffer[{len(fmt.start_bytes)}];\n'
+            yield f'    result.msg_id = buffer[{msg_id_offset}];\n'
             yield f'    result.msg_len = msg_length;\n'
             yield f'    result.msg_data = (uint8_t*)(buffer + {PREFIX}_HEADER_SIZE);\n'
         

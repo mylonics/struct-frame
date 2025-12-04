@@ -7,11 +7,11 @@
 const fs = require('fs');
 const path = require('path');
 
-// BasicFrame constants
-const BASIC_FRAME_START_BYTE1 = 0x90;
-const BASIC_FRAME_START_BYTE2 = 0x91;
-const BASIC_FRAME_HEADER_SIZE = 3;  // start1 + start2 + msg_id
-const BASIC_FRAME_FOOTER_SIZE = 2;  // crc1 + crc2
+// BasicDefault constants
+const BASIC_DEFAULT_START_BYTE1 = 0x90;
+const BASIC_DEFAULT_START_BYTE2 = 0x71;
+const BASIC_DEFAULT_HEADER_SIZE = 4;  // start1 + start2 + length + msg_id
+const BASIC_DEFAULT_FOOTER_SIZE = 2;  // crc1 + crc2
 
 function printFailureDetails(label) {
   console.log('\n============================================================');
@@ -30,31 +30,33 @@ function loadExpectedValues() {
   }
 }
 
-function validateBasicFrame(buffer, expected) {
-  // BasicFrame validation with 2 start bytes
-  if (buffer.length < BASIC_FRAME_HEADER_SIZE + BASIC_FRAME_FOOTER_SIZE) {
+function validateBasicDefault(buffer, expected) {
+  // BasicDefault validation with 2 start bytes + length + msg_id
+  if (buffer.length < BASIC_DEFAULT_HEADER_SIZE + BASIC_DEFAULT_FOOTER_SIZE) {
     console.log('  Data too short');
     return false;
   }
 
   // Check start bytes
-  if (buffer[0] !== BASIC_FRAME_START_BYTE1 || buffer[1] !== BASIC_FRAME_START_BYTE2) {
-    console.log('  Invalid start bytes (expected 0x90 0x91, got 0x' + buffer[0].toString(16) + ' 0x' + buffer[1].toString(16) + ')');
+  if (buffer[0] !== BASIC_DEFAULT_START_BYTE1 || buffer[1] !== BASIC_DEFAULT_START_BYTE2) {
+    console.log('  Invalid start bytes (expected 0x90 0x71, got 0x' + buffer[0].toString(16) + ' 0x' + buffer[1].toString(16) + ')');
     return false;
   }
 
-  // Check message ID (at offset 2 in BasicFrame)
-  if (buffer[2] !== 204) {
-    console.log('  Invalid message ID (expected 204, got ' + buffer[2] + ')');
+  // Check message ID (at offset 3 in BasicDefault - after length)
+  if (buffer[3] !== 204) {
+    console.log('  Invalid message ID (expected 204, got ' + buffer[3] + ')');
     return false;
   }
 
   // Validate checksum
-  const msgLen = buffer.length - BASIC_FRAME_HEADER_SIZE - BASIC_FRAME_FOOTER_SIZE;
-  let byte1 = buffer[2];  // Start with msg_id
+  const msgLen = buffer.length - BASIC_DEFAULT_HEADER_SIZE - BASIC_DEFAULT_FOOTER_SIZE;
+  let byte1 = buffer[2];  // Start with length byte
   let byte2 = buffer[2];
+  byte1 = (byte1 + buffer[3]) % 256;  // Add msg_id
+  byte2 = (byte2 + byte1) % 256;
   for (let i = 0; i < msgLen; i++) {
-    byte1 = (byte1 + buffer[BASIC_FRAME_HEADER_SIZE + i]) & 0xFF;
+    byte1 = (byte1 + buffer[BASIC_DEFAULT_HEADER_SIZE + i]) & 0xFF;
     byte2 = (byte2 + byte1) & 0xFF;
   }
   
@@ -63,8 +65,8 @@ function validateBasicFrame(buffer, expected) {
     return false;
   }
 
-  // Extract magic number from payload (starts at offset 3 in BasicFrame)
-  const magicNumber = buffer.readUInt32LE(BASIC_FRAME_HEADER_SIZE);
+  // Extract magic number from payload (starts at offset 4 in BasicDefault)
+  const magicNumber = buffer.readUInt32LE(BASIC_DEFAULT_HEADER_SIZE);
   if (magicNumber !== expected.magic_number) {
     console.log('  Magic number mismatch (expected ' + expected.magic_number + ', got ' + magicNumber + ')');
     return false;
@@ -93,7 +95,7 @@ function readAndValidateTestData(filename) {
       return false;
     }
 
-    if (!validateBasicFrame(binaryData, expected)) {
+    if (!validateBasicDefault(binaryData, expected)) {
       console.log('  Validation failed');
       return false;
     }

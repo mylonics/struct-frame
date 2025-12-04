@@ -72,19 +72,19 @@ int test_array_operations() {
   msg.bounded_sensors.data[0].status = 2;
   strncpy(msg.bounded_sensors.data[0].name, "Pressure", 16);
 
-  // Encode message into BasicFrame format
+  // Encode message into BasicDefault format
   uint8_t encode_buffer[1024];
-  size_t encoded_size = basic_frame_encode(encode_buffer, sizeof(encode_buffer),
-                                           COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID,
-                                           (const uint8_t*)&msg, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MAX_SIZE);
+  size_t encoded_size = basic_default_encode(encode_buffer, sizeof(encode_buffer),
+                                             COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID,
+                                             (const uint8_t*)&msg, COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MAX_SIZE);
 
   if (encoded_size == 0) {
     print_failure_details("Encoding failed", NULL, 0);
     return 0;
   }
 
-  // Validate and decode the BasicFrame
-  frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, encoded_size);
+  // Validate and decode the BasicDefault frame
+  frame_msg_info_t decode_result = basic_default_validate_packet(encode_buffer, encoded_size);
   if (!decode_result.valid) {
     print_failure_details("Validation failed", encode_buffer, encoded_size);
     return 0;

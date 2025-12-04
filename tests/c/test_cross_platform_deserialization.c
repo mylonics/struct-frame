@@ -83,7 +83,7 @@ int read_and_validate_test_data(const char* filename) {
     return 0;
   }
 
-  frame_msg_info_t decode_result = basic_frame_validate_packet(buffer, size);
+  frame_msg_info_t decode_result = basic_default_validate_packet(buffer, size);
 
   if (!decode_result.valid) {
     print_failure_details("Failed to decode data", buffer, size);

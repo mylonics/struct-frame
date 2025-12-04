@@ -25,9 +25,9 @@ int main() {
         msg.bounded_uints.data[1] = 200;
         msg.bounded_uints.data[2] = 300;
         
-        // Encode message into BasicFrame format
+        // Encode message into BasicDefault format
         uint8_t buffer[1024];
-        FrameParsers::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
+        FrameParsers::BasicDefaultEncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID, &msg, 
                             COMPREHENSIVE_ARRAYS_COMPREHENSIVE_ARRAY_MESSAGE_MAX_SIZE)) {
