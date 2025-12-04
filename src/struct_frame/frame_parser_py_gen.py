@@ -184,33 +184,297 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
     """
     output.append(msg_id)
     output.extend(msg)
+
+
+# =============================================================================
+# Frame Parser Configuration
+# =============================================================================
+
+@dataclass
+class FrameParserConfig:
+    """
+    Configuration interface for frame format parsers.
+    This allows code reuse through configuration instead of code generation.
+    """
+    name: str
+    start_bytes: Tuple[int, ...]
+    header_size: int
+    footer_size: int
+    has_length: bool
+    length_bytes: int
+    has_crc: bool
+
+
+# =============================================================================
+# Generic Frame Parser
+# =============================================================================
+# This class provides a reusable frame parser that can be configured
+# for different frame formats, reducing code duplication.
+
+class GenericParserState(Enum):
+    """Parser state enumeration"""
+    LOOKING_FOR_START1 = 0
+    LOOKING_FOR_START2 = 1
+    GETTING_MSG_ID = 2
+    GETTING_LENGTH = 3
+    GETTING_PAYLOAD = 4
+
+
+class GenericFrameParser:
+    """
+    Generic frame parser that works with any frame format configuration.
+    This class eliminates the need for separate parser classes per format.
+    """
+    
+    def __init__(self, config: FrameParserConfig, get_msg_length: Callable[[int], int] = None):
+        self.config = config
+        self.get_msg_length = get_msg_length
+        self.reset()
+    
+    def _get_initial_state(self) -> GenericParserState:
+        if len(self.config.start_bytes) == 0:
+            return GenericParserState.GETTING_MSG_ID
+        else:
+            return GenericParserState.LOOKING_FOR_START1
+    
+    def reset(self):
+        """Reset parser state"""
+        self.state = self._get_initial_state()
+        self.buffer = []
+        self.packet_size = 0
+        self.msg_id = 0
+        self.msg_length = 0
+        self.length_lo = 0
+    
+    def parse_byte(self, byte: int) -> FrameMsgInfo:
+        """
+        Parse a single byte
+        
+        Returns:
+            FrameMsgInfo with valid=True when a complete valid message is received
+        """
+        result = FrameMsgInfo()
+        start_bytes = self.config.start_bytes
+        overhead = self.config.header_size + self.config.footer_size
+
+        if self.state == GenericParserState.LOOKING_FOR_START1:
+            if byte == start_bytes[0]:
+                self.buffer = [byte]
+                if len(start_bytes) > 1:
+                    self.state = GenericParserState.LOOKING_FOR_START2
+                else:
+                    self.state = GenericParserState.GETTING_MSG_ID
+        
+        elif self.state == GenericParserState.LOOKING_FOR_START2:
+            if byte == start_bytes[1]:
+                self.buffer.append(byte)
+                self.state = GenericParserState.GETTING_MSG_ID
+            elif byte == start_bytes[0]:
+                self.buffer = [byte]
+                # Stay in LOOKING_FOR_START2
+            else:
+                self.state = GenericParserState.LOOKING_FOR_START1
+        
+        elif self.state == GenericParserState.GETTING_MSG_ID:
+            self.buffer.append(byte)
+            self.msg_id = byte
+            if self.config.has_length:
+                self.state = GenericParserState.GETTING_LENGTH
+            elif self.get_msg_length:
+                msg_len = self.get_msg_length(byte)
+                if msg_len is not None:
+                    self.packet_size = overhead + msg_len
+                    self.state = GenericParserState.GETTING_PAYLOAD
+                else:
+                    self.state = self._get_initial_state()
+            else:
+                self.state = self._get_initial_state()
+        
+        elif self.state == GenericParserState.GETTING_LENGTH:
+            self.buffer.append(byte)
+            if self.config.length_bytes == 1:
+                self.msg_length = byte
+                self.packet_size = overhead + self.msg_length
+                self.state = GenericParserState.GETTING_PAYLOAD
+            else:
+                # 2-byte length
+                if len(self.buffer) == len(start_bytes) + 2:
+                    self.length_lo = byte
+                else:
+                    self.msg_length = self.length_lo | (byte << 8)
+                    self.packet_size = overhead + self.msg_length
+                    self.state = GenericParserState.GETTING_PAYLOAD
+        
+        elif self.state == GenericParserState.GETTING_PAYLOAD:
+            self.buffer.append(byte)
+            if len(self.buffer) >= self.packet_size:
+                if self.config.has_crc:
+                    result = validate_payload_with_crc(
+                        self.buffer, self.config.header_size, 
+                        self.config.length_bytes, len(start_bytes))
+                else:
+                    result = validate_payload_minimal(self.buffer, self.config.header_size)
+                self.state = self._get_initial_state()
+        
+        return result
+    
+    def encode(self, msg_id: int, msg: bytes) -> bytes:
+        """
+        Encode a message using this format
+        
+        Args:
+            msg_id: Message ID
+            msg: Message data bytes
+        
+        Returns:
+            Encoded frame as bytes
+        """
+        output = list(self.config.start_bytes)
+        
+        if self.config.has_crc:
+            encode_payload_with_crc(output, msg_id, msg, 
+                                   self.config.length_bytes, len(self.config.start_bytes))
+        else:
+            encode_payload_minimal(output, msg_id, msg)
+        
+        return bytes(output)
+    
+    def encode_msg(self, msg) -> bytes:
+        """Encode a message object (must have msg_id and pack() method)"""
+        return self.encode(msg.msg_id, msg.pack())
+    
+    @staticmethod
+    def validate_packet(config: FrameParserConfig, buffer: Union[bytes, List[int]]) -> FrameMsgInfo:
+        """
+        Validate a complete packet in a buffer
+        
+        Args:
+            config: Frame format configuration
+            buffer: Buffer containing the complete packet
+        
+        Returns:
+            FrameMsgInfo with valid=True if packet is valid
+        """
+        overhead = config.header_size + config.footer_size
+        
+        if len(buffer) < overhead:
+            return FrameMsgInfo()
+        
+        # Check start bytes
+        for i, start_byte in enumerate(config.start_bytes):
+            if buffer[i] != start_byte:
+                return FrameMsgInfo()
+        
+        # Validate payload
+        if config.has_crc:
+            return validate_payload_with_crc(buffer, config.header_size, 
+                                            config.length_bytes, len(config.start_bytes))
+        else:
+            return validate_payload_minimal(buffer, config.header_size)
+
+
+def create_frame_parser_class(config: FrameParserConfig):
+    """
+    Create a frame parser class for a specific configuration.
+    This factory function provides pre-configured parser classes.
+    """
+    class ConfiguredFrameParser(GenericFrameParser):
+        # Class attributes from config
+        CONFIG = config
+        START_BYTES = config.start_bytes
+        HEADER_SIZE = config.header_size
+        FOOTER_SIZE = config.footer_size
+        OVERHEAD = config.header_size + config.footer_size
+        HAS_LENGTH = config.has_length
+        LENGTH_BYTES = config.length_bytes
+        HAS_CRC = config.has_crc
+        
+        def __init__(self, get_msg_length: Callable[[int], int] = None):
+            super().__init__(config, get_msg_length)
+        
+        @staticmethod
+        def validate_packet(buffer: Union[bytes, List[int]]) -> FrameMsgInfo:
+            return GenericFrameParser.validate_packet(config, buffer)
+    
+    ConfiguredFrameParser.__name__ = config.name
+    ConfiguredFrameParser.__qualname__ = config.name
+    return ConfiguredFrameParser
 '''
 
     @staticmethod
     def generate_format_file(fmt):
-        """Generate a Python file for a single frame format"""
+        """Generate a Python file for a single frame format using configuration-based approach"""
+        name = fmt.name
+        snake_name = camel_to_snake(name)
+        
         yield '# Automatically generated frame parser\n'
         yield f'# Generated by {version} at {time.asctime()}.\n\n'
-        yield 'from enum import Enum\n'
-        yield 'from typing import Callable, List, Union\n'
         yield 'from .frame_base import (\n'
-        yield '    FrameMsgInfo, fletcher_checksum,\n'
-        yield '    validate_payload_with_crc, validate_payload_minimal,\n'
-        yield '    encode_payload_with_crc, encode_payload_minimal,\n'
+        yield '    FrameParserConfig, create_frame_parser_class, GenericParserState,\n'
         yield ')\n\n'
 
-        yield from FrameParserPyGen.generate_format(fmt)
+        # Generate configuration object
+        yield f'# =============================================================================\n'
+        yield f'# {name} Frame Format Configuration\n'
+        yield f'# =============================================================================\n\n'
+        
+        yield f'# Configuration for {name} frame format\n'
+        
+        # Start bytes tuple
+        start_bytes_str = ', '.join([f'0x{sb[1]:02X}' for sb in fmt.start_bytes])
+        if len(fmt.start_bytes) <= 1:
+            start_bytes_str += ','  # Single element tuple needs trailing comma
+        
+        yield f'{name}Config = FrameParserConfig(\n'
+        yield f'    name=\'{name}\',\n'
+        yield f'    start_bytes=({start_bytes_str}),\n'
+        yield f'    header_size={fmt.header_size},\n'
+        yield f'    footer_size={fmt.footer_size},\n'
+        yield f'    has_length={fmt.has_length},\n'
+        yield f'    length_bytes={fmt.length_bytes},\n'
+        yield f'    has_crc={fmt.has_crc},\n'
+        yield ')\n\n'
+        
+        # Generate the class using the factory function
+        yield f'\"\"\"\n'
+        yield f'{name} - Frame format parser and encoder\n'
+        yield f'\n'
+        yield f'Format: '
+        parts = []
+        for sb_name, sb_value in fmt.start_bytes:
+            parts.append(f'[{sb_name.upper()}=0x{sb_value:02X}]')
+        parts.append('[MSG_ID]')
+        if fmt.has_length:
+            parts.append(f'[LEN{"16" if fmt.length_bytes == 2 else ""}]')
+        parts.append('[MSG...]')
+        if fmt.has_crc:
+            parts.append('[CRC1] [CRC2]')
+        yield ' '.join(parts)
+        yield '\n\n'
+        yield f'This class is generated using create_frame_parser_class() for code reuse.\n'
+        yield f'\"\"\"\n'
+        yield f'{name} = create_frame_parser_class({name}Config)\n\n'
+        
+        # Export parser state alias for backward compatibility
+        yield f'# Parser state alias for backward compatibility\n'
+        yield f'{name}ParserState = GenericParserState\n'
 
     @staticmethod
     def generate_init(formats):
         """Generate __init__.py that exports all frame formats"""
         yield '# Automatically generated frame parser package\n'
         yield f'# Generated by {version} at {time.asctime()}.\n\n'
-        yield '# Base utilities\n'
+        yield '# Base utilities and generic parser infrastructure\n'
         yield 'from .frame_base import (\n'
         yield '    FrameFormatType,\n'
         yield '    FrameMsgInfo,\n'
         yield '    fletcher_checksum,\n'
+        yield '    # Configuration interface for code reuse\n'
+        yield '    FrameParserConfig,\n'
+        yield '    # Generic parser class (use create_frame_parser_class for type-safe wrappers)\n'
+        yield '    GenericFrameParser,\n'
+        yield '    GenericParserState,\n'
+        yield '    create_frame_parser_class,\n'
         yield '    # Shared payload parsing functions\n'
         yield '    validate_payload_with_crc,\n'
         yield '    validate_payload_minimal,\n'
@@ -218,10 +482,10 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
         yield '    encode_payload_minimal,\n'
         yield ')\n\n'
 
-        yield '# Individual frame format parsers\n'
+        yield '# Individual frame format parsers (configuration-based)\n'
         for fmt in formats:
             snake_name = camel_to_snake(fmt.name)
-            yield f'from .{snake_name} import {fmt.name}, {fmt.name}ParserState\n'
+            yield f'from .{snake_name} import {fmt.name}, {fmt.name}Config, {fmt.name}ParserState\n'
 
         yield '\n# Re-export all frame formats\n'
         yield '__all__ = [\n'
@@ -229,6 +493,11 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
         yield '    "FrameFormatType",\n'
         yield '    "FrameMsgInfo",\n'
         yield '    "fletcher_checksum",\n'
+        yield '    # Configuration and generic parser\n'
+        yield '    "FrameParserConfig",\n'
+        yield '    "GenericFrameParser",\n'
+        yield '    "GenericParserState",\n'
+        yield '    "create_frame_parser_class",\n'
         yield '    # Shared payload parsing functions\n'
         yield '    "validate_payload_with_crc",\n'
         yield '    "validate_payload_minimal",\n'
@@ -237,6 +506,7 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
         yield '    # Frame formats\n'
         for fmt in formats:
             yield f'    "{fmt.name}",\n'
+            yield f'    "{fmt.name}Config",\n'
             yield f'    "{fmt.name}ParserState",\n'
         yield ']\n'
 
