@@ -35,11 +35,11 @@ enum PayloadType {
   // Adds package ID for message namespace separation.
   PAYLOAD_EXTENDED_MSG_IDS = 2;
 
-  // ExtendedLength: [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // ExtendedLength: [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]
   // 2-byte length for payloads up to 65535 bytes.
   PAYLOAD_EXTENDED_LENGTH = 3;
 
-  // Extended: [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // Extended: [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]
   // Extended message IDs + 2-byte length.
   PAYLOAD_EXTENDED = 4;
 
@@ -55,7 +55,7 @@ enum PayloadType {
   // Combines Seq + SysComp for multi-system streaming.
   PAYLOAD_MULTI_SYSTEM_STREAM = 7;
 
-  // ExtendedMultiSystemStream: [SEQ] [SYS_ID] [COMP_ID] [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // ExtendedMultiSystemStream: [SEQ] [SYS_ID] [COMP_ID] [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]
   // Full featured format with all extensions.
   PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM = 8;
 }
