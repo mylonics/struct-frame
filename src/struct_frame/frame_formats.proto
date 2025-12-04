@@ -31,7 +31,7 @@ enum PayloadType {
   // 1-byte length, 2-byte CRC. Standard format.
   PAYLOAD_DEFAULT = 1;
 
-  // ExtendedMsgIds: [PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // ExtendedMsgIds: [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
   // Adds package ID for message namespace separation.
   PAYLOAD_EXTENDED_MSG_IDS = 2;
 
@@ -39,7 +39,7 @@ enum PayloadType {
   // 2-byte length for payloads up to 65535 bytes.
   PAYLOAD_EXTENDED_LENGTH = 3;
 
-  // Extended: [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // Extended: [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
   // Extended message IDs + 2-byte length.
   PAYLOAD_EXTENDED = 4;
 
@@ -55,7 +55,7 @@ enum PayloadType {
   // Combines Seq + SysComp for multi-system streaming.
   PAYLOAD_MULTI_SYSTEM_STREAM = 7;
 
-  // ExtendedMultiSystemStream: [SEQ] [SYS_ID] [COMP_ID] [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // ExtendedMultiSystemStream: [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
   // Full featured format with all extensions.
   PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM = 8;
 }
@@ -147,11 +147,11 @@ message NoneDefault {
 }
 
 // NONE_EXTENDED_MSG_IDS - Extended message IDs payload with no framing
-// Format: [PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 5 bytes
 message NoneExtendedMsgIds {
-  uint8 package_id = 1;
-  uint8 length = 2;
+  uint8 length = 1;
+  uint8 package_id = 2;
   BasicMessage payload = 3;
   uint8 crc_byte1 = 4;
   uint8 crc_byte2 = 5;
@@ -168,11 +168,11 @@ message NoneExtendedLength {
 }
 
 // NONE_EXTENDED - Extended payload with no framing
-// Format: [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 6 bytes
 message NoneExtended {
-  uint8 package_id = 1;
-  uint16 length = 2;
+  uint16 length = 1;
+  uint8 package_id = 2;
   BasicMessage payload = 3;
   uint8 crc_byte1 = 4;
   uint8 crc_byte2 = 5;
@@ -215,14 +215,14 @@ message NoneMultiSystemStream {
 }
 
 // NONE_EXTENDED_MULTI_SYSTEM_STREAM - Extended multi-system stream payload with no framing
-// Format: [SEQ] [SYS_ID] [COMP_ID] [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 9 bytes
 message NoneExtendedMultiSystemStream {
   uint8 sequence = 1;
   uint8 system_id = 2;
   uint8 component_id = 3;
-  uint8 package_id = 4;
-  uint16 length = 5;
+  uint16 length = 4;
+  uint8 package_id = 5;
   BasicMessage payload = 6;
   uint8 crc_byte1 = 7;
   uint8 crc_byte2 = 8;
@@ -252,12 +252,12 @@ message TinyDefault {
 }
 
 // TINY_EXTENDED_MSG_IDS - Tiny frame with extended message IDs
-// Format: [START=0x72] [PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [START=0x72] [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 6 bytes
 message TinyExtendedMsgIds {
   uint8 start_byte = 1 [(hex) = 0x72];
-  uint8 package_id = 2;
-  uint8 length = 3;
+  uint8 length = 2;
+  uint8 package_id = 3;
   BasicMessage payload = 4;
   uint8 crc_byte1 = 5;
   uint8 crc_byte2 = 6;
@@ -275,12 +275,12 @@ message TinyExtendedLength {
 }
 
 // TINY_EXTENDED - Tiny frame with extended payload
-// Format: [START=0x74] [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [START=0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 7 bytes
 message TinyExtended {
   uint8 start_byte = 1 [(hex) = 0x74];
-  uint8 package_id = 2;
-  uint16 length = 3;
+  uint16 length = 2;
+  uint8 package_id = 3;
   BasicMessage payload = 4;
   uint8 crc_byte1 = 5;
   uint8 crc_byte2 = 6;
@@ -326,15 +326,15 @@ message TinyMultiSystemStream {
 }
 
 // TINY_EXTENDED_MULTI_SYSTEM_STREAM - Tiny frame with extended multi-system stream
-// Format: [START=0x78] [SEQ] [SYS_ID] [COMP_ID] [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [START=0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 10 bytes
 message TinyExtendedMultiSystemStream {
   uint8 start_byte = 1 [(hex) = 0x78];
   uint8 sequence = 2;
   uint8 system_id = 3;
   uint8 component_id = 4;
-  uint8 package_id = 5;
-  uint16 length = 6;
+  uint16 length = 5;
+  uint8 package_id = 6;
   BasicMessage payload = 7;
   uint8 crc_byte1 = 8;
   uint8 crc_byte2 = 9;
@@ -366,13 +366,13 @@ message BasicDefault {
 }
 
 // BASIC_EXTENDED_MSG_IDS - Basic frame with extended message IDs
-// Format: [START1=0x90] [START2=0x72] [PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [START1=0x90] [START2=0x72] [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 7 bytes
 message BasicExtendedMsgIds {
   uint8 start_byte1 = 1 [(hex) = 0x90];
   uint8 start_byte2 = 2 [(hex) = 0x72];
-  uint8 package_id = 3;
-  uint8 length = 4;
+  uint8 length = 3;
+  uint8 package_id = 4;
   BasicMessage payload = 5;
   uint8 crc_byte1 = 6;
   uint8 crc_byte2 = 7;
@@ -391,13 +391,13 @@ message BasicExtendedLength {
 }
 
 // BASIC_EXTENDED - Basic frame with extended payload
-// Format: [START1=0x90] [START2=0x74] [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [START1=0x90] [START2=0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 8 bytes
 message BasicExtended {
   uint8 start_byte1 = 1 [(hex) = 0x90];
   uint8 start_byte2 = 2 [(hex) = 0x74];
-  uint8 package_id = 3;
-  uint16 length = 4;
+  uint16 length = 3;
+  uint8 package_id = 4;
   BasicMessage payload = 5;
   uint8 crc_byte1 = 6;
   uint8 crc_byte2 = 7;
@@ -446,7 +446,7 @@ message BasicMultiSystemStream {
 }
 
 // BASIC_EXTENDED_MULTI_SYSTEM_STREAM - Basic frame with extended multi-system stream
-// Format: [START1=0x90] [START2=0x78] [SEQ] [SYS_ID] [COMP_ID] [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Format: [START1=0x90] [START2=0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
 // Overhead: 11 bytes
 message BasicExtendedMultiSystemStream {
   uint8 start_byte1 = 1 [(hex) = 0x90];
@@ -454,8 +454,8 @@ message BasicExtendedMultiSystemStream {
   uint8 sequence = 3;
   uint8 system_id = 4;
   uint8 component_id = 5;
-  uint8 package_id = 6;
-  uint16 length = 7;
+  uint16 length = 6;
+  uint8 package_id = 7;
   BasicMessage payload = 8;
   uint8 crc_byte1 = 9;
   uint8 crc_byte2 = 10;

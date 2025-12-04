@@ -29,13 +29,13 @@ All supported frame formats are defined in [`examples/frame_formats.proto`](../e
 |-------------|--------|---------------------------|-------------------|
 | Minimal | 0 | 0x70 | `[MSG_ID] [PACKET]` |
 | Default | 1 | 0x71 | `[LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| ExtendedMsgIds | 2 | 0x72 | `[PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| ExtendedMsgIds | 2 | 0x72 | `[LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | ExtendedLength | 3 | 0x73 | `[LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| Extended | 4 | 0x74 | `[PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| Extended | 4 | 0x74 | `[LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | SysComp | 5 | 0x75 | `[SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | Seq | 6 | 0x76 | `[SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | MultiSystemStream | 7 | 0x77 | `[SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| ExtendedMultiSystemStream | 8 | 0x78 | `[SEQ] [SYS_ID] [COMP_ID] [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| ExtendedMultiSystemStream | 8 | 0x78 | `[SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 
 ## Recommended Frame Formats
 
@@ -64,7 +64,7 @@ All supported frame formats are defined in [`examples/frame_formats.proto`](../e
 - Use for: Most applications with variable-length messages
 
 ### ExtendedMsgIds
-**Format**: `[PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]`
+**Format**: `[LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]`
 - Adds package ID for message namespace separation
 - Allows 256 packages × 256 message IDs = 65536 message types
 - Overhead: 5 bytes
@@ -77,7 +77,7 @@ All supported frame formats are defined in [`examples/frame_formats.proto`](../e
 - Use for: Large payloads, firmware updates, bulk transfers
 
 ### Extended
-**Format**: `[PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]`
+**Format**: `[LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]`
 - Combines ExtendedMsgIds + ExtendedLength
 - Overhead: 6 bytes
 - Use for: Large systems with large payloads
@@ -102,7 +102,7 @@ All supported frame formats are defined in [`examples/frame_formats.proto`](../e
 - Use for: Multi-vehicle streaming with loss detection
 
 ### ExtendedMultiSystemStream
-**Format**: `[SEQ] [SYS_ID] [COMP_ID] [PKG_ID] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]`
+**Format**: `[SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]`
 - Full-featured format with all extensions
 - Overhead: 9 bytes
 - Use for: Complex multi-system networks with large payloads
@@ -246,13 +246,13 @@ Modern drone communication with extended features:
 |--------|----------|-----------|
 | NoneMinimal | 1 | `[MSG_ID] [PACKET]` |
 | NoneDefault | 4 | `[LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| NoneExtendedMsgIds | 5 | `[PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| NoneExtendedMsgIds | 5 | `[LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | NoneExtendedLength | 5 | `[LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| NoneExtended | 6 | `[PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| NoneExtended | 6 | `[LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | NoneSysComp | 6 | `[SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | NoneSeq | 5 | `[SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | NoneMultiSystemStream | 7 | `[SEQ] [SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| NoneExtendedMultiSystemStream | 9 | `[SEQ] [SYS] [COMP] [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| NoneExtendedMultiSystemStream | 9 | `[SEQ] [SYS] [COMP] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 
 ### Tiny Frames (1 start byte: 0x70+PayloadType)
 
@@ -260,13 +260,13 @@ Modern drone communication with extended features:
 |--------|-------|----------|-----------|
 | TinyMinimal | 0x70 | 2 | `[START] [MSG_ID] [PACKET]` |
 | TinyDefault | 0x71 | 5 | `[START] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| TinyExtendedMsgIds | 0x72 | 6 | `[START] [PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| TinyExtendedMsgIds | 0x72 | 6 | `[START] [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | TinyExtendedLength | 0x73 | 6 | `[START] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| TinyExtended | 0x74 | 7 | `[START] [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| TinyExtended | 0x74 | 7 | `[START] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | TinySysComp | 0x75 | 7 | `[START] [SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | TinySeq | 0x76 | 6 | `[START] [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | TinyMultiSystemStream | 0x77 | 8 | `[START] [SEQ] [SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| TinyExtendedMultiSystemStream | 0x78 | 10 | `[START] [SEQ] [SYS] [COMP] [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| TinyExtendedMultiSystemStream | 0x78 | 10 | `[START] [SEQ] [SYS] [COMP] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 
 ### Basic Frames (2 start bytes: 0x90, 0x70+PayloadType)
 
@@ -274,13 +274,13 @@ Modern drone communication with extended features:
 |--------|--------|----------|-----------|
 | BasicMinimal | 0x70 | 3 | `[0x90] [START2] [MSG_ID] [PACKET]` |
 | BasicDefault | 0x71 | 6 | `[0x90] [START2] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| BasicExtendedMsgIds | 0x72 | 7 | `[0x90] [START2] [PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| BasicExtendedMsgIds | 0x72 | 7 | `[0x90] [START2] [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | BasicExtendedLength | 0x73 | 7 | `[0x90] [START2] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| BasicExtended | 0x74 | 8 | `[0x90] [START2] [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| BasicExtended | 0x74 | 8 | `[0x90] [START2] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | BasicSysComp | 0x75 | 8 | `[0x90] [START2] [SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | BasicSeq | 0x76 | 7 | `[0x90] [START2] [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | BasicMultiSystemStream | 0x77 | 9 | `[0x90] [START2] [SEQ] [SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
-| BasicExtendedMultiSystemStream | 0x78 | 11 | `[0x90] [START2] [SEQ] [SYS] [COMP] [PKG_ID] [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| BasicExtendedMultiSystemStream | 0x78 | 11 | `[0x90] [START2] [SEQ] [SYS] [COMP] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 
 ## Framing Compatibility
 
