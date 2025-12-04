@@ -455,7 +455,7 @@ class FrameFormatMatrixPlugin(TestPlugin):
             print(row)
 
         if total_count > 0:
-            print(f"\nSuccess rate: {success_count}/{total_count} ({100*success_count//total_count}%)")
+            print(f"\nSuccess rate: {success_count}/{total_count} ({100*success_count/total_count:.1f}%)")
 
 
 # Registry of available plugins
