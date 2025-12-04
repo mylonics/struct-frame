@@ -74,17 +74,30 @@ When sending structured data over a communication channel, you need to:
 
 Struct Frame's framing system addresses these challenges with a cross-platform implementation.
 
-### Basic Frame Format
+### Framing Architecture
 
-The default frame format uses a simple but effective structure:
+The framing system uses a two-level architecture:
+
+1. **Frame Type** (Framer): Determines the number of start bytes for synchronization
+   - **Basic**: 2 start bytes `[0x90] [0x70+PayloadType]`
+   - **Tiny**: 1 start byte `[0x70+PayloadType]`
+   - **None**: 0 start bytes (relies on external synchronization)
+
+2. **Payload Type**: Defines the header/footer structure after start bytes
+   - Minimal, Default, ExtendedMsgIds, ExtendedLength, Extended
+   - SysComp, Seq, MultiSystemStream, ExtendedMultiSystemStream
+
+### Basic Default Frame Format (Recommended)
+
+The recommended frame format uses a simple but effective structure:
 
 ```
-[Start Byte] [Message ID] [Payload Data...] [Checksum 1] [Checksum 2]
-     0x90        1 byte     Variable Length     1 byte      1 byte
+[Start1=0x90] [Start2=0x71] [Length] [Message ID] [Payload Data...] [CRC1] [CRC2]
 ```
 
 **Frame Components:**
-- **Start Byte (0x90)**: Synchronization marker to identify frame boundaries
+- **Start Bytes (0x90, 0x71)**: Synchronization markers to identify frame boundaries
+- **Length**: Payload length (1 byte, up to 255 bytes)
 - **Message ID**: Unique identifier (0-255) that maps to specific message types  
 - **Payload**: The actual serialized message data (variable length)
 - **Fletcher Checksum**: 2-byte error detection using Fletcher-16 algorithm
@@ -92,9 +105,23 @@ The default frame format uses a simple but effective structure:
 **Example Frame Breakdown:**
 ```
 Message: vehicle_heartbeat (ID=42) with 4 bytes of data [0x01, 0x02, 0x03, 0x04]
-Frame:   [0x90] [0x2A] [0x01, 0x02, 0x03, 0x04] [0x7F] [0x8A]
-          Start   ID=42        Payload Data        Checksum
+Frame:   [0x90] [0x71] [0x04] [0x2A] [0x01, 0x02, 0x03, 0x04] [0x7F] [0x8A]
+          Start1 Start2  Len   ID=42        Payload Data         Checksum
 ```
+
+### Available Payload Types
+
+| Payload Type | Structure | Overhead | Use Case |
+|--------------|-----------|----------|----------|
+| Minimal | `[MSG_ID] [PACKET]` | 1 | Fixed-size messages, trusted environments |
+| Default | `[LEN] [MSG_ID] [PACKET] [CRC]` | 4 | Standard format (recommended) |
+| ExtendedMsgIds | `[PKG_ID] [LEN] [MSG_ID] [PACKET] [CRC]` | 5 | Large systems with many message types |
+| ExtendedLength | `[LEN16] [MSG_ID] [PACKET] [CRC]` | 5 | Large payloads (up to 64KB) |
+| SysComp | `[SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC]` | 6 | Multi-vehicle networks |
+| Seq | `[SEQ] [LEN] [MSG_ID] [PACKET] [CRC]` | 5 | Packet loss detection |
+| MultiSystemStream | `[SEQ] [SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC]` | 7 | Multi-vehicle streaming |
+
+See [Framing Documentation](docs/framing.md) for the complete frame format reference.
 
 ### Parser State Machine
 
@@ -179,16 +206,25 @@ python src/main.py examples/myl_vehicle.proto --build_gql
 
 ### Header Structure Details
 
-The Basic Frame format provides a minimal framing protocol:
+The BasicDefault frame format (recommended) provides a robust framing protocol:
 
-#### Header Layout (2 bytes)
+#### Header Layout (4 bytes)
 ```
-Byte 0: Start Byte (0x90)
+Byte 0: Start Byte 1 (0x90)
   - Fixed synchronization marker
   - Allows parser to identify frame boundaries
   - Recovery point after frame corruption
 
-Byte 1: Message ID (0x00-0xFF) 
+Byte 1: Start Byte 2 (0x71 for Default payload type)
+  - Second sync byte encodes payload type
+  - 0x70 = Minimal, 0x71 = Default, 0x72 = ExtendedMsgIds, etc.
+  - Allows different frame formats on same channel
+
+Byte 2: Length (0x00-0xFF)
+  - Payload length in bytes
+  - Allows receiver to know frame size
+
+Byte 3: Message ID (0x00-0xFF) 
   - Maps to specific message types in proto definitions
   - Used for routing and deserialization
   - Must match `option msgid = X` in proto message
@@ -196,17 +232,19 @@ Byte 1: Message ID (0x00-0xFF)
 
 #### Footer Layout (2 bytes)
 ```
-Byte N+2: Fletcher Checksum Byte 1
-Byte N+3: Fletcher Checksum Byte 2
+Byte N+4: Fletcher Checksum Byte 1
+Byte N+5: Fletcher Checksum Byte 2
   - Fletcher-16 checksum algorithm
-  - Calculated over Message ID + Payload
+  - Calculated over Length + Message ID + Payload
   - Provides error detection for corruption
 ```
 
 ### Frame Size Calculation
 
 **Total Frame Size = Header + Payload + Footer**
-- **Header**: 2 bytes (start byte + message ID)
+
+For BasicDefault (recommended):
+- **Header**: 4 bytes (2 start bytes + length + message ID)
 - **Payload**: Variable (depends on message content)  
 - **Footer**: 2 bytes (Fletcher checksum)
 
@@ -217,7 +255,7 @@ message SimpleHeartbeat {
   uint32 device_id = 1;    // 4 bytes
   bool alive = 2;          // 1 byte
 }
-// Total: 2 (header) + 5 (payload) + 2 (footer) = 9 bytes
+// Total: 4 (header) + 5 (payload) + 2 (footer) = 11 bytes
 ```
 
 ### Framing Compatibility Matrix
@@ -235,19 +273,21 @@ message SimpleHeartbeat {
 
 ### Extended Frame Format Options
 
-While struct-frame currently implements the Basic Frame format, the architecture supports extensible frame types:
+Struct Frame supports multiple frame types and payload types for different use cases:
 
-**Current Implementation:**
-- **Basic Frame**: Simple start byte + message ID + checksum
-- **Start Byte**: 0x90 (fixed)
-- **Header Length**: 2 bytes
-- **Footer Length**: 2 bytes (Fletcher checksum)
+**Frame Types:**
+- **Basic Frame**: 2 start bytes (0x90, 0x70+PayloadType) - Recommended for most applications
+- **Tiny Frame**: 1 start byte (0x70+PayloadType) - Constrained environments
+- **None Frame**: 0 start bytes - Trusted point-to-point links
 
-**Potential Extensions** (Framework Ready):
-- **Length-Prefixed Frames**: Include explicit length field in header
-- **Multi-Byte Start Sequences**: Enhanced synchronization
-- **CRC32 Checksums**: Stronger error detection
-- **Protocol Versions**: Support multiple frame format versions
+**Payload Types:**
+- **Default**: Length + Message ID + Payload + CRC - Recommended
+- **Minimal**: Message ID + Payload only - Fixed-size messages
+- **Extended**: Package ID + 2-byte length + Message ID + Payload + CRC - Large systems
+- **SysComp**: System/Component IDs for multi-vehicle networks (MAVLink-style)
+- **MultiSystemStream**: Sequence + SysComp for streaming with loss detection
+
+See [Framing Documentation](docs/framing.md) for the complete format reference.
 
 ## Frame Format Examples and Usage
 
@@ -273,21 +313,22 @@ engine_on = true              -> [0x01]
 Total payload: 9 bytes
 ```
 
-**Frame Structure:**
+**BasicDefault Frame Structure:**
 ```
-Position: [0] [1] [2] [3] [4] [5] [6] [7] [8] [9] [10] [11] [12] [13]
-Data:     90  2A  D2  04  00  00  00  00  83  42  01   7E   C9
-          │   │   └─────── Payload (9 bytes) ──────────┘   │    │
-          │   └─ Message ID (42 = 0x2A)                    │    │
-          └─ Start Byte (0x90)                             └────┘
-                                                         Checksum
+Position: [0]  [1]  [2] [3] [4]  [5]  [6]  [7]  [8]  [9]  [10] [11] [12] [13] [14]
+Data:      90   71   09  2A  D2   04   00   00   00   00   83   42   01   7E   C9
+           │    │    │   │   └─────── Payload (9 bytes) ──────────────┘   │    │
+           │    │    │   └─ Message ID (42 = 0x2A)                        │    │
+           │    │    └─ Length (9 = 0x09)                                 │    │
+           │    └─ Start Byte 2 (0x71 = Default payload type)             │    │
+           └─ Start Byte 1 (0x90)                                         └────┘
+                                                                        Checksum
 ```
 
 **Checksum Calculation (Fletcher-16):**
 ```
-Input: [0x2A, 0xD2, 0x04, 0x00, 0x00, 0x00, 0x00, 0x83, 0x42, 0x01]
-Byte1 = (0x2A + 0xD2 + 0x04 + ... + 0x01) % 256 = 0x7E
-Byte2 = (0x2A + 0xFC + 0x00 + ... + 0xFD) % 256 = 0xC9  
+Input: [0x09, 0x2A, 0xD2, 0x04, 0x00, 0x00, 0x00, 0x00, 0x83, 0x42, 0x01]
+(calculated over length, message ID, and payload)
 Result: [0x7E, 0xC9]
 ```
 
