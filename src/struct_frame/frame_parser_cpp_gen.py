@@ -79,6 +79,111 @@ struct FrameMsgInfo {
         : valid(v), msg_id(id), msg_len(len), msg_data(data) {}
 };
 
+// =============================================================================
+// Shared Payload Parsing Functions
+// =============================================================================
+// These functions handle payload validation/encoding independent of framing.
+// Frame formats (Tiny/Basic) use these for the common parsing logic.
+
+/**
+ * Validate a payload with CRC (shared by Default, Extended, etc. payload types).
+ */
+inline FrameMsgInfo validate_payload_with_crc(
+    const uint8_t* buffer, size_t length,
+    size_t header_size, size_t length_bytes, size_t crc_start_offset) {
+    
+    constexpr size_t footer_size = 2; // CRC is always 2 bytes
+    const size_t overhead = header_size + footer_size;
+    
+    if (length < overhead) {
+        return FrameMsgInfo();
+    }
+    
+    size_t msg_length = length - overhead;
+    
+    // Calculate expected CRC range: from crc_start_offset to before the CRC bytes
+    size_t crc_data_len = msg_length + 1 + length_bytes; // msg_id (1) + length_bytes + payload
+    FrameChecksum ck = fletcher_checksum(buffer + crc_start_offset, crc_data_len);
+    
+    if (ck.byte1 == buffer[length - 2] && ck.byte2 == buffer[length - 1]) {
+        return FrameMsgInfo(true, buffer[header_size - 1], msg_length,
+                          const_cast<uint8_t*>(buffer + header_size));
+    }
+    
+    return FrameMsgInfo();
+}
+
+/**
+ * Validate a minimal payload (no CRC, no length field).
+ */
+inline FrameMsgInfo validate_payload_minimal(
+    const uint8_t* buffer, size_t length, size_t header_size) {
+    
+    if (length < header_size) {
+        return FrameMsgInfo();
+    }
+    
+    return FrameMsgInfo(true, buffer[header_size - 1], length - header_size,
+                       const_cast<uint8_t*>(buffer + header_size));
+}
+
+/**
+ * Encode payload with length and CRC into output buffer.
+ * Returns number of bytes written (length + msg_id + payload + CRC)
+ */
+inline size_t encode_payload_with_crc(
+    uint8_t* output, uint8_t msg_id, const uint8_t* msg, size_t msg_size,
+    size_t length_bytes, const uint8_t* crc_start) {
+    
+    size_t idx = 0;
+    
+    // Add length field
+    if (length_bytes == 1) {
+        output[idx++] = static_cast<uint8_t>(msg_size & 0xFF);
+    } else {
+        output[idx++] = static_cast<uint8_t>(msg_size & 0xFF);
+        output[idx++] = static_cast<uint8_t>((msg_size >> 8) & 0xFF);
+    }
+    
+    // Add msg_id
+    output[idx++] = msg_id;
+    
+    // Add payload
+    if (msg_size > 0 && msg != nullptr) {
+        std::memcpy(output + idx, msg, msg_size);
+        idx += msg_size;
+    }
+    
+    // Calculate and add CRC
+    size_t crc_data_len = msg_size + 1 + length_bytes;
+    FrameChecksum ck = fletcher_checksum(crc_start, crc_data_len);
+    output[idx++] = ck.byte1;
+    output[idx++] = ck.byte2;
+    
+    return idx;
+}
+
+/**
+ * Encode minimal payload (no length, no CRC) into output buffer.
+ * Returns number of bytes written (msg_id + payload)
+ */
+inline size_t encode_payload_minimal(
+    uint8_t* output, uint8_t msg_id, const uint8_t* msg, size_t msg_size) {
+    
+    size_t idx = 0;
+    
+    // Add msg_id
+    output[idx++] = msg_id;
+    
+    // Add payload
+    if (msg_size > 0 && msg != nullptr) {
+        std::memcpy(output + idx, msg, msg_size);
+        idx += msg_size;
+    }
+    
+    return idx;
+}
+
 }  // namespace FrameParsers
 '''
 
@@ -158,6 +263,88 @@ struct FrameMsgInfo {
     FrameMsgInfo(bool v, uint8_t id, size_t len, uint8_t* data)
         : valid(v), msg_id(id), msg_len(len), msg_data(data) {}
 };
+
+// =============================================================================
+// Shared Payload Parsing Functions
+// =============================================================================
+// These functions handle payload validation/encoding independent of framing.
+// Frame formats (Tiny/Basic) use these for the common parsing logic.
+
+inline FrameMsgInfo validate_payload_with_crc(
+    const uint8_t* buffer, size_t length,
+    size_t header_size, size_t length_bytes, size_t crc_start_offset) {
+    
+    constexpr size_t footer_size = 2;
+    const size_t overhead = header_size + footer_size;
+    
+    if (length < overhead) {
+        return FrameMsgInfo();
+    }
+    
+    size_t msg_length = length - overhead;
+    size_t crc_data_len = msg_length + 1 + length_bytes;
+    FrameChecksum ck = fletcher_checksum(buffer + crc_start_offset, crc_data_len);
+    
+    if (ck.byte1 == buffer[length - 2] && ck.byte2 == buffer[length - 1]) {
+        return FrameMsgInfo(true, buffer[header_size - 1], msg_length,
+                          const_cast<uint8_t*>(buffer + header_size));
+    }
+    
+    return FrameMsgInfo();
+}
+
+inline FrameMsgInfo validate_payload_minimal(
+    const uint8_t* buffer, size_t length, size_t header_size) {
+    
+    if (length < header_size) {
+        return FrameMsgInfo();
+    }
+    
+    return FrameMsgInfo(true, buffer[header_size - 1], length - header_size,
+                       const_cast<uint8_t*>(buffer + header_size));
+}
+
+inline size_t encode_payload_with_crc(
+    uint8_t* output, uint8_t msg_id, const uint8_t* msg, size_t msg_size,
+    size_t length_bytes, const uint8_t* crc_start) {
+    
+    size_t idx = 0;
+    
+    if (length_bytes == 1) {
+        output[idx++] = static_cast<uint8_t>(msg_size & 0xFF);
+    } else {
+        output[idx++] = static_cast<uint8_t>(msg_size & 0xFF);
+        output[idx++] = static_cast<uint8_t>((msg_size >> 8) & 0xFF);
+    }
+    
+    output[idx++] = msg_id;
+    
+    if (msg_size > 0 && msg != nullptr) {
+        std::memcpy(output + idx, msg, msg_size);
+        idx += msg_size;
+    }
+    
+    size_t crc_data_len = msg_size + 1 + length_bytes;
+    FrameChecksum ck = fletcher_checksum(crc_start, crc_data_len);
+    output[idx++] = ck.byte1;
+    output[idx++] = ck.byte2;
+    
+    return idx;
+}
+
+inline size_t encode_payload_minimal(
+    uint8_t* output, uint8_t msg_id, const uint8_t* msg, size_t msg_size) {
+    
+    size_t idx = 0;
+    output[idx++] = msg_id;
+    
+    if (msg_size > 0 && msg != nullptr) {
+        std::memcpy(output + idx, msg, msg_size);
+        idx += msg_size;
+    }
+    
+    return idx;
+}
 
 '''
         
@@ -405,7 +592,7 @@ struct FrameMsgInfo {
                 yield f'                }}\n'
             yield f'                break;\n\n'
         
-        # GettingPayload state
+        # GettingPayload state - uses shared payload validation
         yield f'            case {class_name}ParserState::GettingPayload:\n'
         yield f'                if (buffer_index_ < buffer_max_size_) {{\n'
         yield f'                    buffer_[buffer_index_++] = byte;\n'
@@ -413,25 +600,15 @@ struct FrameMsgInfo {
         yield f'                if (buffer_index_ >= packet_size_) {{\n'
         
         if fmt.has_crc:
-            yield f'                    // Validate checksum\n'
-            yield f'                    size_t msg_length = packet_size_ - {PREFIX}_OVERHEAD;\n'
-            crc_data_start = len(fmt.start_bytes)
-            crc_data_len = f'msg_length + 1'
-            if fmt.has_length:
-                crc_data_len += f' + {fmt.length_bytes}'
-            yield f'                    FrameChecksum ck = fletcher_checksum(buffer_ + {crc_data_start}, {crc_data_len});\n\n'
-            yield f'                    if (ck.byte1 == buffer_[packet_size_ - 2] &&\n'
-            yield f'                        ck.byte2 == buffer_[packet_size_ - 1]) {{\n'
-            yield f'                        result.valid = true;\n'
-            yield f'                        result.msg_id = msg_id_;\n'
-            yield f'                        result.msg_len = msg_length;\n'
-            yield f'                        result.msg_data = buffer_ + {PREFIX}_HEADER_SIZE;\n'
-            yield f'                    }}\n'
+            crc_start = len(fmt.start_bytes)
+            yield f'                    // Use shared payload validation with CRC\n'
+            yield f'                    result = validate_payload_with_crc(\n'
+            yield f'                        buffer_, packet_size_,\n'
+            yield f'                        {PREFIX}_HEADER_SIZE, {fmt.length_bytes}, {crc_start});\n'
         else:
-            yield f'                    result.valid = true;\n'
-            yield f'                    result.msg_id = msg_id_;\n'
-            yield f'                    result.msg_len = packet_size_ - {PREFIX}_OVERHEAD;\n'
-            yield f'                    result.msg_data = buffer_ + {PREFIX}_HEADER_SIZE;\n'
+            yield f'                    // Use shared minimal payload validation\n'
+            yield f'                    result = validate_payload_minimal(\n'
+            yield f'                        buffer_, packet_size_, {PREFIX}_HEADER_SIZE);\n'
         
         reset_state = 'LookingForStart1' if len(fmt.start_bytes) > 1 else ('LookingForStart' if fmt.start_bytes else 'GettingMsgId')
         yield f'                    state_ = {class_name}ParserState::{reset_state};\n'
@@ -456,7 +633,7 @@ struct FrameMsgInfo {
         yield f'    MsgLengthCallback get_msg_length_;\n'
         yield f'}};\n\n'
         
-        # Static encode function
+        # Static encode function - uses shared payload encoding
         yield f'/**\n'
         yield f' * Encode a message with {name} format\n'
         yield f' * Returns the number of bytes written, or 0 on failure\n'
@@ -466,76 +643,52 @@ struct FrameMsgInfo {
         yield f'    size_t total_size = {PREFIX}_OVERHEAD + msg_size;\n'
         yield f'    if (buffer_size < total_size) return 0;\n\n'
         
+        # Write start bytes (frame-specific)
         idx = 0
         for i, (sb_name, sb_value) in enumerate(fmt.start_bytes):
             const_name = f'{PREFIX}_START_BYTE{i + 1}' if len(fmt.start_bytes) > 1 else f'{PREFIX}_START_BYTE'
             yield f'    buffer[{idx}] = {const_name};\n'
             idx += 1
         
-        # Write length BEFORE msg_id (per frame_formats.proto definition)
-        if fmt.has_length:
-            if fmt.length_bytes == 1:
-                yield f'    buffer[{idx}] = static_cast<uint8_t>(msg_size);\n'
-            else:
-                yield f'    buffer[{idx}] = static_cast<uint8_t>(msg_size & 0xFF);\n'
-                yield f'    buffer[{idx + 1}] = static_cast<uint8_t>((msg_size >> 8) & 0xFF);\n'
-            idx += fmt.length_bytes
-        
-        yield f'    buffer[{idx}] = msg_id;\n'
-        idx += 1
-        
-        yield f'\n    if (msg_size > 0 && msg != nullptr) {{\n'
-        yield f'        std::memcpy(buffer + {PREFIX}_HEADER_SIZE, msg, msg_size);\n'
-        yield f'    }}\n\n'
-        
+        # Use shared payload encoding function
         if fmt.has_crc:
-            crc_data_start = len(fmt.start_bytes)
-            crc_data_len = f'msg_size + 1'
-            if fmt.has_length:
-                crc_data_len += f' + {fmt.length_bytes}'
-            yield f'    FrameChecksum ck = fletcher_checksum(buffer + {crc_data_start}, {crc_data_len});\n'
-            yield f'    buffer[{PREFIX}_HEADER_SIZE + msg_size] = ck.byte1;\n'
-            yield f'    buffer[{PREFIX}_HEADER_SIZE + msg_size + 1] = ck.byte2;\n'
+            crc_start = len(fmt.start_bytes)
+            yield f'\n    // Use shared payload encoding with CRC\n'
+            yield f'    encode_payload_with_crc(\n'
+            yield f'        buffer + {len(fmt.start_bytes)}, msg_id, msg, msg_size,\n'
+            yield f'        {fmt.length_bytes}, buffer + {crc_start});\n'
+        else:
+            yield f'\n    // Use shared minimal payload encoding\n'
+            yield f'    encode_payload_minimal(\n'
+            yield f'        buffer + {len(fmt.start_bytes)}, msg_id, msg, msg_size);\n'
         
         yield f'\n    return total_size;\n'
         yield f'}}\n\n'
         
-        # Static validate_packet function
+        # Static validate_packet function - uses shared payload validation
         yield f'/**\n'
         yield f' * Validate a complete {name} packet in a buffer\n'
         yield f' */\n'
         yield f'inline FrameMsgInfo {camel_to_snake(name)}_validate_packet(const uint8_t* buffer, size_t length) {{\n'
-        yield f'    FrameMsgInfo result;\n\n'
-        yield f'    if (length < {PREFIX}_OVERHEAD) return result;\n\n'
+        yield f'    if (length < {PREFIX}_OVERHEAD) return FrameMsgInfo();\n\n'
         
         for i, (sb_name, sb_value) in enumerate(fmt.start_bytes):
             const_name = f'{PREFIX}_START_BYTE{i + 1}' if len(fmt.start_bytes) > 1 else f'{PREFIX}_START_BYTE'
-            yield f'    if (buffer[{i}] != {const_name}) return result;\n'
+            yield f'    if (buffer[{i}] != {const_name}) return FrameMsgInfo();\n'
         
-        yield f'\n    size_t msg_length = length - {PREFIX}_OVERHEAD;\n\n'
+        yield f'\n'
         
-        # Calculate msg_id offset: start_bytes + length_bytes (if has_length)
-        msg_id_offset = len(fmt.start_bytes) + (fmt.length_bytes if fmt.has_length else 0)
-        
+        # Use shared payload validation function
         if fmt.has_crc:
-            crc_data_start = len(fmt.start_bytes)
-            crc_data_len = f'msg_length + 1'
-            if fmt.has_length:
-                crc_data_len += f' + {fmt.length_bytes}'
-            yield f'    FrameChecksum ck = fletcher_checksum(buffer + {crc_data_start}, {crc_data_len});\n'
-            yield f'    if (ck.byte1 == buffer[length - 2] && ck.byte2 == buffer[length - 1]) {{\n'
-            yield f'        result.valid = true;\n'
-            yield f'        result.msg_id = buffer[{msg_id_offset}];\n'
-            yield f'        result.msg_len = msg_length;\n'
-            yield f'        result.msg_data = const_cast<uint8_t*>(buffer + {PREFIX}_HEADER_SIZE);\n'
-            yield f'    }}\n'
+            crc_start = len(fmt.start_bytes)
+            yield f'    // Use shared payload validation with CRC\n'
+            yield f'    return validate_payload_with_crc(\n'
+            yield f'        buffer, length, {PREFIX}_HEADER_SIZE, {fmt.length_bytes}, {crc_start});\n'
         else:
-            yield f'    result.valid = true;\n'
-            yield f'    result.msg_id = buffer[{msg_id_offset}];\n'
-            yield f'    result.msg_len = msg_length;\n'
-            yield f'    result.msg_data = const_cast<uint8_t*>(buffer + {PREFIX}_HEADER_SIZE);\n'
+            yield f'    // Use shared minimal payload validation\n'
+            yield f'    return validate_payload_minimal(\n'
+            yield f'        buffer, length, {PREFIX}_HEADER_SIZE);\n'
         
-        yield f'\n    return result;\n'
         yield f'}}\n\n'
 
 
