@@ -10,6 +10,13 @@
     "serialization_test.proto"
   ],
   
+  "frame_formats": [
+    "basic_default",
+    "basic_minimal",
+    "tiny_default",
+    "tiny_minimal"
+  ],
+  
   "languages": {
     "c": {
       "name": "C",
@@ -67,7 +74,7 @@
         "interpreter": "python",
         "source_extension": ".py",
         "env": {
-          "PYTHONPATH": "{generated_dir}"
+          "PYTHONPATH": "{generated_dir}:{generated_parent_dir}"
         }
       },
       "test_dir": "tests/py",
@@ -158,6 +165,20 @@
       "test_name": "test_cross_platform_deserialization",
       "plugin": "cross_platform_matrix",
       "input_from": "cross_platform_encode"
+    },
+    {
+      "name": "frame_format_encode",
+      "description": "Frame format serialization (C generates for all formats)",
+      "test_name": "test_frame_format_serialization",
+      "plugin": "frame_format_encode",
+      "output_file": "c_{frame_format}_test_data.bin"
+    },
+    {
+      "name": "frame_format_decode",
+      "description": "Frame format deserialization matrix",
+      "test_name": "test_frame_format_deserialization",
+      "plugin": "frame_format_matrix",
+      "input_from": "frame_format_encode"
     }
   ]
 }
