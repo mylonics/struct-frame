@@ -1,8 +1,5 @@
 /**
- * Frame format deserialization test for C.
- * 
- * This test reads binary files and deserializes using different frame formats.
- * Usage: test_frame_format_deserialization <frame_format> <binary_file>
+ * Tiny Minimal frame format deserialization test for C.
  */
 
 #include <math.h>
@@ -74,52 +71,7 @@ int validate_message(SerializationTestSerializationTestMessage* msg) {
   return 1;
 }
 
-typedef frame_msg_info_t (*validate_func_t)(const uint8_t* buffer, size_t length);
-
-typedef struct {
-  const char* name;
-  validate_func_t validate;
-} frame_format_entry_t;
-
-// Frame format registry
-static const frame_format_entry_t frame_formats[] = {
-  {"basic_default", basic_default_validate_packet},
-  {"basic_minimal", basic_minimal_validate_packet},
-  {"basic_seq", basic_seq_validate_packet},
-  {"basic_sys_comp", basic_sys_comp_validate_packet},
-  {"basic_extended_msg_ids", basic_extended_msg_ids_validate_packet},
-  {"basic_extended_length", basic_extended_length_validate_packet},
-  {"basic_extended", basic_extended_validate_packet},
-  {"basic_multi_system_stream", basic_multi_system_stream_validate_packet},
-  {"basic_extended_multi_system_stream", basic_extended_multi_system_stream_validate_packet},
-  {"tiny_default", tiny_default_validate_packet},
-  {"tiny_minimal", tiny_minimal_validate_packet},
-  {"tiny_seq", tiny_seq_validate_packet},
-  {"tiny_sys_comp", tiny_sys_comp_validate_packet},
-  {"tiny_extended_msg_ids", tiny_extended_msg_ids_validate_packet},
-  {"tiny_extended_length", tiny_extended_length_validate_packet},
-  {"tiny_extended", tiny_extended_validate_packet},
-  {"tiny_multi_system_stream", tiny_multi_system_stream_validate_packet},
-  {"tiny_extended_multi_system_stream", tiny_extended_multi_system_stream_validate_packet},
-  {NULL, NULL}
-};
-
-const frame_format_entry_t* find_frame_format(const char* name) {
-  for (int i = 0; frame_formats[i].name != NULL; i++) {
-    if (strcmp(frame_formats[i].name, name) == 0) {
-      return &frame_formats[i];
-    }
-  }
-  return NULL;
-}
-
-int read_and_validate_test_data(const char* frame_format, const char* filename) {
-  const frame_format_entry_t* ff = find_frame_format(frame_format);
-  if (ff == NULL) {
-    printf("  Unknown frame format: %s\n", frame_format);
-    return 0;
-  }
-
+int read_and_validate_test_data(const char* filename) {
   FILE* file = fopen(filename, "rb");
   if (!file) {
     printf("  Error: file not found: %s\n", filename);
@@ -135,7 +87,7 @@ int read_and_validate_test_data(const char* frame_format, const char* filename) 
     return 0;
   }
 
-  frame_msg_info_t decode_result = ff->validate(buffer, size);
+  frame_msg_info_t decode_result = tiny_minimal_validate_packet(buffer, size);
 
   if (!decode_result.valid) {
     print_failure_details("Failed to decode data", buffer, size);
@@ -150,27 +102,23 @@ int read_and_validate_test_data(const char* frame_format, const char* filename) 
     return 0;
   }
 
-  printf("  [OK] Data validated successfully with %s format\n", frame_format);
+  printf("  [OK] Data validated successfully\n");
   return 1;
 }
 
 int main(int argc, char* argv[]) {
-  printf("\n[TEST START] C Frame Format Deserialization\n");
+  printf("\n[TEST START] C Tiny Minimal Deserialization\n");
 
-  if (argc != 3) {
-    printf("  Usage: %s <frame_format> <binary_file>\n", argv[0]);
-    printf("  Supported formats:\n");
-    for (int i = 0; frame_formats[i].name != NULL; i++) {
-      printf("    %s\n", frame_formats[i].name);
-    }
-    printf("[TEST END] C Frame Format Deserialization: FAIL\n\n");
+  if (argc != 2) {
+    printf("  Usage: %s <binary_file>\n", argv[0]);
+    printf("[TEST END] C Tiny Minimal Deserialization: FAIL\n\n");
     return 1;
   }
 
-  int success = read_and_validate_test_data(argv[1], argv[2]);
+  int success = read_and_validate_test_data(argv[1]);
 
   const char* status = success ? "PASS" : "FAIL";
-  printf("[TEST END] C Frame Format Deserialization: %s\n\n", status);
+  printf("[TEST END] C Tiny Minimal Deserialization: %s\n\n", status);
 
   return success ? 0 : 1;
 }

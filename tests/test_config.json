@@ -10,13 +10,6 @@
     "serialization_test.proto"
   ],
   
-  "frame_formats": [
-    "basic_default",
-    "basic_minimal",
-    "tiny_default",
-    "tiny_minimal"
-  ],
-  
   "languages": {
     "c": {
       "name": "C",
@@ -167,18 +160,56 @@
       "input_from": "cross_platform_encode"
     },
     {
-      "name": "frame_format_encode",
-      "description": "Frame format serialization (C generates for all formats)",
-      "test_name": "test_frame_format_serialization",
-      "plugin": "frame_format_encode",
-      "output_file": "c_{frame_format}_test_data.bin"
+      "name": "basic_default_encode",
+      "description": "Basic Default format serialization",
+      "test_name": "test_basic_default_serialization",
+      "output_file": "{lang_name}_basic_default_test_data.bin"
     },
     {
-      "name": "frame_format_decode",
-      "description": "Frame format deserialization matrix",
-      "test_name": "test_frame_format_deserialization",
-      "plugin": "frame_format_matrix",
-      "input_from": "frame_format_encode"
+      "name": "basic_default_decode",
+      "description": "Basic Default format deserialization",
+      "test_name": "test_basic_default_deserialization",
+      "plugin": "cross_platform_matrix",
+      "input_from": "basic_default_encode"
+    },
+    {
+      "name": "basic_minimal_encode",
+      "description": "Basic Minimal format serialization",
+      "test_name": "test_basic_minimal_serialization",
+      "output_file": "{lang_name}_basic_minimal_test_data.bin"
+    },
+    {
+      "name": "basic_minimal_decode",
+      "description": "Basic Minimal format deserialization",
+      "test_name": "test_basic_minimal_deserialization",
+      "plugin": "cross_platform_matrix",
+      "input_from": "basic_minimal_encode"
+    },
+    {
+      "name": "tiny_default_encode",
+      "description": "Tiny Default format serialization",
+      "test_name": "test_tiny_default_serialization",
+      "output_file": "{lang_name}_tiny_default_test_data.bin"
+    },
+    {
+      "name": "tiny_default_decode",
+      "description": "Tiny Default format deserialization",
+      "test_name": "test_tiny_default_deserialization",
+      "plugin": "cross_platform_matrix",
+      "input_from": "tiny_default_encode"
+    },
+    {
+      "name": "tiny_minimal_encode",
+      "description": "Tiny Minimal format serialization",
+      "test_name": "test_tiny_minimal_serialization",
+      "output_file": "{lang_name}_tiny_minimal_test_data.bin"
+    },
+    {
+      "name": "tiny_minimal_decode",
+      "description": "Tiny Minimal format deserialization",
+      "test_name": "test_tiny_minimal_deserialization",
+      "plugin": "cross_platform_matrix",
+      "input_from": "tiny_minimal_encode"
     }
   ]
 }
