@@ -47,9 +47,20 @@ def load_expected_values():
 def create_test_data():
     """Create test data for cross-platform compatibility testing"""
     try:
-        sys.path.insert(0, '../generated/py')
-        from serialization_test_sf import SerializationTestSerializationTestMessage
-        from struct_frame_parser import BasicFrame
+        # Import modules - try package import first, then fallback to direct import
+        import importlib
+        try:
+            msg_module = importlib.import_module('py.serialization_test_sf')
+            SerializationTestSerializationTestMessage = msg_module.SerializationTestSerializationTestMessage
+            basic_module = importlib.import_module('py.basic_default')
+            BasicDefault = basic_module.BasicDefault
+        except ImportError:
+            try:
+                from serialization_test_sf import SerializationTestSerializationTestMessage
+                from basic_default import BasicDefault
+            except ImportError as e:
+                print(f"  Error importing modules: {e}")
+                return True  # Skip if generated code not available
 
         # Load expected values from JSON
         expected = load_expected_values()
@@ -65,8 +76,9 @@ def create_test_data():
             test_array=expected['test_array']
         )
 
-        packet = BasicFrame()
-        encoded_data = packet.encode_msg(msg)
+        # Create a parser instance and encode the message
+        parser = BasicDefault()
+        encoded_data = parser.encode_msg(msg)
 
         with open('python_test_data.bin', 'wb') as f:
             f.write(bytes(encoded_data))

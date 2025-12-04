@@ -114,9 +114,20 @@ def read_and_validate_test_data(filename):
             )
             return False
 
-        sys.path.insert(0, '../generated/py')
-        from serialization_test_sf import SerializationTestSerializationTestMessage
-        from basic_default import BasicDefault
+        # Import modules - try package import first, then fallback to direct import
+        import importlib
+        try:
+            msg_module = importlib.import_module('py.serialization_test_sf')
+            SerializationTestSerializationTestMessage = msg_module.SerializationTestSerializationTestMessage
+            basic_module = importlib.import_module('py.basic_default')
+            BasicDefault = basic_module.BasicDefault
+        except ImportError:
+            try:
+                from serialization_test_sf import SerializationTestSerializationTestMessage
+                from basic_default import BasicDefault
+            except ImportError as e:
+                print(f"  Error importing modules: {e}")
+                return False
 
         # Validate and decode using BasicDefault
         result = BasicDefault.validate_packet(list(binary_data))

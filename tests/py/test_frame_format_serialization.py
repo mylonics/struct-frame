@@ -132,8 +132,9 @@ def create_test_data(frame_format):
             test_array=expected['test_array']
         )
 
-        # Encode using the frame format
-        encoded_data = parser_class.encode_msg(msg)
+        # Create parser instance and encode using the frame format
+        parser = parser_class()
+        encoded_data = parser.encode_msg(msg)
 
         # Write to file
         filename = f'python_{frame_format}_test_data.bin'
