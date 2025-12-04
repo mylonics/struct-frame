@@ -471,9 +471,8 @@ struct FrameMsgInfo {
             const_name = f'{PREFIX}_START_BYTE{i + 1}' if len(fmt.start_bytes) > 1 else f'{PREFIX}_START_BYTE'
             yield f'    buffer[{idx}] = {const_name};\n'
             idx += 1
-        yield f'    buffer[{idx}] = msg_id;\n'
-        idx += 1
         
+        # Write length BEFORE msg_id (per frame_formats.proto definition)
         if fmt.has_length:
             if fmt.length_bytes == 1:
                 yield f'    buffer[{idx}] = static_cast<uint8_t>(msg_size);\n'
@@ -481,6 +480,9 @@ struct FrameMsgInfo {
                 yield f'    buffer[{idx}] = static_cast<uint8_t>(msg_size & 0xFF);\n'
                 yield f'    buffer[{idx + 1}] = static_cast<uint8_t>((msg_size >> 8) & 0xFF);\n'
             idx += fmt.length_bytes
+        
+        yield f'    buffer[{idx}] = msg_id;\n'
+        idx += 1
         
         yield f'\n    if (msg_size > 0 && msg != nullptr) {{\n'
         yield f'        std::memcpy(buffer + {PREFIX}_HEADER_SIZE, msg, msg_size);\n'
@@ -512,6 +514,9 @@ struct FrameMsgInfo {
         
         yield f'\n    size_t msg_length = length - {PREFIX}_OVERHEAD;\n\n'
         
+        # Calculate msg_id offset: start_bytes + length_bytes (if has_length)
+        msg_id_offset = len(fmt.start_bytes) + (fmt.length_bytes if fmt.has_length else 0)
+        
         if fmt.has_crc:
             crc_data_start = len(fmt.start_bytes)
             crc_data_len = f'msg_length + 1'
@@ -520,13 +525,13 @@ struct FrameMsgInfo {
             yield f'    FrameChecksum ck = fletcher_checksum(buffer + {crc_data_start}, {crc_data_len});\n'
             yield f'    if (ck.byte1 == buffer[length - 2] && ck.byte2 == buffer[length - 1]) {{\n'
             yield f'        result.valid = true;\n'
-            yield f'        result.msg_id = buffer[{len(fmt.start_bytes)}];\n'
+            yield f'        result.msg_id = buffer[{msg_id_offset}];\n'
             yield f'        result.msg_len = msg_length;\n'
             yield f'        result.msg_data = const_cast<uint8_t*>(buffer + {PREFIX}_HEADER_SIZE);\n'
             yield f'    }}\n'
         else:
             yield f'    result.valid = true;\n'
-            yield f'    result.msg_id = buffer[{len(fmt.start_bytes)}];\n'
+            yield f'    result.msg_id = buffer[{msg_id_offset}];\n'
             yield f'    result.msg_len = msg_length;\n'
             yield f'    result.msg_data = const_cast<uint8_t*>(buffer + {PREFIX}_HEADER_SIZE);\n'
         

@@ -42,9 +42,9 @@ int main() {
         msg.description.length = 12;
         std::strncpy(msg.description.data, "Test message", sizeof(msg.description.data));
         
-        // Encode message into BasicFrame format
+        // Encode message into BasicDefault format
         uint8_t buffer[512];
-        FrameParsers::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
+        FrameParsers::BasicDefaultEncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID, &msg, 
                             BASIC_TYPES_BASIC_TYPES_MESSAGE_MAX_SIZE)) {

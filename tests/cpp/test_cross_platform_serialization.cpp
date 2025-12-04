@@ -27,7 +27,7 @@ int main() {
         msg.test_array.data[2] = 300;
         
         uint8_t buffer[512];
-        FrameParsers::BasicFrameEncodeBuffer encoder(buffer, sizeof(buffer));
+        FrameParsers::BasicDefaultEncodeBuffer encoder(buffer, sizeof(buffer));
         
         if (!encoder.encode(SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, &msg, 
                             SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE)) {

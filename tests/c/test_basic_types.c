@@ -59,19 +59,19 @@ int test_basic_types() {
   msg.description.length = strlen("Test description for basic types");
   strncpy(msg.description.data, "Test description for basic types", msg.description.length);
 
-  // Encode message into BasicFrame format
+  // Encode message into BasicDefault format
   uint8_t encode_buffer[1024];
-  size_t encoded_size = basic_frame_encode(encode_buffer, sizeof(encode_buffer),
-                                           BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID,
-                                           (const uint8_t*)&msg, BASIC_TYPES_BASIC_TYPES_MESSAGE_MAX_SIZE);
+  size_t encoded_size = basic_default_encode(encode_buffer, sizeof(encode_buffer),
+                                             BASIC_TYPES_BASIC_TYPES_MESSAGE_MSG_ID,
+                                             (const uint8_t*)&msg, BASIC_TYPES_BASIC_TYPES_MESSAGE_MAX_SIZE);
 
   if (encoded_size == 0) {
     print_failure_details("Encoding failed", &msg, NULL, NULL, 0);
     return 0;
   }
 
-  // Validate and decode the BasicFrame
-  frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, encoded_size);
+  // Validate and decode the BasicDefault frame
+  frame_msg_info_t decode_result = basic_default_validate_packet(encode_buffer, encoded_size);
   if (!decode_result.valid) {
     print_failure_details("Validation failed", &msg, NULL, encode_buffer, encoded_size);
     return 0;

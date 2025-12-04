@@ -38,9 +38,9 @@ int create_test_data() {
   msg.test_array.data[2] = 300;
 
   uint8_t encode_buffer[512];
-  size_t encoded_size = basic_frame_encode(encode_buffer, sizeof(encode_buffer),
-                                           SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
-                                           (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  size_t encoded_size = basic_default_encode(encode_buffer, sizeof(encode_buffer),
+                                             SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                             (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
 
   if (encoded_size == 0) {
     print_failure_details("Encoding failed", NULL, 0);
@@ -57,7 +57,7 @@ int create_test_data() {
   fclose(file);
 
   // Self-validate
-  frame_msg_info_t decode_result = basic_frame_validate_packet(encode_buffer, encoded_size);
+  frame_msg_info_t decode_result = basic_default_validate_packet(encode_buffer, encoded_size);
   if (!decode_result.valid) {
     print_failure_details("Self-validation failed", encode_buffer, encoded_size);
     return 0;

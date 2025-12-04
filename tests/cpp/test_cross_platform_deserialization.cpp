@@ -77,7 +77,7 @@ bool read_and_validate_test_data(const char* filename) {
     return false;
   }
 
-  FrameParsers::FrameMsgInfo decode_result = FrameParsers::basic_frame_validate_packet(buffer, size);
+  FrameParsers::FrameMsgInfo decode_result = FrameParsers::basic_default_validate_packet(buffer, size);
 
   if (!decode_result.valid) {
     print_failure_details("Failed to decode data");

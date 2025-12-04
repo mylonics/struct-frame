@@ -116,10 +116,10 @@ def read_and_validate_test_data(filename):
 
         sys.path.insert(0, '../generated/py')
         from serialization_test_sf import SerializationTestSerializationTestMessage
-        from frame_parsers_gen import BasicFrame
+        from basic_default import BasicDefault
 
-        # Validate and decode using BasicFrame
-        result = BasicFrame.validate_packet(list(binary_data))
+        # Validate and decode using BasicDefault
+        result = BasicDefault.validate_packet(list(binary_data))
         
         if not result.valid:
             print_failure_details(

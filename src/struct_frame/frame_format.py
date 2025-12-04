@@ -29,6 +29,14 @@ class FrameFormatField:
         self.is_length = 'length' in name.lower() or 'len' in name.lower()
         self.is_msg_id = 'msg_id' in name.lower() or name == 'msg_id'
         self.is_payload = name == 'payload'
+        # New header fields for extended frame formats
+        self.is_sequence = name in ['sequence', 'seq']
+        self.is_system_id = name == 'system_id'
+        self.is_component_id = name == 'component_id'
+        self.is_package_id = name == 'package_id'
+        # Check if this is a header field (not start byte, payload, or CRC)
+        self.is_header_field = (self.is_sequence or self.is_system_id or 
+                                self.is_component_id or self.is_package_id)
         
     def __repr__(self):
         return f"FrameFormatField({self.name}, {self.field_type}, hex={self.hex_value})"
@@ -102,6 +110,10 @@ class FrameFormat:
                     
                 # Track payload/msg_id (1 byte for msg_id)
                 if field.is_payload or field.is_msg_id:
+                    self.header_size += 1
+                
+                # Track additional header fields (sequence, system_id, component_id, package_id)
+                if field.is_header_field:
                     self.header_size += 1
                     
         return True
