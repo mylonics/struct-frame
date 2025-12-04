@@ -126,6 +126,39 @@ class FrameFormat:
         name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', name)
         return name.upper()
     
+    def get_payload_type(self):
+        """
+        Get the payload type identifier for this frame format.
+        
+        The payload type identifies the structure of the payload portion,
+        excluding start bytes. Formats with the same payload type can share
+        payload parsing/encoding logic.
+        
+        Returns a tuple: (has_crc, has_length, length_bytes, header_fields_tuple)
+        where header_fields_tuple identifies additional header fields.
+        """
+        # Get list of header fields (sequence, system_id, component_id, package_id)
+        header_fields = []
+        for field in self.fields:
+            if field.is_sequence:
+                header_fields.append('sequence')
+            if field.is_system_id:
+                header_fields.append('system_id')
+            if field.is_component_id:
+                header_fields.append('component_id')
+            if field.is_package_id:
+                header_fields.append('package_id')
+        
+        return (self.has_crc, self.has_length, self.length_bytes, tuple(header_fields))
+    
+    def get_payload_header_size(self):
+        """
+        Get the size of the payload header (excluding start bytes).
+        
+        This includes: msg_id (1) + length_bytes (if any) + additional header fields
+        """
+        return self.header_size - len(self.start_bytes)
+    
     def __repr__(self):
         return (f"FrameFormat({self.name}, start_bytes={self.start_bytes}, "
                 f"has_crc={self.has_crc}, has_length={self.has_length})")
@@ -183,6 +216,21 @@ class FrameFormatCollection:
                 if fmt.start_bytes[0][1] == start_byte:
                     matches.append(fmt)
         return matches
+    
+    def get_payload_types(self):
+        """
+        Get unique payload types and their representative formats.
+        
+        Returns a dictionary mapping payload_type tuple to list of formats with that type.
+        This allows code generation to create shared payload parsers.
+        """
+        payload_types = {}
+        for fmt in self.formats.values():
+            payload_type = fmt.get_payload_type()
+            if payload_type not in payload_types:
+                payload_types[payload_type] = []
+            payload_types[payload_type].append(fmt)
+        return payload_types
     
     def __iter__(self):
         return iter(self.formats.values())
