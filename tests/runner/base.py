@@ -28,10 +28,17 @@ class TestRunnerBase:
 
     @classmethod
     def load_config(cls, config_path: Path, verbose: bool = False) -> Dict[str, Any]:
-        """Load the test configuration from JSON file"""
+        """Load the test configuration from JSON file(s).
+
+        The main config can reference external files via:
+        - languages_file: Path to language definitions
+        - test_suites_file: Path to test suite definitions
+
+        These are merged into the final config.
+        """
         try:
             with open(config_path, 'r') as f:
-                return json.load(f)
+                config = json.load(f)
         except FileNotFoundError:
             cls._static_log(
                 f"Configuration file not found: {config_path}", "ERROR")
@@ -40,6 +47,44 @@ class TestRunnerBase:
             cls._static_log(
                 f"Invalid JSON in configuration file: {e}", "ERROR")
             sys.exit(1)
+
+        config_dir = config_path.parent
+
+        # Load and merge languages file if specified
+        if 'languages_file' in config:
+            languages_path = config_dir / config['languages_file']
+            try:
+                with open(languages_path, 'r') as f:
+                    languages_config = json.load(f)
+                    if 'languages' in languages_config:
+                        config['languages'] = languages_config['languages']
+            except FileNotFoundError:
+                cls._static_log(
+                    f"Languages file not found: {languages_path}", "ERROR")
+                sys.exit(1)
+            except json.JSONDecodeError as e:
+                cls._static_log(
+                    f"Invalid JSON in languages file: {e}", "ERROR")
+                sys.exit(1)
+
+        # Load and merge test suites file if specified
+        if 'test_suites_file' in config:
+            suites_path = config_dir / config['test_suites_file']
+            try:
+                with open(suites_path, 'r') as f:
+                    suites_config = json.load(f)
+                    if 'test_suites' in suites_config:
+                        config['test_suites'] = suites_config['test_suites']
+            except FileNotFoundError:
+                cls._static_log(
+                    f"Test suites file not found: {suites_path}", "ERROR")
+                sys.exit(1)
+            except json.JSONDecodeError as e:
+                cls._static_log(
+                    f"Invalid JSON in test suites file: {e}", "ERROR")
+                sys.exit(1)
+
+        return config
 
     @staticmethod
     def _static_log(message: str, level: str = "INFO"):
@@ -213,8 +258,8 @@ class TestRunnerBase:
                 cmd = f"{cmd} {args}"
             return exe_path.exists() and self.run_command(cmd, cwd=build_dir)[0]
 
-        # TypeScript (runs compiled JS)
-        if lang_id == 'ts' and 'compiled_file' in test_config:
+        # Compiled script language (e.g., TypeScript -> JS)
+        if 'compiled_file' in test_config and 'script_dir' in execution:
             script_dir = self.project_root / execution.get('script_dir', '')
             script_path = script_dir / test_config['compiled_file']
             if not script_path.exists():
@@ -224,8 +269,8 @@ class TestRunnerBase:
                 cmd = f"{cmd} {args}"
             return self.run_command(cmd, cwd=script_dir)[0]
 
-        # JavaScript (runs test files from script_dir - generated code directory)
-        if lang_id == 'js' and 'script_dir' in execution:
+        # Script language with script_dir (runs test files from generated code directory)
+        if 'script_dir' in execution and 'source_file' in test_config:
             script_dir = self.project_root / execution.get('script_dir', '')
             source_path = test_dir / test_config['source_file']
             # Copy test file to generated directory for execution

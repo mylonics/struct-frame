@@ -89,13 +89,27 @@ class OutputFormatter(TestRunnerBase):
         for lang_id in active_languages:
             for result in test_results.get(lang_id, {}).values():
                 if result is not None:
-                    total += 1
-                    passed += result
+                    if isinstance(result, bool):
+                        total += 1
+                        passed += result
+                    # Skip dict results (handled in cross-platform)
 
         # Cross-platform
         for decoders in cross_platform_results.values():
             for result in decoders.values():
-                if result is not None:
+                if result is None:
+                    continue
+                if isinstance(result, dict):
+                    # Frame format matrix result with encode/decode
+                    encode_ok = result.get('encode')
+                    decode_ok = result.get('decode')
+                    if encode_ok is not None:
+                        total += 1
+                        passed += encode_ok
+                    if decode_ok is not None:
+                        total += 1
+                        passed += decode_ok
+                elif isinstance(result, bool):
                     total += 1
                     passed += result
 

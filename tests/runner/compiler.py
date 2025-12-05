@@ -28,6 +28,9 @@ class Compiler(TestRunnerBase):
             self.config, self.project_root, self.verbose, self.verbose_failure)
         formatter.print_section("COMPILATION (all test files)")
 
+        # Copy JS test files first (no compilation needed but files must be in place)
+        self._copy_js_test_files()
+
         compiled = [l for l in self.get_active_languages()
                     if self.config['languages'][l].get('compilation', {}).get('enabled')]
 
@@ -40,6 +43,27 @@ class Compiler(TestRunnerBase):
 
         formatter.print_lang_results(compiled, self.results)
         return all(self.results.get(l, False) for l in compiled)
+
+    def _copy_js_test_files(self):
+        """Copy JavaScript test files to the generated JS directory."""
+        if 'js' not in self.config['languages']:
+            return
+
+        lang_config = self.config['languages']['js']
+        if not lang_config.get('enabled', True):
+            return
+
+        test_dir = self.project_root / lang_config['test_dir']
+        execution = lang_config.get('execution', {})
+        script_dir_path = execution.get('script_dir')
+
+        if script_dir_path:
+            script_dir = self.project_root / script_dir_path
+            script_dir.mkdir(parents=True, exist_ok=True)
+            for filename in ['test_runner.js', 'test_codec.js']:
+                source_file = test_dir / filename
+                if source_file.exists():
+                    shutil.copy2(source_file, script_dir / filename)
 
     def _compile_language(self, lang_id: str) -> bool:
         """Compile code for a specific language"""
@@ -67,46 +91,52 @@ class Compiler(TestRunnerBase):
         # Ensure build directory exists
         build_dir.mkdir(parents=True, exist_ok=True)
 
-        # Compile test files from all suites
-        for suite in self.config['test_suites']:
-            test_name = suite.get('test_name')
-            if not test_name:
-                continue
+        # Compile the unified test_runner with test_codec for C/C++
+        source_ext = comp.get('source_extension', '')
+        exe_ext = comp.get('executable_extension', '')
 
-            test_files = self.get_test_files(lang_id, test_name)
-            if 'executable' in test_files:
-                source = test_dir / test_files['source_file']
-                output = build_dir / test_files['executable']
-                if source.exists():
-                    if not self._compile_file(lang_id, source, output, gen_dir):
-                        all_success = False
+        if exe_ext and source_ext in ['.c', '.cpp']:
+            # For C: compile test_runner.c with test_codec.c
+            # For C++: compile test_runner.cpp with test_codec.cpp
+            runner_source = test_dir / f"test_runner{source_ext}"
+            codec_source = test_dir / f"test_codec{source_ext}"
+            runner_output = build_dir / f"test_runner{exe_ext}"
 
-        # TypeScript special handling
-        if lang_id == 'ts' and comp.get('command'):
+            if runner_source.exists() and codec_source.exists():
+                if not self._compile_multi_source(lang_id, [runner_source, codec_source],
+                                                  runner_output, gen_dir):
+                    all_success = False
+
+        # Special handling for languages with 'command' (project-based compilation like TypeScript)
+        # These languages copy test files to generated dir and run a project-level compile command
+        source_ext = comp.get('source_extension', '')
+        if comp.get('command') and source_ext:
             # Copy test files to generated directory
-            for ts_file in test_dir.glob("*.ts"):
-                shutil.copy2(ts_file, gen_dir / ts_file.name)
+            for source_file in test_dir.glob(f"*{source_ext}"):
+                shutil.copy2(source_file, gen_dir / source_file.name)
 
-            # Create tsconfig.json in generated dir to resolve modules from tests/ts/node_modules
-            tsconfig_path = gen_dir / 'tsconfig.json'
-            if not tsconfig_path.exists():
-                import json
-                tsconfig = {
-                    "extends": "../../ts/tsconfig.json",
-                    "compilerOptions": {
-                        "rootDir": ".",
-                        "outDir": "./js",
-                        "baseUrl": "../../ts",
-                        "paths": {
-                            "typed-struct": ["node_modules/typed-struct"],
-                            "*": ["node_modules/*", "node_modules/@types/*"]
+            # Create tsconfig.json in generated dir for TypeScript projects
+            # This is needed to resolve modules from tests dir node_modules
+            if source_ext == '.ts':
+                tsconfig_path = gen_dir / 'tsconfig.json'
+                if not tsconfig_path.exists():
+                    import json
+                    tsconfig = {
+                        "extends": "../../ts/tsconfig.json",
+                        "compilerOptions": {
+                            "rootDir": ".",
+                            "outDir": "./js",
+                            "baseUrl": "../../ts",
+                            "paths": {
+                                "typed-struct": ["node_modules/typed-struct"],
+                                "*": ["node_modules/*", "node_modules/@types/*"]
+                            },
+                            "types": ["node"],
+                            "typeRoots": ["../../ts/node_modules/@types"]
                         },
-                        "types": ["node"],
-                        "typeRoots": ["../../ts/node_modules/@types"]
-                    },
-                    "include": ["./*.ts"]
-                }
-                tsconfig_path.write_text(json.dumps(tsconfig, indent=2))
+                        "include": [f"./*{source_ext}"]
+                    }
+                    tsconfig_path.write_text(json.dumps(tsconfig, indent=2))
 
             output_dir = self.project_root / comp['output_dir']
             cmd = comp['command'].format(
@@ -131,3 +161,25 @@ class Compiler(TestRunnerBase):
                   .replace('{output}', str(output))
                   .replace('{source}', str(source)) for f in comp.get('flags', [])]
         return self.run_command(f"{comp['compiler']} {' '.join(flags)}")[0]
+
+    def _compile_multi_source(self, lang_id: str, sources: List[Path], output: Path,
+                              gen_dir: Path) -> bool:
+        """Compile multiple source files into a single executable"""
+        for source in sources:
+            if not source.exists():
+                return False
+        comp = self.config['languages'][lang_id]['compilation']
+
+        # Build flags, replacing {source} with all source files
+        sources_str = ' '.join(f'"{s}"' for s in sources)
+        flags = []
+        for f in comp.get('flags', []):
+            f = f.replace('{generated_dir}', str(gen_dir))
+            f = f.replace('{output}', str(output))
+            if '{source}' in f:
+                # Replace {source} with all sources
+                f = sources_str
+            flags.append(f)
+
+        cmd = f"{comp['compiler']} {' '.join(flags)}"
+        return self.run_command(cmd)[0]

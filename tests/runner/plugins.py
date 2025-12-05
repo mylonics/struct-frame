@@ -53,7 +53,7 @@ class StandardTestPlugin(TestPlugin):
     def run(self, suite: Dict[str, Any]) -> Dict[str, Any]:
         # Check if this suite should skip display (results shown elsewhere)
         skip_display = suite.get('skip_display', False)
-        
+
         if not skip_display:
             print(f"\n[TEST] {suite['description']}")
 
@@ -87,10 +87,8 @@ class StandardTestPlugin(TestPlugin):
     def _get_output_dir(self, lang_id: str) -> Path:
         """Get the output directory for a language (build_dir for binaries)"""
         lang_config = self.config['languages'][lang_id]
-        if lang_id == 'ts':
-            return self.project_root / lang_config['execution'].get('script_dir', '')
-        # JavaScript also uses script_dir for output
-        if lang_id == 'js' and 'execution' in lang_config:
+        # Languages with script_dir in execution use that for output
+        if 'execution' in lang_config:
             script_dir = lang_config['execution'].get('script_dir')
             if script_dir:
                 return self.project_root / script_dir
@@ -112,9 +110,14 @@ class CrossPlatformMatrixPlugin(TestPlugin):
     Plugin for cross-platform compatibility testing.
 
     Runs a decoder test against output files from a linked encoder suite,
-    using C as the base language. Tests:
-    - C serialization decoded by all languages
-    - All language serializations decoded by C
+    using a configurable base language. Tests:
+    - Base language serialization decoded by all languages
+    - All language serializations decoded by base language
+
+    The base language can be configured via:
+    - Suite-level 'base_language' field
+    - Global 'base_language' in test config
+    - Defaults to 'c' if not specified
     """
 
     plugin_type = "cross_platform_matrix"
@@ -136,8 +139,9 @@ class CrossPlatformMatrixPlugin(TestPlugin):
         matrix = {}
         results = {lang_id: {} for lang_id in testable}
 
-        # Use C as the base language for cross-platform testing
-        base_lang = 'c'
+        # Get base language from suite config or global config
+        base_lang = suite.get(
+            'base_language', self.config.get('base_language', 'c'))
         if base_lang not in testable:
             self.log(
                 f"Base language '{base_lang}' is not available for testing", "ERROR")
@@ -201,20 +205,13 @@ class CrossPlatformMatrixPlugin(TestPlugin):
 
         try:
             with self.executor.temp_copy(data_file, target_file):
-                # TypeScript needs file in JS directory too
-                if lang_id == 'ts' and 'compiled_file' in test_config:
-                    script_dir = self.project_root / \
-                        lang_config['execution'].get('script_dir', '')
-                    ts_target = script_dir / data_file.name
-                    with self.executor.temp_copy(data_file, ts_target):
-                        return self.executor.run_test_script(
-                            lang_id, test_config, args=data_file.name)
-                # JavaScript also needs file in script_dir
-                elif lang_id == 'js' and 'script_dir' in lang_config.get('execution', {}):
-                    script_dir = self.project_root / \
-                        lang_config['execution'].get('script_dir', '')
-                    js_target = script_dir / data_file.name
-                    with self.executor.temp_copy(data_file, js_target):
+                # Languages with script_dir need file copied there too
+                execution = lang_config.get('execution', {})
+                script_dir_path = execution.get('script_dir')
+                if script_dir_path:
+                    script_dir = self.project_root / script_dir_path
+                    script_target = script_dir / data_file.name
+                    with self.executor.temp_copy(data_file, script_target):
                         return self.executor.run_test_script(
                             lang_id, test_config, args=data_file.name)
                 else:
@@ -229,63 +226,95 @@ class CrossPlatformMatrixPlugin(TestPlugin):
 class FrameFormatMatrixPlugin(TestPlugin):
     """
     Plugin for consolidated frame format compatibility testing.
-    
+
     Runs serialization and deserialization tests for multiple frame formats
     and displays results in a single matrix with frame formats as rows
     and languages as columns.
+
+    Uses unified test_runner executable that accepts:
+      test_runner encode <frame_format> <output_file>
+      test_runner decode <frame_format> <input_file>
+
+    Each cell shows:
+    - OK: Both serialization and deserialization passed
+    - SER: Serialization failed
+    - DES: Deserialization failed  
+    - BOTH: Both serialization and deserialization failed
+    - N/A: Test could not be run
     """
 
     plugin_type = "frame_format_matrix"
 
     def run(self, suite: Dict[str, Any]) -> Dict[str, Any]:
         """Run frame format matrix tests and display consolidated results."""
-        self.formatter.print_section("FRAME FORMAT COMPATIBILITY MATRIX")
+        # Only print the test description, not redundant section headers
         print(f"[TEST] {suite['description']}")
 
-        # Get frame formats and their corresponding encode/decode suites
+        # Get frame formats
         frame_formats = suite.get('frame_formats', [])
         if not frame_formats:
-            self.log("frame_format_matrix plugin requires 'frame_formats' field", "ERROR")
+            self.log(
+                "frame_format_matrix plugin requires 'frame_formats' field", "ERROR")
             return {'results': {}, 'matrix': {}}
 
         testable = self.executor.get_testable_languages()
         results = {lang_id: {} for lang_id in testable}
-        
+
         # Matrix: frame_format (rows) vs language (columns)
+        # Each cell is a dict with 'encode' and 'decode' results
         matrix = {}
 
+        # Get base language from suite config or global config
+        base_lang = suite.get(
+            'base_language', self.config.get('base_language', 'c'))
+
         for frame_format in frame_formats:
-            encode_suite = frame_format.get('encode_suite')
-            decode_suite = frame_format.get('decode_suite')
-            display_name = frame_format.get('display_name', encode_suite)
-            
+            format_name = frame_format.get('name')
+            output_file_pattern = frame_format.get(
+                'output_file', '{lang_name}_output.bin')
+            display_name = frame_format.get('display_name', format_name)
+
             matrix[display_name] = {}
-            
-            # Get encoded files from the encode suite
-            encoded_files = self.executor.get_output_files(encode_suite)
-            
+            encoded_files = {}
+
+            # First pass: run all encode tests and collect output files
             for lang_id in testable:
                 lang_name = self.config['languages'][lang_id]['name']
-                
-                # Get C-encoded file (as reference for cross-platform testing)
-                c_data_file = encoded_files.get('c')
-                
-                if c_data_file is None or not c_data_file.exists():
-                    matrix[display_name][lang_name] = None
+                output_file = self._get_output_file(
+                    lang_id, output_file_pattern)
+
+                # Run encode using test_runner
+                encode_result = self._run_test_runner(
+                    lang_id, 'encode', format_name, output_file)
+
+                # Check for output file
+                if encode_result and output_file and output_file.exists():
+                    encoded_files[lang_id] = output_file
+
+                # Initialize matrix entry
+                matrix[display_name][lang_name] = {
+                    'encode': encode_result,
+                    'decode': None  # Will be set in second pass
+                }
+
+                results[lang_id][f"{display_name}_encode"] = encode_result
+
+            # Second pass: run decode tests using base language's encoded file
+            base_data_file = encoded_files.get(base_lang)
+
+            for lang_id in testable:
+                lang_name = self.config['languages'][lang_id]['name']
+
+                if base_data_file is None or not base_data_file.exists():
+                    matrix[display_name][lang_name]['decode'] = None
                     continue
-                
-                # Build decode test config for this language
-                decode_config = self._build_decode_config(lang_id, decode_suite)
-                if not decode_config:
-                    matrix[display_name][lang_name] = None
-                    continue
-                
-                # Run decoder with C's encoded file
-                result = self._run_decoder_with_file(lang_id, decode_config, c_data_file)
-                matrix[display_name][lang_name] = result
-                
-                result_key = f"{decode_suite}_{lang_id}"
-                results[lang_id][result_key] = result
+
+                # Run decoder with base language's encoded file
+                decode_result = self._run_decode_with_file(
+                    lang_id, format_name, base_data_file)
+                matrix[display_name][lang_name]['decode'] = decode_result
+
+                results[lang_id][f"{display_name}_decode"] = decode_result
 
         self._print_frame_format_matrix(matrix)
 
@@ -294,17 +323,83 @@ class FrameFormatMatrixPlugin(TestPlugin):
             'matrix': matrix
         }
 
-    def _build_decode_config(self, lang_id: str, decode_suite_name: str) -> Optional[Dict[str, Any]]:
-        """Build test config for a decode suite."""
-        # Find the decode suite in config
-        for suite in self.config['test_suites']:
-            if suite['name'] == decode_suite_name:
-                return self.executor.build_test_config(lang_id, suite)
-        return None
+    def _run_test_runner(self, lang_id: str, mode: str, format_name: str,
+                         output_file: Path) -> bool:
+        """Run the unified test_runner for a language."""
+        lang_config = self.config['languages'][lang_id]
+        build_dir = self.project_root / \
+            lang_config.get('build_dir', lang_config['test_dir'])
 
-    def _run_decoder_with_file(self, lang_id: str, test_config: Dict[str, Any],
-                               data_file: Path) -> bool:
-        """Run a decoder test with a specific input file."""
+        # Ensure build directory exists
+        build_dir.mkdir(parents=True, exist_ok=True)
+
+        # Get test_runner executable/script path
+        exe_ext = lang_config.get('compilation', {}).get(
+            'executable_extension', '')
+        source_ext = lang_config.get(
+            'compilation', {}).get('source_extension', '')
+        execution = lang_config.get('execution', {})
+
+        # For compiled languages (C, C++)
+        if exe_ext:
+            runner_path = build_dir / f"test_runner{exe_ext}"
+            if not runner_path.exists():
+                return False
+            cmd = f'"{runner_path}" {mode} {format_name} "{output_file}"'
+            return self.executor.run_command(cmd, cwd=build_dir)[0]
+
+        # For TypeScript (compiles to JS)
+        if lang_config.get('compilation', {}).get('compiled_extension'):
+            script_dir = self.project_root / execution.get('script_dir', '')
+            runner_path = script_dir / 'test_runner.js'
+            if not runner_path.exists():
+                return False
+            interpreter = execution.get('interpreter', 'node')
+            cmd = f'{interpreter} "{runner_path}" {mode} {format_name} "{output_file}"'
+            return self.executor.run_command(cmd, cwd=script_dir)[0]
+
+        # For interpreted languages (Python, JavaScript)
+        if 'interpreter' in execution:
+            script_dir_path = execution.get('script_dir')
+            if script_dir_path:
+                # JS runs from generated dir
+                script_dir = self.project_root / script_dir_path
+                runner_path = script_dir / 'test_runner.js'
+            else:
+                # Python runs from test dir
+                test_dir = self.project_root / lang_config['test_dir']
+                source_ext = execution.get('source_extension', '.py')
+                runner_path = test_dir / f'test_runner{source_ext}'
+
+            if not runner_path.exists():
+                return False
+
+            interpreter = execution['interpreter']
+            cwd = runner_path.parent
+
+            # Handle Python's PYTHONPATH
+            env_vars = execution.get('env', {})
+            env_prefix = ''
+            if env_vars:
+                gen_dir = self.project_root / \
+                    lang_config['code_generation']['output_dir']
+                for key, val in env_vars.items():
+                    val = val.replace('{generated_dir}', str(gen_dir))
+                    val = val.replace(
+                        '{generated_parent_dir}', str(gen_dir.parent))
+                    # Use cross-platform path separator
+                    import os
+                    val = val.replace(':', os.pathsep)
+                    env_prefix = f'set {key}={val} && ' if os.name == 'nt' else f'{key}={val} '
+
+            cmd = f'{env_prefix}{interpreter} "{runner_path}" {mode} {format_name} "{output_file}"'
+            return self.executor.run_command(cmd, cwd=cwd)[0]
+
+        return False
+
+    def _run_decode_with_file(self, lang_id: str, format_name: str,
+                              data_file: Path) -> bool:
+        """Run decoder with a specific input file."""
         lang_config = self.config['languages'][lang_id]
         build_dir = self.project_root / \
             lang_config.get('build_dir', lang_config['test_dir'])
@@ -314,41 +409,52 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
         try:
             with self.executor.temp_copy(data_file, target_file):
-                # TypeScript needs file in JS directory too
-                if lang_id == 'ts' and 'compiled_file' in test_config:
-                    script_dir = self.project_root / \
-                        lang_config['execution'].get('script_dir', '')
-                    ts_target = script_dir / data_file.name
-                    with self.executor.temp_copy(data_file, ts_target):
-                        return self.executor.run_test_script(
-                            lang_id, test_config, args=data_file.name)
-                # JavaScript also needs file in script_dir
-                elif lang_id == 'js' and 'script_dir' in lang_config.get('execution', {}):
-                    script_dir = self.project_root / \
-                        lang_config['execution'].get('script_dir', '')
-                    js_target = script_dir / data_file.name
-                    with self.executor.temp_copy(data_file, js_target):
-                        return self.executor.run_test_script(
-                            lang_id, test_config, args=data_file.name)
+                # For script languages, also copy to script_dir
+                execution = lang_config.get('execution', {})
+                script_dir_path = execution.get('script_dir')
+                if script_dir_path:
+                    script_dir = self.project_root / script_dir_path
+                    script_target = script_dir / data_file.name
+                    with self.executor.temp_copy(data_file, script_target):
+                        return self._run_test_runner(lang_id, 'decode', format_name, script_target)
                 else:
-                    return self.executor.run_test_script(
-                        lang_id, test_config, args=target_file.name)
+                    return self._run_test_runner(lang_id, 'decode', format_name, target_file)
         except Exception as e:
             if self.verbose:
                 self.log(f"Decode failed: {e}", "WARNING")
             return False
 
-    def _print_frame_format_matrix(self, matrix: Dict[str, Dict[str, Optional[bool]]]):
-        """Print the frame format compatibility matrix."""
+    def _get_output_file(self, lang_id: str, pattern: str) -> Optional[Path]:
+        """Get the output file path for a language."""
+        lang_config = self.config['languages'][lang_id]
+        file_prefix = lang_config.get(
+            'file_prefix', lang_config['name'].lower())
+        filename = pattern.replace('{lang_name}', file_prefix)
+
+        # Check script_dir first (for JS/TS)
+        if 'execution' in lang_config:
+            script_dir = lang_config['execution'].get('script_dir')
+            if script_dir:
+                return self.project_root / script_dir / filename
+
+        # Use build_dir
+        build_dir = lang_config.get('build_dir', lang_config['test_dir'])
+        return self.project_root / build_dir / filename
+
+    def _print_frame_format_matrix(self, matrix: Dict[str, Dict[str, Dict[str, Optional[bool]]]]):
+        """Print the frame format compatibility matrix with detailed status."""
         if not matrix:
             return
 
         # Get all language columns
-        all_langs = sorted(set().union(*[set(d.keys()) for d in matrix.values()]))
-        
+        all_langs = sorted(set().union(
+            *[set(d.keys()) for d in matrix.values()]))
+
         col_width = 12
-        print("\nFrame Format Compatibility Matrix:")
-        header = "Frame Format".ljust(20) + "".join(l.center(col_width) for l in all_langs)
+        print("\nFrame Format Language Test Matrix:")
+        print("Legend: OK=pass, SER=serialization failed, DES=deserialization failed, BOTH=both failed")
+        header = "Frame Format".ljust(
+            20) + "".join(l.center(col_width) for l in all_langs)
         print(header)
         print("-" * len(header))
 
@@ -361,6 +467,27 @@ class FrameFormatMatrixPlugin(TestPlugin):
                 val = lang_results.get(lang)
                 if val is None:
                     cell = "N/A"
+                elif isinstance(val, dict):
+                    encode_ok = val.get('encode')
+                    decode_ok = val.get('decode')
+
+                    if encode_ok is None and decode_ok is None:
+                        cell = "N/A"
+                    elif encode_ok and decode_ok:
+                        cell = "OK"
+                        success_count += 1
+                        total_count += 1
+                    elif not encode_ok and (decode_ok is False or decode_ok is None):
+                        cell = "BOTH"
+                        total_count += 1
+                    elif not encode_ok:
+                        cell = "SER"
+                        total_count += 1
+                    elif not decode_ok:
+                        cell = "DES"
+                        total_count += 1
+                    else:
+                        cell = "N/A"
                 elif val:
                     cell = "OK"
                     success_count += 1
@@ -372,7 +499,8 @@ class FrameFormatMatrixPlugin(TestPlugin):
             print(row)
 
         if total_count > 0:
-            print(f"\nSuccess rate: {success_count}/{total_count} ({100*success_count/total_count:.1f}%)\n")
+            print(
+                f"\nSuccess rate: {success_count}/{total_count} ({100*success_count/total_count:.1f}%)\n")
 
 
 # Registry of available plugins

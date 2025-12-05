@@ -14,7 +14,9 @@ tests_dir = Path(__file__).parent / "tests"
 sys.path.insert(0, str(tests_dir))
 
 try:
-    from run_tests import main as run_tests_main
+    from run_tests import main as run_tests_main, clean_test_files
+    # Clean build/generated folders before running tests
+    clean_test_files("tests/test_config.json", verbose=False)
     success = run_tests_main()
     sys.exit(0 if success else 1)
 except ImportError:
