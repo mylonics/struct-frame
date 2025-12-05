@@ -29,93 +29,16 @@ class ToolChecker(TestRunnerBase):
         """
         results = {}
 
-        for lang_id, lang_config in self.config['languages'].items():
-            if not lang_config.get('enabled', True):
+        for lang_id in self.config['language_ids']:
+            lang = self.get_lang(lang_id)
+            if not lang or not lang.enabled:
                 continue
 
-            info = {
-                'name': lang_config['name'],
-                'available': True,
-                'compiler': None,
-                'interpreter': None,
-            }
-
-            # Generation-only languages don't need tools checked
-            if lang_config.get('generation_only'):
-                info['generation_only'] = True
-                results[lang_id] = info
-                continue
-
-            # Check compiler if compilation is enabled
-            info = self._check_compiler(lang_config, info)
-
-            # Check interpreter if execution config exists
-            info = self._check_interpreter(lang_config, info)
-
+            # Use the Language class's check_tools() method
+            info = lang.check_tools()
             results[lang_id] = info
 
         return results
-
-    def _check_compiler(self, lang_config: Dict[str, Any], info: Dict[str, Any]) -> Dict[str, Any]:
-        """Check compiler availability for a language"""
-        comp = lang_config.get('compilation', {})
-        if not comp.get('enabled'):
-            return info
-
-        compiler = comp.get('compiler', '')
-        check_cmd = comp.get('compiler_check', f"{compiler} --version")
-
-        # Use working_dir if specified (for npm/npx commands)
-        working_dir = None
-        if comp.get('working_dir'):
-            working_dir = self.project_root / comp['working_dir']
-
-        success, stdout, stderr = self.run_command(
-            check_cmd, cwd=working_dir, timeout=5)
-
-        version = ""
-        if success:
-            output = stdout or stderr
-            version = output.strip().split('\n')[0] if output else ""
-
-        info['compiler'] = {
-            'name': compiler,
-            'available': success,
-            'version': version
-        }
-
-        if not success:
-            info['available'] = False
-            info['reason'] = f"Compiler '{compiler}' not found"
-
-        return info
-
-    def _check_interpreter(self, lang_config: Dict[str, Any], info: Dict[str, Any]) -> Dict[str, Any]:
-        """Check interpreter availability for a language"""
-        execution = lang_config.get('execution', {})
-        if not execution.get('interpreter'):
-            return info
-
-        interpreter = execution['interpreter']
-        success, stdout, stderr = self.run_command(
-            f"{interpreter} --version", timeout=5)
-
-        version = ""
-        if success:
-            output = stdout or stderr
-            version = output.strip().split('\n')[0] if output else ""
-
-        info['interpreter'] = {
-            'name': interpreter,
-            'available': success,
-            'version': version
-        }
-
-        if not success:
-            info['available'] = False
-            info['reason'] = f"Interpreter '{interpreter}' not found"
-
-        return info
 
     def print_tool_availability(self) -> bool:
         """Print a summary of available tools and return True if all tools available."""

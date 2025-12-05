@@ -18,7 +18,7 @@ class CodeGenerator(TestRunnerBase):
                  verbose_failure: bool = False):
         super().__init__(config, project_root, verbose, verbose_failure)
         self.results: Dict[str, bool] = {}
-        for lang_id in self.config['languages']:
+        for lang_id in self.config['language_ids']:
             self.results[lang_id] = False
 
     def generate_code(self) -> bool:
@@ -40,9 +40,10 @@ class CodeGenerator(TestRunnerBase):
             # Build generation command
             cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path)]
             for lang_id in active:
-                gen = self.config['languages'][lang_id]['code_generation']
-                cmd_parts += [gen['flag'], gen['output_path_flag'],
-                              str(self.project_root / gen['output_dir'])]
+                lang = self.get_lang(lang_id)
+                if lang:
+                    cmd_parts += [lang.gen_flag, lang.gen_output_path_flag,
+                                  str(self.project_root / lang.gen_output_dir)]
 
             env = {"PYTHONPATH": str(self.project_root / "src")}
             success, _, _ = self.run_command(" ".join(cmd_parts), env=env)

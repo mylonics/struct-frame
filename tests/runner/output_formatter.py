@@ -21,7 +21,8 @@ class OutputFormatter(TestRunnerBase):
         """Print results for each language"""
         print()
         for lang_id in languages:
-            name = self.config['languages'][lang_id]['name']
+            lang = self.get_lang(lang_id)
+            name = lang.name if lang else lang_id
             status = "PASS" if results.get(lang_id, False) else "FAIL"
             print(f"  {name:>10}: {status}")
 
@@ -81,7 +82,8 @@ class OutputFormatter(TestRunnerBase):
 
         # Compilation
         for lang_id in active_languages:
-            if self.config['languages'][lang_id].get('compilation', {}).get('enabled'):
+            lang = self.get_lang(lang_id)
+            if lang and lang.compiler:
                 total += 1
                 passed += compilation_results.get(lang_id, False)
 

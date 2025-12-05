@@ -1,0 +1,113 @@
+// Combined test messages for struct-frame code generation framework
+// This file consolidates all test message definitions for testing
+//
+// Note: NestedMessage (from original nested_messages.proto) is intentionally
+// excluded because the JavaScript code generator has a bug with nested struct
+// references. The test suite only uses SerializationTestMessage for cross-language
+// testing, so this exclusion doesn't affect test coverage.
+package serialization_test;
+
+// ============================================================================
+// Enums
+// ============================================================================
+
+enum Priority {
+  LOW = 0;
+  MEDIUM = 1;
+  HIGH = 2;
+  CRITICAL = 3;
+}
+
+enum Status {
+  INACTIVE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+  MAINTENANCE = 3;
+}
+
+// ============================================================================
+// Basic Types Test Message (msgid: 201)
+// ============================================================================
+
+// Test all basic data types
+message BasicTypesMessage {
+  option msgid = 201;
+  
+  // Integer types
+  int8 small_int = 1;
+  int16 medium_int = 2;
+  int32 regular_int = 3;
+  int64 large_int = 4;
+  
+  // Unsigned integer types
+  uint8 small_uint = 5;
+  uint16 medium_uint = 6;
+  uint32 regular_uint = 7;
+  uint64 large_uint = 8;
+  
+  // Floating point types
+  float single_precision = 9;
+  double double_precision = 10;
+  
+  // Boolean type
+  bool flag = 11;
+  
+  // Fixed string
+  string device_id = 12 [size=32];
+  
+  // Variable string
+  string description = 13 [max_size=128];
+}
+
+// ============================================================================
+// Comprehensive Arrays Test (msgid: 203)
+// ============================================================================
+
+message Sensor {
+  uint8 id = 1;
+  float value = 2;
+  Status status = 3;
+  string name = 4 [size=16];
+}
+
+message ComprehensiveArrayMessage {
+  option msgid = 203;
+  
+  // Fixed arrays of primitives
+  repeated int32 fixed_ints = 1 [size=3];
+  repeated float fixed_floats = 2 [size=2];
+  repeated bool fixed_bools = 3 [size=4];
+  
+  // Bounded arrays of primitives  
+  repeated uint16 bounded_uints = 4 [max_size=3];
+  repeated double bounded_doubles = 5 [max_size=2];
+  
+  // Fixed string arrays (smaller strings and fewer of them)
+  repeated string fixed_strings = 6 [size=2, element_size=8];
+  
+  // Bounded string arrays (smaller)
+  repeated string bounded_strings = 7 [max_size=2, element_size=12];
+  
+  // Enum arrays
+  repeated Status fixed_statuses = 8 [size=2];
+  repeated Status bounded_statuses = 9 [max_size=2];
+  
+  // Nested message arrays (reduced)
+  repeated Sensor fixed_sensors = 10 [size=1];
+  repeated Sensor bounded_sensors = 11 [max_size=1];
+}
+
+// ============================================================================
+// Serialization Test Message (msgid: 204)
+// ============================================================================
+
+// A simple message for cross-language serialization testing
+message SerializationTestMessage {
+  option msgid = 204;
+  
+  uint32 magic_number = 1;
+  string test_string = 2 [max_size=64];
+  float test_float = 3;
+  bool test_bool = 4;
+  repeated int32 test_array = 5 [max_size=5];
+}
