@@ -132,6 +132,26 @@
         "enabled": false
       },
       "generation_only": true
+    },
+    
+    "csharp": {
+      "name": "C#",
+      "enabled": true,
+      "code_generation": {
+        "flag": "--build_csharp",
+        "output_path_flag": "--csharp_path",
+        "output_dir": "tests/generated/csharp"
+      },
+      "compilation": {
+        "enabled": true,
+        "compiler": "csc",
+        "compiler_check": "csc --version 2>&1 || mcs --version 2>&1 || dotnet --version 2>&1",
+        "flags": ["-out:{output}", "{source}", "{generated_dir}/*.cs"],
+        "source_extension": ".cs",
+        "executable_extension": ".exe"
+      },
+      "test_dir": "tests/csharp",
+      "build_dir": "tests/csharp/build"
     }
   },
   

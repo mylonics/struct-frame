@@ -10,6 +10,7 @@ from struct_frame import FileJsGen
 from struct_frame import FilePyGen
 from struct_frame import FileGqlGen
 from struct_frame import FileCppGen
+from struct_frame import FileCSharpGen
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -457,12 +458,15 @@ parser.add_argument('--build_ts', action='store_true')
 parser.add_argument('--build_js', action='store_true')
 parser.add_argument('--build_py', action='store_true')
 parser.add_argument('--build_cpp', action='store_true')
+parser.add_argument('--build_csharp', action='store_true')
 parser.add_argument('--c_path', nargs=1, type=str, default=['generated/c/'])
 parser.add_argument('--ts_path', nargs=1, type=str, default=['generated/ts/'])
 parser.add_argument('--js_path', nargs=1, type=str, default=['generated/js/'])
 parser.add_argument('--py_path', nargs=1, type=str, default=['generated/py/'])
 parser.add_argument('--cpp_path', nargs=1, type=str,
                     default=['generated/cpp/'])
+parser.add_argument('--csharp_path', nargs=1, type=str,
+                    default=['generated/csharp/'])
 parser.add_argument('--build_gql', action='store_true')
 parser.add_argument('--gql_path', nargs=1, type=str,
                     default=['generated/gql/'])
@@ -572,14 +576,24 @@ def generateCppFileStrings(path):
     return out
 
 
-def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_path, cpp_path,
-                             build_c, build_ts, build_js, build_py, build_cpp):
+def generateCSharpFileStrings(path):
+    out = {}
+    for key, value in packages.items():
+        name = os.path.join(path, value.name + ".sf.cs")
+        data = ''.join(FileCSharpGen.generate(value))
+        out[name] = data
+    return out
+
+
+def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_path, cpp_path, csharp_path,
+                             build_c, build_ts, build_js, build_py, build_cpp, build_csharp):
     """Generate frame parser files from frame format definitions"""
     from struct_frame.frame_format import parse_frame_formats
     from struct_frame.frame_parser_c_gen import generate_c_frame_parsers
     from struct_frame.frame_parser_py_gen import generate_py_frame_parsers
     from struct_frame.frame_parser_ts_gen import generate_ts_frame_parsers, generate_js_frame_parsers
     from struct_frame.frame_parser_cpp_gen import generate_cpp_frame_parsers
+    from struct_frame.frame_parser_csharp_gen import generate_csharp_frame_parsers
 
     formats = parse_frame_formats(frame_formats_file)
     files = {}
@@ -603,6 +617,10 @@ def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_pa
     if build_cpp:
         name = os.path.join(cpp_path, "frame_parsers_gen.hpp")
         files[name] = generate_cpp_frame_parsers(formats)
+
+    if build_csharp:
+        name = os.path.join(csharp_path, "FrameParsersGen.cs")
+        files[name] = generate_csharp_frame_parsers(formats)
 
     return files
 
@@ -660,7 +678,7 @@ def main():
     # If validate mode is specified, skip build argument check and file generation
     if args.validate:
         print("Running in validate mode - no files will be generated")
-    elif (not args.build_c and not args.build_ts and not args.build_js and not args.build_py and not args.build_cpp and not args.build_gql):
+    elif (not args.build_c and not args.build_ts and not args.build_js and not args.build_py and not args.build_cpp and not args.build_csharp and not args.build_gql):
         print("Select at least one build argument")
         return
 
@@ -700,6 +718,9 @@ def main():
     if (args.build_cpp):
         files.update(generateCppFileStrings(args.cpp_path[0]))
 
+    if (args.build_csharp):
+        files.update(generateCSharpFileStrings(args.csharp_path[0]))
+
     if (args.build_gql):
         for key, value in packages.items():
             name = os.path.join(args.gql_path[0], value.name + '.graphql')
@@ -711,9 +732,9 @@ def main():
         frame_parser_files = generateFrameParserFiles(
             args.frame_formats[0],
             args.c_path[0], args.ts_path[0], args.js_path[0],
-            args.py_path[0], args.cpp_path[0],
+            args.py_path[0], args.cpp_path[0], args.csharp_path[0],
             args.build_c, args.build_ts, args.build_js,
-            args.build_py, args.build_cpp
+            args.build_py, args.build_cpp, args.build_csharp
         )
         files.update(frame_parser_files)
 
@@ -738,7 +759,8 @@ def main():
         'cpp': ['frame_base.hpp'],
         'ts': ['struct_base.ts', 'struct_frame.ts', 'struct_frame_types.ts', 'frame_base.ts'],
         'js': ['struct_base.js', 'struct_frame.js', 'struct_frame_types.js', 'frame_base.js'],
-        'py': []  # __init__.py will be generated with the custom frame formats
+        'py': [],  # __init__.py will be generated with the custom frame formats
+        'csharp': ['FrameBase.cs']
     }
     
     def copy_files_list(src_dir, dst_dir, files_to_copy):
@@ -789,6 +811,11 @@ def main():
             copy_files_list(
                 os.path.join(dir_path, "boilerplate/cpp"),
                 args.cpp_path[0], utility_files['cpp'])
+
+        if args.build_csharp:
+            copy_files_list(
+                os.path.join(dir_path, "boilerplate/csharp"),
+                args.csharp_path[0], utility_files['csharp'])
     else:
         # Copy all boilerplate files (multi-file structure)
         if (args.build_c):
@@ -815,6 +842,11 @@ def main():
             copy_all_files(
                 os.path.join(dir_path, "boilerplate/cpp"),
                 args.cpp_path[0])
+
+        if (args.build_csharp):
+            copy_all_files(
+                os.path.join(dir_path, "boilerplate/csharp"),
+                args.csharp_path[0])
 
     # No boilerplate for GraphQL currently
 
