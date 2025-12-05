@@ -215,7 +215,7 @@ export enum GenericParserState {
  */
 export class GenericFrameParser {
     readonly config: FrameParserConfig;
-    
+
     private state: GenericParserState;
     private buffer: number[];
     private packet_size: number;
@@ -351,19 +351,19 @@ export class GenericFrameParser {
      */
     static encode(config: FrameParserConfig, msg_id: number, msg: Uint8Array | number[]): Uint8Array {
         const output: number[] = [];
-        
+
         // Add start bytes
         for (const startByte of config.startBytes) {
             output.push(startByte);
         }
-        
+
         // Use appropriate payload encoding
         if (config.hasCrc) {
             encode_payload_with_crc(output, msg_id, msg, config.lengthBytes, config.startBytes.length);
         } else {
             encode_payload_minimal(output, msg_id, msg);
         }
-        
+
         return new Uint8Array(output);
     }
 
@@ -372,18 +372,18 @@ export class GenericFrameParser {
      */
     static validate_packet(config: FrameParserConfig, buffer: Uint8Array | number[]): FrameMsgInfo {
         const overhead = config.headerSize + config.footerSize;
-        
+
         if (buffer.length < overhead) {
             return createFrameMsgInfo();
         }
-        
+
         // Check start bytes
         for (let i = 0; i < config.startBytes.length; i++) {
             if (buffer[i] !== config.startBytes[i]) {
                 return createFrameMsgInfo();
             }
         }
-        
+
         // Validate payload
         if (config.hasCrc) {
             return validate_payload_with_crc(buffer, config.headerSize, config.lengthBytes, config.startBytes.length);
@@ -413,11 +413,11 @@ export function createFrameParserClass(config: FrameParserConfig) {
             super(config, get_msg_length);
         }
 
-        static encode(msg_id: number, msg: Uint8Array | number[]): Uint8Array {
+        static encodeMsg(msg_id: number, msg: Uint8Array | number[]): Uint8Array {
             return GenericFrameParser.encode(config, msg_id, msg);
         }
 
-        static validate_packet(buffer: Uint8Array | number[]): FrameMsgInfo {
+        static validatePacket(buffer: Uint8Array | number[]): FrameMsgInfo {
             return GenericFrameParser.validate_packet(config, buffer);
         }
     };

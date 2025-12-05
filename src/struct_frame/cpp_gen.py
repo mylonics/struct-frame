@@ -88,8 +88,7 @@ class FieldCppGen():
                     comment = f"  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars"
                 elif field.max_size is not None:
                     # Variable string array: count byte + max_size strings of element_size chars each
-                    # Add __attribute__((packed)) to ensure no padding between count and data
-                    declaration = f"struct __attribute__((packed)) {{ uint8_t count; char data[{field.max_size}][{field.element_size}]; }} {var_name};"
+                    declaration = f"struct {{ uint8_t count; char data[{field.max_size}][{field.element_size}]; }} {var_name};"
                     comment = f"  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars"
                 else:
                     declaration = f"char {var_name}[1][1];"  # Fallback
@@ -102,8 +101,7 @@ class FieldCppGen():
                     comment = f"  // Fixed array: always {field.size_option} elements"
                 elif field.max_size is not None:
                     # Variable array: count byte + max elements
-                    # Add __attribute__((packed)) to ensure no padding between count and data
-                    declaration = f"struct __attribute__((packed)) {{ uint8_t count; {base_type} data[{field.max_size}]; }} {var_name};"
+                    declaration = f"struct {{ uint8_t count; {base_type} data[{field.max_size}]; }} {var_name};"
                     comment = f"  // Variable array: up to {field.max_size} elements"
                 else:
                     declaration = f"{base_type} {var_name}[1];"  # Fallback
@@ -119,8 +117,7 @@ class FieldCppGen():
                 comment = f"  // Fixed string: exactly {field.size_option} chars"
             elif field.max_size is not None:
                 # Variable string: length byte + max characters
-                # Add __attribute__((packed)) to ensure no padding between length and data
-                declaration = f"struct __attribute__((packed)) {{ uint8_t length; char data[{field.max_size}]; }} {var_name};"
+                declaration = f"struct {{ uint8_t length; char data[{field.max_size}]; }} {var_name};"
                 comment = f"  // Variable string: up to {field.max_size} chars"
             else:
                 declaration = f"char {var_name}[1];"  # Fallback
@@ -166,17 +163,15 @@ class MessageCppGen():
 
         result += '\n'.join([FieldCppGen.generate(f)
                             for key, f in msg.fields.items()])
-        result += '\n}'
-        
-        # Use C++ attribute instead of pragma pack
-        result += ' __attribute__((packed));\n\n'
+        result += '\n};\n\n'
 
         defineName = '%s_%s' % (CamelToSnakeCase(
             msg.package).upper(), CamelToSnakeCase(msg.name).upper())
         result += 'constexpr size_t %s_MAX_SIZE = %d;\n' % (defineName, size)
 
         if msg.id:
-            result += 'constexpr size_t %s_MSG_ID = %d;\n' % (defineName, msg.id)
+            result += 'constexpr size_t %s_MSG_ID = %d;\n' % (
+                defineName, msg.id)
 
         return result + '\n'
 
@@ -200,11 +195,12 @@ class FileCppGen():
 
         if package.messages:
             yield '/* Struct definitions */\n'
+            yield '#pragma pack(push, 1)\n'
             # Need to sort messages to make sure dependencies are properly met
 
             for key, msg in package.sortedMessages().items():
                 yield MessageCppGen.generate(msg) + '\n'
-            yield '\n'
+            yield '#pragma pack(pop)\n\n'
 
         # Generate get_message_length function
         if package.messages:

@@ -96,6 +96,8 @@ class TestRunnerBase:
             for k, v in execution['env'].items():
                 v = v.replace('{generated_dir}', gen_dir)
                 v = v.replace('{generated_parent_dir}', gen_parent_dir)
+                # Handle cross-platform path separators (: on Linux, ; on Windows)
+                v = v.replace(':', os.pathsep)
                 env[k] = v
         return env
 
@@ -190,7 +192,7 @@ class TestRunnerBase:
     def run_test_script(self, lang_id: str, test_config: Dict[str, Any],
                         test_dir: Path = None, args: str = "") -> bool:
         """Run a test script for any language - unified execution logic
-        
+
         Args:
             lang_id: Language identifier
             test_config: Test configuration with file paths
