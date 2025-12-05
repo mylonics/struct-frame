@@ -268,6 +268,9 @@ class FrameFormatMatrixPlugin(TestPlugin):
         base_lang = suite.get(
             'base_language', self.config.get('base_language', 'c'))
 
+        # Print header once before processing frame formats
+        self._print_matrix_header(testable)
+
         for frame_format in frame_formats:
             format_name = frame_format.get('name')
             output_file_pattern = frame_format.get(
@@ -316,7 +319,12 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
                 results[lang_id][f"{display_name}_decode"] = decode_result
 
-        self._print_frame_format_matrix(matrix)
+            # Print this row immediately after all tests for this format complete
+            self._print_matrix_row(
+                display_name, matrix[display_name], testable)
+
+        # Print summary
+        self._print_matrix_summary(matrix)
 
         return {
             'results': results,
@@ -449,6 +457,84 @@ class FrameFormatMatrixPlugin(TestPlugin):
         # Use build_dir
         build_dir = lang_config.get('build_dir', lang_config['test_dir'])
         return self.project_root / build_dir / filename
+
+    def _print_matrix_header(self, testable: list):
+        """Print the matrix header with language columns."""
+        all_langs = [self.config['languages'][lang_id]['name']
+                     for lang_id in testable]
+        self._matrix_langs = all_langs
+        self._matrix_col_width = 12
+
+        print("\nFrame Format Language Test Matrix:")
+        print("Legend: OK=pass, SER=serialization failed, DES=deserialization failed, BOTH=both failed")
+        header = "Frame Format".ljust(
+            20) + "".join(l.center(self._matrix_col_width) for l in all_langs)
+        print(header)
+        print("-" * len(header))
+
+    def _print_matrix_row(self, frame_format: str, lang_results: Dict[str, Dict[str, Optional[bool]]], testable: list):
+        """Print a single row of the matrix."""
+        all_langs = [self.config['languages'][lang_id]['name']
+                     for lang_id in testable]
+        col_width = 12
+
+        row = frame_format.ljust(20)
+        for lang in all_langs:
+            val = lang_results.get(lang)
+            if val is None:
+                cell = "N/A"
+            elif isinstance(val, dict):
+                encode_ok = val.get('encode')
+                decode_ok = val.get('decode')
+
+                if encode_ok is None and decode_ok is None:
+                    cell = "N/A"
+                elif encode_ok and decode_ok:
+                    cell = "OK"
+                elif not encode_ok and (decode_ok is False or decode_ok is None):
+                    cell = "BOTH"
+                elif not encode_ok:
+                    cell = "SER"
+                elif not decode_ok:
+                    cell = "DES"
+                else:
+                    cell = "N/A"
+            elif val:
+                cell = "OK"
+            else:
+                cell = "FAIL"
+            row += cell.center(col_width)
+        print(row)
+
+    def _print_matrix_summary(self, matrix: Dict[str, Dict[str, Dict[str, Optional[bool]]]]):
+        """Print the matrix summary with success rate."""
+        success_count = 0
+        total_count = 0
+
+        for frame_format, lang_results in matrix.items():
+            for lang, val in lang_results.items():
+                if val is None:
+                    continue
+                elif isinstance(val, dict):
+                    encode_ok = val.get('encode')
+                    decode_ok = val.get('decode')
+
+                    if encode_ok is None and decode_ok is None:
+                        continue
+                    elif encode_ok and decode_ok:
+                        success_count += 1
+                        total_count += 1
+                    else:
+                        total_count += 1
+                elif val:
+                    success_count += 1
+                    total_count += 1
+                else:
+                    total_count += 1
+
+        if total_count > 0:
+            print(
+                f"\nSuccess rate: {success_count}/{total_count} ({100*success_count/total_count:.1f}%)\n")
 
     def _print_frame_format_matrix(self, matrix: Dict[str, Dict[str, Dict[str, Optional[bool]]]]):
         """Print the frame format compatibility matrix with detailed status."""

@@ -137,6 +137,8 @@
       },
       "compilation": {
         "enabled": true,
+        "compiler": "dotnet",
+        "compiler_check": "dotnet --version",
         "command": "dotnet build \"{test_dir}/StructFrameTests.csproj\" -c Release -o \"{build_dir}\" --verbosity quiet"
       },
       "execution": {
