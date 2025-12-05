@@ -31,10 +31,9 @@ class TestRunnerBase:
         """Load the test configuration from JSON file(s).
 
         The main config can reference external files via:
-        - languages_file: Path to language definitions
         - test_suites_file: Path to test suite definitions
 
-        These are merged into the final config.
+        Languages are loaded from languages.py module.
         """
         try:
             with open(config_path, 'r') as f:
@@ -50,22 +49,10 @@ class TestRunnerBase:
 
         config_dir = config_path.parent
 
-        # Load and merge languages file if specified
-        if 'languages_file' in config:
-            languages_path = config_dir / config['languages_file']
-            try:
-                with open(languages_path, 'r') as f:
-                    languages_config = json.load(f)
-                    if 'languages' in languages_config:
-                        config['languages'] = languages_config['languages']
-            except FileNotFoundError:
-                cls._static_log(
-                    f"Languages file not found: {languages_path}", "ERROR")
-                sys.exit(1)
-            except json.JSONDecodeError as e:
-                cls._static_log(
-                    f"Invalid JSON in languages file: {e}", "ERROR")
-                sys.exit(1)
+        # Load languages from languages.py module
+        from languages import get_languages_dict, BASE_LANGUAGE
+        config['languages'] = get_languages_dict()
+        config['base_language'] = BASE_LANGUAGE
 
         # Load and merge test suites file if specified
         if 'test_suites_file' in config:

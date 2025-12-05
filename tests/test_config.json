@@ -3,15 +3,9 @@
   "description": "Test configuration for struct-frame code generation framework",
   "version": "2.0",
   
-  "base_language": "c",
-  
-  "languages_file": "languages.json",
   "test_suites_file": "test_suites.json",
   
   "proto_files": [
-    "basic_types.proto",
-    "nested_messages.proto",
-    "comprehensive_arrays.proto",
-    "serialization_test.proto"
+    "test_messages.proto"
   ]
 }
