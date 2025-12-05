@@ -17,7 +17,7 @@ The framing system uses a two-level architecture:
 
 ## Frame Format Definitions
 
-All supported frame formats are defined in [`examples/frame_formats.proto`](../examples/frame_formats.proto). This file provides:
+All supported frame formats are defined in [`examples/frame_formats.proto`](https://github.com/mylonics/struct-frame/blob/main/examples/frame_formats.proto). This file provides:
 
 - Protocol Buffer definitions for each frame format
 - Enumeration of frame types and payload types

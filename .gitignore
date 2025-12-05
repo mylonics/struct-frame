@@ -7,6 +7,9 @@ main.exe
 dist/
 __pycache__/
 
+# MkDocs build output
+site/
+
 # .NET/C# build outputs
 bin/
 obj/
