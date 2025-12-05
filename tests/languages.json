@@ -146,7 +146,7 @@
         "run_command": "dotnet run --project \"{test_dir}/StructFrameTests.csproj\" --no-build --verbosity quiet -- {args}"
       },
       "test_dir": "tests/csharp",
-      "build_dir": "tests/csharp/bin/Release/net8.0"
+      "build_dir": "tests/csharp/bin/Release/net10.0"
     }
   }
 }

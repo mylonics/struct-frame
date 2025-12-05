@@ -80,15 +80,15 @@ namespace StructFrameTests
                 return 1;
             }
 
-            var msg = TestCodec.DecodeTestMessage(formatName, data);
-            if (msg == null)
+            var msgData = TestCodec.DecodeTestMessage(formatName, data);
+            if (msgData == null)
             {
                 Console.WriteLine("[DECODE] FAILED: Frame validation failed");
                 PrintHex(data);
                 return 1;
             }
 
-            if (!TestCodec.ValidateTestMessage(msg.Value))
+            if (!TestCodec.ValidateMessageBytes(msgData))
             {
                 Console.WriteLine("[DECODE] FAILED: Message validation failed");
                 return 1;
