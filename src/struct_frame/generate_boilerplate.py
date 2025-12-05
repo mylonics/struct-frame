@@ -37,6 +37,7 @@ from struct_frame.frame_parser_py_gen import generate_py_frame_parsers, generate
 from struct_frame.frame_parser_ts_gen import (generate_ts_frame_parsers, generate_js_frame_parsers,
                                                generate_ts_frame_parsers_multi, generate_js_frame_parsers_multi)
 from struct_frame.frame_parser_cpp_gen import generate_cpp_frame_parsers, generate_cpp_frame_parsers_multi
+from struct_frame.frame_parser_csharp_gen import generate_csharp_frame_parsers, generate_csharp_frame_parsers_multi
 
 
 def get_default_frame_formats_path():
@@ -63,7 +64,7 @@ def write_file(path, content):
 
 def generate_boilerplate_to_paths(frame_formats_file, c_path=None, ts_path=None, 
                                    js_path=None, py_path=None, cpp_path=None,
-                                   multi_file=True):
+                                   csharp_path=None, multi_file=True):
     """
     Generate frame parser boilerplate code from a frame_formats.proto file.
     
@@ -74,6 +75,7 @@ def generate_boilerplate_to_paths(frame_formats_file, c_path=None, ts_path=None,
         js_path: Output directory for JavaScript code (if None, skip JS generation)
         py_path: Output directory for Python code (if None, skip Python generation)
         cpp_path: Output directory for C++ code (if None, skip C++ generation)
+        csharp_path: Output directory for C# code (if None, skip C# generation)
         multi_file: If True, generate multiple files per language (default: True)
     
     Returns:
@@ -127,6 +129,15 @@ def generate_boilerplate_to_paths(frame_formats_file, c_path=None, ts_path=None,
             name = os.path.join(cpp_path, "frame_parsers_gen.hpp")
             files[name] = generate_cpp_frame_parsers(formats)
     
+    if csharp_path:
+        if multi_file:
+            csharp_files = generate_csharp_frame_parsers_multi(formats)
+            for filename, content in csharp_files.items():
+                files[os.path.join(csharp_path, filename)] = content
+        else:
+            name = os.path.join(csharp_path, "FrameParsersGen.cs")
+            files[name] = generate_csharp_frame_parsers(formats)
+    
     return files
 
 
@@ -155,7 +166,8 @@ def update_src_boilerplate():
         ts_path=os.path.join(boilerplate_dir, 'ts'),
         js_path=os.path.join(boilerplate_dir, 'js'),
         py_path=os.path.join(boilerplate_dir, 'py'),
-        cpp_path=os.path.join(boilerplate_dir, 'cpp')
+        cpp_path=os.path.join(boilerplate_dir, 'cpp'),
+        csharp_path=os.path.join(boilerplate_dir, 'csharp')
     )
     
     for path, content in files.items():
@@ -179,9 +191,9 @@ def generate_to_custom_paths(args):
         return False
     
     # Check that at least one output path is specified
-    if not any([args.c_path, args.ts_path, args.js_path, args.py_path, args.cpp_path]):
+    if not any([args.c_path, args.ts_path, args.js_path, args.py_path, args.cpp_path, args.csharp_path]):
         print("Error: At least one output path must be specified")
-        print("Use --c_path, --ts_path, --js_path, --py_path, or --cpp_path")
+        print("Use --c_path, --ts_path, --js_path, --py_path, --cpp_path, or --csharp_path")
         return False
     
     print(f"Generating boilerplate from: {frame_formats_file}")
@@ -192,7 +204,8 @@ def generate_to_custom_paths(args):
         ts_path=args.ts_path[0] if args.ts_path else None,
         js_path=args.js_path[0] if args.js_path else None,
         py_path=args.py_path[0] if args.py_path else None,
-        cpp_path=args.cpp_path[0] if args.cpp_path else None
+        cpp_path=args.cpp_path[0] if args.cpp_path else None,
+        csharp_path=args.csharp_path[0] if args.csharp_path else None
     )
     
     for path, content in files.items():
@@ -218,7 +231,7 @@ Examples:
   # Generate boilerplate for all languages
   python generate_boilerplate.py --frame_formats my_formats.proto \\
       --c_path output/c --ts_path output/ts --js_path output/js \\
-      --py_path output/py --cpp_path output/cpp
+      --py_path output/py --cpp_path output/cpp --csharp_path output/csharp
 """
     )
     
@@ -243,6 +256,9 @@ Examples:
     
     parser.add_argument('--cpp_path', nargs=1, type=str,
                         help='Output directory for C++ frame parser code')
+    
+    parser.add_argument('--csharp_path', nargs=1, type=str,
+                        help='Output directory for C# frame parser code')
     
     args = parser.parse_args()
     
