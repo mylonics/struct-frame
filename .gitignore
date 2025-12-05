@@ -7,6 +7,12 @@ main.exe
 dist/
 __pycache__/
 
+# .NET/C# build outputs
+bin/
+obj/
+*.dll
+*.exe
+
 # Generated code directories
 generated/
 gen/

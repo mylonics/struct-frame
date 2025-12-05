@@ -132,6 +132,27 @@
         "enabled": false
       },
       "generation_only": true
+    },
+    
+    "csharp": {
+      "name": "C#",
+      "enabled": true,
+      "code_generation": {
+        "flag": "--build_csharp",
+        "output_path_flag": "--csharp_path",
+        "output_dir": "tests/generated/csharp"
+      },
+      "compilation": {
+        "enabled": false
+      },
+      "execution": {
+        "interpreter": "dotnet",
+        "source_extension": ".cs",
+        "run_command": "dotnet run --project {test_dir}/StructFrameTests.csproj --no-build --verbosity quiet -- {test_name}"
+      },
+      "test_dir": "tests/csharp",
+      "build_dir": "tests/csharp/build",
+      "generation_only": true
     }
   },
   
