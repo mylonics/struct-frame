@@ -4,7 +4,7 @@
 
 **Python (required for code generation)**
 ```
-pip install proto-schema-parser structured-classes
+pip install proto-schema-parser
 ```
 
 ## Code Generation

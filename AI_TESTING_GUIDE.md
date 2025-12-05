@@ -148,7 +148,7 @@ The test runner provides detailed results categorized by:
 ### Environment Dependencies
 
 #### Required Always
-- Python 3.8+ with `proto-schema-parser` and `structured-classes`
+- Python 3.8+ with `proto-schema-parser`
 
 #### Optional (graceful degradation)
 - **GCC**: For C compilation and execution

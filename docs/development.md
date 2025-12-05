@@ -100,7 +100,7 @@ python -m twine upload dist/*
 ### Running Locally
 
 ```bash
-pip install proto-schema-parser structured-classes
+pip install proto-schema-parser
 PYTHONPATH=src python src/main.py examples/generic_robot.proto --build_c --build_py
 ```
 

@@ -1,126 +1,168 @@
 # struct-frame Repository
-struct-frame is a multi-language code generation framework that takes Protocol Buffer (.proto) files and generates serialization/deserialization code for C, TypeScript, and Python. It provides framing and parsing utilities for structured message communication.
+
+struct-frame is a multi-language code generation framework that converts Protocol Buffer (.proto) files into serialization/deserialization code for C, C++, TypeScript, Python, JavaScript, GraphQL, and C#. It provides framing and parsing utilities for structured message communication.
 
 Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
 ## Working Effectively
 
 ### Prerequisites and Dependencies
+
 - Install Python dependencies:
-  - `python3 -m pip install proto-schema-parser structured-classes`
-- Install Node.js dependencies:
-  - `npm install` -- takes ~1 second
-- GCC is available for C compilation
+  - `pip install proto-schema-parser`
+- Install Node.js dependencies (for TypeScript):
+  - `npm install`
+- For C tests: GCC compiler
+- For C++ tests: G++ compiler with C++14 support
+- For TypeScript tests: Node.js + `cd tests/ts && npm install`
 
 ### Core Build Commands
-- **NEVER CANCEL**: All commands below complete in under 2 seconds unless specified
-- Generate code from proto files:
-  - `PYTHONPATH=src python3 src/main.py [proto_file] --build_c --build_ts --build_py --c_path gen/c --ts_path gen/ts --py_path gen/py`
-  - Takes ~0.1 seconds to complete
-- Compile TypeScript:
-  - `npx tsc --project tsconfig.json` -- takes ~2 seconds
+
+- **NEVER CANCEL**: All commands below complete quickly
+- Generate code for all languages:
+  - `PYTHONPATH=src python3 src/main.py [proto_file] --build_c --build_cpp --build_ts --build_py --build_gql`
+- Run the full test suite:
+  - `python test_all.py` or `python tests/run_tests.py`
 - Python module works via:
   - `PYTHONPATH=src python3 -c "import struct_frame; struct_frame.main()"`
 
 ### Known Working Components
-- **Python code generator**: FULLY FUNCTIONAL
-  - Reads .proto files and generates code for all three target languages
+
+- **Code Generator**: FULLY FUNCTIONAL for C, C++, Python, TypeScript, JavaScript, GraphQL, C#
+  - Reads .proto files and generates code for all target languages
   - CLI interface works correctly
   - Code generation completes successfully
-  - Generated Python files can be imported and used
-- **TypeScript compilation**: PARTIALLY FUNCTIONAL
-  - TypeScript files compile without errors
-  - Generated code has runtime issues (missing method definitions in enum handling)
-  - Use with caution for actual execution
-- **C code generation**: GENERATES BUT HAS ISSUES
-  - Headers are generated but have compilation errors
-  - Conflicts between different API versions in generated macros
-  - Example code in examples/main.c is incompatible with generated headers
+- **Test Suite**: COMPREHENSIVE
+  - Located in `tests/` directory with modular runner architecture
+  - Validates code generation, compilation, and serialization across all languages
+  - Includes cross-platform compatibility matrix tests
 
 ### Running Tests and Validation
-- **No formal test suite exists** in the repository
-- Manual validation is required for all components (Python, TypeScript, and C)
-- Test Python code generation by running the main command and verifying output
+
+- **Use the test suite** for validation:
+  ```bash
+  python test_all.py                           # Run all tests
+  python tests/run_tests.py --verbose          # Verbose output
+  python tests/run_tests.py --skip-lang ts     # Skip TypeScript tests
+  python tests/run_tests.py --only-generate    # Only generate code
+  python tests/run_tests.py --check-tools      # Check tool availability
+  python tests/run_tests.py --clean            # Clean generated files
+  ```
+- Test proto files are in `tests/proto/` (test_messages.proto)
+- Generated test code goes to `tests/generated/`
 
 ### Build Times and Timeouts
-- Python dependencies install: ~30 seconds (may fail due to network timeouts)
+
 - Code generation: ~0.1 seconds - NEVER CANCEL
-- npm install: ~1 second - NEVER CANCEL  
+- npm install: ~1 second - NEVER CANCEL
 - TypeScript compilation: ~2 seconds - NEVER CANCEL
+- Full test suite: Varies by available compilers
 - All operations are very fast, no long builds
 
 ## Validation Scenarios
-- **ALWAYS test Python code generation** after making changes to the core generator
-- **Test with the provided examples/myl_vehicle.proto file** as the reference example
-- **Validate that generated Python files import successfully**
-- **DO NOT rely on TypeScript or C compilation** for validation due to known runtime/compilation issues
-- Manually validate core functionality by generating code and checking output
 
-## Common Issues and Workarounds
-- **Python package build fails**: Network timeouts are common - use `PYTHONPATH=src` approach instead
-- **TypeScript runtime errors**: Generated code calls undefined methods like `.myl_vehicle_type()` - this is a code generation bug
-- **C compilation fails**: Generated headers have macro conflicts and syntax errors (C99 vs C++ style initialization)
-- **Example code is outdated**: examples/main.c and examples/index.ts examples don't match current generated code APIs
+- **Run the test suite** after making changes to generators
+- **Use test proto files** in `tests/proto/` for validation
+- **Check test output** for cross-platform compatibility matrix
+- Example proto files in `examples/` are for demonstration (array_test.proto, frame_formats.proto, generic_robot.proto)
 
 ## Repository Structure
+
 ```
 /
 ├── src/                      # Source code directory
 │   ├── main.py              # CLI entry point
-│   └── struct_frame/        # Python code generator (WORKING)
+│   └── struct_frame/        # Code generators
 │       ├── generate.py      # Main generation logic
-│       ├── c_gen.py         # C code generator  
+│       ├── c_gen.py         # C code generator
+│       ├── cpp_gen.py       # C++ code generator
 │       ├── ts_gen.py        # TypeScript code generator
+│       ├── js_gen.py        # JavaScript code generator
 │       ├── py_gen.py        # Python code generator
+│       ├── gql_gen.py       # GraphQL code generator
+│       ├── csharp_gen.py    # C# code generator
+│       ├── frame_parser_*   # Frame parser generators per language
 │       └── boilerplate/     # Template files for each language
-├── examples/                # Example files directory
-│   ├── myl_vehicle.proto    # Example proto file
-│   ├── index.ts             # TypeScript example (INCOMPATIBLE with generated code)
-│   └── main.c               # C example (INCOMPATIBLE with generated code)
-├── package.json             # Node.js dependencies
-├── tsconfig.json            # TypeScript configuration
+├── tests/                   # Comprehensive test suite
+│   ├── run_tests.py         # Main test runner entry point
+│   ├── test_config.json     # Test configuration
+│   ├── expected_values.json # Expected values for cross-platform tests
+│   ├── runner/              # Modular test runner components
+│   │   ├── base.py          # Base utilities
+│   │   ├── tool_checker.py  # Tool availability checking
+│   │   ├── code_generator.py# Code generation from proto files
+│   │   ├── compiler.py      # Compilation for C, C++, TypeScript
+│   │   ├── test_executor.py # Test execution
+│   │   ├── output_formatter.py # Result formatting
+│   │   ├── runner.py        # Main ConfigDrivenTestRunner
+│   │   └── plugins.py       # Test plugins (Standard, CrossPlatformMatrix)
+│   ├── proto/               # Test proto definitions
+│   │   └── test_messages.proto
+│   ├── c/                   # C test files + build/
+│   ├── cpp/                 # C++ test files + build/
+│   ├── py/                  # Python test files
+│   ├── ts/                  # TypeScript test files + package.json
+│   ├── csharp/              # C# test files + project
+│   ├── js/                  # JavaScript test files
+│   └── generated/           # Generated code output (c/, cpp/, py/, ts/, gql/)
+├── examples/                # Example proto files
+│   ├── array_test.proto
+│   ├── frame_formats.proto
+│   ├── generic_robot.proto
+│   ├── index.ts             # TypeScript example
+│   └── main.c               # C example
+├── docs/                    # Documentation
+│   ├── installation.md
+│   ├── development.md
+│   ├── testing.md
+│   ├── framing.md
+│   └── message-definitions.md
+├── gen/                     # Generated code output directory
+├── test_all.py              # Test suite wrapper script
 ├── pyproject.toml           # Python package configuration
-└── gen/                     # Generated code output directory
+└── package.json             # Node.js dependencies
 ```
 
-## Critical Warnings
-- **DO NOT expect C or TypeScript examples to compile/run** - they are incompatible with current generator output
-- **DO NOT attempt Python package builds** - they fail due to network issues, use direct module execution
-- **ALWAYS use PYTHONPATH=src** when running Python components
-- **Generated code has API compatibility issues** between languages and with examples
-
 ## Quick Start for New Developers
-1. Install dependencies: `python3 -m pip install proto-schema-parser structured-classes && npm install`
-2. Generate code: `PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_py --py_path gen/py`  
-3. Validate: Check that generated files are created in gen/py directory
-4. For development: Always test Python generation, ignore C/TypeScript runtime errors
+
+1. Install dependencies: `pip install proto-schema-parser && npm install`
+2. Run the test suite: `python test_all.py`
+3. Generate code: `PYTHONPATH=src python3 src/main.py examples/generic_robot.proto --build_py --py_path gen/py`
+4. For development: Run tests after changes to validate generators
+
+## Test Suite Architecture
+
+The test runner uses a modular, plugin-based architecture:
+
+- **ToolChecker**: Verifies compilers/interpreters are available
+- **CodeGenerator**: Generates code from proto files
+- **Compiler**: Compiles C, C++, TypeScript
+- **TestExecutor**: Runs test suites with plugins
+- **Plugins**: StandardTestPlugin, CrossPlatformMatrixPlugin
 
 ## Common Tasks Reference
 
-### Repository Root Contents
-```
-.clang-format       # C formatting config
-.github/            # GitHub configuration including copilot-instructions.md
-.gitignore         # Git ignore rules
-DEVGUIDE.md        # Basic development guide (minimal)
-LICENSE            # MIT license
-README.md          # Basic setup instructions (minimal)
-TODO               # Single item: "Check if message id is repeated"
-examples/          # Example files directory
-├── index.ts       # TypeScript example (broken)
-├── main.c         # C example (broken) 
-└── myl_vehicle.proto  # Proto definition example
-package.json       # Node.js config
-package-lock.json  # Node.js lockfile
-pyproject.toml     # Python package config
-src/               # Source code directory
-tsconfig.json      # TypeScript config
-```
+### Generate Code for a Specific Language
 
-### Example proto file content (examples/myl_vehicle.proto)
-Contains definitions for vehicle communication messages including position, pose, heartbeat with message IDs and field types.
-
-### Working Python Generation Command
 ```bash
-PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_py --py_path gen/py
+# Python only
+PYTHONPATH=src python3 src/main.py examples/generic_robot.proto --build_py --py_path gen/py
+
+# All languages
+PYTHONPATH=src python3 src/main.py examples/generic_robot.proto --build_c --build_cpp --build_ts --build_py --build_gql
 ```
+
+### Run Specific Test Types
+
+```bash
+python tests/run_tests.py --only-generate  # Just generate code
+python tests/run_tests.py --check-tools    # Check available tools
+python tests/run_tests.py --skip-lang c    # Skip C tests
+```
+
+### Adding New Tests
+
+1. Add entry to `tests/test_config.json` under `test_suites`
+2. Create test files: `tests/<lang>/test_<name>.<ext>`
+3. Use standard output format: `[TEST START]`, `[TEST END]`
+4. Return exit code 0 on success, 1 on failure

@@ -8,7 +8,7 @@ A multi-language code generation framework that converts Protocol Buffer (.proto
 ### Installation
 ```bash
 # Install Python dependencies
-pip install proto-schema-parser structured-classes
+pip install proto-schema-parser
 
 # Install Node.js dependencies (for TypeScript)
 npm install
@@ -54,7 +54,7 @@ The project uses GitHub Actions to automatically run the full test suite on:
 The CI pipeline:
 1. Sets up Python 3.11 and Node.js 20
 2. Installs system dependencies (GCC, G++)
-3. Installs Python dependencies (proto-schema-parser, structured-classes)
+3. Installs Python dependencies (proto-schema-parser)
 4. Installs Node.js dependencies
 5. Runs the complete test suite (`python test_all.py`)
 6. Uploads test artifacts for debugging

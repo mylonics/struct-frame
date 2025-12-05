@@ -213,7 +213,7 @@ Examples:
 
 **Python 3.8+** with packages:
 ```bash
-pip install proto-schema-parser structured-classes
+pip install proto-schema-parser
 ```
 
 **For C tests**:

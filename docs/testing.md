@@ -253,7 +253,7 @@ tests/
 
 **Python 3.8+** with:
 ```bash
-pip install proto-schema-parser structured-classes
+pip install proto-schema-parser
 ```
 
 **C tests**: GCC
