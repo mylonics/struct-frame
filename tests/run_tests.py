@@ -9,15 +9,6 @@ Usage:
     python run_tests.py [--config CONFIG] [--verbose] [--skip-lang LANG] [--only-generate]
     python run_tests.py --clean          # Clean all generated/compiled files
     python run_tests.py --check-tools    # Check tool availability
-
-The test runner functionality has been split into modular components:
-    - runner/base.py: Base utilities (logging, command execution, config loading)
-    - runner/tool_checker.py: Tool availability checking
-    - runner/code_generator.py: Code generation from proto files
-    - runner/compiler.py: Compilation for C, C++, TypeScript
-    - runner/test_executor.py: Test suite and cross-platform test execution
-    - runner/output_formatter.py: Result formatting and summary printing
-    - runner/runner.py: Main ConfigDrivenTestRunner that composes all components
 """
 
 import argparse
@@ -25,24 +16,18 @@ import shutil
 import sys
 from pathlib import Path
 
-# Import the modular test runner
-from runner import ConfigDrivenTestRunner
+from runner import TestRunner
+from languages import get_language, get_all_language_ids
 
 
 def clean_test_files(config_path: str, verbose: bool = False) -> bool:
     """Clean all generated and compiled test files."""
-    from runner.base import TestRunnerBase
-    from languages import get_language
-
     project_root = Path(__file__).parent.parent
-    config = TestRunnerBase.load_config(Path(config_path), verbose)
 
     cleaned_count = 0
-
     print("Cleaning test files...")
 
-    # Clean generated code directories and build directories
-    for lang_id in config['language_ids']:
+    for lang_id in get_all_language_ids():
         lang = get_language(lang_id, project_root)
         if not lang:
             continue
@@ -54,7 +39,6 @@ def clean_test_files(config_path: str, verbose: bool = False) -> bool:
             shutil.rmtree(gen_dir)
             cleaned_count += 1
 
-        # Skip languages without build directories
         if not lang.build_dir:
             continue
 
@@ -92,8 +76,8 @@ def main():
     if args.clean:
         return clean_test_files(args.config, verbose=args.verbose)
 
-    runner = ConfigDrivenTestRunner(args.config, verbose=args.verbose,
-                                    verbose_failure=args.verbose_failure)
+    runner = TestRunner(args.config, verbose=args.verbose,
+                        verbose_failure=args.verbose_failure)
     runner.skipped_languages = args.skip_languages or []
 
     if args.check_tools:
