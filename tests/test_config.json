@@ -67,7 +67,7 @@
         "interpreter": "python",
         "source_extension": ".py",
         "env": {
-          "PYTHONPATH": "{generated_dir}"
+          "PYTHONPATH": "{generated_dir}:{generated_parent_dir}"
         }
       },
       "test_dir": "tests/py",
@@ -147,17 +147,79 @@
       "test_name": "test_arrays"
     },
     {
-      "name": "cross_platform_encode",
-      "description": "Cross-platform serialization",
-      "test_name": "test_cross_platform_serialization",
-      "output_file": "{lang_name}_test_data.bin"
+      "name": "basic_default_encode",
+      "description": "Basic Default format serialization",
+      "test_name": "test_basic_default_serialization",
+      "output_file": "{lang_name}_basic_default_test_data.bin"
     },
     {
-      "name": "cross_platform_decode",
-      "description": "Cross-platform deserialization",
-      "test_name": "test_cross_platform_deserialization",
-      "plugin": "cross_platform_matrix",
-      "input_from": "cross_platform_encode"
+      "name": "basic_default_decode",
+      "description": "Basic Default format deserialization",
+      "test_name": "test_basic_default_deserialization",
+      "skip_display": true
+    },
+    {
+      "name": "basic_minimal_encode",
+      "description": "Basic Minimal format serialization",
+      "test_name": "test_basic_minimal_serialization",
+      "output_file": "{lang_name}_basic_minimal_test_data.bin"
+    },
+    {
+      "name": "basic_minimal_decode",
+      "description": "Basic Minimal format deserialization",
+      "test_name": "test_basic_minimal_deserialization",
+      "skip_display": true
+    },
+    {
+      "name": "tiny_default_encode",
+      "description": "Tiny Default format serialization",
+      "test_name": "test_tiny_default_serialization",
+      "output_file": "{lang_name}_tiny_default_test_data.bin"
+    },
+    {
+      "name": "tiny_default_decode",
+      "description": "Tiny Default format deserialization",
+      "test_name": "test_tiny_default_deserialization",
+      "skip_display": true
+    },
+    {
+      "name": "tiny_minimal_encode",
+      "description": "Tiny Minimal format serialization",
+      "test_name": "test_tiny_minimal_serialization",
+      "output_file": "{lang_name}_tiny_minimal_test_data.bin"
+    },
+    {
+      "name": "tiny_minimal_decode",
+      "description": "Tiny Minimal format deserialization",
+      "test_name": "test_tiny_minimal_deserialization",
+      "skip_display": true
+    },
+    {
+      "name": "frame_format_matrix",
+      "description": "Frame format cross-compatibility matrix",
+      "plugin": "frame_format_matrix",
+      "frame_formats": [
+        {
+          "display_name": "BasicDefault",
+          "encode_suite": "basic_default_encode",
+          "decode_suite": "basic_default_decode"
+        },
+        {
+          "display_name": "BasicMinimal",
+          "encode_suite": "basic_minimal_encode",
+          "decode_suite": "basic_minimal_decode"
+        },
+        {
+          "display_name": "TinyDefault",
+          "encode_suite": "tiny_default_encode",
+          "decode_suite": "tiny_default_decode"
+        },
+        {
+          "display_name": "TinyMinimal",
+          "encode_suite": "tiny_minimal_encode",
+          "decode_suite": "tiny_minimal_decode"
+        }
+      ]
     }
   ]
 }

@@ -91,8 +91,12 @@ class TestRunnerBase:
         if 'env' in execution:
             gen_dir = str(self.project_root /
                           lang_config['code_generation']['output_dir'])
-            env = {k: v.replace('{generated_dir}', gen_dir)
-                   for k, v in execution['env'].items()}
+            gen_parent_dir = str(Path(gen_dir).parent)
+            env = {}
+            for k, v in execution['env'].items():
+                v = v.replace('{generated_dir}', gen_dir)
+                v = v.replace('{generated_parent_dir}', gen_parent_dir)
+                env[k] = v
         return env
 
     def get_active_languages(self) -> List[str]:

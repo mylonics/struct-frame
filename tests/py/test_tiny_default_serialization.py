@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Test script for cross-platform serialization - writes test data to file.
-This test populates a message from expected_values.json and writes it to a binary file.
-"""
+"""Tiny Default frame format serialization test for Python."""
 
 import sys
 import os
@@ -45,29 +42,26 @@ def load_expected_values():
 
 
 def create_test_data():
-    """Create test data for cross-platform compatibility testing"""
+    """Create test data for tiny_default format"""
     try:
-        # Import modules - try package import first, then fallback to direct import
         import importlib
         try:
             msg_module = importlib.import_module('py.serialization_test_sf')
             SerializationTestSerializationTestMessage = msg_module.SerializationTestSerializationTestMessage
-            basic_module = importlib.import_module('py.basic_default')
-            BasicDefault = basic_module.BasicDefault
+            tiny_module = importlib.import_module('py.tiny_default')
+            TinyDefault = tiny_module.TinyDefault
         except ImportError:
             try:
                 from serialization_test_sf import SerializationTestSerializationTestMessage
-                from basic_default import BasicDefault
+                from tiny_default import TinyDefault
             except ImportError as e:
                 print(f"  Error importing modules: {e}")
                 return True  # Skip if generated code not available
 
-        # Load expected values from JSON
         expected = load_expected_values()
         if not expected:
             return False
 
-        # Create test message using values from JSON
         msg = SerializationTestSerializationTestMessage(
             magic_number=expected['magic_number'],
             test_string=expected['test_string'].encode('utf-8'),
@@ -76,24 +70,18 @@ def create_test_data():
             test_array=expected['test_array']
         )
 
-        # Create a parser instance and encode the message
-        parser = BasicDefault()
+        parser = TinyDefault()
         encoded_data = parser.encode_msg(msg)
 
-        with open('python_test_data.bin', 'wb') as f:
+        with open('python_tiny_default_test_data.bin', 'wb') as f:
             f.write(bytes(encoded_data))
 
         return True
 
-    except ImportError:
-        return True  # Skip if generated code not available
-
     except Exception as e:
-        print_failure_details(
-            f"Create test data exception: {type(e).__name__}",
-            expected_values={"result": "success"},
-            actual_values={"exception": str(e)}
-        )
+        print_failure_details(f"Create test data exception: {type(e).__name__}",
+                             expected_values={"result": "success"},
+                             actual_values={"exception": str(e)})
         import traceback
         traceback.print_exc()
         return False
@@ -101,12 +89,12 @@ def create_test_data():
 
 def main():
     """Main test function"""
-    print("\n[TEST START] Python Cross-Platform Serialization")
-    
+    print("\n[TEST START] Python Tiny Default Serialization")
+
     success = create_test_data()
     
     status = "PASS" if success else "FAIL"
-    print(f"[TEST END] Python Cross-Platform Serialization: {status}\n")
+    print(f"[TEST END] Python Tiny Default Serialization: {status}\n")
     
     return success
 

@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""
-Test script for cross-platform deserialization - reads and validates test data from files.
-This test reads a binary file and validates it against expected_values.json.
-"""
+"""Basic Default frame format deserialization test for Python."""
 
 import sys
 import os
@@ -34,8 +31,7 @@ def print_failure_details(label, expected_values=None, actual_values=None, raw_d
 
 def load_expected_values():
     """Load expected values from JSON file"""
-    json_path = os.path.join(os.path.dirname(
-        __file__), '..', 'expected_values.json')
+    json_path = os.path.join(os.path.dirname(__file__), '..', 'expected_values.json')
     try:
         with open(json_path, 'r') as f:
             data = json.load(f)
@@ -48,48 +44,35 @@ def load_expected_values():
 def validate_message(msg, expected):
     """Validate a decoded message against expected values"""
     if msg.magic_number != expected['magic_number']:
-        print_failure_details(
-            "Value mismatch: magic_number",
-            expected_values={"magic_number": expected['magic_number']},
-            actual_values={"magic_number": msg.magic_number}
-        )
+        print_failure_details("Value mismatch: magic_number",
+                             expected_values={"magic_number": expected['magic_number']},
+                             actual_values={"magic_number": msg.magic_number})
         return False
 
-    # Compare string (bytes vs string)
     test_string = msg.test_string.decode('utf-8').rstrip('\x00') if isinstance(
         msg.test_string, bytes) else str(msg.test_string).rstrip('\x00')
     if test_string != expected['test_string']:
-        print_failure_details(
-            "Value mismatch: test_string",
-            expected_values={"test_string": expected['test_string']},
-            actual_values={"test_string": test_string}
-        )
+        print_failure_details("Value mismatch: test_string",
+                             expected_values={"test_string": expected['test_string']},
+                             actual_values={"test_string": test_string})
         return False
 
-    # Compare float with tolerance
     if abs(msg.test_float - expected['test_float']) > 0.0001:
-        print_failure_details(
-            "Value mismatch: test_float",
-            expected_values={"test_float": expected['test_float']},
-            actual_values={"test_float": msg.test_float}
-        )
+        print_failure_details("Value mismatch: test_float",
+                             expected_values={"test_float": expected['test_float']},
+                             actual_values={"test_float": msg.test_float})
         return False
 
     if msg.test_bool != expected['test_bool']:
-        print_failure_details(
-            "Value mismatch: test_bool",
-            expected_values={"test_bool": expected['test_bool']},
-            actual_values={"test_bool": msg.test_bool}
-        )
+        print_failure_details("Value mismatch: test_bool",
+                             expected_values={"test_bool": expected['test_bool']},
+                             actual_values={"test_bool": msg.test_bool})
         return False
 
-    # Compare array
     if list(msg.test_array) != expected['test_array']:
-        print_failure_details(
-            "Value mismatch: test_array",
-            expected_values={"test_array": expected['test_array']},
-            actual_values={"test_array": list(msg.test_array)}
-        )
+        print_failure_details("Value mismatch: test_array",
+                             expected_values={"test_array": expected['test_array']},
+                             actual_values={"test_array": list(msg.test_array)})
         return False
 
     return True
@@ -106,15 +89,9 @@ def read_and_validate_test_data(filename):
             binary_data = f.read()
 
         if len(binary_data) == 0:
-            print_failure_details(
-                "Empty file",
-                expected_values={"data_size": ">0"},
-                actual_values={"data_size": 0},
-                raw_data=binary_data
-            )
+            print_failure_details("Empty file", raw_data=binary_data)
             return False
 
-        # Import modules - try package import first, then fallback to direct import
         import importlib
         try:
             msg_module = importlib.import_module('py.serialization_test_sf')
@@ -129,23 +106,15 @@ def read_and_validate_test_data(filename):
                 print(f"  Error importing modules: {e}")
                 return False
 
-        # Validate and decode using BasicDefault
         result = BasicDefault.validate_packet(list(binary_data))
         
         if not result.valid:
-            print_failure_details(
-                "Failed to decode data",
-                expected_values={"decoded_message": "valid"},
-                actual_values={"decoded_message": None},
-                raw_data=binary_data
-            )
+            print_failure_details("Failed to decode data", raw_data=binary_data)
             return False
 
-        # Decode the message data
         msg_data = bytes(result.msg_data)
         decoded_msg = SerializationTestSerializationTestMessage.create_unpack(msg_data)
 
-        # Load expected values and validate
         expected = load_expected_values()
         if not expected:
             return False
@@ -157,16 +126,9 @@ def read_and_validate_test_data(filename):
         print("  [OK] Data validated successfully")
         return True
 
-    except ImportError:
-        print("  Error: Generated code not available")
-        return False
-
     except Exception as e:
-        print_failure_details(
-            f"Read data exception: {type(e).__name__}",
-            expected_values={"result": "success"},
-            actual_values={"exception": str(e)}
-        )
+        print_failure_details(f"Read data exception: {type(e).__name__}",
+                             actual_values={"exception": str(e)})
         import traceback
         traceback.print_exc()
         return False
@@ -174,17 +136,17 @@ def read_and_validate_test_data(filename):
 
 def main():
     """Main test function"""
-    print("\n[TEST START] Python Cross-Platform Deserialization")
+    print("\n[TEST START] Python Basic Default Deserialization")
 
     if len(sys.argv) != 2:
         print(f"  Usage: {sys.argv[0]} <binary_file>")
-        print("[TEST END] Python Cross-Platform Deserialization: FAIL\n")
+        print("[TEST END] Python Basic Default Deserialization: FAIL\n")
         return False
 
     success = read_and_validate_test_data(sys.argv[1])
 
     status = "PASS" if success else "FAIL"
-    print(f"[TEST END] Python Cross-Platform Deserialization: {status}\n")
+    print(f"[TEST END] Python Basic Default Deserialization: {status}\n")
 
     return success
 
