@@ -147,19 +147,6 @@
       "test_name": "test_arrays"
     },
     {
-      "name": "cross_platform_encode",
-      "description": "Cross-platform serialization",
-      "test_name": "test_cross_platform_serialization",
-      "output_file": "{lang_name}_test_data.bin"
-    },
-    {
-      "name": "cross_platform_decode",
-      "description": "Cross-platform deserialization",
-      "test_name": "test_cross_platform_deserialization",
-      "plugin": "cross_platform_matrix",
-      "input_from": "cross_platform_encode"
-    },
-    {
       "name": "basic_default_encode",
       "description": "Basic Default format serialization",
       "test_name": "test_basic_default_serialization",
@@ -169,8 +156,7 @@
       "name": "basic_default_decode",
       "description": "Basic Default format deserialization",
       "test_name": "test_basic_default_deserialization",
-      "plugin": "cross_platform_matrix",
-      "input_from": "basic_default_encode"
+      "skip_display": true
     },
     {
       "name": "basic_minimal_encode",
@@ -182,8 +168,7 @@
       "name": "basic_minimal_decode",
       "description": "Basic Minimal format deserialization",
       "test_name": "test_basic_minimal_deserialization",
-      "plugin": "cross_platform_matrix",
-      "input_from": "basic_minimal_encode"
+      "skip_display": true
     },
     {
       "name": "tiny_default_encode",
@@ -195,8 +180,7 @@
       "name": "tiny_default_decode",
       "description": "Tiny Default format deserialization",
       "test_name": "test_tiny_default_deserialization",
-      "plugin": "cross_platform_matrix",
-      "input_from": "tiny_default_encode"
+      "skip_display": true
     },
     {
       "name": "tiny_minimal_encode",
@@ -208,8 +192,34 @@
       "name": "tiny_minimal_decode",
       "description": "Tiny Minimal format deserialization",
       "test_name": "test_tiny_minimal_deserialization",
-      "plugin": "cross_platform_matrix",
-      "input_from": "tiny_minimal_encode"
+      "skip_display": true
+    },
+    {
+      "name": "frame_format_matrix",
+      "description": "Frame format cross-compatibility matrix",
+      "plugin": "frame_format_matrix",
+      "frame_formats": [
+        {
+          "display_name": "BasicDefault",
+          "encode_suite": "basic_default_encode",
+          "decode_suite": "basic_default_decode"
+        },
+        {
+          "display_name": "BasicMinimal",
+          "encode_suite": "basic_minimal_encode",
+          "decode_suite": "basic_minimal_decode"
+        },
+        {
+          "display_name": "TinyDefault",
+          "encode_suite": "tiny_default_encode",
+          "decode_suite": "tiny_default_decode"
+        },
+        {
+          "display_name": "TinyMinimal",
+          "encode_suite": "tiny_minimal_encode",
+          "decode_suite": "tiny_minimal_decode"
+        }
+      ]
     }
   ]
 }
