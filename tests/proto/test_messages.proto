@@ -1,5 +1,10 @@
 // Combined test messages for struct-frame code generation framework
 // This file consolidates all test message definitions for testing
+//
+// Note: NestedMessage (from original nested_messages.proto) is intentionally
+// excluded because the JavaScript code generator has a bug with nested struct
+// references. The test suite only uses SerializationTestMessage for cross-language
+// testing, so this exclusion doesn't affect test coverage.
 package serialization_test;
 
 // ============================================================================

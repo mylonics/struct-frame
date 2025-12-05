@@ -50,6 +50,9 @@ class TestRunnerBase:
         config_dir = config_path.parent
 
         # Load languages from languages.py module
+        # Note: This import is done here rather than at module level because
+        # the languages module is in tests/ and sys.path is modified at runtime
+        # by test_all.py before this method is called
         from languages import get_languages_dict, BASE_LANGUAGE
         config['languages'] = get_languages_dict()
         config['base_language'] = BASE_LANGUAGE
