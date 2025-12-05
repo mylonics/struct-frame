@@ -143,15 +143,16 @@
         "output_dir": "tests/generated/csharp"
       },
       "compilation": {
-        "enabled": true,
-        "compiler": "csc",
-        "compiler_check": "csc --version 2>&1 || mcs --version 2>&1 || dotnet --version 2>&1",
-        "flags": ["-out:{output}", "{source}", "{generated_dir}/*.cs"],
+        "enabled": false
+      },
+      "execution": {
+        "interpreter": "dotnet",
         "source_extension": ".cs",
-        "executable_extension": ".exe"
+        "run_command": "dotnet run --project {test_dir}/StructFrameTests.csproj --no-build --verbosity quiet -- {test_name}"
       },
       "test_dir": "tests/csharp",
-      "build_dir": "tests/csharp/build"
+      "build_dir": "tests/csharp/build",
+      "generation_only": true
     }
   },
   
