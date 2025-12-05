@@ -10,9 +10,7 @@ Each language subclass defines its specific behavior.
 """
 
 import os
-import shutil
 import subprocess
-from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -20,7 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 BASE_LANGUAGE = "c"
 
 
-class Language(ABC):
+class Language:
     """Base class for language definitions with action methods."""
 
     name: str = ""
@@ -40,7 +38,6 @@ class Language(ABC):
     # Compilation settings
     compiler: Optional[str] = None
     compiler_check_cmd: Optional[str] = None
-    compile_flags: List[str] = []
     source_extension: str = ""
     executable_extension: str = ""
     compiled_extension: str = ""
@@ -51,7 +48,6 @@ class Language(ABC):
     # Execution settings
     interpreter: Optional[str] = None
     script_dir: Optional[str] = None
-    env_vars: Dict[str, str] = {}
     run_command: Optional[str] = None
     execution_type: Optional[str] = None
 
@@ -59,6 +55,17 @@ class Language(ABC):
         self.project_root = project_root
         self.verbose = False
         self.verbose_failure = False
+        # Initialize mutable attributes per instance to avoid shared state
+        self.compile_flags: List[str] = self._get_compile_flags()
+        self.env_vars: Dict[str, str] = self._get_env_vars()
+
+    def _get_compile_flags(self) -> List[str]:
+        """Override in subclass to provide compile flags."""
+        return []
+
+    def _get_env_vars(self) -> Dict[str, str]:
+        """Override in subclass to provide environment variables."""
+        return {}
 
     def _run_command(self, command: str, cwd: Optional[Path] = None,
                      env: Optional[Dict[str, str]] = None, timeout: int = 30) -> Tuple[bool, str, str]:
@@ -406,12 +413,14 @@ class CLanguage(Language):
 
     compiler = "gcc"
     compiler_check_cmd = "gcc --version"
-    compile_flags = ["-I{generated_dir}", "-o", "{output}", "{source}", "-lm"]
     source_extension = ".c"
     executable_extension = ".exe"
 
     test_dir = "tests/c"
     build_dir = "tests/c/build"
+
+    def _get_compile_flags(self) -> List[str]:
+        return ["-I{generated_dir}", "-o", "{output}", "{source}", "-lm"]
 
 
 class CppLanguage(Language):
@@ -425,12 +434,14 @@ class CppLanguage(Language):
 
     compiler = "g++"
     compiler_check_cmd = "g++ --version"
-    compile_flags = ["-std=c++14", "-I{generated_dir}", "-o", "{output}", "{source}"]
     source_extension = ".cpp"
     executable_extension = ".exe"
 
     test_dir = "tests/cpp"
     build_dir = "tests/cpp/build"
+
+    def _get_compile_flags(self) -> List[str]:
+        return ["-std=c++14", "-I{generated_dir}", "-o", "{output}", "{source}"]
 
 
 class PythonLanguage(Language):
@@ -443,10 +454,12 @@ class PythonLanguage(Language):
 
     interpreter = "python"
     source_extension = ".py"
-    env_vars = {"PYTHONPATH": "{generated_dir}:{generated_parent_dir}"}
 
     test_dir = "tests/py"
     build_dir = "tests/py/build"
+
+    def _get_env_vars(self) -> Dict[str, str]:
+        return {"PYTHONPATH": "{generated_dir}:{generated_parent_dir}"}
 
 
 class TypeScriptLanguage(Language):
@@ -535,8 +548,16 @@ LANGUAGE_CLASSES = {
 }
 
 
-def get_language(lang_id: str, project_root: Path) -> Language:
-    """Get a language instance."""
+def get_language(lang_id: str, project_root: Path) -> Optional[Language]:
+    """Get a language instance.
+
+    Args:
+        lang_id: Language identifier (e.g., 'c', 'py', 'ts')
+        project_root: Path to the project root directory
+
+    Returns:
+        Language instance or None if language not found
+    """
     lang_class = LANGUAGE_CLASSES.get(lang_id)
     if lang_class:
         return lang_class(project_root)
