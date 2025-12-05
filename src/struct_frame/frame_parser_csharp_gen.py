@@ -327,7 +327,10 @@ class FrameParserCSharpGen:
 
         if fmt.has_crc:
             yield f'            int msgLength = length - Overhead;\n'
-            yield f'            int crcDataLen = msgLength + 1 + LengthBytes;\n'
+            if fmt.has_length:
+                yield f'            int crcDataLen = msgLength + 1 + LengthBytes;\n'
+            else:
+                yield f'            int crcDataLen = msgLength + 1;\n'
             yield f'            var ck = FletcherChecksum(data, {len(fmt.start_bytes)}, {len(fmt.start_bytes)} + crcDataLen);\n\n'
             yield f'            if (ck.Item1 == data[length - 2] && ck.Item2 == data[length - 1])\n'
             yield f'            {{\n'
