@@ -214,38 +214,100 @@ tests/
     nested_messages.proto
     serialization_test.proto
   c/                        # C tests
-    test_*.c
+    test_runner.c           # Test entry point
+    test_codec.c            # Encode/decode logic
+    test_codec.h
     build/                  # Compiled executables
   cpp/                      # C++ tests
-    test_*.cpp
+    test_runner.cpp
+    test_codec.cpp
+    test_codec.hpp
     build/
+  csharp/                   # C# tests
+    TestRunner.cs
+    TestCodec.cs
+    StructFrameTests.csproj
   py/                       # Python tests
-    test_*.py
+    test_runner.py
+    test_codec.py
   ts/                       # TypeScript tests
-    test_*.ts
+    test_runner.ts
+    test_codec.ts
     package.json
     tsconfig.json
     build/
+  js/                       # JavaScript tests
+    test_runner.js
+    test_codec.js
   generated/                # Generated code for tests
     c/
     cpp/
+    csharp/
     py/
     ts/
+    js/
     gql/
 ```
 
 ## Prerequisites
 
 **Python 3.8+** with:
-```
+```bash
 pip install proto-schema-parser structured-classes
 ```
 
 **C tests**: GCC
+```bash
+# Ubuntu/Debian
+sudo apt install gcc
+
+# macOS
+xcode-select --install
+
+# Windows (MinGW)
+# Download from https://www.mingw-w64.org/
+```
 
 **C++ tests**: G++ with C++14 support
+```bash
+# Ubuntu/Debian
+sudo apt install g++
 
-**TypeScript tests**: Node.js + npm install in tests/ts/
+# macOS
+xcode-select --install
+
+# Windows (MinGW)
+# Included with MinGW-w64
+```
+
+**TypeScript/JavaScript tests**: Node.js + npm
+```bash
+# Ubuntu/Debian
+sudo apt install nodejs npm
+
+# macOS
+brew install node
+
+# Windows
+# Download from https://nodejs.org/
+
+# Then install dependencies
+cd tests/ts && npm install
+```
+
+**C# tests**: .NET SDK 8.0+
+```bash
+# Ubuntu/Debian
+sudo apt install dotnet-sdk-8.0
+
+# macOS
+brew install dotnet-sdk
+
+# Windows
+# Download from https://dotnet.microsoft.com/download
+# Or via winget:
+winget install Microsoft.DotNet.SDK.8
+```
 
 ## Debugging Failures
 

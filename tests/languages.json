@@ -136,16 +136,17 @@
         "output_dir": "tests/generated/csharp"
       },
       "compilation": {
-        "enabled": false
+        "enabled": true,
+        "command": "dotnet build \"{test_dir}/StructFrameTests.csproj\" -c Release -o \"{build_dir}\" --verbosity quiet"
       },
       "execution": {
+        "type": "dotnet",
         "interpreter": "dotnet",
         "source_extension": ".cs",
-        "run_command": "dotnet run --project {test_dir}/StructFrameTests.csproj --no-build --verbosity quiet -- {test_name}"
+        "run_command": "dotnet run --project \"{test_dir}/StructFrameTests.csproj\" --no-build --verbosity quiet -- {args}"
       },
       "test_dir": "tests/csharp",
-      "build_dir": "tests/csharp/build",
-      "generation_only": true
+      "build_dir": "tests/csharp/bin/Release/net8.0"
     }
   }
 }

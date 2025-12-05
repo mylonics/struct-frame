@@ -348,6 +348,15 @@ class FrameFormatMatrixPlugin(TestPlugin):
             cmd = f'"{runner_path}" {mode} {format_name} "{output_file}"'
             return self.executor.run_command(cmd, cwd=build_dir)[0]
 
+        # For C# (dotnet run)
+        if execution.get('type') == 'dotnet':
+            test_dir = self.project_root / lang_config['test_dir']
+            csproj_path = test_dir / 'StructFrameTests.csproj'
+            if not csproj_path.exists():
+                return False
+            cmd = f'dotnet run --project "{csproj_path}" --verbosity quiet -- {mode} {format_name} "{output_file}"'
+            return self.executor.run_command(cmd, cwd=test_dir)[0]
+
         # For TypeScript (compiles to JS)
         if lang_config.get('compilation', {}).get('compiled_extension'):
             script_dir = self.project_root / execution.get('script_dir', '')
