@@ -332,73 +332,6 @@ class Language:
             return self.project_root / self.script_dir
         return None
 
-    def to_dict(self) -> dict:
-        """Convert to dictionary format for compatibility with existing code."""
-        result = {
-            'name': self.name,
-            'enabled': self.enabled,
-            'code_generation': {
-                'flag': self.gen_flag,
-                'output_path_flag': self.gen_output_path_flag,
-                'output_dir': self.gen_output_dir,
-            },
-            'compilation': {
-                'enabled': self.compiler is not None,
-            },
-        }
-        if self.file_prefix:
-            result['file_prefix'] = self.file_prefix
-        if self.test_dir:
-            result['test_dir'] = self.test_dir
-        if self.build_dir:
-            result['build_dir'] = self.build_dir
-        if self.generation_only:
-            result['generation_only'] = self.generation_only
-
-        # Add compilation details
-        if self.compiler:
-            comp_details = {
-                'compiler': self.compiler,
-                'compiler_check': self.compiler_check_cmd or f"{self.compiler} --version",
-            }
-            # Only add flags if present
-            if self.compile_flags:
-                comp_details['flags'] = self.compile_flags
-            # Only add source_extension if there's a compiled output extension (e.g., TypeScript)
-            if self.compiled_extension:
-                comp_details['source_extension'] = self.source_extension
-                comp_details['compiled_extension'] = self.compiled_extension
-            # Only add executable_extension for native compilers (C, C++)
-            if self.executable_extension:
-                comp_details['source_extension'] = self.source_extension
-                comp_details['executable_extension'] = self.executable_extension
-            if self.compile_command:
-                comp_details['command'] = self.compile_command
-            if self.compile_working_dir:
-                comp_details['working_dir'] = self.compile_working_dir
-            if self.compile_output_dir:
-                comp_details['output_dir'] = self.compile_output_dir
-            result['compilation'].update(comp_details)
-
-        # Add execution details
-        if self.interpreter or self.run_command:
-            result['execution'] = {}
-            if self.interpreter:
-                result['execution']['interpreter'] = self.interpreter
-            if self.source_extension:
-                result['execution']['source_extension'] = self.source_extension
-            if self.script_dir:
-                result['execution']['script_dir'] = self.script_dir
-            if self.env_vars:
-                result['execution']['env'] = self.env_vars
-            if self.run_command:
-                result['execution']['run_command'] = self.run_command
-            if self.execution_type:
-                result['execution']['type'] = self.execution_type
-
-        return result
-
-
 # =============================================================================
 # Language Implementations
 # =============================================================================
@@ -564,22 +497,19 @@ def get_language(lang_id: str, project_root: Path) -> Optional[Language]:
     return None
 
 
-def get_languages_dict() -> dict:
-    """Get all language configurations as a dictionary for compatibility."""
-    # Use a dummy project root for config generation
-    dummy_root = Path(".")
-    return {lang_id: lang_class(dummy_root).to_dict()
-            for lang_id, lang_class in LANGUAGE_CLASSES.items()}
+def get_all_language_ids() -> List[str]:
+    """Get list of all language IDs."""
+    return list(LANGUAGE_CLASSES.keys())
 
 
-def get_enabled_languages() -> list:
+def get_enabled_language_ids() -> List[str]:
     """Get list of enabled language IDs."""
     dummy_root = Path(".")
     return [lang_id for lang_id, lang_class in LANGUAGE_CLASSES.items()
             if lang_class(dummy_root).enabled]
 
 
-def get_testable_languages() -> list:
+def get_testable_language_ids() -> List[str]:
     """Get list of enabled languages that can run tests (excludes generation_only)."""
     dummy_root = Path(".")
     return [lang_id for lang_id, lang_class in LANGUAGE_CLASSES.items()

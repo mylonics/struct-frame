@@ -62,8 +62,12 @@ class ConfigDrivenTestRunner:
 
     def _get_active_languages(self) -> List[str]:
         """Get list of enabled languages that are not skipped"""
-        return [lang_id for lang_id, cfg in self.config['languages'].items()
-                if cfg.get('enabled', True) and lang_id not in self.skipped_languages]
+        result = []
+        for lang_id in self.config['language_ids']:
+            lang = self.tool_checker.get_lang(lang_id)
+            if lang and lang.enabled and lang_id not in self.skipped_languages:
+                result.append(lang_id)
+        return result
 
     # -------------------------------------------------------------------------
     # Delegated Methods (for backward compatibility)
@@ -148,17 +152,17 @@ class ConfigDrivenTestRunner:
         # Filter to only available languages
         active = [l for l in self._get_active_languages()
                   if l in available_langs]
-        lang_names = [self.config['languages'][l]['name'] for l in active]
+        lang_names = [self.tool_checker.get_lang(l).name for l in active]
         print(f"Testing languages: {', '.join(lang_names)}")
 
         start_time = time.time()
 
         try:
             # Create output directories
-            for lang_id, cfg in self.config['languages'].items():
-                if cfg.get('enabled', True):
-                    (self.project_root / cfg['code_generation']
-                     ['output_dir']).mkdir(parents=True, exist_ok=True)
+            for lang_id in self.config['language_ids']:
+                lang = self.tool_checker.get_lang(lang_id)
+                if lang and lang.enabled:
+                    (self.project_root / lang.gen_output_dir).mkdir(parents=True, exist_ok=True)
 
             if not self.generate_code():
                 print("[ERROR] Code generation failed - aborting remaining tests")

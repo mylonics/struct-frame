@@ -4,6 +4,7 @@ Test plugins for custom test execution behavior.
 Plugins allow tests to define their own execution and output logic.
 """
 
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
@@ -86,21 +87,26 @@ class StandardTestPlugin(TestPlugin):
 
     def _get_output_dir(self, lang_id: str) -> Path:
         """Get the output directory for a language (build_dir for binaries)"""
-        lang_config = self.config['languages'][lang_id]
+        lang = self.executor.get_lang(lang_id)
+        if not lang:
+            return self.project_root
+
         # Languages with script_dir in execution use that for output
-        if 'execution' in lang_config:
-            script_dir = lang_config['execution'].get('script_dir')
-            if script_dir:
-                return self.project_root / script_dir
+        script_dir = lang.get_script_dir()
+        if script_dir:
+            return script_dir
+
         # Use build_dir for output files
-        return self.project_root / lang_config.get('build_dir', lang_config['test_dir'])
+        return lang.get_build_dir()
 
     def _get_output_file_name(self, suite: Dict[str, Any], lang_id: str) -> str:
         """Get the output file name for a language"""
-        lang_config = self.config['languages'][lang_id]
+        lang = self.executor.get_lang(lang_id)
+        if not lang:
+            return suite.get('output_file', 'output.bin')
+
         # Use file_prefix if specified, otherwise lowercase display name
-        file_prefix = lang_config.get(
-            'file_prefix', lang_config['name'].lower())
+        file_prefix = lang.file_prefix or lang.name.lower()
         pattern = suite.get('output_file', '{lang_name}_output.bin')
         return pattern.replace('{lang_name}', file_prefix)
 
@@ -149,14 +155,16 @@ class CrossPlatformMatrixPlugin(TestPlugin):
 
         # Test all encoders against C decoder, and C encoder against all decoders
         for enc_lang in testable:
-            enc_name = self.config['languages'][enc_lang]['name']
+            enc_lang_obj = self.executor.get_lang(enc_lang)
+            enc_name = enc_lang_obj.name if enc_lang_obj else enc_lang
             matrix[enc_name] = {}
 
             # Check if this encoder produced a file
             data_file = encoded_files.get(enc_lang)
 
             for dec_lang in testable:
-                dec_name = self.config['languages'][dec_lang]['name']
+                dec_lang_obj = self.executor.get_lang(dec_lang)
+                dec_name = dec_lang_obj.name if dec_lang_obj else dec_lang
 
                 # Only test: C encodes → all decode, OR all encode → C decodes
                 if enc_lang != base_lang and dec_lang != base_lang:
@@ -195,9 +203,11 @@ class CrossPlatformMatrixPlugin(TestPlugin):
     def _run_decoder_with_file(self, lang_id: str, test_config: Dict[str, Any],
                                data_file: Path) -> bool:
         """Run a decoder test with a specific input file"""
-        lang_config = self.config['languages'][lang_id]
-        build_dir = self.project_root / \
-            lang_config.get('build_dir', lang_config['test_dir'])
+        lang = self.executor.get_lang(lang_id)
+        if not lang:
+            return False
+
+        build_dir = lang.get_build_dir()
         target_file = build_dir / data_file.name
 
         # Ensure build directory exists
@@ -206,10 +216,8 @@ class CrossPlatformMatrixPlugin(TestPlugin):
         try:
             with self.executor.temp_copy(data_file, target_file):
                 # Languages with script_dir need file copied there too
-                execution = lang_config.get('execution', {})
-                script_dir_path = execution.get('script_dir')
-                if script_dir_path:
-                    script_dir = self.project_root / script_dir_path
+                script_dir = lang.get_script_dir()
+                if script_dir:
                     script_target = script_dir / data_file.name
                     with self.executor.temp_copy(data_file, script_target):
                         return self.executor.run_test_script(
@@ -282,7 +290,8 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
             # First pass: run all encode tests and collect output files
             for lang_id in testable:
-                lang_name = self.config['languages'][lang_id]['name']
+                lang = self.executor.get_lang(lang_id)
+                lang_name = lang.name if lang else lang_id
                 output_file = self._get_output_file(
                     lang_id, output_file_pattern)
 
@@ -306,7 +315,8 @@ class FrameFormatMatrixPlugin(TestPlugin):
             base_data_file = encoded_files.get(base_lang)
 
             for lang_id in testable:
-                lang_name = self.config['languages'][lang_id]['name']
+                lang = self.executor.get_lang(lang_id)
+                lang_name = lang.name if lang else lang_id
 
                 if base_data_file is None or not base_data_file.exists():
                     matrix[display_name][lang_name]['decode'] = None
@@ -334,31 +344,26 @@ class FrameFormatMatrixPlugin(TestPlugin):
     def _run_test_runner(self, lang_id: str, mode: str, format_name: str,
                          output_file: Path) -> bool:
         """Run the unified test_runner for a language."""
-        lang_config = self.config['languages'][lang_id]
-        build_dir = self.project_root / \
-            lang_config.get('build_dir', lang_config['test_dir'])
+        lang = self.executor.get_lang(lang_id)
+        if not lang:
+            return False
+
+        build_dir = lang.get_build_dir()
 
         # Ensure build directory exists
         build_dir.mkdir(parents=True, exist_ok=True)
 
-        # Get test_runner executable/script path
-        exe_ext = lang_config.get('compilation', {}).get(
-            'executable_extension', '')
-        source_ext = lang_config.get(
-            'compilation', {}).get('source_extension', '')
-        execution = lang_config.get('execution', {})
-
         # For compiled languages (C, C++)
-        if exe_ext:
-            runner_path = build_dir / f"test_runner{exe_ext}"
+        if lang.executable_extension:
+            runner_path = build_dir / f"test_runner{lang.executable_extension}"
             if not runner_path.exists():
                 return False
             cmd = f'"{runner_path}" {mode} {format_name} "{output_file}"'
             return self.executor.run_command(cmd, cwd=build_dir)[0]
 
         # For C# (dotnet run)
-        if execution.get('type') == 'dotnet':
-            test_dir = self.project_root / lang_config['test_dir']
+        if lang.execution_type == 'dotnet':
+            test_dir = lang.get_test_dir()
             csproj_path = test_dir / 'StructFrameTests.csproj'
             if not csproj_path.exists():
                 return False
@@ -366,50 +371,47 @@ class FrameFormatMatrixPlugin(TestPlugin):
             return self.executor.run_command(cmd, cwd=test_dir)[0]
 
         # For TypeScript (compiles to JS)
-        if lang_config.get('compilation', {}).get('compiled_extension'):
-            script_dir = self.project_root / execution.get('script_dir', '')
+        if lang.compiled_extension:
+            script_dir = lang.get_script_dir()
+            if not script_dir:
+                return False
             runner_path = script_dir / 'test_runner.js'
             if not runner_path.exists():
                 return False
-            interpreter = execution.get('interpreter', 'node')
+            interpreter = lang.interpreter or 'node'
             cmd = f'{interpreter} "{runner_path}" {mode} {format_name} "{output_file}"'
             return self.executor.run_command(cmd, cwd=script_dir)[0]
 
         # For interpreted languages (Python, JavaScript)
-        if 'interpreter' in execution:
-            script_dir_path = execution.get('script_dir')
-            if script_dir_path:
+        if lang.interpreter:
+            script_dir = lang.get_script_dir()
+            if script_dir:
                 # JS runs from generated dir
-                script_dir = self.project_root / script_dir_path
                 runner_path = script_dir / 'test_runner.js'
             else:
                 # Python runs from test dir
-                test_dir = self.project_root / lang_config['test_dir']
-                source_ext = execution.get('source_extension', '.py')
+                test_dir = lang.get_test_dir()
+                source_ext = lang.source_extension or '.py'
                 runner_path = test_dir / f'test_runner{source_ext}'
 
             if not runner_path.exists():
                 return False
 
-            interpreter = execution['interpreter']
             cwd = runner_path.parent
 
             # Handle Python's PYTHONPATH
-            env_vars = execution.get('env', {})
             env_prefix = ''
-            if env_vars:
-                gen_dir = self.project_root / \
-                    lang_config['code_generation']['output_dir']
-                for key, val in env_vars.items():
+            if lang.env_vars:
+                gen_dir = lang.get_gen_dir()
+                for key, val in lang.env_vars.items():
                     val = val.replace('{generated_dir}', str(gen_dir))
                     val = val.replace(
                         '{generated_parent_dir}', str(gen_dir.parent))
                     # Use cross-platform path separator
-                    import os
                     val = val.replace(':', os.pathsep)
                     env_prefix = f'set {key}={val} && ' if os.name == 'nt' else f'{key}={val} '
 
-            cmd = f'{env_prefix}{interpreter} "{runner_path}" {mode} {format_name} "{output_file}"'
+            cmd = f'{env_prefix}{lang.interpreter} "{runner_path}" {mode} {format_name} "{output_file}"'
             return self.executor.run_command(cmd, cwd=cwd)[0]
 
         return False
@@ -417,9 +419,11 @@ class FrameFormatMatrixPlugin(TestPlugin):
     def _run_decode_with_file(self, lang_id: str, format_name: str,
                               data_file: Path) -> bool:
         """Run decoder with a specific input file."""
-        lang_config = self.config['languages'][lang_id]
-        build_dir = self.project_root / \
-            lang_config.get('build_dir', lang_config['test_dir'])
+        lang = self.executor.get_lang(lang_id)
+        if not lang:
+            return False
+
+        build_dir = lang.get_build_dir()
         target_file = build_dir / data_file.name
 
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -427,10 +431,8 @@ class FrameFormatMatrixPlugin(TestPlugin):
         try:
             with self.executor.temp_copy(data_file, target_file):
                 # For script languages, also copy to script_dir
-                execution = lang_config.get('execution', {})
-                script_dir_path = execution.get('script_dir')
-                if script_dir_path:
-                    script_dir = self.project_root / script_dir_path
+                script_dir = lang.get_script_dir()
+                if script_dir:
                     script_target = script_dir / data_file.name
                     with self.executor.temp_copy(data_file, script_target):
                         return self._run_test_runner(lang_id, 'decode', format_name, script_target)
@@ -443,25 +445,27 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
     def _get_output_file(self, lang_id: str, pattern: str) -> Optional[Path]:
         """Get the output file path for a language."""
-        lang_config = self.config['languages'][lang_id]
-        file_prefix = lang_config.get(
-            'file_prefix', lang_config['name'].lower())
+        lang = self.executor.get_lang(lang_id)
+        if not lang:
+            return None
+
+        file_prefix = lang.file_prefix or lang.name.lower()
         filename = pattern.replace('{lang_name}', file_prefix)
 
         # Check script_dir first (for JS/TS)
-        if 'execution' in lang_config:
-            script_dir = lang_config['execution'].get('script_dir')
-            if script_dir:
-                return self.project_root / script_dir / filename
+        script_dir = lang.get_script_dir()
+        if script_dir:
+            return script_dir / filename
 
         # Use build_dir
-        build_dir = lang_config.get('build_dir', lang_config['test_dir'])
-        return self.project_root / build_dir / filename
+        return lang.get_build_dir() / filename
 
     def _print_matrix_header(self, testable: list):
         """Print the matrix header with language columns."""
-        all_langs = [self.config['languages'][lang_id]['name']
-                     for lang_id in testable]
+        all_langs = []
+        for lang_id in testable:
+            lang = self.executor.get_lang(lang_id)
+            all_langs.append(lang.name if lang else lang_id)
         self._matrix_langs = all_langs
         self._matrix_col_width = 12
 
@@ -474,13 +478,15 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
     def _print_matrix_row(self, frame_format: str, lang_results: Dict[str, Dict[str, Optional[bool]]], testable: list):
         """Print a single row of the matrix."""
-        all_langs = [self.config['languages'][lang_id]['name']
-                     for lang_id in testable]
+        all_langs = []
+        for lang_id in testable:
+            lang = self.executor.get_lang(lang_id)
+            all_langs.append(lang.name if lang else lang_id)
         col_width = 12
 
         row = frame_format.ljust(20)
-        for lang in all_langs:
-            val = lang_results.get(lang)
+        for lang_name in all_langs:
+            val = lang_results.get(lang_name)
             if val is None:
                 cell = "N/A"
             elif isinstance(val, dict):
@@ -531,67 +537,6 @@ class FrameFormatMatrixPlugin(TestPlugin):
                     total_count += 1
                 else:
                     total_count += 1
-
-        if total_count > 0:
-            print(
-                f"\nSuccess rate: {success_count}/{total_count} ({100*success_count/total_count:.1f}%)\n")
-
-    def _print_frame_format_matrix(self, matrix: Dict[str, Dict[str, Dict[str, Optional[bool]]]]):
-        """Print the frame format compatibility matrix with detailed status."""
-        if not matrix:
-            return
-
-        # Get all language columns
-        all_langs = sorted(set().union(
-            *[set(d.keys()) for d in matrix.values()]))
-
-        col_width = 12
-        print("\nFrame Format Language Test Matrix:")
-        print("Legend: OK=pass, SER=serialization failed, DES=deserialization failed, BOTH=both failed")
-        header = "Frame Format".ljust(
-            20) + "".join(l.center(col_width) for l in all_langs)
-        print(header)
-        print("-" * len(header))
-
-        success_count = 0
-        total_count = 0
-
-        for frame_format, lang_results in matrix.items():
-            row = frame_format.ljust(20)
-            for lang in all_langs:
-                val = lang_results.get(lang)
-                if val is None:
-                    cell = "N/A"
-                elif isinstance(val, dict):
-                    encode_ok = val.get('encode')
-                    decode_ok = val.get('decode')
-
-                    if encode_ok is None and decode_ok is None:
-                        cell = "N/A"
-                    elif encode_ok and decode_ok:
-                        cell = "OK"
-                        success_count += 1
-                        total_count += 1
-                    elif not encode_ok and (decode_ok is False or decode_ok is None):
-                        cell = "BOTH"
-                        total_count += 1
-                    elif not encode_ok:
-                        cell = "SER"
-                        total_count += 1
-                    elif not decode_ok:
-                        cell = "DES"
-                        total_count += 1
-                    else:
-                        cell = "N/A"
-                elif val:
-                    cell = "OK"
-                    success_count += 1
-                    total_count += 1
-                else:
-                    cell = "FAIL"
-                    total_count += 1
-                row += cell.center(col_width)
-            print(row)
 
         if total_count > 0:
             print(

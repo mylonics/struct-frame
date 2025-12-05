@@ -32,6 +32,7 @@ from runner import ConfigDrivenTestRunner
 def clean_test_files(config_path: str, verbose: bool = False) -> bool:
     """Clean all generated and compiled test files."""
     from runner.base import TestRunnerBase
+    from languages import get_language
 
     project_root = Path(__file__).parent.parent
     config = TestRunnerBase.load_config(Path(config_path), verbose)
@@ -40,22 +41,24 @@ def clean_test_files(config_path: str, verbose: bool = False) -> bool:
 
     print("Cleaning test files...")
 
-    # Clean generated code directories
-    for lang_id, lang_config in config['languages'].items():
-        gen_dir = project_root / lang_config['code_generation']['output_dir']
+    # Clean generated code directories and build directories
+    for lang_id in config['language_ids']:
+        lang = get_language(lang_id, project_root)
+        if not lang:
+            continue
+
+        gen_dir = project_root / lang.gen_output_dir
         if gen_dir.exists():
             if verbose:
                 print(f"  Removing generated directory: {gen_dir}")
             shutil.rmtree(gen_dir)
             cleaned_count += 1
 
-    # Clean build directories (executables and binary outputs)
-    for lang_id, lang_config in config['languages'].items():
         # Skip languages without build directories
-        if 'build_dir' not in lang_config:
+        if not lang.build_dir:
             continue
 
-        build_dir = project_root / lang_config['build_dir']
+        build_dir = project_root / lang.build_dir
         if build_dir.exists():
             if verbose:
                 print(f"  Removing build directory: {build_dir}")

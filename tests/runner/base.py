@@ -11,7 +11,10 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from languages import Language
 
 
 class TestRunnerBase:
@@ -25,6 +28,19 @@ class TestRunnerBase:
         self.verbose = verbose
         self.verbose_failure = verbose_failure
         self.skipped_languages: List[str] = []
+        # Cache language instances
+        self._languages: Dict[str, 'Language'] = {}
+
+    def get_lang(self, lang_id: str) -> Optional['Language']:
+        """Get a Language instance for the given language ID."""
+        if lang_id not in self._languages:
+            from languages import get_language
+            lang = get_language(lang_id, self.project_root)
+            if lang:
+                lang.verbose = self.verbose
+                lang.verbose_failure = self.verbose_failure
+                self._languages[lang_id] = lang
+        return self._languages.get(lang_id)
 
     @classmethod
     def load_config(cls, config_path: Path, verbose: bool = False) -> Dict[str, Any]:
@@ -49,12 +65,12 @@ class TestRunnerBase:
 
         config_dir = config_path.parent
 
-        # Load languages from languages.py module
+        # Load language IDs from languages.py module
         # Note: This import is done here rather than at module level because
         # the languages module is in tests/ and sys.path is modified at runtime
         # by test_all.py before this method is called
-        from languages import get_languages_dict, BASE_LANGUAGE
-        config['languages'] = get_languages_dict()
+        from languages import get_all_language_ids, BASE_LANGUAGE
+        config['language_ids'] = get_all_language_ids()
         config['base_language'] = BASE_LANGUAGE
 
         # Load and merge test suites file if specified
@@ -120,33 +136,25 @@ class TestRunnerBase:
 
     def get_lang_env(self, lang_id: str) -> Dict[str, str]:
         """Get environment variables for a language"""
-        lang_config = self.config['languages'][lang_id]
-        execution = lang_config.get('execution', {})
-        env = {}
-        if 'env' in execution:
-            gen_dir = str(self.project_root /
-                          lang_config['code_generation']['output_dir'])
-            gen_parent_dir = str(Path(gen_dir).parent)
-            env = {}
-            for k, v in execution['env'].items():
-                v = v.replace('{generated_dir}', gen_dir)
-                v = v.replace('{generated_parent_dir}', gen_parent_dir)
-                # Handle cross-platform path separators (: on Linux, ; on Windows)
-                v = v.replace(':', os.pathsep)
-                env[k] = v
-        return env
+        lang = self.get_lang(lang_id)
+        if lang:
+            return lang.get_env(lang.get_gen_dir())
+        return {}
 
     def get_active_languages(self) -> List[str]:
         """Get list of enabled languages that are not skipped"""
-        return [lang_id for lang_id, cfg in self.config['languages'].items()
-                if cfg.get('enabled', True) and lang_id not in self.skipped_languages]
+        return [lang_id for lang_id in self.config['language_ids']
+                if self.get_lang(lang_id) and self.get_lang(lang_id).enabled
+                and lang_id not in self.skipped_languages]
 
     def get_testable_languages(self) -> List[str]:
         """Get list of enabled languages that can run tests (excludes generation_only)"""
-        return [lang_id for lang_id, cfg in self.config['languages'].items()
-                if cfg.get('enabled', True)
-                and lang_id not in self.skipped_languages
-                and not cfg.get('generation_only', False)]
+        result = []
+        for lang_id in self.config['language_ids']:
+            lang = self.get_lang(lang_id)
+            if lang and lang.enabled and not lang.generation_only and lang_id not in self.skipped_languages:
+                result.append(lang_id)
+        return result
 
     @contextmanager
     def temp_copy(self, src: Path, dst: Path):
@@ -170,27 +178,24 @@ class TestRunnerBase:
 
     def get_source_extension(self, lang_id: str) -> str:
         """Get source file extension for a language"""
-        lang_config = self.config['languages'][lang_id]
-        # Check compilation first, then execution
-        ext = lang_config.get('compilation', {}).get('source_extension')
-        if not ext:
-            ext = lang_config.get('execution', {}).get('source_extension', '')
-        return ext
+        lang = self.get_lang(lang_id)
+        return lang.source_extension if lang else ''
 
     def get_executable_extension(self, lang_id: str) -> str:
         """Get executable extension for compiled languages"""
-        return self.config['languages'][lang_id].get('compilation', {}).get('executable_extension', '')
+        lang = self.get_lang(lang_id)
+        return lang.executable_extension if lang else ''
 
     def get_compiled_extension(self, lang_id: str) -> str:
         """Get compiled output extension (e.g., .js for TypeScript)"""
-        return self.config['languages'][lang_id].get('compilation', {}).get('compiled_extension', '')
+        lang = self.get_lang(lang_id)
+        return lang.compiled_extension if lang else ''
 
     def get_test_files(self, lang_id: str, test_name: str) -> Dict[str, str]:
         """Get all file names for a test based on test_name and language extensions.
 
         Returns dict with keys: source_file, executable (if compiled), compiled_file (if transpiled)
         """
-        lang_config = self.config['languages'][lang_id]
         files = {}
 
         # Source file
@@ -234,11 +239,12 @@ class TestRunnerBase:
             test_dir: Optional test directory override
             args: Optional command-line arguments to pass to the test
         """
-        lang_config = self.config['languages'][lang_id]
-        test_dir = test_dir or (self.project_root / lang_config['test_dir'])
-        build_dir = self.project_root / \
-            lang_config.get('build_dir', lang_config['test_dir'])
-        execution = lang_config.get('execution', {})
+        lang = self.get_lang(lang_id)
+        if not lang:
+            return False
+
+        test_dir = test_dir or lang.get_test_dir()
+        build_dir = lang.get_build_dir()
 
         # Compiled executable (C, C++)
         if 'executable' in test_config:
@@ -249,19 +255,19 @@ class TestRunnerBase:
             return exe_path.exists() and self.run_command(cmd, cwd=build_dir)[0]
 
         # Compiled script language (e.g., TypeScript -> JS)
-        if 'compiled_file' in test_config and 'script_dir' in execution:
-            script_dir = self.project_root / execution.get('script_dir', '')
+        if 'compiled_file' in test_config and lang.script_dir:
+            script_dir = lang.get_script_dir()
             script_path = script_dir / test_config['compiled_file']
             if not script_path.exists():
                 return False
-            cmd = f"{execution['interpreter']} {script_path.name}"
+            cmd = f"{lang.interpreter} {script_path.name}"
             if args:
                 cmd = f"{cmd} {args}"
             return self.run_command(cmd, cwd=script_dir)[0]
 
         # Script language with script_dir (runs test files from generated code directory)
-        if 'script_dir' in execution and 'source_file' in test_config:
-            script_dir = self.project_root / execution.get('script_dir', '')
+        if lang.script_dir and 'source_file' in test_config:
+            script_dir = lang.get_script_dir()
             source_path = test_dir / test_config['source_file']
             # Copy test file to generated directory for execution
             target_path = script_dir / test_config['source_file']
@@ -270,7 +276,7 @@ class TestRunnerBase:
                 shutil.copy2(source_path, target_path)
             if not target_path.exists():
                 return False
-            cmd = f"{execution['interpreter']} {target_path.name}"
+            cmd = f"{lang.interpreter} {target_path.name}"
             if args:
                 cmd = f"{cmd} {args}"
             return self.run_command(cmd, cwd=script_dir)[0]
@@ -280,12 +286,11 @@ class TestRunnerBase:
             source_path = test_dir / test_config['source_file']
             if not source_path.exists():
                 return False
-            interpreter = execution.get('interpreter')
-            if not interpreter:
+            if not lang.interpreter:
                 return False
             # Ensure build_dir exists and run from there
             build_dir.mkdir(parents=True, exist_ok=True)
-            cmd = f"{interpreter} {source_path}"
+            cmd = f"{lang.interpreter} {source_path}"
             if args:
                 cmd = f"{cmd} {args}"
             return self.run_command(

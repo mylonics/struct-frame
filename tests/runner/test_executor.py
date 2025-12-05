@@ -17,7 +17,7 @@ class TestExecutor(TestRunnerBase):
                  verbose_failure: bool = False):
         super().__init__(config, project_root, verbose, verbose_failure)
         self.results: Dict[str, Dict[str, bool]] = {}
-        for lang_id in self.config['languages']:
+        for lang_id in self.config['language_ids']:
             self.results[lang_id] = {}
         self.cross_platform_results: Dict[str, Dict[str, bool]] = {}
         # Store output files from suites for other suites to consume
