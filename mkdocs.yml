@@ -1,57 +1,86 @@
 site_name: Struct Frame
-site_description: A cross-platform code generation framework for Protocol Buffer serialization
+site_description: A cross-platform code generation framework for Protocol Buffer serialization. Generate C, C++, TypeScript, Python, and GraphQL code with framing and parsing utilities for structured message communication.
+site_author: Mylonics
 site_url: https://struct-frame.mylonics.com
-repo_name: mylonics/struct-frame
 repo_url: https://github.com/mylonics/struct-frame
+repo_name: mylonics/struct-frame
+copyright: Copyright &copy; 2025 Mylonics
 
 theme:
   name: material
+  custom_dir: docs/theme_overrides
+  palette:
+    scheme: default
+    primary: white
+    accent: indigo
   features:
     - navigation.instant
     - navigation.tracking
+    - navigation.tabs
     - navigation.sections
     - navigation.expand
     - navigation.top
+    - search.suggest
     - search.highlight
-    - search.share
     - content.code.copy
-  palette:
-    - scheme: default
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - scheme: slate
-      primary: indigo
-      accent: indigo
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
 
 nav:
   - Home: index.md
-  - Installation: installation.md
-  - Message Definitions: message-definitions.md
-  - Framing: framing.md
-  - Testing: testing.md
-  - Development: development.md
+  - Getting Started:
+    - Installation: getting-started/installation.md
+    - Code Generation: getting-started/code-generation.md
+    - Language Usage: getting-started/language-usage.md
+  - User Guide:
+    - Message Definitions: user-guide/message-definitions.md
+    - Framing: user-guide/framing.md
+  - Reference:
+    - Testing: reference/testing.md
+    - Development: reference/development.md
 
 markdown_extensions:
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.superfences
-  - pymdownx.tabbed:
-      alternate_style: true
-  - tables
-  - admonition
   - toc:
       permalink: true
+  - admonition
+  - codehilite:
+      guess_lang: false
+  - def_list
+  - footnotes
+  - meta
+  - tables
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
 
-plugins:
-  - search
+extra_css:
+  - assets/stylesheets/extra.css
 
 extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/mylonics/struct-frame
+    - icon: fontawesome/solid/globe
+      link: https://mylonics.com
+  seo:
+    keywords:
+      - struct frame
+      - protocol buffer
+      - code generation
+      - serialization
+      - C code generator
+      - C++ code generator
+      - TypeScript code generator
+      - Python code generator
+      - GraphQL code generator
+      - embedded systems
+      - message framing
+      - cross-platform communication
+
+plugins:
+  - search:
+      lang: en
+      separator: '[\s\-\.]+'
