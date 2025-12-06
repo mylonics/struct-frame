@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://struct-frame.mylonics.com/sitemap.xml
