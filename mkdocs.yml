@@ -9,6 +9,8 @@ copyright: Copyright &copy; 2025 Mylonics
 theme:
   name: material
   custom_dir: docs/theme_overrides
+  logo: media/logo.png
+  favicon: media/icon.png
   palette:
     scheme: default
     primary: white
@@ -27,15 +29,15 @@ theme:
 nav:
   - Home: index.md
   - Getting Started:
-    - Installation: getting-started/installation.md
-    - Code Generation: getting-started/code-generation.md
-    - Language Usage: getting-started/language-usage.md
+      - Installation: getting-started/installation.md
+      - Code Generation: getting-started/code-generation.md
+      - Language Usage: getting-started/language-usage.md
   - User Guide:
-    - Message Definitions: user-guide/message-definitions.md
-    - Framing: user-guide/framing.md
+      - Message Definitions: user-guide/message-definitions.md
+      - Framing: user-guide/framing.md
   - Reference:
-    - Testing: reference/testing.md
-    - Development: reference/development.md
+      - Testing: reference/testing.md
+      - Development: reference/development.md
 
 markdown_extensions:
   - toc:
