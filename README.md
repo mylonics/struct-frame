@@ -25,6 +25,24 @@ python test_all.py
 # Generated files will be in the generated/ directory
 ```
 
+### Import Support
+
+struct-frame supports importing proto files for code reuse:
+
+```proto
+package my_app;
+
+option package_id = 100;  // Required for multi-package compilation
+
+import "common_types.proto";
+
+message MyMessage {
+  CommonType field = 1;  // Type from imported file
+}
+```
+
+See [docs/imports.md](docs/imports.md) for detailed documentation on using imports.
+
 ### Test Suite
 
 The project includes a test suite that validates code generation, compilation, and serialization across all supported languages:
@@ -195,6 +213,7 @@ python src/main.py examples/myl_vehicle.proto --build_gql
 | **Message Serialization** | ✓ | ✓ | ✓ | ✓ | ✗ | N/A | Stable |
 | **Flatten** | N/A | N/A | N/A | ✓ | ✗ | ✓ | Partial |
 | **Arrays** | ✓ | ✓ | Partial | ✓ | ✗ | ✓ | Stable |
+| **Imports** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
 
 **Legend:**
 - **✓** - Feature works as documented
