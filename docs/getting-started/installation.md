@@ -1,12 +1,17 @@
 # Installation
 
-## Dependencies
+## Install via pip (Recommended)
 
-**Python (required for code generation)**
+Install struct-frame from PyPI:
 
 ```bash
-pip install proto-schema-parser
+pip install struct-frame
 ```
+
+This installs the `struct_frame` package and makes the code generator available as a Python module.
+
+!!! note "Module name uses underscore"
+    The package is named `struct-frame` (with hyphen) on PyPI, but the Python module uses an underscore: `struct_frame`. Use `python -m struct_frame` to run the code generator.
 
 ## Language-Specific Requirements
 
@@ -65,20 +70,35 @@ pip install proto-schema-parser
 
 ## Quick Start
 
-1. Install the Python dependency:
+1. Install struct-frame:
    ```bash
-   pip install proto-schema-parser
+   pip install struct-frame
    ```
 
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/mylonics/struct-frame.git
-   cd struct-frame
+2. Create a proto file (e.g., `robot.proto`):
+   ```proto
+   package robot;
+   
+   message Status {
+     option msgid = 1;
+     uint32 robot_id = 1;
+     float battery_level = 2;
+   }
    ```
 
-3. Generate code from a proto file:
+3. Generate code for your target language:
    ```bash
-   PYTHONPATH=src python src/main.py examples/generic_robot.proto --build_py --py_path gen/py
+   # Python
+   python -m struct_frame robot.proto --build_py --py_path generated/py
+   
+   # C
+   python -m struct_frame robot.proto --build_c --c_path generated/c
+   
+   # TypeScript
+   python -m struct_frame robot.proto --build_ts --ts_path generated/ts
+   
+   # Multiple languages
+   python -m struct_frame robot.proto --build_c --build_py --build_ts
    ```
 
 4. Use the generated code in your project.

@@ -6,15 +6,15 @@ Run the generator with your proto file to produce serialization code for your ta
 
 ```bash
 # Generate all languages
-python src/main.py schema.proto --build_c --build_cpp --build_ts --build_py --build_gql
+python -m struct_frame schema.proto --build_c --build_cpp --build_ts --build_py --build_gql
 
 # Generate specific languages
-python src/main.py schema.proto --build_c
-python src/main.py schema.proto --build_py --build_ts
+python -m struct_frame schema.proto --build_c
+python -m struct_frame schema.proto --build_py --build_ts
 
 # Custom output paths
-python src/main.py schema.proto --build_c --c_path output/c/
-python src/main.py schema.proto --build_py --py_path output/python/
+python -m struct_frame schema.proto --build_c --c_path output/c/
+python -m struct_frame schema.proto --build_py --py_path output/python/
 ```
 
 Default output is `generated/<language>/`.
@@ -49,10 +49,10 @@ PROTO_FILES := $(wildcard proto/*.proto)
 GENERATED_DIR := generated
 
 generated/c/%.sf.h: proto/%.proto
-	python src/main.py $< --build_c --c_path generated/c/
+	python -m struct_frame $< --build_c --c_path generated/c/
 
 generated/py/%.sf.py: proto/%.proto
-	python src/main.py $< --build_py --py_path generated/py/
+	python -m struct_frame $< --build_py --py_path generated/py/
 
 all: $(PROTO_FILES:proto/%.proto=generated/c/%.sf.h)
 ```
@@ -72,7 +72,7 @@ foreach(PROTO_FILE ${PROTO_FILES})
     
     add_custom_command(
         OUTPUT ${GENERATED_HEADER}
-        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/src/main.py
+        COMMAND ${Python3_EXECUTABLE} -m struct_frame
             ${CMAKE_SOURCE_DIR}/${PROTO_FILE}
             --build_c --c_path ${CMAKE_BINARY_DIR}/generated/c/
         DEPENDS ${PROTO_FILE}
@@ -90,7 +90,7 @@ Add to package.json:
 ```json
 {
   "scripts": {
-    "generate": "python src/main.py proto/messages.proto --build_ts --ts_path src/generated/",
+    "generate": "python -m struct_frame proto/messages.proto --build_ts --ts_path src/generated/",
     "build": "npm run generate && tsc",
     "watch": "tsc --watch"
   }
@@ -110,7 +110,7 @@ import subprocess
 class BuildWithGenerate(build_py):
     def run(self):
         subprocess.run([
-            'python', 'src/main.py', 'proto/messages.proto',
+            'python', '-m', 'struct_frame', 'proto/messages.proto',
             '--build_py', '--py_path', 'src/generated/'
         ])
         super().run()
