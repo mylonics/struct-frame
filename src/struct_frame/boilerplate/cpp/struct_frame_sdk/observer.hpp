@@ -1,15 +1,13 @@
 // Observer/Subscriber pattern for C++ struct-frame SDK
 // Header-only implementation inspired by ETLCPP but with no dependencies
+// No STL dependencies for embedded systems
 
 #pragma once
-
-#include <algorithm>
-#include <functional>
 
 namespace StructFrame {
 
 // Forward declarations
-template<typename TMessage>
+template<typename TMessage, size_t MaxObservers = 16>
 class Observable;
 
 /**
@@ -96,15 +94,16 @@ public:
 };
 
 /**
- * Lambda-based observer for functional style subscription
+ * Function pointer-based observer for callback style subscription
+ * No std::function dependency - uses plain function pointers
  * @tparam TMessage The message type to observe
  */
 template<typename TMessage>
-class LambdaObserver : public IObserver<TMessage> {
+class FunctionObserver : public IObserver<TMessage> {
 public:
-    using CallbackType = std::function<void(const TMessage&, uint8_t)>;
+    using CallbackType = void (*)(const TMessage&, uint8_t);
     
-    explicit LambdaObserver(CallbackType callback) : callback_(std::move(callback)) {}
+    explicit FunctionObserver(CallbackType callback) : callback_(callback) {}
     
     void onMessage(const TMessage& message, uint8_t msgId) override {
         if (callback_) {
