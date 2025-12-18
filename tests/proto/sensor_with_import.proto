@@ -1,0 +1,22 @@
+// Sensor data that imports common types
+package sensor_data;
+
+option pkgid = 2;
+
+import "common_types.proto";
+
+message SensorReading {
+  option msgid = 1;
+  float temperature = 1;
+  float humidity = 2;
+  // Uses Status from common_types
+  common_types.Status status = 3;
+}
+
+message SensorEvent {
+  option msgid = 2;
+  uint32 sensor_id = 1;
+  // Uses Timestamp from common_types
+  common_types.Timestamp timestamp = 2;
+  float value = 3;
+}

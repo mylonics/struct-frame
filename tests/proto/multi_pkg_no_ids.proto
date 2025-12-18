@@ -1,0 +1,9 @@
+// Main package that imports another without proper IDs
+package main_package;
+
+import "no_id_pkg.proto";
+
+message MainMessage {
+  option msgid = 1;
+  string name = 1 [size=32];
+}

@@ -1,0 +1,11 @@
+// Package B that imports A
+package package_b;
+
+option pkgid = 11;
+
+import "package_a.proto";
+
+message MessageB {
+  option msgid = 1;
+  string name = 1 [size=32];
+}

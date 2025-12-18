@@ -1,0 +1,137 @@
+// Example demonstrating proto file imports with package IDs
+// This example shows how to split definitions across multiple files
+
+// ============================================================
+// FILE 1: common_defs.proto
+// ============================================================
+// Common definitions that can be reused across packages
+package common;
+
+option pkgid = 1;
+
+enum Priority {
+  LOW = 0;
+  MEDIUM = 1;
+  HIGH = 2;
+  CRITICAL = 3;
+}
+
+message Timestamp {
+  option msgid = 1;
+  uint64 seconds = 1;
+  uint32 nanoseconds = 2;
+}
+
+// ============================================================
+// FILE 2: sensor_types.proto
+// ============================================================
+// Sensor-specific type definitions
+package sensors;
+
+option pkgid = 2;
+
+enum SensorType {
+  TEMPERATURE = 0;
+  HUMIDITY = 1;
+  PRESSURE = 2;
+  LIGHT = 3;
+}
+
+enum SensorStatus {
+  OFFLINE = 0;
+  ONLINE = 1;
+  CALIBRATING = 2;
+  ERROR = 3;
+}
+
+// ============================================================
+// FILE 3: sensor_messages.proto
+// ============================================================
+// Sensor messages that use types from sensor_types.proto
+package sensors;
+
+option pkgid = 2;  // Same package as sensor_types.proto
+
+// Import file from same package
+// import "sensor_types.proto";
+
+message SensorReading {
+  option msgid = 1;
+  SensorType type = 1;
+  float value = 2;
+  SensorStatus status = 3;
+}
+
+message SensorConfig {
+  option msgid = 2;
+  SensorType type = 1;
+  uint32 sample_rate_hz = 2;
+  bool enabled = 3;
+}
+
+// ============================================================
+// FILE 4: events.proto
+// ============================================================
+// Event messages that use common definitions
+package events;
+
+option pkgid = 3;
+
+// Import from different package
+// import "common_defs.proto";
+
+message SystemEvent {
+  option msgid = 1;
+  string event_name = 1 [size=32];
+  // Priority priority = 2;  // Uses Priority from common package
+  string description = 3 [max_size=128];
+}
+
+// ============================================================
+// USAGE
+// ============================================================
+
+/*
+To compile with imports:
+
+  struct_frame sensor_messages.proto --build_cpp --cpp_path gen/
+
+This will:
+1. Parse sensor_messages.proto
+2. Follow imports to parse sensor_types.proto
+3. Validate both files are in same package (sensors, pkgid=2)
+4. Generate code combining both files
+
+Generated C++ will be in namespace:
+  sensors::SensorReading
+  sensors::SensorConfig
+  sensors::SensorType
+  sensors::SensorStatus
+
+All in a single sensor.sf.hpp file.
+*/
+
+// ============================================================
+// MULTI-PACKAGE RULES
+// ============================================================
+
+/*
+When importing files from multiple packages:
+
+1. Each package MUST have a unique package ID:
+   - common (pkgid = 1)
+   - sensors (pkgid = 2)
+   - events (pkgid = 3)
+
+2. Files in the same package can share the same pkgid:
+   - sensor_types.proto (package sensors, pkgid 2)
+   - sensor_messages.proto (package sensors, pkgid 2)
+
+3. Compiling without package IDs when multiple packages exist will error:
+   "Error: Multiple packages are being compiled, but the following packages
+    do not have package IDs assigned..."
+
+4. Import paths are relative to:
+   - Directory of the importing file (first)
+   - Base path specified in command (second)
+*/

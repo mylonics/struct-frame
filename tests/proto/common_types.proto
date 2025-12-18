@@ -1,0 +1,16 @@
+// Common types that can be imported by other proto files
+package common_types;
+
+option pkgid = 1;
+
+enum Status {
+  IDLE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+}
+
+message Timestamp {
+  option msgid = 1;
+  uint64 seconds = 1;
+  uint32 nanoseconds = 2;
+}

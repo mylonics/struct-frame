@@ -1,0 +1,16 @@
+// Part 1 of sensor package - common enums
+package sensor_data;
+
+option pkgid = 2;
+
+enum SensorType {
+  TEMPERATURE = 0;
+  HUMIDITY = 1;
+  PRESSURE = 2;
+}
+
+enum SensorStatus {
+  OFFLINE = 0;
+  ONLINE = 1;
+  ERROR = 2;
+}

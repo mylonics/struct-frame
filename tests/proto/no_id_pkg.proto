@@ -1,0 +1,7 @@
+// Package without ID
+package no_id_package;
+
+message TestMessage {
+  option msgid = 1;
+  uint32 value = 1;
+}

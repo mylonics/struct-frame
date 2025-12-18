@@ -1,6 +1,6 @@
 # Package ID Support
 
-This document describes the package ID feature for extended message addressing.
+This document describes the package ID feature for extended message addressing and importing proto files.
 
 ## Overview
 
@@ -8,6 +8,93 @@ Package IDs enable 16-bit message addressing (package_id << 8 | msg_id) instead 
 - Up to 256 packages × 256 messages = 65,536 unique message IDs
 - Message namespace separation between packages
 - Better organization for large multi-package systems
+- Import and reuse of message definitions across files
+
+## Importing Proto Files
+
+Proto files can import other proto files using standard protobuf import syntax:
+
+```protobuf
+import "path/to/other_file.proto";
+```
+
+### Same Package Imports
+
+Files can be split into multiple proto files within the same package. All files in the same package must use the same package ID:
+
+```protobuf
+// sensor_types.proto
+package sensor_data;
+option pkgid = 2;
+
+enum SensorType {
+  TEMPERATURE = 0;
+  HUMIDITY = 1;
+}
+```
+
+```protobuf
+// sensor_messages.proto
+package sensor_data;
+option pkgid = 2;  // Same package, same ID
+
+import "sensor_types.proto";
+
+message SensorReading {
+  option msgid = 1;
+  SensorType type = 1;  // Uses type from imported file
+  float value = 2;
+}
+```
+
+### Multi-Package Imports
+
+When importing files from different packages, each package must have a unique package ID:
+
+```protobuf
+// common.proto
+package common_types;
+option pkgid = 1;
+
+message Timestamp {
+  option msgid = 1;
+  uint64 seconds = 1;
+}
+```
+
+```protobuf
+// sensors.proto
+package sensor_data;
+option pkgid = 2;
+
+import "common.proto";
+
+message SensorEvent {
+  option msgid = 1;
+  uint32 sensor_id = 1;
+  // Note: Cross-package type references require full qualification
+  // common_types.Timestamp timestamp = 2;
+}
+```
+
+### Import Path Resolution
+
+Import paths are resolved in the following order:
+1. Relative to the directory of the importing file
+2. Relative to the base path specified (if any)
+
+## Multi-Package Validation
+
+When multiple packages are being compiled together (through imports), **all packages must have package IDs assigned**. This is enforced to prevent message ID collisions:
+
+```
+Error: Multiple packages are being compiled, but the following packages 
+do not have package IDs assigned:
+  - package_a
+  - package_b
+
+When compiling multiple packages, each package must specify 'option pkgid = N;'
+```
 
 ## Defining Package IDs
 
