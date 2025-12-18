@@ -1,0 +1,22 @@
+// Common types that can be imported by other proto files
+package common_types;
+
+// Package ID for multi-package support
+option package_id = 10;
+
+enum Status {
+  INACTIVE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+}
+
+message Timestamp {
+  int64 seconds = 1;
+  int32 nanoseconds = 2;
+}
+
+message Location {
+  double latitude = 1;
+  double longitude = 2;
+  float altitude = 3;
+}

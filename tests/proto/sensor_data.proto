@@ -1,0 +1,24 @@
+// Sensor data using imported common types
+package sensor_data;
+
+// Package ID for multi-package support
+option package_id = 20;
+
+import "common_types.proto";
+
+message SensorReading {
+  option msgid = 100;
+  
+  uint32 sensor_id = 1;
+  float value = 2;
+  Status status = 3;  // From common_types
+  Timestamp time = 4;  // From common_types
+}
+
+message LocationUpdate {
+  option msgid = 101;
+  
+  uint32 device_id = 1;
+  Location position = 2;  // From common_types
+  Timestamp time = 3;  // From common_types
+}

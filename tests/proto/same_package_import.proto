@@ -1,0 +1,10 @@
+// Test importing another file into the same package
+package common_types;
+
+import "common_types.proto";
+
+// This extends the common_types package with additional types
+message ExtendedStatus {
+  Status base_status = 1;  // Uses enum from common_types.proto
+  string description = 2 [max_size=100];
+}

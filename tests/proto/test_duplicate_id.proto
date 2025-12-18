@@ -1,0 +1,12 @@
+// Test importing with duplicate package IDs
+package test_duplicate;
+
+option package_id = 30;
+
+import "sensor_data.proto";
+import "duplicate_id.proto";
+
+message TestMessage {
+  option msgid = 201;
+  uint32 id = 1;
+}

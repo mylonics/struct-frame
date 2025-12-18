@@ -1,0 +1,11 @@
+// File B imports A - creates circular dependency
+package circular_b;
+
+option package_id = 41;
+
+import "circular_a.proto";
+
+message MessageB {
+  uint32 id = 1;
+  MessageA msg_a = 2;
+}

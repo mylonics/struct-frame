@@ -1,0 +1,13 @@
+// Test importing a file without package_id
+package test_import;
+
+option package_id = 30;
+
+import "no_package_id.proto";
+
+message TestMessage {
+  option msgid = 200;
+  
+  uint32 id = 1;
+  ColoredItem item = 2;  // From no_package_id package
+}

@@ -1,0 +1,10 @@
+// Test package with duplicate package_id
+package duplicate_id;
+
+option package_id = 20;  // Same as sensor_data
+
+enum Size {
+  SMALL = 0;
+  MEDIUM = 1;
+  LARGE = 2;
+}

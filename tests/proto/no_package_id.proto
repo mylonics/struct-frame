@@ -1,0 +1,13 @@
+// Test package without package_id - should fail when used with sensor_data
+package no_package_id;
+
+enum Color {
+  RED = 0;
+  GREEN = 1;
+  BLUE = 2;
+}
+
+message ColoredItem {
+  uint32 item_id = 1;
+  Color color = 2;
+}

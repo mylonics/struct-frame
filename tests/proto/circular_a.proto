@@ -1,0 +1,11 @@
+// File A imports B
+package circular_a;
+
+option package_id = 40;
+
+import "circular_b.proto";
+
+message MessageA {
+  uint32 id = 1;
+  MessageB msg_b = 2;
+}

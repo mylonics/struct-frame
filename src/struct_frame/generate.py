@@ -164,7 +164,7 @@ class Field:
         global recErrCurrentField
         recErrCurrentField = self.name
         if not self.validated:
-            ret = currentPackage.findFieldType(self.fieldType)
+            ret = currentPackage.findFieldType(self.fieldType, packages)
 
             if ret:
                 if ret.validate(currentPackage, packages, debug):
@@ -379,6 +379,8 @@ class Package:
         self.name = name
         self.enums = {}
         self.messages = {}
+        self.package_id = None  # Optional package ID for multi-package support
+        self.imported_packages = []  # List of package names this package imports
 
     def addEnum(self, enum, comments):
         self.comments = comments
@@ -418,7 +420,8 @@ class Package:
 
         return True
 
-    def findFieldType(self, name):
+    def findFieldType(self, name, allPackages=None):
+        # First search in this package
         for key, value in self.enums.items():
             if value.name == name:
                 return value
@@ -426,6 +429,17 @@ class Package:
         for key, value in self.messages.items():
             if value.name == name:
                 return value
+        
+        # Then search in imported packages
+        if allPackages:
+            for imported_pkg_name in self.imported_packages:
+                if imported_pkg_name in allPackages:
+                    imported_pkg = allPackages[imported_pkg_name]
+                    result = imported_pkg.findFieldType(name, None)  # Don't recurse imports
+                    if result:
+                        return result
+        
+        return None
 
     def sortedMessages(self):
         # Need to sort messages to ensure no out of order dependencies.
@@ -478,13 +492,23 @@ parser.add_argument('--regenerate_boiler_plate', action='store_true',
 
 
 def parseFile(filename):
-    processed_file.append(filename)
+    # Avoid processing the same file twice
+    abs_filename = os.path.abspath(filename)
+    if abs_filename in processed_file:
+        return True
+    
+    processed_file.append(abs_filename)
+    
+    # Get the directory of the current file for resolving relative imports
+    file_dir = os.path.dirname(abs_filename)
+    
     with open(filename, "r") as f:
         result = Parser().parse(f.read())
 
         foundPackage = False
         package_name = ""
         comments = []
+        imports = []  # Track imports for this file
 
         for e in result.file_elements:
             if (type(e) == ast.Package):
@@ -496,7 +520,18 @@ def parseFile(filename):
                 package_name = e.name
                 if package_name not in packages:
                     packages[package_name] = Package(package_name)
-                packages
+
+            elif (type(e) == ast.Import):
+                # Handle import statements
+                imports.append(e.name)
+                
+            elif (type(e) == ast.Option):
+                # Handle file-level options like package_id
+                if e.name == "package_id":
+                    if foundPackage and package_name in packages:
+                        if packages[package_name].package_id is not None:
+                            print(f"Warning: package_id redefined for package {package_name}")
+                        packages[package_name].package_id = e.value
 
             elif (type(e) == ast.Enum):
                 if not packages[package_name].addEnum(e, comments):
@@ -514,9 +549,53 @@ def parseFile(filename):
 
             elif (type(e) == ast.Comment):
                 comments.append(e.text)
+        
+        # Process imports after we know the package name
+        if foundPackage and imports:
+            for import_name in imports:
+                # Resolve import path relative to current file
+                import_path = os.path.join(file_dir, import_name)
+                if not os.path.exists(import_path):
+                    print(f"Error: Cannot find imported file '{import_name}' (looked at {import_path})")
+                    return False
+                
+                # Parse the imported file
+                if not parseFile(import_path):
+                    print(f"Error: Failed to parse imported file '{import_name}'")
+                    return False
+                
+                # Find the package name of the imported file and add to imports list
+                # We need to read the imported file to find its package name
+                with open(import_path, "r") as import_file:
+                    import_result = Parser().parse(import_file.read())
+                    for elem in import_result.file_elements:
+                        if type(elem) == ast.Package:
+                            imported_pkg_name = elem.name
+                            if imported_pkg_name not in packages[package_name].imported_packages:
+                                packages[package_name].imported_packages.append(imported_pkg_name)
+                            break
+        
+        return True
 
 
 def validatePackages(debug=False):
+    # Check if multiple packages exist and ensure they have package IDs
+    if len(packages) > 1:
+        package_ids = {}
+        for key, value in packages.items():
+            if value.package_id is None:
+                print(f"Error: Package '{key}' does not have a package_id assigned. "
+                      f"When compiling multiple packages, each package must have a unique package_id.")
+                return False
+            
+            # Check for duplicate package IDs
+            if value.package_id in package_ids:
+                print(f"Error: Duplicate package_id {value.package_id} found in packages "
+                      f"'{key}' and '{package_ids[value.package_id]}'")
+                return False
+            
+            package_ids[value.package_id] = key
+    
     for key, value in packages.items():
         if not value.validatePackage(packages, debug):
             print(f"Failed To Validate Package: {key}")
@@ -627,6 +706,12 @@ def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_pa
 
 def main():
     from struct_frame.generate_boilerplate import update_src_boilerplate, generate_boilerplate_to_paths, get_default_frame_formats_path
+
+    # Reset global state at the start
+    global packages, processed_file, required_file
+    packages = {}
+    processed_file = []
+    required_file = []
 
     args = parser.parse_args()
 
