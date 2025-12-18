@@ -15,14 +15,20 @@ Update version in pyproject.toml if needed
 ### Running Locally
 
 #### For Development (from source)
-Install dependencies
+Install dependencies:
+
 ```py -m pip install proto-schema-parser```
 
-Run module with example (using PYTHONPATH)
+Run module with example (using PYTHONPATH):
+
 ```PYTHONPATH=src python src/main.py examples/myl_vehicle.proto --build_c --build_ts --build_py --build_gql```
 
 Or install in editable mode:
+
 ```pip install -e .```
+
+Then run the code generator:
+
 ```python -m struct_frame examples/myl_vehicle.proto --build_c --build_ts --build_py --build_gql```
 
 #### For Users (from pip)
