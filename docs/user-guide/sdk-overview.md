@@ -29,7 +29,7 @@ Struct Frame provides high-level SDKs for TypeScript/JavaScript, Python, C++, an
 import {
   StructFrameSdk,
   UdpTransport,
-} from './sdk';
+} from './struct_frame_sdk';
 import { BasicDefault } from './BasicDefault';
 import { MyMessage } from './my_messages';
 
@@ -63,7 +63,7 @@ await sdk.send(msg);
 
 ```python
 import asyncio
-from sdk import AsyncStructFrameSdk, AsyncUdpTransport, AsyncUdpTransportConfig
+from struct_frame_sdk import AsyncStructFrameSdk, AsyncUdpTransport, AsyncUdpTransportConfig
 from basic_default import BasicDefault
 from my_messages import MyMessage
 

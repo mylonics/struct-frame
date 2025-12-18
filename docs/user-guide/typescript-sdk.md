@@ -17,7 +17,7 @@ python -m struct_frame your_messages.proto --build_ts --ts_path generated/ts
 Uses Node.js `dgram` module for UDP communication.
 
 ```typescript
-import { UdpTransport, UdpTransportConfig } from './sdk';
+import { UdpTransport, UdpTransportConfig } from './struct_frame_sdk';
 
 const transport = new UdpTransport({
   remoteHost: '192.168.1.100',
@@ -37,7 +37,7 @@ const transport = new UdpTransport({
 Uses Node.js `net` module for TCP communication.
 
 ```typescript
-import { TcpTransport, TcpTransportConfig } from './sdk';
+import { TcpTransport, TcpTransportConfig } from './struct_frame_sdk';
 
 const transport = new TcpTransport({
   host: '192.168.1.100',
@@ -52,7 +52,7 @@ const transport = new TcpTransport({
 Uses the WebSocket API (works in both browser and Node.js with `ws` package).
 
 ```typescript
-import { WebSocketTransport, WebSocketTransportConfig } from './sdk';
+import { WebSocketTransport, WebSocketTransportConfig } from './struct_frame_sdk';
 
 const transport = new WebSocketTransport({
   url: 'ws://localhost:8080',
@@ -66,7 +66,7 @@ const transport = new WebSocketTransport({
 Uses the `serialport` package for serial communication.
 
 ```typescript
-import { SerialTransport, SerialTransportConfig } from './sdk';
+import { SerialTransport, SerialTransportConfig } from './struct_frame_sdk';
 
 const transport = new SerialTransport({
   path: '/dev/ttyUSB0', // or 'COM3' on Windows
@@ -82,7 +82,7 @@ const transport = new SerialTransport({
 ### Creating the SDK
 
 ```typescript
-import { StructFrameSdk, StructFrameSdkConfig } from './sdk';
+import { StructFrameSdk, StructFrameSdkConfig } from './struct_frame_sdk';
 import { BasicDefault } from './BasicDefault'; // Frame parser
 
 const sdk = new StructFrameSdk({
@@ -170,7 +170,7 @@ sdk.subscribe<StatusMessage>(StatusMessage.msg_id, (message, msgId) => {
 import {
   StructFrameSdk,
   TcpTransport,
-} from './sdk';
+} from './struct_frame_sdk';
 import { BasicDefault } from './BasicDefault';
 import { StatusMessage, CommandMessage } from './robot_messages';
 

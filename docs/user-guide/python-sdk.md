@@ -17,7 +17,7 @@ python -m struct_frame your_messages.proto --build_py --py_path generated/py
 #### UDP Transport
 
 ```python
-from sdk import UdpTransport, UdpTransportConfig
+from struct_frame_sdk import UdpTransport, UdpTransportConfig
 
 transport = UdpTransport(UdpTransportConfig(
     remote_host='192.168.1.100',
@@ -34,7 +34,7 @@ transport = UdpTransport(UdpTransportConfig(
 #### TCP Transport
 
 ```python
-from sdk import TcpTransport, TcpTransportConfig
+from struct_frame_sdk import TcpTransport, TcpTransportConfig
 
 transport = TcpTransport(TcpTransportConfig(
     host='192.168.1.100',
@@ -49,7 +49,7 @@ transport = TcpTransport(TcpTransportConfig(
 Requires `websocket-client` package:
 
 ```python
-from sdk import WebSocketTransport, WebSocketTransportConfig
+from struct_frame_sdk import WebSocketTransport, WebSocketTransportConfig
 
 transport = WebSocketTransport(WebSocketTransportConfig(
     url='ws://localhost:8080',
@@ -62,7 +62,7 @@ transport = WebSocketTransport(WebSocketTransportConfig(
 Requires `pyserial` package:
 
 ```python
-from sdk import SerialTransport, SerialTransportConfig
+from struct_frame_sdk import SerialTransport, SerialTransportConfig
 
 transport = SerialTransport(SerialTransportConfig(
     port='/dev/ttyUSB0',  # or 'COM3' on Windows
@@ -78,7 +78,7 @@ transport = SerialTransport(SerialTransportConfig(
 All transports have async versions with `Async` prefix:
 
 ```python
-from sdk import (
+from struct_frame_sdk import (
     AsyncUdpTransport, AsyncUdpTransportConfig,
     AsyncTcpTransport, AsyncTcpTransportConfig,
     AsyncWebSocketTransport, AsyncWebSocketTransportConfig,
@@ -91,7 +91,7 @@ from sdk import (
 ### Creating the SDK
 
 ```python
-from sdk import StructFrameSdk, StructFrameSdkConfig
+from struct_frame_sdk import StructFrameSdk, StructFrameSdkConfig
 from basic_default import BasicDefault
 
 sdk = StructFrameSdk(StructFrameSdkConfig(
@@ -149,7 +149,7 @@ sdk.send_raw(CommandMessage.msg_id, raw_data)
 
 ```python
 import time
-from sdk import StructFrameSdk, StructFrameSdkConfig, TcpTransport, TcpTransportConfig
+from struct_frame_sdk import StructFrameSdk, StructFrameSdkConfig, TcpTransport, TcpTransportConfig
 from basic_default import BasicDefault
 from robot_messages import StatusMessage, CommandMessage
 
@@ -200,7 +200,7 @@ if __name__ == '__main__':
 
 ```python
 import asyncio
-from sdk import AsyncStructFrameSdk, AsyncStructFrameSdkConfig
+from struct_frame_sdk import AsyncStructFrameSdk, AsyncStructFrameSdkConfig
 from basic_default import BasicDefault
 
 async def main():
@@ -229,7 +229,7 @@ await sdk.disconnect()
 
 ```python
 import asyncio
-from sdk import (
+from struct_frame_sdk import (
     AsyncStructFrameSdk,
     AsyncStructFrameSdkConfig,
     AsyncTcpTransport,

@@ -8,6 +8,7 @@ The C++ SDK is a header-only library that provides structured message communicat
 - **Zero dependencies**: Core SDK has no external dependencies
 - **Observer pattern**: Type-safe message subscription inspired by ETLCPP
 - **Embedded-friendly**: Generic serial interface for bare-metal systems
+- **Cross-platform**: Works on Windows, macOS, and Linux
 - **Network support**: UDP, TCP, WebSocket via optional ASIO integration
 
 ## Installation
@@ -21,7 +22,7 @@ python -m struct_frame your_messages.proto --build_cpp --cpp_path generated/cpp
 Include the SDK in your project:
 
 ```cpp
-#include "sdk/sdk.hpp"
+#include "struct_frame_sdk/sdk.hpp"
 ```
 
 ## Observer/Subscriber Pattern
@@ -31,7 +32,7 @@ The C++ SDK uses an observer pattern for handling messages, providing type-safe 
 ### Basic Observer
 
 ```cpp
-#include "sdk/observer.hpp"
+#include "struct_frame_sdk/observer.hpp"
 #include "my_messages.hpp"
 
 using namespace StructFrame;
@@ -88,7 +89,7 @@ The `Subscription<T>` class provides automatic unsubscription:
 The generic serial interface allows you to implement platform-specific serial I/O:
 
 ```cpp
-#include "sdk/serial_transport.hpp"
+#include "struct_frame_sdk/serial_transport.hpp"
 
 // Implement for your platform
 class STM32SerialPort : public StructFrame::ISerialPort {
@@ -146,7 +147,7 @@ StructFrame::SerialTransport transport(&serialPort);
 For embedded systems without threading, use poll-based message handling:
 
 ```cpp
-#include "sdk/struct_frame_sdk.hpp"
+#include "struct_frame_sdk/struct_frame_sdk.hpp"
 #include "BasicDefault.hpp"
 #include "my_messages.hpp"
 
@@ -196,7 +197,7 @@ For desktop/server applications, network transports use ASIO. These require exte
 // Not included in generated code - implement based on network_transports.hpp
 
 #include <asio.hpp>
-#include "sdk/transport.hpp"
+#include "struct_frame_sdk/transport.hpp"
 
 class UdpTransport : public StructFrame::BaseTransport {
 private:
@@ -244,7 +245,7 @@ class WebSocketTransport : public StructFrame::BaseTransport {
 ## Complete Example
 
 ```cpp
-#include "sdk/sdk.hpp"
+#include "struct_frame_sdk/sdk.hpp"
 #include "BasicDefault.hpp"
 #include "robot_messages.hpp"
 
@@ -386,7 +387,7 @@ arm-none-eabi-g++ -std=c++14 -Os -fno-exceptions -fno-rtti main.cpp -o app.elf
 
 ```cpp
 #include <HardwareSerial.h>
-#include "sdk/serial_transport.hpp"
+#include "struct_frame_sdk/serial_transport.hpp"
 
 class ArduinoSerialPort : public StructFrame::ISerialPort {
 private:

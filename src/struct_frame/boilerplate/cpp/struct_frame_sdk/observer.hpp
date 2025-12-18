@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <vector>
 #include <algorithm>
 #include <functional>
 
@@ -12,6 +11,72 @@ namespace StructFrame {
 // Forward declarations
 template<typename TMessage>
 class Observable;
+
+/**
+ * Fixed-size observer list for embedded systems
+ * No dynamic allocation, uses static array
+ * @tparam T The pointer type to store
+ * @tparam MaxObservers Maximum number of observers
+ */
+template<typename T, size_t MaxObservers = 16>
+class FixedObserverList {
+private:
+    T observers_[MaxObservers];
+    size_t count_;
+
+public:
+    FixedObserverList() : count_(0) {
+        for (size_t i = 0; i < MaxObservers; ++i) {
+            observers_[i] = nullptr;
+        }
+    }
+
+    bool add(T observer) {
+        if (count_ >= MaxObservers || observer == nullptr) {
+            return false;
+        }
+        
+        // Check if already exists
+        for (size_t i = 0; i < count_; ++i) {
+            if (observers_[i] == observer) {
+                return false;
+            }
+        }
+        
+        observers_[count_++] = observer;
+        return true;
+    }
+
+    bool remove(T observer) {
+        for (size_t i = 0; i < count_; ++i) {
+            if (observers_[i] == observer) {
+                // Shift remaining elements
+                for (size_t j = i; j < count_ - 1; ++j) {
+                    observers_[j] = observers_[j + 1];
+                }
+                observers_[count_ - 1] = nullptr;
+                --count_;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void clear() {
+        for (size_t i = 0; i < count_; ++i) {
+            observers_[i] = nullptr;
+        }
+        count_ = 0;
+    }
+
+    size_t size() const {
+        return count_;
+    }
+
+    T operator[](size_t index) const {
+        return (index < count_) ? observers_[index] : nullptr;
+    }
+};
 
 /**
  * Observer interface for receiving messages
@@ -54,29 +119,27 @@ private:
 /**
  * Observable subject that notifies observers of messages
  * @tparam TMessage The message type
+ * @tparam MaxObservers Maximum number of observers (default 16)
  */
-template<typename TMessage>
+template<typename TMessage, size_t MaxObservers = 16>
 class Observable {
 public:
     /**
      * Subscribe an observer to this observable
      * @param observer The observer to add
+     * @return true if successfully subscribed, false if full or already subscribed
      */
-    void subscribe(IObserver<TMessage>* observer) {
-        if (observer && std::find(observers_.begin(), observers_.end(), observer) == observers_.end()) {
-            observers_.push_back(observer);
-        }
+    bool subscribe(IObserver<TMessage>* observer) {
+        return observers_.add(observer);
     }
     
     /**
      * Unsubscribe an observer from this observable
      * @param observer The observer to remove
+     * @return true if successfully unsubscribed
      */
-    void unsubscribe(IObserver<TMessage>* observer) {
-        observers_.erase(
-            std::remove(observers_.begin(), observers_.end(), observer),
-            observers_.end()
-        );
+    bool unsubscribe(IObserver<TMessage>* observer) {
+        return observers_.remove(observer);
     }
     
     /**
@@ -85,7 +148,8 @@ public:
      * @param msgId The message ID
      */
     void notify(const TMessage& message, uint8_t msgId) {
-        for (auto* observer : observers_) {
+        for (size_t i = 0; i < observers_.size(); ++i) {
+            IObserver<TMessage>* observer = observers_[i];
             if (observer) {
                 observer->onMessage(message, msgId);
             }
@@ -107,19 +171,19 @@ public:
     }
     
 private:
-    std::vector<IObserver<TMessage>*> observers_;
+    FixedObserverList<IObserver<TMessage>*, MaxObservers> observers_;
 };
 
 /**
  * RAII subscription handle that automatically unsubscribes on destruction
  * @tparam TMessage The message type
  */
-template<typename TMessage>
+template<typename TMessage, size_t MaxObservers = 16>
 class Subscription {
 public:
     Subscription() : observable_(nullptr), observer_(nullptr) {}
     
-    Subscription(Observable<TMessage>* observable, IObserver<TMessage>* observer)
+    Subscription(Observable<TMessage, MaxObservers>* observable, IObserver<TMessage>* observer)
         : observable_(observable), observer_(observer) {}
     
     ~Subscription() {
@@ -157,7 +221,7 @@ public:
     }
     
 private:
-    Observable<TMessage>* observable_;
+    Observable<TMessage, MaxObservers>* observable_;
     IObserver<TMessage>* observer_;
 };
 

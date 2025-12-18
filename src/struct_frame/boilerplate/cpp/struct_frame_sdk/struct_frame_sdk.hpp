@@ -191,62 +191,66 @@ public:
     /**
      * Get or create observable for a specific message type
      * @tparam TMessage The message type
+     * @tparam MaxObservers Maximum number of observers (default 16)
      * @param msgId The message ID
      */
-    template<typename TMessage>
-    Observable<TMessage>* getObservable(uint8_t msgId) {
+    template<typename TMessage, size_t MaxObservers = 16>
+    Observable<TMessage, MaxObservers>* getObservable(uint8_t msgId) {
         auto it = observables_.find(msgId);
         if (it == observables_.end()) {
-            auto* observable = new Observable<TMessage>();
+            auto* observable = new Observable<TMessage, MaxObservers>();
             observables_[msgId] = static_cast<void*>(observable);
             return observable;
         }
-        return static_cast<Observable<TMessage>*>(it->second);
+        return static_cast<Observable<TMessage, MaxObservers>*>(it->second);
     }
 
     /**
      * Subscribe to messages with a specific message ID
      * @tparam TMessage The message type
+     * @tparam MaxObservers Maximum number of observers (default 16)
      * @param msgId The message ID
      * @param observer The observer to subscribe
      * @return Subscription handle (RAII)
      */
-    template<typename TMessage>
-    Subscription<TMessage> subscribe(uint8_t msgId, IObserver<TMessage>* observer) {
-        auto* observable = getObservable<TMessage>(msgId);
+    template<typename TMessage, size_t MaxObservers = 16>
+    Subscription<TMessage, MaxObservers> subscribe(uint8_t msgId, IObserver<TMessage>* observer) {
+        auto* observable = getObservable<TMessage, MaxObservers>(msgId);
         observable->subscribe(observer);
         log("Subscribed to message ID " + std::to_string(msgId));
-        return Subscription<TMessage>(observable, observer);
+        return Subscription<TMessage, MaxObservers>(observable, observer);
     }
 
     /**
      * Subscribe with lambda function
      * @tparam TMessage The message type
+     * @tparam MaxObservers Maximum number of observers (default 16)
      * @param msgId The message ID
      * @param callback Lambda to call when message is received
      * @return Subscription handle (RAII) - keep alive as long as subscription is needed
      */
-    template<typename TMessage>
-    Subscription<TMessage> subscribe(uint8_t msgId,
+    template<typename TMessage, size_t MaxObservers = 16>
+    Subscription<TMessage, MaxObservers> subscribe(uint8_t msgId,
                                     std::function<void(const TMessage&, uint8_t)> callback) {
         auto* observer = new LambdaObserver<TMessage>(std::move(callback));
-        auto* observable = getObservable<TMessage>(msgId);
+        auto* observable = getObservable<TMessage, MaxObservers>(msgId);
         observable->subscribe(observer);
         log("Subscribed to message ID " + std::to_string(msgId));
-        return Subscription<TMessage>(observable, observer);
+        return Subscription<TMessage, MaxObservers>(observable, observer);
     }
 
     /**
      * Notify observers of a parsed message (internal use)
      * @tparam TMessage The message type
+     * @tparam MaxObservers Maximum number of observers (default 16)
      * @param msgId The message ID
      * @param message The parsed message
      */
-    template<typename TMessage>
+    template<typename TMessage, size_t MaxObservers = 16>
     void notifyObservers(uint8_t msgId, const TMessage& message) {
         auto it = observables_.find(msgId);
         if (it != observables_.end()) {
-            auto* observable = static_cast<Observable<TMessage>*>(it->second);
+            auto* observable = static_cast<Observable<TMessage, MaxObservers>*>(it->second);
             observable->notify(message, msgId);
         }
     }
