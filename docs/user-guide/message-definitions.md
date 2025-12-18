@@ -26,6 +26,43 @@ message SensorReading {
 
 Generated code uses the package name as a prefix or namespace depending on language.
 
+### Package IDs (Extended Message IDs)
+
+Package IDs enable extended message addressing with 16-bit message IDs instead of 8-bit. This allows up to 256 packages, each with up to 256 messages, for a total of 65,536 unique message IDs.
+
+```proto
+package sensor_system;
+
+// Define package ID (0-255)
+option pkgid = 5;
+
+message SensorReading {
+  option msgid = 1;
+  // ...
+}
+```
+
+**When to use Package IDs:**
+- Systems with more than 255 messages
+- Multi-package systems that need message namespace separation
+- Projects requiring explicit package versioning
+
+**Generated code behavior with Package IDs:**
+
+- **C++**: Messages are generated inside a namespace matching the package name (e.g., `sensor_system::SensorReading`)
+- **C**: Package ID is defined as a constant (e.g., `SENSOR_SYSTEM_PACKAGE_ID`)
+- **TypeScript/JavaScript**: Package ID exported as constant `PACKAGE_ID`
+- **Python**: Package ID available as `PACKAGE_ID` constant
+- **C#**: Package ID in `PackageInfo.PackageId`
+
+**Message ID encoding:**
+- Without pkgid: 8-bit message ID (0-255)
+- With pkgid: 16-bit message ID = `(package_id << 8) | msg_id`
+
+**Frame format compatibility:**
+- Use EXTENDED_MSG_IDS, EXTENDED, or EXTENDED_MULTI_SYSTEM_STREAM frame formats
+- These formats include a package_id field in the frame header
+
 ## Messages
 
 Messages define the structure of data to be serialized.
@@ -53,7 +90,8 @@ message Heartbeat {
 }
 ```
 
-Message IDs must be unique within a package. Range is 0-255 for basic frame format.
+Message IDs must be unique within a package. Range is 0-255 for both basic and extended frame formats (extended formats use package_id for the upper 8 bits).
+
 
 ## Enums
 
@@ -196,7 +234,9 @@ Flatten is supported in Python and GraphQL only.
 
 The generator enforces these rules:
 
-- Message IDs must be unique within a package (0-255 for basic frame format)
+- Message IDs must be unique within a package (0-255)
+- Package IDs must be unique across all packages in a system (0-255)
+- Package IDs cannot be used in combination with message IDs > 255
 - Field numbers must be unique within a message
 - All repeated fields must have size or max_size
 - All string fields must have size or max_size
@@ -208,6 +248,9 @@ The generator enforces these rules:
 
 ```proto
 package robot_control;
+
+// Optional: Use package ID for extended message addressing
+option pkgid = 1;
 
 enum RobotState {
   IDLE = 0;

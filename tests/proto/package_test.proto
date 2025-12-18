@@ -1,0 +1,36 @@
+// Test proto file for package ID support
+// This file tests the extended message ID feature with package IDs
+
+package pkg_test;
+
+// Package ID enables 16-bit message IDs (package_id << 8 | msg_id)
+option pkgid = 10;
+
+enum TestStatus {
+  STATUS_IDLE = 0;
+  STATUS_ACTIVE = 1;
+  STATUS_ERROR = 2;
+}
+
+// Simple message with basic types
+message SimpleMessage {
+  option msgid = 1;
+  uint32 counter = 1;
+  float temperature = 2;
+  bool active = 3;
+}
+
+// Message with enum and string
+message StatusMessage {
+  option msgid = 2;
+  TestStatus status = 1;
+  string device_name = 2 [size=32];
+  uint64 timestamp = 3;
+}
+
+// Message with array
+message DataMessage {
+  option msgid = 3;
+  repeated int32 values = 1 [max_size=10];
+  string label = 2 [max_size=16];
+}
