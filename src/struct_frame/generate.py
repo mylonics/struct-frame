@@ -504,8 +504,10 @@ def parseFile(filename, base_path=None):
     Returns:
         bool: True if parsing succeeded, False otherwise
     """
-    # Avoid circular imports
+    # Convert to absolute path for circular import detection
     abs_filename = os.path.abspath(filename)
+    
+    # Avoid circular imports
     if abs_filename in processed_file:
         return True
     
@@ -516,7 +518,7 @@ def parseFile(filename, base_path=None):
         base_path = os.path.dirname(abs_filename)
     
     try:
-        with open(filename, "r") as f:
+        with open(abs_filename, "r") as f:
             result = Parser().parse(f.read())
     except FileNotFoundError:
         print(f"Error: Could not find file {filename}")
@@ -544,16 +546,18 @@ def parseFile(filename, base_path=None):
             # Handle import statements
             import_file = e.name
             
-            # Try to resolve import path relative to base_path
-            import_path = os.path.join(base_path, import_file)
-            if not os.path.exists(import_path):
-                # Try relative to current file
-                import_path = os.path.join(os.path.dirname(abs_filename), import_file)
+            # Try to resolve import path relative to base_path first
+            import_path_base = os.path.join(base_path, import_file)
+            import_path_current = os.path.join(os.path.dirname(abs_filename), import_file)
             
-            if not os.path.exists(import_path):
+            if os.path.exists(import_path_base):
+                import_path = import_path_base
+            elif os.path.exists(import_path_current):
+                import_path = import_path_current
+            else:
                 print(f"Error: Could not find imported file '{import_file}' from {filename}")
-                print(f"  Tried: {os.path.join(base_path, import_file)}")
-                print(f"  Tried: {os.path.join(os.path.dirname(abs_filename), import_file)}")
+                print(f"  Tried: {import_path_base}")
+                print(f"  Tried: {import_path_current}")
                 return False
             
             # Recursively parse the imported file
@@ -567,17 +571,8 @@ def parseFile(filename, base_path=None):
                 print(f"Option {e.name} found before package declaration in {filename}")
                 return False
             if e.name == "pkgid":
-                # Check if package already has a package_id
-                if packages[package_name].package_id is not None:
-                    # Allow the same value (from different files in same package)
-                    if packages[package_name].package_id != e.value:
-                        print(f"Error: Package '{package_name}' has conflicting package IDs:")
-                        print(f"  Already defined as: {packages[package_name].package_id}")
-                        print(f"  Trying to redefine as: {e.value} in {filename}")
-                        return False
-                    # Same value, just skip it
-                else:
-                    packages[package_name].package_id = e.value
+                if not validate_package_id(package_name, e.value, filename):
+                    return False
 
         elif (type(e) == ast.Enum):
             if not foundPackage:
@@ -601,6 +596,34 @@ def parseFile(filename, base_path=None):
 
         elif (type(e) == ast.Comment):
             comments.append(e.text)
+    
+    return True
+
+
+def validate_package_id(package_name, new_id, filename):
+    """Validate package ID assignment.
+    
+    Args:
+        package_name: Name of the package
+        new_id: Package ID being assigned
+        filename: File where the assignment occurs
+    
+    Returns:
+        bool: True if valid, False if conflict detected
+    """
+    current_id = packages[package_name].package_id
+    
+    if current_id is not None:
+        # Check if this is a conflicting value
+        if current_id != new_id:
+            print(f"Error: Package '{package_name}' has conflicting package IDs:")
+            print(f"  Already defined as: {current_id}")
+            print(f"  Trying to redefine as: {new_id} in {filename}")
+            return False
+        # Same value - this is OK (multiple files in same package)
+    else:
+        # First assignment
+        packages[package_name].package_id = new_id
     
     return True
 
