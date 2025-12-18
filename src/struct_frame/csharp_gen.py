@@ -213,6 +213,14 @@ class FileCSharpGen():
         yield 'namespace StructFrame.%s\n' % namespace_name
         yield '{\n'
 
+        # Add package ID constant if present
+        if package.package_id is not None:
+            yield f'    // Package ID for extended message IDs\n'
+            yield f'    public static class PackageInfo\n'
+            yield f'    {{\n'
+            yield f'        public const byte PackageId = {package.package_id};\n'
+            yield f'    }}\n\n'
+
         if package.enums:
             yield '    // Enum definitions\n'
             for key, enum in package.enums.items():
@@ -229,10 +237,31 @@ class FileCSharpGen():
         if package.messages:
             yield '    public static class MessageDefinitions\n'
             yield '    {\n'
-            yield '        public static bool GetMessageLength(int msgId, out int size)\n'
-            yield '        {\n'
-            yield '            switch (msgId)\n'
-            yield '            {\n'
+            
+            if package.package_id is not None:
+                # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
+                yield '        public static bool GetMessageLength(ushort msgId, out int size)\n'
+                yield '        {\n'
+                yield '            // Extract package ID and message ID from 16-bit message ID\n'
+                yield '            byte pkgId = (byte)((msgId >> 8) & 0xFF);\n'
+                yield '            byte localMsgId = (byte)(msgId & 0xFF);\n'
+                yield '            \n'
+                yield '            // Check if this is our package\n'
+                yield f'            if (pkgId != PackageInfo.PackageId)\n'
+                yield '            {\n'
+                yield '                size = 0;\n'
+                yield '                return false;\n'
+                yield '            }\n'
+                yield '            \n'
+                yield '            switch (localMsgId)\n'
+                yield '            {\n'
+            else:
+                # Legacy mode: 8-bit message ID
+                yield '        public static bool GetMessageLength(int msgId, out int size)\n'
+                yield '        {\n'
+                yield '            switch (msgId)\n'
+                yield '            {\n'
+            
             for key, msg in package.sortedMessages().items():
                 if msg.id:
                     structName = '%s%s' % (pascalCase(msg.package), msg.name)

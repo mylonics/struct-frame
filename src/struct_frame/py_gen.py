@@ -501,6 +501,11 @@ class FilePyGen():
         yield 'from enum import Enum\n'
         yield 'from typing import List, Optional\n\n'
 
+        # Add package ID constant if present
+        if package.package_id is not None:
+            yield f'# Package ID for extended message IDs\n'
+            yield f'PACKAGE_ID = {package.package_id}\n\n'
+
         if package.enums:
             yield '# Enum definitions\n'
             for key, enum in package.enums.items():
@@ -514,9 +519,33 @@ class FilePyGen():
             yield '\n'
 
         if package.messages:
-            yield '%s_definitions = {\n' % package.name
-            for key, msg in package.sortedMessages().items():
-                if msg.id != None:
-                    structName = '%s%s' % (pascalCase(msg.package), msg.name)
-                    yield '    %s: %s,\n' % (msg.id, structName)
-            yield '}\n'
+            if package.package_id is not None:
+                # When using package ID, use 16-bit message IDs
+                yield f'# Message definitions dictionary with package ID support\n'
+                yield f'# Format: (package_id << 8) | msg_id => Message class\n'
+                yield '%s_definitions = {\n' % package.name
+                for key, msg in package.sortedMessages().items():
+                    if msg.id != None:
+                        structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                        # Encode package ID in upper byte
+                        encoded_id = (package.package_id << 8) | msg.id
+                        yield f'    {encoded_id}: {structName},  # pkg_id={package.package_id}, msg_id={msg.id}\n'
+                yield '}\n\n'
+                
+                # Add helper function to get message class
+                yield f'def get_message_class(msg_id: int):\n'
+                yield f'    """Get message class from 16-bit message ID (package_id << 8 | msg_id)"""\n'
+                yield f'    return {package.name}_definitions.get(msg_id)\n\n'
+                
+                yield f'def get_message_size(msg_id: int) -> int:\n'
+                yield f'    """Get message size from 16-bit message ID"""\n'
+                yield f'    msg_class = get_message_class(msg_id)\n'
+                yield f'    return msg_class.msg_size if msg_class else 0\n'
+            else:
+                # Legacy mode: 8-bit message ID
+                yield '%s_definitions = {\n' % package.name
+                for key, msg in package.sortedMessages().items():
+                    if msg.id != None:
+                        structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                        yield '    %s: %s,\n' % (msg.id, structName)
+                yield '}\n'
