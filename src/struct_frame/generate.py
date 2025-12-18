@@ -901,14 +901,17 @@ def main():
                 shutil.copy2(src_path, dst_path)
 
     def copy_all_files(src_dir, dst_dir):
-        """Copy all files from src_dir to dst_dir"""
+        """Copy all files and directories from src_dir to dst_dir"""
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         if os.path.exists(src_dir):
             for item in os.listdir(src_dir):
                 src_path = os.path.join(src_dir, item)
                 dst_path = os.path.join(dst_dir, item)
-                if os.path.isfile(src_path):
+                if os.path.isdir(src_path):
+                    # Recursively copy directories (e.g., sdk subdirectory)
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                elif os.path.isfile(src_path):
                     shutil.copy2(src_path, dst_path)
 
     if args.frame_formats:
