@@ -83,7 +83,8 @@ class Field:
         self.size = 0
         self.validated = False
         self.comments = comments
-        self.package = package
+        self.package = package  # Package where this field is defined
+        self.type_package = None  # Package where the field's type is defined (for cross-package refs)
         self.isEnum = False
         self.flatten = False
         self.is_array = False
@@ -166,12 +167,14 @@ class Field:
         if not self.validated:
             # First try to find the type in the current package
             ret = currentPackage.findFieldType(self.fieldType)
+            source_package = currentPackage
             
             # If not found in current package, search in all packages
             if not ret:
                 for pkg_name, pkg in packages.items():
                     ret = pkg.findFieldType(self.fieldType)
                     if ret:
+                        source_package = pkg
                         break
 
             if ret:
@@ -179,6 +182,8 @@ class Field:
                     self.isEnum = ret.isEnum
                     self.validated = True
                     base_size = ret.size
+                    # Track which package the type comes from
+                    self.type_package = source_package.name
                 else:
                     print(
                         f"Failed to validate Field: {self.name} of Type: {self.fieldType} in Package: {currentPackage.name}")

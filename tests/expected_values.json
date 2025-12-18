@@ -6,14 +6,5 @@
     "test_float": 3.14159,
     "test_bool": true,
     "test_array": [100, 200, 300]
-  },
-  "timestamped_message": {
-    "event_id": 42,
-    "timestamp": {
-      "seconds": 1234567890,
-      "nanoseconds": 123456789
-    },
-    "event_status": 1,
-    "description": "Test event"
   }
 }
