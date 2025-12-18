@@ -18,6 +18,47 @@ Proto files can import other proto files using standard protobuf import syntax:
 import "path/to/other_file.proto";
 ```
 
+### Package ID Inheritance
+
+When a proto file without a package ID is imported by a file with a package ID, the imported file **inherits** the package ID from the importing file. This allows shared type definitions to be used across projects without explicitly assigning package IDs to utility files.
+
+```protobuf
+// common_types.proto - No package ID defined
+package common_types;
+
+enum Status {
+  IDLE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+}
+
+message Timestamp {
+  option msgid = 1;
+  uint64 seconds = 1;
+  uint32 nanoseconds = 2;
+}
+```
+
+```protobuf
+// my_messages.proto
+package my_app;
+option pkgid = 1;  // common_types will inherit pkgid=1
+
+import "common_types.proto";
+
+message MyMessage {
+  option msgid = 1;
+  Timestamp created_at = 1;  // Uses Timestamp from common_types
+  Status status = 2;          // Uses Status from common_types
+}
+```
+
+In this example:
+- `my_app` has `pkgid = 1`
+- `common_types` has no explicit `pkgid`, so it inherits `pkgid = 1` from `my_app`
+- Both packages share the same message ID space (pkgid=1)
+- All generated files (my_app.sf.*, common_types.sf.*) are created separately
+
 ### Same Package Imports
 
 Files can be split into multiple proto files within the same package. All files in the same package must use the same package ID:
@@ -47,35 +88,40 @@ message SensorReading {
 }
 ```
 
-### Multi-Package Imports
+### Multi-Package Imports with Different IDs
 
-When importing files from different packages, each package must have a unique package ID:
+When importing files from different packages that have their own package IDs, each package maintains its unique ID:
 
 ```protobuf
-// common.proto
-package common_types;
+// pkg_a.proto
+package package_a;
 option pkgid = 1;
 
-message Timestamp {
-  option msgid = 1;
-  uint64 seconds = 1;
+enum ActionType {
+  START = 0;
+  STOP = 1;
 }
 ```
 
 ```protobuf
-// sensors.proto
-package sensor_data;
+// pkg_b.proto
+package package_b;
 option pkgid = 2;
 
-import "common.proto";
+import "pkg_a.proto";
 
-message SensorEvent {
+message Command {
   option msgid = 1;
-  uint32 sensor_id = 1;
-  // Note: Cross-package type references require full qualification
-  // common_types.Timestamp timestamp = 2;
+  ActionType action = 1;  // Uses type from package_a (pkgid=1)
+  uint32 target = 2;
 }
 ```
+
+In this example:
+- `package_a` has `pkgid = 1`
+- `package_b` has `pkgid = 2`
+- Types from `package_a` can be used in `package_b` messages
+- Each package generates separate files with their own namespace/module
 
 ### Import Path Resolution
 
@@ -85,15 +131,32 @@ Import paths are resolved in the following order:
 
 ## Multi-Package Validation
 
-When multiple packages are being compiled together (through imports), **all packages must have package IDs assigned**. This is enforced to prevent message ID collisions:
+### Package ID Assignment Rules
 
+1. **Inherited Package IDs**: If an imported package has no `pkgid` defined, it will inherit the package ID from the importing package
+2. **Explicit Package IDs**: Packages can have explicit `pkgid` values (0-255)
+3. **Package Name Conflicts**: If the same package name appears with different explicit `pkgid` values, compilation fails with an error
+4. **Multiple Packages**: When multiple packages are compiled together, at least one must have an explicit `pkgid` for inheritance to work
+
+Example of invalid configuration (package name conflict):
+
+```protobuf
+// file1.proto
+package my_pkg;
+option pkgid = 1;
 ```
-Error: Multiple packages are being compiled, but the following packages 
-do not have package IDs assigned:
-  - package_a
-  - package_b
 
-When compiling multiple packages, each package must specify 'option pkgid = N;'
+```protobuf
+// file2.proto  
+package my_pkg;
+option pkgid = 2;  // ERROR: Same package name, different ID
+```
+
+This will produce an error:
+```
+Error: Package 'my_pkg' has conflicting package IDs:
+  Already defined as: 1
+  Trying to redefine as: 2 in file2.proto
 ```
 
 ## Defining Package IDs
@@ -174,6 +237,68 @@ var msg = new MyPackageMyMessage { Value = 42 };
 byte pkgId = PackageInfo.PackageId;  // = 5
 ```
 
+### Cross-Package Type References
+
+When using types from imported packages, the generated code automatically handles references:
+
+**C#**: Using directives are automatically added for imported packages
+```csharp
+// In my_package.sf.cs
+using System;
+using System.Runtime.InteropServices;
+using StructFrame.CommonTypes;  // Automatically added
+
+namespace StructFrame.MyPackage
+{
+    public struct MyPackageMyMessage
+    {
+        public CommonTypesTimestamp CreatedAt;  // References imported type
+        // ...
+    }
+}
+```
+
+**C++**: Types from all packages are available within their respective namespaces
+```cpp
+#include "my_package.sf.hpp"
+#include "common_types.sf.hpp"
+
+my_package::MyMessage msg;
+msg.created_at = common_types::Timestamp{};  // Cross-package reference
+```
+
+**Python**: Import from respective modules
+```python
+from my_package_sf import MyPackageMyMessage
+from common_types_sf import CommonTypesTimestamp
+
+msg = MyPackageMyMessage(created_at=CommonTypesTimestamp(seconds=123, nanoseconds=456))
+```
+
+**TypeScript**: Import from respective modules
+```typescript
+import { MyPackage_MyMessage } from './my_package.sf';
+import { CommonTypes_Timestamp } from './common_types.sf';
+
+const timestamp = new CommonTypes_Timestamp();
+const msg = new MyPackage_MyMessage();
+// Note: Struct field assignments in TypeScript depend on the struct_base API
+```
+
+## File Generation
+
+Each proto file generates its own output files, regardless of package relationships:
+
+- `my_package.proto` → `my_package.sf.{h,hpp,ts,py,cs}` 
+- `common_types.proto` → `common_types.sf.{h,hpp,ts,py,cs}`
+- `pkg_a.proto` → `pkg_a.sf.{h,hpp,ts,py,cs}`
+
+This modular approach allows:
+- Clear separation of concerns
+- Reusable type libraries
+- Independent versioning of proto files
+- Easy package management
+
 ## Frame Format Compatibility
 
 Package IDs require frame formats with a package_id field:
@@ -193,10 +318,34 @@ Basic frame formats (without PKG_ID field) can still be used for single-package 
 
 ## Validation Rules
 
-- Package IDs must be unique across all packages
-- Package IDs must be in range 0-255
-- Message IDs within a package must still be 0-255
-- Package ID collisions are detected and reported at build time
+- **Package ID Range**: Package IDs must be in range 0-255
+- **Message ID Range**: Message IDs within a package must be 0-255
+- **Package ID Uniqueness**: Explicit package IDs should be unique unless packages are meant to share the same message ID space
+- **Package ID Inheritance**: Imported packages without explicit pkgid inherit from the importing package
+- **Package Name Conflicts**: The same package name cannot have different explicit pkgid values
+- **Cross-Package References**: Types from any imported package can be used in message definitions
+
+### Validation Error Examples
+
+**Package name with conflicting IDs:**
+```
+Error: Package 'common_types' has conflicting package IDs:
+  Already defined as: 1
+  Trying to redefine as: 2 in file2.proto
+```
+
+**Multiple packages without IDs:**
+```
+Error: Multiple packages are being compiled, but the following packages 
+do not have package IDs assigned:
+  - package_a
+  - package_b
+
+When compiling multiple packages, each package must specify 'option pkgid = N;'
+where N is 0-255.
+```
+
+Note: This error occurs when multiple packages exist and none have explicit package IDs. To fix, add `option pkgid = N;` to at least one package, and imported packages will inherit if needed.
 
 ## Example: Multi-Package System
 
