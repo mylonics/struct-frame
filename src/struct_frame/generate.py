@@ -379,6 +379,7 @@ class Package:
         self.name = name
         self.enums = {}
         self.messages = {}
+        self.package_id = None  # Package ID for extended message IDs (0-255)
 
     def addEnum(self, enum, comments):
         self.comments = comments
@@ -410,6 +411,19 @@ class Package:
                 return False
             names.append(value.name)
 
+        # Validate package ID if specified
+        if self.package_id is not None:
+            if self.package_id < 0 or self.package_id > 255:
+                print(f"Package ID {self.package_id} for package {self.name} out of range (0-255)")
+                return False
+            
+            # Check for package ID collisions across all packages
+            for pkg_name, pkg in allPackages.items():
+                if pkg_name != self.name and pkg.package_id is not None:
+                    if pkg.package_id == self.package_id:
+                        print(f"Package ID collision: packages {self.name} and {pkg_name} both use ID {self.package_id}")
+                        return False
+
         for key, value in self.messages.items():
             if not value.validate(self, allPackages, debug):
                 print(
@@ -432,7 +446,10 @@ class Package:
         return self.messages
 
     def __str__(self):
-        output = "Package: " + self.name + "\n"
+        output = "Package: " + self.name
+        if self.package_id is not None:
+            output += f" (ID: {self.package_id})"
+        output += "\n"
         for key, value in self.enums.items():
             output = output + value.__str__() + "\n"
         for key, value in self.messages.items():
@@ -497,6 +514,17 @@ def parseFile(filename):
                 if package_name not in packages:
                     packages[package_name] = Package(package_name)
                 packages
+
+            elif (type(e) == ast.Option):
+                # Handle file-level options (like pkgid)
+                if not foundPackage:
+                    print(f"Option {e.name} found before package declaration in {filename}")
+                    return False
+                if e.name == "pkgid":
+                    if packages[package_name].package_id is not None:
+                        print(f"Duplicate pkgid option in package {package_name} in file {filename}")
+                        return False
+                    packages[package_name].package_id = e.value
 
             elif (type(e) == ast.Enum):
                 if not packages[package_name].addEnum(e, comments):
