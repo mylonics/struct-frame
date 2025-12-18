@@ -384,6 +384,37 @@ class TestRunner:
     # Test Execution
     # =========================================================================
 
+    def run_standalone_tests(self):
+        """Run standalone test scripts (e.g., test_packaging.py)."""
+        # Find all test_*.py files in the tests directory
+        test_scripts = list(self.tests_dir.glob("test_*.py"))
+        
+        if not test_scripts:
+            return
+        
+        for test_script in test_scripts:
+            script_name = test_script.name
+            self.log(f"Running {script_name}...", "INFO")
+            
+            # Run the test script
+            success, stdout, stderr = self.run_command(
+                f'python "{test_script}"',
+                cwd=self.tests_dir,
+                timeout=30
+            )
+            
+            # Always show output from standalone tests
+            if stdout:
+                print(stdout)
+            if stderr and not success:
+                print(stderr)
+            
+            # Track result
+            test_name = script_name.replace('test_', '').replace('.py', '')
+            if 'python' not in self.test_results:
+                self.test_results['python'] = {}
+            self.test_results['python'][f"standalone_{test_name}"] = success
+
     def run_test_suites(self):
         """Run all test suites using appropriate plugins."""
         from plugins import get_plugin
@@ -590,6 +621,7 @@ class TestRunner:
 
             self.compile_all()
             self.run_test_suites()
+            self.run_standalone_tests()
             success = self.print_summary()
 
             print(f"\nTotal test time: {time.time() - start_time:.2f} seconds")

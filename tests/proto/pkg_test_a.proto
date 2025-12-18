@@ -1,0 +1,18 @@
+// Package A for testing package imports and inheritance
+package pkg_test_a;
+
+option pkgid = 2;
+
+enum ActionType {
+  START = 0;
+  STOP = 1;
+  PAUSE = 2;
+  RESUME = 3;
+}
+
+message ActionMessage {
+  option msgid = 1;
+  ActionType action = 1;
+  uint32 target_id = 2;
+  string description = 3 [max_size=64];
+}

@@ -1,7 +1,6 @@
 // Common types that can be imported by other proto files
+// Note: No pkgid defined here - will inherit from importing file
 package common_types;
-
-option pkgid = 1;
 
 enum Status {
   IDLE = 0;

@@ -6,6 +6,7 @@
   "test_suites_file": "test_suites.json",
   
   "proto_files": [
-    "test_messages.proto"
+    "test_messages.proto",
+    "pkg_test_messages.proto"
   ]
 }

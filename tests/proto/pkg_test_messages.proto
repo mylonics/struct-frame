@@ -1,0 +1,27 @@
+// Package test messages that imports common_types and pkg_test_a
+// common_types.proto has no pkgid, so it will inherit pkgid=1 from this file
+// pkg_test_a.proto has its own pkgid=2
+package pkg_test_messages;
+
+option pkgid = 1;
+
+import "common_types.proto";
+import "pkg_test_a.proto";
+
+// Message using types from common_types (which inherits pkgid=1)
+message PackageTestMessage {
+  option msgid = 1;
+  
+  Timestamp created_at = 1;
+  Status current_status = 2;
+  string name = 3 [size=32];
+}
+
+// Message using types from pkg_test_a (which has pkgid=2)
+message CrossPackageMessage {
+  option msgid = 2;
+  
+  uint32 message_id = 1;
+  ActionType action = 2;
+  string payload = 3 [max_size=128];
+}
