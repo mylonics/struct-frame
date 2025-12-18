@@ -666,11 +666,12 @@ def apply_package_id_inheritance():
             # If imported package has no ID, inherit from importing package
             if imported_pkg_id is None:
                 if importing_pkg_id is not None:
+                    # Inheritance: imported package gets the importing package's ID
                     packages[imported_pkg].package_id = importing_pkg_id
-            else:
-                # Both packages have IDs - check for conflicts if same name
-                # (Different package names can have different IDs)
-                pass
+                # else: Neither package has an ID - this will be caught by validatePackages if needed
+            # If both packages have IDs, they are validated separately
+            # Note: Same package name with different IDs is caught by validate_package_id()
+            # during parsing, not here
     
     return True
 
