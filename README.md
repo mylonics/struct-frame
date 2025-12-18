@@ -67,6 +67,17 @@ The CI pipeline:
 
 You can view test results in the "Actions" tab of the GitHub repository. Test artifacts (generated code and binary files) are available for download for 5 days after each run.
 
+## Higher-Level SDK
+
+Struct Frame provides high-level SDKs for simplified message communication:
+
+- **TypeScript/JavaScript**: Promise-based with UDP, TCP, WebSocket, and Serial transports
+- **Python**: Both sync and async implementations with socket, pyserial, websockets support
+- **C++**: Header-only with observer/subscriber pattern, ideal for embedded systems
+- **C#**: Async/await-based for .NET Core, Xamarin, and MAUI applications
+
+See the [SDK Overview](https://struct-frame.mylonics.com/user-guide/sdk-overview/) for details.
+
 ## Framing System
 
 Struct Frame provides a message framing system for reliable communication over serial links, network sockets, or any byte stream. Framing solves the fundamental problem of determining where messages begin and end in a continuous data stream.

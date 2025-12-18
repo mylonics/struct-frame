@@ -504,6 +504,10 @@ parser.add_argument('--frame_formats', nargs=1, type=str,
 parser.add_argument('--regenerate_boiler_plate', action='store_true',
                     help='Regenerate boilerplate code. Uses --frame_formats file if provided, '
                          'otherwise uses default frame_formats.proto')
+parser.add_argument('--sdk', action='store_true',
+                    help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
+parser.add_argument('--sdk_embedded', action='store_true',
+                    help='Include embedded SDK (serial transport only, no ASIO dependencies)')
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -952,16 +956,66 @@ def main():
             if os.path.isfile(src_path):
                 shutil.copy2(src_path, dst_path)
 
-    def copy_all_files(src_dir, dst_dir):
-        """Copy all files from src_dir to dst_dir"""
+    def copy_all_files(src_dir, dst_dir, exclude_dirs=None):
+        """Copy all files and directories from src_dir to dst_dir
+        
+        Args:
+            src_dir: Source directory
+            dst_dir: Destination directory  
+            exclude_dirs: List of directory names to exclude (e.g., ['struct_frame_sdk'])
+        """
+        if exclude_dirs is None:
+            exclude_dirs = []
+            
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         if os.path.exists(src_dir):
             for item in os.listdir(src_dir):
+                # Skip excluded directories
+                if item in exclude_dirs:
+                    continue
+                    
                 src_path = os.path.join(src_dir, item)
                 dst_path = os.path.join(dst_dir, item)
+                if os.path.isdir(src_path):
+                    # Recursively copy directories
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                elif os.path.isfile(src_path):
+                    shutil.copy2(src_path, dst_path)
+    
+    def copy_sdk_files(src_dir, dst_dir, embedded=False):
+        """Copy SDK files (struct_frame_sdk directory)
+        
+        Args:
+            src_dir: Source boilerplate directory
+            dst_dir: Destination directory
+            embedded: If True, copy only embedded-safe files (no ASIO)
+        """
+        sdk_src = os.path.join(src_dir, "struct_frame_sdk")
+        sdk_dst = os.path.join(dst_dir, "struct_frame_sdk")
+        
+        if not os.path.exists(sdk_src):
+            return
+            
+        if not os.path.exists(sdk_dst):
+            os.makedirs(sdk_dst)
+        
+        # For C++, handle embedded vs full SDK differently
+        if embedded and 'cpp' in src_dir:
+            # Copy only embedded-safe files (no ASIO, no network_transports)
+            exclude_items = ['asio.hpp', 'asio', 'network_transports.hpp', 'sdk.hpp']
+            for item in os.listdir(sdk_src):
+                if item in exclude_items:
+                    continue
+                src_path = os.path.join(sdk_src, item)
+                dst_path = os.path.join(sdk_dst, item)
                 if os.path.isfile(src_path):
                     shutil.copy2(src_path, dst_path)
+                elif os.path.isdir(src_path):
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+        else:
+            # Copy all SDK files
+            shutil.copytree(sdk_src, sdk_dst, dirs_exist_ok=True)
 
     if args.frame_formats:
         # When generating custom frame parsers, only copy utility files
@@ -996,36 +1050,72 @@ def main():
                 os.path.join(dir_path, "boilerplate/csharp"),
                 args.csharp_path[0], utility_files['csharp'])
     else:
-        # Copy all boilerplate files (multi-file structure)
+        # Copy all boilerplate files (excluding SDK by default)
+        # SDK is handled separately below based on --sdk or --sdk_embedded flags
+        exclude_sdk = ['struct_frame_sdk']
+        
         if (args.build_c):
             copy_all_files(
                 os.path.join(dir_path, "boilerplate/c"),
-                args.c_path[0])
+                args.c_path[0], exclude_sdk)
 
         if (args.build_ts):
             copy_all_files(
                 os.path.join(dir_path, "boilerplate/ts"),
-                args.ts_path[0])
+                args.ts_path[0], exclude_sdk)
 
         if (args.build_js):
             copy_all_files(
                 os.path.join(dir_path, "boilerplate/js"),
-                args.js_path[0])
+                args.js_path[0], exclude_sdk)
 
         if (args.build_py):
             copy_all_files(
                 os.path.join(dir_path, "boilerplate/py"),
-                args.py_path[0])
+                args.py_path[0], exclude_sdk)
 
         if (args.build_cpp):
             copy_all_files(
                 os.path.join(dir_path, "boilerplate/cpp"),
-                args.cpp_path[0])
+                args.cpp_path[0], exclude_sdk)
 
         if (args.build_csharp):
             copy_all_files(
                 os.path.join(dir_path, "boilerplate/csharp"),
-                args.csharp_path[0])
+                args.csharp_path[0], exclude_sdk)
+    
+    # Copy SDK files if requested
+    if args.sdk or args.sdk_embedded:
+        embedded_only = args.sdk_embedded and not args.sdk
+        
+        if args.build_c:
+            # C doesn't have SDK yet
+            pass
+            
+        if args.build_ts:
+            copy_sdk_files(
+                os.path.join(dir_path, "boilerplate/ts"),
+                args.ts_path[0], embedded_only)
+        
+        if args.build_js:
+            copy_sdk_files(
+                os.path.join(dir_path, "boilerplate/js"),
+                args.js_path[0], embedded_only)
+        
+        if args.build_py:
+            copy_sdk_files(
+                os.path.join(dir_path, "boilerplate/py"),
+                args.py_path[0], embedded_only)
+        
+        if args.build_cpp:
+            copy_sdk_files(
+                os.path.join(dir_path, "boilerplate/cpp"),
+                args.cpp_path[0], embedded_only)
+        
+        if args.build_csharp:
+            copy_sdk_files(
+                os.path.join(dir_path, "boilerplate/csharp"),
+                args.csharp_path[0], embedded_only)
 
     # No boilerplate for GraphQL currently
 
