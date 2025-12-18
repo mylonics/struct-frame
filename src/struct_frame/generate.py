@@ -3,6 +3,7 @@
 
 
 import os
+import sys
 import shutil
 from struct_frame import FileCGen
 from struct_frame import FileTsGen
@@ -773,11 +774,11 @@ def main():
     except RecursionError as err:
         print(
             f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {recErrCurrentMessage} and Field: {recErrCurrentField}')
-        return
+        sys.exit(1)
 
     if not valid:
         print("Validation failed")
-        return
+        sys.exit(1)
 
     if args.validate:
         # In validate mode, only perform validation - no file generation
