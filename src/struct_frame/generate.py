@@ -379,6 +379,7 @@ class Package:
         self.name = name
         self.enums = {}
         self.messages = {}
+        self.package_id = None  # Package ID for extended message IDs (0-255)
 
     def addEnum(self, enum, comments):
         self.comments = comments
@@ -410,6 +411,19 @@ class Package:
                 return False
             names.append(value.name)
 
+        # Validate package ID if specified
+        if self.package_id is not None:
+            if self.package_id < 0 or self.package_id > 255:
+                print(f"Package ID {self.package_id} for package {self.name} out of range (0-255)")
+                return False
+            
+            # Check for package ID collisions across all packages
+            for pkg_name, pkg in allPackages.items():
+                if pkg_name != self.name and pkg.package_id is not None:
+                    if pkg.package_id == self.package_id:
+                        print(f"Package ID collision: packages {self.name} and {pkg_name} both use ID {self.package_id}")
+                        return False
+
         for key, value in self.messages.items():
             if not value.validate(self, allPackages, debug):
                 print(
@@ -432,7 +446,10 @@ class Package:
         return self.messages
 
     def __str__(self):
-        output = "Package: " + self.name + "\n"
+        output = "Package: " + self.name
+        if self.package_id is not None:
+            output += f" (ID: {self.package_id})"
+        output += "\n"
         for key, value in self.enums.items():
             output = output + value.__str__() + "\n"
         for key, value in self.messages.items():
@@ -477,46 +494,156 @@ parser.add_argument('--regenerate_boiler_plate', action='store_true',
                          'otherwise uses default frame_formats.proto')
 
 
-def parseFile(filename):
-    processed_file.append(filename)
-    with open(filename, "r") as f:
-        result = Parser().parse(f.read())
+def parseFile(filename, base_path=None):
+    """Parse a proto file and handle imports recursively.
+    
+    Args:
+        filename: Path to the proto file to parse
+        base_path: Base directory for resolving relative imports (defaults to filename's directory)
+    
+    Returns:
+        bool: True if parsing succeeded, False otherwise
+    """
+    # Convert to absolute path for circular import detection
+    abs_filename = os.path.abspath(filename)
+    
+    # Avoid circular imports
+    if abs_filename in processed_file:
+        return True
+    
+    processed_file.append(abs_filename)
+    
+    # Set base path for resolving imports
+    if base_path is None:
+        base_path = os.path.dirname(abs_filename)
+    
+    try:
+        with open(abs_filename, "r") as f:
+            result = Parser().parse(f.read())
+    except FileNotFoundError:
+        print(f"Error: Could not find file {filename}")
+        return False
+    except Exception as e:
+        print(f"Error parsing file {filename}: {e}")
+        return False
 
-        foundPackage = False
-        package_name = ""
-        comments = []
+    foundPackage = False
+    package_name = ""
+    comments = []
 
-        for e in result.file_elements:
-            if (type(e) == ast.Package):
-                if foundPackage:
-                    print(
-                        f"Multiple Package declaration found in file {filename} - {package_name}")
+    for e in result.file_elements:
+        if (type(e) == ast.Package):
+            if foundPackage:
+                print(
+                    f"Multiple Package declaration found in file {filename} - {package_name}")
+                return False
+            foundPackage = True
+            package_name = e.name
+            if package_name not in packages:
+                packages[package_name] = Package(package_name)
+
+        elif (type(e) == ast.Import):
+            # Handle import statements
+            import_file = e.name
+            
+            # Try to resolve import path relative to base_path first
+            import_path_base = os.path.join(base_path, import_file)
+            import_path_current = os.path.join(os.path.dirname(abs_filename), import_file)
+            
+            if os.path.exists(import_path_base):
+                import_path = import_path_base
+            elif os.path.exists(import_path_current):
+                import_path = import_path_current
+            else:
+                print(f"Error: Could not find imported file '{import_file}' from {filename}")
+                print(f"  Tried: {import_path_base}")
+                print(f"  Tried: {import_path_current}")
+                return False
+            
+            # Recursively parse the imported file
+            if not parseFile(import_path, base_path):
+                print(f"Error: Failed to parse imported file {import_file}")
+                return False
+
+        elif (type(e) == ast.Option):
+            # Handle file-level options (like pkgid)
+            if not foundPackage:
+                print(f"Option {e.name} found before package declaration in {filename}")
+                return False
+            if e.name == "pkgid":
+                if not validate_package_id(package_name, e.value, filename):
                     return False
-                foundPackage = True
-                package_name = e.name
-                if package_name not in packages:
-                    packages[package_name] = Package(package_name)
-                packages
 
-            elif (type(e) == ast.Enum):
-                if not packages[package_name].addEnum(e, comments):
-                    print(
-                        f"Enum Error in Package: {package_name}  FileName: {filename} EnumName: {e.name}")
-                    return False
-                comments = []
+        elif (type(e) == ast.Enum):
+            if not foundPackage:
+                print(f"Enum found before package declaration in {filename}")
+                return False
+            if not packages[package_name].addEnum(e, comments):
+                print(
+                    f"Enum Error in Package: {package_name}  FileName: {filename} EnumName: {e.name}")
+                return False
+            comments = []
 
-            elif (type(e) == ast.Message):
-                if not packages[package_name].addMessage(e, comments):
-                    print(
-                        f"Message Error in Package: {package_name}  FileName: {filename} MessageName: {e.name}")
-                    return False
-                comments = []
+        elif (type(e) == ast.Message):
+            if not foundPackage:
+                print(f"Message found before package declaration in {filename}")
+                return False
+            if not packages[package_name].addMessage(e, comments):
+                print(
+                    f"Message Error in Package: {package_name}  FileName: {filename} MessageName: {e.name}")
+                return False
+            comments = []
 
-            elif (type(e) == ast.Comment):
-                comments.append(e.text)
+        elif (type(e) == ast.Comment):
+            comments.append(e.text)
+    
+    return True
+
+
+def validate_package_id(package_name, new_id, filename):
+    """Validate package ID assignment.
+    
+    Args:
+        package_name: Name of the package
+        new_id: Package ID being assigned
+        filename: File where the assignment occurs
+    
+    Returns:
+        bool: True if valid, False if conflict detected
+    """
+    current_id = packages[package_name].package_id
+    
+    if current_id is not None:
+        # Check if this is a conflicting value
+        if current_id != new_id:
+            print(f"Error: Package '{package_name}' has conflicting package IDs:")
+            print(f"  Already defined as: {current_id}")
+            print(f"  Trying to redefine as: {new_id} in {filename}")
+            return False
+        # Same value - this is OK (multiple files in same package)
+    else:
+        # First assignment
+        packages[package_name].package_id = new_id
+    
+    return True
 
 
 def validatePackages(debug=False):
+    """Validate all packages and enforce multi-package rules."""
+    
+    # Check if multiple packages exist
+    if len(packages) > 1:
+        # When multiple packages are being compiled, they must have package IDs
+        packages_without_ids = [name for name, pkg in packages.items() if pkg.package_id is None]
+        if packages_without_ids:
+            print(f"Error: Multiple packages are being compiled, but the following packages do not have package IDs assigned:")
+            for pkg_name in packages_without_ids:
+                print(f"  - {pkg_name}")
+            print(f"\nWhen compiling multiple packages, each package must specify 'option pkgid = N;' where N is 0-255.")
+            print(f"This ensures unique message IDs across all packages using the format: (package_id << 8) | msg_id")
+            return False
+    
+    # Validate each package
     for key, value in packages.items():
         if not value.validatePackage(packages, debug):
             print(f"Failed To Validate Package: {key}")

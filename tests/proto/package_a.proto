@@ -1,0 +1,9 @@
+// Package A with ID
+package package_a;
+
+option pkgid = 10;
+
+message MessageA {
+  option msgid = 1;
+  uint32 value = 1;
+}

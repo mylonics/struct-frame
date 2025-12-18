@@ -1,0 +1,19 @@
+// Part 2 of sensor package - messages that use the types
+package sensor_data;
+
+option pkgid = 2;
+
+import "sensor_types.proto";
+
+message SensorReading {
+  option msgid = 1;
+  SensorType type = 1;
+  float value = 2;
+  SensorStatus status = 3;
+}
+
+message SensorConfig {
+  option msgid = 2;
+  SensorType type = 1;
+  uint32 sample_rate = 2;
+}

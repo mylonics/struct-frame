@@ -160,6 +160,12 @@ class FileJsGen():
         yield "const { struct_frame_buffer } = require('./struct_frame_types');\n"
         yield "const { msg_encode, msg_reserve, msg_finish } = require('./struct_frame');\n\n"
 
+        # Add package ID constant if present
+        if package.package_id is not None:
+            yield f'/* Package ID for extended message IDs */\n'
+            yield f'const PACKAGE_ID = {package.package_id};\n'
+            yield f'module.exports.PACKAGE_ID = PACKAGE_ID;\n\n'
+
         # include additional header files here if available in the future
 
         if package.enums:
@@ -178,11 +184,31 @@ class FileJsGen():
             messages_with_id = [
                 msg for key, msg in package.sortedMessages().items() if msg.id]
             if messages_with_id:
-                yield 'function get_message_length(msg_id) {\n  switch (msg_id) {\n'
+                if package.package_id is not None:
+                    # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
+                    yield 'function get_message_length(msg_id) {\n'
+                    yield '  // Extract package ID and message ID from 16-bit message ID\n'
+                    yield '  const pkg_id = (msg_id >> 8) & 0xFF;\n'
+                    yield '  const local_msg_id = msg_id & 0xFF;\n'
+                    yield '  \n'
+                    yield '  // Check if this is our package\n'
+                    yield '  if (pkg_id !== PACKAGE_ID) {\n'
+                    yield '    return 0;\n'
+                    yield '  }\n'
+                    yield '  \n'
+                    yield '  switch (local_msg_id) {\n'
+                else:
+                    # Legacy mode: 8-bit message ID
+                    yield 'function get_message_length(msg_id) {\n'
+                    yield '  switch (msg_id) {\n'
+                
                 for msg in messages_with_id:
                     package_msg_name = '%s_%s' % (package.name, msg.name)
                     yield '    case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
 
-                yield '    default: break;\n  }\n  return 0;\n}\n'
+                yield '    default: break;\n'
+                yield '  }\n'
+                yield '  return 0;\n'
+                yield '}\n'
                 yield 'module.exports.get_message_length = get_message_length;\n'
             yield '\n'

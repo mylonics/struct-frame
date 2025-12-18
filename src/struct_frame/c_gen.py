@@ -210,6 +210,12 @@ class FileCGen():
         yield '#include <stdint.h>\n'
         yield '#include <stddef.h>\n\n'
 
+        # Add package ID constant if present
+        if package.package_id is not None:
+            pkg_name_upper = CamelToSnakeCase(package.name).upper()
+            yield f'/* Package ID for extended message IDs */\n'
+            yield f'#define {pkg_name_upper}_PACKAGE_ID {package.package_id}\n\n'
+
         # include additional header files if available in the future
 
         if package.enums:
@@ -237,8 +243,25 @@ class FileCGen():
         #    yield '\n'
 
         if package.messages:
-            yield 'static inline bool get_message_length(size_t msg_id, size_t* size) {\n'
-            yield '    switch (msg_id) {\n'
+            if package.package_id is not None:
+                # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
+                yield 'static inline bool get_message_length(uint16_t msg_id, size_t* size) {\n'
+                yield '    /* Extract package ID and message ID from 16-bit message ID */\n'
+                yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
+                yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
+                yield '    \n'
+                pkg_name_upper = CamelToSnakeCase(package.name).upper()
+                yield f'    /* Check if this is our package */\n'
+                yield f'    if (pkg_id != {pkg_name_upper}_PACKAGE_ID) {{\n'
+                yield f'        return false;\n'
+                yield f'    }}\n'
+                yield '    \n'
+                yield '    switch (local_msg_id) {\n'
+            else:
+                # Legacy mode: 8-bit message ID
+                yield 'static inline bool get_message_length(size_t msg_id, size_t* size) {\n'
+                yield '    switch (msg_id) {\n'
+            
             for key, msg in package.sortedMessages().items():
                 name = '%s_%s' % (CamelToSnakeCase(
                     msg.package).upper(), CamelToSnakeCase(msg.name).upper())

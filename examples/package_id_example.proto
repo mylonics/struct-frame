@@ -1,0 +1,124 @@
+// Example demonstrating package ID usage in struct-frame
+// This example shows a multi-package system with extended message IDs
+
+// ============================================================
+// SENSOR PACKAGE (Package ID: 1)
+// ============================================================
+// sensor_data.proto
+package sensor_data;
+
+// Enable extended message IDs
+option pkgid = 1;
+
+enum SensorType {
+  TEMPERATURE = 0;
+  HUMIDITY = 1;
+  PRESSURE = 2;
+  LIGHT = 3;
+}
+
+message SensorReading {
+  option msgid = 1;
+  SensorType type = 1;
+  float value = 2;
+  uint64 timestamp = 3;
+  string sensor_id = 4 [size=16];
+}
+
+message SensorStatus {
+  option msgid = 2;
+  string sensor_id = 1 [size=16];
+  bool online = 2;
+  float battery_percent = 3;
+  uint32 error_count = 4;
+}
+
+// ============================================================
+// ACTUATOR PACKAGE (Package ID: 2)
+// ============================================================
+// actuator_control.proto  
+package actuator_control;
+
+// Enable extended message IDs
+option pkgid = 2;
+
+enum ActuatorState {
+  IDLE = 0;
+  ACTIVE = 1;
+  ERROR = 2;
+  CALIBRATING = 3;
+}
+
+message ActuatorCommand {
+  option msgid = 1;
+  string actuator_id = 1 [size=16];
+  ActuatorState desired_state = 2;
+  float target_value = 3;
+}
+
+message ActuatorStatus {
+  option msgid = 2;
+  string actuator_id = 1 [size=16];
+  ActuatorState current_state = 2;
+  float current_value = 3;
+  float power_consumption = 4;
+}
+
+// ============================================================
+// USAGE EXAMPLE
+// ============================================================
+
+// In C++, packages generate namespaces:
+/*
+#include "sensor_data.sf.hpp"
+#include "actuator_control.sf.hpp"
+
+// Create sensor reading in sensor_data namespace
+sensor_data::SensorReading reading;
+reading.type = sensor_data::SensorType::TEMPERATURE;
+reading.value = 25.5f;
+
+// Create actuator command in actuator_control namespace
+actuator_control::ActuatorCommand cmd;
+cmd.desired_state = actuator_control::ActuatorState::ACTIVE;
+cmd.target_value = 100.0f;
+
+// Message IDs are encoded as 16-bit:
+// sensor_data::SENSOR_READING_MSG_ID = 1 (in package 1)
+// Actual frame message ID = (1 << 8) | 1 = 257
+
+// actuator_control::ACTUATOR_COMMAND_MSG_ID = 1 (in package 2)  
+// Actual frame message ID = (2 << 8) | 1 = 513
+*/
+
+// In Python, message dictionary uses 16-bit keys:
+/*
+from sensor_data_sf import *
+from actuator_control_sf import *
+
+# sensor_data package ID = 1, message ID = 1
+# Dictionary key = (1 << 8) | 1 = 257
+reading = get_message_class(257)
+
+# actuator_control package ID = 2, message ID = 1
+# Dictionary key = (2 << 8) | 1 = 513
+command = get_message_class(513)
+*/
+
+// ============================================================
+// FRAME FORMAT
+// ============================================================
+
+// Use EXTENDED_MSG_IDS frame format:
+// [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+//
+// For sensor_data::SensorReading:
+// - PKG_ID = 1
+// - MSG_ID = 1
+//
+// For actuator_control::ActuatorCommand:
+// - PKG_ID = 2
+// - MSG_ID = 1
+//
+// This allows both packages to use the same local message IDs
+// while maintaining unique global message identifiers.
