@@ -11,8 +11,7 @@ Install from PyPI:
 pip install struct-frame
 ```
 
-!!! note "Module name uses underscore"
-    The package is named `struct-frame` (with hyphen) on PyPI, but the Python module uses an underscore: `struct_frame`. Use `python -m struct_frame` to run the code generator.
+**Note:** The package is named `struct-frame` (with hyphen) on PyPI, but the Python module uses an underscore: `struct_frame`. Use `python -m struct_frame` to run the code generator.
 
 ## Quick Start
 
