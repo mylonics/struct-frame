@@ -228,7 +228,12 @@ namespace StructFrame.Sdk
 
         private int CalculateFrameSize(FrameMsgInfo result)
         {
-            // Conservative estimate - adjust based on frame format
+            // Calculate total frame size including headers and footers
+            // Frame overhead by format:
+            // - BasicDefault: 2 start + 1 length + 1 msg_id + payload + 2 crc = 6 + payload
+            // - TinyDefault: 1 start + 1 length + 1 msg_id + payload + 2 crc = 5 + payload
+            // Using conservative estimate of 10 bytes to handle all frame formats
+            // TODO: Query frame parser for exact overhead to avoid buffering issues
             return result.MsgLen + 10;
         }
 
