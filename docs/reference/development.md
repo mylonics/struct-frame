@@ -1,5 +1,39 @@
 # Development Guide
 
+## Setting Up Development Environment
+
+To contribute to struct-frame or modify the code generator itself, you'll need to clone the repository and set up a development environment.
+
+### Clone the Repository
+
+```bash
+git clone https://github.com/mylonics/struct-frame.git
+cd struct-frame
+```
+
+### Install Dependencies
+
+```bash
+# Install Python dependencies
+pip install proto-schema-parser
+
+# Install Node.js dependencies (for TypeScript tests)
+npm install
+```
+
+### Running from Source
+
+When developing, you can run the code generator directly from source:
+
+```bash
+# Using PYTHONPATH
+PYTHONPATH=src python src/main.py examples/test.proto --build_py
+
+# Or install in editable mode
+pip install -e .
+python -m struct_frame examples/test.proto --build_py
+```
+
 ## Project Structure
 
 ```

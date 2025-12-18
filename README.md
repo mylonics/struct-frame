@@ -3,27 +3,34 @@
 
 A multi-language code generation framework that converts Protocol Buffer (.proto) files into serialization/deserialization code for C, C++, TypeScript, Python, and GraphQL. It provides framing and parsing utilities for structured message communication.
 
-## Quick Start
+## Installation
 
-### Installation
+Install from PyPI:
+
 ```bash
-# Install Python dependencies
-pip install proto-schema-parser
-
-# Install Node.js dependencies (for TypeScript)
-npm install
+pip install struct-frame
 ```
+
+!!! note "Module name uses underscore"
+    The package is named `struct-frame` (with hyphen) on PyPI, but the Python module uses an underscore: `struct_frame`. Use `python -m struct_frame` to run the code generator.
+
+## Quick Start
 
 ### Basic Usage
 ```bash
-# Generate code for all languages
-PYTHONPATH=src python3 src/main.py examples/myl_vehicle.proto --build_c --build_cpp --build_ts --build_py --build_gql
+# Generate code for Python
+python -m struct_frame examples/robot.proto --build_py --py_path generated/py
 
-# Run test suite
-python test_all.py
+# Generate code for multiple languages
+python -m struct_frame examples/robot.proto --build_c --build_cpp --build_ts --build_py
 
-# Generated files will be in the generated/ directory
+# Get help
+python -m struct_frame --help
 ```
+
+### For Contributors
+
+If you want to contribute or modify the code generator itself, see the [Development Guide](docs/reference/development.md) for instructions on cloning the repository and setting up a development environment.
 
 ### Test Suite
 
@@ -151,34 +158,34 @@ This design handles common real-world issues like:
 
 #### Python
 ```bash
-python src/main.py examples/myl_vehicle.proto --build_py
+python -m struct_frame examples/myl_vehicle.proto --build_py
 # Use generated Python classes directly
 ```
 
 #### TypeScript
 ```bash
-python src/main.py examples/myl_vehicle.proto --build_ts
+python -m struct_frame examples/myl_vehicle.proto --build_ts
 npx tsc examples/index.ts --outDir generated/
 node generated/examples/index.js
 ```
 
 #### C
 ```bash
-python src/main.py examples/myl_vehicle.proto --build_c
+python -m struct_frame examples/myl_vehicle.proto --build_c
 gcc examples/main.c -I generated/c -o main
 ./main
 ```
 
 #### C++
 ```bash
-python src/main.py examples/myl_vehicle.proto --build_cpp
+python -m struct_frame examples/myl_vehicle.proto --build_cpp
 g++ -std=c++17 examples/main.cpp -I generated/cpp -o main
 ./main
 ```
 
 #### GraphQL
 ```bash
-python src/main.py examples/myl_vehicle.proto --build_gql
+python -m struct_frame examples/myl_vehicle.proto --build_gql
 # Use generated .graphql schema files
 ```
 
@@ -677,14 +684,14 @@ message DeviceStatus {
 
 ```bash
 # Generate all languages
-python src/main.py schema.proto --build_c --build_cpp --build_ts --build_py --build_gql
+python -m struct_frame schema.proto --build_c --build_cpp --build_ts --build_py --build_gql
 
 # Language-specific paths
-python src/main.py schema.proto --build_py --py_path output/python/
-python src/main.py schema.proto --build_c --c_path output/c/
-python src/main.py schema.proto --build_cpp --cpp_path output/cpp/
-python src/main.py schema.proto --build_ts --ts_path output/typescript/
-python src/main.py schema.proto --build_gql --gql_path output/graphql/
+python -m struct_frame schema.proto --build_py --py_path output/python/
+python -m struct_frame schema.proto --build_c --c_path output/c/
+python -m struct_frame schema.proto --build_cpp --cpp_path output/cpp/
+python -m struct_frame schema.proto --build_ts --ts_path output/typescript/
+python -m struct_frame schema.proto --build_gql --gql_path output/graphql/
 ```
 
 ## C++ Implementation
