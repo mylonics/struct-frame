@@ -199,12 +199,16 @@ class FileJsGen():
                     yield '  switch (local_msg_id) {\n'
                 else:
                     # Legacy mode: 8-bit message ID
-                    yield 'function get_message_length(msg_id) {\n  switch (msg_id) {\n'
+                    yield 'function get_message_length(msg_id) {\n'
+                    yield '  switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
                     package_msg_name = '%s_%s' % (package.name, msg.name)
                     yield '    case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
 
-                yield '    default: break;\n  }\n  return 0;\n}\n'
+                yield '    default: break;\n'
+                yield '  }\n'
+                yield '  return 0;\n'
+                yield '}\n'
                 yield 'module.exports.get_message_length = get_message_length;\n'
             yield '\n'

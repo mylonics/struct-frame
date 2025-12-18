@@ -190,11 +190,15 @@ class FileTsGen():
                     yield '    switch (local_msg_id) {\n'
                 else:
                     # Legacy mode: 8-bit message ID
-                    yield 'export function get_message_length(msg_id : number){\n switch (msg_id)\n {\n'
+                    yield 'export function get_message_length(msg_id: number) {\n'
+                    yield '    switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
                     package_msg_name = '%s_%s' % (package.name, msg.name)
-                    yield '  case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
+                    yield '        case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
 
-                yield '  default: break;\n } return 0;\n}'
+                yield '        default: break;\n'
+                yield '    }\n'
+                yield '    return 0;\n'
+                yield '}\n'
             yield '\n'

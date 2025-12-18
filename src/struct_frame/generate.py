@@ -513,7 +513,6 @@ def parseFile(filename):
                 package_name = e.name
                 if package_name not in packages:
                     packages[package_name] = Package(package_name)
-                packages
 
             elif (type(e) == ast.Option):
                 # Handle file-level options (like pkgid)
