@@ -4,11 +4,13 @@ The TypeScript/JavaScript SDK provides a high-level, Promise-based interface for
 
 ## Installation
 
-The SDK is automatically included when you generate TypeScript code:
+Generate TypeScript code with SDK:
 
 ```bash
-python -m struct_frame your_messages.proto --build_ts --ts_path generated/ts
+python -m struct_frame your_messages.proto --build_ts --ts_path generated/ts --sdk
 ```
+
+**Note**: The SDK is not included by default. Use the `--sdk` flag to generate SDK files.
 
 ## Available Transports
 

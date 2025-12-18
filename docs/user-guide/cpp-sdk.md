@@ -5,24 +5,60 @@ The C++ SDK is a header-only library that provides structured message communicat
 ## Features
 
 - **Header-only**: No linking required, just include headers
-- **Zero dependencies**: Core SDK has no external dependencies
-- **Observer pattern**: Type-safe message subscription inspired by ETLCPP
+- **Zero dependencies in embedded mode**: Core SDK has no external dependencies when using `--sdk_embedded`
+- **Observer pattern**: Type-safe message subscription using function pointers (no `std::function`, no `std::vector`)
 - **Embedded-friendly**: Generic serial interface for bare-metal systems
 - **Cross-platform**: Works on Windows, macOS, and Linux
-- **Network support**: UDP, TCP, WebSocket via optional ASIO integration
+- **Network support**: UDP, TCP, WebSocket via ASIO (included with `--sdk` flag)
 
 ## Installation
 
-The SDK is automatically included when you generate C++ code:
+### Full SDK (with network transports)
+
+Generate C++ code with full SDK including ASIO:
+
+```bash
+python -m struct_frame your_messages.proto --build_cpp --cpp_path generated/cpp --sdk
+```
+
+This includes:
+- ASIO standalone headers (v1.30.2)
+- UDP, TCP, Serial transports using ASIO
+- Network transports implementation
+- All SDK features
+
+### Embedded SDK (serial only, no dependencies)
+
+For embedded/bare-metal systems, use the minimal SDK:
+
+```bash
+python -m struct_frame your_messages.proto --build_cpp --cpp_path generated/cpp --sdk_embedded
+```
+
+This includes:
+- Observer pattern with function pointers (no STL dependencies)
+- Generic serial transport interface
+- No ASIO headers
+- Minimal footprint
+
+### Without SDK (default)
+
+Generate only message serialization code:
 
 ```bash
 python -m struct_frame your_messages.proto --build_cpp --cpp_path generated/cpp
 ```
 
-Include the SDK in your project:
+## Including the SDK
 
+For full SDK:
 ```cpp
 #include "struct_frame_sdk/sdk.hpp"
+```
+
+For embedded SDK:
+```cpp
+#include "struct_frame_sdk/sdk_embedded.hpp"
 ```
 
 ## Observer/Subscriber Pattern
@@ -51,18 +87,25 @@ auto* observable = sdk.getObservable<StatusMessage>(StatusMessage::msg_id);
 observable->subscribe(&observer);
 ```
 
-### Lambda Observer
+### Function Pointer Observer (Embedded)
 
-For simpler use cases, use lambda-based observers:
+For embedded systems without STL dependencies, use function pointer observers:
 
 ```cpp
-auto subscription = sdk.subscribe<StatusMessage>(
-    StatusMessage::msg_id,
-    [](const StatusMessage& msg, uint8_t msgId) {
-        std::cout << "Battery: " << msg.battery << "%" << std::endl;
-    }
-);
-// Subscription is automatically cleaned up when 'subscription' goes out of scope
+#include "struct_frame_sdk/observer.hpp"
+#include "my_messages.hpp"
+
+using namespace StructFrame;
+
+// Define handler function
+void onStatusMessage(const StatusMessage& message, uint8_t msgId) {
+    // Handle message
+}
+
+// Usage with function pointer
+auto* observer = new FunctionObserver<StatusMessage>(onStatusMessage);
+auto* observable = sdk.getObservable<StatusMessage>(StatusMessage::msg_id);
+observable->subscribe(observer);
 ```
 
 ### RAII Subscription

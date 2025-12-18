@@ -11,11 +11,13 @@ The C# SDK provides an async/await-based interface for structured message commun
 
 ## Installation
 
-The SDK is automatically included when you generate C# code:
+Generate C# code with SDK:
 
 ```bash
-python -m struct_frame your_messages.proto --build_csharp --csharp_path generated/csharp
+python -m struct_frame your_messages.proto --build_csharp --csharp_path generated/csharp --sdk
 ```
+
+**Note**: The SDK is not included by default. Use the `--sdk` flag to generate SDK files.
 
 ## Available Transports
 

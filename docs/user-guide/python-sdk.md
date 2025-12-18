@@ -4,11 +4,13 @@ The Python SDK provides both synchronous and asynchronous interfaces for structu
 
 ## Installation
 
-The SDK is automatically included when you generate Python code:
+Generate Python code with SDK:
 
 ```bash
-python -m struct_frame your_messages.proto --build_py --py_path generated/py
+python -m struct_frame your_messages.proto --build_py --py_path generated/py --sdk
 ```
+
+**Note**: The SDK is not included by default. Use the `--sdk` flag to generate SDK files.
 
 ## Available Transports
 
