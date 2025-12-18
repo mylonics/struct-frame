@@ -7,6 +7,8 @@
 // testing, so this exclusion doesn't affect test coverage.
 package serialization_test;
 
+import "common_types.proto";
+
 // ============================================================================
 // Enums
 // ============================================================================
@@ -110,4 +112,18 @@ message SerializationTestMessage {
   float test_float = 3;
   bool test_bool = 4;
   repeated int32 test_array = 5 [max_size=5];
+}
+
+// ============================================================================
+// Message Using Imported Types (msgid: 205)
+// ============================================================================
+
+// Test message using imported Timestamp type from common_types.proto
+message TimestampedMessage {
+  option msgid = 205;
+  
+  uint32 event_id = 1;
+  Timestamp timestamp = 2;
+  Status event_status = 3;
+  string description = 4 [max_size=32];
 }

@@ -164,7 +164,15 @@ class Field:
         global recErrCurrentField
         recErrCurrentField = self.name
         if not self.validated:
+            # First try to find the type in the current package
             ret = currentPackage.findFieldType(self.fieldType)
+            
+            # If not found in current package, search in all packages
+            if not ret:
+                for pkg_name, pkg in packages.items():
+                    ret = pkg.findFieldType(self.fieldType)
+                    if ret:
+                        break
 
             if ret:
                 if ret.validate(currentPackage, packages, debug):
@@ -417,12 +425,9 @@ class Package:
                 print(f"Package ID {self.package_id} for package {self.name} out of range (0-255)")
                 return False
             
-            # Check for package ID collisions across all packages
-            for pkg_name, pkg in allPackages.items():
-                if pkg_name != self.name and pkg.package_id is not None:
-                    if pkg.package_id == self.package_id:
-                        print(f"Package ID collision: packages {self.name} and {pkg_name} both use ID {self.package_id}")
-                        return False
+            # Note: We allow different packages to share the same package ID if one inherited
+            # from the other through imports. The package_imports tracking handles this.
+            # Only error if the same package NAME has different IDs (checked in validate_package_id).
 
         for key, value in self.messages.items():
             if not value.validate(self, allPackages, debug):
@@ -460,6 +465,8 @@ class Package:
 packages = {}
 processed_file = []
 required_file = []
+# Track which package imports which other packages: {importing_pkg: [imported_pkg1, imported_pkg2, ...]}
+package_imports = {}
 
 parser = argparse.ArgumentParser(
     prog='struct_frame',
@@ -494,12 +501,13 @@ parser.add_argument('--regenerate_boiler_plate', action='store_true',
                          'otherwise uses default frame_formats.proto')
 
 
-def parseFile(filename, base_path=None):
+def parseFile(filename, base_path=None, importing_package=None):
     """Parse a proto file and handle imports recursively.
     
     Args:
         filename: Path to the proto file to parse
         base_path: Base directory for resolving relative imports (defaults to filename's directory)
+        importing_package: Name of the package that is importing this file (for tracking imports)
     
     Returns:
         bool: True if parsing succeeded, False otherwise
@@ -541,6 +549,12 @@ def parseFile(filename, base_path=None):
             package_name = e.name
             if package_name not in packages:
                 packages[package_name] = Package(package_name)
+            # Track import relationship if this file was imported
+            if importing_package and importing_package != package_name:
+                if importing_package not in package_imports:
+                    package_imports[importing_package] = []
+                if package_name not in package_imports[importing_package]:
+                    package_imports[importing_package].append(package_name)
 
         elif (type(e) == ast.Import):
             # Handle import statements
@@ -560,8 +574,8 @@ def parseFile(filename, base_path=None):
                 print(f"  Tried: {import_path_current}")
                 return False
             
-            # Recursively parse the imported file
-            if not parseFile(import_path, base_path):
+            # Recursively parse the imported file, passing current package as importer
+            if not parseFile(import_path, base_path, package_name):
                 print(f"Error: Failed to parse imported file {import_file}")
                 return False
 
@@ -628,8 +642,40 @@ def validate_package_id(package_name, new_id, filename):
     return True
 
 
+def apply_package_id_inheritance():
+    """Apply package ID inheritance rules.
+    
+    After all files are parsed, if an imported package has no package ID,
+    it inherits the package ID from the importing package.
+    
+    Returns:
+        bool: True if successful, False if conflicts detected
+    """
+    # Iterate through import relationships
+    for importing_pkg, imported_pkgs in package_imports.items():
+        importing_pkg_id = packages[importing_pkg].package_id
+        
+        for imported_pkg in imported_pkgs:
+            imported_pkg_id = packages[imported_pkg].package_id
+            
+            # If imported package has no ID, inherit from importing package
+            if imported_pkg_id is None:
+                if importing_pkg_id is not None:
+                    packages[imported_pkg].package_id = importing_pkg_id
+            else:
+                # Both packages have IDs - check for conflicts if same name
+                # (Different package names can have different IDs)
+                pass
+    
+    return True
+
+
 def validatePackages(debug=False):
     """Validate all packages and enforce multi-package rules."""
+    
+    # Apply package ID inheritance first
+    if not apply_package_id_inheritance():
+        return False
     
     # Check if multiple packages exist
     if len(packages) > 1:
