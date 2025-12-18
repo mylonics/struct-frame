@@ -403,13 +403,13 @@ class Package:
         for key, value in self.enums.items():
             if value.name in names:
                 print(
-                    f"Name collision with Enum and Message: {value.name} in Packaage {self.name}")
+                    f"Name collision with Enum and Message: {value.name} in Package {self.name}")
                 return False
             names.append(value.name)
         for key, value in self.messages.items():
             if value.name in names:
                 print(
-                    f"Name collision with Enum and Message: {value.name} in Packaage {self.name}")
+                    f"Name collision with Enum and Message: {value.name} in Package {self.name}")
                 return False
             names.append(value.name)
 
@@ -528,11 +528,10 @@ def parseFile(filename):
                 
             elif (type(e) == ast.Option):
                 # Handle file-level options like package_id
-                if e.name == "package_id":
-                    if foundPackage and package_name in packages:
-                        if packages[package_name].package_id is not None:
-                            print(f"Warning: package_id redefined for package {package_name}")
-                        packages[package_name].package_id = e.value
+                if e.name == "package_id" and foundPackage:
+                    if packages[package_name].package_id is not None:
+                        print(f"Warning: package_id redefined for package {package_name}")
+                    packages[package_name].package_id = e.value
 
             elif (type(e) == ast.Enum):
                 if not packages[package_name].addEnum(e, comments):
@@ -560,18 +559,18 @@ def parseFile(filename):
                     print(f"Error: Cannot find imported file '{import_name}' (looked at {import_path})")
                     return False
                 
-                # Parse the imported file
+                # Parse the imported file recursively (will detect its package name)
                 if not parseFile(import_path):
                     print(f"Error: Failed to parse imported file '{import_name}'")
                     return False
                 
-                # Find the package name of the imported file and add to imports list
-                # We need to read the imported file to find its package name
+                # Extract the package name from the imported file
+                # Read just the package declaration without full parsing
                 with open(import_path, "r") as import_file:
-                    import_result = Parser().parse(import_file.read())
-                    for elem in import_result.file_elements:
-                        if type(elem) == ast.Package:
-                            imported_pkg_name = elem.name
+                    for line in import_file:
+                        line = line.strip()
+                        if line.startswith('package ') and line.endswith(';'):
+                            imported_pkg_name = line[8:-1].strip()
                             if imported_pkg_name not in packages[package_name].imported_packages:
                                 packages[package_name].imported_packages.append(imported_pkg_name)
                             break
