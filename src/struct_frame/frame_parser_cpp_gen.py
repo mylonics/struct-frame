@@ -211,6 +211,16 @@ inline size_t encode_payload_minimal(
         yield '/* Individual frame format parsers */\n'
         for fmt in formats:
             yield f'#include "{fmt.name}.hpp"\n'
+        
+        yield '\n/* Frame Profile Aliases */\n'
+        yield 'namespace FrameParsers {\n\n'
+        yield '// Standard profile aliases for common use cases\n'
+        yield 'using ProfileStandard = BasicDefaultFrameParser;  // General Serial / UART\n'
+        yield 'using ProfileSensor = TinyMinimalFrameParser;     // Low-Bandwidth / Radio\n'
+        yield 'using ProfileIPC = NoneMinimalFrameParser;        // Trusted / Board-to-Board\n'
+        yield 'using ProfileBulk = BasicExtendedFrameParser;     // Firmware / File Transfer\n'
+        yield 'using ProfileNetwork = BasicExtendedMultiSystemStreamFrameParser;  // Multi-Node Mesh / Swarm\n\n'
+        yield '}  // namespace FrameParsers\n'
 
     @staticmethod
     def generate_header(formats):
