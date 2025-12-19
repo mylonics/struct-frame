@@ -2,244 +2,291 @@
 # kate: replace-tabs on; indent-width 4;
 
 """
-Frame Format Parser and Generator
+Frame Format Parser
 
-This module parses frame format definitions from .proto files and generates
-frame parser code for multiple target languages.
+This module parses frame format definitions from .proto files that use the
+separated header + payload architecture.
 
-Frame formats define how messages are framed for communication, including:
-- Start bytes for synchronization
-- Header structure (message ID, optional length)
-- Footer structure (CRC/checksum)
+Headers define the start byte pattern (Basic, Tiny, None, UBX, Mavlink, etc.)
+Payloads define the structure after start bytes (Minimal, Default, Extended, etc.)
+
+Frame = Header + Payload
 """
 
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple
+from enum import Enum
 
 
-class FrameFormatField:
-    """Represents a field in a frame format definition"""
-    
-    def __init__(self, name, field_type, hex_value=None):
-        self.name = name
-        self.field_type = field_type
-        self.hex_value = hex_value  # For start bytes with [(hex) = 0xNN]
-        self.is_start_byte = name.startswith('start_byte') or name in ['sync1', 'sync2', 'stx']
-        self.is_crc = 'crc' in name.lower() or name.startswith('ck_')
-        self.is_length = 'length' in name.lower() or 'len' in name.lower()
-        self.is_msg_id = 'msg_id' in name.lower() or name == 'msg_id'
-        self.is_payload = name == 'payload'
-        # New header fields for extended frame formats
-        self.is_sequence = name in ['sequence', 'seq']
-        self.is_system_id = name == 'system_id'
-        self.is_component_id = name == 'component_id'
-        self.is_package_id = name == 'package_id'
-        # Check if this is a header field (not start byte, payload, or CRC)
-        self.is_header_field = (self.is_sequence or self.is_system_id or 
-                                self.is_component_id or self.is_package_id)
-        
-    def __repr__(self):
-        return f"FrameFormatField({self.name}, {self.field_type}, hex={self.hex_value})"
+class HeaderType(Enum):
+    """Header types defining start byte patterns"""
+    NONE = 0      # No start bytes
+    TINY = 1      # 1 start byte [0x70+PayloadType]
+    BASIC = 2     # 2 start bytes [0x90] [0x70+PayloadType]
+    UBX = 3       # 2 start bytes [0xB5] [0x62]
+    MAVLINK_V1 = 4  # 1 start byte [0xFE]
+    MAVLINK_V2 = 5  # 1 start byte [0xFD]
 
 
-class FrameFormat:
-    """
-    Represents a parsed frame format definition.
+class PayloadType(Enum):
+    """Payload types defining header/footer structure"""
+    MINIMAL = 0                      # [MSG_ID] [PACKET]
+    DEFAULT = 1                      # [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    EXTENDED_MSG_IDS = 2             # [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    EXTENDED_LENGTH = 3              # [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    EXTENDED = 4                     # [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    SYS_COMP = 5                     # [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    SEQ = 6                          # [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    MULTI_SYSTEM_STREAM = 7          # [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    EXTENDED_MULTI_SYSTEM_STREAM = 8 # [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    # Third party
+    UBX = 100                        # [CLASS] [ID] [LEN_LO] [LEN_HI] [MSG] [CK_A] [CK_B]
+    MAVLINK_V1 = 101                 # [LEN] [SEQ] [SYS] [COMP] [MSG_ID] [PAYLOAD] [CRC_LO] [CRC_HI]
+    MAVLINK_V2 = 102                 # [LEN] [INCOMPAT] [COMPAT] [SEQ] [SYS] [COMP] [MSG_ID x3] [PAYLOAD] [CRC]
+
+
+@dataclass
+class PayloadField:
+    """Represents a field in a payload definition"""
+    name: str
+    field_type: str
+    size: int = 1  # bytes
     
-    Frame formats describe how messages are framed for communication:
-    - Start bytes: Synchronization markers
-    - Header: Message ID, optional length field
-    - Payload: The actual message data
-    - Footer: CRC/checksum bytes
-    """
+    @property
+    def is_crc(self) -> bool:
+        return 'crc' in self.name.lower() or self.name.startswith('ck_')
     
-    def __init__(self, name, comments=None):
-        self.name = name
-        self.comments = comments or []
-        self.fields = []
-        self.start_bytes = []      # List of (name, hex_value) tuples
-        self.has_crc = False
-        self.crc_bytes = 0         # Number of CRC bytes (usually 2)
-        self.has_length = False
-        self.length_bytes = 0      # 1 for uint8, 2 for uint16
-        self.header_size = 0       # Total header size
-        self.footer_size = 0       # Total footer size
-        
-    def parse(self, message):
-        """Parse a proto message definition into a frame format"""
-        self.name = message.name
-        
-        for element in message.elements:
-            if isinstance(element, ast.Field):
-                hex_value = None
-                
-                # Check for [(hex) = 0xNN] option
-                if hasattr(element, 'options') and element.options:
-                    for opt in element.options:
-                        opt_name = getattr(opt, 'name', None)
-                        opt_value = getattr(opt, 'value', None)
-                        if opt_name and '(hex)' in str(opt_name):
-                            # Parse hex value
-                            try:
-                                hex_value = int(str(opt_value), 16)
-                            except (ValueError, TypeError):
-                                hex_value = opt_value
-                
-                field = FrameFormatField(element.name, element.type, hex_value)
-                self.fields.append(field)
-                
-                # Track start bytes
-                if field.is_start_byte and hex_value is not None:
-                    self.start_bytes.append((element.name, hex_value))
-                    self.header_size += 1
-                    
-                # Track CRC bytes
-                if field.is_crc:
-                    self.has_crc = True
-                    self.crc_bytes += 1
-                    self.footer_size += 1
-                    
-                # Track length field
-                if field.is_length:
-                    self.has_length = True
-                    if element.type == 'uint16':
-                        self.length_bytes = 2
-                    else:
-                        self.length_bytes = 1
-                    self.header_size += self.length_bytes
-                    
-                # Track payload/msg_id (1 byte for msg_id)
-                if field.is_payload or field.is_msg_id:
-                    self.header_size += 1
-                
-                # Track additional header fields (sequence, system_id, component_id, package_id)
-                if field.is_header_field:
-                    self.header_size += 1
-                    
-        return True
+    @property
+    def is_length(self) -> bool:
+        return 'length' in self.name.lower() or 'len' in self.name.lower()
     
-    def get_enum_value(self):
-        """Get the enum value name for this frame format"""
-        # Convert CamelCase to UPPER_SNAKE_CASE
-        import re
-        name = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', self.name)
-        name = re.sub('([a-z0-9])([A-Z])', r'\1_\2', name)
-        return name.upper()
+    @property
+    def is_msg_id(self) -> bool:
+        return 'msg_id' in self.name.lower()
+
+
+@dataclass
+class HeaderDefinition:
+    """Defines a header type (start byte pattern)"""
+    name: str
+    header_type: HeaderType
+    start_bytes: List[Tuple[str, int]] = field(default_factory=list)  # [(name, hex_value), ...]
+    num_start_bytes: int = 0
+    payload_type_encoded: bool = False  # True if start byte encodes payload type (Tiny, Basic)
     
-    def get_payload_type(self):
-        """
-        Get the payload type identifier for this frame format.
-        
-        The payload type identifies the structure of the payload portion,
-        excluding start bytes. Formats with the same payload type can share
-        payload parsing/encoding logic.
-        
-        Returns a tuple: (has_crc, has_length, length_bytes, header_fields_tuple)
-        where header_fields_tuple identifies additional header fields.
-        """
-        # Get list of header fields (sequence, system_id, component_id, package_id)
-        header_fields = []
-        for field in self.fields:
-            if field.is_sequence:
-                header_fields.append('sequence')
-            if field.is_system_id:
-                header_fields.append('system_id')
-            if field.is_component_id:
-                header_fields.append('component_id')
-            if field.is_package_id:
-                header_fields.append('package_id')
-        
-        return (self.has_crc, self.has_length, self.length_bytes, tuple(header_fields))
+    @property
+    def size(self) -> int:
+        return self.num_start_bytes
+
+
+@dataclass
+class PayloadDefinition:
+    """Defines a payload type (header fields + footer)"""
+    name: str
+    payload_type: PayloadType
+    fields: List[PayloadField] = field(default_factory=list)
+    has_crc: bool = False
+    crc_bytes: int = 0
+    has_length: bool = False
+    length_bytes: int = 1  # 1 for uint8, 2 for uint16
+    has_sequence: bool = False
+    has_system_id: bool = False
+    has_component_id: bool = False
+    has_package_id: bool = False
     
-    def get_payload_header_size(self):
-        """
-        Get the size of the payload header (excluding start bytes).
-        
-        This includes: msg_id (1) + length_bytes (if any) + additional header fields
-        """
-        return self.header_size - len(self.start_bytes)
+    @property
+    def header_size(self) -> int:
+        """Size of payload header (before message data)"""
+        size = 1  # msg_id is always 1 byte
+        size += self.length_bytes if self.has_length else 0
+        size += 1 if self.has_sequence else 0
+        size += 1 if self.has_system_id else 0
+        size += 1 if self.has_component_id else 0
+        size += 1 if self.has_package_id else 0
+        return size
     
-    def __repr__(self):
-        return (f"FrameFormat({self.name}, start_bytes={self.start_bytes}, "
-                f"has_crc={self.has_crc}, has_length={self.has_length})")
+    @property
+    def footer_size(self) -> int:
+        """Size of payload footer (after message data)"""
+        return self.crc_bytes
+    
+    @property
+    def overhead(self) -> int:
+        """Total overhead (header + footer)"""
+        return self.header_size + self.footer_size
 
 
 class FrameFormatCollection:
-    """Collection of frame formats parsed from a proto file"""
+    """Collection of header and payload definitions parsed from a proto file"""
     
     def __init__(self):
-        self.formats = {}
-        self.format_enum = None  # The FrameFormatType enum if present
-        
-    def parse_file(self, filename):
+        self.headers: Dict[HeaderType, HeaderDefinition] = {}
+        self.payloads: Dict[PayloadType, PayloadDefinition] = {}
+        self._header_type_enum = None
+        self._payload_type_enum = None
+    
+    def parse_file(self, filename: str):
         """Parse frame formats from a proto file"""
         with open(filename, 'r') as f:
             result = Parser().parse(f.read())
-            
+        
         for element in result.file_elements:
             if isinstance(element, ast.Enum):
-                if element.name == 'FrameFormatType':
-                    self.format_enum = element
-                    
+                if element.name == 'HeaderType':
+                    self._header_type_enum = element
+                elif element.name == 'PayloadType':
+                    self._payload_type_enum = element
             elif isinstance(element, ast.Message):
-                # Skip non-frame messages like BasicMessage, FrameFormatConfig
-                if self._is_frame_format_message(element):
-                    frame = FrameFormat(element.name)
-                    if frame.parse(element):
-                        self.formats[element.name] = frame
-                        
-    def _is_frame_format_message(self, message):
-        """Check if a message defines a frame format"""
-        # Frame format messages typically have start bytes or are named *Frame*
-        has_start = False
-        has_payload_or_id = False
+                self._parse_message(element)
+    
+    def _parse_message(self, message: ast.Message):
+        """Parse a message definition"""
+        name = message.name
+        
+        # Parse Header definitions
+        if name.startswith('Header'):
+            header = self._parse_header(message)
+            if header:
+                self.headers[header.header_type] = header
+        
+        # Parse Payload definitions
+        elif name.startswith('Payload'):
+            payload = self._parse_payload(message)
+            if payload:
+                self.payloads[payload.payload_type] = payload
+    
+    def _parse_header(self, message: ast.Message) -> Optional[HeaderDefinition]:
+        """Parse a header message definition"""
+        name = message.name
+        
+        # Map message name to HeaderType
+        header_type_map = {
+            'HeaderNone': HeaderType.NONE,
+            'HeaderTiny': HeaderType.TINY,
+            'HeaderBasic': HeaderType.BASIC,
+            'HeaderUbx': HeaderType.UBX,
+            'HeaderMavlinkV1': HeaderType.MAVLINK_V1,
+            'HeaderMavlinkV2': HeaderType.MAVLINK_V2,
+        }
+        
+        header_type = header_type_map.get(name)
+        if header_type is None:
+            return None
+        
+        header = HeaderDefinition(
+            name=name,
+            header_type=header_type,
+            payload_type_encoded=(header_type in [HeaderType.TINY, HeaderType.BASIC])
+        )
         
         for element in message.elements:
             if isinstance(element, ast.Field):
-                name = element.name.lower()
-                if 'start' in name or 'sync' in name or 'stx' in name:
-                    has_start = True
-                if name == 'payload' or 'msg_id' in name:
-                    has_payload_or_id = True
-                    
-        # Consider it a frame format if it has start bytes and payload/msg_id,
-        # or if the name contains 'Frame' and has multiple fields
-        name_indicates_frame = 'Frame' in message.name or message.name.endswith('Frame')
+                hex_value = self._get_hex_option(element)
+                if hex_value is not None:
+                    header.start_bytes.append((element.name, hex_value))
+                    header.num_start_bytes += 1
+                elif element.name in ['start_byte', 'start_byte1', 'start_byte2', 'sync1', 'sync2', 'stx']:
+                    # Variable start byte (encodes payload type)
+                    header.start_bytes.append((element.name, None))
+                    header.num_start_bytes += 1
         
-        return (has_start and has_payload_or_id) or (name_indicates_frame and len(message.elements) > 1)
+        return header
     
-    def get_format_by_start_byte(self, start_byte):
-        """Find frame format(s) that match a given start byte"""
-        matches = []
-        for name, fmt in self.formats.items():
-            if fmt.start_bytes:
-                if fmt.start_bytes[0][1] == start_byte:
-                    matches.append(fmt)
-        return matches
-    
-    def get_payload_types(self):
-        """
-        Get unique payload types and their representative formats.
+    def _parse_payload(self, message: ast.Message) -> Optional[PayloadDefinition]:
+        """Parse a payload message definition"""
+        name = message.name
         
-        Returns a dictionary mapping payload_type tuple to list of formats with that type.
-        This allows code generation to create shared payload parsers.
-        """
-        payload_types = {}
-        for fmt in self.formats.values():
-            payload_type = fmt.get_payload_type()
-            if payload_type not in payload_types:
-                payload_types[payload_type] = []
-            payload_types[payload_type].append(fmt)
-        return payload_types
+        # Map message name to PayloadType
+        payload_type_map = {
+            'PayloadMinimal': PayloadType.MINIMAL,
+            'PayloadDefault': PayloadType.DEFAULT,
+            'PayloadExtendedMsgIds': PayloadType.EXTENDED_MSG_IDS,
+            'PayloadExtendedLength': PayloadType.EXTENDED_LENGTH,
+            'PayloadExtended': PayloadType.EXTENDED,
+            'PayloadSysComp': PayloadType.SYS_COMP,
+            'PayloadSeq': PayloadType.SEQ,
+            'PayloadMultiSystemStream': PayloadType.MULTI_SYSTEM_STREAM,
+            'PayloadExtendedMultiSystemStream': PayloadType.EXTENDED_MULTI_SYSTEM_STREAM,
+            'PayloadUbx': PayloadType.UBX,
+            'PayloadMavlinkV1': PayloadType.MAVLINK_V1,
+            'PayloadMavlinkV2': PayloadType.MAVLINK_V2,
+        }
+        
+        payload_type = payload_type_map.get(name)
+        if payload_type is None:
+            return None
+        
+        payload = PayloadDefinition(
+            name=name,
+            payload_type=payload_type
+        )
+        
+        for element in message.elements:
+            if isinstance(element, ast.Field):
+                field_size = 2 if element.type == 'uint16' else 1
+                pf = PayloadField(element.name, element.type, field_size)
+                payload.fields.append(pf)
+                
+                # Track field types
+                if pf.is_crc:
+                    payload.has_crc = True
+                    payload.crc_bytes += field_size
+                
+                if pf.is_length:
+                    payload.has_length = True
+                    payload.length_bytes = field_size
+                
+                if element.name == 'sequence':
+                    payload.has_sequence = True
+                if element.name == 'system_id':
+                    payload.has_system_id = True
+                if element.name == 'component_id':
+                    payload.has_component_id = True
+                if element.name == 'package_id':
+                    payload.has_package_id = True
+        
+        return payload
+    
+    def _get_hex_option(self, field: ast.Field) -> Optional[int]:
+        """Extract [(hex) = 0xNN] option value from a field"""
+        if hasattr(field, 'options') and field.options:
+            for opt in field.options:
+                opt_name = getattr(opt, 'name', None)
+                opt_value = getattr(opt, 'value', None)
+                if opt_name and '(hex)' in str(opt_name):
+                    try:
+                        return int(str(opt_value), 16)
+                    except (ValueError, TypeError):
+                        pass
+        return None
+    
+    def get_header(self, header_type: HeaderType) -> Optional[HeaderDefinition]:
+        """Get header definition by type"""
+        return self.headers.get(header_type)
+    
+    def get_payload(self, payload_type: PayloadType) -> Optional[PayloadDefinition]:
+        """Get payload definition by type"""
+        return self.payloads.get(payload_type)
+    
+    def get_standard_payloads(self) -> List[PayloadDefinition]:
+        """Get standard payload types (not third-party protocols)"""
+        return [p for p in self.payloads.values() if p.payload_type.value < 100]
+    
+    def get_third_party_payloads(self) -> List[PayloadDefinition]:
+        """Get third-party protocol payload types"""
+        return [p for p in self.payloads.values() if p.payload_type.value >= 100]
     
     def __iter__(self):
-        return iter(self.formats.values())
+        """Iterate over payload definitions"""
+        return iter(self.payloads.values())
     
     def __len__(self):
-        return len(self.formats)
+        return len(self.payloads)
 
 
-def parse_frame_formats(filename):
+def parse_frame_formats(filename: str) -> FrameFormatCollection:
     """Parse frame formats from a proto file"""
     collection = FrameFormatCollection()
     collection.parse_file(filename)
@@ -249,18 +296,33 @@ def parse_frame_formats(filename):
 if __name__ == '__main__':
     # Test with frame_formats.proto
     import sys
+    import os
+    
     if len(sys.argv) > 1:
         filename = sys.argv[1]
     else:
-        filename = 'examples/frame_formats.proto'
-        
+        # Default to the frame_formats.proto in the same directory
+        filename = os.path.join(os.path.dirname(__file__), 'frame_formats.proto')
+    
     collection = parse_frame_formats(filename)
     
-    print(f"Found {len(collection)} frame formats:")
-    for fmt in collection:
-        print(f"\n{fmt.name}:")
-        print(f"  Start bytes: {fmt.start_bytes}")
-        print(f"  Has CRC: {fmt.has_crc} ({fmt.crc_bytes} bytes)")
-        print(f"  Has Length: {fmt.has_length} ({fmt.length_bytes} bytes)")
-        print(f"  Header size: {fmt.header_size}")
-        print(f"  Footer size: {fmt.footer_size}")
+    print(f"Found {len(collection.headers)} header types:")
+    for header in collection.headers.values():
+        print(f"  {header.name}: {header.num_start_bytes} start bytes, "
+              f"payload_type_encoded={header.payload_type_encoded}")
+        for name, value in header.start_bytes:
+            if value is not None:
+                print(f"    {name}: 0x{value:02X}")
+            else:
+                print(f"    {name}: (variable)")
+    
+    print(f"\nFound {len(collection.payloads)} payload types:")
+    for payload in collection.payloads.values():
+        print(f"\n  {payload.name}:")
+        print(f"    has_crc: {payload.has_crc} ({payload.crc_bytes} bytes)")
+        print(f"    has_length: {payload.has_length} ({payload.length_bytes} bytes)")
+        print(f"    has_sequence: {payload.has_sequence}")
+        print(f"    has_system_id: {payload.has_system_id}")
+        print(f"    has_component_id: {payload.has_component_id}")
+        print(f"    has_package_id: {payload.has_package_id}")
+        print(f"    overhead: {payload.overhead} bytes")

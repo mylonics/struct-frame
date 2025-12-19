@@ -150,7 +150,27 @@ class FileTsGen():
 
         yield "import { Struct, ExtractType } from './struct_base';\n"
         yield "import { struct_frame_buffer } from './struct_frame_types';\n"
-        yield "import { msg_encode, msg_reserve, msg_finish } from './struct_frame';\n\n"
+        yield "import { msg_encode, msg_reserve, msg_finish } from './struct_frame';\n"
+        
+        # Collect cross-package type dependencies
+        external_types = {}  # {package_name: set of type names}
+        if package.messages:
+            for key, msg in package.messages.items():
+                for field_name, field in msg.fields.items():
+                    type_package = getattr(field, 'type_package', None)
+                    # Only track types from other packages that aren't enums
+                    if type_package and type_package != package.name and not field.isEnum:
+                        if type_package not in external_types:
+                            external_types[type_package] = set()
+                        external_types[type_package].add(field.fieldType)
+        
+        # Generate import statements for cross-package types
+        for ext_package, type_names in sorted(external_types.items()):
+            # Use the type name directly (as it appears in msg.name) - don't convert case
+            imports = ', '.join('%s_%s' % (ext_package, t) for t in sorted(type_names))
+            yield "import { %s } from './%s.sf';\n" % (imports, ext_package)
+        
+        yield "\n"
 
         # Add package ID constant if present
         if package.package_id is not None:

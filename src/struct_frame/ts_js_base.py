@@ -108,7 +108,9 @@ class BaseFieldGen:
                     base_type = 'UInt8'
                     array_method = 'UInt8Array'
                 else:
-                    base_type = '%s_%s' % (packageName, type_name)
+                    # Use field.type_package to get the package where the field's type is defined
+                    type_package = getattr(field, 'type_package', None) or packageName
+                    base_type = '%s_%s' % (type_package, type_name)
                     array_method = 'StructArray'
 
                 if field.size_option is not None:  # Fixed size array [size=X]
@@ -145,15 +147,22 @@ class BaseFieldGen:
             else:
                 # Regular types
                 if type_name in types_dict:
+                    # Built-in primitive type - use method directly
                     type_name = types_dict[type_name]
+                    if isEnum:
+                        result += "    .UInt8('%s')" % var_name
+                    else:
+                        result += "    .%s('%s')" % (type_name, var_name)
                 else:
-                    type_name = '%s_%s' % (packageName,
-                                           StyleC.struct_name(type_name))
-
-                if isEnum:
-                    result += "    .UInt8('%s')" % var_name
-                else:
-                    result += "    .%s('%s')" % (type_name, var_name)
+                    # Custom message type - use StructArray with length 1
+                    type_package = getattr(field, 'type_package', None) or packageName
+                    # Use type name directly without case conversion to match how exports are generated
+                    struct_name = '%s_%s' % (type_package, type_name)
+                    if isEnum:
+                        result += "    .UInt8('%s')" % var_name
+                    else:
+                        # Single nested struct uses StructArray with count=1
+                        result += "    .StructArray('%s', 1, %s)" % (var_name, struct_name)
 
         # Prepend leading comments
         leading_comment = field.comments
