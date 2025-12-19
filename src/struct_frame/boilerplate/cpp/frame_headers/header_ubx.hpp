@@ -9,7 +9,7 @@ namespace FrameParsers {
 namespace FrameHeaders {
 
 /* UBX header configuration */
-constexpr HeaderConfig HEADER_UBX_CONFIG = {
+const HeaderConfig HEADER_UBX_CONFIG = {
     HeaderType::UBX,
     "UBX",
     {UBX_SYNC1, UBX_SYNC2},

@@ -9,7 +9,7 @@ namespace FrameParsers {
 namespace FrameHeaders {
 
 /* Tiny header configuration */
-constexpr HeaderConfig HEADER_TINY_CONFIG = {
+const HeaderConfig HEADER_TINY_CONFIG = {
     HeaderType::TINY,
     "Tiny",
     {0, 0},  /* Dynamic - depends on payload type */

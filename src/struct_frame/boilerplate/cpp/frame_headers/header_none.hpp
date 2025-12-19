@@ -9,7 +9,7 @@ namespace FrameParsers {
 namespace FrameHeaders {
 
 /* None header configuration */
-constexpr HeaderConfig HEADER_NONE_CONFIG = {
+const HeaderConfig HEADER_NONE_CONFIG = {
     HeaderType::NONE,
     "None",
     {0, 0},

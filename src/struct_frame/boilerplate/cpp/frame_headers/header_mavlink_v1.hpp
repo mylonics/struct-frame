@@ -9,7 +9,7 @@ namespace FrameParsers {
 namespace FrameHeaders {
 
 /* Mavlink V1 header configuration */
-constexpr HeaderConfig HEADER_MAVLINK_V1_CONFIG = {
+const HeaderConfig HEADER_MAVLINK_V1_CONFIG = {
     HeaderType::MAVLINK_V1,
     "MavlinkV1",
     {MAVLINK_V1_STX, 0},

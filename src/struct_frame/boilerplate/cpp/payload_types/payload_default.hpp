@@ -10,7 +10,7 @@ namespace FrameParsers {
 namespace PayloadTypes {
 
 /* Default payload configuration */
-constexpr PayloadConfig PAYLOAD_DEFAULT_CONFIG = {
+const PayloadConfig PAYLOAD_DEFAULT_CONFIG = {
     PayloadType::DEFAULT,
     "Default",
     true,  /* has_crc */

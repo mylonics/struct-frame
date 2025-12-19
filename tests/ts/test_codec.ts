@@ -14,12 +14,7 @@ export const EXPECTED_VALUES = {
 };
 
 // Import generated modules dynamically
-const { BasicDefault } = require('./BasicDefault');
-const { BasicMinimal } = require('./BasicMinimal');
-const { TinyDefault } = require('./TinyDefault');
-const { TinyMinimal } = require('./TinyMinimal');
-const { BasicExtended } = require('./BasicExtended');
-const { BasicExtendedMultiSystemStream } = require('./BasicExtendedMultiSystemStream');
+const { BasicDefault, BasicMinimal, TinyDefault, TinyMinimal, BasicExtended, BasicExtendedMultiSystemStream } = require('./frame_compat');
 const {
   serialization_test_SerializationTestMessage,
   serialization_test_SerializationTestMessage_msgid,

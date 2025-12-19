@@ -9,7 +9,7 @@ namespace FrameParsers {
 namespace FrameHeaders {
 
 /* Basic header configuration */
-constexpr HeaderConfig HEADER_BASIC_CONFIG = {
+const HeaderConfig HEADER_BASIC_CONFIG = {
     HeaderType::BASIC,
     "Basic",
     {BASIC_START_BYTE, 0},  /* First byte fixed, second dynamic */

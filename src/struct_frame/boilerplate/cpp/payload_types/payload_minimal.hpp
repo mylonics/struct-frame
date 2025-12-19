@@ -10,7 +10,7 @@ namespace FrameParsers {
 namespace PayloadTypes {
 
 /* Minimal payload configuration */
-constexpr PayloadConfig PAYLOAD_MINIMAL_CONFIG = {
+const PayloadConfig PAYLOAD_MINIMAL_CONFIG = {
     PayloadType::MINIMAL,
     "Minimal",
     false, /* has_crc */

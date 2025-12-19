@@ -8,11 +8,18 @@
 namespace FrameParsers {
 namespace PayloadTypes {
 
-constexpr PayloadConfig PAYLOAD_EXTENDED_CONFIG = {
-    PayloadType::EXTENDED,
-    "Extended",
-    true, true, 2, false, false, false, true,
-    "[LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2] - Extended format with 2-byte length, package ID, and CRC."
+const PayloadConfig PAYLOAD_EXTENDED_CONFIG = {
+    .payload_type = PayloadType::EXTENDED,
+    .name = "Extended",
+    .has_crc = true,
+    .crc_bytes = 2,
+    .has_length = true,
+    .length_bytes = 2,
+    .has_sequence = false,
+    .has_system_id = false,
+    .has_component_id = false,
+    .has_package_id = true,
+    .description = "[LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2] - Extended format with 2-byte length, package ID, and CRC."
 };
 
 } // namespace PayloadTypes

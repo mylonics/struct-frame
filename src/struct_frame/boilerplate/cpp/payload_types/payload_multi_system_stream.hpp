@@ -8,11 +8,18 @@
 namespace FrameParsers {
 namespace PayloadTypes {
 
-constexpr PayloadConfig PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG = {
-    PayloadType::MULTI_SYSTEM_STREAM,
-    "MultiSystemStream",
-    true, 2, true, 1, true, true, true, false,
-    "[SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2] - Multi-system stream format."
+const PayloadConfig PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG = {
+    .payload_type = PayloadType::MULTI_SYSTEM_STREAM,
+    .name = "MultiSystemStream",
+    .has_crc = true,
+    .crc_bytes = 2,
+    .has_length = true,
+    .length_bytes = 1,
+    .has_sequence = true,
+    .has_system_id = true,
+    .has_component_id = true,
+    .has_package_id = false,
+    .description = "[SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2] - Multi-system stream format."
 };
 
 } // namespace PayloadTypes

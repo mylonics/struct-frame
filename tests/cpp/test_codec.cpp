@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "frame_parsers.hpp"
+#include "frame_compat.hpp"
 #include "serialization_test.sf.hpp"
 
 using namespace FrameParsers;
