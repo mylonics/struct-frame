@@ -247,7 +247,7 @@ static inline size_t frame_encode_payload_minimal(
         yield '\n/* Frame Profile Aliases */\n'
         yield '/* Standard profile aliases for common use cases */\n'
         yield 'typedef struct basic_default_frame_parser_t profile_standard_t;  /* General Serial / UART */\n'
-        yield 'typedef struct tiny_default_frame_parser_t profile_sensor_t;     /* Low-Bandwidth / Radio */\n'
+        yield 'typedef struct tiny_minimal_frame_parser_t profile_sensor_t;     /* Low-Bandwidth / Radio */\n'
         yield 'typedef struct none_minimal_frame_parser_t profile_ipc_t;        /* Trusted / Board-to-Board */\n'
         yield 'typedef struct basic_extended_frame_parser_t profile_bulk_t;     /* Firmware / File Transfer */\n'
         yield 'typedef struct basic_extended_multi_system_stream_frame_parser_t profile_network_t;  /* Multi-Node Mesh / Swarm */\n'

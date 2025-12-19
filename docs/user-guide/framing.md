@@ -11,7 +11,7 @@ Instead of choosing individual frame features, **use these intent-based profiles
 | Profile | Maps To | Overhead | Max Payload | Multi-Node | Reliability (Seq) | Use Case |
 |---------|---------|----------|-------------|------------|-------------------|----------|
 | **Profile.Standard** | `BasicDefault` | 6 bytes | 255 bytes | No | No | General Serial / UART |
-| **Profile.Sensor** | `TinyDefault` | 4 bytes | 255 bytes | No | No | Low-Bandwidth / Radio |
+| **Profile.Sensor** | `TinyMinimal` | 2 bytes | N/A | No | No | Low-Bandwidth / Radio |
 | **Profile.IPC** | `NoneMinimal` | 1 byte | N/A | No | No | Trusted / Board-to-Board |
 | **Profile.Bulk** | `BasicExtended` | 8 bytes | 64 KB | No | No | Firmware / File Transfer |
 | **Profile.Network** | `BasicExtendedMultiSystemStream` | 11 bytes | 64 KB | Yes | Yes | Multi-Node Mesh / Swarm |
@@ -31,7 +31,7 @@ START: What kind of system do you have?
 │  └─ YES → Profile.IPC (NoneMinimal)
 │
 ├─ Are you bandwidth-starved? (radio, low-power sensors)
-│  └─ YES → Profile.Sensor (TinyDefault)
+│  └─ YES → Profile.Sensor (TinyMinimal)
 │
 ├─ Are you sending files > 255B? (firmware updates, logs, bulk transfers)
 │  └─ YES → Profile.Bulk (BasicExtended)
@@ -69,15 +69,15 @@ Understanding how framing works helps when debugging with logic analyzers. Here'
                                                              CRC checksum
 ```
 
-#### Profile.Sensor (TinyDefault) - 4 bytes overhead
+#### Profile.Sensor (TinyMinimal) - 2 bytes overhead
 
 ```
-┌────────┬────────┬─────────────────┬─────────┬─────────┐
-│ START  │ LENGTH │ YOUR PAYLOAD    │  CRC1   │  CRC2   │
-│  0x71  │ 1 byte │   (variable)    │ 1 byte  │ 1 byte  │
-└────────┴────────┴─────────────────┴─────────┴─────────┘
-   ▲                  Actual data         ▲
-   └─ Single sync byte (lower overhead)   └─ Error detection
+┌────────┬────────┬─────────────────┐
+│ START  │ MSG_ID │ YOUR PAYLOAD    │
+│  0x70  │ 1 byte │   (variable)    │
+└────────┴────────┴─────────────────┘
+   ▲                  Actual data
+   └─ Single sync byte (minimal overhead)
 ```
 
 #### Profile.IPC (NoneMinimal) - 1 byte overhead

@@ -512,7 +512,7 @@ class FrameParserCSharpGen:
         yield '        /// <summary>General Serial / UART</summary>\n'
         yield '        public static BasicDefaultFrameParser ProfileStandard() => new BasicDefaultFrameParser();\n'
         yield '        /// <summary>Low-Bandwidth / Radio</summary>\n'
-        yield '        public static TinyDefaultFrameParser ProfileSensor() => new TinyDefaultFrameParser();\n'
+        yield '        public static TinyMinimalFrameParser ProfileSensor() => new TinyMinimalFrameParser();\n'
         yield '        /// <summary>Trusted / Board-to-Board</summary>\n'
         yield '        public static NoneMinimalFrameParser ProfileIPC() => new NoneMinimalFrameParser();\n'
         yield '        /// <summary>Firmware / File Transfer</summary>\n'

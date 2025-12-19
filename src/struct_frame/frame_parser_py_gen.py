@@ -490,7 +490,7 @@ def create_frame_parser_class(config: FrameParserConfig):
         yield '\n# Frame Profile Aliases\n'
         yield '# Standard profile aliases for common use cases\n'
         yield 'ProfileStandard = BasicDefault  # General Serial / UART\n'
-        yield 'ProfileSensor = TinyDefault     # Low-Bandwidth / Radio\n'
+        yield 'ProfileSensor = TinyMinimal     # Low-Bandwidth / Radio\n'
         yield 'ProfileIPC = NoneMinimal        # Trusted / Board-to-Board\n'
         yield 'ProfileBulk = BasicExtended     # Firmware / File Transfer\n'
         yield 'ProfileNetwork = BasicExtendedMultiSystemStream  # Multi-Node Mesh / Swarm\n'

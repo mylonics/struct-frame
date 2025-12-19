@@ -151,7 +151,7 @@ const frameFormats = {
   // Tiny frames
   tiny_minimal: {
     name: 'TinyMinimal',
-    profile: 'Custom',
+    profile: 'Profile.Sensor',
     overhead: 2,
     maxPayload: 255,
     startBytes: '0x70',
@@ -159,11 +159,11 @@ const frameFormats = {
   },
   tiny_default: {
     name: 'TinyDefault',
-    profile: 'Profile.Sensor',
-    overhead: 4,
+    profile: 'Custom',
+    overhead: 5,
     maxPayload: 255,
     startBytes: '0x71',
-    structure: '[0x71] [LEN] [PAYLOAD] [CRC1] [CRC2]'
+    structure: '[0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]'
   },
   tiny_extended_msg_ids: {
     name: 'TinyExtendedMsgIds',
