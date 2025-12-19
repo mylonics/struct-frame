@@ -21,18 +21,6 @@
           "display_name": "ProfileSensor",
           "profile": "TinyMinimal",
           "output_file": "{lang_name}_profile_sensor_test_data.bin"
-        },
-        {
-          "name": "profile_bulk",
-          "display_name": "ProfileBulk",
-          "profile": "BasicExtended",
-          "output_file": "{lang_name}_profile_bulk_test_data.bin"
-        },
-        {
-          "name": "profile_network",
-          "display_name": "ProfileNetwork",
-          "profile": "BasicExtendedMultiSystemStream",
-          "output_file": "{lang_name}_profile_network_test_data.bin"
         }
       ]
     }

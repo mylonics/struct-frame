@@ -15,14 +15,22 @@ const EXPECTED_VALUES = {
 };
 
 /**
- * Get the parser class for a frame format.
+ * Get the parser class for a frame format or profile.
  */
 function getParserClass(formatName) {
   const formatMap = {
+    // Profile names (preferred)
+    'profile_standard': 'BasicDefault',
+    'profile_sensor': 'TinyMinimal',
+    'profile_bulk': 'BasicExtended',
+    'profile_network': 'BasicExtendedMultiSystemStream',
+    // Legacy direct format names
     'basic_default': 'BasicDefault',
     'basic_minimal': 'BasicMinimal',
     'tiny_default': 'TinyDefault',
     'tiny_minimal': 'TinyMinimal',
+    'basic_extended': 'BasicExtended',
+    'basic_extended_multi_system_stream': 'BasicExtendedMultiSystemStream',
   };
 
   const className = formatMap[formatName];
