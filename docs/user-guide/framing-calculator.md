@@ -4,11 +4,9 @@ Use this interactive tool to select the features you need and discover which fra
 
 <div id="calculator-app">
 
-## Select Your Requirements
-
 <div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
 
-### Frame Type
+**Frame Type**
 <div style="margin: 10px 0;">
   <label style="display: block; margin: 5px 0;">
     <input type="radio" name="frameType" value="basic" checked onchange="updateCalculator()"> 
@@ -24,7 +22,7 @@ Use this interactive tool to select the features you need and discover which fra
   </label>
 </div>
 
-### Features
+**Features**
 <div style="margin: 10px 0;">
   <label style="display: block; margin: 5px 0;">
     <input type="checkbox" id="hasCrc" checked onchange="updateCalculator()"> 
@@ -54,10 +52,8 @@ Use this interactive tool to select the features you need and discover which fra
 
 </div>
 
-## Results
-
-<div id="results" style="background: #e8f5e9; padding: 20px; border-radius: 8px; border: 2px solid #4caf50;">
-  <h3 style="margin-top: 0; color: #2e7d32;">Recommended Frame Format</h3>
+<div id="results" style="background: #e8f5e9; padding: 20px; border-radius: 8px; border: 2px solid #4caf50; margin-top: 20px;">
+  <h3 style="margin-top: 0; color: #2e7d32;">Selected Frame Format</h3>
   <div id="frameFormatName" style="font-size: 24px; font-weight: bold; color: #1b5e20; margin: 10px 0;">
     BasicDefault
   </div>
@@ -145,7 +141,7 @@ const frameFormats = {
   },
   basic_extended_multi_system_stream: {
     name: 'BasicExtendedMultiSystemStream',
-    profile: 'Profile.Fleet',
+    profile: 'Profile.Network',
     overhead: 11,
     maxPayload: 65535,
     startBytes: '0x90, 0x78',
@@ -164,10 +160,10 @@ const frameFormats = {
   tiny_default: {
     name: 'TinyDefault',
     profile: 'Profile.Sensor',
-    overhead: 5,
+    overhead: 4,
     maxPayload: 255,
     startBytes: '0x71',
-    structure: '[0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]'
+    structure: '[0x71] [LEN] [PAYLOAD] [CRC1] [CRC2]'
   },
   tiny_extended_msg_ids: {
     name: 'TinyExtendedMsgIds',
@@ -392,18 +388,6 @@ Footer:
 - CRC:             +2 bytes (if enabled)
 ```
 
-### Profile Mapping
-
-The calculator shows which **Standard Profile** matches your selection:
-
-| Your Selection | Recommended Profile |
-|----------------|---------------------|
-| Basic + Default features | **Profile.Standard** |
-| Tiny + Default features | **Profile.Sensor** |
-| None + Minimal (no CRC, no length) | **Profile.IPC** |
-| Basic + Extended length + Package ID | **Profile.Bulk** |
-| Basic + Everything (Routing + Sequence + Extended) | **Profile.Fleet** |
-
 ### Next Steps
 
 1. **Copy the frame format name** (e.g., `BasicDefault`)
@@ -447,5 +431,5 @@ The calculator shows which **Standard Profile** matches your selection:
 ## Additional Resources
 
 - [Complete Framing Guide](framing.md)
-- [Frame Format Reference](framing.md#complete-frame-format-reference)
+- [Framing Architecture](framing-architecture.md)
 - [SDK Overview](sdk-overview.md)
