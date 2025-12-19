@@ -10,11 +10,11 @@ Instead of choosing individual frame features, **use these intent-based profiles
 
 | Profile | Maps To | Overhead | Max Payload | Multi-Node | Reliability (Seq) | Use Case |
 |---------|---------|----------|-------------|------------|-------------------|----------|
-| **Profile.Standard** | `BasicDefault` | 6 bytes | 255 bytes | No | No | General purpose UART/Serial |
-| **Profile.IoT** | `TinyDefault` | 5 bytes | 255 bytes | No | No | Bandwidth/Power constrained |
-| **Profile.Bulk** | `BasicExtended` | 8 bytes | 64 KB | No | No | Large payloads (Firmware, Logs) |
-| **Profile.Network** | `BasicMultiSystemStream` | 9 bytes | 255 bytes | Yes | Yes | Multi-node routing + Loss detection |
-| **Profile.MissionCritical** | `BasicExtendedMultiSystemStream` | 11 bytes | 64 KB | Yes | Yes | Everything included |
+| **Profile.Standard** | `BasicDefault` | 6 bytes | 255 bytes | No | No | General Serial / UART |
+| **Profile.Sensor** | `TinyDefault` | 5 bytes | 255 bytes | No | No | Low-Bandwidth / Radio |
+| **Profile.IPC** | `NoneMinimal` | 1 byte | N/A | No | No | Trusted / Board-to-Board |
+| **Profile.Bulk** | `BasicExtended` | 8 bytes | 64 KB | No | No | Firmware / File Transfer |
+| **Profile.Fleet** | `BasicExtendedMultiSystemStream` | 11 bytes | 64 KB | Yes | Yes | Multi-Node Mesh / Swarm |
 
 !!! tip "Interactive Calculator"
     Use the [Frame Profile Calculator](framing-calculator.md) to select features and see which profile matches your needs!
@@ -22,27 +22,22 @@ Instead of choosing individual frame features, **use these intent-based profiles
 ### Choose Your Frame: Decision Tree
 
 ```
-START: What kind of link do you have?
+START: What kind of system do you have?
 │
-├─ Is the link noisy or external? (e.g., RS-485, long cables, RF)
-│  ├─ YES → Use Basic frames (2 start bytes for better sync)
-│  └─ NO  → Use Tiny frames (1 start byte saves bandwidth)
+├─ Do you need routing? (multi-node mesh, swarm)
+│  └─ YES → Profile.Fleet (BasicExtendedMultiSystemStream)
 │
-├─ Do you have multiple devices/nodes? (multi-vehicle, distributed system)
-│  ├─ YES → Need routing (System ID + Component ID)
-│  │        └─ Do you need packet loss detection?
-│  │           ├─ YES → Profile.Network (BasicMultiSystemStream)
-│  │           └─ NO  → BasicSysComp
-│  └─ NO  → Single point-to-point communication
-│           └─ Continue below...
+├─ Is it a trusted internal link? (SPI, Shared Memory, Board-to-Board)
+│  └─ YES → Profile.IPC (NoneMinimal)
 │
-├─ Are your messages larger than 255 bytes? (firmware updates, logs)
-│  ├─ YES → Profile.Bulk (BasicExtended) - supports up to 64KB
-│  └─ NO  → Continue below...
+├─ Are you bandwidth-starved? (radio, low-power sensors)
+│  └─ YES → Profile.Sensor (TinyDefault)
 │
-└─ Default choice:
-   ├─ Constrained (battery, bandwidth) → Profile.IoT (TinyDefault)
-   └─ Standard use → Profile.Standard (BasicDefault) ← **RECOMMENDED**
+├─ Are you sending files > 255B? (firmware updates, logs, bulk transfers)
+│  └─ YES → Profile.Bulk (BasicExtended)
+│
+└─ None of the above?
+   └─ Use Profile.Standard (BasicDefault) ← **RECOMMENDED**
 ```
 
 ### Visual Byte-Map Reference
@@ -74,7 +69,7 @@ Understanding how framing works helps when debugging with logic analyzers. Here'
                                                              CRC checksum
 ```
 
-#### Profile.IoT (TinyDefault) - 5 bytes overhead
+#### Profile.Sensor (TinyDefault) - 5 bytes overhead
 
 ```
 ┌────────┬────────┬────────┬─────────────────┬─────────┬─────────┐
@@ -83,6 +78,18 @@ Understanding how framing works helps when debugging with logic analyzers. Here'
 └────────┴────────┴────────┴─────────────────┴─────────┴─────────┘
    ▲                            Actual data         ▲
    └─ Single sync byte (lower overhead)             └─ Error detection
+```
+
+#### Profile.IPC (NoneMinimal) - 1 byte overhead
+
+```
+┌────────┬─────────────────┐
+│ MSG_ID │ YOUR PAYLOAD    │
+│ 1 byte │   (variable)    │
+└────────┴─────────────────┘
+           Actual data
+
+No framing overhead - for trusted internal links (SPI, Shared Memory)
 ```
 
 #### Profile.Bulk (BasicExtended) - 8 bytes overhead
@@ -95,19 +102,7 @@ Understanding how framing works helps when debugging with logic analyzers. Here'
                    └─ 16-bit length ──┘           └─ Package namespace
 ```
 
-#### Profile.Network (BasicMultiSystemStream) - 9 bytes overhead
-
-```
-┌────────┬────────┬──────┬────────┬───────┬────────┬────────┬──────────┬──────┬──────┐
-│ START1 │ START2 │ SEQ  │ SYS_ID │ COMP  │ LENGTH │ MSG_ID │ PAYLOAD  │ CRC1 │ CRC2 │
-│  0x90  │  0x77  │ 1 B  │  1 B   │  1 B  │  1 B   │  1 B   │ (var)    │ 1 B  │ 1 B  │
-└────────┴────────┴──────┴────────┴───────┴────────┴────────┴──────────┴──────┴──────┘
-                    ▲       └──────┴────┘
-                    │         Routing info (which device/component)
-                    └─ Sequence number (detect lost packets)
-```
-
-#### Profile.MissionCritical (BasicExtendedMultiSystemStream) - 11 bytes overhead
+#### Profile.Fleet (BasicExtendedMultiSystemStream) - 11 bytes overhead
 
 ```
 ┌────────┬────────┬─────┬────────┬──────┬────────┬────────┬────────┬────────┬─────────┬─────┬─────┐
@@ -115,7 +110,7 @@ Understanding how framing works helps when debugging with logic analyzers. Here'
 │  0x90  │  0x78  │ 1B  │  1B    │  1B  │  1B    │  1B    │  1B    │  1B    │ (64KB)  │ 1B  │ 1B  │
 └────────┴────────┴─────┴────────┴──────┴────────┴────────┴────────┴────────┴─────────┴─────┴─────┘
                     ▲     └───────┴────┘  └─ 16-bit length ┘         └─ Package namespace
-                    └─ Sequence for loss detection
+                    └─ Sequence for loss detection + Multi-node routing
 ```
 
 ---

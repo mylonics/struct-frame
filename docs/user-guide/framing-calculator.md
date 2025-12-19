@@ -137,7 +137,7 @@ const frameFormats = {
   },
   basic_multi_system_stream: {
     name: 'BasicMultiSystemStream',
-    profile: 'Profile.Network',
+    profile: 'Custom',
     overhead: 9,
     maxPayload: 255,
     startBytes: '0x90, 0x77',
@@ -145,7 +145,7 @@ const frameFormats = {
   },
   basic_extended_multi_system_stream: {
     name: 'BasicExtendedMultiSystemStream',
-    profile: 'Profile.MissionCritical',
+    profile: 'Profile.Fleet',
     overhead: 11,
     maxPayload: 65535,
     startBytes: '0x90, 0x78',
@@ -163,7 +163,7 @@ const frameFormats = {
   },
   tiny_default: {
     name: 'TinyDefault',
-    profile: 'Profile.IoT',
+    profile: 'Profile.Sensor',
     overhead: 5,
     maxPayload: 255,
     startBytes: '0x71',
@@ -229,7 +229,7 @@ const frameFormats = {
   // None frames
   none_minimal: {
     name: 'NoneMinimal',
-    profile: 'Custom',
+    profile: 'Profile.IPC',
     overhead: 1,
     maxPayload: 255,
     startBytes: 'None',
@@ -399,10 +399,10 @@ The calculator shows which **Standard Profile** matches your selection:
 | Your Selection | Recommended Profile |
 |----------------|---------------------|
 | Basic + Default features | **Profile.Standard** |
-| Tiny + Default features | **Profile.IoT** |
+| Tiny + Default features | **Profile.Sensor** |
+| None + Minimal (no CRC, no length) | **Profile.IPC** |
 | Basic + Extended length + Package ID | **Profile.Bulk** |
-| Basic + Routing + Sequence | **Profile.Network** |
-| Basic + Everything | **Profile.MissionCritical** |
+| Basic + Everything (Routing + Sequence + Extended) | **Profile.Fleet** |
 
 ### Next Steps
 
