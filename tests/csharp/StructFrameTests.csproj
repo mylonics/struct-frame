@@ -16,5 +16,7 @@
     
     <!-- Generated struct files -->
     <Compile Include="..\generated\csharp\*.cs" Link="Generated\%(Filename)%(Extension)" />
+    <Compile Include="..\generated\csharp\FrameHeaders\*.cs" Link="Generated\FrameHeaders\%(Filename)%(Extension)" />
+    <Compile Include="..\generated\csharp\PayloadTypes\*.cs" Link="Generated\PayloadTypes\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>
