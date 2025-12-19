@@ -215,11 +215,11 @@ inline size_t encode_payload_minimal(
         yield '\n/* Frame Profile Aliases */\n'
         yield 'namespace FrameParsers {\n\n'
         yield '// Standard profile aliases for common use cases\n'
-        yield 'using ProfileStandard = BasicDefaultFrameParser;  // General Serial / UART\n'
-        yield 'using ProfileSensor = TinyMinimalFrameParser;     // Low-Bandwidth / Radio\n'
-        yield 'using ProfileIPC = NoneMinimalFrameParser;        // Trusted / Board-to-Board\n'
-        yield 'using ProfileBulk = BasicExtendedFrameParser;     // Firmware / File Transfer\n'
-        yield 'using ProfileNetwork = BasicExtendedMultiSystemStreamFrameParser;  // Multi-Node Mesh / Swarm\n\n'
+        yield 'using ProfileStandard = BasicDefaultParser;  // General Serial / UART\n'
+        yield 'using ProfileSensor = TinyMinimalParser;     // Low-Bandwidth / Radio\n'
+        yield '// using ProfileIPC = NoneMinimalParser;        // Trusted / Board-to-Board (NoneMinimal not generated for C++)\n'
+        yield 'using ProfileBulk = BasicExtendedParser;     // Firmware / File Transfer\n'
+        yield 'using ProfileNetwork = BasicExtendedMultiSystemStreamParser;  // Multi-Node Mesh / Swarm\n\n'
         yield '}  // namespace FrameParsers\n'
 
     @staticmethod

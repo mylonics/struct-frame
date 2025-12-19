@@ -516,7 +516,7 @@ def create_frame_parser_class(config: FrameParserConfig):
         yield '# Standard profile aliases for common use cases\n'
         yield 'ProfileStandard = BasicDefault  # General Serial / UART\n'
         yield 'ProfileSensor = TinyMinimal     # Low-Bandwidth / Radio\n'
-        yield 'ProfileIPC = NoneMinimal        # Trusted / Board-to-Board\n'
+        yield '# ProfileIPC = NoneMinimal        # Trusted / Board-to-Board (NoneMinimal not generated)\n'
         yield 'ProfileBulk = BasicExtended     # Firmware / File Transfer\n'
         yield 'ProfileNetwork = BasicExtendedMultiSystemStream  # Multi-Node Mesh / Swarm\n'
 
@@ -548,7 +548,7 @@ def create_frame_parser_class(config: FrameParserConfig):
         yield '    # Profile aliases\n'
         yield '    "ProfileStandard",\n'
         yield '    "ProfileSensor",\n'
-        yield '    "ProfileIPC",\n'
+        yield '    # "ProfileIPC",  # Not available - NoneMinimal not generated\n'
         yield '    "ProfileBulk",\n'
         yield '    "ProfileNetwork",\n'
         yield ']\n'
