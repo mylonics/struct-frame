@@ -215,8 +215,8 @@ class GenericParserState(Enum):
     """Parser state enumeration"""
     LOOKING_FOR_START1 = 0
     LOOKING_FOR_START2 = 1
-    GETTING_MSG_ID = 2
-    GETTING_LENGTH = 3
+    GETTING_LENGTH = 2
+    GETTING_MSG_ID = 3
     GETTING_PAYLOAD = 4
 
 
@@ -233,7 +233,11 @@ class GenericFrameParser:
     
     def _get_initial_state(self) -> GenericParserState:
         if len(self.config.start_bytes) == 0:
-            return GenericParserState.GETTING_MSG_ID
+            # No start bytes - check if we have length field or go directly to MSG_ID
+            if self.config.has_length:
+                return GenericParserState.GETTING_LENGTH
+            else:
+                return GenericParserState.GETTING_MSG_ID
         else:
             return GenericParserState.LOOKING_FOR_START1
     
@@ -263,39 +267,32 @@ class GenericFrameParser:
                 if len(start_bytes) > 1:
                     self.state = GenericParserState.LOOKING_FOR_START2
                 else:
-                    self.state = GenericParserState.GETTING_MSG_ID
+                    # Single start byte - go to LENGTH if we have it, otherwise MSG_ID
+                    if self.config.has_length:
+                        self.state = GenericParserState.GETTING_LENGTH
+                    else:
+                        self.state = GenericParserState.GETTING_MSG_ID
         
         elif self.state == GenericParserState.LOOKING_FOR_START2:
             if byte == start_bytes[1]:
                 self.buffer.append(byte)
-                self.state = GenericParserState.GETTING_MSG_ID
+                # After both start bytes - go to LENGTH if we have it, otherwise MSG_ID
+                if self.config.has_length:
+                    self.state = GenericParserState.GETTING_LENGTH
+                else:
+                    self.state = GenericParserState.GETTING_MSG_ID
             elif byte == start_bytes[0]:
                 self.buffer = [byte]
                 # Stay in LOOKING_FOR_START2
             else:
                 self.state = GenericParserState.LOOKING_FOR_START1
         
-        elif self.state == GenericParserState.GETTING_MSG_ID:
-            self.buffer.append(byte)
-            self.msg_id = byte
-            if self.config.has_length:
-                self.state = GenericParserState.GETTING_LENGTH
-            elif self.get_msg_length:
-                msg_len = self.get_msg_length(byte)
-                if msg_len is not None:
-                    self.packet_size = overhead + msg_len
-                    self.state = GenericParserState.GETTING_PAYLOAD
-                else:
-                    self.state = self._get_initial_state()
-            else:
-                self.state = self._get_initial_state()
-        
         elif self.state == GenericParserState.GETTING_LENGTH:
             self.buffer.append(byte)
             if self.config.length_bytes == 1:
                 self.msg_length = byte
                 self.packet_size = overhead + self.msg_length
-                self.state = GenericParserState.GETTING_PAYLOAD
+                self.state = GenericParserState.GETTING_MSG_ID
             else:
                 # 2-byte length
                 if len(self.buffer) == len(start_bytes) + 2:
@@ -303,7 +300,27 @@ class GenericFrameParser:
                 else:
                     self.msg_length = self.length_lo | (byte << 8)
                     self.packet_size = overhead + self.msg_length
+                    self.state = GenericParserState.GETTING_MSG_ID
+        
+        elif self.state == GenericParserState.GETTING_MSG_ID:
+            self.buffer.append(byte)
+            self.msg_id = byte
+            # After getting MSG_ID, we always go to GETTING_PAYLOAD
+            # (length was already parsed if needed, or we use get_msg_length callback)
+            if not self.config.has_length and self.get_msg_length:
+                # No length field in format, use callback to get message length
+                msg_len = self.get_msg_length(byte)
+                if msg_len is not None:
+                    self.packet_size = overhead + msg_len
                     self.state = GenericParserState.GETTING_PAYLOAD
+                else:
+                    self.state = self._get_initial_state()
+            elif not self.config.has_length:
+                # No length field and no callback - reset
+                self.state = self._get_initial_state()
+            else:
+                # Has length field - length was already parsed, go to payload
+                self.state = GenericParserState.GETTING_PAYLOAD
         
         elif self.state == GenericParserState.GETTING_PAYLOAD:
             self.buffer.append(byte)
@@ -722,11 +739,12 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
                 state_name = f'LOOKING_FOR_START{i + 1}' if len(fmt.start_bytes) > 1 else 'LOOKING_FOR_START'
                 yield f'    {state_name} = {state_idx}\n'
                 state_idx += 1
-        yield f'    GETTING_MSG_ID = {state_idx}\n'
-        state_idx += 1
+        # Length comes before MSG_ID
         if fmt.has_length:
             yield f'    GETTING_LENGTH = {state_idx}\n'
             state_idx += 1
+        yield f'    GETTING_MSG_ID = {state_idx}\n'
+        state_idx += 1
         yield f'    GETTING_PAYLOAD = {state_idx}\n\n\n'
         
         # Generate frame format class
@@ -738,9 +756,10 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
         parts = []
         for sb_name, sb_value in fmt.start_bytes:
             parts.append(f'[{sb_name.upper()}=0x{sb_value:02X}]')
-        parts.append('[MSG_ID]')
+        # Length comes before MSG_ID
         if fmt.has_length:
             parts.append(f'[LEN{"16" if fmt.length_bytes == 2 else ""}]')
+        parts.append('[MSG_ID]')
         parts.append('[MSG...]')
         if fmt.has_crc:
             parts.append('[CRC1] [CRC2]')
@@ -777,7 +796,11 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
             state_name = 'LOOKING_FOR_START1' if len(fmt.start_bytes) > 1 else 'LOOKING_FOR_START'
             yield f'        self.state = {class_name}ParserState.{state_name}\n'
         else:
-            yield f'        self.state = {class_name}ParserState.GETTING_MSG_ID\n'
+            # No start bytes - check if we have length field or go directly to MSG_ID
+            if fmt.has_length:
+                yield f'        self.state = {class_name}ParserState.GETTING_LENGTH\n'
+            else:
+                yield f'        self.state = {class_name}ParserState.GETTING_MSG_ID\n'
         yield f'        self.buffer = []\n'
         yield f'        self.packet_size = 0\n'
         yield f'        self.msg_id = 0\n'
@@ -816,7 +839,11 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
                 if i + 1 < len(fmt.start_bytes):
                     next_state = f'LOOKING_FOR_START{i + 2}'
                 else:
-                    next_state = 'GETTING_MSG_ID'
+                    # After all start bytes - go to LENGTH if we have it, otherwise MSG_ID
+                    if fmt.has_length:
+                        next_state = 'GETTING_LENGTH'
+                    else:
+                        next_state = 'GETTING_MSG_ID'
                 yield f'                self.state = {class_name}ParserState.{next_state}\n'
                 
                 # Handle seeing start byte 1 while looking for later bytes
@@ -829,45 +856,50 @@ def encode_payload_minimal(output: list, msg_id: int, msg: bytes) -> None:
                     yield f'                self.state = {class_name}ParserState.LOOKING_FOR_START1\n'
                 yield '\n'
         
-        # GETTING_MSG_ID state
-        if fmt.start_bytes:
-            yield f'        elif self.state == {class_name}ParserState.GETTING_MSG_ID:\n'
-        else:
-            yield f'        if self.state == {class_name}ParserState.GETTING_MSG_ID:\n'
-        yield f'            self.buffer.append(byte)\n'
-        yield f'            self.msg_id = byte\n'
-        
+        # GETTING_LENGTH state (if applicable) - comes BEFORE MSG_ID
         if fmt.has_length:
-            yield f'            self.state = {class_name}ParserState.GETTING_LENGTH\n'
-        else:
-            yield f'            if self.get_msg_length:\n'
-            yield f'                msg_length = self.get_msg_length(byte)\n'
-            yield f'                if msg_length is not None:\n'
-            yield f'                    self.packet_size = self.OVERHEAD + msg_length\n'
-            yield f'                    self.state = {class_name}ParserState.GETTING_PAYLOAD\n'
-            yield f'                else:\n'
-            reset_state = 'LOOKING_FOR_START1' if len(fmt.start_bytes) > 1 else ('LOOKING_FOR_START' if fmt.start_bytes else 'GETTING_MSG_ID')
-            yield f'                    self.state = {class_name}ParserState.{reset_state}\n'
-            yield f'            else:\n'
-            yield f'                self.state = {class_name}ParserState.{reset_state}\n'
-        yield '\n'
-        
-        # GETTING_LENGTH state (if applicable)
-        if fmt.has_length:
-            yield f'        elif self.state == {class_name}ParserState.GETTING_LENGTH:\n'
+            if fmt.start_bytes:
+                yield f'        elif self.state == {class_name}ParserState.GETTING_LENGTH:\n'
+            else:
+                yield f'        if self.state == {class_name}ParserState.GETTING_LENGTH:\n'
             yield f'            self.buffer.append(byte)\n'
             if fmt.length_bytes == 1:
                 yield f'            self.msg_length = byte\n'
                 yield f'            self.packet_size = self.OVERHEAD + self.msg_length\n'
-                yield f'            self.state = {class_name}ParserState.GETTING_PAYLOAD\n'
+                yield f'            self.state = {class_name}ParserState.GETTING_MSG_ID\n'
             else:
                 yield f'            if len(self.buffer) == {len(fmt.start_bytes) + 2}:\n'
                 yield f'                self.length_lo = byte\n'
                 yield f'            else:\n'
                 yield f'                self.msg_length = self.length_lo | (byte << 8)\n'
                 yield f'                self.packet_size = self.OVERHEAD + self.msg_length\n'
-                yield f'                self.state = {class_name}ParserState.GETTING_PAYLOAD\n'
+                yield f'                self.state = {class_name}ParserState.GETTING_MSG_ID\n'
             yield '\n'
+        
+        # GETTING_MSG_ID state - comes AFTER LENGTH (if length exists)
+        if fmt.start_bytes or fmt.has_length:
+            yield f'        elif self.state == {class_name}ParserState.GETTING_MSG_ID:\n'
+        else:
+            yield f'        if self.state == {class_name}ParserState.GETTING_MSG_ID:\n'
+        yield f'            self.buffer.append(byte)\n'
+        yield f'            self.msg_id = byte\n'
+        
+        if not fmt.has_length:
+            # No length field - need to use callback or reset
+            yield f'            if self.get_msg_length:\n'
+            yield f'                msg_length = self.get_msg_length(byte)\n'
+            yield f'                if msg_length is not None:\n'
+            yield f'                    self.packet_size = self.OVERHEAD + msg_length\n'
+            yield f'                    self.state = {class_name}ParserState.GETTING_PAYLOAD\n'
+            yield f'                else:\n'
+            reset_state = 'LOOKING_FOR_START1' if len(fmt.start_bytes) > 1 else ('LOOKING_FOR_START' if fmt.start_bytes else 'GETTING_LENGTH' if fmt.has_length else 'GETTING_MSG_ID')
+            yield f'                    self.state = {class_name}ParserState.{reset_state}\n'
+            yield f'            else:\n'
+            yield f'                self.state = {class_name}ParserState.{reset_state}\n'
+        else:
+            # Length was already parsed - go to payload
+            yield f'            self.state = {class_name}ParserState.GETTING_PAYLOAD\n'
+        yield '\n'
         
         # GETTING_PAYLOAD state - uses shared payload validation
         yield f'        elif self.state == {class_name}ParserState.GETTING_PAYLOAD:\n'
