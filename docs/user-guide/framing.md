@@ -2,6 +2,119 @@
 
 Framing wraps messages with headers and checksums so receivers can identify message boundaries and verify integrity.
 
+## Quick Start: Choose Your Profile
+
+Instead of choosing individual frame features, **use these intent-based profiles** that bundle common features for your use case:
+
+### Standard Profiles
+
+| Profile | Maps To | Overhead | Max Payload | Multi-Node | Reliability (Seq) | Use Case |
+|---------|---------|----------|-------------|------------|-------------------|----------|
+| **Profile.Standard** | `BasicDefault` | 6 bytes | 255 bytes | No | No | General Serial / UART |
+| **Profile.Sensor** | `TinyDefault` | 5 bytes | 255 bytes | No | No | Low-Bandwidth / Radio |
+| **Profile.IPC** | `NoneMinimal` | 1 byte | N/A | No | No | Trusted / Board-to-Board |
+| **Profile.Bulk** | `BasicExtended` | 8 bytes | 64 KB | No | No | Firmware / File Transfer |
+| **Profile.Fleet** | `BasicExtendedMultiSystemStream` | 11 bytes | 64 KB | Yes | Yes | Multi-Node Mesh / Swarm |
+
+!!! tip "Interactive Calculator"
+    Use the [Frame Profile Calculator](framing-calculator.md) to select features and see which profile matches your needs!
+
+### Choose Your Frame: Decision Tree
+
+```
+START: What kind of system do you have?
+│
+├─ Do you need routing? (multi-node mesh, swarm)
+│  └─ YES → Profile.Fleet (BasicExtendedMultiSystemStream)
+│
+├─ Is it a trusted internal link? (SPI, Shared Memory, Board-to-Board)
+│  └─ YES → Profile.IPC (NoneMinimal)
+│
+├─ Are you bandwidth-starved? (radio, low-power sensors)
+│  └─ YES → Profile.Sensor (TinyDefault)
+│
+├─ Are you sending files > 255B? (firmware updates, logs, bulk transfers)
+│  └─ YES → Profile.Bulk (BasicExtended)
+│
+└─ None of the above?
+   └─ Use Profile.Standard (BasicDefault) ← **RECOMMENDED**
+```
+
+### Visual Byte-Map Reference
+
+Understanding how framing works helps when debugging with logic analyzers. Here's how headers wrap your payload like "onion layers":
+
+#### Profile.Standard (BasicDefault) - 6 bytes overhead
+
+```
+┌────────┬────────┬────────┬────────┬─────────────────┬─────────┬─────────┐
+│ START1 │ START2 │ LENGTH │ MSG_ID │ YOUR PAYLOAD    │  CRC1   │  CRC2   │
+│  0x90  │  0x71  │ 1 byte │ 1 byte │   (variable)    │ 1 byte  │ 1 byte  │
+└────────┴────────┴────────┴────────┴─────────────────┴─────────┴─────────┘
+   ▲        ▲                           Actual data         ▲
+   └────────┴─ Sync markers (find boundaries)               └─ Error detection
+```
+
+**Example frame for a 4-byte payload:**
+```
+ Byte:   0     1     2     3     4     5     6     7     8     9
+       ┌─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┬─────┐
+       │ 90  │ 71  │ 04  │ 2A  │ 01  │ 02  │ 03  │ 04  │ 7F  │ 8A  │
+       └─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┴─────┘
+         │     │     │     │     └──── Payload (4 bytes) ────┘   │    │
+         │     │     │     └─ Message ID = 42 (0x2A)             │    │
+         │     │     └─ Length = 4 bytes                         │    │
+         │     └─ Start byte 2 (0x71 = Default type)             │    │
+         └─ Start byte 1 (0x90 = Basic frame)                    └────┘
+                                                             CRC checksum
+```
+
+#### Profile.Sensor (TinyDefault) - 5 bytes overhead
+
+```
+┌────────┬────────┬────────┬─────────────────┬─────────┬─────────┐
+│ START  │ LENGTH │ MSG_ID │ YOUR PAYLOAD    │  CRC1   │  CRC2   │
+│  0x71  │ 1 byte │ 1 byte │   (variable)    │ 1 byte  │ 1 byte  │
+└────────┴────────┴────────┴─────────────────┴─────────┴─────────┘
+   ▲                            Actual data         ▲
+   └─ Single sync byte (lower overhead)             └─ Error detection
+```
+
+#### Profile.IPC (NoneMinimal) - 1 byte overhead
+
+```
+┌────────┬─────────────────┐
+│ MSG_ID │ YOUR PAYLOAD    │
+│ 1 byte │   (variable)    │
+└────────┴─────────────────┘
+           Actual data
+
+No framing overhead - for trusted internal links (SPI, Shared Memory)
+```
+
+#### Profile.Bulk (BasicExtended) - 8 bytes overhead
+
+```
+┌────────┬────────┬──────────┬──────────┬────────┬────────┬──────────┬──────┬──────┐
+│ START1 │ START2 │ LEN_LO   │ LEN_HI   │ PKG_ID │ MSG_ID │ PAYLOAD  │ CRC1 │ CRC2 │
+│  0x90  │  0x74  │  1 byte  │  1 byte  │ 1 byte │ 1 byte │ (64KB)   │ 1 B  │ 1 B  │
+└────────┴────────┴──────────┴──────────┴────────┴────────┴──────────┴──────┴──────┘
+                   └─ 16-bit length ──┘           └─ Package namespace
+```
+
+#### Profile.Fleet (BasicExtendedMultiSystemStream) - 11 bytes overhead
+
+```
+┌────────┬────────┬─────┬────────┬──────┬────────┬────────┬────────┬────────┬─────────┬─────┬─────┐
+│ START1 │ START2 │ SEQ │ SYS_ID │ COMP │ LEN_LO │ LEN_HI │ PKG_ID │ MSG_ID │ PAYLOAD │ CRC1│ CRC2│
+│  0x90  │  0x78  │ 1B  │  1B    │  1B  │  1B    │  1B    │  1B    │  1B    │ (64KB)  │ 1B  │ 1B  │
+└────────┴────────┴─────┴────────┴──────┴────────┴────────┴────────┴────────┴─────────┴─────┴─────┘
+                    ▲     └───────┴────┘  └─ 16-bit length ┘         └─ Package namespace
+                    └─ Sequence for loss detection + Multi-node routing
+```
+
+---
+
 ## Framing Architecture
 
 The framing system uses a two-level architecture:
