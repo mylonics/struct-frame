@@ -70,26 +70,42 @@ def validate_test_message(msg):
 
 
 def get_parser_class(format_name):
-    """Get the parser class for a frame format."""
+    """Get the parser class for a frame format or profile."""
+    # Map format names to profiles (preferred) or direct class names
     format_map = {
+        # Profile names (preferred)
+        'profile_standard': 'ProfileStandard',
+        'profile_sensor': 'ProfileSensor',
+        'profile_bulk': 'ProfileBulk',
+        'profile_network': 'ProfileNetwork',
+        # Legacy direct format names (for backward compatibility)
         'basic_default': 'BasicDefault',
         'basic_minimal': 'BasicMinimal',
         'tiny_default': 'TinyDefault',
         'tiny_minimal': 'TinyMinimal',
+        'basic_extended': 'BasicExtended',
+        'basic_extended_multi_system_stream': 'BasicExtendedMultiSystemStream',
     }
 
     class_name = format_map.get(format_name)
     if not class_name:
         raise ValueError(f"Unknown frame format: {format_name}")
 
-    module_name = format_name
     try:
         import importlib
-        # Try importing from py package first
+        # Try importing from py package first, then direct import
         try:
-            module = importlib.import_module(f'py.{module_name}')
+            module = importlib.import_module('py')
         except ImportError:
-            module = importlib.import_module(module_name)
+            # Try importing the generated boilerplate directly
+            import sys
+            import os
+            # Add generated path to sys.path if not already there
+            gen_path = os.path.join(os.path.dirname(__file__), '..', 'generated', 'py')
+            if os.path.exists(gen_path) and gen_path not in sys.path:
+                sys.path.insert(0, gen_path)
+            module = importlib.import_module('__init__')
+        
         return getattr(module, class_name)
     except Exception as e:
         raise ImportError(f"Cannot import parser for {format_name}: {e}")

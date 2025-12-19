@@ -18,6 +18,8 @@ const { BasicDefault } = require('./BasicDefault');
 const { BasicMinimal } = require('./BasicMinimal');
 const { TinyDefault } = require('./TinyDefault');
 const { TinyMinimal } = require('./TinyMinimal');
+const { BasicExtended } = require('./BasicExtended');
+const { BasicExtendedMultiSystemStream } = require('./BasicExtendedMultiSystemStream');
 const {
   serialization_test_SerializationTestMessage,
   serialization_test_SerializationTestMessage_msgid,
@@ -25,14 +27,22 @@ const {
 } = require('./serialization_test.sf');
 
 /**
- * Get the parser class for a frame format.
+ * Get the parser class for a frame format or profile.
  */
 export function getParserClass(formatName: string): any {
   const formatMap: { [key: string]: any } = {
+    // Profile names (preferred)
+    'profile_standard': BasicDefault,
+    'profile_sensor': TinyMinimal,
+    'profile_bulk': BasicExtended,
+    'profile_network': BasicExtendedMultiSystemStream,
+    // Legacy direct format names (for backward compatibility)
     'basic_default': BasicDefault,
     'basic_minimal': BasicMinimal,
     'tiny_default': TinyDefault,
     'tiny_minimal': TinyMinimal,
+    'basic_extended': BasicExtended,
+    'basic_extended_multi_system_stream': BasicExtendedMultiSystemStream,
   };
 
   const ParserClass = formatMap[formatName];

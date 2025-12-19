@@ -78,17 +78,24 @@ bool encode_test_message(const char* format, uint8_t* buffer, size_t buffer_size
 
   *encoded_size = 0;
 
-  if (strcmp(format, "basic_default") == 0) {
+  // Support profile names (preferred) and legacy direct format names
+  if (strcmp(format, "profile_standard") == 0 || strcmp(format, "basic_default") == 0) {
     *encoded_size = basic_default_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                          (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  } else if (strcmp(format, "profile_sensor") == 0 || strcmp(format, "tiny_minimal") == 0) {
+    *encoded_size = tiny_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                        (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  } else if (strcmp(format, "profile_bulk") == 0 || strcmp(format, "basic_extended") == 0) {
+    *encoded_size = basic_extended_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                          (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  } else if (strcmp(format, "profile_network") == 0 || strcmp(format, "basic_extended_multi_system_stream") == 0) {
+    *encoded_size = basic_extended_multi_system_stream_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                                               (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
   } else if (strcmp(format, "basic_minimal") == 0) {
     *encoded_size = basic_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                          (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
   } else if (strcmp(format, "tiny_default") == 0) {
     *encoded_size = tiny_default_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
-                                        (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
-  } else if (strcmp(format, "tiny_minimal") == 0) {
-    *encoded_size = tiny_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                         (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
   } else {
     printf("  Unknown frame format: %s\n", format);
@@ -102,14 +109,19 @@ bool decode_test_message(const char* format, const uint8_t* buffer, size_t buffe
                          SerializationTestSerializationTestMessage* msg) {
   frame_msg_info_t decode_result;
 
-  if (strcmp(format, "basic_default") == 0) {
+  // Support profile names (preferred) and legacy direct format names
+  if (strcmp(format, "profile_standard") == 0 || strcmp(format, "basic_default") == 0) {
     decode_result = basic_default_validate_packet(buffer, buffer_size);
+  } else if (strcmp(format, "profile_sensor") == 0 || strcmp(format, "tiny_minimal") == 0) {
+    decode_result = tiny_minimal_validate_packet(buffer, buffer_size);
+  } else if (strcmp(format, "profile_bulk") == 0 || strcmp(format, "basic_extended") == 0) {
+    decode_result = basic_extended_validate_packet(buffer, buffer_size);
+  } else if (strcmp(format, "profile_network") == 0 || strcmp(format, "basic_extended_multi_system_stream") == 0) {
+    decode_result = basic_extended_multi_system_stream_validate_packet(buffer, buffer_size);
   } else if (strcmp(format, "basic_minimal") == 0) {
     decode_result = basic_minimal_validate_packet(buffer, buffer_size);
   } else if (strcmp(format, "tiny_default") == 0) {
     decode_result = tiny_default_validate_packet(buffer, buffer_size);
-  } else if (strcmp(format, "tiny_minimal") == 0) {
-    decode_result = tiny_minimal_validate_packet(buffer, buffer_size);
   } else {
     printf("  Unknown frame format: %s\n", format);
     return false;
