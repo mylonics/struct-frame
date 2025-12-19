@@ -501,6 +501,24 @@ class FrameParserCSharpGen:
             enum_name = camel_to_upper_snake(fmt.name)
             comma = ',' if i < len(formats) - 1 else ''
             yield f'        {enum_name} = {i}{comma}\n'
+        yield '    }\n\n'
+        
+        # Generate profile aliases
+        yield '    /// <summary>\n'
+        yield '    /// Frame Profile Aliases - Standard profiles for common use cases\n'
+        yield '    /// </summary>\n'
+        yield '    public static class FrameProfiles\n'
+        yield '    {\n'
+        yield '        /// <summary>General Serial / UART</summary>\n'
+        yield '        public static BasicDefaultFrameParser ProfileStandard() => new BasicDefaultFrameParser();\n'
+        yield '        /// <summary>Low-Bandwidth / Radio</summary>\n'
+        yield '        public static TinyDefaultFrameParser ProfileSensor() => new TinyDefaultFrameParser();\n'
+        yield '        /// <summary>Trusted / Board-to-Board</summary>\n'
+        yield '        public static NoneMinimalFrameParser ProfileIPC() => new NoneMinimalFrameParser();\n'
+        yield '        /// <summary>Firmware / File Transfer</summary>\n'
+        yield '        public static BasicExtendedFrameParser ProfileBulk() => new BasicExtendedFrameParser();\n'
+        yield '        /// <summary>Multi-Node Mesh / Swarm</summary>\n'
+        yield '        public static BasicExtendedMultiSystemStreamFrameParser ProfileNetwork() => new BasicExtendedMultiSystemStreamFrameParser();\n'
         yield '    }\n'
 
         yield '}\n'

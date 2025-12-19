@@ -487,6 +487,14 @@ def create_frame_parser_class(config: FrameParserConfig):
             snake_name = camel_to_snake(fmt.name)
             yield f'from .{snake_name} import {fmt.name}, {fmt.name}Config, {fmt.name}ParserState\n'
 
+        yield '\n# Frame Profile Aliases\n'
+        yield '# Standard profile aliases for common use cases\n'
+        yield 'ProfileStandard = BasicDefault  # General Serial / UART\n'
+        yield 'ProfileSensor = TinyDefault     # Low-Bandwidth / Radio\n'
+        yield 'ProfileIPC = NoneMinimal        # Trusted / Board-to-Board\n'
+        yield 'ProfileBulk = BasicExtended     # Firmware / File Transfer\n'
+        yield 'ProfileNetwork = BasicExtendedMultiSystemStream  # Multi-Node Mesh / Swarm\n'
+
         yield '\n# Re-export all frame formats\n'
         yield '__all__ = [\n'
         yield '    # Base utilities\n'
@@ -508,6 +516,12 @@ def create_frame_parser_class(config: FrameParserConfig):
             yield f'    "{fmt.name}",\n'
             yield f'    "{fmt.name}Config",\n'
             yield f'    "{fmt.name}ParserState",\n'
+        yield '    # Profile aliases\n'
+        yield '    "ProfileStandard",\n'
+        yield '    "ProfileSensor",\n'
+        yield '    "ProfileIPC",\n'
+        yield '    "ProfileBulk",\n'
+        yield '    "ProfileNetwork",\n'
         yield ']\n'
 
     @staticmethod

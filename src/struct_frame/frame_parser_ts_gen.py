@@ -526,6 +526,14 @@ export function createFrameParserClass(config: FrameParserConfig) {
         yield '// Individual frame format parsers (configuration-based)\n'
         for fmt in formats:
             yield f'export {{ {fmt.name}, {fmt.name}Config, {fmt.name}ParserState }} from \'./{fmt.name}\';\n'
+        
+        yield '\n// Frame Profile Aliases\n'
+        yield '// Standard profile aliases for common use cases\n'
+        yield 'export { BasicDefault as ProfileStandard } from \'./BasicDefault\';  // General Serial / UART\n'
+        yield 'export { TinyDefault as ProfileSensor } from \'./TinyDefault\';      // Low-Bandwidth / Radio\n'
+        yield 'export { NoneMinimal as ProfileIPC } from \'./NoneMinimal\';         // Trusted / Board-to-Board\n'
+        yield 'export { BasicExtended as ProfileBulk } from \'./BasicExtended\';    // Firmware / File Transfer\n'
+        yield 'export { BasicExtendedMultiSystemStream as ProfileNetwork } from \'./BasicExtendedMultiSystemStream\';  // Multi-Node Mesh / Swarm\n'
 
     @staticmethod
     def generate(formats):
