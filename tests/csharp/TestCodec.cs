@@ -187,20 +187,30 @@ namespace StructFrameTests
         }
 
         /// <summary>
-        /// Get the frame parser for a given format name
+        /// Get the frame parser for a given format name or profile
         /// </summary>
         public static FrameFormatBase GetParser(string formatName)
         {
             switch (formatName)
             {
+                // Profile names (preferred)
+                case "profile_standard":
                 case "basic_default":
                     return new BasicDefault();
+                case "profile_sensor":
+                case "tiny_minimal":
+                    return new TinyMinimal();
+                case "profile_bulk":
+                case "basic_extended":
+                    return new BasicExtended();
+                case "profile_network":
+                case "basic_extended_multi_system_stream":
+                    return new BasicExtendedMultiSystemStream();
+                // Legacy direct format names
                 case "basic_minimal":
                     return new BasicMinimal();
                 case "tiny_default":
                     return new TinyDefault();
-                case "tiny_minimal":
-                    return new TinyMinimal();
                 default:
                     throw new ArgumentException($"Unknown frame format: {formatName}");
             }

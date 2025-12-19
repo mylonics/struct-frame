@@ -81,20 +81,29 @@ bool encode_test_message(const std::string& format, uint8_t* buffer, size_t buff
 
   encoded_size = 0;
 
-  if (format == "basic_default") {
+  // Support profile names (preferred) and legacy direct format names
+  if (format == "profile_standard" || format == "basic_default") {
     encoded_size = basic_default_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                         reinterpret_cast<const uint8_t*>(&msg),
                                         SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  } else if (format == "profile_sensor" || format == "tiny_minimal") {
+    encoded_size = tiny_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                       reinterpret_cast<const uint8_t*>(&msg),
+                                       SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  } else if (format == "profile_bulk" || format == "basic_extended") {
+    encoded_size = basic_extended_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                         reinterpret_cast<const uint8_t*>(&msg),
+                                         SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  } else if (format == "profile_network" || format == "basic_extended_multi_system_stream") {
+    encoded_size = basic_extended_multi_system_stream_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                                             reinterpret_cast<const uint8_t*>(&msg),
+                                                             SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
   } else if (format == "basic_minimal") {
     encoded_size = basic_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                         reinterpret_cast<const uint8_t*>(&msg),
                                         SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
   } else if (format == "tiny_default") {
     encoded_size = tiny_default_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
-                                       reinterpret_cast<const uint8_t*>(&msg),
-                                       SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
-  } else if (format == "tiny_minimal") {
-    encoded_size = tiny_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                        reinterpret_cast<const uint8_t*>(&msg),
                                        SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
   } else {
@@ -109,14 +118,19 @@ bool decode_test_message(const std::string& format, const uint8_t* buffer, size_
                          SerializationTestSerializationTestMessage& msg) {
   FrameMsgInfo decode_result;
 
-  if (format == "basic_default") {
+  // Support profile names (preferred) and legacy direct format names
+  if (format == "profile_standard" || format == "basic_default") {
     decode_result = basic_default_validate_packet(buffer, buffer_size);
+  } else if (format == "profile_sensor" || format == "tiny_minimal") {
+    decode_result = tiny_minimal_validate_packet(buffer, buffer_size);
+  } else if (format == "profile_bulk" || format == "basic_extended") {
+    decode_result = basic_extended_validate_packet(buffer, buffer_size);
+  } else if (format == "profile_network" || format == "basic_extended_multi_system_stream") {
+    decode_result = basic_extended_multi_system_stream_validate_packet(buffer, buffer_size);
   } else if (format == "basic_minimal") {
     decode_result = basic_minimal_validate_packet(buffer, buffer_size);
   } else if (format == "tiny_default") {
     decode_result = tiny_default_validate_packet(buffer, buffer_size);
-  } else if (format == "tiny_minimal") {
-    decode_result = tiny_minimal_validate_packet(buffer, buffer_size);
   } else {
     std::cout << "  Unknown frame format: " << format << "\n";
     return false;

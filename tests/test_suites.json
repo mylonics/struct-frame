@@ -6,29 +6,33 @@
   "test_suites": [
     {
       "name": "frame_format_matrix",
-      "description": "Frame format cross-compatibility matrix",
+      "description": "Frame format cross-compatibility matrix using profiles",
       "plugin": "frame_format_matrix",
       "test_runner": "test_runner",
       "frame_formats": [
         {
-          "name": "basic_default",
-          "display_name": "BasicDefault",
-          "output_file": "{lang_name}_basic_default_test_data.bin"
+          "name": "profile_standard",
+          "display_name": "ProfileStandard",
+          "profile": "BasicDefault",
+          "output_file": "{lang_name}_profile_standard_test_data.bin"
         },
         {
-          "name": "basic_minimal",
-          "display_name": "BasicMinimal",
-          "output_file": "{lang_name}_basic_minimal_test_data.bin"
+          "name": "profile_sensor",
+          "display_name": "ProfileSensor",
+          "profile": "TinyMinimal",
+          "output_file": "{lang_name}_profile_sensor_test_data.bin"
         },
         {
-          "name": "tiny_default",
-          "display_name": "TinyDefault",
-          "output_file": "{lang_name}_tiny_default_test_data.bin"
+          "name": "profile_bulk",
+          "display_name": "ProfileBulk",
+          "profile": "BasicExtended",
+          "output_file": "{lang_name}_profile_bulk_test_data.bin"
         },
         {
-          "name": "tiny_minimal",
-          "display_name": "TinyMinimal",
-          "output_file": "{lang_name}_tiny_minimal_test_data.bin"
+          "name": "profile_network",
+          "display_name": "ProfileNetwork",
+          "profile": "BasicExtendedMultiSystemStream",
+          "output_file": "{lang_name}_profile_network_test_data.bin"
         }
       ]
     }
