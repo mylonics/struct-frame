@@ -6,34 +6,26 @@
 /* Base utilities */
 #include "frame_base.h"
 
-/* Individual frame format parsers */
-#include "tiny_minimal.h"
-#include "tiny_default.h"
-#include "tiny_extended_msg_ids.h"
-#include "tiny_extended_length.h"
-#include "tiny_extended.h"
-#include "tiny_sys_comp.h"
-#include "tiny_seq.h"
-#include "tiny_multi_system_stream.h"
-#include "tiny_extended_multi_system_stream.h"
-#include "basic_minimal.h"
-#include "basic_default.h"
-#include "basic_extended_msg_ids.h"
-#include "basic_extended_length.h"
-#include "basic_extended.h"
-#include "basic_sys_comp.h"
-#include "basic_seq.h"
-#include "basic_multi_system_stream.h"
-#include "basic_extended_multi_system_stream.h"
-#include "ubx_frame.h"
-#include "mavlink_v1_frame.h"
-#include "mavlink_v2_frame.h"
-#include "frame_format_config.h"
+/* Frame headers - Start byte patterns and header types */
+#include "frame_headers/base.h"
+#include "frame_headers/header_tiny.h"
+#include "frame_headers/header_basic.h"
+#include "frame_headers/header_none.h"
+#include "frame_headers/header_ubx.h"
+#include "frame_headers/header_mavlink_v1.h"
+#include "frame_headers/header_mavlink_v2.h"
 
-/* Frame Profile Aliases */
-/* Standard profile aliases for common use cases */
-typedef struct basic_default_frame_parser_t profile_standard_t;  /* General Serial / UART */
-typedef struct tiny_minimal_frame_parser_t profile_sensor_t;     /* Low-Bandwidth / Radio */
-typedef struct none_minimal_frame_parser_t profile_ipc_t;        /* Trusted / Board-to-Board */
-typedef struct basic_extended_frame_parser_t profile_bulk_t;     /* Firmware / File Transfer */
-typedef struct basic_extended_multi_system_stream_frame_parser_t profile_network_t;  /* Multi-Node Mesh / Swarm */
+/* Payload types - Message structure definitions */
+#include "payload_types/base.h"
+#include "payload_types/payload_minimal.h"
+#include "payload_types/payload_default.h"
+#include "payload_types/payload_extended_msg_ids.h"
+#include "payload_types/payload_extended_length.h"
+#include "payload_types/payload_extended.h"
+#include "payload_types/payload_sys_comp.h"
+#include "payload_types/payload_seq.h"
+#include "payload_types/payload_multi_system_stream.h"
+#include "payload_types/payload_extended_multi_system_stream.h"
+
+/* Frame format configuration */
+#include "frame_format_config.h"

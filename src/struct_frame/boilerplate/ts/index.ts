@@ -20,34 +20,16 @@ export {
     encode_payload_minimal,
 } from './frame_base';
 
-// Individual frame format parsers (configuration-based)
-export { TinyMinimal, TinyMinimalConfig, TinyMinimalParserState } from './TinyMinimal';
-export { TinyDefault, TinyDefaultConfig, TinyDefaultParserState } from './TinyDefault';
-export { TinyExtendedMsgIds, TinyExtendedMsgIdsConfig, TinyExtendedMsgIdsParserState } from './TinyExtendedMsgIds';
-export { TinyExtendedLength, TinyExtendedLengthConfig, TinyExtendedLengthParserState } from './TinyExtendedLength';
-export { TinyExtended, TinyExtendedConfig, TinyExtendedParserState } from './TinyExtended';
-export { TinySysComp, TinySysCompConfig, TinySysCompParserState } from './TinySysComp';
-export { TinySeq, TinySeqConfig, TinySeqParserState } from './TinySeq';
-export { TinyMultiSystemStream, TinyMultiSystemStreamConfig, TinyMultiSystemStreamParserState } from './TinyMultiSystemStream';
-export { TinyExtendedMultiSystemStream, TinyExtendedMultiSystemStreamConfig, TinyExtendedMultiSystemStreamParserState } from './TinyExtendedMultiSystemStream';
-export { BasicMinimal, BasicMinimalConfig, BasicMinimalParserState } from './BasicMinimal';
-export { BasicDefault, BasicDefaultConfig, BasicDefaultParserState } from './BasicDefault';
-export { BasicExtendedMsgIds, BasicExtendedMsgIdsConfig, BasicExtendedMsgIdsParserState } from './BasicExtendedMsgIds';
-export { BasicExtendedLength, BasicExtendedLengthConfig, BasicExtendedLengthParserState } from './BasicExtendedLength';
-export { BasicExtended, BasicExtendedConfig, BasicExtendedParserState } from './BasicExtended';
-export { BasicSysComp, BasicSysCompConfig, BasicSysCompParserState } from './BasicSysComp';
-export { BasicSeq, BasicSeqConfig, BasicSeqParserState } from './BasicSeq';
-export { BasicMultiSystemStream, BasicMultiSystemStreamConfig, BasicMultiSystemStreamParserState } from './BasicMultiSystemStream';
-export { BasicExtendedMultiSystemStream, BasicExtendedMultiSystemStreamConfig, BasicExtendedMultiSystemStreamParserState } from './BasicExtendedMultiSystemStream';
-export { UbxFrame, UbxFrameConfig, UbxFrameParserState } from './UbxFrame';
-export { MavlinkV1Frame, MavlinkV1FrameConfig, MavlinkV1FrameParserState } from './MavlinkV1Frame';
-export { MavlinkV2Frame, MavlinkV2FrameConfig, MavlinkV2FrameParserState } from './MavlinkV2Frame';
-export { FrameFormatConfig, FrameFormatConfigConfig, FrameFormatConfigParserState } from './FrameFormatConfig';
+// Frame headers - Start byte patterns and header types
+export { HeaderType, HeaderConfig, BASIC_START_BYTE, PAYLOAD_TYPE_BASE, UBX_SYNC1, UBX_SYNC2, MAVLINK_V1_STX, MAVLINK_V2_STX, MAX_PAYLOAD_TYPE } from './frame_headers/base';
+export { HEADER_TINY_CONFIG, getTinyStartByte, isTinyStartByte, getPayloadTypeFromTiny } from './frame_headers/header_tiny';
+export { HEADER_BASIC_CONFIG, getBasicSecondStartByte, isBasicSecondStartByte, getPayloadTypeFromBasic } from './frame_headers/header_basic';
+export { HEADER_NONE_CONFIG } from './frame_headers/header_none';
 
-// Frame Profile Aliases
-// Standard profile aliases for common use cases
-export { BasicDefault as ProfileStandard } from './BasicDefault';  // General Serial / UART
-export { TinyMinimal as ProfileSensor } from './TinyMinimal';      // Low-Bandwidth / Radio
-// export { NoneMinimal as ProfileIPC } from './NoneMinimal';         // Trusted / Board-to-Board (NoneMinimal not generated)
-export { BasicExtended as ProfileBulk } from './BasicExtended';    // Firmware / File Transfer
-export { BasicExtendedMultiSystemStream as ProfileNetwork } from './BasicExtendedMultiSystemStream';  // Multi-Node Mesh / Swarm
+// Payload types - Message structure definitions
+export { PayloadType, MAX_PAYLOAD_TYPE_VALUE, PayloadConfig, payloadConfigHeaderSize, payloadConfigFooterSize, payloadConfigOverhead } from './payload_types/base';
+export { PAYLOAD_DEFAULT_CONFIG } from './payload_types/payload_default';
+export { PAYLOAD_MINIMAL_CONFIG } from './payload_types/payload_minimal';
+
+// Frame format configuration
+export { FrameFormatConfig, FrameFormatConfigConfig, FrameFormatConfigParserState } from './FrameFormatConfig';
