@@ -1,8 +1,8 @@
 # Frame parser boilerplate package
 # Uses header + payload architecture for composable frame formats.
 
-# Polyglot parser - handles multiple frame types in same stream
-from .polyglot_parser import (
+# Parser - handles multiple frame types in same stream
+from .parser import (
     # Enums
     HeaderType,
     PayloadType,
@@ -10,7 +10,7 @@ from .polyglot_parser import (
     # Classes
     PayloadConfig,
     FrameMsgInfo,
-    PolyglotParser,
+    Parser,
     # Constants
     BASIC_START_BYTE,
     PAYLOAD_TYPE_BASE,
@@ -34,7 +34,7 @@ __all__ = [
     # Classes
     "PayloadConfig",
     "FrameMsgInfo",
-    "PolyglotParser",
+    "Parser",
     # Constants
     "BASIC_START_BYTE",
     "PAYLOAD_TYPE_BASE",

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test codec - Encode/decode functions for all frame formats (Python).
-Uses the new PolyglotParser with header + payload architecture.
+Uses the new Parser with header + payload architecture.
 """
 
 # Expected test values (from expected_values.json)
@@ -79,7 +79,7 @@ def get_frame_config(format_name):
     if os.path.exists(gen_path) and gen_path not in sys.path:
         sys.path.insert(0, gen_path)
     
-    from polyglot_parser import HeaderType, PayloadType
+    from parser import HeaderType, PayloadType
     
     # Map format names to (header_type, payload_type)
     format_map = {
@@ -105,15 +105,15 @@ def get_frame_config(format_name):
 
 
 def get_parser(format_name=None):
-    """Get the PolyglotParser instance, with proper callbacks for MINIMAL payloads."""
+    """Get the Parser instance, with proper callbacks for MINIMAL payloads."""
     import sys
     import os
     gen_path = os.path.join(os.path.dirname(__file__), '..', 'generated', 'py')
     if os.path.exists(gen_path) and gen_path not in sys.path:
         sys.path.insert(0, gen_path)
-    
-    from polyglot_parser import PolyglotParser, PayloadType
-    
+
+    from parser import Parser, PayloadType
+
     # Check if this format uses MINIMAL payload (which has no length field)
     get_msg_length = None
     if format_name:
@@ -123,8 +123,8 @@ def get_parser(format_name=None):
             msg_class = get_message_class()
             msg_size = msg_class.msg_size
             get_msg_length = lambda msg_id: msg_size
-    
-    return PolyglotParser(get_msg_length=get_msg_length)
+
+    return Parser(get_msg_length=get_msg_length)
 
 
 def get_message_class():

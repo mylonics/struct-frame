@@ -302,3 +302,44 @@ message FrameFormatConfig {
   PayloadType payload_type = 2;
   bool crc_enabled = 3;
 }
+
+// ============================================================================
+// PROFILE DEFINITIONS
+// ============================================================================
+// Pre-defined frame format profiles for common use cases
+// Each profile combines a header type with a payload type
+
+enum Profile {
+  // Standard profile: Basic header + Default payload
+  // Use case: General purpose, reliable communication
+  // Format: [0x90] [0x71] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  PROFILE_STANDARD = 0;
+
+  // Sensor profile: Tiny header + Minimal payload
+  // Use case: Low-overhead sensor data, known message sizes
+  // Format: [0x70] [MSG_ID] [PACKET]
+  PROFILE_SENSOR = 1;
+
+  // Bulk profile: Basic header + Extended payload
+  // Use case: Large data transfers with package namespacing
+  // Format: [0x90] [0x74] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  PROFILE_BULK = 2;
+
+  // Network profile: Basic header + ExtendedMultiSystemStream payload
+  // Use case: Multi-system networked communication with full features
+  // Format: [0x90] [0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  PROFILE_NETWORK = 3;
+
+  // Sequenced profile: Basic header + Seq payload
+  // Use case: Communication requiring packet loss detection
+  // Format: [0x90] [0x76] [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  PROFILE_SEQUENCED = 4;
+}
+
+// Profile configuration mapping
+message ProfileConfig {
+  Profile profile = 1;
+  HeaderType header_type = 2;
+  PayloadType payload_type = 3;
+  string description = 4;
+}

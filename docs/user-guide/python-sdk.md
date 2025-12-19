@@ -12,6 +12,107 @@ python -m struct_frame your_messages.proto --build_py --py_path generated/py --s
 
 **Note**: The SDK is not included by default. Use the `--sdk` flag to generate SDK files.
 
+## Using the Parser
+
+The `Parser` class can parse multiple frame types (Basic, Tiny, None) from a byte stream. It automatically detects the frame format and extracts message data.
+
+### Basic Usage
+
+```python
+from parser import Parser, HeaderType, PayloadType
+
+# Create a parser instance
+parser = Parser()
+
+# Parse bytes from a stream
+for byte in incoming_data:
+    result = parser.parse_byte(byte)
+    if result.valid:
+        print(f"Received message ID: {result.msg_id}")
+        print(f"Frame type: {result.header_type}")
+        print(f"Payload type: {result.payload_type}")
+        print(f"Data: {result.msg_data}")
+```
+
+### Encoding Messages
+
+```python
+from parser import Parser, HeaderType, PayloadType
+
+parser = Parser()
+
+# Encode a message with Basic header and Default payload
+frame = parser.encode(
+    msg_id=42,
+    msg=b"Hello, World!",
+    header_type=HeaderType.BASIC,
+    payload_type=PayloadType.DEFAULT
+)
+
+# Or use convenience methods
+frame = parser.encode_basic(msg_id=42, msg=b"Hello, World!")
+frame = parser.encode_tiny(msg_id=42, msg=b"Hello, World!")
+```
+
+### Configuring Enabled Frame Types
+
+```python
+from parser import Parser, HeaderType, PayloadType
+
+# Only accept Basic and Tiny frames with Default payload
+parser = Parser(
+    enabled_headers=[HeaderType.BASIC, HeaderType.TINY],
+    enabled_payloads=[PayloadType.DEFAULT, PayloadType.EXTENDED]
+)
+```
+
+### Using with Minimal Payloads
+
+For Minimal payloads (which don't include a length field), you need to provide a callback to determine message length:
+
+```python
+from parser import Parser, PayloadType
+
+def get_msg_length(msg_id: int) -> int:
+    """Return the expected message length for a given msg_id"""
+    msg_lengths = {
+        1: 10,  # Message ID 1 is 10 bytes
+        2: 20,  # Message ID 2 is 20 bytes
+    }
+    return msg_lengths.get(msg_id, 0)
+
+parser = Parser(
+    get_msg_length=get_msg_length,
+    enabled_payloads=[PayloadType.MINIMAL]
+)
+```
+
+### Parsing Mixed Frame Streams
+
+The Parser can handle streams containing multiple frame types:
+
+```python
+from parser import Parser
+
+parser = Parser()
+
+# Process a mixed stream of Basic and Tiny frames
+stream = basic_frame_bytes + tiny_frame_bytes + another_basic_frame
+messages = []
+
+for byte in stream:
+    result = parser.parse_byte(byte)
+    if result.valid:
+        messages.append({
+            'msg_id': result.msg_id,
+            'header_type': result.header_type,
+            'payload_type': result.payload_type,
+            'data': result.msg_data
+        })
+
+print(f"Parsed {len(messages)} messages from mixed stream")
+```
+
 ## Available Transports
 
 ### Synchronous Transports

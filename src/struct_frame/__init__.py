@@ -12,7 +12,7 @@ from .frame_format import (
     HeaderType, PayloadType, HeaderDefinition, PayloadDefinition,
     FrameFormatCollection, parse_frame_formats
 )
-from .polyglot_parser_py_gen import generate_py_polyglot_parser, PolyglotParserPyGen
+from .parser_py_gen import generate_py_parser, ParserPyGen
 
 from .generate import main
 from .generate_boilerplate import (
@@ -26,6 +26,6 @@ __all__ = ["main", "FileCGen", "FileTsGen", "FileJsGen", "FilePyGen", "FileGqlGe
            "NamingStyleC", "CamelToSnakeCase", "pascalCase",
            "HeaderType", "PayloadType", "HeaderDefinition", "PayloadDefinition",
            "FrameFormatCollection", "parse_frame_formats",
-           "generate_py_polyglot_parser", "PolyglotParserPyGen",
+           "generate_py_parser", "ParserPyGen",
            "generate_boilerplate_to_paths", "update_src_boilerplate",
            "get_default_frame_formats_path", "get_boilerplate_dir"]

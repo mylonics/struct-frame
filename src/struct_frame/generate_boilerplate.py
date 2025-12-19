@@ -26,7 +26,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 from struct_frame.frame_format import parse_frame_formats
-from struct_frame.polyglot_parser_py_gen import generate_py_polyglot_parser
+from struct_frame.parser_py_gen import generate_py_parser
 
 
 def get_default_frame_formats_path():
@@ -66,9 +66,13 @@ def generate_boilerplate_to_paths(frame_formats_file, py_path=None):
     files = {}
     
     if py_path:
-        # Generate the polyglot parser
-        name = os.path.join(py_path, "polyglot_parser.py")
-        files[name] = generate_py_polyglot_parser(collection)
+        # Generate the main parser (now imports from submodules)
+        name = os.path.join(py_path, "parser.py")
+        files[name] = generate_py_parser(collection)
+
+        # Note: The modular structure (frame_headers/, payload_types/, utils.py)
+        # is now maintained as static files in src/struct_frame/boilerplate/py/
+        # The generator only needs to update parser.py which imports from them
     
     return files
 

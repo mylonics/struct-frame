@@ -504,8 +504,8 @@ def create_frame_parser_class(config: FrameParserConfig):
         yield '    encode_payload_minimal,\n'
         yield ')\n\n'
 
-        yield '# Polyglot parser - handles multiple frame types in same stream\n'
-        yield 'from .polyglot_parser import PolyglotParser, PolyglotParserResult, PolyglotParserState\n'
+        yield '# Parser - handles multiple frame types in same stream\n'
+        yield 'from .parser import Parser, ParserResult, ParserState\n'
 
         yield '\n# Re-export all utilities and parser\n'
         yield '__all__ = [\n'
@@ -523,10 +523,10 @@ def create_frame_parser_class(config: FrameParserConfig):
         yield '    "validate_payload_minimal",\n'
         yield '    "encode_payload_with_crc",\n'
         yield '    "encode_payload_minimal",\n'
-        yield '    # Polyglot parser\n'
-        yield '    "PolyglotParser",\n'
-        yield '    "PolyglotParserResult",\n'
-        yield '    "PolyglotParserState",\n'
+        yield '    # Parser\n'
+        yield '    "Parser",\n'
+        yield '    "ParserResult",\n'
+        yield '    "ParserState",\n'
         yield ']\n'
 
     @staticmethod
@@ -974,17 +974,17 @@ def generate_py_frame_parsers_multi(formats):
 
     Returns a dictionary mapping filename to content:
     - frame_base.py: Base utilities (checksum, FrameMsgInfo, FrameFormatType)
-    - polyglot_parser.py: Polyglot parser that can handle multiple frame types
-    - __init__.py: Package init that exports utilities and polyglot parser
+    - parser.py: Parser that can handle multiple frame types
+    - __init__.py: Package init that exports utilities and parser
     """
     files = {}
 
     # Generate base file
     files['frame_base.py'] = ''.join(FrameParserPyGen.generate_base(formats))
 
-    # Generate polyglot parser
-    from struct_frame.polyglot_parser_py_gen import generate_py_polyglot_parser
-    files['polyglot_parser.py'] = generate_py_polyglot_parser(formats)
+    # Generate parser
+    from struct_frame.parser_py_gen import generate_py_parser
+    files['parser.py'] = generate_py_parser(formats)
 
     # Generate __init__.py
     files['__init__.py'] = ''.join(FrameParserPyGen.generate_init(formats))

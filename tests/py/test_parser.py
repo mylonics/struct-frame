@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test polyglot parser - tests the ability to parse multiple frame types in same stream
+Test parser - tests the ability to parse multiple frame types in same stream
 """
 
 import sys
@@ -11,14 +11,14 @@ generated_path = os.path.join(os.path.dirname(__file__), '..', 'generated', 'py'
 sys.path.insert(0, generated_path)
 
 try:
-    import polyglot_parser
+    import parser
     import basic_default
     import tiny_default
     import basic_minimal
     import tiny_minimal
-    
-    PolyglotParser = polyglot_parser.PolyglotParser
-    PolyglotParserResult = polyglot_parser.PolyglotParserResult
+
+    Parser = parser.Parser
+    ParserResult = parser.ParserResult
     BasicDefault = basic_default.BasicDefault
     TinyDefault = tiny_default.TinyDefault
     BasicMinimal = basic_minimal.BasicMinimal
@@ -31,23 +31,23 @@ except ImportError as e:
     sys.exit(1)
 
 
-def test_polyglot_basic_frame():
-    """Test that polyglot parser can detect and parse a Basic frame"""
-    print("Testing polyglot parser with Basic frame (0x90 0x71)...")
-    
+def test_parser_basic_frame():
+    """Test that parser can detect and parse a Basic frame"""
+    print("Testing parser with Basic frame (0x90 0x71)...")
+
     # Create a BasicDefault parser and encode a test message
     basic_parser = BasicDefault()
     test_msg_id = 42
     test_data = b"Hello Basic!"
     encoded = basic_parser.encode(test_msg_id, test_data)
-    
+
     print(f"  Encoded Basic frame: {' '.join(f'{b:02X}' for b in encoded)}")
-    
-    # Parse with polyglot parser
-    polyglot = PolyglotParser()
+
+    # Parse with parser
+    p = Parser()
     result = None
     for byte in encoded:
-        result = polyglot.parse_byte(byte)
+        result = p.parse_byte(byte)
         if result.valid:
             break
     
@@ -75,23 +75,23 @@ def test_polyglot_basic_frame():
     return True
 
 
-def test_polyglot_tiny_frame():
-    """Test that polyglot parser can detect and parse a Tiny frame"""
-    print("Testing polyglot parser with Tiny frame (0x71)...")
-    
+def test_parser_tiny_frame():
+    """Test that parser can detect and parse a Tiny frame"""
+    print("Testing parser with Tiny frame (0x71)...")
+
     # Create a TinyDefault parser and encode a test message
     tiny_parser = TinyDefault()
     test_msg_id = 99
     test_data = b"Hello Tiny!"
     encoded = tiny_parser.encode(test_msg_id, test_data)
-    
+
     print(f"  Encoded Tiny frame: {' '.join(f'{b:02X}' for b in encoded)}")
-    
-    # Parse with polyglot parser
-    polyglot = PolyglotParser()
+
+    # Parse with parser
+    p = Parser()
     result = None
     for byte in encoded:
-        result = polyglot.parse_byte(byte)
+        result = p.parse_byte(byte)
         if result.valid:
             break
     
@@ -119,30 +119,30 @@ def test_polyglot_tiny_frame():
     return True
 
 
-def test_polyglot_mixed_stream():
-    """Test that polyglot parser can handle mixed frame types in same stream"""
-    print("Testing polyglot parser with mixed frame stream...")
-    
+def test_parser_mixed_stream():
+    """Test that parser can handle mixed frame types in same stream"""
+    print("Testing parser with mixed frame stream...")
+
     # Create messages with different frame types
     basic_parser = BasicDefault()
     tiny_parser = TinyDefault()
-    
+
     # Encode multiple messages
     basic_msg1 = basic_parser.encode(10, b"Basic1")
     tiny_msg1 = tiny_parser.encode(20, b"Tiny1")
     basic_msg2 = basic_parser.encode(30, b"Basic2")
     tiny_msg2 = tiny_parser.encode(40, b"Tiny2")
-    
+
     # Concatenate into a single stream
     stream = basic_msg1 + tiny_msg1 + basic_msg2 + tiny_msg2
-    
+
     print(f"  Stream length: {len(stream)} bytes")
-    
+
     # Parse the stream
-    polyglot = PolyglotParser()
+    p = Parser()
     results = []
     for byte in stream:
-        result = polyglot.parse_byte(byte)
+        result = p.parse_byte(byte)
         if result.valid:
             results.append(result)
     
@@ -174,41 +174,41 @@ def test_polyglot_mixed_stream():
     return True
 
 
-def test_polyglot_minimal_frames():
-    """Test polyglot parser with minimal frame types (no CRC)"""
-    print("Testing polyglot parser with minimal frames...")
-    
+def test_parser_minimal_frames():
+    """Test parser with minimal frame types (no CRC)"""
+    print("Testing parser with minimal frames...")
+
     # These frames have no CRC, so they're more challenging
     basic_minimal = BasicMinimal()
     tiny_minimal = TinyMinimal()
-    
+
     # Encode messages
     basic_msg = basic_minimal.encode(15, b"BMin")
     tiny_msg = tiny_minimal.encode(25, b"TMin")
-    
-    # Parse with polyglot
-    polyglot = PolyglotParser()
+
+    # Parse with parser
+    p = Parser()
     
     # Parse basic minimal
     result = None
     for byte in basic_msg:
-        result = polyglot.parse_byte(byte)
+        result = p.parse_byte(byte)
         if result.valid:
             break
-    
+
     if not result or not result.valid:
         print(f"  ERROR: Failed to parse BasicMinimal frame")
         return False
-    
+
     if result.frame_type != "basic" or result.payload_type != 0:
         print(f"  ERROR: BasicMinimal not detected correctly")
         return False
-    
+
     # Reset and parse tiny minimal
-    polyglot.reset()
+    p.reset()
     result = None
     for byte in tiny_msg:
-        result = polyglot.parse_byte(byte)
+        result = p.parse_byte(byte)
         if result.valid:
             break
     
@@ -226,14 +226,14 @@ def test_polyglot_minimal_frames():
 
 def main():
     print("[TEST START]")
-    print("Polyglot Parser Test Suite")
+    print("Parser Test Suite")
     print("=" * 60)
-    
+
     tests = [
-        test_polyglot_basic_frame,
-        test_polyglot_tiny_frame,
-        test_polyglot_mixed_stream,
-        test_polyglot_minimal_frames,
+        test_parser_basic_frame,
+        test_parser_tiny_frame,
+        test_parser_mixed_stream,
+        test_parser_minimal_frames,
     ]
     
     passed = 0
