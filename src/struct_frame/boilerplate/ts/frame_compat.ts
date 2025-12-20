@@ -9,7 +9,7 @@ import { getBasicSecondStartByte, isBasicSecondStartByte } from './frame_headers
 import { fletcher_checksum, FrameMsgInfo } from './frame_base';
 
 /* Basic + Default */
-export function basic_default_encode_impl(
+export function basic_default_encode(
   msgId: number,
   msg: Uint8Array
 ): Uint8Array {
@@ -69,22 +69,18 @@ export function basic_default_validate_packet(
 
 /* Tiny + Minimal */
 export function tiny_minimal_encode(
-  buffer: Uint8Array,
   msgId: number,
   msg: Uint8Array
-): number {
+): Uint8Array {
   const headerSize = 2; /* [0x70] [MSG_ID] */
   const totalSize = headerSize + msg.length;
 
-  if (buffer.length < totalSize) {
-    return 0;
-  }
-
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = getTinyStartByte(0); // PayloadType.MINIMAL = 0
   buffer[1] = msgId;
   buffer.set(msg, headerSize);
 
-  return totalSize;
+  return buffer;
 }
 
 export function tiny_minimal_validate_packet(buffer: Uint8Array): FrameMsgInfo {
@@ -105,18 +101,18 @@ export function tiny_minimal_validate_packet(buffer: Uint8Array): FrameMsgInfo {
 
 /* Basic + Extended */
 export function basic_extended_encode(
-  buffer: Uint8Array,
   msgId: number,
   msg: Uint8Array
-): number {
+): Uint8Array {
   const headerSize = 6; /* [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] */
   const footerSize = 2; /* [CRC1] [CRC2] */
   const totalSize = headerSize + msg.length + footerSize;
 
-  if (buffer.length < totalSize || msg.length > 65535) {
-    return 0;
+  if (msg.length > 65535) {
+    return new Uint8Array(0);
   }
 
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = BASIC_START_BYTE;
   buffer[1] = getBasicSecondStartByte(4); // PayloadType.EXTENDED = 4
   buffer[2] = msg.length & 0xff;
@@ -129,7 +125,7 @@ export function basic_extended_encode(
   buffer[totalSize - 2] = ck[0];
   buffer[totalSize - 1] = ck[1];
 
-  return totalSize;
+  return buffer;
 }
 
 export function basic_extended_validate_packet(buffer: Uint8Array): FrameMsgInfo {
@@ -164,18 +160,18 @@ export function basic_extended_validate_packet(buffer: Uint8Array): FrameMsgInfo
 
 /* Basic + Extended Multi System Stream */
 export function basic_extended_multi_system_stream_encode(
-  buffer: Uint8Array,
   msgId: number,
   msg: Uint8Array
-): number {
+): Uint8Array {
   const headerSize = 9; /* [0x90] [0x78] [SEQ] [SYS] [COMP] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] */
   const footerSize = 2; /* [CRC1] [CRC2] */
   const totalSize = headerSize + msg.length + footerSize;
 
-  if (buffer.length < totalSize || msg.length > 65535) {
-    return 0;
+  if (msg.length > 65535) {
+    return new Uint8Array(0);
   }
 
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = BASIC_START_BYTE;
   buffer[1] = getBasicSecondStartByte(8); // PayloadType.EXTENDED_MULTI_SYSTEM_STREAM = 8
   buffer[2] = 0; // SEQ = 0
@@ -191,7 +187,7 @@ export function basic_extended_multi_system_stream_encode(
   buffer[totalSize - 2] = ck[0];
   buffer[totalSize - 1] = ck[1];
 
-  return totalSize;
+  return buffer;
 }
 
 export function basic_extended_multi_system_stream_validate_packet(
@@ -228,23 +224,19 @@ export function basic_extended_multi_system_stream_validate_packet(
 
 /* Basic + Minimal */
 export function basic_minimal_encode(
-  buffer: Uint8Array,
   msgId: number,
   msg: Uint8Array
-): number {
+): Uint8Array {
   const headerSize = 3; /* [0x90] [0x70] [MSG_ID] */
   const totalSize = headerSize + msg.length;
 
-  if (buffer.length < totalSize) {
-    return 0;
-  }
-
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = BASIC_START_BYTE;
   buffer[1] = getBasicSecondStartByte(0); // PayloadType.MINIMAL = 0
   buffer[2] = msgId;
   buffer.set(msg, headerSize);
 
-  return totalSize;
+  return buffer;
 }
 
 export function basic_minimal_validate_packet(buffer: Uint8Array): FrameMsgInfo {
@@ -269,18 +261,18 @@ export function basic_minimal_validate_packet(buffer: Uint8Array): FrameMsgInfo 
 
 /* Tiny + Default */
 export function tiny_default_encode(
-  buffer: Uint8Array,
   msgId: number,
   msg: Uint8Array
-): number {
+): Uint8Array {
   const headerSize = 3; /* [0x71] [LEN] [MSG_ID] */
   const footerSize = 2; /* [CRC1] [CRC2] */
   const totalSize = headerSize + msg.length + footerSize;
 
-  if (buffer.length < totalSize || msg.length > 255) {
-    return 0;
+  if (msg.length > 255) {
+    return new Uint8Array(0);
   }
 
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = getTinyStartByte(1); // PayloadType.DEFAULT = 1
   buffer[1] = msg.length;
   buffer[2] = msgId;
@@ -290,7 +282,7 @@ export function tiny_default_encode(
   buffer[totalSize - 2] = ck[0];
   buffer[totalSize - 1] = ck[1];
 
-  return totalSize;
+  return buffer;
 }
 
 export function tiny_default_validate_packet(buffer: Uint8Array): FrameMsgInfo {

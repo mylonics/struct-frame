@@ -9,15 +9,16 @@ const { getBasicSecondStartByte, isBasicSecondStartByte } = require('./frame_hea
 const { fletcher_checksum } = require('./frame_base');
 
 /* Basic + Default */
-function basic_default_encode(buffer, msgId, msg) {
+function basic_default_encode(msgId, msg) {
   const headerSize = 4;
   const footerSize = 2;
   const totalSize = headerSize + msg.length + footerSize;
 
-  if (buffer.length < totalSize || msg.length > 255) {
-    return 0;
+  if (msg.length > 255) {
+    return new Uint8Array(0);
   }
 
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = BASIC_START_BYTE;
   buffer[1] = getBasicSecondStartByte(1);
   buffer[2] = msg.length;
@@ -28,7 +29,7 @@ function basic_default_encode(buffer, msgId, msg) {
   buffer[totalSize - 2] = ck[0];
   buffer[totalSize - 1] = ck[1];
 
-  return totalSize;
+  return buffer;
 }
 
 function basic_default_validate_packet(buffer) {
@@ -62,19 +63,16 @@ function basic_default_validate_packet(buffer) {
 }
 
 /* Tiny + Minimal */
-function tiny_minimal_encode(buffer, msgId, msg) {
+function tiny_minimal_encode(msgId, msg) {
   const headerSize = 2;
   const totalSize = headerSize + msg.length;
 
-  if (buffer.length < totalSize) {
-    return 0;
-  }
-
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = getTinyStartByte(0);
   buffer[1] = msgId;
   buffer.set(msg, headerSize);
 
-  return totalSize;
+  return buffer;
 }
 
 function tiny_minimal_validate_packet(buffer) {
@@ -94,15 +92,16 @@ function tiny_minimal_validate_packet(buffer) {
 }
 
 /* Basic + Extended */
-function basic_extended_encode(buffer, msgId, msg) {
+function basic_extended_encode(msgId, msg) {
   const headerSize = 6;
   const footerSize = 2;
   const totalSize = headerSize + msg.length + footerSize;
 
-  if (buffer.length < totalSize || msg.length > 65535) {
-    return 0;
+  if (msg.length > 65535) {
+    return new Uint8Array(0);
   }
 
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = BASIC_START_BYTE;
   buffer[1] = getBasicSecondStartByte(4);
   buffer[2] = msg.length & 0xff;
@@ -115,7 +114,7 @@ function basic_extended_encode(buffer, msgId, msg) {
   buffer[totalSize - 2] = ck[0];
   buffer[totalSize - 1] = ck[1];
 
-  return totalSize;
+  return buffer;
 }
 
 function basic_extended_validate_packet(buffer) {
@@ -149,15 +148,16 @@ function basic_extended_validate_packet(buffer) {
 }
 
 /* Basic + Extended Multi System Stream */
-function basic_extended_multi_system_stream_encode(buffer, msgId, msg) {
+function basic_extended_multi_system_stream_encode(msgId, msg) {
   const headerSize = 9;
   const footerSize = 2;
   const totalSize = headerSize + msg.length + footerSize;
 
-  if (buffer.length < totalSize || msg.length > 65535) {
-    return 0;
+  if (msg.length > 65535) {
+    return new Uint8Array(0);
   }
 
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = BASIC_START_BYTE;
   buffer[1] = getBasicSecondStartByte(8);
   buffer[2] = 0;
@@ -173,7 +173,7 @@ function basic_extended_multi_system_stream_encode(buffer, msgId, msg) {
   buffer[totalSize - 2] = ck[0];
   buffer[totalSize - 1] = ck[1];
 
-  return totalSize;
+  return buffer;
 }
 
 function basic_extended_multi_system_stream_validate_packet(buffer) {
@@ -207,20 +207,17 @@ function basic_extended_multi_system_stream_validate_packet(buffer) {
 }
 
 /* Basic + Minimal */
-function basic_minimal_encode(buffer, msgId, msg) {
+function basic_minimal_encode(msgId, msg) {
   const headerSize = 3;
   const totalSize = headerSize + msg.length;
 
-  if (buffer.length < totalSize) {
-    return 0;
-  }
-
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = BASIC_START_BYTE;
   buffer[1] = getBasicSecondStartByte(0);
   buffer[2] = msgId;
   buffer.set(msg, headerSize);
 
-  return totalSize;
+  return buffer;
 }
 
 function basic_minimal_validate_packet(buffer) {
@@ -244,15 +241,16 @@ function basic_minimal_validate_packet(buffer) {
 }
 
 /* Tiny + Default */
-function tiny_default_encode(buffer, msgId, msg) {
+function tiny_default_encode(msgId, msg) {
   const headerSize = 3;
   const footerSize = 2;
   const totalSize = headerSize + msg.length + footerSize;
 
-  if (buffer.length < totalSize || msg.length > 255) {
-    return 0;
+  if (msg.length > 255) {
+    return new Uint8Array(0);
   }
 
+  const buffer = new Uint8Array(totalSize);
   buffer[0] = getTinyStartByte(1);
   buffer[1] = msg.length;
   buffer[2] = msgId;
@@ -262,7 +260,7 @@ function tiny_default_encode(buffer, msgId, msg) {
   buffer[totalSize - 2] = ck[0];
   buffer[totalSize - 1] = ck[1];
 
-  return totalSize;
+  return buffer;
 }
 
 function tiny_default_validate_packet(buffer) {
