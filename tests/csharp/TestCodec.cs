@@ -595,13 +595,5 @@ namespace StructFrameTests
             
             return result.MsgData;
         }
-
-        /// <summary>
-        /// Create serialized test message bytes with expected values
-        /// </summary>
-        private static byte[] CreateTestMessageBytes()
-        {
-            return TestCodec.CreateTestMessageBytes();
-        }
     }
 }
