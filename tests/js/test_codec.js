@@ -15,14 +15,16 @@ const EXPECTED_VALUES = {
 };
 
 // Import frame base functions
+const { BASIC_START_BYTE } = require('./frame_headers/base');
 const {
-  BASIC_START_BYTE,
   getTinyStartByte,
   isTinyStartByte,
+} = require('./frame_headers/header_tiny');
+const {
   getBasicSecondStartByte,
   isBasicSecondStartByte,
-  fletcher_checksum,
-} = require('./frame_base');
+} = require('./frame_headers/header_basic');
+const { fletcher_checksum } = require('./frame_base');
 
 /* Minimal frame format helper classes (replacing frame_compat) */
 
@@ -369,8 +371,8 @@ function encodeTestMessage(formatName) {
 
   const { msg, buffer } = createTestMessage(msgInfo.struct);
 
-  // Use static encode method
-  return ParserClass.encode(msgInfo.msgId, buffer);
+  // Use static encodeMsg method
+  return ParserClass.encodeMsg(msgInfo.msgId, buffer);
 }
 
 /**
@@ -380,8 +382,8 @@ function decodeTestMessage(formatName, data) {
   const ParserClass = getParserClass(formatName);
   const msgInfo = getMessageInfo();
 
-  // Use static validate_packet method
-  const result = ParserClass.validate_packet(data);
+  // Use static validatePacket method
+  const result = ParserClass.validatePacket(data);
 
   if (!result || !result.valid) {
     return null;

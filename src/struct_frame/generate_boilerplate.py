@@ -26,7 +26,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 from struct_frame.frame_format import parse_frame_formats
-from struct_frame.frame_parser_py_gen import generate_py_frame_parsers
+from struct_frame.parser_py_gen import generate_py_parser
 
 
 def get_default_frame_formats_path():

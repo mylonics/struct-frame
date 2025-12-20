@@ -14,14 +14,16 @@ export const EXPECTED_VALUES = {
 };
 
 // Import generated modules
+const { BASIC_START_BYTE } = require('./frame_headers/base');
 const {
-  BASIC_START_BYTE,
   getTinyStartByte,
   isTinyStartByte,
+} = require('./frame_headers/header_tiny');
+const {
   getBasicSecondStartByte,
   isBasicSecondStartByte,
-  fletcher_checksum,
-} = require('./frame_base');
+} = require('./frame_headers/header_basic');
+const { fletcher_checksum } = require('./frame_base');
 
 const {
   serialization_test_SerializationTestMessage,
