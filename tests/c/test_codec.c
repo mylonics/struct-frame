@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "frame_parsers.h"
+#include "frame_compat.h"
 #include "serialization_test.sf.h"
 
 /* Expected test values (from expected_values.json) */

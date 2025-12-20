@@ -38,8 +38,7 @@ function getParserClass(formatName) {
     throw new Error(`Unknown frame format: ${formatName}`);
   }
 
-  const moduleName = className;
-  const module = require(`./${moduleName}`);
+  const module = require('./frame_compat');
   return module[className];
 }
 

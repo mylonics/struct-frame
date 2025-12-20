@@ -4,54 +4,30 @@
 // Base utilities
 const frameBase = require('./frame_base');
 
-// Individual frame format parsers
-const tiny_minimal = require('./TinyMinimal');
-const tiny_default = require('./TinyDefault');
-const tiny_extended_msg_ids = require('./TinyExtendedMsgIds');
-const tiny_extended_length = require('./TinyExtendedLength');
-const tiny_extended = require('./TinyExtended');
-const tiny_sys_comp = require('./TinySysComp');
-const tiny_seq = require('./TinySeq');
-const tiny_multi_system_stream = require('./TinyMultiSystemStream');
-const tiny_extended_multi_system_stream = require('./TinyExtendedMultiSystemStream');
-const basic_minimal = require('./BasicMinimal');
-const basic_default = require('./BasicDefault');
-const basic_extended_msg_ids = require('./BasicExtendedMsgIds');
-const basic_extended_length = require('./BasicExtendedLength');
-const basic_extended = require('./BasicExtended');
-const basic_sys_comp = require('./BasicSysComp');
-const basic_seq = require('./BasicSeq');
-const basic_multi_system_stream = require('./BasicMultiSystemStream');
-const basic_extended_multi_system_stream = require('./BasicExtendedMultiSystemStream');
-const ubx_frame = require('./UbxFrame');
-const mavlink_v1_frame = require('./MavlinkV1Frame');
-const mavlink_v2_frame = require('./MavlinkV2Frame');
-const frame_format_config = require('./FrameFormatConfig');
+// Frame headers
+const frameHeadersBase = require('./frame_headers/base');
+const headerTiny = require('./frame_headers/header_tiny');
+const headerBasic = require('./frame_headers/header_basic');
+
+// Payload types
+const payloadTypesBase = require('./payload_types/base');
+const payloadDefault = require('./payload_types/payload_default');
+const payloadMinimal = require('./payload_types/payload_minimal');
+
+// Frame format configuration
+const frameFormatConfig = require('./FrameFormatConfig');
 
 module.exports = {
     // Base utilities
     ...frameBase,
-    // Frame formats
-    ...tiny_minimal,
-    ...tiny_default,
-    ...tiny_extended_msg_ids,
-    ...tiny_extended_length,
-    ...tiny_extended,
-    ...tiny_sys_comp,
-    ...tiny_seq,
-    ...tiny_multi_system_stream,
-    ...tiny_extended_multi_system_stream,
-    ...basic_minimal,
-    ...basic_default,
-    ...basic_extended_msg_ids,
-    ...basic_extended_length,
-    ...basic_extended,
-    ...basic_sys_comp,
-    ...basic_seq,
-    ...basic_multi_system_stream,
-    ...basic_extended_multi_system_stream,
-    ...ubx_frame,
-    ...mavlink_v1_frame,
-    ...mavlink_v2_frame,
-    ...frame_format_config,
+    // Frame headers
+    ...frameHeadersBase,
+    ...headerTiny,
+    ...headerBasic,
+    // Payload types
+    ...payloadTypesBase,
+    ...payloadDefault,
+    ...payloadMinimal,
+    // Frame format configuration
+    ...frameFormatConfig,
 };

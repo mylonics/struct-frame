@@ -6,38 +6,26 @@
 /* Base utilities */
 #include "frame_base.hpp"
 
-/* Individual frame format parsers */
-#include "TinyMinimal.hpp"
-#include "TinyDefault.hpp"
-#include "TinyExtendedMsgIds.hpp"
-#include "TinyExtendedLength.hpp"
-#include "TinyExtended.hpp"
-#include "TinySysComp.hpp"
-#include "TinySeq.hpp"
-#include "TinyMultiSystemStream.hpp"
-#include "TinyExtendedMultiSystemStream.hpp"
-#include "BasicMinimal.hpp"
-#include "BasicDefault.hpp"
-#include "BasicExtendedMsgIds.hpp"
-#include "BasicExtendedLength.hpp"
-#include "BasicExtended.hpp"
-#include "BasicSysComp.hpp"
-#include "BasicSeq.hpp"
-#include "BasicMultiSystemStream.hpp"
-#include "BasicExtendedMultiSystemStream.hpp"
-#include "UbxFrame.hpp"
-#include "MavlinkV1Frame.hpp"
-#include "MavlinkV2Frame.hpp"
+/* Frame headers - Start byte patterns and header types */
+#include "frame_headers/base.hpp"
+#include "frame_headers/header_tiny.hpp"
+#include "frame_headers/header_basic.hpp"
+#include "frame_headers/header_none.hpp"
+#include "frame_headers/header_ubx.hpp"
+#include "frame_headers/header_mavlink_v1.hpp"
+#include "frame_headers/header_mavlink_v2.hpp"
+
+/* Payload types - Message structure definitions */
+#include "payload_types/base.hpp"
+#include "payload_types/payload_minimal.hpp"
+#include "payload_types/payload_default.hpp"
+#include "payload_types/payload_extended_msg_ids.hpp"
+#include "payload_types/payload_extended_length.hpp"
+#include "payload_types/payload_extended.hpp"
+#include "payload_types/payload_sys_comp.hpp"
+#include "payload_types/payload_seq.hpp"
+#include "payload_types/payload_multi_system_stream.hpp"
+#include "payload_types/payload_extended_multi_system_stream.hpp"
+
+/* Frame format configuration */
 #include "FrameFormatConfig.hpp"
-
-/* Frame Profile Aliases */
-namespace FrameParsers {
-
-// Standard profile aliases for common use cases
-using ProfileStandard = BasicDefaultParser;  // General Serial / UART
-using ProfileSensor = TinyMinimalParser;     // Low-Bandwidth / Radio
-// using ProfileIPC = NoneMinimalParser;        // Trusted / Board-to-Board (NoneMinimal not generated for C++)
-using ProfileBulk = BasicExtendedParser;     // Firmware / File Transfer
-using ProfileNetwork = BasicExtendedMultiSystemStreamParser;  // Multi-Node Mesh / Swarm
-
-}  // namespace FrameParsers
