@@ -37,7 +37,7 @@ namespace StructFrameTests
             byte[] encodedData;
             try
             {
-                encodedData = TestCodec.EncodeTestMessage(formatName);
+                encodedData = TestCodecHelpers.EncodeTestMessage(formatName);
             }
             catch (Exception e)
             {
@@ -80,7 +80,7 @@ namespace StructFrameTests
                 return 1;
             }
 
-            var msgData = TestCodec.DecodeTestMessage(formatName, data);
+            var msgData = TestCodecHelpers.DecodeTestMessage(formatName, data);
             if (msgData == null)
             {
                 Console.WriteLine("[DECODE] FAILED: Frame validation failed");
