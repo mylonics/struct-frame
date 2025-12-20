@@ -54,7 +54,7 @@
 #   endif // !defined(ASIO_WINDOWS_APP)
 #  endif // defined(_MSC_VER) || defined(__BORLANDC__)
 # endif // !defined(ASIO_NO_DEFAULT_LINKED_LIBS)
-# include "asio/detail/old_win_sdk_compat.hpp"
+// Removed legacy old_win_sdk_compat.hpp - no longer needed for modern Windows SDKs
 #else
 # include <sys/ioctl.h>
 # if (defined(__MACH__) && defined(__APPLE__)) \
