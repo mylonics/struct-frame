@@ -807,6 +807,43 @@ for (size_t i = 0; i < encoder.size(); i++) {
 }
 ```
 
+## Wireshark Dissector
+
+A Wireshark Lua dissector is included for protocol analysis and debugging. It can decode all standard frame format profiles.
+
+### Features
+
+- Automatic detection of Basic and Tiny frame formats
+- Field-by-field dissection of all frame headers
+- CRC validation with Fletcher-16 checksum verification
+- Support for all 5 standard profiles (Standard, Sensor, IPC, Bulk, Network)
+- Heuristic dissectors for UDP and TCP traffic
+
+### Installation
+
+Copy the dissector to your Wireshark plugins directory:
+
+```bash
+# Linux/macOS
+mkdir -p ~/.local/lib/wireshark/plugins/
+cp wireshark/struct_frame.lua ~/.local/lib/wireshark/plugins/
+
+# Or load directly when starting Wireshark
+wireshark -X lua_script:wireshark/struct_frame.lua
+```
+
+### Generating Test Data
+
+Generate sample PCAP files for testing:
+
+```bash
+cd wireshark
+PYTHONPATH=../src python3 generate_test_packets.py
+# Opens: sample_packets/struct_frame_samples.pcap
+```
+
+See [wireshark/README.md](wireshark/README.md) for complete installation and usage instructions.
+
 ## Additional Documentation
 
 - **[Array Implementation Guide](ARRAY_IMPLEMENTATION.md)** - Documentation of array features, syntax, and generated code examples across all languages
