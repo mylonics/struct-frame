@@ -587,27 +587,16 @@ namespace StructFrameTests
         {
             switch (formatName)
             {
-                // Profile names (preferred)
                 case "profile_standard":
-                case "basic_default":
                     return new BasicDefault();
                 case "profile_sensor":
-                case "tiny_minimal":
                     return new TinyMinimal();
                 case "profile_ipc":
-                case "none_minimal":
                     return new NoneMinimal();
                 case "profile_bulk":
-                case "basic_extended":
                     return new BasicExtended();
                 case "profile_network":
-                case "basic_extended_multi_system_stream":
                     return new BasicExtendedMultiSystemStream();
-                // Legacy direct format names
-                case "basic_minimal":
-                    return new BasicMinimal();
-                case "tiny_default":
-                    return new TinyDefault();
                 default:
                     throw new ArgumentException($"Unknown frame format: {formatName}");
             }

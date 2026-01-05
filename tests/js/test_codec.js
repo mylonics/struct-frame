@@ -29,26 +29,26 @@ const { fletcher_checksum } = require('./frame_base');
 /* Minimal frame format helper classes (replacing frame_compat) */
 
 const BasicDefault = {
-  encodeMsg: function(msgId, msg) {
+  encodeMsg: function (msgId, msg) {
     const headerSize = 4;
     const footerSize = 2;
     const totalSize = headerSize + msg.length + footerSize;
     if (msg.length > 255) return new Uint8Array(0);
-    
+
     const buffer = new Uint8Array(totalSize);
     buffer[0] = BASIC_START_BYTE;
     buffer[1] = getBasicSecondStartByte(1);
     buffer[2] = msg.length;
     buffer[3] = msgId;
     buffer.set(msg, headerSize);
-    
+
     const ck = fletcher_checksum(buffer, 2, headerSize + msg.length);
     buffer[totalSize - 2] = ck[0];
     buffer[totalSize - 1] = ck[1];
     return buffer;
   },
-  
-  validatePacket: function(buffer) {
+
+  validatePacket: function (buffer) {
     if (buffer.length < 6 || buffer[0] !== BASIC_START_BYTE || !isBasicSecondStartByte(buffer[1])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
@@ -72,7 +72,7 @@ const BasicDefault = {
 };
 
 const TinyMinimal = {
-  encodeMsg: function(msgId, msg) {
+  encodeMsg: function (msgId, msg) {
     const headerSize = 2;
     const buffer = new Uint8Array(headerSize + msg.length);
     buffer[0] = getTinyStartByte(0);
@@ -80,8 +80,8 @@ const TinyMinimal = {
     buffer.set(msg, headerSize);
     return buffer;
   },
-  
-  validatePacket: function(buffer) {
+
+  validatePacket: function (buffer) {
     if (buffer.length < 2 || !isTinyStartByte(buffer[0])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
@@ -97,15 +97,15 @@ const TinyMinimal = {
 };
 
 const NoneMinimal = {
-  encodeMsg: function(msgId, msg) {
+  encodeMsg: function (msgId, msg) {
     const headerSize = 1;
     const buffer = new Uint8Array(headerSize + msg.length);
     buffer[0] = msgId;
     buffer.set(msg, headerSize);
     return buffer;
   },
-  
-  validatePacket: function(buffer) {
+
+  validatePacket: function (buffer) {
     if (buffer.length < 1) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
@@ -121,12 +121,12 @@ const NoneMinimal = {
 };
 
 const BasicExtended = {
-  encodeMsg: function(msgId, msg) {
+  encodeMsg: function (msgId, msg) {
     const headerSize = 6;
     const footerSize = 2;
     const totalSize = headerSize + msg.length + footerSize;
     if (msg.length > 65535) return new Uint8Array(0);
-    
+
     const buffer = new Uint8Array(totalSize);
     buffer[0] = BASIC_START_BYTE;
     buffer[1] = getBasicSecondStartByte(4);
@@ -135,14 +135,14 @@ const BasicExtended = {
     buffer[4] = 0;
     buffer[5] = msgId;
     buffer.set(msg, headerSize);
-    
+
     const ck = fletcher_checksum(buffer, 2, headerSize + msg.length);
     buffer[totalSize - 2] = ck[0];
     buffer[totalSize - 1] = ck[1];
     return buffer;
   },
-  
-  validatePacket: function(buffer) {
+
+  validatePacket: function (buffer) {
     if (buffer.length < 8 || buffer[0] !== BASIC_START_BYTE || !isBasicSecondStartByte(buffer[1])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
@@ -166,12 +166,12 @@ const BasicExtended = {
 };
 
 const BasicExtendedMultiSystemStream = {
-  encodeMsg: function(msgId, msg) {
+  encodeMsg: function (msgId, msg) {
     const headerSize = 9;
     const footerSize = 2;
     const totalSize = headerSize + msg.length + footerSize;
     if (msg.length > 65535) return new Uint8Array(0);
-    
+
     const buffer = new Uint8Array(totalSize);
     buffer[0] = BASIC_START_BYTE;
     buffer[1] = getBasicSecondStartByte(8);
@@ -183,14 +183,14 @@ const BasicExtendedMultiSystemStream = {
     buffer[7] = 0;
     buffer[8] = msgId;
     buffer.set(msg, headerSize);
-    
+
     const ck = fletcher_checksum(buffer, 2, headerSize + msg.length);
     buffer[totalSize - 2] = ck[0];
     buffer[totalSize - 1] = ck[1];
     return buffer;
   },
-  
-  validatePacket: function(buffer) {
+
+  validatePacket: function (buffer) {
     if (buffer.length < 11 || buffer[0] !== BASIC_START_BYTE || !isBasicSecondStartByte(buffer[1])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
@@ -214,7 +214,7 @@ const BasicExtendedMultiSystemStream = {
 };
 
 const BasicMinimal = {
-  encodeMsg: function(msgId, msg) {
+  encodeMsg: function (msgId, msg) {
     const headerSize = 3;
     const buffer = new Uint8Array(headerSize + msg.length);
     buffer[0] = BASIC_START_BYTE;
@@ -223,8 +223,8 @@ const BasicMinimal = {
     buffer.set(msg, headerSize);
     return buffer;
   },
-  
-  validatePacket: function(buffer) {
+
+  validatePacket: function (buffer) {
     if (buffer.length < 3 || buffer[0] !== BASIC_START_BYTE || !isBasicSecondStartByte(buffer[1])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
@@ -240,25 +240,25 @@ const BasicMinimal = {
 };
 
 const TinyDefault = {
-  encodeMsg: function(msgId, msg) {
+  encodeMsg: function (msgId, msg) {
     const headerSize = 3;
     const footerSize = 2;
     const totalSize = headerSize + msg.length + footerSize;
     if (msg.length > 255) return new Uint8Array(0);
-    
+
     const buffer = new Uint8Array(totalSize);
     buffer[0] = getTinyStartByte(1);
     buffer[1] = msg.length;
     buffer[2] = msgId;
     buffer.set(msg, headerSize);
-    
+
     const ck = fletcher_checksum(buffer, 1, headerSize + msg.length);
     buffer[totalSize - 2] = ck[0];
     buffer[totalSize - 1] = ck[1];
     return buffer;
   },
-  
-  validatePacket: function(buffer) {
+
+  validatePacket: function (buffer) {
     if (buffer.length < 5 || !isTinyStartByte(buffer[0])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
@@ -292,13 +292,6 @@ function getParserClass(formatName) {
     'profile_ipc': NoneMinimal,
     'profile_bulk': BasicExtended,
     'profile_network': BasicExtendedMultiSystemStream,
-    // Legacy direct format names
-    'basic_default': BasicDefault,
-    'basic_minimal': BasicMinimal,
-    'tiny_default': TinyDefault,
-    'tiny_minimal': TinyMinimal,
-    'basic_extended': BasicExtended,
-    'basic_extended_multi_system_stream': BasicExtendedMultiSystemStream,
   };
 
   const parserClass = formatMap[formatName];
@@ -402,6 +395,7 @@ function encodeTestMessage(formatName) {
 
 /**
  * Decode a test message using the specified frame format.
+ * Returns the number of messages successfully decoded.
  */
 function decodeTestMessage(formatName, data) {
   const ParserClass = getParserClass(formatName);
@@ -411,12 +405,18 @@ function decodeTestMessage(formatName, data) {
   const result = ParserClass.validatePacket(data);
 
   if (!result || !result.valid) {
-    return null;
+    return 0;
   }
 
   // Create message object from decoded data
   const msg = new msgInfo.struct(Buffer.from(result.msg_data));
-  return msg;
+
+  // Validate the message
+  if (!validateTestMessage(msg)) {
+    return 0;
+  }
+
+  return 1;  // Successfully decoded 1 message
 }
 
 module.exports = {

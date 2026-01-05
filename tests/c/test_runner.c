@@ -5,7 +5,7 @@
  *   test_runner encode <frame_format> <output_file>
  *   test_runner decode <frame_format> <input_file>
  *
- * Frame formats: basic_default, basic_minimal, tiny_default, tiny_minimal
+ * Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
  */
 
 #include <stdio.h>
@@ -14,13 +14,13 @@
 
 #include "test_codec.h"
 
-#define MAX_BUFFER_SIZE 512
+#define MAX_BUFFER_SIZE 4096  // Increased for multiple messages
 
 static void print_usage(const char* program_name) {
   printf("Usage:\n");
   printf("  %s encode <frame_format> <output_file>\n", program_name);
   printf("  %s decode <frame_format> <input_file>\n", program_name);
-  printf("\nFrame formats: basic_default, basic_minimal, tiny_default, tiny_minimal\n");
+  printf("\nFrame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network\n");
 }
 
 static void print_hex(const uint8_t* data, size_t size) {
@@ -58,7 +58,6 @@ static int run_encode(const char* format, const char* output_file) {
 
 static int run_decode(const char* format, const char* input_file) {
   uint8_t buffer[MAX_BUFFER_SIZE];
-  SerializationTestSerializationTestMessage msg;
 
   printf("[DECODE] Format: %s, File: %s\n", format, input_file);
 
@@ -76,18 +75,14 @@ static int run_decode(const char* format, const char* input_file) {
     return 1;
   }
 
-  if (!decode_test_message(format, buffer, size, &msg)) {
-    printf("[DECODE] FAILED: Decoding error\n");
+  size_t message_count = 0;
+  if (!decode_test_messages(format, buffer, size, &message_count)) {
+    printf("[DECODE] FAILED: Decoding or validation error\n");
     print_hex(buffer, size);
     return 1;
   }
 
-  if (!validate_test_message(&msg)) {
-    printf("[DECODE] FAILED: Validation error\n");
-    return 1;
-  }
-
-  printf("[DECODE] SUCCESS: Message validated correctly\n");
+  printf("[DECODE] SUCCESS: %zu messages validated correctly\n", message_count);
   return 0;
 }
 

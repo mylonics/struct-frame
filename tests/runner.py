@@ -344,8 +344,16 @@ class TestRunner:
             codec_source = test_dir / f"test_codec{source_ext}"
             runner_output = build_dir / f"test_runner{exe_ext}"
 
+            sources = [runner_source, codec_source]
+            
+            # Add cJSON.c for C language
+            if source_ext == '.c':
+                cjson_source = test_dir / "cJSON.c"
+                if cjson_source.exists():
+                    sources.append(cjson_source)
+
             if runner_source.exists() and codec_source.exists():
-                if not lang.compile([runner_source, codec_source], runner_output, gen_dir):
+                if not lang.compile(sources, runner_output, gen_dir):
                     all_success = False
 
         # Project-based compilation (TypeScript, C#)
@@ -448,11 +456,15 @@ class TestRunner:
         return self._output_files.get(suite_name, {})
 
     def run_test_runner(self, lang_id: str, mode: str, format_name: str,
-                        output_file: Path) -> bool:
-        """Run the unified test_runner for a language."""
+                        output_file: Path) -> tuple[bool, int]:
+        """Run the unified test_runner for a language.
+        
+        Returns:
+            (success, message_count): success status and number of messages decoded (for decode mode)
+        """
         lang = self.get_lang(lang_id)
         if not lang:
-            return False
+            return False, 0
 
         build_dir = lang.get_build_dir()
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -461,30 +473,36 @@ class TestRunner:
         if lang.executable_extension:
             runner_path = build_dir / f"test_runner{lang.executable_extension}"
             if not runner_path.exists():
-                return False
+                return False, 0
             cmd = f'"{runner_path}" {mode} {format_name} "{output_file}"'
-            return self.run_command(cmd, cwd=build_dir)[0]
+            success, stdout, stderr = self.run_command(cmd, cwd=build_dir)
+            message_count = self._extract_message_count(stdout, mode)
+            return success, message_count
 
         # C# (dotnet run)
         if lang.execution_type == 'dotnet':
             test_dir = lang.get_test_dir()
             csproj_path = test_dir / 'StructFrameTests.csproj'
             if not csproj_path.exists():
-                return False
+                return False, 0
             cmd = f'dotnet run --project "{csproj_path}" --verbosity quiet -- {mode} {format_name} "{output_file}"'
-            return self.run_command(cmd, cwd=test_dir)[0]
+            success, stdout, stderr = self.run_command(cmd, cwd=test_dir)
+            message_count = self._extract_message_count(stdout, mode)
+            return success, message_count
 
         # TypeScript (compiles to JS)
         if lang.compiled_extension:
             script_dir = lang.get_script_dir()
             if not script_dir:
-                return False
+                return False, 0
             runner_path = script_dir / 'test_runner.js'
             if not runner_path.exists():
-                return False
+                return False, 0
             interpreter = lang.interpreter or 'node'
             cmd = f'{interpreter} "{runner_path}" {mode} {format_name} "{output_file}"'
-            return self.run_command(cmd, cwd=script_dir)[0]
+            success, stdout, stderr = self.run_command(cmd, cwd=script_dir)
+            message_count = self._extract_message_count(stdout, mode)
+            return success, message_count
 
         # Interpreted languages (Python, JavaScript)
         if lang.interpreter:
@@ -497,7 +515,7 @@ class TestRunner:
                 runner_path = test_dir / f'test_runner{source_ext}'
 
             if not runner_path.exists():
-                return False
+                return False, 0
 
             cwd = runner_path.parent
             env_prefix = ''
@@ -511,9 +529,29 @@ class TestRunner:
                     env_prefix = f'set {key}={val} && ' if os.name == 'nt' else f'{key}={val} '
 
             cmd = f'{env_prefix}{lang.interpreter} "{runner_path}" {mode} {format_name} "{output_file}"'
-            return self.run_command(cmd, cwd=cwd)[0]
+            success, stdout, stderr = self.run_command(cmd, cwd=cwd)
+            message_count = self._extract_message_count(stdout, mode)
+            return success, message_count
 
-        return False
+        return False, 0
+    
+    def _extract_message_count(self, stdout: str, mode: str) -> int:
+        """Extract message count from test runner stdout.
+        
+        Looks for pattern: "[DECODE] SUCCESS: N messages validated correctly"
+        
+        Returns:
+            Number of messages decoded, or 0 if not found or not decode mode
+        """
+        if mode != 'decode' or not stdout:
+            return 0
+        
+        import re
+        # Match patterns like "5 messages validated" or "1 message validated"
+        match = re.search(r'SUCCESS:\s+(\d+)\s+messages?\s+validated', stdout)
+        if match:
+            return int(match.group(1))
+        return 0
 
     # =========================================================================
     # Summary

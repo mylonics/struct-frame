@@ -1,0 +1,49 @@
+{
+  "messages": [
+    {
+      "name": "basic_values",
+      "magic_number": 3735928559,
+      "magic_number_hex": "0xDEADBEEF",
+      "test_string": "Cross-platform test!",
+      "test_float": 3.14159,
+      "test_bool": true,
+      "test_array": [100, 200, 300]
+    },
+    {
+      "name": "zero_values",
+      "magic_number": 0,
+      "magic_number_hex": "0x00000000",
+      "test_string": "",
+      "test_float": 0.0,
+      "test_bool": false,
+      "test_array": []
+    },
+    {
+      "name": "max_values",
+      "magic_number": 4294967295,
+      "magic_number_hex": "0xFFFFFFFF",
+      "test_string": "Maximum length test string for coverage!",
+      "test_float": 999999.9,
+      "test_bool": true,
+      "test_array": [2147483647, -2147483648, 0, 1, -1]
+    },
+    {
+      "name": "negative_values",
+      "magic_number": 2863311530,
+      "magic_number_hex": "0xAAAAAAAA",
+      "test_string": "Negative test",
+      "test_float": -273.15,
+      "test_bool": false,
+      "test_array": [-100, -200, -300, -400]
+    },
+    {
+      "name": "special_chars",
+      "magic_number": 1234567890,
+      "magic_number_hex": "0x499602D2",
+      "test_string": "Special: !@#$%^&*()",
+      "test_float": 2.71828,
+      "test_bool": true,
+      "test_array": [0, 1, 1, 2, 3, 5, 8, 13, 21]
+    }
+  ]
+}

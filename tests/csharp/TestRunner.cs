@@ -4,7 +4,7 @@
 //     dotnet run -- encode <frame_format> <output_file>
 //     dotnet run -- decode <frame_format> <input_file>
 //
-// Frame formats: basic_default, basic_minimal, tiny_default, tiny_minimal
+// Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
 
 using System;
 using System.IO;
@@ -19,7 +19,7 @@ namespace StructFrameTests
             Console.WriteLine("  dotnet run -- encode <frame_format> <output_file>");
             Console.WriteLine("  dotnet run -- decode <frame_format> <input_file>");
             Console.WriteLine();
-            Console.WriteLine("Frame formats: basic_default, basic_minimal, tiny_default, tiny_minimal");
+            Console.WriteLine("Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network");
         }
 
         static void PrintHex(byte[] data)
@@ -94,7 +94,7 @@ namespace StructFrameTests
                 return 1;
             }
 
-            Console.WriteLine($"[DECODE] SUCCESS: Decoded and validated message ({data.Length} bytes)");
+            Console.WriteLine($"[DECODE] SUCCESS: 1 message validated correctly");
             return 0;
         }
 

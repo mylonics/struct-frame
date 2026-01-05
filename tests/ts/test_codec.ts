@@ -4,7 +4,40 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-// Expected test values (from expected_values.json)
+// Test message interface
+export interface TestMessage {
+  name: string;
+  magic_number: number;
+  test_string: string;
+  test_float: number;
+  test_bool: boolean;
+  test_array: number[];
+}
+
+// Load test messages from JSON
+export function loadTestMessages(): TestMessage[] {
+  const possiblePaths = [
+    path.join(__dirname, '..', 'test_messages.json'),
+    path.join(__dirname, '..', '..', 'test_messages.json'),
+    'test_messages.json',
+    '../test_messages.json',
+  ];
+
+  for (const filePath of possiblePaths) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        return data.messages as TestMessage[];
+      }
+    } catch (e) {
+      // Continue to next path
+    }
+  }
+
+  throw new Error('Could not find test_messages.json');
+}
+
+// Expected test values (from test_messages.json) - first message for backwards compatibility
 export const EXPECTED_VALUES = {
   magic_number: 3735928559,  // 0xDEADBEEF
   test_string: 'Cross-platform test!',
@@ -39,20 +72,20 @@ class BasicDefault {
     const footerSize = 2;
     const totalSize = headerSize + msg.length + footerSize;
     if (msg.length > 255) return new Uint8Array(0);
-    
+
     const buffer = new Uint8Array(totalSize);
     buffer[0] = BASIC_START_BYTE;
     buffer[1] = getBasicSecondStartByte(1); // DEFAULT = 1
     buffer[2] = msg.length;
     buffer[3] = msgId;
     buffer.set(msg, headerSize);
-    
+
     const ck = fletcher_checksum(buffer, 2, headerSize + msg.length);
     buffer[totalSize - 2] = ck[0];
     buffer[totalSize - 1] = ck[1];
     return buffer;
   }
-  
+
   static validatePacket(buffer: Uint8Array): any {
     if (buffer.length < 6 || buffer[0] !== BASIC_START_BYTE || !isBasicSecondStartByte(buffer[1])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -85,7 +118,7 @@ class TinyMinimal {
     buffer.set(msg, headerSize);
     return buffer;
   }
-  
+
   static validatePacket(buffer: Uint8Array): any {
     if (buffer.length < 2 || !isTinyStartByte(buffer[0])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -109,7 +142,7 @@ class NoneMinimal {
     buffer.set(msg, headerSize);
     return buffer;
   }
-  
+
   static validatePacket(buffer: Uint8Array): any {
     if (buffer.length < 1) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -131,7 +164,7 @@ class BasicExtended {
     const footerSize = 2;
     const totalSize = headerSize + msg.length + footerSize;
     if (msg.length > 65535) return new Uint8Array(0);
-    
+
     const buffer = new Uint8Array(totalSize);
     buffer[0] = BASIC_START_BYTE;
     buffer[1] = getBasicSecondStartByte(4); // EXTENDED = 4
@@ -140,13 +173,13 @@ class BasicExtended {
     buffer[4] = 0; // PKG_ID
     buffer[5] = msgId;
     buffer.set(msg, headerSize);
-    
+
     const ck = fletcher_checksum(buffer, 2, headerSize + msg.length);
     buffer[totalSize - 2] = ck[0];
     buffer[totalSize - 1] = ck[1];
     return buffer;
   }
-  
+
   static validatePacket(buffer: Uint8Array): any {
     if (buffer.length < 8 || buffer[0] !== BASIC_START_BYTE || !isBasicSecondStartByte(buffer[1])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -176,7 +209,7 @@ class BasicExtendedMultiSystemStream {
     const footerSize = 2;
     const totalSize = headerSize + msg.length + footerSize;
     if (msg.length > 65535) return new Uint8Array(0);
-    
+
     const buffer = new Uint8Array(totalSize);
     buffer[0] = BASIC_START_BYTE;
     buffer[1] = getBasicSecondStartByte(8); // EXTENDED_MULTI_SYSTEM_STREAM = 8
@@ -188,13 +221,13 @@ class BasicExtendedMultiSystemStream {
     buffer[7] = 0; // PKG_ID
     buffer[8] = msgId;
     buffer.set(msg, headerSize);
-    
+
     const ck = fletcher_checksum(buffer, 2, headerSize + msg.length);
     buffer[totalSize - 2] = ck[0];
     buffer[totalSize - 1] = ck[1];
     return buffer;
   }
-  
+
   static validatePacket(buffer: Uint8Array): any {
     if (buffer.length < 11 || buffer[0] !== BASIC_START_BYTE || !isBasicSecondStartByte(buffer[1])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -228,7 +261,7 @@ class BasicMinimal {
     buffer.set(msg, headerSize);
     return buffer;
   }
-  
+
   static validatePacket(buffer: Uint8Array): any {
     if (buffer.length < 3 || buffer[0] !== BASIC_START_BYTE || !isBasicSecondStartByte(buffer[1])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -250,19 +283,19 @@ class TinyDefault {
     const footerSize = 2;
     const totalSize = headerSize + msg.length + footerSize;
     if (msg.length > 255) return new Uint8Array(0);
-    
+
     const buffer = new Uint8Array(totalSize);
     buffer[0] = getTinyStartByte(1); // DEFAULT = 1
     buffer[1] = msg.length;
     buffer[2] = msgId;
     buffer.set(msg, headerSize);
-    
+
     const ck = fletcher_checksum(buffer, 1, headerSize + msg.length);
     buffer[totalSize - 2] = ck[0];
     buffer[totalSize - 1] = ck[1];
     return buffer;
   }
-  
+
   static validatePacket(buffer: Uint8Array): any {
     if (buffer.length < 5 || !isTinyStartByte(buffer[0])) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -297,13 +330,6 @@ export function getParserClass(formatName: string): any {
     'profile_ipc': NoneMinimal,
     'profile_bulk': BasicExtended,
     'profile_network': BasicExtendedMultiSystemStream,
-    // Legacy direct format names (for backward compatibility)
-    'basic_default': BasicDefault,
-    'basic_minimal': BasicMinimal,
-    'tiny_default': TinyDefault,
-    'tiny_minimal': TinyMinimal,
-    'basic_extended': BasicExtended,
-    'basic_extended_multi_system_stream': BasicExtendedMultiSystemStream,
   };
 
   const ParserClass = formatMap[formatName];
@@ -405,9 +431,10 @@ export function encodeTestMessage(formatName: string): Buffer {
 }
 
 /**
- * Decode a test message using the specified frame format.
+ * Decode and validate a test message using the specified frame format.
+ * Returns the number of messages successfully decoded.
  */
-export function decodeTestMessage(formatName: string, data: Buffer): any | null {
+export function decodeTestMessage(formatName: string, data: Buffer): number {
   const ParserClass = getParserClass(formatName);
   const msgInfo = getMessageInfo();
 
@@ -415,10 +442,16 @@ export function decodeTestMessage(formatName: string, data: Buffer): any | null 
   const result = ParserClass.validatePacket(data);
 
   if (!result || !result.valid) {
-    return null;
+    return 0;
   }
 
   // Create message object from decoded data
   const msg = new msgInfo.struct(Buffer.from(result.msg_data));
-  return msg;
+
+  // Validate the message
+  if (!validateTestMessage(msg)) {
+    return 0;
+  }
+
+  return 1;  // Successfully decoded 1 message
 }
