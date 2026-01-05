@@ -15,12 +15,12 @@ struct-frame supports multiple parser types and framing strategies optimized for
 
 | Language   | Profile-Specific Parsers | Polyglot Parser | Buffer Parsing | Zero-Copy Support | Notes |
 |------------|--------------------------|-----------------|----------------|-------------------|-------|
-| **C**      | ✅ Yes                   | ✅ Yes          | ⚠️ Byte-by-byte | ✅ Yes           | Profile parsers via `basic_default_parser_t`, `tiny_minimal_parser_t`, etc. |
-| **C++**    | ✅ Yes                   | ✅ Yes          | ✅ Yes          | ✅ Yes           | Buffer API: `parse_buffer()`, returns pointer into original buffer |
+| **C**      | ✅ Yes                   | ❌ No           | ⚠️ Byte-by-byte | ✅ Yes           | Profile parsers via `profile_standard_t`, `profile_sensor_t`, etc. |
+| **C++**    | ✅ Yes                   | ❌ No           | ✅ Yes          | ✅ Yes           | Buffer API: `parse_buffer()`, returns pointer into original buffer |
 | **Python** | ✅ Yes                   | ✅ Yes          | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers available, polyglot parser is default |
-| **TypeScript** | ✅ Yes               | ✅ Yes          | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers via generated classes |
-| **JavaScript** | ✅ Yes               | ✅ Yes          | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers via generated classes |
-| **C#**     | ✅ Yes                   | ✅ Yes          | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers via generated classes |
+| **TypeScript** | ✅ Yes               | ❌ No           | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers via generated classes |
+| **JavaScript** | ✅ Yes               | ❌ No           | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers via generated classes |
+| **C#**     | ✅ Yes                   | ❌ No           | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers via generated classes |
 | **GraphQL**| N/A                      | N/A             | N/A            | N/A              | Schema generation only |
 
 ### Legend
@@ -52,13 +52,13 @@ All languages support parsers for these standard profiles:
 ```c
 #include "frame_parsers.h"
 
-// Profile-specific parser (STANDARD profile)
-basic_default_parser_t parser;
+// Profile-specific parser (using STANDARD profile)
+profile_standard_t parser;
 uint8_t buffer[256];
-basic_default_parser_init(&parser, buffer, sizeof(buffer), NULL);
+profile_standard_init(&parser, buffer, sizeof(buffer), NULL);
 
 // Parse byte-by-byte
-frame_msg_info_t result = basic_default_parse_byte(&parser, byte);
+frame_msg_info_t result = profile_standard_parse_byte(&parser, byte);
 if (result.valid) {
     // Process message: result.msg_id, result.msg_data, result.msg_len
 }
@@ -71,9 +71,9 @@ if (result.valid) {
 
 using namespace FrameParsers;
 
-// Profile-specific parser (STANDARD profile)
+// Profile-specific parser (using STANDARD profile)
 uint8_t buffer[256];
-BasicDefaultParser parser(buffer, sizeof(buffer));
+ProfileStandard parser(buffer, sizeof(buffer));
 
 // Option 1: Byte-by-byte parsing
 FrameMsgInfo result = parser.parse_byte(byte);
@@ -89,10 +89,10 @@ if (result.valid) {
 }
 
 // Profile aliases for convenience
-using ProfileStandard = BasicDefaultParser;
-using ProfileSensor = TinyMinimalParser;
-using ProfileBulk = BasicExtendedParser;
-using ProfileNetwork = BasicExtendedMultiSystemStreamParser;
+using ProfileStandard = BasicDefaultParser;  // Profile.STANDARD
+using ProfileSensor = TinyMinimalParser;     // Profile.SENSOR
+using ProfileBulk = BasicExtendedParser;     // Profile.BULK
+using ProfileNetwork = BasicExtendedMultiSystemStreamParser;  // Profile.NETWORK
 ```
 
 #### Python
@@ -246,25 +246,6 @@ Copy the message data if:
 std::vector<uint8_t> message_copy(result.msg_data, result.msg_data + result.msg_len);
 async_queue.push(MessageTask{result.msg_id, std::move(message_copy)});
 ```
-
-## Performance Comparison
-
-### Parsing Throughput
-
-Approximate performance on typical embedded MCU (Cortex-M4 @ 168MHz):
-
-| Parser Type | Throughput | Notes |
-|-------------|------------|-------|
-| C++ Buffer Parsing | ~50 MB/s | Direct memory scanning |
-| C++ Byte-by-Byte | ~10 MB/s | State machine per byte |
-| Python Byte-by-Byte | ~2 MB/s | Interpreted, per-byte overhead |
-
-### Memory Usage
-
-| Parser Type | RAM per Instance | Code Size |
-|-------------|------------------|-----------|
-| Profile-Specific (C++) | ~50 bytes | 2-4 KB per profile |
-| Polyglot (Python) | ~100 bytes | 15-20 KB total |
 
 ## Best Practices
 

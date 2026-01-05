@@ -138,9 +138,9 @@ The byte-by-byte API processes one byte at a time, maintaining parser state acro
 
 using namespace FrameParsers;
 
-// Create parser with internal buffer
+// Create parser with internal buffer (using profile alias)
 uint8_t buffer[512];
-BasicDefaultParser parser(buffer, sizeof(buffer));
+ProfileStandard parser(buffer, sizeof(buffer));  // Profile.STANDARD
 
 // Parse incoming bytes one at a time
 void onSerialByte(uint8_t byte) {
@@ -168,9 +168,9 @@ The buffer parsing API scans entire byte buffers efficiently, ideal for batch pr
 
 using namespace FrameParsers;
 
-// Create parser
+// Create parser (using profile alias)
 uint8_t internal_buffer[512];
-BasicDefaultParser parser(internal_buffer, sizeof(internal_buffer));
+ProfileStandard parser(internal_buffer, sizeof(internal_buffer));  // Profile.STANDARD
 
 // Parse from DMA buffer or ring buffer
 void processBuffer(const uint8_t* data, size_t length) {
@@ -204,7 +204,7 @@ The buffer API works great with ring buffers from UART/SPI peripherals:
 ```cpp
 class RingBufferParser {
 private:
-    BasicDefaultParser parser_;
+    ProfileStandard parser_;  // Profile.STANDARD
     uint8_t internal_buffer_[512];
     
 public:
@@ -236,15 +236,6 @@ public:
     }
 };
 ```
-
-### Performance Comparison
-
-On typical embedded hardware (Cortex-M4 @ 168MHz):
-
-| Method | Throughput | Use Case |
-|--------|------------|----------|
-| Buffer Parsing | ~50 MB/s | Batch processing, high throughput |
-| Byte-by-Byte | ~10 MB/s | Streaming, low latency |
 
 ### When to Use Each API
 
