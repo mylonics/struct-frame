@@ -19,6 +19,21 @@ Instead of choosing individual frame features, **use these intent-based profiles
 !!! tip "Interactive Calculator"
     Use the [Frame Profile Calculator](framing-calculator.md) to select features and see which profile matches your needs!
 
+!!! example "Using Profiles in Code"
+    ```python
+    from struct_frame.frame_formats import Profile, get_profile
+    
+    # Get a standard profile
+    standard = get_profile(Profile.STANDARD)
+    print(f"Overhead: {standard.total_overhead} bytes")  # 6 bytes
+    
+    # Or create a custom profile
+    from struct_frame.frame_formats import create_custom_profile, HeaderType, PayloadType
+    custom = create_custom_profile("TinyDefault", HeaderType.TINY, PayloadType.DEFAULT)
+    ```
+    
+    See [examples/frame_format_profiles.py](https://github.com/mylonics/struct-frame/blob/main/examples/frame_format_profiles.py) for more examples.
+
 ### Choose Your Frame: Decision Tree
 
 ```
