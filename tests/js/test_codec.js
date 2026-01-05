@@ -130,12 +130,18 @@ const TinyMinimal = {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
     const msgId = buffer[1];
-    const msgLen = buffer.length - 2;
+    // For minimal payloads, we need to know the message size (use known max size)
+    const msgInfo = getMessageInfo();
+    const msgLen = msgInfo.maxSize;
+    const totalSize = 2 + msgLen;
+    if (buffer.length < totalSize) {
+      return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
+    }
     return {
       valid: true,
       msg_id: msgId,
       msg_len: msgLen,
-      msg_data: buffer.slice(2),
+      msg_data: buffer.slice(2, 2 + msgLen),
     };
   }
 };
@@ -154,12 +160,18 @@ const NoneMinimal = {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
     const msgId = buffer[0];
-    const msgLen = buffer.length - 1;
+    // For minimal payloads, we need to know the message size (use known max size)
+    const msgInfo = getMessageInfo();
+    const msgLen = msgInfo.maxSize;
+    const totalSize = 1 + msgLen;
+    if (buffer.length < totalSize) {
+      return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
+    }
     return {
       valid: true,
       msg_id: msgId,
       msg_len: msgLen,
-      msg_data: buffer.slice(1),
+      msg_data: buffer.slice(1, 1 + msgLen),
     };
   }
 };
