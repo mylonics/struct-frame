@@ -24,7 +24,8 @@ def get_csharp_field_type(field, package_name):
         base_type = csharp_types[type_name]
     else:
         # Use the package where the type is defined
-        type_pkg = field.type_package if field.type_package else field.package
+        type_pkg = getattr(field, 'type_package', None) if hasattr(field, 'type_package') else None
+        type_pkg = type_pkg if type_pkg else getattr(field, 'package', package_name)
         if field.isEnum:
             base_type = f'{pascalCase(type_pkg)}{type_name}'
         else:
@@ -167,7 +168,7 @@ class SdkInterfaceGen:
                             # Fixed string array
                             yield f'            message.{struct_field_name} = {param_name};\n'
                         elif field.max_size is not None:
-                            # Variable string array
+                            # Variable string array - use integer division
                             yield f'            message.{struct_field_name}Count = (byte)Math.Min({param_name}.Length / {field.element_size}, {field.max_size});\n'
                             yield f'            message.{struct_field_name}Data = {param_name};\n'
                     else:
