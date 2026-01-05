@@ -72,9 +72,9 @@ function runDecode(formatName, inputFile) {
     return 1;
   }
 
-  let msg;
+  let messageCount;
   try {
-    msg = decodeTestMessage(formatName, data);
+    messageCount = decodeTestMessage(formatName, data);
   } catch (error) {
     console.log(`[DECODE] FAILED: Decoding error - ${error.message}`);
     printHex(data);
@@ -82,18 +82,13 @@ function runDecode(formatName, inputFile) {
     return 1;
   }
 
-  if (!msg) {
-    console.log('[DECODE] FAILED: Decoding returned null');
+  if (messageCount === 0) {
+    console.log('[DECODE] FAILED: No messages decoded');
     printHex(data);
     return 1;
   }
 
-  if (!validateTestMessage(msg)) {
-    console.log('[DECODE] FAILED: Validation error');
-    return 1;
-  }
-
-  console.log('[DECODE] SUCCESS: Message validated correctly');
+  console.log(`[DECODE] SUCCESS: ${messageCount} messages validated correctly`);
   return 0;
 }
 

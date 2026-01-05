@@ -51,7 +51,26 @@ inline FrameMsgInfo basic_default_validate_packet(const uint8_t* buffer, size_t 
     return result;
   }
 
-  return validate_payload_with_crc(buffer, length, 4, 1, 2);
+  /* Extract length from the frame */
+  const size_t msg_len = buffer[2];
+  const size_t total_size = 4 + msg_len + 2; /* header + payload + crc */
+
+  if (length < total_size) {
+    return result;
+  }
+
+  /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
+  FrameChecksum ck = fletcher_checksum(buffer + 2, msg_len + 2);
+  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = buffer[3]; /* MSG_ID at position 3 */
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 4); /* Payload starts after header */
+
+  return result;
 }
 
 /* Tiny + Minimal */
@@ -79,7 +98,24 @@ inline FrameMsgInfo tiny_minimal_validate_packet(const uint8_t* buffer, size_t l
     return result;
   }
 
-  return validate_payload_minimal(buffer, length, 2);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[1];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 2 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 2);
+
+  return result;
 }
 
 /* None + Minimal */
@@ -105,7 +141,24 @@ inline FrameMsgInfo none_minimal_validate_packet(const uint8_t* buffer, size_t l
     return result;
   }
 
-  return validate_payload_minimal(buffer, length, 1);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[0];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 1 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 1);
+
+  return result;
 }
 
 /* Basic + Extended */
@@ -252,7 +305,24 @@ inline FrameMsgInfo basic_minimal_validate_packet(const uint8_t* buffer, size_t 
     return result;
   }
 
-  return validate_payload_minimal(buffer, length, 3);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[2];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 3 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 3);
+
+  return result;
 }
 
 /* Tiny + Default */
@@ -286,50 +356,73 @@ inline FrameMsgInfo tiny_default_validate_packet(const uint8_t* buffer, size_t l
     return result;
   }
 
-  return validate_payload_with_crc(buffer, length, 3, 1, 1);
+  /* Extract length from the frame */
+  const size_t msg_len = buffer[1];
+  const size_t total_size = 3 + msg_len + 2; /* header + payload + crc */
+
+  if (length < total_size) {
+    return result;
+  }
+
+  /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
+  FrameChecksum ck = fletcher_checksum(buffer + 1, msg_len + 2);
+  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = buffer[2]; /* MSG_ID at position 2 */
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 3); /* Payload starts after header */
+
+  return result;
 }
 
-/* Load test messages from JSON */
+/* Load test messages - hardcoded to match test_messages.json */
 std::vector<TestMessage> load_test_messages() {
-  std::vector<TestMessage> messages;
-
-  // Try different paths to find the JSON file
-  std::vector<std::string> possible_paths = {"../test_messages.json", "../../test_messages.json", "test_messages.json"};
-
-  std::ifstream file;
-  for (const auto& path : possible_paths) {
-    file.open(path);
-    if (file.is_open()) break;
-  }
-
-  if (!file.is_open()) {
-    std::cerr << "Failed to open test_messages.json" << std::endl;
-    return messages;
-  }
-
-  try {
-    json j = json::parse(file);
-    file.close();
-
-    for (const auto& msg_json : j["messages"]) {
-      TestMessage msg;
-      msg.magic_number = msg_json["magic_number"];
-      msg.test_string = msg_json["test_string"];
-      msg.test_float = msg_json["test_float"];
-      msg.test_bool = msg_json["test_bool"];
-
-      for (const auto& val : msg_json["test_array"]) {
-        msg.test_array.push_back(val);
-      }
-
-      messages.push_back(msg);
+  std::vector<TestMessage> messages = {
+    /* basic_values */
+    TestMessage{
+      3735928559,  /* 0xDEADBEEF */
+      "Cross-platform test!",
+      3.14159f,
+      true,
+      {100, 200, 300}
+    },
+    /* zero_values */
+    TestMessage{
+      0,
+      "",
+      0.0f,
+      false,
+      {}
+    },
+    /* max_values */
+    TestMessage{
+      4294967295,  /* 0xFFFFFFFF */
+      "Maximum length test string for coverage!",
+      999999.9f,
+      true,
+      {2147483647, -2147483648, 0, 1, -1}
+    },
+    /* negative_values */
+    TestMessage{
+      2863311530,  /* 0xAAAAAAAA */
+      "Negative test",
+      -273.15f,
+      false,
+      {-100, -200, -300, -400}
+    },
+    /* special_chars */
+    TestMessage{
+      1234567890,  /* 0x499602D2 */
+      "Special: !@#$%^&*()",
+      2.71828f,
+      true,
+      {0, 1, 1, 2, 3}
     }
-  } catch (const std::exception& e) {
-    std::cerr << "Error parsing JSON: " << e.what() << std::endl;
-    file.close();
-    return messages;
-  }
-
+  };
+  
   return messages;
 }
 void create_message_from_data(const TestMessage& test_msg, SerializationTestSerializationTestMessage& msg) {
@@ -552,5 +645,6 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
 
 bool decode_test_message(const std::string& format, const uint8_t* buffer, size_t buffer_size,
                          SerializationTestSerializationTestMessage& msg) {
-  return decode_test_messages(format, buffer, buffer_size);
+  size_t message_count = 0;
+  return decode_test_messages(format, buffer, buffer_size, message_count);
 }

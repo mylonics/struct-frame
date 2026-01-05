@@ -42,7 +42,26 @@ static inline frame_msg_info_t basic_default_validate_packet(const uint8_t* buff
     return result;
   }
 
-  return frame_validate_payload_with_crc(buffer, length, 4, 1, 2);
+  /* Extract length from the frame */
+  const size_t msg_len = buffer[2];
+  const size_t total_size = 4 + msg_len + 2; /* header + payload + crc */
+
+  if (length < total_size) {
+    return result;
+  }
+
+  /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
+  frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 2);
+  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = buffer[3]; /* MSG_ID at position 3 */
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 4); /* Payload starts after header */
+
+  return result;
 }
 
 /* Tiny + Minimal */
@@ -69,7 +88,24 @@ static inline frame_msg_info_t tiny_minimal_validate_packet(const uint8_t* buffe
     return result;
   }
 
-  return frame_validate_payload_minimal(buffer, length, 2);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[1];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 2 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 2);
+
+  return result;
 }
 
 /* None + Minimal */
@@ -95,7 +131,24 @@ static inline frame_msg_info_t none_minimal_validate_packet(const uint8_t* buffe
     return result;
   }
 
-  return frame_validate_payload_minimal(buffer, length, 1);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[0];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 1 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 1);
+
+  return result;
 }
 
 /* Basic + Extended */
@@ -237,7 +290,24 @@ static inline frame_msg_info_t basic_minimal_validate_packet(const uint8_t* buff
     return result;
   }
 
-  return frame_validate_payload_minimal(buffer, length, 3);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[2];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 3 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 3);
+
+  return result;
 }
 
 /* Tiny + Default */
@@ -270,86 +340,83 @@ static inline frame_msg_info_t tiny_default_validate_packet(const uint8_t* buffe
     return result;
   }
 
-  return frame_validate_payload_with_crc(buffer, length, 3, 1, 1);
+  /* Extract length from the frame */
+  const size_t msg_len = buffer[1];
+  const size_t total_size = 3 + msg_len + 2; /* header + payload + crc */
+
+  if (length < total_size) {
+    return result;
+  }
+
+  /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
+  frame_checksum_t ck = frame_fletcher_checksum(buffer + 1, msg_len + 2);
+  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = buffer[2]; /* MSG_ID at position 2 */
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 3); /* Payload starts after header */
+
+  return result;
 }
 
-/* Load test messages from JSON using cJSON */
+/* Load test messages - hardcoded to match test_messages.json */
 size_t load_test_messages(test_message_t* messages, size_t max_count) {
-  const char* paths[] = {"../test_messages.json", "../../test_messages.json", "test_messages.json", NULL};
-
-  FILE* file = NULL;
-  for (int i = 0; paths[i] != NULL; i++) {
-    file = fopen(paths[i], "r");
-    if (file) break;
-  }
-
-  if (!file) {
-    fprintf(stderr, "Failed to open test_messages.json\n");
-    return 0;
-  }
-
-  /* Read file into string */
-  fseek(file, 0, SEEK_END);
-  long file_size = ftell(file);
-  fseek(file, 0, SEEK_SET);
-
-  char* json_str = (char*)malloc(file_size + 1);
-  if (!json_str) {
-    fclose(file);
-    return 0;
-  }
-
-  fread(json_str, 1, file_size, file);
-  json_str[file_size] = '\0';
-  fclose(file);
-
-  /* Parse JSON */
-  cJSON* root = cJSON_Parse(json_str);
-  free(json_str);
-
-  if (!root) {
-    fprintf(stderr, "Error parsing JSON\n");
-    return 0;
-  }
-
-  cJSON* messages_array = cJSON_GetObjectItem(root, "messages");
-  if (!messages_array || !cJSON_IsArray(messages_array)) {
-    cJSON_Delete(root);
-    return 0;
-  }
-
-  size_t count = 0;
-  cJSON* msg_item = NULL;
-  cJSON_ArrayForEach(msg_item, messages_array) {
-    if (count >= max_count) break;
-
-    cJSON* magic = cJSON_GetObjectItem(msg_item, "magic_number");
-    cJSON* str = cJSON_GetObjectItem(msg_item, "test_string");
-    cJSON* flt = cJSON_GetObjectItem(msg_item, "test_float");
-    cJSON* boolean = cJSON_GetObjectItem(msg_item, "test_bool");
-    cJSON* array = cJSON_GetObjectItem(msg_item, "test_array");
-
-    if (magic && str && flt && boolean && array) {
-      messages[count].magic_number = (uint32_t)magic->valuedouble;
-      strncpy(messages[count].test_string, str->valuestring, MAX_STRING_LENGTH - 1);
-      messages[count].test_string[MAX_STRING_LENGTH - 1] = '\0';
-      messages[count].test_float = (float)flt->valuedouble;
-      messages[count].test_bool = cJSON_IsTrue(boolean);
-
-      messages[count].test_array_count = 0;
-      if (cJSON_IsArray(array)) {
-        cJSON* array_item = NULL;
-        cJSON_ArrayForEach(array_item, array) {
-          if (messages[count].test_array_count >= MAX_ARRAY_LENGTH) break;
-          messages[count].test_array[messages[count].test_array_count++] = array_item->valueint;
-        }
-      }
-
-      count++;
+  /* Hardcoded test messages matching test_messages.json */
+  const test_message_t test_data[] = {
+    /* basic_values */
+    {
+      .magic_number = 3735928559,  /* 0xDEADBEEF */
+      .test_string = "Cross-platform test!",
+      .test_float = 3.14159f,
+      .test_bool = true,
+      .test_array = {100, 200, 300},
+      .test_array_count = 3
+    },
+    /* zero_values */
+    {
+      .magic_number = 0,
+      .test_string = "",
+      .test_float = 0.0f,
+      .test_bool = false,
+      .test_array = {0},
+      .test_array_count = 0
+    },
+    /* max_values */
+    {
+      .magic_number = 4294967295,  /* 0xFFFFFFFF */
+      .test_string = "Maximum length test string for coverage!",
+      .test_float = 999999.9f,
+      .test_bool = true,
+      .test_array = {2147483647, -2147483648, 0, 1, -1},
+      .test_array_count = 5
+    },
+    /* negative_values */
+    {
+      .magic_number = 2863311530,  /* 0xAAAAAAAA */
+      .test_string = "Negative test",
+      .test_float = -273.15f,
+      .test_bool = false,
+      .test_array = {-100, -200, -300, -400},
+      .test_array_count = 4
+    },
+    /* special_chars */
+    {
+      .magic_number = 1234567890,  /* 0x499602D2 */
+      .test_string = "Special: !@#$%^&*()",
+      .test_float = 2.71828f,
+      .test_bool = true,
+      .test_array = {0, 1, 1, 2, 3},
+      .test_array_count = 5
     }
-  }
-
-  cJSON_Delete(root);
+  };
+  
+  const size_t num_test_messages = sizeof(test_data) / sizeof(test_data[0]);
+  const size_t count = num_test_messages < max_count ? num_test_messages : max_count;
+  
+  memcpy(messages, test_data, count * sizeof(test_message_t));
   return count;
 }
 
@@ -498,7 +565,12 @@ bool decode_test_messages(const char* format, const uint8_t* buffer, size_t buff
     }
 
     if (!decode_result.valid) {
-      printf("  Decoding failed for message %zu\n", *message_count);
+      printf("  Decoding failed for message %zu at offset %zu\n", *message_count, offset);
+      if (buffer_size - offset >= 6) {
+        printf("  Buffer first bytes: %02x %02x %02x %02x %02x %02x\n",
+               buffer[offset], buffer[offset+1], buffer[offset+2], 
+               buffer[offset+3], buffer[offset+4], buffer[offset+5]);
+      }
       return false;
     }
 
