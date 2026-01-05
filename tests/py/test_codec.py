@@ -86,6 +86,7 @@ def get_frame_config(format_name):
         # Profile names (preferred)
         'profile_standard': (HeaderType.BASIC, PayloadType.DEFAULT),
         'profile_sensor': (HeaderType.TINY, PayloadType.MINIMAL),
+        'profile_ipc': (HeaderType.NONE, PayloadType.MINIMAL),
         'profile_bulk': (HeaderType.BASIC, PayloadType.EXTENDED),
         'profile_network': (HeaderType.BASIC, PayloadType.EXTENDED_MULTI_SYSTEM_STREAM),
         # Legacy direct format names (for backward compatibility)

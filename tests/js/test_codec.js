@@ -96,6 +96,30 @@ const TinyMinimal = {
   }
 };
 
+const NoneMinimal = {
+  encodeMsg: function(msgId, msg) {
+    const headerSize = 1;
+    const buffer = new Uint8Array(headerSize + msg.length);
+    buffer[0] = msgId;
+    buffer.set(msg, headerSize);
+    return buffer;
+  },
+  
+  validatePacket: function(buffer) {
+    if (buffer.length < 1) {
+      return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
+    }
+    const msgId = buffer[0];
+    const msgLen = buffer.length - 1;
+    return {
+      valid: true,
+      msg_id: msgId,
+      msg_len: msgLen,
+      msg_data: buffer.slice(1),
+    };
+  }
+};
+
 const BasicExtended = {
   encodeMsg: function(msgId, msg) {
     const headerSize = 6;
@@ -265,6 +289,7 @@ function getParserClass(formatName) {
     // Profile names (preferred)
     'profile_standard': BasicDefault,
     'profile_sensor': TinyMinimal,
+    'profile_ipc': NoneMinimal,
     'profile_bulk': BasicExtended,
     'profile_network': BasicExtendedMultiSystemStream,
     // Legacy direct format names

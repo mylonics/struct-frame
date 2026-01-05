@@ -269,6 +269,49 @@ namespace StructFrameTests
     /// <summary>
     /// Tiny + Minimal frame format helper
     /// </summary>
+    /// <summary>
+    /// None + Minimal frame format helper (ProfileIPC)
+    /// </summary>
+    class NoneMinimal : FrameFormatBase
+    {
+        public override byte[] Encode(int msgId, byte[] msgData)
+        {
+            const int headerSize = 1;
+            int totalSize = headerSize + msgData.Length;
+
+            byte[] buffer = new byte[totalSize];
+            buffer[0] = (byte)msgId;
+            Array.Copy(msgData, 0, buffer, headerSize, msgData.Length);
+
+            return buffer;
+        }
+
+        public override FrameParseResult ValidatePacket(byte[] data, int length)
+        {
+            var result = new FrameParseResult { Valid = false, MsgId = 0, MsgData = new byte[0], MsgSize = 0 };
+
+            if (length < 1)
+                return result;
+
+            int msgId = data[0];
+            int msgLen = length - 1;
+
+            result.Valid = true;
+            result.MsgId = msgId;
+            result.MsgSize = msgLen;
+            result.MsgData = new byte[msgLen];
+            Array.Copy(data, 1, result.MsgData, 0, msgLen);
+
+            return result;
+        }
+
+        public override FrameParseResult ParseByte(byte b) => throw new NotImplementedException();
+        public override void Reset() => throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// Tiny + Minimal frame format helper
+    /// </summary>
     class TinyMinimal : FrameFormatBase
     {
         public override byte[] Encode(int msgId, byte[] msgData)
@@ -551,6 +594,9 @@ namespace StructFrameTests
                 case "profile_sensor":
                 case "tiny_minimal":
                     return new TinyMinimal();
+                case "profile_ipc":
+                case "none_minimal":
+                    return new NoneMinimal();
                 case "profile_bulk":
                 case "basic_extended":
                     return new BasicExtended();

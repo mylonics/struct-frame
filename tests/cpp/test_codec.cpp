@@ -77,6 +77,32 @@ inline FrameMsgInfo tiny_minimal_validate_packet(const uint8_t* buffer, size_t l
     return validate_payload_minimal(buffer, length, 2);
 }
 
+/* None + Minimal */
+inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size,
+                                  uint8_t msg_id, const uint8_t* msg, size_t msg_size) {
+    const size_t header_size = 1;  /* [MSG_ID] */
+    const size_t total_size = header_size + msg_size;
+    
+    if (buffer_size < total_size) {
+        return 0;
+    }
+    
+    buffer[0] = msg_id;
+    std::memcpy(buffer + header_size, msg, msg_size);
+    
+    return total_size;
+}
+
+inline FrameMsgInfo none_minimal_validate_packet(const uint8_t* buffer, size_t length) {
+    FrameMsgInfo result = {false, 0, 0, nullptr};
+    
+    if (length < 1) {
+        return result;
+    }
+    
+    return validate_payload_minimal(buffer, length, 1);
+}
+
 /* Basic + Extended */
 inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size,
                                     uint8_t msg_id, const uint8_t* msg, size_t msg_size) {
@@ -293,6 +319,10 @@ bool encode_test_message(const std::string& format, uint8_t* buffer, size_t buff
     encoded_size = tiny_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                        reinterpret_cast<const uint8_t*>(&msg),
                                        SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  } else if (format == "profile_ipc" || format == "none_minimal") {
+    encoded_size = none_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                       reinterpret_cast<const uint8_t*>(&msg),
+                                       SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
   } else if (format == "profile_bulk" || format == "basic_extended") {
     encoded_size = basic_extended_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                          reinterpret_cast<const uint8_t*>(&msg),
@@ -326,6 +356,8 @@ bool decode_test_message(const std::string& format, const uint8_t* buffer, size_
     decode_result = basic_default_validate_packet(buffer, buffer_size);
   } else if (format == "profile_sensor" || format == "tiny_minimal") {
     decode_result = tiny_minimal_validate_packet(buffer, buffer_size);
+  } else if (format == "profile_ipc" || format == "none_minimal") {
+    decode_result = none_minimal_validate_packet(buffer, buffer_size);
   } else if (format == "profile_bulk" || format == "basic_extended") {
     decode_result = basic_extended_validate_packet(buffer, buffer_size);
   } else if (format == "profile_network" || format == "basic_extended_multi_system_stream") {
