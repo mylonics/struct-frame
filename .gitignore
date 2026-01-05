@@ -47,6 +47,9 @@ tests/py/*.bin
 tests/ts/*.bin
 *_test_data.bin
 
+# Wireshark dissector test files
+wireshark/sample_packets/
+
 # Debug and temporary files
 debug*.c
 debug*.exe

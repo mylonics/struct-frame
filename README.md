@@ -807,6 +807,10 @@ for (size_t i = 0; i < encoder.size(); i++) {
 }
 ```
 
+## Wireshark Dissector (Experimental)
+
+An experimental Wireshark Lua dissector is available for protocol analysis and debugging of struct-frame packets. See [wireshark/README.md](wireshark/README.md) for installation and usage instructions.
+
 ## Additional Documentation
 
 - **[Array Implementation Guide](ARRAY_IMPLEMENTATION.md)** - Documentation of array features, syntax, and generated code examples across all languages
