@@ -71,6 +71,32 @@ static inline frame_msg_info_t tiny_minimal_validate_packet(const uint8_t* buffe
     return frame_validate_payload_minimal(buffer, length, 2);
 }
 
+/* None + Minimal */
+static inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size,
+                                        uint8_t msg_id, const uint8_t* msg, size_t msg_size) {
+    const size_t header_size = 1;  /* [MSG_ID] */
+    const size_t total_size = header_size + msg_size;
+    
+    if (buffer_size < total_size) {
+        return 0;
+    }
+    
+    buffer[0] = msg_id;
+    memcpy(buffer + header_size, msg, msg_size);
+    
+    return total_size;
+}
+
+static inline frame_msg_info_t none_minimal_validate_packet(const uint8_t* buffer, size_t length) {
+    frame_msg_info_t result = {false, 0, 0, NULL};
+    
+    if (length < 1) {
+        return result;
+    }
+    
+    return frame_validate_payload_minimal(buffer, length, 1);
+}
+
 /* Basic + Extended */
 static inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size,
                                            uint8_t msg_id, const uint8_t* msg, size_t msg_size) {
@@ -105,7 +131,26 @@ static inline frame_msg_info_t basic_extended_validate_packet(const uint8_t* buf
         return result;
     }
     
-    return frame_validate_payload_with_crc(buffer, length, 6, 2, 2);
+    /* Extract length from the frame */
+    const size_t msg_len = buffer[2] | (buffer[3] << 8);
+    const size_t total_size = 6 + msg_len + 2; /* header + payload + crc */
+    
+    if (length < total_size) {
+        return result;
+    }
+    
+    /* Verify CRC: covers [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
+    frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 4);
+    if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+        return result;
+    }
+    
+    result.valid = true;
+    result.msg_id = buffer[5]; /* MSG_ID at position 5 */
+    result.msg_len = msg_len;
+    result.msg_data = (uint8_t*)(buffer + 6); /* Payload starts after header */
+    
+    return result;
 }
 
 /* Basic + Extended Multi System Stream */
@@ -145,7 +190,26 @@ static inline frame_msg_info_t basic_extended_multi_system_stream_validate_packe
         return result;
     }
     
-    return frame_validate_payload_with_crc(buffer, length, 9, 2, 2);
+    /* Extract length from the frame */
+    const size_t msg_len = buffer[5] | (buffer[6] << 8);
+    const size_t total_size = 9 + msg_len + 2; /* header + payload + crc */
+    
+    if (length < total_size) {
+        return result;
+    }
+    
+    /* Verify CRC: covers [SEQ] [SYS] [COMP] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
+    frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 7);
+    if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+        return result;
+    }
+    
+    result.valid = true;
+    result.msg_id = buffer[8]; /* MSG_ID at position 8 */
+    result.msg_len = msg_len;
+    result.msg_data = (uint8_t*)(buffer + 9); /* Payload starts after header */
+    
+    return result;
 }
 
 /* Basic + Minimal */
@@ -284,6 +348,9 @@ bool encode_test_message(const char* format, uint8_t* buffer, size_t buffer_size
   } else if (strcmp(format, "profile_sensor") == 0 || strcmp(format, "tiny_minimal") == 0) {
     *encoded_size = tiny_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                         (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
+  } else if (strcmp(format, "profile_ipc") == 0 || strcmp(format, "none_minimal") == 0) {
+    *encoded_size = none_minimal_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
+                                        (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
   } else if (strcmp(format, "profile_bulk") == 0 || strcmp(format, "basic_extended") == 0) {
     *encoded_size = basic_extended_encode(buffer, buffer_size, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID,
                                           (const uint8_t*)&msg, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE);
@@ -313,6 +380,8 @@ bool decode_test_message(const char* format, const uint8_t* buffer, size_t buffe
     decode_result = basic_default_validate_packet(buffer, buffer_size);
   } else if (strcmp(format, "profile_sensor") == 0 || strcmp(format, "tiny_minimal") == 0) {
     decode_result = tiny_minimal_validate_packet(buffer, buffer_size);
+  } else if (strcmp(format, "profile_ipc") == 0 || strcmp(format, "none_minimal") == 0) {
+    decode_result = none_minimal_validate_packet(buffer, buffer_size);
   } else if (strcmp(format, "profile_bulk") == 0 || strcmp(format, "basic_extended") == 0) {
     decode_result = basic_extended_validate_packet(buffer, buffer_size);
   } else if (strcmp(format, "profile_network") == 0 || strcmp(format, "basic_extended_multi_system_stream") == 0) {

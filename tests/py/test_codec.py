@@ -86,6 +86,7 @@ def get_frame_config(format_name):
         # Profile names (preferred)
         'profile_standard': (HeaderType.BASIC, PayloadType.DEFAULT),
         'profile_sensor': (HeaderType.TINY, PayloadType.MINIMAL),
+        'profile_ipc': (HeaderType.NONE, PayloadType.MINIMAL),
         'profile_bulk': (HeaderType.BASIC, PayloadType.EXTENDED),
         'profile_network': (HeaderType.BASIC, PayloadType.EXTENDED_MULTI_SYSTEM_STREAM),
         # Legacy direct format names (for backward compatibility)
@@ -164,11 +165,34 @@ def encode_test_message(format_name):
 
 def decode_test_message(format_name, data):
     """Decode a test message using the specified frame format."""
+    # Import from generated py package
+    import sys
+    import os
+    gen_path = os.path.join(os.path.dirname(__file__), '..', 'generated', 'py')
+    if os.path.exists(gen_path) and gen_path not in sys.path:
+        sys.path.insert(0, gen_path)
+    
+    from parser import HeaderType, PayloadType
+    
     header_type, payload_type = get_frame_config(format_name)
     msg_class = get_message_class()
     parser = get_parser(format_name)
 
-    # Parse byte by byte
+    # For NoneMinimal (ProfileIPC), we can't parse byte-by-byte since there's no framing
+    # Instead, we need to decode the buffer directly
+    if header_type == HeaderType.NONE and payload_type == PayloadType.MINIMAL:
+        # Buffer structure: [MSG_ID] [PAYLOAD]
+        if len(data) < 1:
+            return None
+        msg_id = data[0]
+        msg_data = data[1:]
+        # Verify the message ID matches
+        if msg_id != msg_class.msg_id:
+            return None
+        # Convert raw bytes to message object
+        return msg_class.create_unpack(msg_data)
+
+    # Parse byte by byte for all other formats
     result = None
     for byte in data:
         result = parser.parse_byte(byte)
