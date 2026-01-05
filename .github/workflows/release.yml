@@ -94,17 +94,21 @@ jobs:
           with open('CHANGELOG.md', 'r') as f:
               content = f.read()
           
-          # Find the Unreleased section and insert new version entry after it
-          unreleased_pattern = r'(## \[Unreleased\]\s*\n(?:.*\n)*?)(\n## \[)'
-          
           new_entry = f"\n## [{new_version}] - {date}\n\n### Changed\n- Release version {new_version}\n"
           
-          # Insert the new entry before the next version section
-          updated_content = re.sub(
-              unreleased_pattern,
-              r'\1' + new_entry + r'\2',
-              content
-          )
+          # Try to find an existing version section after Unreleased
+          unreleased_pattern = r'(## \[Unreleased\]\s*\n(?:.*\n)*?)(\n## \[)'
+          
+          if re.search(unreleased_pattern, content):
+              # There are existing version sections, insert before them
+              updated_content = re.sub(
+                  unreleased_pattern,
+                  r'\1' + new_entry + r'\2',
+                  content
+              )
+          else:
+              # No existing version sections, append at the end
+              updated_content = content.rstrip() + new_entry + '\n'
           
           with open('CHANGELOG.md', 'w') as f:
               f.write(updated_content)

@@ -20,7 +20,7 @@ The pipeline will automatically:
 - Build the Python package
 - Publish to PyPI
 
-**Note:** This workflow requires PyPI publishing credentials to be configured as GitHub secrets.
+**Note:** This workflow requires PyPI trusted publisher to be configured on PyPI.org (not GitHub secrets). See RELEASE.md for setup instructions.
 
 ### Manual Release (Legacy)
 
