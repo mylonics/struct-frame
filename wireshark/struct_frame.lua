@@ -191,7 +191,8 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
         payload_type_offset = first_byte - 0x70
     else
         -- Could be None frame (no start bytes) or unknown
-        -- For None frames, we'd need additional context
+        -- TODO: None frames cannot be auto-detected since they have no start bytes.
+        -- They would require manual configuration or external context.
         return
     end
     
@@ -350,9 +351,10 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
 end
 
 -- Register the dissector
--- We'll register on a custom DLT (user DLT 147-162 range)
+-- Register on a custom DLT for PCAP files
+-- User DLT 0 = 147 in Wireshark (fixed mapping, see Wireshark documentation)
 local wtap_encap_table = DissectorTable.get("wtap_encap")
-local USER_DLT = 147  -- User DLT 0 (can be configured in Wireshark)
+local USER_DLT = 147  -- User DLT 0
 wtap_encap_table:add(USER_DLT, struct_frame_proto)
 
 -- Also register as a heuristic dissector for UDP
@@ -366,6 +368,7 @@ function heuristic_checker(buffer, pinfo, tree)
     
     -- Check for Basic frame (0x90 followed by 0x70-0x78)
     if first_byte == 0x90 then
+        if buffer:len() < 2 then return false end
         local second_byte = buffer(1, 1):uint()
         if second_byte >= 0x70 and second_byte <= 0x78 then
             struct_frame_proto.dissector(buffer, pinfo, tree)
@@ -388,8 +391,9 @@ struct_frame_proto:register_heuristic("udp", heuristic_checker)
 -- Also register for TCP
 struct_frame_proto:register_heuristic("tcp", heuristic_checker)
 
--- Register on specific UDP/TCP ports if needed (can be configured)
+-- Optional: Register on specific UDP/TCP ports
+-- Uncomment and modify the port number as needed for your application
 -- local udp_port = DissectorTable.get("udp.port")
--- udp_port:add(14550, struct_frame_proto)  -- Example port
+-- udp_port:add(YOUR_PORT_NUMBER, struct_frame_proto)
 
 print("Struct Frame dissector loaded successfully")
