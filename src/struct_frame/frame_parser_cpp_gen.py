@@ -511,6 +511,75 @@ inline size_t encode_payload_minimal(
             yield f'        msg_length_ = 0;\n'
         yield f'    }}\n\n'
         
+        # parse_buffer method - efficient buffer scanning
+        yield f'    /**\n'
+        yield f'     * Parse a buffer of bytes (efficient buffer scanning)\n'
+        yield f'     * Scans the buffer for complete frames. No std library dependencies.\n'
+        yield f'     * \n'
+        yield f'     * @param buffer Pointer to buffer to scan\n'
+        yield f'     * @param length Length of buffer\n'
+        yield f'     * @param bytes_consumed Output: number of bytes consumed (frame + any preceding junk)\n'
+        yield f'     * @return FrameMsgInfo with valid=true if a complete frame was found.\n'
+        yield f'     *         msg_data points into the original buffer (zero-copy).\n'
+        yield f'     */\n'
+        yield f'    FrameMsgInfo parse_buffer(const uint8_t* buffer, size_t length, size_t* bytes_consumed) {{\n'
+        yield f'        if (bytes_consumed) *bytes_consumed = 0;\n'
+        yield f'        if (buffer == nullptr || length == 0) return FrameMsgInfo();\n\n'
+        yield f'        // Scan buffer for frame start\n'
+        yield f'        for (size_t i = 0; i < length; i++) {{\n'
+        yield f'            size_t remaining = length - i;\n'
+        yield f'            if (remaining < {PREFIX}_OVERHEAD) {{\n'
+        yield f'                if (bytes_consumed) *bytes_consumed = i;\n'
+        yield f'                return FrameMsgInfo();\n'
+        yield f'            }}\n\n'
+        yield f'            const uint8_t* frame_start = buffer + i;\n'
+        
+        # Check start bytes
+        if fmt.start_bytes:
+            yield f'            // Verify start bytes\n'
+            for j, (sb_name, sb_value) in enumerate(fmt.start_bytes):
+                const_name = f'{PREFIX}_START_BYTE{j + 1}' if len(fmt.start_bytes) > 1 else f'{PREFIX}_START_BYTE'
+                yield f'            if (frame_start[{j}] != {const_name}) continue;\n'
+        
+        yield f'\n            // Found potential frame start - validate it\n'
+        
+        if fmt.has_crc:
+            crc_start = len(fmt.start_bytes)
+            yield f'            FrameMsgInfo result = validate_payload_with_crc(\n'
+            yield f'                frame_start, remaining, {PREFIX}_HEADER_SIZE, {fmt.length_bytes}, {crc_start});\n'
+            yield f'            if (result.valid) {{\n'
+            yield f'                if (bytes_consumed) {{\n'
+            yield f'                    *bytes_consumed = i + {PREFIX}_HEADER_SIZE + result.msg_len + {PREFIX}_FOOTER_SIZE;\n'
+            yield f'                }}\n'
+            yield f'                return result;\n'
+            yield f'            }}\n'
+        else:
+            # Minimal payload - need message length callback
+            yield f'            if (!get_msg_length_) {{\n'
+            yield f'                if (bytes_consumed) *bytes_consumed = i;\n'
+            yield f'                return FrameMsgInfo();\n'
+            yield f'            }}\n\n'
+            yield f'            uint8_t msg_id = frame_start[{len(fmt.start_bytes)}];\n'
+            yield f'            size_t expected_msg_len = 0;\n'
+            yield f'            if (!get_msg_length_(msg_id, &expected_msg_len)) continue;\n\n'
+            yield f'            size_t expected_frame_len = {PREFIX}_HEADER_SIZE + expected_msg_len;\n'
+            yield f'            if (remaining < expected_frame_len) {{\n'
+            yield f'                if (bytes_consumed) *bytes_consumed = i;\n'
+            yield f'                return FrameMsgInfo();\n'
+            yield f'            }}\n\n'
+            yield f'            FrameMsgInfo result = validate_payload_minimal(\n'
+            yield f'                frame_start, expected_frame_len, {PREFIX}_HEADER_SIZE);\n'
+            yield f'            if (result.valid) {{\n'
+            yield f'                if (bytes_consumed) *bytes_consumed = i + expected_frame_len;\n'
+            yield f'                return result;\n'
+            yield f'            }}\n'
+        
+        yield f'        }}\n\n'
+        yield f'        // No valid frame found\n'
+        yield f'        if (bytes_consumed) *bytes_consumed = length;\n'
+        yield f'        return FrameMsgInfo();\n'
+        yield f'    }}\n\n'
+        
         # parse_byte method
         yield f'    /**\n'
         yield f'     * Parse a single byte\n'
