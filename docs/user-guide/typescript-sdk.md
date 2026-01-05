@@ -79,6 +79,88 @@ const transport = new SerialTransport({
 });
 ```
 
+## Using the Parser
+
+### Basic Parser Usage
+
+```typescript
+import { GenericFrameParser, FrameParserConfig } from './frame_base';
+import { HEADER_BASIC_CONFIG } from './frame_headers/header_basic';
+import { PAYLOAD_DEFAULT_CONFIG } from './payload_types/payload_default';
+
+// Create a BasicDefault parser configuration
+const config: FrameParserConfig = {
+    name: 'BasicDefault',
+    startBytes: [0x90, 0x71],  // Basic + Default
+    headerSize: 4,              // start bytes (2) + length (1) + msg_id (1)
+    footerSize: 2,              // CRC (2)
+    hasLength: true,
+    lengthBytes: 1,
+    hasCrc: true,
+};
+
+const parser = new GenericFrameParser(config);
+
+// Parse incoming bytes
+for (const byte of incomingData) {
+    const result = parser.parse_byte(byte);
+    if (result.valid) {
+        console.log(`Received msg_id=${result.msg_id}`);
+        console.log(`Data: ${result.msg_data}`);
+    }
+}
+
+// Encode a message
+const frame = parser.encode(42, new Uint8Array([1, 2, 3, 4, 5]));
+```
+
+### Using Minimal Frames
+
+For minimal payloads (no length field, no CRC), provide a callback to determine message length:
+
+```typescript
+import { GenericFrameParser, FrameParserConfig } from './frame_base';
+
+// Define message size lookup
+function getMsgLength(msgId: number): number | undefined {
+    const messageSizes: {[key: number]: number} = {
+        1: 10,  // Status message is 10 bytes
+        2: 20,  // Command message is 20 bytes
+        3: 5,   // Sensor reading is 5 bytes
+    };
+    return messageSizes[msgId];
+}
+
+// Configure for TinyMinimal
+const config: FrameParserConfig = {
+    name: 'TinyMinimal',
+    startBytes: [0x70],  // Tiny+Minimal
+    headerSize: 2,       // start byte + msg_id
+    footerSize: 0,       // no CRC
+    hasLength: false,    // no length field
+    lengthBytes: 0,
+    hasCrc: false,
+};
+
+// Create parser with callback
+const parser = new GenericFrameParser(config, getMsgLength);
+
+// Parse bytes
+for (const byte of incomingData) {
+    const result = parser.parse_byte(byte);
+    if (result.valid) {
+        console.log(`Minimal frame: msg_id=${result.msg_id}, len=${result.msg_len}`);
+    }
+}
+
+// Encode minimal frame
+const data = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+const frame = parser.encode(1, data);
+// Result: [0x70] [0x01] [0x01 0x02 ... 0x0A]
+```
+
+For more details on minimal frames, see the [Minimal Frames Guide](minimal-frames.md).
+
 ## SDK Usage
 
 ### Creating the SDK

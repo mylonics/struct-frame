@@ -267,6 +267,54 @@ ProfileStandard parser(buffer, sizeof(buffer));
 
 For more details on parsers and performance, see the [Parser Feature Matrix](parser-feature-matrix.md).
 
+### Parsing Minimal Frames
+
+Minimal frames (`TinyMinimalParser`, `BasicMinimalParser`, `NoneMinimalParser`) don't include a length field or CRC. To parse them, you must provide a callback function that returns the expected message length for each message ID:
+
+```cpp
+#include "frame_parsers.hpp"
+
+using namespace FrameParsers;
+
+// Define message size lookup callback
+bool get_msg_length(uint8_t msg_id, size_t* length) {
+    switch (msg_id) {
+        case 1: *length = 10; return true;  // Status message is 10 bytes
+        case 2: *length = 20; return true;  // Command message is 20 bytes
+        case 3: *length = 5;  return true;  // Sensor reading is 5 bytes
+        default: return false;
+    }
+}
+
+// Create parser with callback
+uint8_t buffer[256];
+TinyMinimalParser parser(buffer, sizeof(buffer), get_msg_length);
+
+// Parse incoming bytes
+for (uint8_t byte : incoming_data) {
+    FrameMsgInfo result = parser.parse_byte(byte);
+    if (result.valid) {
+        printf("Received msg_id=%d, len=%zu\n", result.msg_id, result.msg_len);
+        // Process result.msg_data (points into buffer - zero-copy!)
+    }
+}
+
+// Encode a minimal frame
+uint8_t msg_data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+uint8_t output[256];
+size_t frame_len = parser.encode(1, msg_data, 10, output, sizeof(output));
+// Result: [0x70] [0x01] [0x01 0x02 ... 0x0A]
+```
+
+**Why use minimal frames?**
+- ✅ Minimal overhead: 1-3 bytes total
+- ✅ Fast: No CRC calculation/validation
+- ✅ Perfect for fixed-size messages on trusted links
+- ❌ No error detection
+- ❌ Requires message size lookup
+
+See the [Minimal Frames Guide](minimal-frames.md) for complete examples and best practices.
+
 ## Transport Layers
 
 ### Generic Serial Transport (Embedded Systems)

@@ -99,6 +99,82 @@ var transport = new GenericSerialTransport(serialPort);
 
 ## SDK Usage
 
+### Using Parsers
+
+The generated frame parsers handle the low-level framing and message extraction:
+
+```csharp
+using StructFrame;
+
+// Basic frame parser (includes length and CRC)
+var parser = new BasicDefaultParser();
+
+// Parse incoming bytes
+foreach (byte b in incomingData)
+{
+    var result = parser.ParseByte(b);
+    if (result.Valid)
+    {
+        Console.WriteLine($"Received msg_id={result.MsgId}, len={result.MsgLen}");
+        // Process result.MsgData
+    }
+}
+
+// Encode a message
+var msgData = new byte[] {1, 2, 3, 4, 5};
+var frame = parser.Encode(42, msgData);
+```
+
+### Parsing Minimal Frames
+
+Minimal frames don't include a length field or CRC. To parse them, provide a callback function that returns the expected message length for each message ID:
+
+```csharp
+using StructFrame;
+
+// Define message size lookup
+int? GetMsgLength(int msgId)
+{
+    return msgId switch
+    {
+        1 => 10,  // Status message is 10 bytes
+        2 => 20,  // Command message is 20 bytes
+        3 => 5,   // Sensor reading is 5 bytes
+        _ => null
+    };
+}
+
+// Create parser with callback
+var parser = new TinyMinimalParser(GetMsgLength);
+
+// Parse bytes
+foreach (byte b in incomingData)
+{
+    var result = parser.ParseByte(b);
+    if (result.Valid)
+    {
+        Console.WriteLine($"Minimal frame: msg_id={result.MsgId}, len={result.MsgLen}");
+    }
+}
+
+// Encode minimal frame
+var data = new byte[] {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+var frame = parser.Encode(1, data);
+// Result: [0x70] [0x01] [0x01 0x02 ... 0x0A]
+```
+
+**When to use minimal frames:**
+- ✅ Fixed-size messages on trusted links
+- ✅ Bandwidth-constrained (LoRa, RF)
+- ✅ Minimal overhead (1-3 bytes)
+- ❌ No error detection (no CRC)
+
+See the [Minimal Frames Guide](minimal-frames.md) for complete details.
+
+### Creating the SDK
+
+```csharp
+
 ### Generated SDK Interface
 
 When using the `--sdk` or `--sdk_embedded` flag, struct-frame generates a high-level SDK interface for each package that provides type-safe methods for sending messages. This interface eliminates boilerplate code and provides two convenient ways to send each message type.
