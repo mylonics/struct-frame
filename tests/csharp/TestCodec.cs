@@ -22,6 +22,73 @@ namespace StructFrameTests
     }
 
     /// <summary>
+    /// Test message data structure
+    /// </summary>
+    public class TestMessage
+    {
+        public uint MagicNumber { get; set; }
+        public string TestString { get; set; }
+        public float TestFloat { get; set; }
+        public bool TestBool { get; set; }
+        public int[] TestArray { get; set; }
+    }
+
+    /// <summary>
+    /// Hardcoded test messages matching test_messages.json
+    /// </summary>
+    public static class TestMessages
+    {
+        public static readonly TestMessage[] Messages = new TestMessage[]
+        {
+            // basic_values
+            new TestMessage
+            {
+                MagicNumber = 3735928559,  // 0xDEADBEEF
+                TestString = "Cross-platform test!",
+                TestFloat = 3.14159f,
+                TestBool = true,
+                TestArray = new int[] { 100, 200, 300 }
+            },
+            // zero_values
+            new TestMessage
+            {
+                MagicNumber = 0,
+                TestString = "",
+                TestFloat = 0.0f,
+                TestBool = false,
+                TestArray = new int[] { }
+            },
+            // max_values
+            new TestMessage
+            {
+                MagicNumber = 4294967295,  // 0xFFFFFFFF
+                TestString = "Maximum length test string for coverage!",
+                TestFloat = 999999.9f,
+                TestBool = true,
+                TestArray = new int[] { 2147483647, -2147483648, 0, 1, -1 }
+            },
+            // negative_values
+            new TestMessage
+            {
+                MagicNumber = 2863311530,  // 0xAAAAAAAA
+                TestString = "Negative test",
+                TestFloat = -273.15f,
+                TestBool = false,
+                TestArray = new int[] { -100, -200, -300, -400 }
+            },
+            // special_chars
+            new TestMessage
+            {
+                MagicNumber = 1234567890,  // 0x499602D2
+                TestString = "Special: !@#$%^&*()",
+                TestFloat = 2.71828f,
+                TestBool = true,
+                TestArray = new int[] { 0, 1, 1, 2, 3 }
+            }
+        };
+    }
+
+    /// <summary>
     /// Manual message serializer to avoid StructLayout alignment issues with managed arrays
     /// </summary>
     public static class MessageSerializer
@@ -113,7 +180,7 @@ namespace StructFrameTests
     public static class TestCodec
     {
         /// <summary>
-        /// Create serialized test message bytes with expected values
+        /// Create serialized test message bytes with expected values (backwards compat)
         /// </summary>
         public static byte[] CreateTestMessageBytes()
         {
@@ -130,6 +197,81 @@ namespace StructFrameTests
                 (byte)ExpectedValues.TestArray.Length,
                 ExpectedValues.TestArray
             );
+        }
+
+        /// <summary>
+        /// Create serialized message bytes from TestMessage
+        /// </summary>
+        public static byte[] CreateMessageBytesFromData(TestMessage testMsg)
+        {
+            byte[] strBytes = Encoding.UTF8.GetBytes(testMsg.TestString);
+            byte[] stringData = new byte[64];
+            Array.Copy(strBytes, stringData, Math.Min(strBytes.Length, 64));
+
+            return MessageSerializer.Serialize(
+                testMsg.MagicNumber,
+                (byte)strBytes.Length,
+                stringData,
+                testMsg.TestFloat,
+                testMsg.TestBool,
+                (byte)testMsg.TestArray.Length,
+                testMsg.TestArray
+            );
+        }
+
+        /// <summary>
+        /// Validate message against test data
+        /// </summary>
+        public static bool ValidateMessageAgainstData(byte[] msgData, TestMessage testMsg)
+        {
+            var (magicNumber, stringLength, stringData, testFloat, testBool, arrayCount, arrayData) = 
+                MessageSerializer.Deserialize(msgData);
+
+            bool isValid = true;
+            
+            if (magicNumber != testMsg.MagicNumber)
+            {
+                Console.WriteLine($"  Value mismatch: magic_number: expected {testMsg.MagicNumber}, got {magicNumber}");
+                isValid = false;
+            }
+
+            string decodedString = Encoding.UTF8.GetString(stringData, 0, stringLength);
+            if (decodedString != testMsg.TestString)
+            {
+                Console.WriteLine($"  Value mismatch: test_string: expected '{testMsg.TestString}', got '{decodedString}'");
+                isValid = false;
+            }
+
+            if (Math.Abs(testFloat - testMsg.TestFloat) > 0.1f)
+            {
+                Console.WriteLine($"  Value mismatch: test_float: expected {testMsg.TestFloat}, got {testFloat}");
+                isValid = false;
+            }
+
+            if (testBool != testMsg.TestBool)
+            {
+                Console.WriteLine($"  Value mismatch: test_bool: expected {testMsg.TestBool}, got {testBool}");
+                isValid = false;
+            }
+
+            if (arrayCount != testMsg.TestArray.Length)
+            {
+                Console.WriteLine($"  Value mismatch: test_array.count: expected {testMsg.TestArray.Length}, got {arrayCount}");
+                isValid = false;
+            }
+            else
+            {
+                for (int i = 0; i < arrayCount; i++)
+                {
+                    if (arrayData[i] != testMsg.TestArray[i])
+                    {
+                        Console.WriteLine($"  Value mismatch: test_array[{i}]: expected {testMsg.TestArray[i]}, got {arrayData[i]}");
+                        isValid = false;
+                    }
+                }
+            }
+
+            return isValid;
         }
 
         /// <summary>
@@ -294,7 +436,12 @@ namespace StructFrameTests
                 return result;
 
             int msgId = data[0];
-            int msgLen = length - 1;
+            // For minimal payloads, we need to know the message size (use known max size)
+            const int msgLen = MessageSerializer.MessageSize;
+            int totalSize = 1 + msgLen;
+
+            if (length < totalSize)
+                return result;
 
             result.Valid = true;
             result.MsgId = msgId;
@@ -335,7 +482,12 @@ namespace StructFrameTests
                 return result;
 
             int msgId = data[1];
-            int msgLen = length - 2;
+            // For minimal payloads, we need to know the message size (use known max size)
+            const int msgLen = MessageSerializer.MessageSize;
+            int totalSize = 2 + msgLen;
+
+            if (length < totalSize)
+                return result;
 
             result.Valid = true;
             result.MsgId = msgId;
@@ -603,19 +755,118 @@ namespace StructFrameTests
         }
 
         /// <summary>
-        /// Encode a test message using the specified frame format
+        /// Encode multiple test messages using the specified frame format
         /// </summary>
         public static byte[] EncodeTestMessage(string formatName)
         {
             var parser = GetParser(formatName);
-            byte[] msgData = TestCodec.CreateTestMessageBytes();
-            
-            // Use MsgId from the generated struct definition
-            return parser.Encode(SerializationTestSerializationTestMessage.MsgId, msgData);
+            var encodedMessages = new System.Collections.Generic.List<byte[]>();
+
+            foreach (var testMsg in TestMessages.Messages)
+            {
+                byte[] msgData = CreateMessageBytesFromData(testMsg);
+                byte[] encoded = parser.Encode(SerializationTestSerializationTestMessage.MsgId, msgData);
+                if (encoded == null || encoded.Length == 0)
+                {
+                    Console.WriteLine("  Encoding failed for message");
+                    return new byte[0];
+                }
+                encodedMessages.Add(encoded);
+            }
+
+            // Concatenate all encoded messages
+            int totalLength = 0;
+            foreach (var msg in encodedMessages)
+            {
+                totalLength += msg.Length;
+            }
+
+            byte[] result = new byte[totalLength];
+            int offset = 0;
+            foreach (var msg in encodedMessages)
+            {
+                Array.Copy(msg, 0, result, offset, msg.Length);
+                offset += msg.Length;
+            }
+
+            return result;
         }
 
         /// <summary>
-        /// Decode a test message using the specified frame format
+        /// Decode and validate multiple test messages using the specified frame format
+        /// Returns the number of successfully decoded messages
+        /// </summary>
+        public static int DecodeTestMessages(string formatName, byte[] data)
+        {
+            var parser = GetParser(formatName);
+            int offset = 0;
+            int messageCount = 0;
+
+            while (offset < data.Length && messageCount < TestMessages.Messages.Length)
+            {
+                // Extract remaining data
+                byte[] remainingData = new byte[data.Length - offset];
+                Array.Copy(data, offset, remainingData, 0, remainingData.Length);
+
+                var result = parser.ValidatePacket(remainingData, remainingData.Length);
+
+                if (!result.Valid)
+                {
+                    Console.WriteLine($"  Decoding failed for message {messageCount}");
+                    return messageCount;
+                }
+
+                // Validate the message against test data
+                if (!ValidateMessageAgainstData(result.MsgData, TestMessages.Messages[messageCount]))
+                {
+                    Console.WriteLine($"  Validation failed for message {messageCount}");
+                    return messageCount;
+                }
+
+                // Calculate message size based on format
+                int msgSize = 0;
+                if (formatName == "profile_standard")
+                {
+                    msgSize = 4 + result.MsgData.Length + 2; // header + payload + crc
+                }
+                else if (formatName == "profile_sensor")
+                {
+                    msgSize = 2 + result.MsgData.Length; // header + payload
+                }
+                else if (formatName == "profile_ipc")
+                {
+                    msgSize = 1 + result.MsgData.Length; // header + payload
+                }
+                else if (formatName == "profile_bulk")
+                {
+                    msgSize = 6 + result.MsgData.Length + 2; // header + payload + crc
+                }
+                else if (formatName == "profile_network")
+                {
+                    msgSize = 9 + result.MsgData.Length + 2; // header + payload + crc
+                }
+
+                offset += msgSize;
+                messageCount++;
+            }
+
+            if (messageCount != TestMessages.Messages.Length)
+            {
+                Console.WriteLine($"  Expected {TestMessages.Messages.Length} messages, but decoded {messageCount}");
+                return messageCount;
+            }
+
+            if (offset != data.Length)
+            {
+                Console.WriteLine($"  Extra data after messages: processed {offset} bytes, got {data.Length} bytes");
+                return messageCount;
+            }
+
+            return messageCount;
+        }
+
+        /// <summary>
+        /// Decode a test message using the specified frame format (backwards compat)
         /// </summary>
         public static byte[] DecodeTestMessage(string formatName, byte[] data)
         {
