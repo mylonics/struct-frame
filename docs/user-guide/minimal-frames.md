@@ -136,6 +136,9 @@ const frame = parser.encode(1, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]));
 
 ### C++
 
+**Note**: The actual generated parser API may vary. This example shows the general pattern.
+Consult the generated code for your specific parser class constructor signature.
+
 ```cpp
 #include "frame_parsers.hpp"
 
@@ -154,9 +157,9 @@ bool get_msg_length(uint8_t msg_id, size_t* length) {
 // Create buffer for parser
 uint8_t buffer[256];
 
-// Create TinyMinimal parser with callback
-// Note: Specific parser class would need to be generated
-// This is pseudocode showing the pattern
+// Example pattern - actual API depends on generated code
+// The parser may be created with a callback parameter
+// or may have a separate method to set the callback
 auto parser = TinyMinimalParser(buffer, sizeof(buffer), get_msg_length);
 
 // Parse incoming bytes

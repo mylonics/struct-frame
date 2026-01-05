@@ -242,7 +242,7 @@ def test_callback_required():
         enabled_payloads=[PayloadType.MINIMAL]
     )
     
-    # Create frame manually
+    # Create frame manually: [0x70 = Tiny+Minimal] [0x03 = msg_id] [data]
     frame = bytes([0x70, 0x03, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE])
     
     # Try to parse

@@ -271,6 +271,8 @@ For more details on parsers and performance, see the [Parser Feature Matrix](par
 
 Minimal frames (`TinyMinimalParser`, `BasicMinimalParser`, `NoneMinimalParser`) don't include a length field or CRC. To parse them, you must provide a callback function that returns the expected message length for each message ID:
 
+**Note**: The exact API depends on the generated parser code. This example shows the general pattern.
+
 ```cpp
 #include "frame_parsers.hpp"
 
@@ -287,6 +289,7 @@ bool get_msg_length(uint8_t msg_id, size_t* length) {
 }
 
 // Create parser with callback
+// The actual constructor signature depends on generated code
 uint8_t buffer[256];
 TinyMinimalParser parser(buffer, sizeof(buffer), get_msg_length);
 

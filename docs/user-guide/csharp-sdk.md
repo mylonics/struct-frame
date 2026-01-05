@@ -129,6 +129,8 @@ var frame = parser.Encode(42, msgData);
 
 Minimal frames don't include a length field or CRC. To parse them, provide a callback function that returns the expected message length for each message ID:
 
+**Note**: Verify the exact API signature in your generated parser code. The callback parameter may vary.
+
 ```csharp
 using StructFrame;
 
@@ -145,6 +147,7 @@ int? GetMsgLength(int msgId)
 }
 
 // Create parser with callback
+// The exact constructor signature depends on generated code
 var parser = new TinyMinimalParser(GetMsgLength);
 
 // Parse bytes

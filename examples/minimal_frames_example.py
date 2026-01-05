@@ -17,7 +17,8 @@ import sys
 import os
 
 # Add generated code path (adjust as needed for your setup)
-# In production, the parser module would be installed or in your path
+# Expected structure: examples/generated/parser.py and related modules
+# In production, generate the parser in your project and adjust this path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'generated'))
 
 from parser import Parser, HeaderType, PayloadType
