@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install hatchling build twine
+          pip install hatchling build twine git-changelog
       
       - name: Get current version
         id: get_version
@@ -82,41 +82,13 @@ jobs:
       - name: Update CHANGELOG.md
         run: |
           NEW_VERSION="${{ steps.calc_version.outputs.new_version }}"
-          DATE=$(date +%Y-%m-%d)
           
-          # Use Python to update the changelog
-          python3 << PYEOF
-          import re
+          # Generate changelog using git-changelog
+          # The --in-place flag updates the CHANGELOG.md at the insertion marker
+          # while preserving existing content
+          git-changelog --in-place --output CHANGELOG.md --provider github --bump "$NEW_VERSION"
           
-          new_version = "${NEW_VERSION}"
-          date = "${DATE}"
-          
-          with open('CHANGELOG.md', 'r') as f:
-              content = f.read()
-          
-          new_entry = f"\n## [{new_version}] - {date}\n\n### Changed\n- Release version {new_version}\n"
-          
-          # Try to find an existing version section after Unreleased
-          unreleased_pattern = r'(## \[Unreleased\]\s*\n(?:.*\n)*?)(\n## \[)'
-          
-          if re.search(unreleased_pattern, content):
-              # There are existing version sections, insert before them
-              updated_content = re.sub(
-                  unreleased_pattern,
-                  r'\1' + new_entry + r'\2',
-                  content
-              )
-          else:
-              # No existing version sections, append at the end
-              updated_content = content.rstrip() + new_entry + '\n'
-          
-          with open('CHANGELOG.md', 'w') as f:
-              f.write(updated_content)
-          
-          print(f"Updated CHANGELOG.md with version {new_version}")
-          PYEOF
-          
-          echo "Updated CHANGELOG.md with version $NEW_VERSION"
+          echo "Updated CHANGELOG.md with version $NEW_VERSION using git-changelog"
       
       - name: Commit version bump
         run: |

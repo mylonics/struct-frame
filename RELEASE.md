@@ -65,29 +65,34 @@ This project follows [Semantic Versioning](https://semver.org/):
 
 ### Changelog Management
 
-The `CHANGELOG.md` follows the [Keep a Changelog](https://keepachangelog.com/) format.
+The `CHANGELOG.md` follows the [Keep a Changelog](https://keepachangelog.com/) format and is automatically generated using [git-changelog](https://github.com/pawamoy/git-changelog).
 
-Before running a release, you may want to update the `[Unreleased]` section with changes since the last release:
+The workflow automatically:
+1. Parses commit messages since the last release
+2. Categorizes commits into sections (Added, Fixed, Changed, etc.) based on commit message prefixes
+3. Generates a new version entry with:
+   - Links to commits and comparisons
+   - Organized sections based on conventional commits
+   - Release date
+4. Inserts the new entry at the `<!-- insertion marker -->` in the CHANGELOG.md
 
-```markdown
-## [Unreleased]
+**Commit Message Conventions:**
 
-### Added
-- New feature X
+For best results, use conventional commit prefixes:
+- `feat:` or `add:` → Added section
+- `fix:` → Fixed section  
+- `change:` or `refactor:` → Changed section
+- `remove:` or `delete:` → Removed section
+- `docs:` → Documented section
+- `merge:` → Merged section
 
-### Changed
-- Modified behavior Y
-
-### Fixed
-- Bug fix Z
+**Example:**
+```bash
+git commit -m "feat: add new serialization feature"
+git commit -m "fix: resolve buffer overflow in C parser"
 ```
 
-When the release workflow runs, it will:
-1. Keep the `[Unreleased]` section as-is
-2. Add a new version section with the release date
-3. Include a generic "Release version X.Y.Z" entry
-
-You can manually edit the changelog after release to add more detailed release notes if needed.
+The `[Unreleased]` section can be manually maintained for planned changes and will be preserved during releases.
 
 ## Manual Release (Alternative)
 
