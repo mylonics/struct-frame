@@ -36,6 +36,7 @@ nav:
       - Message Definitions: user-guide/message-definitions.md
       - Framing: user-guide/framing.md
       - Frame Profile Calculator: user-guide/framing-calculator.md
+      - Parser Feature Matrix: user-guide/parser-feature-matrix.md
       - SDK Overview: user-guide/sdk-overview.md
       - TypeScript/JavaScript SDK: user-guide/typescript-sdk.md
       - Python SDK: user-guide/python-sdk.md

@@ -125,6 +125,148 @@ The `Subscription<T>` class provides automatic unsubscription:
 }
 ```
 
+## Frame Parsing API
+
+The C++ SDK provides two parsing APIs to suit different performance requirements:
+
+### Byte-by-Byte Parsing (Traditional)
+
+The byte-by-byte API processes one byte at a time, maintaining parser state across calls. This is suitable for streaming data from serial ports or network sockets.
+
+```cpp
+#include "frame_parsers.hpp"
+
+using namespace FrameParsers;
+
+// Create parser with internal buffer (using profile alias)
+uint8_t buffer[512];
+ProfileStandard parser(buffer, sizeof(buffer));  // Profile.STANDARD
+
+// Parse incoming bytes one at a time
+void onSerialByte(uint8_t byte) {
+    FrameMsgInfo result = parser.parse_byte(byte);
+    
+    if (result.valid) {
+        // Complete frame received
+        process_message(result.msg_id, result.msg_data, result.msg_len);
+    }
+}
+```
+
+### Buffer Parsing (High Performance)
+
+The buffer parsing API scans entire byte buffers efficiently, ideal for batch processing or ring buffer scenarios. This eliminates byte-by-byte state machine overhead.
+
+**Key Benefits:**
+- **Zero-copy**: Returns pointer into original buffer (no intermediate copies)
+- **Fast**: Scans memory directly instead of processing byte-by-byte
+- **Ring buffer support**: Works seamlessly with circular buffers
+- **No std library**: Pure C++, no std::span or std::string_view needed
+
+```cpp
+#include "frame_parsers.hpp"
+
+using namespace FrameParsers;
+
+// Create parser (using profile alias)
+uint8_t internal_buffer[512];
+ProfileStandard parser(internal_buffer, sizeof(internal_buffer));  // Profile.STANDARD
+
+// Parse from DMA buffer or ring buffer
+void processBuffer(const uint8_t* data, size_t length) {
+    size_t consumed = 0;
+    
+    // Scan buffer for frames
+    FrameMsgInfo result = parser.parse_buffer(data, length, &consumed);
+    
+    if (result.valid) {
+        // result.msg_data points directly into 'data' buffer (zero-copy!)
+        // Process immediately or copy if needed for async
+        process_message(result.msg_id, result.msg_data, result.msg_len);
+        
+        // Advance buffer pointer
+        data += consumed;
+        length -= consumed;
+    } else if (consumed > 0) {
+        // Skipped junk bytes, keep trying
+        data += consumed;
+        length -= consumed;
+    } else {
+        // Not enough data for complete frame, wait for more
+    }
+}
+```
+
+### Ring Buffer Example
+
+The buffer API works great with ring buffers from UART/SPI peripherals:
+
+```cpp
+class RingBufferParser {
+private:
+    ProfileStandard parser_;  // Profile.STANDARD
+    uint8_t internal_buffer_[512];
+    
+public:
+    RingBufferParser() : parser_(internal_buffer_, sizeof(internal_buffer_)) {}
+    
+    void processRingBuffer(const uint8_t* ring_start, size_t available) {
+        size_t consumed = 0;
+        
+        while (available > 0) {
+            FrameMsgInfo result = parser_.parse_buffer(ring_start, available, &consumed);
+            
+            if (result.valid) {
+                // Message found - handle it
+                // result.msg_data points into ring buffer (zero-copy)
+                handleMessage(result.msg_id, result.msg_data, result.msg_len);
+                
+                // Advance ring buffer
+                ring_start += consumed;
+                available -= consumed;
+            } else if (consumed > 0) {
+                // Skipped junk bytes
+                ring_start += consumed;
+                available -= consumed;
+            } else {
+                // Incomplete frame, wait for more data
+                break;
+            }
+        }
+    }
+};
+```
+
+### When to Use Each API
+
+**Use `parse_buffer()`** when:
+- Processing data in batches (DMA, network packets)
+- High throughput is required
+- Working with ring buffers
+- Zero-copy operation is beneficial
+
+**Use `parse_byte()`** when:
+- Processing streaming data byte-by-byte
+- Low latency is more important than throughput
+- Integration with existing byte-oriented code
+
+### Profile-Specific Parsers
+
+All parsers are profile-specific (optimized for a single frame format):
+
+```cpp
+// Profile aliases for convenience
+using ProfileStandard = BasicDefaultParser;  // General Serial/UART
+using ProfileSensor = TinyMinimalParser;     // Low-Bandwidth/Radio
+using ProfileBulk = BasicExtendedParser;     // Firmware/File Transfer
+using ProfileNetwork = BasicExtendedMultiSystemStreamParser;  // Multi-Node Mesh
+
+// Use the profile that matches your application
+ProfileStandard parser(buffer, sizeof(buffer));
+```
+
+For more details on parsers and performance, see the [Parser Feature Matrix](parser-feature-matrix.md).
+
 ## Transport Layers
 
 ### Generic Serial Transport (Embedded Systems)
