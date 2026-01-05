@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 Test minimal frame parsing - validates parsing of frames without length field
+
+This test uses the auto-generated get_msg_length function from the proto definitions.
 """
 
 import sys
@@ -12,25 +14,19 @@ sys.path.insert(0, generated_path)
 
 try:
     from parser import Parser, HeaderType, PayloadType
+    # Import the auto-generated get_msg_length function
+    from serialization_test_sf import get_msg_length, serialization_test_definitions
 except ImportError as e:
     print(f"[TEST START]")
-    print(f"Failed to import parser: {e}")
+    print(f"Failed to import parser or generated messages: {e}")
     print(f"Make sure to generate the frame parsers first.")
     print(f"[TEST END]")
     sys.exit(1)
 
 
-# Define message sizes for testing
-MESSAGE_SIZES = {
-    1: 10,
-    2: 20,
-    3: 5,
-    4: 100,
-}
-
-def get_msg_length(msg_id: int) -> int:
-    """Callback for minimal frame parsing"""
-    return MESSAGE_SIZES.get(msg_id, 0)
+# Use actual message IDs and sizes from the generated proto
+# Message IDs: 201 (BasicTypesMessage), 203 (ComprehensiveArrayMessage), 204 (SerializationTestMessage)
+# The get_msg_length function is auto-generated and knows the sizes of these messages
 
 
 def test_basic_minimal():
@@ -43,8 +39,10 @@ def test_basic_minimal():
         enabled_payloads=[PayloadType.MINIMAL]
     )
     
-    msg_id = 1
-    msg_data = bytes(range(10))
+    # Use real message ID from proto: 204 (SerializationTestMessage)
+    msg_id = 204
+    msg_size = get_msg_length(msg_id)  # Auto-generated function knows the size
+    msg_data = bytes(range(min(msg_size, 256)))[:msg_size]  # Create data matching the message size
     
     # Encode
     frame = parser.encode(msg_id, msg_data, HeaderType.BASIC, PayloadType.MINIMAL)
@@ -91,8 +89,10 @@ def test_tiny_minimal():
         enabled_payloads=[PayloadType.MINIMAL]
     )
     
-    msg_id = 3
-    msg_data = bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE])
+    # Use real message ID from proto: 203 (ComprehensiveArrayMessage)
+    msg_id = 203
+    msg_size = get_msg_length(msg_id)
+    msg_data = bytes(range(min(msg_size, 256)))[:msg_size]
     
     # Encode
     frame = parser.encode(msg_id, msg_data, HeaderType.TINY, PayloadType.MINIMAL)
@@ -140,8 +140,10 @@ def test_none_minimal():
         default_payload_type=PayloadType.MINIMAL
     )
     
-    msg_id = 3
-    msg_data = bytes([0x11, 0x22, 0x33, 0x44, 0x55])
+    # Use real message ID from proto: 201 (BasicTypesMessage)
+    msg_id = 201
+    msg_size = get_msg_length(msg_id)
+    msg_data = bytes(range(min(msg_size, 256)))[:msg_size]
     
     # Encode
     frame = parser.encode(msg_id, msg_data, HeaderType.NONE, PayloadType.MINIMAL)
@@ -188,11 +190,20 @@ def test_mixed_minimal_stream():
         enabled_payloads=[PayloadType.MINIMAL]
     )
     
-    # Create multiple frames
+    # Create multiple frames using real message IDs from proto
+    msg_id_1 = 204  # SerializationTestMessage
+    size_1 = get_msg_length(msg_id_1)
+    
+    msg_id_2 = 203  # ComprehensiveArrayMessage
+    size_2 = get_msg_length(msg_id_2)
+    
+    msg_id_3 = 201  # BasicTypesMessage
+    size_3 = get_msg_length(msg_id_3)
+    
     frames = [
-        parser.encode(1, bytes(range(10)), HeaderType.BASIC, PayloadType.MINIMAL),
-        parser.encode(3, bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE]), HeaderType.TINY, PayloadType.MINIMAL),
-        parser.encode(2, bytes(range(20)), HeaderType.BASIC, PayloadType.MINIMAL),
+        parser.encode(msg_id_1, bytes(range(min(size_1, 256)))[:size_1], HeaderType.BASIC, PayloadType.MINIMAL),
+        parser.encode(msg_id_2, bytes(range(min(size_2, 256)))[:size_2], HeaderType.TINY, PayloadType.MINIMAL),
+        parser.encode(msg_id_3, bytes(range(min(size_3, 256)))[:size_3], HeaderType.BASIC, PayloadType.MINIMAL),
     ]
     
     stream = b''.join(frames)
@@ -211,9 +222,9 @@ def test_mixed_minimal_stream():
     
     # Verify each result
     expected = [
-        (HeaderType.BASIC, 1, 10),
-        (HeaderType.TINY, 3, 5),
-        (HeaderType.BASIC, 2, 20),
+        (HeaderType.BASIC, msg_id_1, size_1),
+        (HeaderType.TINY, msg_id_2, size_2),
+        (HeaderType.BASIC, msg_id_3, size_3),
     ]
     
     for i, (result, (exp_header, exp_id, exp_len)) in enumerate(zip(results, expected)):
@@ -242,8 +253,11 @@ def test_callback_required():
         enabled_payloads=[PayloadType.MINIMAL]
     )
     
-    # Create frame manually: [0x70 = Tiny+Minimal] [0x03 = msg_id] [data]
-    frame = bytes([0x70, 0x03, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE])
+    # Use a real message ID from proto
+    msg_id = 204
+    # Create frame manually: [0x70 = Tiny+Minimal] [msg_id] [data]
+    msg_data = bytes(range(20))
+    frame = bytes([0x70, msg_id]) + msg_data
     
     # Try to parse
     result = None
@@ -261,7 +275,7 @@ def test_callback_required():
 
 
 def test_variable_sizes():
-    """Test minimal frames with different message sizes"""
+    """Test minimal frames with different message sizes from proto"""
     print("Testing minimal frames with variable message sizes...")
     
     parser = Parser(
@@ -270,15 +284,15 @@ def test_variable_sizes():
         enabled_payloads=[PayloadType.MINIMAL]
     )
     
+    # Use real message IDs from proto with different sizes
     test_cases = [
-        (1, 10),   # 10 bytes
-        (2, 20),   # 20 bytes
-        (3, 5),    # 5 bytes
-        (4, 100),  # 100 bytes
+        (201, get_msg_length(201)),  # BasicTypesMessage
+        (203, get_msg_length(203)),  # ComprehensiveArrayMessage
+        (204, get_msg_length(204)),  # SerializationTestMessage
     ]
     
     for msg_id, expected_len in test_cases:
-        msg_data = bytes(range(expected_len))
+        msg_data = bytes(range(min(expected_len, 256)))[:expected_len]
         frame = parser.encode(msg_id, msg_data, HeaderType.BASIC, PayloadType.MINIMAL)
         
         parser.reset()
