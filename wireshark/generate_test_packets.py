@@ -13,7 +13,16 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from struct_frame.frame_formats import Profile, get_profile
-from struct_frame.frame_formats.crc import calculate_crc16, crc_to_bytes
+
+
+def fletcher16(data):
+    """Calculate Fletcher-16 checksum."""
+    sum1 = 0
+    sum2 = 0
+    for byte in data:
+        sum1 = (sum1 + byte) % 256
+        sum2 = (sum2 + sum1) % 256
+    return sum1, sum2
 
 
 def create_basic_default_packet(msg_id=42, payload=b'\x01\x02\x03\x04'):
@@ -30,13 +39,12 @@ def create_basic_default_packet(msg_id=42, payload=b'\x01\x02\x03\x04'):
     # Message ID
     frame.append(msg_id)
     
-    # Calculate CRC over length, msg_id, and payload
-    crc_data = bytes([len(payload), msg_id]) + payload
-    crc = calculate_crc16(crc_data)
-    crc1, crc2 = crc_to_bytes(crc)
-    
     # Add payload
     frame.extend(payload)
+    
+    # Calculate Fletcher-16 over length, msg_id, and payload
+    crc_data = bytes([len(payload), msg_id]) + payload
+    crc1, crc2 = fletcher16(crc_data)
     
     # Add CRC
     frame.extend([crc1, crc2])
@@ -75,13 +83,12 @@ def create_basic_extended_packet(msg_id=42, pkg_id=1, payload=b'\x01\x02\x03\x04
     # Message ID
     frame.append(msg_id)
     
-    # Calculate CRC over length, pkg_id, msg_id, and payload
-    crc_data = bytes([len_lo, len_hi, pkg_id, msg_id]) + payload
-    crc = calculate_crc16(crc_data)
-    crc1, crc2 = crc_to_bytes(crc)
-    
     # Add payload
     frame.extend(payload)
+    
+    # Calculate Fletcher-16 over length, pkg_id, msg_id, and payload
+    crc_data = bytes([len_lo, len_hi, pkg_id, msg_id]) + payload
+    crc1, crc2 = fletcher16(crc_data)
     
     # Add CRC
     frame.extend([crc1, crc2])
@@ -117,13 +124,12 @@ def create_basic_extended_multi_system_stream_packet(
     # Message ID
     frame.append(msg_id)
     
-    # Calculate CRC over everything after start bytes
-    crc_data = bytes([seq, sys_id, comp_id, len_lo, len_hi, pkg_id, msg_id]) + payload
-    crc = calculate_crc16(crc_data)
-    crc1, crc2 = crc_to_bytes(crc)
-    
     # Add payload
     frame.extend(payload)
+    
+    # Calculate Fletcher-16 over everything after start bytes
+    crc_data = bytes([seq, sys_id, comp_id, len_lo, len_hi, pkg_id, msg_id]) + payload
+    crc1, crc2 = fletcher16(crc_data)
     
     # Add CRC
     frame.extend([crc1, crc2])
