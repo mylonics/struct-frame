@@ -56,8 +56,9 @@ bool encode_test_messages(const std::string& format, uint8_t* buffer, size_t buf
  * @param format Frame format name
  * @param buffer Input buffer containing encoded data
  * @param buffer_size Size of input data
+ * @param message_count Output: number of messages decoded
  * @return true if all messages decoded and validated successfully, false otherwise
  */
-bool decode_test_messages(const std::string& format, const uint8_t* buffer, size_t buffer_size);
+bool decode_test_messages(const std::string& format, const uint8_t* buffer, size_t buffer_size, size_t& message_count);
 
 #endif /* TEST_CODEC_HPP */

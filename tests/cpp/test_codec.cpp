@@ -552,5 +552,6 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
 
 bool decode_test_message(const std::string& format, const uint8_t* buffer, size_t buffer_size,
                          SerializationTestSerializationTestMessage& msg) {
-  return decode_test_messages(format, buffer, buffer_size);
+  size_t message_count = 0;
+  return decode_test_messages(format, buffer, buffer_size, message_count);
 }
