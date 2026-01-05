@@ -1,5 +1,6 @@
 #include "test_codec.h"
 
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -417,13 +418,10 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
         cJSON* test_bool = cJSON_GetObjectItem(msg_item, "test_bool");
         cJSON* test_array = cJSON_GetObjectItem(msg_item, "test_array");
         
-        if (magic_number && test_string && test_float && cJSON_IsBool(test_bool)) {
-          messages[count].magic_number = (uint32_t)magic_number->valueint;
-          if (magic_number->valuedouble > INT_MAX) {
-            messages[count].magic_number = (uint32_t)magic_number->valuedouble;
-          }
+        if (magic_number && test_string && test_float && test_bool) {
+          messages[count].magic_number = (uint32_t)magic_number->valuedouble;
           
-          strncpy(messages[count].test_string, test_string->valuestring, MAX_STRING_LENGTH - 1);
+          strncpy(messages[count].test_string, cJSON_GetStringValue(test_string), MAX_STRING_LENGTH - 1);
           messages[count].test_string[MAX_STRING_LENGTH - 1] = '\0';
           
           messages[count].test_float = (float)test_float->valuedouble;
@@ -434,7 +432,7 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
             size_t array_idx = 0;
             cJSON* array_item = NULL;
             cJSON_ArrayForEach(array_item, test_array) {
-              if (array_idx >= MAX_ARRAY_SIZE) break;
+              if (array_idx >= MAX_ARRAY_LENGTH) break;
               messages[count].test_array[array_idx++] = array_item->valueint;
             }
             messages[count].test_array_count = array_idx;
