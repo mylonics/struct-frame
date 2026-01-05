@@ -3,8 +3,16 @@
 Minimal Frame Parsing Example - Python
 
 This example demonstrates how to use minimal frames (no length field, no CRC)
-with the struct-frame parser. Minimal frames require a callback function to
-determine message length based on message ID.
+with the struct-frame parser. 
+
+**Important**: Struct-frame automatically generates a `get_msg_length` function
+based on your message definitions. You can import and use it directly!
+
+Example:
+    from my_messages_sf import get_msg_length
+    parser = Parser(get_msg_length=get_msg_length, ...)
+
+For this example, we define message sizes manually for demonstration purposes.
 
 Minimal frames are ideal for:
 - Fixed-size messages
@@ -24,7 +32,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'generated'))
 from parser import Parser, HeaderType, PayloadType
 
 # Define message sizes for your protocol
-# In a real application, these would come from your message definitions
+# NOTE: In production, import the auto-generated get_msg_length function instead:
+#   from my_messages_sf import get_msg_length
+# The generator creates this function automatically based on your .proto file.
 MESSAGE_SIZES = {
     1: 10,  # Status message - 10 bytes
     2: 20,  # Command message - 20 bytes
@@ -38,6 +48,9 @@ def get_msg_length(msg_id: int) -> int:
     
     This is REQUIRED for minimal frames since they don't include a length field.
     Without this callback, the parser cannot determine message boundaries.
+    
+    NOTE: Struct-frame generates this function automatically! In production,
+    import it from your generated messages file instead of defining it manually.
     
     Args:
         msg_id: Message ID from the frame

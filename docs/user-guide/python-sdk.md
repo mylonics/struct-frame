@@ -68,11 +68,21 @@ parser = Parser(
 
 ### Using with Minimal Payloads
 
-For Minimal payloads (which don't include a length field), you need to provide a callback to determine message length:
+For Minimal payloads (which don't include a length field), struct-frame automatically generates a `get_msg_length` function based on your message definitions:
 
 ```python
 from parser import Parser, PayloadType
+# Import the auto-generated get_msg_length function
+from my_messages_sf import get_msg_length
 
+parser = Parser(
+    get_msg_length=get_msg_length,
+    enabled_payloads=[PayloadType.MINIMAL]
+)
+```
+
+**Manual callback** (if you need custom logic):
+```python
 def get_msg_length(msg_id: int) -> int:
     """Return the expected message length for a given msg_id"""
     msg_lengths = {
