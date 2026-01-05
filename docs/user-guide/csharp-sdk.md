@@ -99,6 +99,96 @@ var transport = new GenericSerialTransport(serialPort);
 
 ## SDK Usage
 
+### Generated SDK Interface
+
+When using the `--sdk` or `--sdk_embedded` flag, struct-frame generates a high-level SDK interface for each package that provides type-safe methods for sending messages. This interface eliminates boilerplate code and provides two convenient ways to send each message type.
+
+#### Features
+
+- **Type-safe send methods**: One method per message type
+- **Two overloads**: Send with individual fields or with a complete struct
+- **Automatic framing**: Messages are automatically serialized and framed
+- **Frame parser integration**: Works with any generated frame parser
+
+#### Example
+
+For a message defined as:
+
+```proto
+package robot_messages;
+
+message RobotCommand {
+  option msgid = 1;
+  uint8 command_type = 1;
+  float speed = 2;
+  float direction = 3;
+}
+```
+
+The generated SDK interface provides:
+
+```csharp
+using StructFrame.RobotMessages;
+using StructFrame.RobotMessages.Sdk;
+
+// Create SDK interface with a frame parser and send function
+var frameParser = new BasicDefault();
+var sdkInterface = new RobotMessagesSdkInterface(
+    frameParser,
+    transport.SendAsync  // or any Func<byte[], Task>
+);
+
+// Option 1: Send with individual field values
+await sdkInterface.SendRobotCommand(
+    commandType: 1,
+    speed: 5.0f,
+    direction: 90.0f
+);
+
+// Option 2: Send with complete struct
+var cmd = new RobotMessagesRobotCommand
+{
+    CommandType = 1,
+    Speed = 5.0f,
+    Direction = 90.0f,
+};
+await sdkInterface.SendRobotCommand(cmd);
+```
+
+#### Integration with StructFrameSdk
+
+The SDK interface works seamlessly with the main `StructFrameSdk`:
+
+```csharp
+using StructFrame.Sdk;
+using StructFrame.RobotMessages.Sdk;
+
+// Create and configure SDK
+var sdk = new StructFrameSdk(new StructFrameSdkConfig
+{
+    Transport = transport,
+    FrameParser = new BasicDefault(),
+    Debug = true,
+});
+
+await sdk.ConnectAsync();
+
+// Create SDK interface using the same frame parser and transport
+var sdkInterface = new RobotMessagesSdkInterface(
+    new BasicDefault(),  // Same frame parser
+    async (bytes) => await transport.SendAsync(bytes)
+);
+
+// Send using SDK interface
+await sdkInterface.SendRobotCommand(1, 5.0f, 90.0f);
+
+// Receive using standard SDK subscription
+sdk.Subscribe<RobotCommand>(RobotCommand.MsgId, (msg, id) =>
+{
+    Console.WriteLine($"Command: {msg.CommandType}, Speed: {msg.Speed}");
+});
+```
+
 ### Creating the SDK
 
 ```csharp
