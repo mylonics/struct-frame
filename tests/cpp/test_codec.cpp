@@ -137,7 +137,26 @@ inline FrameMsgInfo basic_extended_validate_packet(const uint8_t* buffer, size_t
         return result;
     }
     
-    return validate_payload_with_crc(buffer, length, 6, 2, 2);
+    /* Extract length from the frame */
+    const size_t msg_len = buffer[2] | (buffer[3] << 8);
+    const size_t total_size = 6 + msg_len + 2; /* header + payload + crc */
+    
+    if (length < total_size) {
+        return result;
+    }
+    
+    /* Verify CRC: covers [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
+    FrameChecksum ck = fletcher_checksum(buffer + 2, msg_len + 4);
+    if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+        return result;
+    }
+    
+    result.valid = true;
+    result.msg_id = buffer[5]; /* MSG_ID at position 5 */
+    result.msg_len = msg_len;
+    result.msg_data = const_cast<uint8_t*>(buffer + 6); /* Payload starts after header */
+    
+    return result;
 }
 
 /* Basic + Extended Multi System Stream */
@@ -177,7 +196,26 @@ inline FrameMsgInfo basic_extended_multi_system_stream_validate_packet(const uin
         return result;
     }
     
-    return validate_payload_with_crc(buffer, length, 9, 2, 2);
+    /* Extract length from the frame */
+    const size_t msg_len = buffer[5] | (buffer[6] << 8);
+    const size_t total_size = 9 + msg_len + 2; /* header + payload + crc */
+    
+    if (length < total_size) {
+        return result;
+    }
+    
+    /* Verify CRC: covers [SEQ] [SYS] [COMP] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
+    FrameChecksum ck = fletcher_checksum(buffer + 2, msg_len + 7);
+    if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+        return result;
+    }
+    
+    result.valid = true;
+    result.msg_id = buffer[8]; /* MSG_ID at position 8 */
+    result.msg_len = msg_len;
+    result.msg_data = const_cast<uint8_t*>(buffer + 9); /* Payload starts after header */
+    
+    return result;
 }
 
 /* Basic + Minimal */
