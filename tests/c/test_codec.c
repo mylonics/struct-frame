@@ -273,83 +273,61 @@ static inline frame_msg_info_t tiny_default_validate_packet(const uint8_t* buffe
   return frame_validate_payload_with_crc(buffer, length, 3, 1, 1);
 }
 
-/* Load test messages from JSON using cJSON */
+/* Load test messages - hardcoded to match test_messages.json */
 size_t load_test_messages(test_message_t* messages, size_t max_count) {
-  const char* paths[] = {"../test_messages.json", "../../test_messages.json", "test_messages.json", NULL};
-
-  FILE* file = NULL;
-  for (int i = 0; paths[i] != NULL; i++) {
-    file = fopen(paths[i], "r");
-    if (file) break;
-  }
-
-  if (!file) {
-    fprintf(stderr, "Failed to open test_messages.json\n");
-    return 0;
-  }
-
-  /* Read file into string */
-  fseek(file, 0, SEEK_END);
-  long file_size = ftell(file);
-  fseek(file, 0, SEEK_SET);
-
-  char* json_str = (char*)malloc(file_size + 1);
-  if (!json_str) {
-    fclose(file);
-    return 0;
-  }
-
-  fread(json_str, 1, file_size, file);
-  json_str[file_size] = '\0';
-  fclose(file);
-
-  /* Parse JSON */
-  cJSON* root = cJSON_Parse(json_str);
-  free(json_str);
-
-  if (!root) {
-    fprintf(stderr, "Error parsing JSON\n");
-    return 0;
-  }
-
-  cJSON* messages_array = cJSON_GetObjectItem(root, "messages");
-  if (!messages_array || !cJSON_IsArray(messages_array)) {
-    cJSON_Delete(root);
-    return 0;
-  }
-
-  size_t count = 0;
-  cJSON* msg_item = NULL;
-  cJSON_ArrayForEach(msg_item, messages_array) {
-    if (count >= max_count) break;
-
-    cJSON* magic = cJSON_GetObjectItem(msg_item, "magic_number");
-    cJSON* str = cJSON_GetObjectItem(msg_item, "test_string");
-    cJSON* flt = cJSON_GetObjectItem(msg_item, "test_float");
-    cJSON* boolean = cJSON_GetObjectItem(msg_item, "test_bool");
-    cJSON* array = cJSON_GetObjectItem(msg_item, "test_array");
-
-    if (magic && str && flt && boolean && array) {
-      messages[count].magic_number = (uint32_t)magic->valuedouble;
-      strncpy(messages[count].test_string, str->valuestring, MAX_STRING_LENGTH - 1);
-      messages[count].test_string[MAX_STRING_LENGTH - 1] = '\0';
-      messages[count].test_float = (float)flt->valuedouble;
-      messages[count].test_bool = cJSON_IsTrue(boolean);
-
-      messages[count].test_array_count = 0;
-      if (cJSON_IsArray(array)) {
-        cJSON* array_item = NULL;
-        cJSON_ArrayForEach(array_item, array) {
-          if (messages[count].test_array_count >= MAX_ARRAY_LENGTH) break;
-          messages[count].test_array[messages[count].test_array_count++] = array_item->valueint;
-        }
-      }
-
-      count++;
+  /* Hardcoded test messages matching test_messages.json */
+  const test_message_t test_data[] = {
+    /* basic_values */
+    {
+      .magic_number = 3735928559,  /* 0xDEADBEEF */
+      .test_string = "Cross-platform test!",
+      .test_float = 3.14159f,
+      .test_bool = true,
+      .test_array = {100, 200, 300},
+      .test_array_count = 3
+    },
+    /* zero_values */
+    {
+      .magic_number = 0,
+      .test_string = "",
+      .test_float = 0.0f,
+      .test_bool = false,
+      .test_array = {},
+      .test_array_count = 0
+    },
+    /* max_values */
+    {
+      .magic_number = 4294967295,  /* 0xFFFFFFFF */
+      .test_string = "Maximum length test string for coverage!",
+      .test_float = 999999.9f,
+      .test_bool = true,
+      .test_array = {2147483647, -2147483648, 0, 1, -1},
+      .test_array_count = 5
+    },
+    /* negative_values */
+    {
+      .magic_number = 2863311530,  /* 0xAAAAAAAA */
+      .test_string = "Negative test",
+      .test_float = -273.15f,
+      .test_bool = false,
+      .test_array = {-100, -200, -300, -400},
+      .test_array_count = 4
+    },
+    /* special_chars */
+    {
+      .magic_number = 1234567890,  /* 0x499602D2 */
+      .test_string = "Special: !@#$%^&*()",
+      .test_float = 2.71828f,
+      .test_bool = true,
+      .test_array = {0, 1, 1, 2, 3, 5, 8, 13, 21},
+      .test_array_count = 9
     }
-  }
-
-  cJSON_Delete(root);
+  };
+  
+  const size_t num_test_messages = sizeof(test_data) / sizeof(test_data[0]);
+  const size_t count = num_test_messages < max_count ? num_test_messages : max_count;
+  
+  memcpy(messages, test_data, count * sizeof(test_message_t));
   return count;
 }
 
