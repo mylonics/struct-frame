@@ -764,7 +764,7 @@ namespace StructFrameTests
 
             foreach (var testMsg in TestMessages.Messages)
             {
-                byte[] msgData = CreateMessageBytesFromData(testMsg);
+                byte[] msgData = TestCodec.CreateMessageBytesFromData(testMsg);
                 byte[] encoded = parser.Encode(SerializationTestSerializationTestMessage.MsgId, msgData);
                 if (encoded == null || encoded.Length == 0)
                 {
@@ -817,7 +817,7 @@ namespace StructFrameTests
                 }
 
                 // Validate the message against test data
-                if (!ValidateMessageAgainstData(result.MsgData, TestMessages.Messages[messageCount]))
+                if (!TestCodec.ValidateMessageAgainstData(result.MsgData, TestMessages.Messages[messageCount]))
                 {
                     Console.WriteLine($"  Validation failed for message {messageCount}");
                     return messageCount;
