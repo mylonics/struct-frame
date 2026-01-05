@@ -1,6 +1,6 @@
 # Framing Architecture
 
-This document provides detailed technical information about the struct-frame framing system architecture, including the new composable design using language-agnostic frame format definitions.
+This document provides technical information about the struct-frame framing system architecture, including the composable design using language-agnostic frame format definitions.
 
 ## Overview
 
@@ -12,11 +12,9 @@ struct-frame uses a **composable frame format architecture** where complete fram
 
 This architecture allows for flexible customization while providing simple, intent-based profiles for most users.
 
-## New Architecture (v2.0+)
+## Language-Agnostic Definitions
 
-### Language-Agnostic Definitions
-
-Frame formats are now defined in Python modules under `src/struct_frame/frame_formats/`:
+Frame formats are defined in Python modules under `src/struct_frame/frame_formats/`:
 
 ```
 frame_formats/
@@ -34,13 +32,13 @@ frame_formats/
 - ✓ Maintainable: Each concept in its own file
 - ✓ Extensible: Easy to add new types via PR
 
-### Simplified Proto File
+## Simplified Proto File
 
-The `frame_formats.proto` file now contains **only**:
+The `frame_formats.proto` file contains **only**:
 - Enumerations: `HeaderType`, `PayloadType`, `Profile`
 - Profile aliases for custom combinations
 
-The proto file no longer contains message definitions for each frame format variant.
+The proto file does not contain message definitions for each frame format variant.
 
 ## Framing Architecture
 
@@ -57,11 +55,7 @@ The framing system uses a two-level architecture:
 
 ## Frame Format Definitions
 
-Frame format definitions are now in language-agnostic Python modules rather than in the proto file. This allows for:
-
-- **Code reuse**: Payloads can import and extend simpler payloads
-- **Better documentation**: Each type has clear descriptions and properties
-- **Type safety**: Definitions include validation and computed properties
+Frame format definitions are in language-agnostic Python modules. This allows for code reuse, better documentation, and type safety.
 
 For examples and usage, see:
 - [`src/struct_frame/frame_formats/`](https://github.com/mylonics/struct-frame/tree/main/src/struct_frame/frame_formats) - Definition source code
