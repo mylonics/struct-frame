@@ -80,7 +80,7 @@ class FrameFormatMatrixPlugin(TestPlugin):
                 output_file = self._get_output_file(
                     lang_id, output_file_pattern)
 
-                encode_result = self.runner.run_test_runner(
+                encode_result, _ = self.runner.run_test_runner(
                     lang_id, 'encode', format_name, output_file)
 
                 if encode_result and output_file and output_file.exists():
@@ -88,7 +88,8 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
                 matrix[display_name][lang_name] = {
                     'encode': encode_result,
-                    'decode': None
+                    'decode': None,
+                    'message_count': 0
                 }
                 results[lang_id][f"{display_name}_encode"] = encode_result
 
@@ -103,9 +104,10 @@ class FrameFormatMatrixPlugin(TestPlugin):
                     matrix[display_name][lang_name]['decode'] = None
                     continue
 
-                decode_result = self._run_decode_with_file(
+                decode_result, message_count = self._run_decode_with_file(
                     lang_id, format_name, base_data_file)
                 matrix[display_name][lang_name]['decode'] = decode_result
+                matrix[display_name][lang_name]['message_count'] = message_count
                 results[lang_id][f"{display_name}_decode"] = decode_result
 
             self._print_matrix_row(
@@ -115,11 +117,15 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
         return {'results': results, 'matrix': matrix}
 
-    def _run_decode_with_file(self, lang_id: str, format_name: str, data_file: Path) -> bool:
-        """Run decoder with a specific input file."""
+    def _run_decode_with_file(self, lang_id: str, format_name: str, data_file: Path) -> tuple[bool, int]:
+        """Run decoder with a specific input file.
+        
+        Returns:
+            (success, message_count): success status and number of messages decoded
+        """
         lang = self.runner.get_lang(lang_id)
         if not lang:
-            return False
+            return False, 0
 
         build_dir = lang.get_build_dir()
         target_file = build_dir / data_file.name
@@ -137,7 +143,7 @@ class FrameFormatMatrixPlugin(TestPlugin):
         except Exception as e:
             if self.verbose:
                 self.log(f"Decode failed: {e}", "WARNING")
-            return False
+            return False, 0
 
     def _get_output_file(self, lang_id: str, pattern: str) -> Optional[Path]:
         """Get the output file path for a language."""
@@ -163,13 +169,13 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
         col_width = 12
         print("\nFrame Format Language Test Matrix:")
-        print("Legend: OK=pass, SER=serialization failed, DES=deserialization failed, BOTH=both failed")
+        print("Legend: OK(N)=pass with N messages, SER=serialization failed, DES(N)=deserialization failed (N decoded), BOTH=both failed")
         header = "Frame Format".ljust(
             20) + "".join(l.center(col_width) for l in all_langs)
         print(header)
         print("-" * len(header))
 
-    def _print_matrix_row(self, frame_format: str, lang_results: Dict[str, Dict[str, Optional[bool]]], testable: list):
+    def _print_matrix_row(self, frame_format: str, lang_results: Dict[str, Dict[str, any]], testable: list):
         """Print a single row of the matrix."""
         all_langs = []
         for lang_id in testable:
@@ -185,17 +191,18 @@ class FrameFormatMatrixPlugin(TestPlugin):
             elif isinstance(val, dict):
                 encode_ok = val.get('encode')
                 decode_ok = val.get('decode')
+                message_count = val.get('message_count', 0)
 
                 if encode_ok is None and decode_ok is None:
                     cell = "N/A"
                 elif encode_ok and decode_ok:
-                    cell = "OK"
+                    cell = f"OK({message_count})" if message_count > 0 else "OK"
                 elif not encode_ok and (decode_ok is False or decode_ok is None):
                     cell = "BOTH"
                 elif not encode_ok:
                     cell = "SER"
                 elif not decode_ok:
-                    cell = "DES"
+                    cell = f"DES({message_count})" if message_count > 0 else "DES"
                 else:
                     cell = "N/A"
             elif val:

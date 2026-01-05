@@ -540,7 +540,10 @@ class FilePyGen():
                 yield f'def get_message_size(msg_id: int) -> int:\n'
                 yield f'    """Get message size from 16-bit message ID"""\n'
                 yield f'    msg_class = get_message_class(msg_id)\n'
-                yield f'    return msg_class.msg_size if msg_class else 0\n'
+                yield f'    return msg_class.msg_size if msg_class else 0\n\n'
+                
+                yield f'# Alias for minimal frame parsing compatibility\n'
+                yield f'get_msg_length = get_message_size\n'
             else:
                 # Legacy mode: 8-bit message ID
                 yield '%s_definitions = {\n' % package.name
@@ -548,4 +551,14 @@ class FilePyGen():
                     if msg.id != None:
                         structName = '%s%s' % (pascalCase(msg.package), msg.name)
                         yield '    %s: %s,\n' % (msg.id, structName)
-                yield '}\n'
+                yield '}\n\n'
+                
+                # Add helper functions for message lookup and size
+                yield f'def get_message_class(msg_id: int):\n'
+                yield f'    """Get message class from message ID"""\n'
+                yield f'    return {package.name}_definitions.get(msg_id)\n\n'
+                
+                yield f'def get_msg_length(msg_id: int) -> int:\n'
+                yield f'    """Get message size from message ID (for minimal frame parsing)"""\n'
+                yield f'    msg_class = get_message_class(msg_id)\n'
+                yield f'    return msg_class.msg_size if msg_class else 0\n'

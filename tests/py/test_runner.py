@@ -6,7 +6,7 @@ Usage:
     test_runner.py encode <frame_format> <output_file>
     test_runner.py decode <frame_format> <input_file>
 
-Frame formats: basic_default, basic_minimal, tiny_default, tiny_minimal
+Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
 """
 
 import sys
@@ -23,7 +23,7 @@ def print_usage():
     print("Usage:")
     print("  test_runner.py encode <frame_format> <output_file>")
     print("  test_runner.py decode <frame_format> <input_file>")
-    print("\nFrame formats: basic_default, basic_minimal, tiny_default, tiny_minimal")
+    print("\nFrame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network")
 
 
 def print_hex(data):
@@ -58,7 +58,7 @@ def run_encode(format_name, output_file):
 
 
 def run_decode(format_name, input_file):
-    from test_codec import decode_test_message, validate_test_message
+    from test_codec import decode_test_messages
 
     print(f"[DECODE] Format: {format_name}, File: {input_file}")
 
@@ -74,7 +74,7 @@ def run_decode(format_name, input_file):
         return 1
 
     try:
-        msg = decode_test_message(format_name, data)
+        success, message_count = decode_test_messages(format_name, data)
     except Exception as e:
         print(f"[DECODE] FAILED: Decoding error - {e}")
         print_hex(data)
@@ -82,16 +82,12 @@ def run_decode(format_name, input_file):
         traceback.print_exc()
         return 1
 
-    if msg is None:
-        print("[DECODE] FAILED: Decoding returned None")
+    if not success:
+        print("[DECODE] FAILED: Validation error")
         print_hex(data)
         return 1
 
-    if not validate_test_message(msg):
-        print("[DECODE] FAILED: Validation error")
-        return 1
-
-    print("[DECODE] SUCCESS: Message validated correctly")
+    print(f"[DECODE] SUCCESS: {message_count} messages validated correctly")
     return 0
 
 

@@ -5,7 +5,7 @@
  *   node test_runner.js encode <frame_format> <output_file>
  *   node test_runner.js decode <frame_format> <input_file>
  * 
- * Frame formats: basic_default, basic_minimal, tiny_default, tiny_minimal
+ * Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
  */
 "use strict";
 
@@ -16,7 +16,7 @@ function printUsage() {
   console.log('Usage:');
   console.log('  node test_runner.js encode <frame_format> <output_file>');
   console.log('  node test_runner.js decode <frame_format> <input_file>');
-  console.log('\nFrame formats: basic_default, basic_minimal, tiny_default, tiny_minimal');
+  console.log('\nFrame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network');
 }
 
 function printHex(data) {

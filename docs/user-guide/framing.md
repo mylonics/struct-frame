@@ -107,6 +107,8 @@ Understanding how framing works helps when debugging with logic analyzers. Here'
 No framing overhead - for trusted internal links (SPI, Shared Memory)
 ```
 
+**Important**: Minimal frames (Profile.Sensor and Profile.IPC) don't include a length field. You must provide a callback function that returns the expected message length for each message ID. See the [Minimal Frames Guide](minimal-frames.md) for details.
+
 #### Profile.Bulk (BasicExtended) - 8 bytes overhead
 
 ```
