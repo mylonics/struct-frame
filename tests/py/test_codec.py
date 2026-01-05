@@ -243,7 +243,7 @@ def decode_test_messages(format_name, data):
         
         if not result or not result.valid:
             print(f"  Decoding failed for message {message_count}")
-            return False
+            return False, message_count
         
         # Decode the message
         msg_data = result.msg_data
@@ -252,7 +252,7 @@ def decode_test_messages(format_name, data):
         # Validate against expected test message
         if not validate_message(msg, test_messages[message_count]):
             print(f"  Validation failed for message {message_count}")
-            return False
+            return False, message_count
         
         message_count += 1
     
