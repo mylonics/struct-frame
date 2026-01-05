@@ -759,12 +759,19 @@ def generateCppFileStrings(path):
     return out
 
 
-def generateCSharpFileStrings(path):
+def generateCSharpFileStrings(path, include_sdk_interface=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".sf.cs")
         data = ''.join(FileCSharpGen.generate(value))
         out[name] = data
+        
+        # Generate SDK interface if requested
+        if include_sdk_interface:
+            from struct_frame.csharp_sdk_interface_gen import generate_csharp_sdk_interface
+            sdk_name = os.path.join(path, value.name + ".sdk.cs")
+            sdk_data = generate_csharp_sdk_interface(value)
+            out[sdk_name] = sdk_data
     return out
 
 
@@ -902,7 +909,8 @@ def main():
         files.update(generateCppFileStrings(args.cpp_path[0]))
 
     if (args.build_csharp):
-        files.update(generateCSharpFileStrings(args.csharp_path[0]))
+        files.update(generateCSharpFileStrings(args.csharp_path[0], 
+                                               include_sdk_interface=(args.sdk or args.sdk_embedded)))
 
     if (args.build_gql):
         for key, value in packages.items():

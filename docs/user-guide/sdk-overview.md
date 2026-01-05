@@ -27,6 +27,7 @@ python -m struct_frame your_messages.proto --build_cpp --cpp_path gen/cpp --sdk_
 - **Type-Safe Message Handling**: Subscribe to specific message types
 - **Auto-Reconnection**: Configurable automatic reconnection on connection loss
 - **Cross-Platform**: Works across embedded systems, desktop, and mobile platforms
+- **Generated SDK Interface** (C#): High-level, type-safe send methods for each message type with field-level and struct-level overloads
 
 ## Available SDKs
 
