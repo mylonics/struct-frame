@@ -390,9 +390,68 @@ Footer:
 
 ### Next Steps
 
-1. **Copy the frame format name** (e.g., `BasicDefault`)
-2. **Use it in your code** when initializing the frame parser
-3. **Reference the profile** in documentation for clarity
+1. **Use a standard profile** if it matches your needs (recommended)
+2. **Or create a custom profile alias** in a `frame_format.proto` file
+3. **Use it in your code** when initializing the frame parser
+
+### Using Standard Profiles
+
+For most use cases, use one of the 5 standard profiles:
+
+```protobuf
+// Use this in your frame_format.proto file or directly in code
+
+// For general serial/UART:
+Profile.STANDARD  // Maps to BasicDefault
+
+// For low-bandwidth sensors:
+Profile.SENSOR    // Maps to TinyMinimal
+
+// For trusted inter-process communication:
+Profile.IPC       // Maps to NoneMinimal
+
+// For large file transfers:
+Profile.BULK      // Maps to BasicExtended
+
+// For multi-node mesh networks:
+Profile.NETWORK   // Maps to BasicExtendedMultiSystemStream
+```
+
+### Creating Custom Profiles
+
+If you need a custom combination of features, create a `frame_format.proto` file with a profile alias:
+
+```protobuf
+// frame_format.proto
+package frame_formats;
+
+message ProfileAlias {
+  string name = 1;
+  HeaderType header_type = 2;
+  PayloadType payload_type = 3;
+  string description = 4;
+}
+
+// Example: Tiny header with Default payload (lower overhead than Standard)
+message TinyDefaultAlias {
+  ProfileAlias profile = 1 [default = {
+    name: "TinyDefault",
+    header_type: HEADER_TINY,
+    payload_type: PAYLOAD_DEFAULT,
+    description: "Tiny header with default payload"
+  }];
+}
+```
+
+Then generate code with:
+```bash
+struct-frame your_messages.proto --frame_formats frame_format.proto --build_py
+```
+
+### Contributing New Headers/Payloads
+
+If you need a new header or payload type that doesn't exist, please submit a PR to the 
+[struct-frame repository](https://github.com/mylonics/struct-frame).
 
 #### Example Usage
 

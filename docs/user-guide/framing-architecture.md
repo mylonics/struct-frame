@@ -1,6 +1,46 @@
 # Framing Architecture
 
-This document provides detailed technical information about the struct-frame framing system architecture, payload types, frame types, and complete format reference.
+This document provides detailed technical information about the struct-frame framing system architecture, including the new composable design using language-agnostic frame format definitions.
+
+## Overview
+
+struct-frame uses a **composable frame format architecture** where complete frame formats are built by combining:
+
+1. **Headers**: Define start byte patterns for synchronization
+2. **Payloads**: Define the structure of metadata fields (length, CRC, etc.)  
+3. **Profiles**: Predefined combinations for common use cases
+
+This architecture allows for flexible customization while providing simple, intent-based profiles for most users.
+
+## New Architecture (v2.0+)
+
+### Language-Agnostic Definitions
+
+Frame formats are now defined in Python modules under `src/struct_frame/frame_formats/`:
+
+```
+frame_formats/
+├── __init__.py          # Public API
+├── base.py              # Core data structures (HeaderType, PayloadType, etc.)
+├── headers.py           # Header definitions (None, Tiny, Basic, etc.)
+├── payloads.py          # Payload definitions (Minimal, Default, Extended, etc.)
+├── profiles.py          # Standard profile definitions
+└── crc.py               # CRC calculation utilities
+```
+
+**Key Benefits**:
+- ✓ Composable: Complex payloads build upon simpler ones
+- ✓ Language-agnostic: Definitions describe byte-level structures
+- ✓ Maintainable: Each concept in its own file
+- ✓ Extensible: Easy to add new types via PR
+
+### Simplified Proto File
+
+The `frame_formats.proto` file now contains **only**:
+- Enumerations: `HeaderType`, `PayloadType`, `Profile`
+- Profile aliases for custom combinations
+
+The proto file no longer contains message definitions for each frame format variant.
 
 ## Framing Architecture
 
@@ -17,11 +57,15 @@ The framing system uses a two-level architecture:
 
 ## Frame Format Definitions
 
-All supported frame formats are defined in [`examples/frame_formats.proto`](https://github.com/mylonics/struct-frame/blob/main/examples/frame_formats.proto). This file provides:
+Frame format definitions are now in language-agnostic Python modules rather than in the proto file. This allows for:
 
-- Protocol Buffer definitions for each frame format
-- Enumeration of frame types and payload types
-- Configuration message for runtime format selection
+- **Code reuse**: Payloads can import and extend simpler payloads
+- **Better documentation**: Each type has clear descriptions and properties
+- **Type safety**: Definitions include validation and computed properties
+
+For examples and usage, see:
+- [`src/struct_frame/frame_formats/`](https://github.com/mylonics/struct-frame/tree/main/src/struct_frame/frame_formats) - Definition source code
+- [Frame Profile Calculator](framing-calculator.md) - Interactive tool to explore formats
 
 ## Start Byte Scheme
 

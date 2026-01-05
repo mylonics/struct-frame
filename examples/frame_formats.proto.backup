@@ -1,0 +1,551 @@
+// Frame Format Definitions for struct-frame
+// Defines message framing formats for communication over serial, network, or byte streams.
+//
+// FRAMING ARCHITECTURE:
+// The framing system has two levels:
+// 1. FRAMER (Basic/Tiny/None): Determines start bytes for synchronization
+//    - Basic: 2 start bytes [0x90] [0x70+payload_type]
+//    - Tiny:  1 start byte [0x70+payload_type]
+//    - None:  0 start bytes (relies on external sync)
+//
+// 2. PAYLOAD TYPE: Defines the header/footer structure of the payload
+//    The second start byte of Basic (or the single start byte of Tiny) encodes the payload type.
+//
+// Start byte 1 (Basic only): 0x90
+// Start byte 2 (Basic) or Start byte (Tiny): 0x70 + PayloadType offset
+
+package frame_formats;
+
+// ============================================================================
+// PAYLOAD TYPE ENUMERATION
+// ============================================================================
+// PayloadType defines how the payload is structured (header fields + CRC)
+// The start byte encodes this: 0x70 + PayloadType value
+
+enum PayloadType {
+  // Minimal: [MSG_ID] [PACKET]
+  // No length field, no CRC. Requires known message sizes.
+  PAYLOAD_MINIMAL = 0;
+
+  // Default: [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // 1-byte length, 2-byte CRC. Standard format.
+  PAYLOAD_DEFAULT = 1;
+
+  // ExtendedMsgIds: [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // Adds package ID for message namespace separation.
+  PAYLOAD_EXTENDED_MSG_IDS = 2;
+
+  // ExtendedLength: [LEN16] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // 2-byte length for payloads up to 65535 bytes.
+  PAYLOAD_EXTENDED_LENGTH = 3;
+
+  // Extended: [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // Extended message IDs + 2-byte length.
+  PAYLOAD_EXTENDED = 4;
+
+  // SysComp: [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // Adds system and component IDs for multi-system networks.
+  PAYLOAD_SYS_COMP = 5;
+
+  // Seq: [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // Adds sequence number for packet loss detection.
+  PAYLOAD_SEQ = 6;
+
+  // MultiSystemStream: [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // Combines Seq + SysComp for multi-system streaming.
+  PAYLOAD_MULTI_SYSTEM_STREAM = 7;
+
+  // ExtendedMultiSystemStream: [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+  // Full featured format with all extensions.
+  PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM = 8;
+}
+
+// ============================================================================
+// FRAME TYPE ENUMERATION
+// ============================================================================
+// FrameType defines the framing level (number of start bytes)
+
+enum FrameType {
+  // None: No start bytes, relies on external synchronization
+  FRAME_NONE = 0;
+
+  // Tiny: 1 start byte [0x70+PayloadType]
+  FRAME_TINY = 1;
+
+  // Basic: 2 start bytes [0x90] [0x70+PayloadType]
+  FRAME_BASIC = 2;
+}
+
+// Legacy frame format type enumeration (for backward compatibility)
+enum FrameFormatType {
+  // None frames (0 start bytes)
+  NONE_MINIMAL = 0;
+  NONE_DEFAULT = 1;
+  NONE_EXTENDED_MSG_IDS = 2;
+  NONE_EXTENDED_LENGTH = 3;
+  NONE_EXTENDED = 4;
+  NONE_SYS_COMP = 5;
+  NONE_SEQ = 6;
+  NONE_MULTI_SYSTEM_STREAM = 7;
+  NONE_EXTENDED_MULTI_SYSTEM_STREAM = 8;
+
+  // Tiny frames (1 start byte at 0x70+PayloadType)
+  TINY_MINIMAL = 10;
+  TINY_DEFAULT = 11;
+  TINY_EXTENDED_MSG_IDS = 12;
+  TINY_EXTENDED_LENGTH = 13;
+  TINY_EXTENDED = 14;
+  TINY_SYS_COMP = 15;
+  TINY_SEQ = 16;
+  TINY_MULTI_SYSTEM_STREAM = 17;
+  TINY_EXTENDED_MULTI_SYSTEM_STREAM = 18;
+
+  // Basic frames (2 start bytes: 0x90, 0x70+PayloadType)
+  BASIC_MINIMAL = 20;
+  BASIC_DEFAULT = 21;
+  BASIC_EXTENDED_MSG_IDS = 22;
+  BASIC_EXTENDED_LENGTH = 23;
+  BASIC_EXTENDED = 24;
+  BASIC_SYS_COMP = 25;
+  BASIC_SEQ = 26;
+  BASIC_MULTI_SYSTEM_STREAM = 27;
+  BASIC_EXTENDED_MULTI_SYSTEM_STREAM = 28;
+
+  // Third party protocols
+  UBX = 100;
+  MAVLINK_V1 = 101;
+  MAVLINK_V2 = 102;
+}
+
+// ============================================================================
+// FRAME FORMAT CONSTANTS
+// ============================================================================
+
+// Start byte values
+// Basic frame start byte 1 is always 0x90
+// Basic frame start byte 2 and Tiny frame start byte are 0x70 + PayloadType
+
+// ============================================================================
+// NONE FRAME FORMATS (0 start bytes)
+// ============================================================================
+
+// NONE_MINIMAL - Minimal payload with no framing
+// Format: [MSG_ID] [PACKET]
+// Overhead: 1 byte
+message NoneMinimal {
+  BasicMessage payload = 1;
+}
+
+// NONE_DEFAULT - Default payload with no framing
+// Format: [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 4 bytes
+message NoneDefault {
+  uint8 length = 1;
+  BasicMessage payload = 2;
+  uint8 crc_byte1 = 3;
+  uint8 crc_byte2 = 4;
+}
+
+// NONE_EXTENDED_MSG_IDS - Extended message IDs payload with no framing
+// Format: [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 5 bytes
+message NoneExtendedMsgIds {
+  uint8 length = 1;
+  uint8 package_id = 2;
+  BasicMessage payload = 3;
+  uint8 crc_byte1 = 4;
+  uint8 crc_byte2 = 5;
+}
+
+// NONE_EXTENDED_LENGTH - Extended length payload with no framing
+// Format: [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 5 bytes
+message NoneExtendedLength {
+  uint16 length = 1;
+  BasicMessage payload = 2;
+  uint8 crc_byte1 = 3;
+  uint8 crc_byte2 = 4;
+}
+
+// NONE_EXTENDED - Extended payload with no framing
+// Format: [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 6 bytes
+message NoneExtended {
+  uint16 length = 1;
+  uint8 package_id = 2;
+  BasicMessage payload = 3;
+  uint8 crc_byte1 = 4;
+  uint8 crc_byte2 = 5;
+}
+
+// NONE_SYS_COMP - System/Component ID payload with no framing
+// Format: [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 6 bytes
+message NoneSysComp {
+  uint8 system_id = 1;
+  uint8 component_id = 2;
+  uint8 length = 3;
+  BasicMessage payload = 4;
+  uint8 crc_byte1 = 5;
+  uint8 crc_byte2 = 6;
+}
+
+// NONE_SEQ - Sequence number payload with no framing
+// Format: [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 5 bytes
+message NoneSeq {
+  uint8 sequence = 1;
+  uint8 length = 2;
+  BasicMessage payload = 3;
+  uint8 crc_byte1 = 4;
+  uint8 crc_byte2 = 5;
+}
+
+// NONE_MULTI_SYSTEM_STREAM - Multi-system stream payload with no framing
+// Format: [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 7 bytes
+message NoneMultiSystemStream {
+  uint8 sequence = 1;
+  uint8 system_id = 2;
+  uint8 component_id = 3;
+  uint8 length = 4;
+  BasicMessage payload = 5;
+  uint8 crc_byte1 = 6;
+  uint8 crc_byte2 = 7;
+}
+
+// NONE_EXTENDED_MULTI_SYSTEM_STREAM - Extended multi-system stream payload with no framing
+// Format: [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 9 bytes
+message NoneExtendedMultiSystemStream {
+  uint8 sequence = 1;
+  uint8 system_id = 2;
+  uint8 component_id = 3;
+  uint16 length = 4;
+  uint8 package_id = 5;
+  BasicMessage payload = 6;
+  uint8 crc_byte1 = 7;
+  uint8 crc_byte2 = 8;
+}
+
+// ============================================================================
+// TINY FRAME FORMATS (1 start byte at 0x70+PayloadType)
+// ============================================================================
+
+// TINY_MINIMAL - Tiny frame with minimal payload
+// Format: [START=0x70] [MSG_ID] [PACKET]
+// Overhead: 2 bytes
+message TinyMinimal {
+  uint8 start_byte = 1 [(hex) = 0x70];
+  BasicMessage payload = 2;
+}
+
+// TINY_DEFAULT - Tiny frame with default payload (Recommended)
+// Format: [START=0x71] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 5 bytes
+message TinyDefault {
+  uint8 start_byte = 1 [(hex) = 0x71];
+  uint8 length = 2;
+  BasicMessage payload = 3;
+  uint8 crc_byte1 = 4;
+  uint8 crc_byte2 = 5;
+}
+
+// TINY_EXTENDED_MSG_IDS - Tiny frame with extended message IDs
+// Format: [START=0x72] [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 6 bytes
+message TinyExtendedMsgIds {
+  uint8 start_byte = 1 [(hex) = 0x72];
+  uint8 length = 2;
+  uint8 package_id = 3;
+  BasicMessage payload = 4;
+  uint8 crc_byte1 = 5;
+  uint8 crc_byte2 = 6;
+}
+
+// TINY_EXTENDED_LENGTH - Tiny frame with extended length
+// Format: [START=0x73] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 6 bytes
+message TinyExtendedLength {
+  uint8 start_byte = 1 [(hex) = 0x73];
+  uint16 length = 2;
+  BasicMessage payload = 3;
+  uint8 crc_byte1 = 4;
+  uint8 crc_byte2 = 5;
+}
+
+// TINY_EXTENDED - Tiny frame with extended payload
+// Format: [START=0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 7 bytes
+message TinyExtended {
+  uint8 start_byte = 1 [(hex) = 0x74];
+  uint16 length = 2;
+  uint8 package_id = 3;
+  BasicMessage payload = 4;
+  uint8 crc_byte1 = 5;
+  uint8 crc_byte2 = 6;
+}
+
+// TINY_SYS_COMP - Tiny frame with system/component IDs
+// Format: [START=0x75] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 7 bytes
+message TinySysComp {
+  uint8 start_byte = 1 [(hex) = 0x75];
+  uint8 system_id = 2;
+  uint8 component_id = 3;
+  uint8 length = 4;
+  BasicMessage payload = 5;
+  uint8 crc_byte1 = 6;
+  uint8 crc_byte2 = 7;
+}
+
+// TINY_SEQ - Tiny frame with sequence number
+// Format: [START=0x76] [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 6 bytes
+message TinySeq {
+  uint8 start_byte = 1 [(hex) = 0x76];
+  uint8 sequence = 2;
+  uint8 length = 3;
+  BasicMessage payload = 4;
+  uint8 crc_byte1 = 5;
+  uint8 crc_byte2 = 6;
+}
+
+// TINY_MULTI_SYSTEM_STREAM - Tiny frame with multi-system stream
+// Format: [START=0x77] [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 8 bytes
+message TinyMultiSystemStream {
+  uint8 start_byte = 1 [(hex) = 0x77];
+  uint8 sequence = 2;
+  uint8 system_id = 3;
+  uint8 component_id = 4;
+  uint8 length = 5;
+  BasicMessage payload = 6;
+  uint8 crc_byte1 = 7;
+  uint8 crc_byte2 = 8;
+}
+
+// TINY_EXTENDED_MULTI_SYSTEM_STREAM - Tiny frame with extended multi-system stream
+// Format: [START=0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 10 bytes
+message TinyExtendedMultiSystemStream {
+  uint8 start_byte = 1 [(hex) = 0x78];
+  uint8 sequence = 2;
+  uint8 system_id = 3;
+  uint8 component_id = 4;
+  uint16 length = 5;
+  uint8 package_id = 6;
+  BasicMessage payload = 7;
+  uint8 crc_byte1 = 8;
+  uint8 crc_byte2 = 9;
+}
+
+// ============================================================================
+// BASIC FRAME FORMATS (2 start bytes: 0x90, 0x70+PayloadType)
+// ============================================================================
+
+// BASIC_MINIMAL - Basic frame with minimal payload
+// Format: [START1=0x90] [START2=0x70] [MSG_ID] [PACKET]
+// Overhead: 3 bytes
+message BasicMinimal {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x70];
+  BasicMessage payload = 3;
+}
+
+// BASIC_DEFAULT - Basic frame with default payload (Recommended)
+// Format: [START1=0x90] [START2=0x71] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 6 bytes
+message BasicDefault {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x71];
+  uint8 length = 3;
+  BasicMessage payload = 4;
+  uint8 crc_byte1 = 5;
+  uint8 crc_byte2 = 6;
+}
+
+// BASIC_EXTENDED_MSG_IDS - Basic frame with extended message IDs
+// Format: [START1=0x90] [START2=0x72] [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 7 bytes
+message BasicExtendedMsgIds {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x72];
+  uint8 length = 3;
+  uint8 package_id = 4;
+  BasicMessage payload = 5;
+  uint8 crc_byte1 = 6;
+  uint8 crc_byte2 = 7;
+}
+
+// BASIC_EXTENDED_LENGTH - Basic frame with extended length
+// Format: [START1=0x90] [START2=0x73] [LEN_LO] [LEN_HI] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 7 bytes
+message BasicExtendedLength {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x73];
+  uint16 length = 3;
+  BasicMessage payload = 4;
+  uint8 crc_byte1 = 5;
+  uint8 crc_byte2 = 6;
+}
+
+// BASIC_EXTENDED - Basic frame with extended payload
+// Format: [START1=0x90] [START2=0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 8 bytes
+message BasicExtended {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x74];
+  uint16 length = 3;
+  uint8 package_id = 4;
+  BasicMessage payload = 5;
+  uint8 crc_byte1 = 6;
+  uint8 crc_byte2 = 7;
+}
+
+// BASIC_SYS_COMP - Basic frame with system/component IDs
+// Format: [START1=0x90] [START2=0x75] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 8 bytes
+message BasicSysComp {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x75];
+  uint8 system_id = 3;
+  uint8 component_id = 4;
+  uint8 length = 5;
+  BasicMessage payload = 6;
+  uint8 crc_byte1 = 7;
+  uint8 crc_byte2 = 8;
+}
+
+// BASIC_SEQ - Basic frame with sequence number
+// Format: [START1=0x90] [START2=0x76] [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 7 bytes
+message BasicSeq {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x76];
+  uint8 sequence = 3;
+  uint8 length = 4;
+  BasicMessage payload = 5;
+  uint8 crc_byte1 = 6;
+  uint8 crc_byte2 = 7;
+}
+
+// BASIC_MULTI_SYSTEM_STREAM - Basic frame with multi-system stream
+// Format: [START1=0x90] [START2=0x77] [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 9 bytes
+message BasicMultiSystemStream {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x77];
+  uint8 sequence = 3;
+  uint8 system_id = 4;
+  uint8 component_id = 5;
+  uint8 length = 6;
+  BasicMessage payload = 7;
+  uint8 crc_byte1 = 8;
+  uint8 crc_byte2 = 9;
+}
+
+// BASIC_EXTENDED_MULTI_SYSTEM_STREAM - Basic frame with extended multi-system stream
+// Format: [START1=0x90] [START2=0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+// Overhead: 11 bytes
+message BasicExtendedMultiSystemStream {
+  uint8 start_byte1 = 1 [(hex) = 0x90];
+  uint8 start_byte2 = 2 [(hex) = 0x78];
+  uint8 sequence = 3;
+  uint8 system_id = 4;
+  uint8 component_id = 5;
+  uint16 length = 6;
+  uint8 package_id = 7;
+  BasicMessage payload = 8;
+  uint8 crc_byte1 = 9;
+  uint8 crc_byte2 = 10;
+}
+
+// ============================================================================
+// THIRD PARTY PROTOCOLS
+// ============================================================================
+
+// UBX FRAME - u-blox GPS/GNSS protocol
+// Format: [SYNC1=0xB5] [SYNC2=0x62] [CLASS] [ID] [LEN_LO] [LEN_HI] [MSG] [CK_A] [CK_B]
+// Overhead: 8 bytes
+message UbxFrame {
+  uint8 sync1 = 1 [(hex) = 0xB5];
+  uint8 sync2 = 2 [(hex) = 0x62];
+  uint8 msg_class = 3;
+  uint8 msg_id = 4;
+  uint8 length_lo = 5;
+  uint8 length_hi = 6;
+  uint8 ck_a = 7;
+  uint8 ck_b = 8;
+}
+
+// MAVLINK V1 FRAME - Legacy drone protocol
+// Format: [STX=0xFE] [LEN] [SEQ] [SYS] [COMP] [MSG] [PAYLOAD] [CRC_LO] [CRC_HI]
+// Overhead: 8 bytes
+message MavlinkV1Frame {
+  uint8 stx = 1 [(hex) = 0xFE];
+  uint8 length = 2;
+  uint8 sequence = 3;
+  uint8 system_id = 4;
+  uint8 component_id = 5;
+  uint8 msg_id = 6;
+  uint8 crc_lo = 7;
+  uint8 crc_hi = 8;
+}
+
+// MAVLINK V2 FRAME - Modern drone protocol with extended message IDs
+// Format: [STX=0xFD] [LEN] [INCOMPAT] [COMPAT] [SEQ] [SYS] [COMP] [MSG_ID x3] [PAYLOAD] [CRC] [SIG?]
+// Overhead: 12-25 bytes
+message MavlinkV2Frame {
+  uint8 stx = 1 [(hex) = 0xFD];
+  uint8 length = 2;
+  uint8 incompat_flags = 3;
+  uint8 compat_flags = 4;
+  uint8 sequence = 5;
+  uint8 system_id = 6;
+  uint8 component_id = 7;
+  uint8 msg_id_0 = 8;
+  uint8 msg_id_1 = 9;
+  uint8 msg_id_2 = 10;
+  uint8 crc_lo = 11;
+  uint8 crc_hi = 12;
+}
+
+// MAVLINK V2 SIGNATURE - Optional authentication (13 bytes)
+message MavlinkV2Signature {
+  uint8 link_id = 1;
+  uint8 timestamp_0 = 2;
+  uint8 timestamp_1 = 3;
+  uint8 timestamp_2 = 4;
+  uint8 timestamp_3 = 5;
+  uint8 timestamp_4 = 6;
+  uint8 timestamp_5 = 7;
+  uint8 signature_0 = 8;
+  uint8 signature_1 = 9;
+  uint8 signature_2 = 10;
+  uint8 signature_3 = 11;
+  uint8 signature_4 = 12;
+  uint8 signature_5 = 13;
+}
+
+// ============================================================================
+// HELPER MESSAGES
+// ============================================================================
+
+// Basic message payload included in all frame formats
+message BasicMessage {
+  uint8 msg_id = 1;
+}
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+
+// Runtime frame format configuration
+message FrameFormatConfig {
+  FrameType frame_type = 1;
+  PayloadType payload_type = 2;
+  uint8 start_byte1 = 3 [(hex) = 0x90];
+  uint8 start_byte2 = 4 [(hex) = 0x71];
+  bool crc_enabled = 5;
+}
