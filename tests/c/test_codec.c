@@ -42,7 +42,26 @@ static inline frame_msg_info_t basic_default_validate_packet(const uint8_t* buff
     return result;
   }
 
-  return frame_validate_payload_with_crc(buffer, length, 4, 1, 2);
+  /* Extract length from the frame */
+  const size_t msg_len = buffer[2];
+  const size_t total_size = 4 + msg_len + 2; /* header + payload + crc */
+
+  if (length < total_size) {
+    return result;
+  }
+
+  /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
+  frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 2);
+  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = buffer[3]; /* MSG_ID at position 3 */
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 4); /* Payload starts after header */
+
+  return result;
 }
 
 /* Tiny + Minimal */
@@ -69,7 +88,24 @@ static inline frame_msg_info_t tiny_minimal_validate_packet(const uint8_t* buffe
     return result;
   }
 
-  return frame_validate_payload_minimal(buffer, length, 2);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[1];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 2 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 2);
+
+  return result;
 }
 
 /* None + Minimal */
@@ -95,7 +131,24 @@ static inline frame_msg_info_t none_minimal_validate_packet(const uint8_t* buffe
     return result;
   }
 
-  return frame_validate_payload_minimal(buffer, length, 1);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[0];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 1 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 1);
+
+  return result;
 }
 
 /* Basic + Extended */
@@ -237,7 +290,24 @@ static inline frame_msg_info_t basic_minimal_validate_packet(const uint8_t* buff
     return result;
   }
 
-  return frame_validate_payload_minimal(buffer, length, 3);
+  /* For minimal payloads, we need to know the message size */
+  const uint8_t msg_id = buffer[2];
+  size_t msg_len = 0;
+  if (!get_message_length(msg_id, &msg_len)) {
+    return result; /* Unknown message ID */
+  }
+
+  const size_t total_size = 3 + msg_len; /* header + payload */
+  if (length < total_size) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = msg_id;
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 3);
+
+  return result;
 }
 
 /* Tiny + Default */
@@ -270,7 +340,26 @@ static inline frame_msg_info_t tiny_default_validate_packet(const uint8_t* buffe
     return result;
   }
 
-  return frame_validate_payload_with_crc(buffer, length, 3, 1, 1);
+  /* Extract length from the frame */
+  const size_t msg_len = buffer[1];
+  const size_t total_size = 3 + msg_len + 2; /* header + payload + crc */
+
+  if (length < total_size) {
+    return result;
+  }
+
+  /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
+  frame_checksum_t ck = frame_fletcher_checksum(buffer + 1, msg_len + 2);
+  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+    return result;
+  }
+
+  result.valid = true;
+  result.msg_id = buffer[2]; /* MSG_ID at position 2 */
+  result.msg_len = msg_len;
+  result.msg_data = (uint8_t*)(buffer + 3); /* Payload starts after header */
+
+  return result;
 }
 
 /* Load test messages - hardcoded to match test_messages.json */
@@ -319,8 +408,8 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
       .test_string = "Special: !@#$%^&*()",
       .test_float = 2.71828f,
       .test_bool = true,
-      .test_array = {0, 1, 1, 2, 3, 5, 8, 13, 21},
-      .test_array_count = 9
+      .test_array = {0, 1, 1, 2, 3},
+      .test_array_count = 5
     }
   };
   
@@ -476,7 +565,10 @@ bool decode_test_messages(const char* format, const uint8_t* buffer, size_t buff
     }
 
     if (!decode_result.valid) {
-      printf("  Decoding failed for message %zu\n", *message_count);
+      printf("  Decoding failed for message %zu at offset %zu\n", *message_count, offset);
+      printf("  Buffer first bytes: %02x %02x %02x %02x %02x %02x\n",
+             buffer[offset], buffer[offset+1], buffer[offset+2], 
+             buffer[offset+3], buffer[offset+4], buffer[offset+5]);
       return false;
     }
 

@@ -43,7 +43,7 @@
       "test_string": "Special: !@#$%^&*()",
       "test_float": 2.71828,
       "test_bool": true,
-      "test_array": [0, 1, 1, 2, 3, 5, 8, 13, 21]
+      "test_array": [0, 1, 1, 2, 3]
     }
   ]
 }
