@@ -381,7 +381,7 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
       .test_string = "",
       .test_float = 0.0f,
       .test_bool = false,
-      .test_array = {},
+      .test_array = {0},
       .test_array_count = 0
     },
     /* max_values */
@@ -566,9 +566,11 @@ bool decode_test_messages(const char* format, const uint8_t* buffer, size_t buff
 
     if (!decode_result.valid) {
       printf("  Decoding failed for message %zu at offset %zu\n", *message_count, offset);
-      printf("  Buffer first bytes: %02x %02x %02x %02x %02x %02x\n",
-             buffer[offset], buffer[offset+1], buffer[offset+2], 
-             buffer[offset+3], buffer[offset+4], buffer[offset+5]);
+      if (buffer_size - offset >= 6) {
+        printf("  Buffer first bytes: %02x %02x %02x %02x %02x %02x\n",
+               buffer[offset], buffer[offset+1], buffer[offset+2], 
+               buffer[offset+3], buffer[offset+4], buffer[offset+5]);
+      }
       return false;
     }
 
