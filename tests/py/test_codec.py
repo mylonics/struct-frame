@@ -22,7 +22,8 @@ def load_test_messages():
         if os.path.exists(path):
             with open(path, 'r') as f:
                 data = json.load(f)
-                return data['messages']
+                # Return SerializationTestMessage data for backwards compatibility
+                return data.get('SerializationTestMessage', data.get('messages', []))
     
     raise FileNotFoundError("Could not find test_messages.json")
 

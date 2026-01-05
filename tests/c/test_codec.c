@@ -362,9 +362,97 @@ static inline frame_msg_info_t tiny_default_validate_packet(const uint8_t* buffe
   return result;
 }
 
-/* Load test messages - hardcoded to match test_messages.json */
+/* Load test messages from test_messages.json */
 size_t load_test_messages(test_message_t* messages, size_t max_count) {
-  /* Hardcoded test messages matching test_messages.json */
+  const char* possible_paths[] = {
+    "../test_messages.json",
+    "../../test_messages.json",
+    "test_messages.json",
+    "../../../tests/test_messages.json"
+  };
+  
+  for (size_t i = 0; i < sizeof(possible_paths) / sizeof(possible_paths[0]); i++) {
+    FILE* file = fopen(possible_paths[i], "r");
+    if (file) {
+      fseek(file, 0, SEEK_END);
+      long file_size = ftell(file);
+      fseek(file, 0, SEEK_SET);
+      
+      char* json_str = (char*)malloc(file_size + 1);
+      if (!json_str) {
+        fclose(file);
+        continue;
+      }
+      
+      size_t read_size = fread(json_str, 1, file_size, file);
+      json_str[read_size] = '\0';
+      fclose(file);
+      
+      cJSON* root = cJSON_Parse(json_str);
+      free(json_str);
+      
+      if (!root) {
+        continue;
+      }
+      
+      // Try to read from SerializationTestMessage key, fall back to messages key
+      cJSON* message_array = cJSON_GetObjectItem(root, "SerializationTestMessage");
+      if (!message_array) {
+        message_array = cJSON_GetObjectItem(root, "messages");
+      }
+      
+      if (!message_array || !cJSON_IsArray(message_array)) {
+        cJSON_Delete(root);
+        continue;
+      }
+      
+      size_t count = 0;
+      cJSON* msg_item = NULL;
+      cJSON_ArrayForEach(msg_item, message_array) {
+        if (count >= max_count) break;
+        
+        cJSON* magic_number = cJSON_GetObjectItem(msg_item, "magic_number");
+        cJSON* test_string = cJSON_GetObjectItem(msg_item, "test_string");
+        cJSON* test_float = cJSON_GetObjectItem(msg_item, "test_float");
+        cJSON* test_bool = cJSON_GetObjectItem(msg_item, "test_bool");
+        cJSON* test_array = cJSON_GetObjectItem(msg_item, "test_array");
+        
+        if (magic_number && test_string && test_float && cJSON_IsBool(test_bool)) {
+          messages[count].magic_number = (uint32_t)magic_number->valueint;
+          if (magic_number->valuedouble > INT_MAX) {
+            messages[count].magic_number = (uint32_t)magic_number->valuedouble;
+          }
+          
+          strncpy(messages[count].test_string, test_string->valuestring, MAX_STRING_LENGTH - 1);
+          messages[count].test_string[MAX_STRING_LENGTH - 1] = '\0';
+          
+          messages[count].test_float = (float)test_float->valuedouble;
+          messages[count].test_bool = cJSON_IsTrue(test_bool);
+          
+          messages[count].test_array_count = 0;
+          if (test_array && cJSON_IsArray(test_array)) {
+            size_t array_idx = 0;
+            cJSON* array_item = NULL;
+            cJSON_ArrayForEach(array_item, test_array) {
+              if (array_idx >= MAX_ARRAY_SIZE) break;
+              messages[count].test_array[array_idx++] = array_item->valueint;
+            }
+            messages[count].test_array_count = array_idx;
+          }
+          
+          count++;
+        }
+      }
+      
+      cJSON_Delete(root);
+      if (count > 0) {
+        return count;
+      }
+    }
+  }
+  
+  /* Fallback to hardcoded values if JSON file not found */
+  fprintf(stderr, "Warning: Could not load test_messages.json, using hardcoded values\n");
   const test_message_t test_data[] = {
     /* basic_values */
     {

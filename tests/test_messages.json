@@ -1,5 +1,5 @@
 {
-  "messages": [
+  "SerializationTestMessage": [
     {
       "name": "basic_values",
       "magic_number": 3735928559,
@@ -44,6 +44,56 @@
       "test_float": 2.71828,
       "test_bool": true,
       "test_array": [0, 1, 1, 2, 3]
+    }
+  ],
+  "BasicTypesMessage": [
+    {
+      "name": "basic_values",
+      "small_int": 42,
+      "medium_int": 1000,
+      "regular_int": 123456,
+      "large_int": 9876543210,
+      "small_uint": 200,
+      "medium_uint": 50000,
+      "regular_uint": 4000000000,
+      "large_uint": 18446744073709551615,
+      "single_precision": 3.14159,
+      "double_precision": 2.718281828459045,
+      "flag": true,
+      "device_id": "DEVICE-001",
+      "description": "Basic test values"
+    },
+    {
+      "name": "zero_values",
+      "small_int": 0,
+      "medium_int": 0,
+      "regular_int": 0,
+      "large_int": 0,
+      "small_uint": 0,
+      "medium_uint": 0,
+      "regular_uint": 0,
+      "large_uint": 0,
+      "single_precision": 0.0,
+      "double_precision": 0.0,
+      "flag": false,
+      "device_id": "",
+      "description": ""
+    },
+    {
+      "name": "negative_values",
+      "small_int": -128,
+      "medium_int": -32768,
+      "regular_int": -2147483648,
+      "large_int": -9223372036854775808,
+      "small_uint": 255,
+      "medium_uint": 65535,
+      "regular_uint": 4294967295,
+      "large_uint": 18446744073709551615,
+      "single_precision": -273.15,
+      "double_precision": -9999.999999,
+      "flag": false,
+      "device_id": "NEG-TEST",
+      "description": "Negative and max values"
     }
   ]
 }

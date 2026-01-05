@@ -34,58 +34,312 @@ namespace StructFrameTests
     }
 
     /// <summary>
-    /// Hardcoded test messages matching test_messages.json
+    /// Load test messages from test_messages.json
     /// </summary>
     public static class TestMessages
     {
-        public static readonly TestMessage[] Messages = new TestMessage[]
+        private static TestMessage[] _messages = null;
+
+        public static TestMessage[] Messages
         {
-            // basic_values
-            new TestMessage
+            get
             {
-                MagicNumber = 3735928559,  // 0xDEADBEEF
-                TestString = "Cross-platform test!",
-                TestFloat = 3.14159f,
-                TestBool = true,
-                TestArray = new int[] { 100, 200, 300 }
-            },
-            // zero_values
-            new TestMessage
-            {
-                MagicNumber = 0,
-                TestString = "",
-                TestFloat = 0.0f,
-                TestBool = false,
-                TestArray = new int[] { }
-            },
-            // max_values
-            new TestMessage
-            {
-                MagicNumber = 4294967295,  // 0xFFFFFFFF
-                TestString = "Maximum length test string for coverage!",
-                TestFloat = 999999.9f,
-                TestBool = true,
-                TestArray = new int[] { 2147483647, -2147483648, 0, 1, -1 }
-            },
-            // negative_values
-            new TestMessage
-            {
-                MagicNumber = 2863311530,  // 0xAAAAAAAA
-                TestString = "Negative test",
-                TestFloat = -273.15f,
-                TestBool = false,
-                TestArray = new int[] { -100, -200, -300, -400 }
-            },
-            // special_chars
-            new TestMessage
-            {
-                MagicNumber = 1234567890,  // 0x499602D2
-                TestString = "Special: !@#$%^&*()",
-                TestFloat = 2.71828f,
-                TestBool = true,
-                TestArray = new int[] { 0, 1, 1, 2, 3 }
+                if (_messages == null)
+                {
+                    _messages = LoadTestMessages();
+                }
+                return _messages;
             }
-        };
+        }
+
+        private static TestMessage[] LoadTestMessages()
+        {
+            string[] possiblePaths = new string[]
+            {
+                "../test_messages.json",
+                "../../test_messages.json",
+                "test_messages.json",
+                "../../../tests/test_messages.json"
+            };
+
+            foreach (var path in possiblePaths)
+            {
+                try
+                {
+                    if (System.IO.File.Exists(path))
+                    {
+                        string jsonContent = System.IO.File.ReadAllText(path);
+                        
+                        // Simple JSON parsing for the test messages structure
+                        var messages = ParseTestMessagesJson(jsonContent);
+                        if (messages != null && messages.Length > 0)
+                        {
+                            return messages;
+                        }
+                    }
+                }
+                catch
+                {
+                    // Try next path
+                    continue;
+                }
+            }
+
+            // Fallback to hardcoded values if JSON file not found
+            System.Console.WriteLine("Warning: Could not load test_messages.json, using hardcoded values");
+            return new TestMessage[]
+            {
+                // basic_values
+                new TestMessage
+                {
+                    MagicNumber = 3735928559,  // 0xDEADBEEF
+                    TestString = "Cross-platform test!",
+                    TestFloat = 3.14159f,
+                    TestBool = true,
+                    TestArray = new int[] { 100, 200, 300 }
+                },
+                // zero_values
+                new TestMessage
+                {
+                    MagicNumber = 0,
+                    TestString = "",
+                    TestFloat = 0.0f,
+                    TestBool = false,
+                    TestArray = new int[] { }
+                },
+                // max_values
+                new TestMessage
+                {
+                    MagicNumber = 4294967295,  // 0xFFFFFFFF
+                    TestString = "Maximum length test string for coverage!",
+                    TestFloat = 999999.9f,
+                    TestBool = true,
+                    TestArray = new int[] { 2147483647, -2147483648, 0, 1, -1 }
+                },
+                // negative_values
+                new TestMessage
+                {
+                    MagicNumber = 2863311530,  // 0xAAAAAAAA
+                    TestString = "Negative test",
+                    TestFloat = -273.15f,
+                    TestBool = false,
+                    TestArray = new int[] { -100, -200, -300, -400 }
+                },
+                // special_chars
+                new TestMessage
+                {
+                    MagicNumber = 1234567890,  // 0x499602D2
+                    TestString = "Special: !@#$%^&*()",
+                    TestFloat = 2.71828f,
+                    TestBool = true,
+                    TestArray = new int[] { 0, 1, 1, 2, 3 }
+                }
+            };
+        }
+
+        private static TestMessage[] ParseTestMessagesJson(string jsonContent)
+        {
+            try
+            {
+                // Very basic JSON parsing - look for SerializationTestMessage or messages array
+                var messages = new System.Collections.Generic.List<TestMessage>();
+                
+                // Find the start of the message array
+                int arrayStart = jsonContent.IndexOf("\"SerializationTestMessage\"");
+                if (arrayStart == -1)
+                {
+                    arrayStart = jsonContent.IndexOf("\"messages\"");
+                }
+                
+                if (arrayStart == -1) return null;
+                
+                // Find the opening bracket of the array
+                int bracketStart = jsonContent.IndexOf('[', arrayStart);
+                if (bracketStart == -1) return null;
+                
+                // Parse each message object
+                int pos = bracketStart + 1;
+                while (pos < jsonContent.Length)
+                {
+                    // Skip whitespace
+                    while (pos < jsonContent.Length && char.IsWhiteSpace(jsonContent[pos])) pos++;
+                    
+                    if (pos >= jsonContent.Length || jsonContent[pos] == ']') break;
+                    if (jsonContent[pos] == ',') { pos++; continue; }
+                    if (jsonContent[pos] != '{') break;
+                    
+                    // Find the end of this message object
+                    int objEnd = FindMatchingBrace(jsonContent, pos);
+                    if (objEnd == -1) break;
+                    
+                    string msgJson = jsonContent.Substring(pos, objEnd - pos + 1);
+                    var msg = ParseSingleMessage(msgJson);
+                    if (msg != null)
+                    {
+                        messages.Add(msg);
+                    }
+                    
+                    pos = objEnd + 1;
+                }
+                
+                return messages.ToArray();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static int FindMatchingBrace(string json, int startPos)
+        {
+            int depth = 0;
+            for (int i = startPos; i < json.Length; i++)
+            {
+                if (json[i] == '{') depth++;
+                else if (json[i] == '}')
+                {
+                    depth--;
+                    if (depth == 0) return i;
+                }
+            }
+            return -1;
+        }
+
+        private static TestMessage ParseSingleMessage(string msgJson)
+        {
+            try
+            {
+                var msg = new TestMessage();
+                
+                msg.MagicNumber = ParseUInt(msgJson, "magic_number");
+                msg.TestString = ParseString(msgJson, "test_string");
+                msg.TestFloat = ParseFloat(msgJson, "test_float");
+                msg.TestBool = ParseBool(msgJson, "test_bool");
+                msg.TestArray = ParseIntArray(msgJson, "test_array");
+                
+                return msg;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static uint ParseUInt(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return 0;
+            
+            int colonPos = json.IndexOf(':', keyPos);
+            if (colonPos == -1) return 0;
+            
+            int valueStart = colonPos + 1;
+            while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart])) valueStart++;
+            
+            int valueEnd = valueStart;
+            while (valueEnd < json.Length && (char.IsDigit(json[valueEnd]) || json[valueEnd] == '.')) valueEnd++;
+            
+            string valueStr = json.Substring(valueStart, valueEnd - valueStart);
+            if (uint.TryParse(valueStr, out uint result))
+            {
+                return result;
+            }
+            
+            if (double.TryParse(valueStr, out double doubleResult))
+            {
+                return (uint)doubleResult;
+            }
+            
+            return 0;
+        }
+
+        private static string ParseString(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return "";
+            
+            int colonPos = json.IndexOf(':', keyPos);
+            if (colonPos == -1) return "";
+            
+            int quoteStart = json.IndexOf('"', colonPos);
+            if (quoteStart == -1) return "";
+            
+            int quoteEnd = json.IndexOf('"', quoteStart + 1);
+            if (quoteEnd == -1) return "";
+            
+            return json.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
+        }
+
+        private static float ParseFloat(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return 0.0f;
+            
+            int colonPos = json.IndexOf(':', keyPos);
+            if (colonPos == -1) return 0.0f;
+            
+            int valueStart = colonPos + 1;
+            while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart])) valueStart++;
+            
+            int valueEnd = valueStart;
+            while (valueEnd < json.Length && (char.IsDigit(json[valueEnd]) || json[valueEnd] == '.' || json[valueEnd] == '-')) valueEnd++;
+            
+            string valueStr = json.Substring(valueStart, valueEnd - valueStart);
+            if (float.TryParse(valueStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float result))
+            {
+                return result;
+            }
+            
+            return 0.0f;
+        }
+
+        private static bool ParseBool(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return false;
+            
+            int colonPos = json.IndexOf(':', keyPos);
+            if (colonPos == -1) return false;
+            
+            int truePos = json.IndexOf("true", colonPos);
+            int falsePos = json.IndexOf("false", colonPos);
+            int commaPos = json.IndexOf(',', colonPos);
+            
+            if (truePos != -1 && (commaPos == -1 || truePos < commaPos))
+            {
+                return true;
+            }
+            
+            return false;
+        }
+
+        private static int[] ParseIntArray(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return new int[] { };
+            
+            int bracketStart = json.IndexOf('[', keyPos);
+            if (bracketStart == -1) return new int[] { };
+            
+            int bracketEnd = json.IndexOf(']', bracketStart);
+            if (bracketEnd == -1) return new int[] { };
+            
+            string arrayStr = json.Substring(bracketStart + 1, bracketEnd - bracketStart - 1);
+            if (string.IsNullOrWhiteSpace(arrayStr)) return new int[] { };
+            
+            string[] parts = arrayStr.Split(',');
+            var result = new System.Collections.Generic.List<int>();
+            
+            foreach (var part in parts)
+            {
+                if (int.TryParse(part.Trim(), out int value))
+                {
+                    result.Add(value);
+                }
+            }
+            
+            return result.ToArray();
+        }
     }
 
     /// <summary>

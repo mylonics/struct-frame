@@ -378,8 +378,60 @@ inline FrameMsgInfo tiny_default_validate_packet(const uint8_t* buffer, size_t l
   return result;
 }
 
-/* Load test messages - hardcoded to match test_messages.json */
+/* Load test messages from test_messages.json */
 std::vector<TestMessage> load_test_messages() {
+  std::vector<std::string> possible_paths = {
+    "../test_messages.json",
+    "../../test_messages.json",
+    "test_messages.json",
+    "../../../tests/test_messages.json"
+  };
+  
+  for (const auto& filepath : possible_paths) {
+    std::ifstream file(filepath);
+    if (file.is_open()) {
+      try {
+        json data;
+        file >> data;
+        
+        std::vector<TestMessage> messages;
+        
+        // Try to read from SerializationTestMessage key, fall back to messages key
+        json message_array;
+        if (data.contains("SerializationTestMessage")) {
+          message_array = data["SerializationTestMessage"];
+        } else if (data.contains("messages")) {
+          message_array = data["messages"];
+        } else {
+          continue;
+        }
+        
+        for (const auto& msg : message_array) {
+          TestMessage test_msg;
+          test_msg.magic_number = msg["magic_number"];
+          test_msg.test_string = msg["test_string"];
+          test_msg.test_float = msg["test_float"];
+          test_msg.test_bool = msg["test_bool"];
+          
+          if (msg.contains("test_array") && msg["test_array"].is_array()) {
+            for (const auto& val : msg["test_array"]) {
+              test_msg.test_array.push_back(val);
+            }
+          }
+          
+          messages.push_back(test_msg);
+        }
+        
+        return messages;
+      } catch (const std::exception& e) {
+        // Try next path
+        continue;
+      }
+    }
+  }
+  
+  // Fallback to hardcoded values if JSON file not found
+  std::cerr << "Warning: Could not load test_messages.json, using hardcoded values\n";
   std::vector<TestMessage> messages = {
     /* basic_values */
     TestMessage{

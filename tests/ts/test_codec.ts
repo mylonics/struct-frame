@@ -27,7 +27,8 @@ export function loadTestMessages(): TestMessage[] {
     try {
       if (fs.existsSync(filePath)) {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        return data.messages as TestMessage[];
+        // Return SerializationTestMessage data for backwards compatibility
+        return (data.SerializationTestMessage || data.messages || []) as TestMessage[];
       }
     } catch (e) {
       // Continue to next path
@@ -36,6 +37,9 @@ export function loadTestMessages(): TestMessage[] {
 
   throw new Error('Could not find test_messages.json');
 }
+
+// Load test messages at module initialization
+const TEST_MESSAGES: TestMessage[] = loadTestMessages();
 
 // Expected test values (from test_messages.json) - first message for backwards compatibility
 export const EXPECTED_VALUES = {
@@ -46,54 +50,6 @@ export const EXPECTED_VALUES = {
   test_array: [100, 200, 300] as number[],
 };
 
-// Hardcoded test messages matching test_messages.json
-export const TEST_MESSAGES: TestMessage[] = [
-  // basic_values
-  {
-    name: 'basic_values',
-    magic_number: 3735928559,  // 0xDEADBEEF
-    test_string: 'Cross-platform test!',
-    test_float: 3.14159,
-    test_bool: true,
-    test_array: [100, 200, 300],
-  },
-  // zero_values
-  {
-    name: 'zero_values',
-    magic_number: 0,
-    test_string: '',
-    test_float: 0.0,
-    test_bool: false,
-    test_array: [],
-  },
-  // max_values
-  {
-    name: 'max_values',
-    magic_number: 4294967295,  // 0xFFFFFFFF
-    test_string: 'Maximum length test string for coverage!',
-    test_float: 999999.9,
-    test_bool: true,
-    test_array: [2147483647, -2147483648, 0, 1, -1],
-  },
-  // negative_values
-  {
-    name: 'negative_values',
-    magic_number: 2863311530,  // 0xAAAAAAAA
-    test_string: 'Negative test',
-    test_float: -273.15,
-    test_bool: false,
-    test_array: [-100, -200, -300, -400],
-  },
-  // special_chars
-  {
-    name: 'special_chars',
-    magic_number: 1234567890,  // 0x499602D2
-    test_string: 'Special: !@#$%^&*()',
-    test_float: 2.71828,
-    test_bool: true,
-    test_array: [0, 1, 1, 2, 3],
-  },
-];
 
 // Import generated modules
 const { BASIC_START_BYTE } = require('./frame_headers/base');
