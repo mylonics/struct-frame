@@ -1621,30 +1621,46 @@ namespace StructFrameTests
     }
 
     /// <summary>
-    /// Test codec for encoding/decoding test messages with various frame formats
+    /// Test codec for encoding/decoding test messages with various frame formats using generated FrameProfiles
     /// </summary>
     public static class TestCodecHelpers
     {
         /// <summary>
-        /// Get the frame parser for a given format name or profile
+        /// Get the frame profile parser for a given format name or profile
         /// </summary>
-        public static FrameFormatBase GetParser(string formatName)
+        public static FrameProfileParser GetParser(string formatName)
         {
             switch (formatName)
             {
                 case "profile_standard":
-                    return new BasicDefault();
+                    return FrameProfiles.CreateStandardParser();
                 case "profile_sensor":
-                    return new TinyMinimal();
+                    return FrameProfiles.CreateSensorParser(GetMsgLength);
                 case "profile_ipc":
-                    return new NoneMinimal();
+                    return FrameProfiles.CreateIPCParser(GetMsgLength);
                 case "profile_bulk":
-                    return new BasicExtended();
+                    return FrameProfiles.CreateBulkParser();
                 case "profile_network":
-                    return new BasicExtendedMultiSystemStream();
+                    return FrameProfiles.CreateNetworkParser();
                 default:
                     throw new ArgumentException($"Unknown frame format: {formatName}");
             }
+        }
+
+        /// <summary>
+        /// Get message length for minimal profiles
+        /// </summary>
+        private static int? GetMsgLength(int msgId)
+        {
+            if (msgId == 204) // SerializationTestMessage
+            {
+                return MessageSerializer.MessageSize;
+            }
+            else if (msgId == 201) // BasicTypesMessage
+            {
+                return BasicTypesMessageSerializer.MessageSize;
+            }
+            return null;
         }
 
         /// <summary>
@@ -1739,7 +1755,8 @@ namespace StructFrameTests
                 byte[] remainingData = new byte[data.Length - offset];
                 Array.Copy(data, offset, remainingData, 0, remainingData.Length);
 
-                var result = parser.ValidatePacket(remainingData, remainingData.Length);
+                // Use generated FrameProfiles ValidateBuffer method
+                var result = parser.ValidateBuffer(remainingData);
 
                 if (!result.Valid)
                 {
@@ -1788,28 +1805,9 @@ namespace StructFrameTests
                     return messageCount;
                 }
 
-                // Calculate message size based on format
-                int msgSize = 0;
-                if (formatName == "profile_standard")
-                {
-                    msgSize = 4 + result.MsgData.Length + 2; // header + payload + crc
-                }
-                else if (formatName == "profile_sensor")
-                {
-                    msgSize = 2 + result.MsgData.Length; // header + payload
-                }
-                else if (formatName == "profile_ipc")
-                {
-                    msgSize = 1 + result.MsgData.Length; // header + payload
-                }
-                else if (formatName == "profile_bulk")
-                {
-                    msgSize = 6 + result.MsgData.Length + 2; // header + payload + crc
-                }
-                else if (formatName == "profile_network")
-                {
-                    msgSize = 9 + result.MsgData.Length + 2; // header + payload + crc
-                }
+                // Calculate message size using config from parser
+                var config = parser.Config;
+                int msgSize = config.HeaderSize + result.MsgSize + config.FooterSize;
 
                 offset += msgSize;
                 messageCount++;
@@ -1837,7 +1835,7 @@ namespace StructFrameTests
         {
             var parser = GetParser(formatName);
             
-            var result = parser.ValidatePacket(data, data.Length);
+            var result = parser.ValidateBuffer(data);
             
             if (!result.Valid)
             {

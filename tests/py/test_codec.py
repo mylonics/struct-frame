@@ -335,11 +335,26 @@ def encode_test_messages(format_name):
     
     from serialization_test_sf import SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage
     
-    header_type, payload_type = get_frame_config(format_name)
-    parser = get_parser()
+    # Import generated frame profiles
+    from frame_profiles import (
+        encode_profile_standard, encode_profile_sensor, encode_profile_ipc,
+        encode_profile_bulk, encode_profile_network
+    )
     
     mixed_messages = load_mixed_messages()
     encoded_data = bytearray()
+    
+    # Get the appropriate encode function for this profile
+    encode_funcs = {
+        'profile_standard': encode_profile_standard,
+        'profile_sensor': encode_profile_sensor,
+        'profile_ipc': encode_profile_ipc,
+        'profile_bulk': encode_profile_bulk,
+        'profile_network': encode_profile_network,
+    }
+    encode_func = encode_funcs.get(format_name)
+    if not encode_func:
+        raise ValueError(f"Unknown format: {format_name}")
     
     for item in mixed_messages:
         msg_type = item['type']
@@ -354,12 +369,8 @@ def encode_test_messages(format_name):
         
         msg_data = bytes(msg.pack())
         
-        frame_data = parser.encode(
-            msg_id=msg.msg_id,
-            msg=msg_data,
-            header_type=header_type,
-            payload_type=payload_type
-        )
+        # Use the generated profile encode function
+        frame_data = encode_func(msg.msg_id, msg_data)
         encoded_data.extend(frame_data)
     
     return bytes(encoded_data)
@@ -380,27 +391,50 @@ def decode_test_messages(format_name, data):
         sys.path.insert(0, gen_path)
     
     from serialization_test_sf import SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage
-    from parser import HeaderType, PayloadType
     
-    header_type, payload_type = get_frame_config(format_name)
-    parser = get_parser(format_name)
+    # Import generated frame profiles
+    from frame_profiles import (
+        parse_profile_standard_buffer, parse_profile_sensor_buffer, parse_profile_ipc_buffer,
+        parse_profile_bulk_buffer, parse_profile_network_buffer,
+        PROFILE_STANDARD_CONFIG, PROFILE_SENSOR_CONFIG, PROFILE_IPC_CONFIG,
+        PROFILE_BULK_CONFIG, PROFILE_NETWORK_CONFIG
+    )
+    
+    # Get message length callback for minimal profiles
+    def get_msg_length(msg_id):
+        if msg_id == SerializationTestSerializationTestMessage.msg_id:
+            return SerializationTestSerializationTestMessage.msg_size
+        elif msg_id == SerializationTestBasicTypesMessage.msg_id:
+            return SerializationTestBasicTypesMessage.msg_size
+        return 0
+    
+    # Get the appropriate parse function and config for this profile
+    parse_configs = {
+        'profile_standard': (parse_profile_standard_buffer, PROFILE_STANDARD_CONFIG, False),
+        'profile_sensor': (parse_profile_sensor_buffer, PROFILE_SENSOR_CONFIG, True),
+        'profile_ipc': (parse_profile_ipc_buffer, PROFILE_IPC_CONFIG, True),
+        'profile_bulk': (parse_profile_bulk_buffer, PROFILE_BULK_CONFIG, False),
+        'profile_network': (parse_profile_network_buffer, PROFILE_NETWORK_CONFIG, False),
+    }
+    
+    parse_info = parse_configs.get(format_name)
+    if not parse_info:
+        raise ValueError(f"Unknown format: {format_name}")
+    
+    parse_func, config, needs_callback = parse_info
+    
     mixed_messages = load_mixed_messages()
-    
     message_count = 0
     data_index = 0
     
     while data_index < len(data) and message_count < len(mixed_messages):
-        # Parse byte by byte until we get a valid message
-        result = None
-        start_index = data_index
+        # Parse the frame from current position
+        remaining = data[data_index:]
         
-        for byte_val in data[data_index:]:
-            result = parser.parse_byte(byte_val)
-            data_index += 1
-            
-            if result and result.valid:
-                # Successfully decoded a message
-                break
+        if needs_callback:
+            result = parse_func(remaining, get_msg_length)
+        else:
+            result = parse_func(remaining)
         
         if not result or not result.valid:
             print(f"  Decoding failed for message {message_count}")
@@ -437,6 +471,9 @@ def decode_test_messages(format_name, data):
                 print(f"  Validation failed for message {message_count}")
                 return False, message_count
         
+        # Calculate frame size based on config
+        frame_size = config.header_size + result.msg_len + config.footer_size
+        data_index += frame_size
         message_count += 1
     
     # Ensure all messages were decoded

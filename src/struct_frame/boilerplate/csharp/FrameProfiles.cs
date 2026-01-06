@@ -47,6 +47,11 @@ namespace StructFrame
         private readonly FrameProfileConfig _config;
         private readonly Func<int, int?> _getMsgLength;
         
+        /// <summary>
+        /// Get the frame configuration for this parser
+        /// </summary>
+        public FrameProfileConfig Config => _config;
+        
         // Parser state
         private enum State
         {
@@ -410,6 +415,15 @@ namespace StructFrame
                     msgLen = buffer[idx] | (buffer[idx + 1] << 8);
                     idx += 2;
                 }
+            }
+            else if (_getMsgLength != null)
+            {
+                // For minimal profiles, read msg_id first to get length
+                int msgIdPeek = buffer[idx];
+                var lenResult = _getMsgLength(msgIdPeek);
+                if (!lenResult.HasValue)
+                    return result;
+                msgLen = lenResult.Value;
             }
 
             // Skip package ID
