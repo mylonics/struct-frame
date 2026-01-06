@@ -38,6 +38,53 @@ export function loadTestMessages(): TestMessage[] {
   throw new Error('Could not find test_messages.json');
 }
 
+// Load mixed messages from JSON following MixedMessages sequence
+export function loadMixedMessages(): any[] {
+  const possiblePaths = [
+    path.join(__dirname, '..', 'test_messages.json'),
+    path.join(__dirname, '..', '..', 'test_messages.json'),
+    'test_messages.json',
+    '../test_messages.json',
+  ];
+
+  for (const filePath of possiblePaths) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const mixedArray = data.MixedMessages || [];
+        const serialMsgs = data.SerializationTestMessage || [];
+        const basicMsgs = data.BasicTypesMessage || [];
+        
+        const messages = [];
+        for (const item of mixedArray) {
+          const msgType = item.type;
+          const msgName = item.name;
+          
+          let msgData = null;
+          if (msgType === 'SerializationTestMessage') {
+            msgData = serialMsgs.find((m: any) => m.name === msgName);
+            if (msgData) {
+              messages.push({ type: 'SerializationTestMessage', data: msgData });
+            }
+          } else if (msgType === 'BasicTypesMessage') {
+            msgData = basicMsgs.find((m: any) => m.name === msgName);
+            if (msgData) {
+              messages.push({ type: 'BasicTypesMessage', data: msgData });
+            }
+          }
+        }
+        
+        return messages;
+      }
+    } catch (e) {
+      // Continue to next path
+    }
+  }
+
+  throw new Error('Could not find test_messages.json');
+}
+
+
 // Load test messages at module initialization
 const TEST_MESSAGES: TestMessage[] = loadTestMessages();
 
