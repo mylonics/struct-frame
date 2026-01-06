@@ -17,8 +17,9 @@ export interface TestMessage {
 // Load test messages from JSON
 export function loadTestMessages(): TestMessage[] {
   const possiblePaths = [
-    path.join(__dirname, '..', 'test_messages.json'),
+    path.join(__dirname, '..', '..', '..', 'test_messages.json'),
     path.join(__dirname, '..', '..', 'test_messages.json'),
+    path.join(__dirname, '..', 'test_messages.json'),
     'test_messages.json',
     '../test_messages.json',
   ];
@@ -27,7 +28,8 @@ export function loadTestMessages(): TestMessage[] {
     try {
       if (fs.existsSync(filePath)) {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-        return data.messages as TestMessage[];
+        // Return SerializationTestMessage data for backwards compatibility
+        return (data.SerializationTestMessage || data.messages || []) as TestMessage[];
       }
     } catch (e) {
       // Continue to next path
@@ -37,63 +39,72 @@ export function loadTestMessages(): TestMessage[] {
   throw new Error('Could not find test_messages.json');
 }
 
+// Load mixed messages from JSON following MixedMessages sequence
+export function loadMixedMessages(): any[] {
+  const possiblePaths = [
+    path.join(__dirname, '..', '..', '..', 'test_messages.json'),
+    path.join(__dirname, '..', '..', 'test_messages.json'),
+    path.join(__dirname, '..', 'test_messages.json'),
+    'test_messages.json',
+    '../test_messages.json',
+  ];
+
+  for (const filePath of possiblePaths) {
+    try {
+      if (fs.existsSync(filePath)) {
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        const mixedArray = data.MixedMessages || [];
+        const serialMsgs = data.SerializationTestMessage || [];
+        const basicMsgs = data.BasicTypesMessage || [];
+        
+        const messages = [];
+        for (const item of mixedArray) {
+          const msgType = item.type;
+          const msgName = item.name;
+          
+          let msgData = null;
+          if (msgType === 'SerializationTestMessage') {
+            msgData = serialMsgs.find((m: any) => m.name === msgName);
+            if (msgData) {
+              messages.push({ type: 'SerializationTestMessage', data: msgData });
+            }
+          } else if (msgType === 'BasicTypesMessage') {
+            msgData = basicMsgs.find((m: any) => m.name === msgName);
+            if (msgData) {
+              messages.push({ type: 'BasicTypesMessage', data: msgData });
+            }
+          }
+        }
+        
+        return messages;
+      }
+    } catch (e) {
+      // Continue to next path
+    }
+  }
+
+  throw new Error('Could not find test_messages.json');
+}
+
+
+// Load test messages at module initialization
+const TEST_MESSAGES: TestMessage[] = loadTestMessages();
+
 // Expected test values (from test_messages.json) - first message for backwards compatibility
-export const EXPECTED_VALUES = {
-  magic_number: 3735928559,  // 0xDEADBEEF
-  test_string: 'Cross-platform test!',
-  test_float: 3.14159,
-  test_bool: true,
-  test_array: [100, 200, 300] as number[],
+export const EXPECTED_VALUES = TEST_MESSAGES.length > 0 ? {
+  magic_number: TEST_MESSAGES[0].magic_number,
+  test_string: TEST_MESSAGES[0].test_string,
+  test_float: TEST_MESSAGES[0].test_float,
+  test_bool: TEST_MESSAGES[0].test_bool,
+  test_array: TEST_MESSAGES[0].test_array as number[],
+} : {
+  magic_number: 0,
+  test_string: '',
+  test_float: 0.0,
+  test_bool: false,
+  test_array: [] as number[],
 };
 
-// Hardcoded test messages matching test_messages.json
-export const TEST_MESSAGES: TestMessage[] = [
-  // basic_values
-  {
-    name: 'basic_values',
-    magic_number: 3735928559,  // 0xDEADBEEF
-    test_string: 'Cross-platform test!',
-    test_float: 3.14159,
-    test_bool: true,
-    test_array: [100, 200, 300],
-  },
-  // zero_values
-  {
-    name: 'zero_values',
-    magic_number: 0,
-    test_string: '',
-    test_float: 0.0,
-    test_bool: false,
-    test_array: [],
-  },
-  // max_values
-  {
-    name: 'max_values',
-    magic_number: 4294967295,  // 0xFFFFFFFF
-    test_string: 'Maximum length test string for coverage!',
-    test_float: 999999.9,
-    test_bool: true,
-    test_array: [2147483647, -2147483648, 0, 1, -1],
-  },
-  // negative_values
-  {
-    name: 'negative_values',
-    magic_number: 2863311530,  // 0xAAAAAAAA
-    test_string: 'Negative test',
-    test_float: -273.15,
-    test_bool: false,
-    test_array: [-100, -200, -300, -400],
-  },
-  // special_chars
-  {
-    name: 'special_chars',
-    magic_number: 1234567890,  // 0x499602D2
-    test_string: 'Special: !@#$%^&*()',
-    test_float: 2.71828,
-    test_bool: true,
-    test_array: [0, 1, 1, 2, 3],
-  },
-];
 
 // Import generated modules
 const { BASIC_START_BYTE } = require('./frame_headers/base');
@@ -110,7 +121,10 @@ const { fletcher_checksum } = require('./frame_base');
 const {
   serialization_test_SerializationTestMessage,
   serialization_test_SerializationTestMessage_msgid,
-  serialization_test_SerializationTestMessage_max_size
+  serialization_test_SerializationTestMessage_max_size,
+  serialization_test_BasicTypesMessage,
+  serialization_test_BasicTypesMessage_msgid,
+  serialization_test_BasicTypesMessage_max_size
 } = require('./serialization_test.sf');
 
 /* Minimal frame format helper classes (replacing frame_compat) */
@@ -173,9 +187,21 @@ class TinyMinimal {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
     const msgId = buffer[1];
-    // For minimal payloads, we need to know the message size (use known max size)
-    const msgInfo = getMessageInfo();
-    const msgLen = msgInfo.maxSize;
+    
+    // Determine message size based on msg_id
+    let msgLen: number;
+    const serialMsgInfo = getMessageInfo();
+    const basicMsgInfo = getBasicTypesMessageInfo();
+    
+    if (msgId === serialMsgInfo.msgId) {
+      msgLen = serialMsgInfo.maxSize;
+    } else if (msgId === basicMsgInfo.msgId) {
+      msgLen = basicMsgInfo.maxSize;
+    } else {
+      // Default to serial message size
+      msgLen = serialMsgInfo.maxSize;
+    }
+    
     const totalSize = 2 + msgLen;
     if (buffer.length < totalSize) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -203,9 +229,21 @@ class NoneMinimal {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
     }
     const msgId = buffer[0];
-    // For minimal payloads, we need to know the message size (use known max size)
-    const msgInfo = getMessageInfo();
-    const msgLen = msgInfo.maxSize;
+    
+    // Determine message size based on msg_id
+    let msgLen: number;
+    const serialMsgInfo = getMessageInfo();
+    const basicMsgInfo = getBasicTypesMessageInfo();
+    
+    if (msgId === serialMsgInfo.msgId) {
+      msgLen = serialMsgInfo.maxSize;
+    } else if (msgId === basicMsgInfo.msgId) {
+      msgLen = basicMsgInfo.maxSize;
+    } else {
+      // Default to serial message size
+      msgLen = serialMsgInfo.maxSize;
+    }
+    
     const totalSize = 1 + msgLen;
     if (buffer.length < totalSize) {
       return { valid: false, msg_id: 0, msg_len: 0, msg_data: new Uint8Array(0) };
@@ -413,6 +451,106 @@ export function getMessageInfo() {
 }
 
 /**
+ * Get message info for BasicTypesMessage
+ */
+export function getBasicTypesMessageInfo() {
+  return {
+    struct: serialization_test_BasicTypesMessage,
+    msgId: serialization_test_BasicTypesMessage_msgid,
+    maxSize: serialization_test_BasicTypesMessage_max_size,
+  };
+}
+
+/**
+ * Create BasicTypesMessage from test data
+ */
+export function createBasicTypesMessageFromData(msgStruct: any, testData: any): { msg: any; buffer: Buffer } {
+  const size = msgStruct._size || msgStruct.getSize();
+  const buffer = Buffer.alloc(size);
+  const msg = new msgStruct(buffer);
+
+  msg.small_int = testData.small_int;
+  msg.medium_int = testData.medium_int;
+  msg.regular_int = testData.regular_int;
+  msg.large_int = testData.large_int;
+  msg.small_uint = testData.small_uint;
+  msg.medium_uint = testData.medium_uint;
+  msg.regular_uint = testData.regular_uint;
+  msg.large_uint = testData.large_uint;
+  msg.single_precision = testData.single_precision;
+  msg.double_precision = testData.double_precision;
+  msg.flag = testData.flag;
+  msg.device_id = testData.device_id;
+  msg.description_length = testData.description.length;
+  msg.description_data = testData.description;
+
+  return { msg, buffer: (msg as any)._buffer };
+}
+
+/**
+ * Validate BasicTypesMessage against test data
+ */
+export function validateBasicTypesMessageAgainstData(msg: any, testData: any): boolean {
+  const errors: string[] = [];
+
+  if (msg.small_int !== testData.small_int) {
+    errors.push(`small_int: expected ${testData.small_int}, got ${msg.small_int}`);
+  }
+  if (msg.medium_int !== testData.medium_int) {
+    errors.push(`medium_int: expected ${testData.medium_int}, got ${msg.medium_int}`);
+  }
+  if (msg.regular_int !== testData.regular_int) {
+    errors.push(`regular_int: expected ${testData.regular_int}, got ${msg.regular_int}`);
+  }
+  // Skip large_int validation for very large values due to JSON precision
+  if (Math.abs(testData.large_int) < 9e18 && msg.large_int != testData.large_int) {
+    errors.push(`large_int: expected ${testData.large_int}, got ${msg.large_int}`);
+  }
+  if (msg.small_uint !== testData.small_uint) {
+    errors.push(`small_uint: expected ${testData.small_uint}, got ${msg.small_uint}`);
+  }
+  if (msg.medium_uint !== testData.medium_uint) {
+    errors.push(`medium_uint: expected ${testData.medium_uint}, got ${msg.medium_uint}`);
+  }
+  if (msg.regular_uint !== testData.regular_uint) {
+    errors.push(`regular_uint: expected ${testData.regular_uint}, got ${msg.regular_uint}`);
+  }
+  // Skip large_uint validation for very large values due to JSON precision
+  if (testData.large_uint < 9e18 && msg.large_uint != testData.large_uint) {
+    errors.push(`large_uint: expected ${testData.large_uint}, got ${msg.large_uint}`);
+  }
+
+  if (Math.abs(msg.single_precision - testData.single_precision) > 0.01) {
+    errors.push(`single_precision: expected ${testData.single_precision}, got ${msg.single_precision}`);
+  }
+  if (Math.abs(msg.double_precision - testData.double_precision) > 0.000001) {
+    errors.push(`double_precision: expected ${testData.double_precision}, got ${msg.double_precision}`);
+  }
+
+  if (msg.flag !== testData.flag) {
+    errors.push(`flag: expected ${testData.flag}, got ${msg.flag}`);
+  }
+
+  if (msg.device_id !== testData.device_id) {
+    errors.push(`device_id: expected ${testData.device_id}, got ${msg.device_id}`);
+  }
+
+  const description = msg.description_data.substring(0, msg.description_length);
+  if (description !== testData.description) {
+    errors.push(`description: expected '${testData.description}', got '${description}'`);
+  }
+
+  if (errors.length > 0) {
+    for (const error of errors) {
+      console.log(`  Value mismatch: ${error}`);
+    }
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Create message from test data
  */
 export function createMessageFromData(msgStruct: any, testData: TestMessage): { msg: any; buffer: Buffer } {
@@ -547,12 +685,29 @@ export function validateTestMessage(msg: any): boolean {
  */
 export function encodeTestMessage(formatName: string): Buffer {
   const ParserClass = getParserClass(formatName);
-  const msgInfo = getMessageInfo();
+  const serialMsgInfo = getMessageInfo();
+  const basicMsgInfo = getBasicTypesMessageInfo();
 
+  const mixedMessages = loadMixedMessages();
   const encodedBuffers: Buffer[] = [];
 
-  for (const testData of TEST_MESSAGES) {
-    const { msg, buffer } = createMessageFromData(msgInfo.struct, testData);
+  for (const item of mixedMessages) {
+    const msgType = item.type;
+    const testData = item.data;
+
+    let msgInfo: any, createFunc: any;
+    if (msgType === 'SerializationTestMessage') {
+      msgInfo = serialMsgInfo;
+      createFunc = createMessageFromData;
+    } else if (msgType === 'BasicTypesMessage') {
+      msgInfo = basicMsgInfo;
+      createFunc = createBasicTypesMessageFromData;
+    } else {
+      console.log(`  Unknown message type: ${msgType}`);
+      return Buffer.alloc(0);
+    }
+
+    const { msg, buffer } = createFunc(msgInfo.struct, testData);
     const encoded = Buffer.from(ParserClass.encodeMsg(msgInfo.msgId, buffer));
     if (!encoded || encoded.length === 0) {
       console.log('  Encoding failed for message');
@@ -571,12 +726,14 @@ export function encodeTestMessage(formatName: string): Buffer {
  */
 export function decodeTestMessage(formatName: string, data: Buffer): number {
   const ParserClass = getParserClass(formatName);
-  const msgInfo = getMessageInfo();
+  const serialMsgInfo = getMessageInfo();
+  const basicMsgInfo = getBasicTypesMessageInfo();
 
+  const mixedMessages = loadMixedMessages();
   let offset = 0;
   let messageCount = 0;
 
-  while (offset < data.length && messageCount < TEST_MESSAGES.length) {
+  while (offset < data.length && messageCount < mixedMessages.length) {
     // Extract remaining data
     const remainingData = data.slice(offset);
 
@@ -588,11 +745,36 @@ export function decodeTestMessage(formatName: string, data: Buffer): number {
       return messageCount;
     }
 
+    // Get expected message type
+    const item = mixedMessages[messageCount];
+    const msgType = item.type;
+    const testData = item.data;
+
+    // Validate msg_id matches expected type
+    let expectedMsgId: number, msgStruct: any, validateFunc: any;
+    if (msgType === 'SerializationTestMessage') {
+      expectedMsgId = serialMsgInfo.msgId;
+      msgStruct = serialMsgInfo.struct;
+      validateFunc = validateMessageAgainstData;
+    } else if (msgType === 'BasicTypesMessage') {
+      expectedMsgId = basicMsgInfo.msgId;
+      msgStruct = basicMsgInfo.struct;
+      validateFunc = validateBasicTypesMessageAgainstData;
+    } else {
+      console.log(`  Unknown message type: ${msgType}`);
+      return messageCount;
+    }
+
+    if (result.msg_id !== expectedMsgId) {
+      console.log(`  Message ID mismatch for message ${messageCount}: expected ${expectedMsgId}, got ${result.msg_id}`);
+      return messageCount;
+    }
+
     // Create message object from decoded data
-    const msg = new msgInfo.struct(Buffer.from(result.msg_data));
+    const msg = new msgStruct(Buffer.from(result.msg_data));
 
     // Validate the message against test data
-    if (!validateMessageAgainstData(msg, TEST_MESSAGES[messageCount])) {
+    if (!validateFunc(msg, testData)) {
       console.log(`  Validation failed for message ${messageCount}`);
       return messageCount;
     }
@@ -615,8 +797,8 @@ export function decodeTestMessage(formatName: string, data: Buffer): number {
     messageCount++;
   }
 
-  if (messageCount !== TEST_MESSAGES.length) {
-    console.log(`  Expected ${TEST_MESSAGES.length} messages, but decoded ${messageCount}`);
+  if (messageCount !== mixedMessages.length) {
+    console.log(`  Expected ${mixedMessages.length} messages, but decoded ${messageCount}`);
     return messageCount;
   }
 
