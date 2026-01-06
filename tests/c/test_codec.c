@@ -419,12 +419,12 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
         cJSON* test_array = cJSON_GetObjectItem(msg_item, "test_array");
         
         if (magic_number && test_string && test_float && test_bool) {
-          messages[count].magic_number = (uint32_t)magic_number->valuedouble;
+          messages[count].magic_number = (uint32_t)cJSON_GetNumberValue(magic_number);
           
           strncpy(messages[count].test_string, cJSON_GetStringValue(test_string), MAX_STRING_LENGTH - 1);
           messages[count].test_string[MAX_STRING_LENGTH - 1] = '\0';
           
-          messages[count].test_float = (float)test_float->valuedouble;
+          messages[count].test_float = (float)cJSON_GetNumberValue(test_float);
           messages[count].test_bool = cJSON_IsTrue(test_bool);
           
           messages[count].test_array_count = 0;
@@ -433,7 +433,7 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
             cJSON* array_item = NULL;
             cJSON_ArrayForEach(array_item, test_array) {
               if (array_idx >= MAX_ARRAY_LENGTH) break;
-              messages[count].test_array[array_idx++] = array_item->valueint;
+              messages[count].test_array[array_idx++] = (int32_t)cJSON_GetNumberValue(array_item);
             }
             messages[count].test_array_count = array_idx;
           }
