@@ -7,20 +7,24 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
-#include <variant>
 
 #include "serialization_test.sf.hpp"
 
-enum class MessageType {
-  SerializationTest,
-  BasicTypes
-};
+enum class MessageType { SerializationTest, BasicTypes };
 
 struct MixedMessage {
   MessageType type;
-  std::variant<SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage> data;
+  // Union-based storage for both message types
+  union {
+    SerializationTestSerializationTestMessage serial_test;
+    SerializationTestBasicTypesMessage basic_types;
+    uint8_t bytes[256];  // Ensure enough space for either message
+  } data;
+
+  MixedMessage() { std::memset(data.bytes, 0, sizeof(data.bytes)); }
 };
 
 struct TestMessage {

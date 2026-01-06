@@ -380,22 +380,18 @@ inline FrameMsgInfo tiny_default_validate_packet(const uint8_t* buffer, size_t l
 
 /* Load test messages from test_messages.json */
 std::vector<TestMessage> load_test_messages() {
-  std::vector<std::string> possible_paths = {
-    "../test_messages.json",
-    "../../test_messages.json",
-    "test_messages.json",
-    "../../../tests/test_messages.json"
-  };
-  
+  std::vector<std::string> possible_paths = {"../test_messages.json", "../../test_messages.json", "test_messages.json",
+                                             "../../../tests/test_messages.json"};
+
   for (const auto& filepath : possible_paths) {
     std::ifstream file(filepath);
     if (file.is_open()) {
       try {
         json data;
         file >> data;
-        
+
         std::vector<TestMessage> messages;
-        
+
         // Try to read from SerializationTestMessage key, fall back to messages key
         json message_array;
         if (data.contains("SerializationTestMessage")) {
@@ -405,23 +401,23 @@ std::vector<TestMessage> load_test_messages() {
         } else {
           continue;
         }
-        
+
         for (const auto& msg : message_array) {
           TestMessage test_msg;
           test_msg.magic_number = msg["magic_number"];
           test_msg.test_string = msg["test_string"];
           test_msg.test_float = msg["test_float"];
           test_msg.test_bool = msg["test_bool"];
-          
+
           if (msg.contains("test_array") && msg["test_array"].is_array()) {
             for (const auto& val : msg["test_array"]) {
               test_msg.test_array.push_back(val);
             }
           }
-          
+
           messages.push_back(test_msg);
         }
-        
+
         return messages;
       } catch (const std::exception& e) {
         // Try next path
@@ -429,59 +425,55 @@ std::vector<TestMessage> load_test_messages() {
       }
     }
   }
-  
+
   /* If we couldn't load from JSON, return empty vector to indicate failure */
   std::cerr << "Error: Could not load test_messages.json\n";
   return std::vector<TestMessage>();
 }
 
 std::vector<MixedMessage> load_mixed_messages() {
-  std::vector<std::string> possible_paths = {
-    "../test_messages.json",
-    "../../test_messages.json",
-    "test_messages.json",
-    "../../../tests/test_messages.json"
-  };
-  
+  std::vector<std::string> possible_paths = {"../test_messages.json", "../../test_messages.json", "test_messages.json",
+                                             "../../../tests/test_messages.json"};
+
   for (const auto& filepath : possible_paths) {
     std::ifstream file(filepath);
     if (file.is_open()) {
       try {
         json data;
         file >> data;
-        
+
         if (!data.contains("MixedMessages")) {
           continue;
         }
-        
+
         json mixed_array = data["MixedMessages"];
         json serial_msgs = data["SerializationTestMessage"];
         json basic_msgs = data["BasicTypesMessage"];
-        
+
         std::vector<MixedMessage> messages;
-        
+
         for (const auto& item : mixed_array) {
           std::string msg_type = item["type"];
           std::string msg_name = item["name"];
-          
+
           MixedMessage mixed_msg;
-          
+
           if (msg_type == "SerializationTestMessage") {
             mixed_msg.type = MessageType::SerializationTest;
-            
+
             // Find message by name
             for (const auto& msg_data : serial_msgs) {
               if (msg_data["name"] == msg_name) {
                 SerializationTestSerializationTestMessage msg;
                 std::memset(&msg, 0, sizeof(msg));
-                
+
                 msg.magic_number = msg_data["magic_number"];
                 std::string str = msg_data["test_string"];
                 msg.test_string.length = str.length();
                 std::strncpy(msg.test_string.data, str.c_str(), sizeof(msg.test_string.data) - 1);
                 msg.test_float = msg_data["test_float"];
                 msg.test_bool = msg_data["test_bool"];
-                
+
                 if (msg_data.contains("test_array") && msg_data["test_array"].is_array()) {
                   size_t idx = 0;
                   for (const auto& val : msg_data["test_array"]) {
@@ -490,20 +482,20 @@ std::vector<MixedMessage> load_mixed_messages() {
                   }
                   msg.test_array.count = idx;
                 }
-                
-                mixed_msg.data = msg;
+
+                mixed_msg.data.serial_test = msg;
                 break;
               }
             }
           } else if (msg_type == "BasicTypesMessage") {
             mixed_msg.type = MessageType::BasicTypes;
-            
+
             // Find message by name
             for (const auto& msg_data : basic_msgs) {
               if (msg_data["name"] == msg_name) {
                 SerializationTestBasicTypesMessage msg;
                 std::memset(&msg, 0, sizeof(msg));
-                
+
                 msg.small_int = msg_data["small_int"];
                 msg.medium_int = msg_data["medium_int"];
                 msg.regular_int = msg_data["regular_int"];
@@ -515,30 +507,29 @@ std::vector<MixedMessage> load_mixed_messages() {
                 msg.single_precision = msg_data["single_precision"];
                 msg.double_precision = msg_data["double_precision"];
                 msg.flag = msg_data["flag"];
-                
                 std::string device_id = msg_data["device_id"];
                 std::strncpy(msg.device_id, device_id.c_str(), sizeof(msg.device_id) - 1);
-                
+
                 std::string description = msg_data["description"];
                 msg.description.length = description.length();
                 std::strncpy(msg.description.data, description.c_str(), sizeof(msg.description.data) - 1);
-                
-                mixed_msg.data = msg;
+
+                mixed_msg.data.basic_types = msg;
                 break;
               }
             }
           }
-          
+
           messages.push_back(mixed_msg);
         }
-        
+
         return messages;
       } catch (const std::exception& e) {
         continue;
       }
     }
   }
-  
+
   std::cerr << "Error: Could not load mixed messages from test_messages.json\n";
   return std::vector<MixedMessage>();
 }
@@ -646,14 +637,15 @@ bool encode_test_messages(const std::string& format, uint8_t* buffer, size_t buf
     uint8_t msg_id;
     const uint8_t* msg_ptr;
     size_t msg_size;
-    
+
     if (mixed_msg.type == MessageType::SerializationTest) {
-      const auto& msg = std::get<SerializationTestSerializationTestMessage>(mixed_msg.data);
+      const auto& msg =
+          *reinterpret_cast<const SerializationTestSerializationTestMessage*>(&mixed_msg.data.serial_test);
       msg_id = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
       msg_ptr = reinterpret_cast<const uint8_t*>(&msg);
       msg_size = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE;
     } else if (mixed_msg.type == MessageType::BasicTypes) {
-      const auto& msg = std::get<SerializationTestBasicTypesMessage>(mixed_msg.data);
+      const auto& msg = *reinterpret_cast<const SerializationTestBasicTypesMessage*>(&mixed_msg.data.basic_types);
       msg_id = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID;
       msg_ptr = reinterpret_cast<const uint8_t*>(&msg);
       msg_size = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAX_SIZE;
@@ -663,20 +655,16 @@ bool encode_test_messages(const std::string& format, uint8_t* buffer, size_t buf
     }
 
     if (format == "profile_standard") {
-      msg_encoded_size = basic_default_encode(
-          buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
+      msg_encoded_size = basic_default_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
     } else if (format == "profile_sensor") {
-      msg_encoded_size = tiny_minimal_encode(
-          buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
+      msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
     } else if (format == "profile_ipc") {
-      msg_encoded_size = none_minimal_encode(
-          buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
+      msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
     } else if (format == "profile_bulk") {
-      msg_encoded_size = basic_extended_encode(
-          buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
+      msg_encoded_size = basic_extended_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
     } else if (format == "profile_network") {
-      msg_encoded_size = basic_extended_multi_system_stream_encode(
-          buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
+      msg_encoded_size =
+          basic_extended_multi_system_stream_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
     } else {
       std::cout << "  Unknown frame format: " << format << "\n";
       return false;
@@ -735,7 +723,7 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
     // Validate msg_id matches expected type
     const auto& mixed_msg = mixed_messages[message_count];
     uint8_t expected_msg_id;
-    
+
     if (mixed_msg.type == MessageType::SerializationTest) {
       expected_msg_id = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
     } else if (mixed_msg.type == MessageType::BasicTypes) {
@@ -744,10 +732,10 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
       std::cout << "  Unknown message type for message " << message_count << "\n";
       return false;
     }
-    
+
     if (decode_result.msg_id != expected_msg_id) {
-      std::cout << "  Message ID mismatch for message " << message_count 
-                << ": expected " << (int)expected_msg_id << ", got " << (int)decode_result.msg_id << "\n";
+      std::cout << "  Message ID mismatch for message " << message_count << ": expected " << (int)expected_msg_id
+                << ", got " << (int)decode_result.msg_id << "\n";
       return false;
     }
 
