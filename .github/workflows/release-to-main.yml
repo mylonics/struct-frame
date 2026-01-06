@@ -1,0 +1,72 @@
+name: Create Release PR to Main
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - "pyproject.toml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-main-pr:
+    name: Create PR to Main
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get version from pyproject.toml
+        id: get_version
+        run: |
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Check if PR already exists
+        id: check_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          # Check if there's already an open PR from develop to main
+          EXISTING_PR=$(gh pr list --base main --head develop --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING_PR" ]; then
+            echo "PR #$EXISTING_PR already exists"
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
+          else
+            echo "No existing PR found"
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request to main
+        if: steps.check_pr.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          gh pr create \
+            --base main \
+            --head develop \
+            --title "Release v$VERSION to Production" \
+            --body "## Release v$VERSION
+
+          This PR was automatically created after the release PR was merged to develop.
+
+          ### Changes
+          - Version bumped to $VERSION
+          - Changelog updated
+
+          ### Instructions
+          1. Review the changes in this PR
+          2. Merge this PR to trigger the publish workflow
+          3. The package will be automatically published to PyPI upon merge"
