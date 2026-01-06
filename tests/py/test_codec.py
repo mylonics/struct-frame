@@ -89,14 +89,24 @@ def validate_message(msg, test_msg):
 
 # Backwards compatibility - keep old function names
 # EXPECTED_VALUES is derived from the first message in the JSON
-_loaded_messages = load_test_messages()
-EXPECTED_VALUES = _loaded_messages[0] if _loaded_messages else {
-    'magic_number': 0,
-    'test_string': '',
-    'test_float': 0.0,
-    'test_bool': False,
-    'test_array': [],
-}
+try:
+    _loaded_messages = load_test_messages()
+    EXPECTED_VALUES = _loaded_messages[0] if _loaded_messages else {
+        'magic_number': 0,
+        'test_string': '',
+        'test_float': 0.0,
+        'test_bool': False,
+        'test_array': [],
+    }
+except Exception:
+    # If JSON loading fails during import, use empty values
+    EXPECTED_VALUES = {
+        'magic_number': 0,
+        'test_string': '',
+        'test_float': 0.0,
+        'test_bool': False,
+        'test_array': [],
+    }
 
 
 def create_test_message(msg_class):

@@ -66,7 +66,7 @@
     {
       "name": "new_year_boundary",
       "magic_number": 1735689600,
-      "magic_number_hex": "0x676F4000",
+      "magic_number_hex": "0x67748580",
       "test_string": "2025-01-01 00:00:00 UTC",
       "test_float": 1735689600.0,
       "test_bool": false,
