@@ -148,7 +148,8 @@ static inline size_t encode_profile_sensor(uint8_t* buffer, size_t buffer_size,
  * 
  * @param buffer Input buffer containing the frame
  * @param length Length of data in buffer
- * @param get_msg_length Callback to get expected message length from msg_id
+ * @param get_msg_length Callback to get expected message length from msg_id.
+ *        Uses size_t for msg_id to match generated get_message_length() signature.
  * @return frame_msg_info_t with valid=true if frame is valid
  */
 static inline frame_msg_info_t parse_profile_sensor_buffer(const uint8_t* buffer, size_t length,
@@ -228,7 +229,8 @@ static inline size_t encode_profile_ipc(uint8_t* buffer, size_t buffer_size,
  * 
  * @param buffer Input buffer containing the frame
  * @param length Length of data in buffer
- * @param get_msg_length Callback to get expected message length from msg_id
+ * @param get_msg_length Callback to get expected message length from msg_id.
+ *        Uses size_t for msg_id to match generated get_message_length() signature.
  * @return frame_msg_info_t with valid=true if frame is valid
  */
 static inline frame_msg_info_t parse_profile_ipc_buffer(const uint8_t* buffer, size_t length,
