@@ -34,6 +34,35 @@ namespace StructFrameTests
     }
 
     /// <summary>
+    /// BasicTypesMessage data structure
+    /// </summary>
+    public class BasicTypesMessage
+    {
+        public sbyte SmallInt { get; set; }
+        public short MediumInt { get; set; }
+        public int RegularInt { get; set; }
+        public long LargeInt { get; set; }
+        public byte SmallUint { get; set; }
+        public ushort MediumUint { get; set; }
+        public uint RegularUint { get; set; }
+        public ulong LargeUint { get; set; }
+        public float SinglePrecision { get; set; }
+        public double DoublePrecision { get; set; }
+        public bool Flag { get; set; }
+        public byte DeviceId { get; set; }
+        public string Description { get; set; }
+    }
+
+    /// <summary>
+    /// Mixed message item
+    /// </summary>
+    public class MixedMessageItem
+    {
+        public string Type { get; set; }
+        public object Data { get; set; }
+    }
+
+    /// <summary>
     /// Load test messages from test_messages.json
     /// </summary>
     public static class TestMessages
@@ -292,6 +321,334 @@ namespace StructFrameTests
             }
             
             return result.ToArray();
+        }
+        
+        /// <summary>
+        /// Load mixed messages from JSON following MixedMessages sequence
+        /// </summary>
+        public static MixedMessageItem[] LoadMixedMessages()
+        {
+            string[] possiblePaths = new string[]
+            {
+                "../test_messages.json",
+                "../../test_messages.json",
+                "test_messages.json",
+                "../../../tests/test_messages.json"
+            };
+
+            foreach (var path in possiblePaths)
+            {
+                try
+                {
+                    if (System.IO.File.Exists(path))
+                    {
+                        string jsonContent = System.IO.File.ReadAllText(path);
+                        return ParseMixedMessagesJson(jsonContent);
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+            }
+
+            // Return empty array if can't load
+            return new MixedMessageItem[] { };
+        }
+
+        private static MixedMessageItem[] ParseMixedMessagesJson(string jsonContent)
+        {
+            try
+            {
+                var result = new System.Collections.Generic.List<MixedMessageItem>();
+                
+                // Parse SerializationTestMessage array
+                var serialMessages = new System.Collections.Generic.Dictionary<string, TestMessage>();
+                int serialStart = jsonContent.IndexOf("\"SerializationTestMessage\"");
+                if (serialStart != -1)
+                {
+                    int bracketStart = jsonContent.IndexOf('[', serialStart);
+                    if (bracketStart != -1)
+                    {
+                        int depth = 0;
+                        int arrayStart = bracketStart;
+                        for (int i = bracketStart; i < jsonContent.Length; i++)
+                        {
+                            if (jsonContent[i] == '[') depth++;
+                            else if (jsonContent[i] == ']')
+                            {
+                                depth--;
+                                if (depth == 0)
+                                {
+                                    string arrayContent = jsonContent.Substring(arrayStart, i - arrayStart + 1);
+                                    var msgs = ParseTestMessagesArray(arrayContent);
+                                    foreach (var msg in msgs)
+                                    {
+                                        // Extract name from test_string for lookup
+                                        serialMessages[msg.TestString] = msg;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Parse BasicTypesMessage array
+                var basicMessages = new System.Collections.Generic.Dictionary<string, BasicTypesMessage>();
+                int basicStart = jsonContent.IndexOf("\"BasicTypesMessage\"");
+                if (basicStart != -1)
+                {
+                    int bracketStart = jsonContent.IndexOf('[', basicStart);
+                    if (bracketStart != -1)
+                    {
+                        int depth = 0;
+                        int arrayStart = bracketStart;
+                        for (int i = bracketStart; i < jsonContent.Length; i++)
+                        {
+                            if (jsonContent[i] == '[') depth++;
+                            else if (jsonContent[i] == ']')
+                            {
+                                depth--;
+                                if (depth == 0)
+                                {
+                                    string arrayContent = jsonContent.Substring(arrayStart, i - arrayStart + 1);
+                                    var msgs = ParseBasicTypesMessagesArray(arrayContent);
+                                    foreach (var msg in msgs)
+                                    {
+                                        basicMessages[msg.Description] = msg;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Parse MixedMessages array
+                int mixedStart = jsonContent.IndexOf("\"MixedMessages\"");
+                if (mixedStart != -1)
+                {
+                    int bracketStart = jsonContent.IndexOf('[', mixedStart);
+                    if (bracketStart != -1)
+                    {
+                        int pos = bracketStart + 1;
+                        while (pos < jsonContent.Length)
+                        {
+                            while (pos < jsonContent.Length && char.IsWhiteSpace(jsonContent[pos])) pos++;
+                            if (pos >= jsonContent.Length || jsonContent[pos] == ']') break;
+                            if (jsonContent[pos] == ',') { pos++; continue; }
+                            if (jsonContent[pos] != '{') break;
+                            
+                            int objEnd = FindMatchingBrace(jsonContent, pos);
+                            if (objEnd == -1) break;
+                            
+                            string objJson = jsonContent.Substring(pos, objEnd - pos + 1);
+                            string msgType = ParseString(objJson, "type");
+                            string msgName = ParseString(objJson, "name");
+                            
+                            if (msgType == "SerializationTestMessage" && serialMessages.ContainsKey(msgName))
+                            {
+                                result.Add(new MixedMessageItem
+                                {
+                                    Type = msgType,
+                                    Data = serialMessages[msgName]
+                                });
+                            }
+                            else if (msgType == "BasicTypesMessage" && basicMessages.ContainsKey(msgName))
+                            {
+                                result.Add(new MixedMessageItem
+                                {
+                                    Type = msgType,
+                                    Data = basicMessages[msgName]
+                                });
+                            }
+                            
+                            pos = objEnd + 1;
+                        }
+                    }
+                }
+                
+                return result.ToArray();
+            }
+            catch
+            {
+                return new MixedMessageItem[] { };
+            }
+        }
+
+        private static TestMessage[] ParseTestMessagesArray(string arrayJson)
+        {
+            var messages = new System.Collections.Generic.List<TestMessage>();
+            int pos = 1; // Skip opening [
+            
+            while (pos < arrayJson.Length)
+            {
+                while (pos < arrayJson.Length && char.IsWhiteSpace(arrayJson[pos])) pos++;
+                if (pos >= arrayJson.Length || arrayJson[pos] == ']') break;
+                if (arrayJson[pos] == ',') { pos++; continue; }
+                if (arrayJson[pos] != '{') break;
+                
+                int objEnd = FindMatchingBrace(arrayJson, pos);
+                if (objEnd == -1) break;
+                
+                string msgJson = arrayJson.Substring(pos, objEnd - pos + 1);
+                var msg = ParseSingleMessage(msgJson);
+                if (msg != null)
+                {
+                    messages.Add(msg);
+                }
+                
+                pos = objEnd + 1;
+            }
+            
+            return messages.ToArray();
+        }
+
+        private static BasicTypesMessage[] ParseBasicTypesMessagesArray(string arrayJson)
+        {
+            var messages = new System.Collections.Generic.List<BasicTypesMessage>();
+            int pos = 1; // Skip opening [
+            
+            while (pos < arrayJson.Length)
+            {
+                while (pos < arrayJson.Length && char.IsWhiteSpace(arrayJson[pos])) pos++;
+                if (pos >= arrayJson.Length || arrayJson[pos] == ']') break;
+                if (arrayJson[pos] == ',') { pos++; continue; }
+                if (arrayJson[pos] != '{') break;
+                
+                int objEnd = FindMatchingBrace(arrayJson, pos);
+                if (objEnd == -1) break;
+                
+                string msgJson = arrayJson.Substring(pos, objEnd - pos + 1);
+                var msg = ParseSingleBasicTypesMessage(msgJson);
+                if (msg != null)
+                {
+                    messages.Add(msg);
+                }
+                
+                pos = objEnd + 1;
+            }
+            
+            return messages.ToArray();
+        }
+
+        private static BasicTypesMessage ParseSingleBasicTypesMessage(string msgJson)
+        {
+            try
+            {
+                var msg = new BasicTypesMessage();
+                msg.SmallInt = (sbyte)ParseInt(msgJson, "small_int");
+                msg.MediumInt = (short)ParseInt(msgJson, "medium_int");
+                msg.RegularInt = ParseInt(msgJson, "regular_int");
+                msg.LargeInt = ParseLong(msgJson, "large_int");
+                msg.SmallUint = (byte)ParseUInt(msgJson, "small_uint");
+                msg.MediumUint = (ushort)ParseUInt(msgJson, "medium_uint");
+                msg.RegularUint = ParseUInt(msgJson, "regular_uint");
+                msg.LargeUint = ParseULong(msgJson, "large_uint");
+                msg.SinglePrecision = ParseFloat(msgJson, "single_precision");
+                msg.DoublePrecision = ParseDouble(msgJson, "double_precision");
+                msg.Flag = ParseBool(msgJson, "flag");
+                msg.DeviceId = (byte)ParseUInt(msgJson, "device_id");
+                msg.Description = ParseString(msgJson, "description");
+                return msg;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static int ParseInt(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return 0;
+            
+            int colonPos = json.IndexOf(':', keyPos);
+            if (colonPos == -1) return 0;
+            
+            int valueStart = colonPos + 1;
+            while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart])) valueStart++;
+            
+            int valueEnd = valueStart;
+            while (valueEnd < json.Length && (char.IsDigit(json[valueEnd]) || json[valueEnd] == '-' || json[valueEnd] == '.')) valueEnd++;
+            
+            string valueStr = json.Substring(valueStart, valueEnd - valueStart);
+            if (int.TryParse(valueStr, out int result))
+            {
+                return result;
+            }
+            
+            return 0;
+        }
+
+        private static long ParseLong(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return 0;
+            
+            int colonPos = json.IndexOf(':', keyPos);
+            if (colonPos == -1) return 0;
+            
+            int valueStart = colonPos + 1;
+            while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart])) valueStart++;
+            
+            int valueEnd = valueStart;
+            while (valueEnd < json.Length && (char.IsDigit(json[valueEnd]) || json[valueEnd] == '-' || json[valueEnd] == '.')) valueEnd++;
+            
+            string valueStr = json.Substring(valueStart, valueEnd - valueStart);
+            if (long.TryParse(valueStr, out long result))
+            {
+                return result;
+            }
+            
+            return 0;
+        }
+
+        private static ulong ParseULong(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return 0;
+            
+            int colonPos = json.IndexOf(':', keyPos);
+            if (colonPos == -1) return 0;
+            
+            int valueStart = colonPos + 1;
+            while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart])) valueStart++;
+            
+            int valueEnd = valueStart;
+            while (valueEnd < json.Length && (char.IsDigit(json[valueEnd]) || json[valueEnd] == '.')) valueEnd++;
+            
+            string valueStr = json.Substring(valueStart, valueEnd - valueStart);
+            if (ulong.TryParse(valueStr, out ulong result))
+            {
+                return result;
+            }
+            
+            return 0;
+        }
+
+        private static double ParseDouble(string json, string key)
+        {
+            int keyPos = json.IndexOf($"\"{key}\"");
+            if (keyPos == -1) return 0.0;
+            
+            int colonPos = json.IndexOf(':', keyPos);
+            if (colonPos == -1) return 0.0;
+            
+            int valueStart = colonPos + 1;
+            while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart])) valueStart++;
+            
+            int valueEnd = valueStart;
+            while (valueEnd < json.Length && (char.IsDigit(json[valueEnd]) || json[valueEnd] == '.' || json[valueEnd] == '-')) valueEnd++;
+            
+            string valueStr = json.Substring(valueStart, valueEnd - valueStart);
+            if (double.TryParse(valueStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double result))
+            {
+                return result;
+            }
+            
+            return 0.0;
         }
     }
 
