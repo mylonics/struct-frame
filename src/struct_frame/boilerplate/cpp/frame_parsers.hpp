@@ -29,3 +29,6 @@
 
 /* Frame format configuration */
 #include "FrameFormatConfig.hpp"
+
+/* Frame profiles - Pre-defined Header + Payload combinations */
+#include "FrameProfiles.hpp"
