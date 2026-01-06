@@ -49,7 +49,7 @@ namespace StructFrameTests
         public float SinglePrecision { get; set; }
         public double DoublePrecision { get; set; }
         public bool Flag { get; set; }
-        public byte DeviceId { get; set; }
+        public string DeviceId { get; set; }
         public string Description { get; set; }
     }
 
@@ -372,9 +372,13 @@ namespace StructFrameTests
             {
                 var result = new System.Collections.Generic.List<MixedMessageItem>();
                 
-                // Parse SerializationTestMessage array
+                // Parse SerializationTestMessage array - need to find the key, not the value in MixedMessages
                 var serialMessages = new System.Collections.Generic.Dictionary<string, TestMessage>();
-                int serialStart = jsonContent.IndexOf("\"SerializationTestMessage\"");
+                int serialStart = jsonContent.IndexOf("\"SerializationTestMessage\": [");
+                if (serialStart == -1)
+                {
+                    serialStart = jsonContent.IndexOf("\"SerializationTestMessage\":[");
+                }
                 if (serialStart != -1)
                 {
                     int bracketStart = jsonContent.IndexOf('[', serialStart);
@@ -399,9 +403,14 @@ namespace StructFrameTests
                     }
                 }
                 
-                // Parse BasicTypesMessage array
+                // Parse BasicTypesMessage array - need to find the key, not the value in MixedMessages
                 var basicMessages = new System.Collections.Generic.Dictionary<string, BasicTypesMessage>();
-                int basicStart = jsonContent.IndexOf("\"BasicTypesMessage\"");
+                // Look for "BasicTypesMessage": [ which indicates the actual data array
+                int basicStart = jsonContent.IndexOf("\"BasicTypesMessage\": [");
+                if (basicStart == -1)
+                {
+                    basicStart = jsonContent.IndexOf("\"BasicTypesMessage\":[");
+                }
                 if (basicStart != -1)
                 {
                     int bracketStart = jsonContent.IndexOf('[', basicStart);
@@ -475,7 +484,7 @@ namespace StructFrameTests
                 
                 return result.ToArray();
             }
-            catch
+            catch (System.Exception ex)
             {
                 return new MixedMessageItem[] { };
             }
@@ -611,7 +620,7 @@ namespace StructFrameTests
                 msg.SinglePrecision = ParseFloat(msgJson, "single_precision");
                 msg.DoublePrecision = ParseDouble(msgJson, "double_precision");
                 msg.Flag = ParseBool(msgJson, "flag");
-                msg.DeviceId = (byte)ParseUInt(msgJson, "device_id");
+                msg.DeviceId = ParseString(msgJson, "device_id");
                 msg.Description = ParseString(msgJson, "description");
                 return msg;
             }
@@ -836,8 +845,8 @@ namespace StructFrameTests
             msg.Flag = buffer[offset++] != 0;
 
             // device_id (fixed string, 32 bytes, offset 43)
-            // Skip device_id field for now
-            msg.DeviceId = 0;
+            string deviceIdStr = Encoding.UTF8.GetString(buffer, offset, 32).TrimEnd('\0');
+            msg.DeviceId = deviceIdStr;
             offset += 32;
 
             // description_length (uint8, offset 75)
