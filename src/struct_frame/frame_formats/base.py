@@ -20,7 +20,7 @@ class HeaderType(Enum):
     TINY = 1       # 1 start byte [0x70+PayloadType]
     BASIC = 2      # 2 start bytes [0x90] [0x70+PayloadType]
     UBX = 3        # 2 start bytes [0xB5] [0x62] (u-blox GPS)
-    MAVLINK_V1 = 4 # 1 start byte [0xFE] (Classic drone protocol)
+    MAVLINK_V1 = 4 # 1 start byte [0xFE] (Legacy drone protocol)
     MAVLINK_V2 = 5 # 1 start byte [0xFD] (Modern drone protocol)
 
 
