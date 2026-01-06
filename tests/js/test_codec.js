@@ -46,12 +46,12 @@ function loadMixedMessages() {
         const mixedArray = data.MixedMessages || [];
         const serialMsgs = data.SerializationTestMessage || [];
         const basicMsgs = data.BasicTypesMessage || [];
-        
+
         const messages = [];
         for (const item of mixedArray) {
           const msgType = item.type;
           const msgName = item.name;
-          
+
           let msgData = null;
           if (msgType === 'SerializationTestMessage') {
             msgData = serialMsgs.find(m => m.name === msgName);
@@ -65,7 +65,7 @@ function loadMixedMessages() {
             }
           }
         }
-        
+
         return messages;
       }
     } catch (e) {

@@ -273,13 +273,22 @@ def get_parser(format_name=None):
     if os.path.exists(gen_path) and gen_path not in sys.path:
         sys.path.insert(0, gen_path)
 
-    from parser import Parser, PayloadType
+    from parser import Parser, PayloadType, HeaderType
     from serialization_test_sf import SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage
 
     # Check if this format uses MINIMAL payload (which has no length field)
     get_msg_length = None
+    enable_none = False
+    default_payload_type = PayloadType.DEFAULT
+    
     if format_name:
-        _, payload_type = get_frame_config(format_name)
+        header_type, payload_type = get_frame_config(format_name)
+        
+        # Enable NONE header type for profile_ipc
+        if header_type == HeaderType.NONE:
+            enable_none = True
+            default_payload_type = payload_type
+        
         if payload_type == PayloadType.MINIMAL:
             # MINIMAL payload has no length field, need callback
             def get_length_by_id(msg_id):
@@ -290,7 +299,7 @@ def get_parser(format_name=None):
                 return 0
             get_msg_length = get_length_by_id
 
-    return Parser(get_msg_length=get_msg_length)
+    return Parser(get_msg_length=get_msg_length, enable_none=enable_none, default_payload_type=default_payload_type)
 
 
 def get_message_class():
