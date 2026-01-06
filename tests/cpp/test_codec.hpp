@@ -41,7 +41,7 @@ struct TestMessage {
 std::vector<MixedMessage> load_mixed_messages();
 
 /**
- * Load test messages from test_messages.json (legacy)
+ * Load test messages from test_messages.json (alternative format)
  */
 std::vector<TestMessage> load_test_messages();
 

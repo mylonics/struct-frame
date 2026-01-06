@@ -545,7 +545,7 @@ class FilePyGen():
                 yield f'# Alias for minimal frame parsing compatibility\n'
                 yield f'get_msg_length = get_message_size\n'
             else:
-                # Legacy mode: 8-bit message ID
+                # Flat namespace mode: 8-bit message ID
                 yield '%s_definitions = {\n' % package.name
                 for key, msg in package.sortedMessages().items():
                     if msg.id != None:

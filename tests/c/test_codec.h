@@ -51,7 +51,7 @@ typedef struct {
 size_t load_mixed_messages(mixed_message_t* messages, size_t max_count);
 
 /**
- * Load test messages from test_messages.json (legacy)
+ * Load test messages from test_messages.json (alternative format)
  * @param messages Output array of test messages
  * @param max_count Maximum number of messages to load
  * @return Number of messages loaded

@@ -258,7 +258,7 @@ class FileCGen():
                 yield '    \n'
                 yield '    switch (local_msg_id) {\n'
             else:
-                # Legacy mode: 8-bit message ID
+                # Flat namespace mode: 8-bit message ID
                 yield 'static inline bool get_message_length(size_t msg_id, size_t* size) {\n'
                 yield '    switch (msg_id) {\n'
             

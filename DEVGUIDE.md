@@ -22,7 +22,7 @@ The pipeline will automatically:
 
 **Note:** This workflow requires PyPI trusted publisher to be configured on PyPI.org (not GitHub secrets). See RELEASE.md for setup instructions.
 
-### Manual Release (Legacy)
+### Manual Release (Alternative)
 
 If you need to release manually:
 
