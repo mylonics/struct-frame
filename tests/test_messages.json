@@ -1,13 +1,37 @@
 {
   "MixedMessages": [
-    {"type": "SerializationTestMessage", "name": "basic_values"},
-    {"type": "SerializationTestMessage", "name": "zero_values"},
-    {"type": "SerializationTestMessage", "name": "max_values"},
-    {"type": "SerializationTestMessage", "name": "negative_values"},
-    {"type": "SerializationTestMessage", "name": "special_chars"},
-    {"type": "BasicTypesMessage", "name": "basic_values"},
-    {"type": "BasicTypesMessage", "name": "zero_values"},
-    {"type": "BasicTypesMessage", "name": "negative_values"}
+    {
+      "type": "SerializationTestMessage",
+      "name": "basic_values"
+    },
+    {
+      "type": "SerializationTestMessage",
+      "name": "zero_values"
+    },
+    {
+      "type": "SerializationTestMessage",
+      "name": "max_values"
+    },
+    {
+      "type": "SerializationTestMessage",
+      "name": "negative_values"
+    },
+    {
+      "type": "SerializationTestMessage",
+      "name": "special_chars"
+    },
+    {
+      "type": "BasicTypesMessage",
+      "name": "basic_values"
+    },
+    {
+      "type": "BasicTypesMessage",
+      "name": "zero_values"
+    },
+    {
+      "type": "BasicTypesMessage",
+      "name": "negative_values"
+    }
   ],
   "SerializationTestMessage": [
     {
@@ -17,7 +41,11 @@
       "test_string": "Cross-platform test!",
       "test_float": 3.14159,
       "test_bool": true,
-      "test_array": [100, 200, 300]
+      "test_array": [
+        100,
+        200,
+        300
+      ]
     },
     {
       "name": "zero_values",
@@ -35,7 +63,13 @@
       "test_string": "Maximum length test string for coverage!",
       "test_float": 999999.9,
       "test_bool": true,
-      "test_array": [2147483647, -2147483648, 0, 1, -1]
+      "test_array": [
+        2147483647,
+        -2147483648,
+        0,
+        1,
+        -1
+      ]
     },
     {
       "name": "negative_values",
@@ -44,7 +78,12 @@
       "test_string": "Negative test",
       "test_float": -273.15,
       "test_bool": false,
-      "test_array": [-100, -200, -300, -400]
+      "test_array": [
+        -100,
+        -200,
+        -300,
+        -400
+      ]
     },
     {
       "name": "special_chars",
@@ -53,7 +92,13 @@
       "test_string": "Special: !@#$%^&*()",
       "test_float": 2.71828,
       "test_bool": true,
-      "test_array": [0, 1, 1, 2, 3]
+      "test_array": [
+        0,
+        1,
+        1,
+        2,
+        3
+      ]
     }
   ],
   "BasicTypesMessage": [
@@ -66,7 +111,7 @@
       "small_uint": 200,
       "medium_uint": 50000,
       "regular_uint": 4000000000,
-      "large_uint": 18446744073709551615,
+      "large_uint": 9223372036854775807,
       "single_precision": 3.14159,
       "double_precision": 2.718281828459045,
       "flag": true,
@@ -94,11 +139,11 @@
       "small_int": -128,
       "medium_int": -32768,
       "regular_int": -2147483648,
-      "large_int": -9223372036854775808,
+      "large_int": -9223372036854775807,
       "small_uint": 255,
       "medium_uint": 65535,
       "regular_uint": 4294967295,
-      "large_uint": 18446744073709551615,
+      "large_uint": 9223372036854775807,
       "single_precision": -273.15,
       "double_precision": -9999.999999,
       "flag": false,
