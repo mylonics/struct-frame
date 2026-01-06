@@ -10,263 +10,63 @@
 #include "frame_parsers.h"
 #include "serialization_test.sf.h"
 
-/* Minimal frame format helper functions (replacing frame_compat) */
+/* 
+ * Frame format helper functions - Use generated profile functions from frame_profiles.h
+ * The manual implementations have been replaced with calls to the generated functions.
+ */
 
-/* Basic + Default */
+/* Basic + Default -> Profile Standard */
 static inline size_t basic_default_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
                                           size_t msg_size) {
-  const size_t header_size = 4; /* [0x90] [0x71] [LEN] [MSG_ID] */
-  const size_t footer_size = 2; /* [CRC1] [CRC2] */
-  const size_t total_size = header_size + msg_size + footer_size;
-
-  if (buffer_size < total_size || msg_size > 255) {
-    return 0;
-  }
-
-  buffer[0] = BASIC_START_BYTE;
-  buffer[1] = get_basic_second_start_byte(PAYLOAD_DEFAULT_CONFIG.payload_type);
-  buffer[2] = (uint8_t)msg_size;
-  buffer[3] = msg_id;
-  memcpy(buffer + header_size, msg, msg_size);
-
-  frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_size + 2);
-  buffer[total_size - 2] = ck.byte1;
-  buffer[total_size - 1] = ck.byte2;
-
-  return total_size;
+  return encode_profile_standard(buffer, buffer_size, msg_id, msg, msg_size);
 }
 
 static inline frame_msg_info_t basic_default_validate_packet(const uint8_t* buffer, size_t length) {
-  frame_msg_info_t result = {false, 0, 0, NULL};
-
-  if (length < 6 || buffer[0] != BASIC_START_BYTE || !is_basic_second_start_byte(buffer[1])) {
-    return result;
-  }
-
-  /* Extract length from the frame */
-  const size_t msg_len = buffer[2];
-  const size_t total_size = 4 + msg_len + 2; /* header + payload + crc */
-
-  if (length < total_size) {
-    return result;
-  }
-
-  /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
-  frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 2);
-  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
-    return result;
-  }
-
-  result.valid = true;
-  result.msg_id = buffer[3]; /* MSG_ID at position 3 */
-  result.msg_len = msg_len;
-  result.msg_data = (uint8_t*)(buffer + 4); /* Payload starts after header */
-
-  return result;
+  return parse_profile_standard_buffer(buffer, length);
 }
 
-/* Tiny + Minimal */
+/* Tiny + Minimal -> Profile Sensor */
 static inline size_t tiny_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
                                          size_t msg_size) {
-  const size_t header_size = 2; /* [0x70] [MSG_ID] */
-  const size_t total_size = header_size + msg_size;
-
-  if (buffer_size < total_size) {
-    return 0;
-  }
-
-  buffer[0] = get_tiny_start_byte(PAYLOAD_MINIMAL_CONFIG.payload_type);
-  buffer[1] = msg_id;
-  memcpy(buffer + header_size, msg, msg_size);
-
-  return total_size;
+  return encode_profile_sensor(buffer, buffer_size, msg_id, msg, msg_size);
 }
 
 static inline frame_msg_info_t tiny_minimal_validate_packet(const uint8_t* buffer, size_t length) {
-  frame_msg_info_t result = {false, 0, 0, NULL};
-
-  if (length < 2 || !is_tiny_start_byte(buffer[0])) {
-    return result;
-  }
-
-  /* For minimal payloads, we need to know the message size */
-  const uint8_t msg_id = buffer[1];
-  size_t msg_len = 0;
-  if (!get_message_length(msg_id, &msg_len)) {
-    return result; /* Unknown message ID */
-  }
-
-  const size_t total_size = 2 + msg_len; /* header + payload */
-  if (length < total_size) {
-    return result;
-  }
-
-  result.valid = true;
-  result.msg_id = msg_id;
-  result.msg_len = msg_len;
-  result.msg_data = (uint8_t*)(buffer + 2);
-
-  return result;
+  return parse_profile_sensor_buffer(buffer, length, get_message_length);
 }
 
-/* None + Minimal */
+/* None + Minimal -> Profile IPC */
 static inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
                                          size_t msg_size) {
-  const size_t header_size = 1; /* [MSG_ID] */
-  const size_t total_size = header_size + msg_size;
-
-  if (buffer_size < total_size) {
-    return 0;
-  }
-
-  buffer[0] = msg_id;
-  memcpy(buffer + header_size, msg, msg_size);
-
-  return total_size;
+  return encode_profile_ipc(buffer, buffer_size, msg_id, msg, msg_size);
 }
 
 static inline frame_msg_info_t none_minimal_validate_packet(const uint8_t* buffer, size_t length) {
-  frame_msg_info_t result = {false, 0, 0, NULL};
-
-  if (length < 1) {
-    return result;
-  }
-
-  /* For minimal payloads, we need to know the message size */
-  const uint8_t msg_id = buffer[0];
-  size_t msg_len = 0;
-  if (!get_message_length(msg_id, &msg_len)) {
-    return result; /* Unknown message ID */
-  }
-
-  const size_t total_size = 1 + msg_len; /* header + payload */
-  if (length < total_size) {
-    return result;
-  }
-
-  result.valid = true;
-  result.msg_id = msg_id;
-  result.msg_len = msg_len;
-  result.msg_data = (uint8_t*)(buffer + 1);
-
-  return result;
+  return parse_profile_ipc_buffer(buffer, length, get_message_length);
 }
 
-/* Basic + Extended */
+/* Basic + Extended -> Profile Bulk */
 static inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
                                            size_t msg_size) {
-  const size_t header_size = 6; /* [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] */
-  const size_t footer_size = 2; /* [CRC1] [CRC2] */
-  const size_t total_size = header_size + msg_size + footer_size;
-
-  if (buffer_size < total_size || msg_size > 65535) {
-    return 0;
-  }
-
-  buffer[0] = BASIC_START_BYTE;
-  buffer[1] = get_basic_second_start_byte(PAYLOAD_EXTENDED_CONFIG.payload_type);
-  buffer[2] = (uint8_t)(msg_size & 0xFF);
-  buffer[3] = (uint8_t)((msg_size >> 8) & 0xFF);
-  buffer[4] = 0; /* PKG_ID = 0 */
-  buffer[5] = msg_id;
-  memcpy(buffer + header_size, msg, msg_size);
-
-  frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_size + 4);
-  buffer[total_size - 2] = ck.byte1;
-  buffer[total_size - 1] = ck.byte2;
-
-  return total_size;
+  return encode_profile_bulk(buffer, buffer_size, 0, msg_id, msg, msg_size);  /* pkg_id = 0 */
 }
 
 static inline frame_msg_info_t basic_extended_validate_packet(const uint8_t* buffer, size_t length) {
-  frame_msg_info_t result = {false, 0, 0, NULL};
-
-  if (length < 8 || buffer[0] != BASIC_START_BYTE || !is_basic_second_start_byte(buffer[1])) {
-    return result;
-  }
-
-  /* Extract length from the frame */
-  const size_t msg_len = buffer[2] | (buffer[3] << 8);
-  const size_t total_size = 6 + msg_len + 2; /* header + payload + crc */
-
-  if (length < total_size) {
-    return result;
-  }
-
-  /* Verify CRC: covers [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
-  frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 4);
-  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
-    return result;
-  }
-
-  result.valid = true;
-  result.msg_id = buffer[5]; /* MSG_ID at position 5 */
-  result.msg_len = msg_len;
-  result.msg_data = (uint8_t*)(buffer + 6); /* Payload starts after header */
-
-  return result;
+  return parse_profile_bulk_buffer(buffer, length);
 }
 
-/* Basic + Extended Multi System Stream */
+/* Basic + Extended Multi System Stream -> Profile Network */
 static inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id,
                                                                const uint8_t* msg, size_t msg_size) {
-  const size_t header_size = 9; /* [0x90] [0x78] [SEQ] [SYS] [COMP] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] */
-  const size_t footer_size = 2; /* [CRC1] [CRC2] */
-  const size_t total_size = header_size + msg_size + footer_size;
-
-  if (buffer_size < total_size || msg_size > 65535) {
-    return 0;
-  }
-
-  buffer[0] = BASIC_START_BYTE;
-  buffer[1] = get_basic_second_start_byte(PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG.payload_type);
-  buffer[2] = 0; /* SEQ = 0 */
-  buffer[3] = 0; /* SYS_ID = 0 */
-  buffer[4] = 0; /* COMP_ID = 0 */
-  buffer[5] = (uint8_t)(msg_size & 0xFF);
-  buffer[6] = (uint8_t)((msg_size >> 8) & 0xFF);
-  buffer[7] = 0; /* PKG_ID = 0 */
-  buffer[8] = msg_id;
-  memcpy(buffer + header_size, msg, msg_size);
-
-  frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_size + 7);
-  buffer[total_size - 2] = ck.byte1;
-  buffer[total_size - 1] = ck.byte2;
-
-  return total_size;
+  return encode_profile_network(buffer, buffer_size, 0, 0, 0, 0, msg_id, msg, msg_size);  /* seq=0, sys=0, comp=0, pkg=0 */
 }
 
 static inline frame_msg_info_t basic_extended_multi_system_stream_validate_packet(const uint8_t* buffer,
                                                                                   size_t length) {
-  frame_msg_info_t result = {false, 0, 0, NULL};
-
-  if (length < 11 || buffer[0] != BASIC_START_BYTE || !is_basic_second_start_byte(buffer[1])) {
-    return result;
-  }
-
-  /* Extract length from the frame */
-  const size_t msg_len = buffer[5] | (buffer[6] << 8);
-  const size_t total_size = 9 + msg_len + 2; /* header + payload + crc */
-
-  if (length < total_size) {
-    return result;
-  }
-
-  /* Verify CRC: covers [SEQ] [SYS] [COMP] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
-  frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 7);
-  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
-    return result;
-  }
-
-  result.valid = true;
-  result.msg_id = buffer[8]; /* MSG_ID at position 8 */
-  result.msg_len = msg_len;
-  result.msg_data = (uint8_t*)(buffer + 9); /* Payload starts after header */
-
-  return result;
+  return parse_profile_network_buffer(buffer, length);
 }
 
-/* Basic + Minimal */
+/* Basic + Minimal - This combination is not a standard profile but is used in tests */
 static inline size_t basic_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
                                           size_t msg_size) {
   const size_t header_size = 3; /* [0x90] [0x70] [MSG_ID] */
@@ -311,7 +111,7 @@ static inline frame_msg_info_t basic_minimal_validate_packet(const uint8_t* buff
   return result;
 }
 
-/* Tiny + Default */
+/* Tiny + Default - This combination is not a standard profile but is used in tests */
 static inline size_t tiny_default_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
                                          size_t msg_size) {
   const size_t header_size = 3; /* [0x71] [LEN] [MSG_ID] */
