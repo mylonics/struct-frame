@@ -1,6 +1,10 @@
 /* Frame Profiles - Pre-defined Header + Payload combinations */
 /* 
- * This file provides ready-to-use encode/parse functions for the 5 standard profiles:
+ * This file provides ready-to-use encode/parse functions for frame format profiles.
+ * It builds on the generic frame encoding/parsing infrastructure in frame_base.h,
+ * frame_headers/, and payload_types/.
+ *
+ * Standard Profiles:
  * - Profile Standard: Basic + Default (General serial/UART)
  * - Profile Sensor: Tiny + Minimal (Low-bandwidth sensors)
  * - Profile IPC: None + Minimal (Trusted inter-process communication)
@@ -12,441 +16,433 @@
 
 #include "frame_base.h"
 #include "frame_headers/base.h"
+#include "frame_headers/header_basic.h"
+#include "frame_headers/header_tiny.h"
+#include "frame_headers/header_none.h"
 #include "payload_types/base.h"
+#include "payload_types/payload_default.h"
+#include "payload_types/payload_minimal.h"
+#include "payload_types/payload_extended.h"
+#include "payload_types/payload_extended_multi_system_stream.h"
 
 /*===========================================================================
- * Profile Standard: Basic + Default
- * Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
- * Overhead: 6 bytes. Max payload: 255 bytes.
+ * Generic Frame Format Configuration
  *===========================================================================*/
 
-#define PROFILE_STANDARD_START_BYTE1    0x90
-#define PROFILE_STANDARD_START_BYTE2    0x71
-#define PROFILE_STANDARD_HEADER_SIZE    4  /* start1 + start2 + len + msg_id */
-#define PROFILE_STANDARD_FOOTER_SIZE    2  /* CRC */
-#define PROFILE_STANDARD_OVERHEAD       (PROFILE_STANDARD_HEADER_SIZE + PROFILE_STANDARD_FOOTER_SIZE)
+/**
+ * Frame format configuration - combines header type with payload type
+ */
+typedef struct frame_format_config {
+    uint8_t header_type;           /* Header type (from header_type_t enum) */
+    uint8_t payload_type;          /* Payload type (from payload_type_t enum) */
+    uint8_t num_start_bytes;       /* Number of start bytes (0, 1, or 2) */
+    uint8_t start_byte1;           /* First start byte (if applicable) */
+    uint8_t start_byte2;           /* Second start byte (if applicable) */
+    uint8_t header_size;           /* Total header size (start bytes + payload header fields) */
+    uint8_t footer_size;           /* Footer size (CRC bytes) */
+    bool has_length;               /* Has length field */
+    uint8_t length_bytes;          /* Length field size (1 or 2) */
+    bool has_crc;                  /* Has CRC */
+    bool has_pkg_id;               /* Has package ID field */
+    bool has_seq;                  /* Has sequence field */
+    bool has_sys_id;               /* Has system ID field */
+    bool has_comp_id;              /* Has component ID field */
+} frame_format_config_t;
+
+/*===========================================================================
+ * Generic Encode/Parse Functions
+ *===========================================================================*/
 
 /**
- * Encode a message using Profile Standard (Basic + Default) format.
- * 
- * @param buffer Output buffer to write the encoded frame
- * @param buffer_size Size of the output buffer
- * @param msg_id Message ID
- * @param payload Pointer to payload data
- * @param payload_size Size of payload in bytes (max 255)
- * @return Number of bytes written, or 0 on failure
+ * Generic encode function for frames with CRC (Default, Extended, etc.)
+ * Uses the frame format configuration to encode any supported frame type.
  */
+static inline size_t frame_format_encode_with_crc(
+    const frame_format_config_t* config,
+    uint8_t* buffer, size_t buffer_size,
+    uint8_t seq, uint8_t sys_id, uint8_t comp_id,
+    uint8_t pkg_id, uint8_t msg_id,
+    const uint8_t* payload, size_t payload_size) {
+    
+    size_t overhead = config->header_size + config->footer_size;
+    size_t total_size = overhead + payload_size;
+    size_t max_payload = (config->length_bytes == 1) ? 255 : 65535;
+    
+    if (buffer_size < total_size || payload_size > max_payload) {
+        return 0;
+    }
+    
+    size_t idx = 0;
+    
+    /* Write start bytes */
+    if (config->num_start_bytes >= 1) {
+        buffer[idx++] = config->start_byte1;
+    }
+    if (config->num_start_bytes >= 2) {
+        buffer[idx++] = config->start_byte2;
+    }
+    
+    size_t crc_start = idx;  /* CRC calculation starts after start bytes */
+    
+    /* Write optional fields before length */
+    if (config->has_seq) {
+        buffer[idx++] = seq;
+    }
+    if (config->has_sys_id) {
+        buffer[idx++] = sys_id;
+    }
+    if (config->has_comp_id) {
+        buffer[idx++] = comp_id;
+    }
+    
+    /* Write length field */
+    if (config->has_length) {
+        if (config->length_bytes == 1) {
+            buffer[idx++] = (uint8_t)(payload_size & 0xFF);
+        } else {
+            buffer[idx++] = (uint8_t)(payload_size & 0xFF);
+            buffer[idx++] = (uint8_t)((payload_size >> 8) & 0xFF);
+        }
+    }
+    
+    /* Write package ID if present */
+    if (config->has_pkg_id) {
+        buffer[idx++] = pkg_id;
+    }
+    
+    /* Write message ID */
+    buffer[idx++] = msg_id;
+    
+    /* Write payload */
+    if (payload_size > 0 && payload != NULL) {
+        memcpy(buffer + idx, payload, payload_size);
+        idx += payload_size;
+    }
+    
+    /* Calculate and write CRC */
+    if (config->has_crc) {
+        size_t crc_len = idx - crc_start;
+        frame_checksum_t ck = frame_fletcher_checksum(buffer + crc_start, crc_len);
+        buffer[idx++] = ck.byte1;
+        buffer[idx++] = ck.byte2;
+    }
+    
+    return idx;
+}
+
+/**
+ * Generic encode function for minimal frames (no length, no CRC)
+ */
+static inline size_t frame_format_encode_minimal(
+    const frame_format_config_t* config,
+    uint8_t* buffer, size_t buffer_size,
+    uint8_t msg_id,
+    const uint8_t* payload, size_t payload_size) {
+    
+    size_t overhead = config->header_size + config->footer_size;
+    size_t total_size = overhead + payload_size;
+    
+    if (buffer_size < total_size) {
+        return 0;
+    }
+    
+    size_t idx = 0;
+    
+    /* Write start bytes */
+    if (config->num_start_bytes >= 1) {
+        buffer[idx++] = config->start_byte1;
+    }
+    if (config->num_start_bytes >= 2) {
+        buffer[idx++] = config->start_byte2;
+    }
+    
+    /* Write message ID */
+    buffer[idx++] = msg_id;
+    
+    /* Write payload */
+    if (payload_size > 0 && payload != NULL) {
+        memcpy(buffer + idx, payload, payload_size);
+        idx += payload_size;
+    }
+    
+    return idx;
+}
+
+/**
+ * Generic parse function for frames with CRC
+ */
+static inline frame_msg_info_t frame_format_parse_with_crc(
+    const frame_format_config_t* config,
+    const uint8_t* buffer, size_t length) {
+    
+    frame_msg_info_t result = {false, 0, 0, NULL};
+    size_t overhead = config->header_size + config->footer_size;
+    
+    if (length < overhead) {
+        return result;
+    }
+    
+    /* Verify start bytes */
+    size_t idx = 0;
+    if (config->num_start_bytes >= 1 && buffer[idx++] != config->start_byte1) {
+        return result;
+    }
+    if (config->num_start_bytes >= 2 && buffer[idx++] != config->start_byte2) {
+        return result;
+    }
+    
+    size_t crc_start = idx;
+    
+    /* Skip optional fields before length */
+    if (config->has_seq) idx++;
+    if (config->has_sys_id) idx++;
+    if (config->has_comp_id) idx++;
+    
+    /* Read length field */
+    size_t msg_len = 0;
+    if (config->has_length) {
+        if (config->length_bytes == 1) {
+            msg_len = buffer[idx++];
+        } else {
+            msg_len = buffer[idx] | ((size_t)buffer[idx + 1] << 8);
+            idx += 2;
+        }
+    }
+    
+    /* Skip package ID */
+    if (config->has_pkg_id) idx++;
+    
+    /* Read message ID */
+    uint8_t msg_id = buffer[idx++];
+    
+    /* Verify total size */
+    size_t total_size = overhead + msg_len;
+    if (length < total_size) {
+        return result;
+    }
+    
+    /* Verify CRC */
+    if (config->has_crc) {
+        size_t crc_len = total_size - crc_start - config->footer_size;
+        frame_checksum_t ck = frame_fletcher_checksum(buffer + crc_start, crc_len);
+        if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+            return result;
+        }
+    }
+    
+    result.valid = true;
+    result.msg_id = msg_id;
+    result.msg_len = msg_len;
+    result.msg_data = (uint8_t*)(buffer + config->header_size);
+    
+    return result;
+}
+
+/**
+ * Generic parse function for minimal frames (requires get_msg_length callback)
+ */
+static inline frame_msg_info_t frame_format_parse_minimal(
+    const frame_format_config_t* config,
+    const uint8_t* buffer, size_t length,
+    bool (*get_msg_length)(size_t msg_id, size_t* len)) {
+    
+    frame_msg_info_t result = {false, 0, 0, NULL};
+    
+    if (length < config->header_size) {
+        return result;
+    }
+    
+    /* Verify start bytes */
+    size_t idx = 0;
+    if (config->num_start_bytes >= 1 && buffer[idx++] != config->start_byte1) {
+        return result;
+    }
+    if (config->num_start_bytes >= 2 && buffer[idx++] != config->start_byte2) {
+        return result;
+    }
+    
+    /* Read message ID */
+    uint8_t msg_id = buffer[idx];
+    
+    /* Get message length from callback */
+    size_t msg_len = 0;
+    if (!get_msg_length || !get_msg_length(msg_id, &msg_len)) {
+        return result;
+    }
+    
+    size_t total_size = config->header_size + msg_len;
+    if (length < total_size) {
+        return result;
+    }
+    
+    result.valid = true;
+    result.msg_id = msg_id;
+    result.msg_len = msg_len;
+    result.msg_data = (uint8_t*)(buffer + config->header_size);
+    
+    return result;
+}
+
+/*===========================================================================
+ * Profile Configurations
+ *===========================================================================*/
+
+/* Profile Standard: Basic + Default */
+static const frame_format_config_t PROFILE_STANDARD_CONFIG = {
+    .header_type = HEADER_BASIC,
+    .payload_type = PAYLOAD_DEFAULT,
+    .num_start_bytes = 2,
+    .start_byte1 = BASIC_START_BYTE,
+    .start_byte2 = PAYLOAD_TYPE_BASE + PAYLOAD_DEFAULT,
+    .header_size = 4,   /* start1 + start2 + len + msg_id */
+    .footer_size = 2,   /* CRC */
+    .has_length = true,
+    .length_bytes = 1,
+    .has_crc = true,
+    .has_pkg_id = false,
+    .has_seq = false,
+    .has_sys_id = false,
+    .has_comp_id = false
+};
+
+/* Profile Sensor: Tiny + Minimal */
+static const frame_format_config_t PROFILE_SENSOR_CONFIG = {
+    .header_type = HEADER_TINY,
+    .payload_type = PAYLOAD_MINIMAL,
+    .num_start_bytes = 1,
+    .start_byte1 = PAYLOAD_TYPE_BASE + PAYLOAD_MINIMAL,
+    .start_byte2 = 0,
+    .header_size = 2,   /* start + msg_id */
+    .footer_size = 0,
+    .has_length = false,
+    .length_bytes = 0,
+    .has_crc = false,
+    .has_pkg_id = false,
+    .has_seq = false,
+    .has_sys_id = false,
+    .has_comp_id = false
+};
+
+/* Profile IPC: None + Minimal */
+static const frame_format_config_t PROFILE_IPC_CONFIG = {
+    .header_type = HEADER_NONE,
+    .payload_type = PAYLOAD_MINIMAL,
+    .num_start_bytes = 0,
+    .start_byte1 = 0,
+    .start_byte2 = 0,
+    .header_size = 1,   /* msg_id only */
+    .footer_size = 0,
+    .has_length = false,
+    .length_bytes = 0,
+    .has_crc = false,
+    .has_pkg_id = false,
+    .has_seq = false,
+    .has_sys_id = false,
+    .has_comp_id = false
+};
+
+/* Profile Bulk: Basic + Extended */
+static const frame_format_config_t PROFILE_BULK_CONFIG = {
+    .header_type = HEADER_BASIC,
+    .payload_type = PAYLOAD_EXTENDED,
+    .num_start_bytes = 2,
+    .start_byte1 = BASIC_START_BYTE,
+    .start_byte2 = PAYLOAD_TYPE_BASE + PAYLOAD_EXTENDED,
+    .header_size = 6,   /* start1 + start2 + len16 + pkg_id + msg_id */
+    .footer_size = 2,   /* CRC */
+    .has_length = true,
+    .length_bytes = 2,
+    .has_crc = true,
+    .has_pkg_id = true,
+    .has_seq = false,
+    .has_sys_id = false,
+    .has_comp_id = false
+};
+
+/* Profile Network: Basic + ExtendedMultiSystemStream */
+static const frame_format_config_t PROFILE_NETWORK_CONFIG = {
+    .header_type = HEADER_BASIC,
+    .payload_type = PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM,
+    .num_start_bytes = 2,
+    .start_byte1 = BASIC_START_BYTE,
+    .start_byte2 = PAYLOAD_TYPE_BASE + PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM,
+    .header_size = 9,   /* start1 + start2 + seq + sys + comp + len16 + pkg_id + msg_id */
+    .footer_size = 2,   /* CRC */
+    .has_length = true,
+    .length_bytes = 2,
+    .has_crc = true,
+    .has_pkg_id = true,
+    .has_seq = true,
+    .has_sys_id = true,
+    .has_comp_id = true
+};
+
+/*===========================================================================
+ * Profile-Specific Convenience Functions
+ * These are thin wrappers around the generic functions with profile configs.
+ *===========================================================================*/
+
+/* Profile Standard (Basic + Default) */
 static inline size_t encode_profile_standard(uint8_t* buffer, size_t buffer_size,
                                              uint8_t msg_id,
                                              const uint8_t* payload, size_t payload_size) {
-    size_t total_size = PROFILE_STANDARD_OVERHEAD + payload_size;
-    
-    if (buffer_size < total_size || payload_size > 255) {
-        return 0;
-    }
-    
-    buffer[0] = PROFILE_STANDARD_START_BYTE1;
-    buffer[1] = PROFILE_STANDARD_START_BYTE2;
-    buffer[2] = (uint8_t)payload_size;
-    buffer[3] = msg_id;
-    
-    if (payload_size > 0 && payload != NULL) {
-        memcpy(buffer + PROFILE_STANDARD_HEADER_SIZE, payload, payload_size);
-    }
-    
-    /* CRC covers: [LEN] [MSG_ID] [PAYLOAD] */
-    frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, payload_size + 2);
-    buffer[total_size - 2] = ck.byte1;
-    buffer[total_size - 1] = ck.byte2;
-    
-    return total_size;
+    return frame_format_encode_with_crc(&PROFILE_STANDARD_CONFIG, buffer, buffer_size,
+                                        0, 0, 0, 0, msg_id, payload, payload_size);
 }
 
-/**
- * Parse/validate a complete Profile Standard frame from a buffer.
- * 
- * @param buffer Input buffer containing the frame
- * @param length Length of data in buffer
- * @return frame_msg_info_t with valid=true if frame is valid
- */
 static inline frame_msg_info_t parse_profile_standard_buffer(const uint8_t* buffer, size_t length) {
-    frame_msg_info_t result = {false, 0, 0, NULL};
-    
-    if (length < PROFILE_STANDARD_OVERHEAD) {
-        return result;
-    }
-    
-    if (buffer[0] != PROFILE_STANDARD_START_BYTE1 || buffer[1] != PROFILE_STANDARD_START_BYTE2) {
-        return result;
-    }
-    
-    size_t msg_len = buffer[2];
-    size_t total_size = PROFILE_STANDARD_OVERHEAD + msg_len;
-    
-    if (length < total_size) {
-        return result;
-    }
-    
-    /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
-    frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 2);
-    if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
-        return result;
-    }
-    
-    result.valid = true;
-    result.msg_id = buffer[3];
-    result.msg_len = msg_len;
-    result.msg_data = (uint8_t*)(buffer + PROFILE_STANDARD_HEADER_SIZE);
-    
-    return result;
+    return frame_format_parse_with_crc(&PROFILE_STANDARD_CONFIG, buffer, length);
 }
 
-
-/*===========================================================================
- * Profile Sensor: Tiny + Minimal
- * Frame: [0x70] [MSG_ID] [PAYLOAD]
- * Overhead: 2 bytes. No length field or CRC. Requires known message sizes.
- *===========================================================================*/
-
-#define PROFILE_SENSOR_START_BYTE       0x70
-#define PROFILE_SENSOR_HEADER_SIZE      2  /* start + msg_id */
-#define PROFILE_SENSOR_FOOTER_SIZE      0
-#define PROFILE_SENSOR_OVERHEAD         (PROFILE_SENSOR_HEADER_SIZE + PROFILE_SENSOR_FOOTER_SIZE)
-
-/**
- * Encode a message using Profile Sensor (Tiny + Minimal) format.
- * 
- * @param buffer Output buffer to write the encoded frame
- * @param buffer_size Size of the output buffer
- * @param msg_id Message ID
- * @param payload Pointer to payload data
- * @param payload_size Size of payload in bytes
- * @return Number of bytes written, or 0 on failure
- */
+/* Profile Sensor (Tiny + Minimal) */
 static inline size_t encode_profile_sensor(uint8_t* buffer, size_t buffer_size,
                                            uint8_t msg_id,
                                            const uint8_t* payload, size_t payload_size) {
-    size_t total_size = PROFILE_SENSOR_OVERHEAD + payload_size;
-    
-    if (buffer_size < total_size) {
-        return 0;
-    }
-    
-    buffer[0] = PROFILE_SENSOR_START_BYTE;
-    buffer[1] = msg_id;
-    
-    if (payload_size > 0 && payload != NULL) {
-        memcpy(buffer + PROFILE_SENSOR_HEADER_SIZE, payload, payload_size);
-    }
-    
-    return total_size;
+    return frame_format_encode_minimal(&PROFILE_SENSOR_CONFIG, buffer, buffer_size,
+                                       msg_id, payload, payload_size);
 }
 
-/**
- * Parse/validate a Profile Sensor frame from a buffer.
- * Requires the caller to provide the expected message size (no length field in frame).
- * 
- * @param buffer Input buffer containing the frame
- * @param length Length of data in buffer
- * @param get_msg_length Callback to get expected message length from msg_id.
- *        Uses size_t for msg_id to match generated get_message_length() signature.
- * @return frame_msg_info_t with valid=true if frame is valid
- */
 static inline frame_msg_info_t parse_profile_sensor_buffer(const uint8_t* buffer, size_t length,
                                                            bool (*get_msg_length)(size_t msg_id, size_t* len)) {
-    frame_msg_info_t result = {false, 0, 0, NULL};
-    
-    if (length < PROFILE_SENSOR_OVERHEAD) {
-        return result;
-    }
-    
-    if (buffer[0] != PROFILE_SENSOR_START_BYTE) {
-        return result;
-    }
-    
-    uint8_t msg_id = buffer[1];
-    size_t msg_len = 0;
-    
-    if (!get_msg_length || !get_msg_length(msg_id, &msg_len)) {
-        return result;
-    }
-    
-    size_t total_size = PROFILE_SENSOR_OVERHEAD + msg_len;
-    if (length < total_size) {
-        return result;
-    }
-    
-    result.valid = true;
-    result.msg_id = msg_id;
-    result.msg_len = msg_len;
-    result.msg_data = (uint8_t*)(buffer + PROFILE_SENSOR_HEADER_SIZE);
-    
-    return result;
+    return frame_format_parse_minimal(&PROFILE_SENSOR_CONFIG, buffer, length, get_msg_length);
 }
 
-
-/*===========================================================================
- * Profile IPC: None + Minimal
- * Frame: [MSG_ID] [PAYLOAD]
- * Overhead: 1 byte. No start bytes, no CRC. Relies on external synchronization.
- *===========================================================================*/
-
-#define PROFILE_IPC_HEADER_SIZE         1  /* msg_id only */
-#define PROFILE_IPC_FOOTER_SIZE         0
-#define PROFILE_IPC_OVERHEAD            (PROFILE_IPC_HEADER_SIZE + PROFILE_IPC_FOOTER_SIZE)
-
-/**
- * Encode a message using Profile IPC (None + Minimal) format.
- * 
- * @param buffer Output buffer to write the encoded frame
- * @param buffer_size Size of the output buffer
- * @param msg_id Message ID
- * @param payload Pointer to payload data
- * @param payload_size Size of payload in bytes
- * @return Number of bytes written, or 0 on failure
- */
+/* Profile IPC (None + Minimal) */
 static inline size_t encode_profile_ipc(uint8_t* buffer, size_t buffer_size,
                                         uint8_t msg_id,
                                         const uint8_t* payload, size_t payload_size) {
-    size_t total_size = PROFILE_IPC_OVERHEAD + payload_size;
-    
-    if (buffer_size < total_size) {
-        return 0;
-    }
-    
-    buffer[0] = msg_id;
-    
-    if (payload_size > 0 && payload != NULL) {
-        memcpy(buffer + PROFILE_IPC_HEADER_SIZE, payload, payload_size);
-    }
-    
-    return total_size;
+    return frame_format_encode_minimal(&PROFILE_IPC_CONFIG, buffer, buffer_size,
+                                       msg_id, payload, payload_size);
 }
 
-/**
- * Parse/validate a Profile IPC frame from a buffer.
- * Requires the caller to provide the expected message size (no length field in frame).
- * 
- * @param buffer Input buffer containing the frame
- * @param length Length of data in buffer
- * @param get_msg_length Callback to get expected message length from msg_id.
- *        Uses size_t for msg_id to match generated get_message_length() signature.
- * @return frame_msg_info_t with valid=true if frame is valid
- */
 static inline frame_msg_info_t parse_profile_ipc_buffer(const uint8_t* buffer, size_t length,
                                                         bool (*get_msg_length)(size_t msg_id, size_t* len)) {
-    frame_msg_info_t result = {false, 0, 0, NULL};
-    
-    if (length < PROFILE_IPC_OVERHEAD) {
-        return result;
-    }
-    
-    uint8_t msg_id = buffer[0];
-    size_t msg_len = 0;
-    
-    if (!get_msg_length || !get_msg_length(msg_id, &msg_len)) {
-        return result;
-    }
-    
-    size_t total_size = PROFILE_IPC_OVERHEAD + msg_len;
-    if (length < total_size) {
-        return result;
-    }
-    
-    result.valid = true;
-    result.msg_id = msg_id;
-    result.msg_len = msg_len;
-    result.msg_data = (uint8_t*)(buffer + PROFILE_IPC_HEADER_SIZE);
-    
-    return result;
+    return frame_format_parse_minimal(&PROFILE_IPC_CONFIG, buffer, length, get_msg_length);
 }
 
-
-/*===========================================================================
- * Profile Bulk: Basic + Extended
- * Frame: [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
- * Overhead: 8 bytes. Max payload: 64KB. Supports package namespaces.
- *===========================================================================*/
-
-#define PROFILE_BULK_START_BYTE1        0x90
-#define PROFILE_BULK_START_BYTE2        0x74
-#define PROFILE_BULK_HEADER_SIZE        6  /* start1 + start2 + len16 + pkg_id + msg_id */
-#define PROFILE_BULK_FOOTER_SIZE        2  /* CRC */
-#define PROFILE_BULK_OVERHEAD           (PROFILE_BULK_HEADER_SIZE + PROFILE_BULK_FOOTER_SIZE)
-
-/**
- * Encode a message using Profile Bulk (Basic + Extended) format.
- * 
- * @param buffer Output buffer to write the encoded frame
- * @param buffer_size Size of the output buffer
- * @param pkg_id Package ID (0-255)
- * @param msg_id Message ID
- * @param payload Pointer to payload data
- * @param payload_size Size of payload in bytes (max 65535)
- * @return Number of bytes written, or 0 on failure
- */
+/* Profile Bulk (Basic + Extended) */
 static inline size_t encode_profile_bulk(uint8_t* buffer, size_t buffer_size,
                                          uint8_t pkg_id, uint8_t msg_id,
                                          const uint8_t* payload, size_t payload_size) {
-    size_t total_size = PROFILE_BULK_OVERHEAD + payload_size;
-    
-    if (buffer_size < total_size || payload_size > 65535) {
-        return 0;
-    }
-    
-    buffer[0] = PROFILE_BULK_START_BYTE1;
-    buffer[1] = PROFILE_BULK_START_BYTE2;
-    buffer[2] = (uint8_t)(payload_size & 0xFF);
-    buffer[3] = (uint8_t)((payload_size >> 8) & 0xFF);
-    buffer[4] = pkg_id;
-    buffer[5] = msg_id;
-    
-    if (payload_size > 0 && payload != NULL) {
-        memcpy(buffer + PROFILE_BULK_HEADER_SIZE, payload, payload_size);
-    }
-    
-    /* CRC covers: [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
-    frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, payload_size + 4);
-    buffer[total_size - 2] = ck.byte1;
-    buffer[total_size - 1] = ck.byte2;
-    
-    return total_size;
+    return frame_format_encode_with_crc(&PROFILE_BULK_CONFIG, buffer, buffer_size,
+                                        0, 0, 0, pkg_id, msg_id, payload, payload_size);
 }
 
-/**
- * Parse/validate a complete Profile Bulk frame from a buffer.
- * 
- * @param buffer Input buffer containing the frame
- * @param length Length of data in buffer
- * @return frame_msg_info_t with valid=true if frame is valid
- */
 static inline frame_msg_info_t parse_profile_bulk_buffer(const uint8_t* buffer, size_t length) {
-    frame_msg_info_t result = {false, 0, 0, NULL};
-    
-    if (length < PROFILE_BULK_OVERHEAD) {
-        return result;
-    }
-    
-    if (buffer[0] != PROFILE_BULK_START_BYTE1 || buffer[1] != PROFILE_BULK_START_BYTE2) {
-        return result;
-    }
-    
-    size_t msg_len = buffer[2] | ((size_t)buffer[3] << 8);
-    size_t total_size = PROFILE_BULK_OVERHEAD + msg_len;
-    
-    if (length < total_size) {
-        return result;
-    }
-    
-    /* Verify CRC: covers [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
-    frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 4);
-    if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
-        return result;
-    }
-    
-    result.valid = true;
-    result.msg_id = buffer[5];
-    result.msg_len = msg_len;
-    result.msg_data = (uint8_t*)(buffer + PROFILE_BULK_HEADER_SIZE);
-    
-    return result;
+    return frame_format_parse_with_crc(&PROFILE_BULK_CONFIG, buffer, length);
 }
 
-
-/*===========================================================================
- * Profile Network: Basic + ExtendedMultiSystemStream
- * Frame: [0x90] [0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
- * Overhead: 11 bytes. Max payload: 64KB. Full routing and sequencing support.
- *===========================================================================*/
-
-#define PROFILE_NETWORK_START_BYTE1     0x90
-#define PROFILE_NETWORK_START_BYTE2     0x78
-#define PROFILE_NETWORK_HEADER_SIZE     9  /* start1 + start2 + seq + sys + comp + len16 + pkg_id + msg_id */
-#define PROFILE_NETWORK_FOOTER_SIZE     2  /* CRC */
-#define PROFILE_NETWORK_OVERHEAD        (PROFILE_NETWORK_HEADER_SIZE + PROFILE_NETWORK_FOOTER_SIZE)
-
-/**
- * Encode a message using Profile Network (Basic + ExtendedMultiSystemStream) format.
- * 
- * @param buffer Output buffer to write the encoded frame
- * @param buffer_size Size of the output buffer
- * @param sequence Sequence number (0-255)
- * @param system_id System ID (0-255)
- * @param component_id Component ID (0-255)
- * @param pkg_id Package ID (0-255)
- * @param msg_id Message ID
- * @param payload Pointer to payload data
- * @param payload_size Size of payload in bytes (max 65535)
- * @return Number of bytes written, or 0 on failure
- */
+/* Profile Network (Basic + ExtendedMultiSystemStream) */
 static inline size_t encode_profile_network(uint8_t* buffer, size_t buffer_size,
                                             uint8_t sequence, uint8_t system_id,
                                             uint8_t component_id, uint8_t pkg_id,
                                             uint8_t msg_id,
                                             const uint8_t* payload, size_t payload_size) {
-    size_t total_size = PROFILE_NETWORK_OVERHEAD + payload_size;
-    
-    if (buffer_size < total_size || payload_size > 65535) {
-        return 0;
-    }
-    
-    buffer[0] = PROFILE_NETWORK_START_BYTE1;
-    buffer[1] = PROFILE_NETWORK_START_BYTE2;
-    buffer[2] = sequence;
-    buffer[3] = system_id;
-    buffer[4] = component_id;
-    buffer[5] = (uint8_t)(payload_size & 0xFF);
-    buffer[6] = (uint8_t)((payload_size >> 8) & 0xFF);
-    buffer[7] = pkg_id;
-    buffer[8] = msg_id;
-    
-    if (payload_size > 0 && payload != NULL) {
-        memcpy(buffer + PROFILE_NETWORK_HEADER_SIZE, payload, payload_size);
-    }
-    
-    /* CRC covers: [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
-    frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, payload_size + 7);
-    buffer[total_size - 2] = ck.byte1;
-    buffer[total_size - 1] = ck.byte2;
-    
-    return total_size;
+    return frame_format_encode_with_crc(&PROFILE_NETWORK_CONFIG, buffer, buffer_size,
+                                        sequence, system_id, component_id, pkg_id, msg_id,
+                                        payload, payload_size);
 }
 
-/**
- * Parse/validate a complete Profile Network frame from a buffer.
- * 
- * @param buffer Input buffer containing the frame
- * @param length Length of data in buffer
- * @return frame_msg_info_t with valid=true if frame is valid
- */
 static inline frame_msg_info_t parse_profile_network_buffer(const uint8_t* buffer, size_t length) {
-    frame_msg_info_t result = {false, 0, 0, NULL};
-    
-    if (length < PROFILE_NETWORK_OVERHEAD) {
-        return result;
-    }
-    
-    if (buffer[0] != PROFILE_NETWORK_START_BYTE1 || buffer[1] != PROFILE_NETWORK_START_BYTE2) {
-        return result;
-    }
-    
-    size_t msg_len = buffer[5] | ((size_t)buffer[6] << 8);
-    size_t total_size = PROFILE_NETWORK_OVERHEAD + msg_len;
-    
-    if (length < total_size) {
-        return result;
-    }
-    
-    /* Verify CRC: covers [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] */
-    frame_checksum_t ck = frame_fletcher_checksum(buffer + 2, msg_len + 7);
-    if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
-        return result;
-    }
-    
-    result.valid = true;
-    result.msg_id = buffer[8];
-    result.msg_len = msg_len;
-    result.msg_data = (uint8_t*)(buffer + PROFILE_NETWORK_HEADER_SIZE);
-    
-    return result;
+    return frame_format_parse_with_crc(&PROFILE_NETWORK_CONFIG, buffer, length);
 }
