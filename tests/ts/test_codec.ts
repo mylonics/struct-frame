@@ -17,8 +17,9 @@ export interface TestMessage {
 // Load test messages from JSON
 export function loadTestMessages(): TestMessage[] {
   const possiblePaths = [
-    path.join(__dirname, '..', 'test_messages.json'),
+    path.join(__dirname, '..', '..', '..', 'test_messages.json'),
     path.join(__dirname, '..', '..', 'test_messages.json'),
+    path.join(__dirname, '..', 'test_messages.json'),
     'test_messages.json',
     '../test_messages.json',
   ];
@@ -41,8 +42,9 @@ export function loadTestMessages(): TestMessage[] {
 // Load mixed messages from JSON following MixedMessages sequence
 export function loadMixedMessages(): any[] {
   const possiblePaths = [
-    path.join(__dirname, '..', 'test_messages.json'),
+    path.join(__dirname, '..', '..', '..', 'test_messages.json'),
     path.join(__dirname, '..', '..', 'test_messages.json'),
+    path.join(__dirname, '..', 'test_messages.json'),
     'test_messages.json',
     '../test_messages.json',
   ];
