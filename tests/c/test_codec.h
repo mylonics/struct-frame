@@ -15,6 +15,24 @@
 #define MAX_STRING_LENGTH 100
 #define MAX_ARRAY_LENGTH 20
 
+// Message type enum
+typedef enum {
+  MSG_TYPE_SERIALIZATION_TEST = 0,
+  MSG_TYPE_BASIC_TYPES = 1
+} message_type_t;
+
+// Union to hold either message type
+typedef union {
+  SerializationTestSerializationTestMessage serialization_test;
+  SerializationTestBasicTypesMessage basic_types;
+} message_data_t;
+
+// Wrapper structure for mixed message types
+typedef struct {
+  message_type_t type;
+  message_data_t data;
+} mixed_message_t;
+
 typedef struct {
   uint32_t magic_number;
   char test_string[MAX_STRING_LENGTH];
@@ -25,7 +43,15 @@ typedef struct {
 } test_message_t;
 
 /**
- * Load test messages from test_messages.json
+ * Load mixed test messages from test_messages.json
+ * @param messages Output array of mixed messages
+ * @param max_count Maximum number of messages to load
+ * @return Number of messages loaded
+ */
+size_t load_mixed_messages(mixed_message_t* messages, size_t max_count);
+
+/**
+ * Load test messages from test_messages.json (legacy)
  * @param messages Output array of test messages
  * @param max_count Maximum number of messages to load
  * @return Number of messages loaded

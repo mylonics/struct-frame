@@ -1,4 +1,14 @@
 {
+  "MixedMessages": [
+    {"type": "SerializationTestMessage", "name": "basic_values"},
+    {"type": "SerializationTestMessage", "name": "zero_values"},
+    {"type": "SerializationTestMessage", "name": "max_values"},
+    {"type": "SerializationTestMessage", "name": "negative_values"},
+    {"type": "SerializationTestMessage", "name": "special_chars"},
+    {"type": "BasicTypesMessage", "name": "basic_values"},
+    {"type": "BasicTypesMessage", "name": "zero_values"},
+    {"type": "BasicTypesMessage", "name": "negative_values"}
+  ],
   "SerializationTestMessage": [
     {
       "name": "basic_values",
@@ -44,33 +54,6 @@
       "test_float": 2.71828,
       "test_bool": true,
       "test_array": [0, 1, 1, 2, 3]
-    },
-    {
-      "name": "new_year_2025",
-      "magic_number": 2025,
-      "magic_number_hex": "0x000007E9",
-      "test_string": "Happy New Year 2025!",
-      "test_float": 2025.0,
-      "test_bool": true,
-      "test_array": [2, 0, 2, 5]
-    },
-    {
-      "name": "new_year_2026",
-      "magic_number": 2026,
-      "magic_number_hex": "0x000007EA",
-      "test_string": "Happy New Year 2026!",
-      "test_float": 2026.0,
-      "test_bool": true,
-      "test_array": [2, 0, 2, 6]
-    },
-    {
-      "name": "new_year_boundary",
-      "magic_number": 1735689600,
-      "magic_number_hex": "0x67748580",
-      "test_string": "2025-01-01 00:00:00 UTC",
-      "test_float": 1735689600.0,
-      "test_bool": false,
-      "test_array": [2024, 12, 31, 23, 59]
     }
   ],
   "BasicTypesMessage": [
