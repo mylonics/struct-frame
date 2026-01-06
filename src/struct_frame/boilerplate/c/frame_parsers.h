@@ -29,3 +29,6 @@
 
 /* Frame format configuration */
 #include "frame_format_config.h"
+
+/* Frame profiles - Pre-defined Header + Payload combinations */
+#include "frame_profiles.h"

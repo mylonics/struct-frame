@@ -145,6 +145,153 @@ The framing system uses a two-level architecture:
    - The second start byte of Basic (or the single start byte of Tiny) encodes the payload type
    - Payload type value is added to 0x70 base to get the start byte
 
+---
+
+## Using Profile Encode/Parse Functions
+
+Each language provides ready-to-use encode and parse functions for all 5 standard profiles. These functions are thin wrappers around a generic implementation, maximizing code reuse.
+
+### C Example
+
+```c
+#include "frame_profiles.h"
+
+// Encode using Profile Standard
+uint8_t buffer[256];
+uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
+size_t len = encode_profile_standard(buffer, sizeof(buffer), 
+                                     42,           // msg_id
+                                     payload, 4);  // payload, size
+
+// Parse Profile Standard
+frame_msg_info_t info = parse_profile_standard_buffer(buffer, len);
+if (info.valid) {
+    printf("Received msg_id=%d, len=%zu\n", info.msg_id, info.msg_len);
+}
+
+// Encode using Profile Bulk (with package ID)
+len = encode_profile_bulk(buffer, sizeof(buffer),
+                          1,             // pkg_id
+                          42,            // msg_id
+                          payload, 4);   // payload, size
+
+// Encode using Profile Network (with routing)
+len = encode_profile_network(buffer, sizeof(buffer),
+                             0,           // sequence
+                             1,           // system_id
+                             2,           // component_id
+                             3,           // pkg_id
+                             42,          // msg_id
+                             payload, 4); // payload, size
+```
+
+### C++ Example
+
+```cpp
+#include "FrameProfiles.hpp"
+using namespace FrameParsers;
+
+// Encode using Profile Standard
+uint8_t buffer[256];
+uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
+size_t len = encode_profile_standard(buffer, sizeof(buffer), 42, payload, 4);
+
+// Parse Profile Standard
+FrameMsgInfo info = parse_profile_standard_buffer(buffer, len);
+if (info.valid) {
+    std::cout << "Received msg_id=" << (int)info.msg_id << std::endl;
+}
+
+// Using template-based API for custom configurations
+using MyConfig = FrameFormatConfig<2, 0x90, 0x71, 4, 2, true, 1, true, false, false, false, false>;
+size_t len2 = FrameEncoderWithCrc<MyConfig>::encode(buffer, sizeof(buffer), 
+                                                     0, 0, 0, 0, 42, payload, 4);
+```
+
+### Python Example
+
+```python
+from struct_frame.boilerplate.py import (
+    encode_profile_standard, parse_profile_standard_buffer,
+    encode_profile_bulk, parse_profile_bulk_buffer,
+    encode_profile_network, parse_profile_network_buffer,
+    # For custom configurations
+    FrameFormatConfig, encode_frame, parse_frame_buffer, create_custom_config
+)
+
+# Encode using Profile Standard
+payload = bytes([0x01, 0x02, 0x03, 0x04])
+frame = encode_profile_standard(msg_id=42, payload=payload)
+
+# Parse Profile Standard
+result = parse_profile_standard_buffer(frame)
+if result.valid:
+    print(f"Received msg_id={result.msg_id}, len={result.msg_len}")
+
+# Encode using Profile Bulk (with package ID)
+frame = encode_profile_bulk(msg_id=42, payload=payload, pkg_id=1)
+
+# Encode using Profile Network (with routing)
+frame = encode_profile_network(
+    msg_id=42, payload=payload,
+    seq=0, sys_id=1, comp_id=2, pkg_id=3
+)
+
+# Create a custom configuration
+custom = create_custom_config(
+    name="MyCustomFormat",
+    header_type=HeaderType.BASIC,
+    payload_type=PayloadType.DEFAULT,
+    has_length=True, length_bytes=1,
+    has_crc=True, has_pkg_id=False
+)
+frame = encode_frame(custom, msg_id=42, payload=payload)
+```
+
+### C# Example
+
+```csharp
+using StructFrame;
+
+// Create parsers for each profile
+var standardParser = FrameProfiles.CreateStandardParser();
+var bulkParser = FrameProfiles.CreateBulkParser();
+var networkParser = FrameProfiles.CreateNetworkParser();
+
+// Encode using Profile Standard
+byte[] payload = new byte[] { 0x01, 0x02, 0x03, 0x04 };
+byte[] frame = standardParser.Encode(msgId: 42, payload: payload);
+
+// Parse Profile Standard
+var result = standardParser.ValidateBuffer(frame);
+if (result.Valid)
+{
+    Console.WriteLine($"Received msg_id={result.MsgId}, len={result.MsgSize}");
+}
+
+// Encode using Profile Bulk (with package ID)
+frame = bulkParser.Encode(msgId: 42, payload: payload, pkgId: 1);
+
+// Encode using Profile Network (with routing)
+frame = networkParser.Encode(
+    msgId: 42, payload: payload,
+    seq: 0, sysId: 1, compId: 2, pkgId: 3
+);
+
+// Create a custom configuration
+var customConfig = FrameProfiles.CreateCustomConfig(
+    name: "MyCustomFormat",
+    numStartBytes: 2,
+    startByte1: 0x90,
+    startByte2: 0x71,
+    hasLength: true, lengthBytes: 1,
+    hasCrc: true, hasPkgId: false
+);
+var customParser = new FrameProfileParser(customConfig);
+```
+
+---
+
 ## Frame Format Definitions
 
 All supported frame formats are defined in [`examples/frame_formats.proto`](https://github.com/mylonics/struct-frame/blob/main/examples/frame_formats.proto). This file provides:
