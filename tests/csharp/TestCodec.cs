@@ -85,56 +85,9 @@ namespace StructFrameTests
                 }
             }
 
-            // Fallback to hardcoded values if JSON file not found
-            System.Console.WriteLine("Warning: Could not load test_messages.json, using hardcoded values");
-            return new TestMessage[]
-            {
-                // basic_values
-                new TestMessage
-                {
-                    MagicNumber = 3735928559,  // 0xDEADBEEF
-                    TestString = "Cross-platform test!",
-                    TestFloat = 3.14159f,
-                    TestBool = true,
-                    TestArray = new int[] { 100, 200, 300 }
-                },
-                // zero_values
-                new TestMessage
-                {
-                    MagicNumber = 0,
-                    TestString = "",
-                    TestFloat = 0.0f,
-                    TestBool = false,
-                    TestArray = new int[] { }
-                },
-                // max_values
-                new TestMessage
-                {
-                    MagicNumber = 4294967295,  // 0xFFFFFFFF
-                    TestString = "Maximum length test string for coverage!",
-                    TestFloat = 999999.9f,
-                    TestBool = true,
-                    TestArray = new int[] { 2147483647, -2147483648, 0, 1, -1 }
-                },
-                // negative_values
-                new TestMessage
-                {
-                    MagicNumber = 2863311530,  // 0xAAAAAAAA
-                    TestString = "Negative test",
-                    TestFloat = -273.15f,
-                    TestBool = false,
-                    TestArray = new int[] { -100, -200, -300, -400 }
-                },
-                // special_chars
-                new TestMessage
-                {
-                    MagicNumber = 1234567890,  // 0x499602D2
-                    TestString = "Special: !@#$%^&*()",
-                    TestFloat = 2.71828f,
-                    TestBool = true,
-                    TestArray = new int[] { 0, 1, 1, 2, 3 }
-                }
-            };
+            // If we couldn't load from JSON, return empty array to indicate failure
+            System.Console.WriteLine("Error: Could not load test_messages.json");
+            return new TestMessage[] { };
         }
 
         private static TestMessage[] ParseTestMessagesJson(string jsonContent)

@@ -34,12 +34,18 @@ function loadTestMessages() {
 const TEST_MESSAGES = loadTestMessages();
 
 // Expected test values (from test_messages.json) - first message for backwards compatibility
-const EXPECTED_VALUES = {
-  magic_number: 3735928559,  // 0xDEADBEEF
-  test_string: 'Cross-platform test!',
-  test_float: 3.14159,
-  test_bool: true,
-  test_array: [100, 200, 300],
+const EXPECTED_VALUES = TEST_MESSAGES.length > 0 ? {
+  magic_number: TEST_MESSAGES[0].magic_number,
+  test_string: TEST_MESSAGES[0].test_string,
+  test_float: TEST_MESSAGES[0].test_float,
+  test_bool: TEST_MESSAGES[0].test_bool,
+  test_array: TEST_MESSAGES[0].test_array,
+} : {
+  magic_number: 0,
+  test_string: '',
+  test_float: 0.0,
+  test_bool: false,
+  test_array: [],
 };
 
 // Import frame base functions

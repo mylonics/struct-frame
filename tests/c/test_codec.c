@@ -449,61 +449,9 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
     }
   }
   
-  /* Fallback to hardcoded values if JSON file not found */
-  fprintf(stderr, "Warning: Could not load test_messages.json, using hardcoded values\n");
-  const test_message_t test_data[] = {
-    /* basic_values */
-    {
-      .magic_number = 3735928559,  /* 0xDEADBEEF */
-      .test_string = "Cross-platform test!",
-      .test_float = 3.14159f,
-      .test_bool = true,
-      .test_array = {100, 200, 300},
-      .test_array_count = 3
-    },
-    /* zero_values */
-    {
-      .magic_number = 0,
-      .test_string = "",
-      .test_float = 0.0f,
-      .test_bool = false,
-      .test_array = {0},
-      .test_array_count = 0
-    },
-    /* max_values */
-    {
-      .magic_number = 4294967295,  /* 0xFFFFFFFF */
-      .test_string = "Maximum length test string for coverage!",
-      .test_float = 999999.9f,
-      .test_bool = true,
-      .test_array = {2147483647, -2147483648, 0, 1, -1},
-      .test_array_count = 5
-    },
-    /* negative_values */
-    {
-      .magic_number = 2863311530,  /* 0xAAAAAAAA */
-      .test_string = "Negative test",
-      .test_float = -273.15f,
-      .test_bool = false,
-      .test_array = {-100, -200, -300, -400},
-      .test_array_count = 4
-    },
-    /* special_chars */
-    {
-      .magic_number = 1234567890,  /* 0x499602D2 */
-      .test_string = "Special: !@#$%^&*()",
-      .test_float = 2.71828f,
-      .test_bool = true,
-      .test_array = {0, 1, 1, 2, 3},
-      .test_array_count = 5
-    }
-  };
-  
-  const size_t num_test_messages = sizeof(test_data) / sizeof(test_data[0]);
-  const size_t count = num_test_messages < max_count ? num_test_messages : max_count;
-  
-  memcpy(messages, test_data, count * sizeof(test_message_t));
-  return count;
+  /* If we couldn't load from JSON, return 0 to indicate failure */
+  fprintf(stderr, "Error: Could not load test_messages.json\n");
+  return 0;
 }
 
 void create_message_from_data(const test_message_t* test_msg, SerializationTestSerializationTestMessage* msg) {

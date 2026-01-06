@@ -88,12 +88,14 @@ def validate_message(msg, test_msg):
 
 
 # Backwards compatibility - keep old function names
-EXPECTED_VALUES = {
-    'magic_number': 3735928559,  # 0xDEADBEEF
-    'test_string': 'Cross-platform test!',
-    'test_float': 3.14159,
-    'test_bool': True,
-    'test_array': [100, 200, 300],
+# EXPECTED_VALUES is derived from the first message in the JSON
+_loaded_messages = load_test_messages()
+EXPECTED_VALUES = _loaded_messages[0] if _loaded_messages else {
+    'magic_number': 0,
+    'test_string': '',
+    'test_float': 0.0,
+    'test_bool': False,
+    'test_array': [],
 }
 
 

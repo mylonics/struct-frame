@@ -430,52 +430,9 @@ std::vector<TestMessage> load_test_messages() {
     }
   }
   
-  // Fallback to hardcoded values if JSON file not found
-  std::cerr << "Warning: Could not load test_messages.json, using hardcoded values\n";
-  std::vector<TestMessage> messages = {
-    /* basic_values */
-    TestMessage{
-      3735928559,  /* 0xDEADBEEF */
-      "Cross-platform test!",
-      3.14159f,
-      true,
-      {100, 200, 300}
-    },
-    /* zero_values */
-    TestMessage{
-      0,
-      "",
-      0.0f,
-      false,
-      {}
-    },
-    /* max_values */
-    TestMessage{
-      4294967295,  /* 0xFFFFFFFF */
-      "Maximum length test string for coverage!",
-      999999.9f,
-      true,
-      {2147483647, -2147483648, 0, 1, -1}
-    },
-    /* negative_values */
-    TestMessage{
-      2863311530,  /* 0xAAAAAAAA */
-      "Negative test",
-      -273.15f,
-      false,
-      {-100, -200, -300, -400}
-    },
-    /* special_chars */
-    TestMessage{
-      1234567890,  /* 0x499602D2 */
-      "Special: !@#$%^&*()",
-      2.71828f,
-      true,
-      {0, 1, 1, 2, 3}
-    }
-  };
-  
-  return messages;
+  /* If we couldn't load from JSON, return empty vector to indicate failure */
+  std::cerr << "Error: Could not load test_messages.json\n";
+  return std::vector<TestMessage>();
 }
 void create_message_from_data(const TestMessage& test_msg, SerializationTestSerializationTestMessage& msg) {
   std::memset(&msg, 0, sizeof(msg));
