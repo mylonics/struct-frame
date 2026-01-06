@@ -81,7 +81,7 @@ class FieldCppGen():
                 # When using namespaces, don't prefix type names
                 base_type = type_name
             else:
-                # Legacy mode: prefix with package name
+                # Flat namespace mode: prefix with package name
                 if field.isEnum:
                     base_type = '%s%s' % (pascalCase(field.package), type_name)
                 else:
@@ -250,7 +250,7 @@ class FileCppGen():
                 yield '    \n'
                 yield '    switch (local_msg_id) {\n'
             else:
-                # Legacy mode: 8-bit message ID
+                # Flat namespace mode: 8-bit message ID
                 yield 'inline bool get_message_length(size_t msg_id, size_t* size) {\n'
                 yield '    switch (msg_id) {\n'
             

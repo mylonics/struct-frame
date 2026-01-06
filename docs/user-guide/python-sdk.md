@@ -500,7 +500,7 @@ def on_message(msg, msg_id):
 
 3. **Use sync SDK for**:
    - Simple scripts
-   - Legacy codebases
+   - Existing synchronous codebases
    - Easier debugging
 
 4. **Error handling**:

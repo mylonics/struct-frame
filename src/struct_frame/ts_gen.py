@@ -209,7 +209,7 @@ class FileTsGen():
                     yield '    \n'
                     yield '    switch (local_msg_id) {\n'
                 else:
-                    # Legacy mode: 8-bit message ID
+                    # Flat namespace mode: 8-bit message ID
                     yield 'export function get_message_length(msg_id: number) {\n'
                     yield '    switch (msg_id) {\n'
                 

@@ -272,7 +272,7 @@ class FileCSharpGen():
                 yield '            switch (localMsgId)\n'
                 yield '            {\n'
             else:
-                # Legacy mode: 8-bit message ID
+                # Flat namespace mode: 8-bit message ID
                 yield '        public static bool GetMessageLength(int msgId, out int size)\n'
                 yield '        {\n'
                 yield '            switch (msgId)\n'

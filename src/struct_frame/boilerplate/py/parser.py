@@ -77,37 +77,23 @@ class Parser:
                  get_msg_length: Callable[[int], int] = None,
                  enabled_headers: Optional[List[HeaderType]] = None,
                  enabled_payloads: Optional[List[PayloadType]] = None,
-                 # Legacy parameters (deprecated):
-                 enable_basic: bool = True,
-                 enable_tiny: bool = True,
-                 enable_none: bool = False,
                  default_payload_type: PayloadType = PayloadType.DEFAULT):
         """
         Initialize parser.
         
         Args:
             get_msg_length: Callback to get message length from msg_id (required for Minimal payloads)
-            enabled_headers: List of header types to accept (None = all supported)
+            enabled_headers: List of header types to accept (None = Basic + Tiny by default)
             enabled_payloads: List of payload types to accept (None = all)
-            enable_basic: (Deprecated) Enable Basic frame parsing
-            enable_tiny: (Deprecated) Enable Tiny frame parsing
-            enable_none: (Deprecated) Enable None frame parsing
             default_payload_type: Default payload type for None frames
         """
         self.get_msg_length = get_msg_length
         
-        # Handle new registration API
         if enabled_headers is not None:
             self.enabled_headers = set(enabled_headers)
         else:
-            # Use legacy parameters
-            self.enabled_headers = set()
-            if enable_basic:
-                self.enabled_headers.add(HeaderType.BASIC)
-            if enable_tiny:
-                self.enabled_headers.add(HeaderType.TINY)
-            if enable_none:
-                self.enabled_headers.add(HeaderType.NONE)
+            # Default: enable Basic and Tiny headers
+            self.enabled_headers = {HeaderType.BASIC, HeaderType.TINY}
         
         if enabled_payloads is not None:
             self.enabled_payloads = set(enabled_payloads)

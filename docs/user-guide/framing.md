@@ -174,7 +174,7 @@ For more detailed information about the framing system architecture, payload typ
 | Format | Start Bytes | Length | CRC | Total Overhead | Use Case |
 |--------|-------------|--------|-----|----------------|----------|
 | UBX | 2 (0xB5, 0x62) | 2 | 2 | 8 | u-blox GPS compatibility |
-| MavlinkV1 | 1 (0xFE) | 1 | 2 | 8 | Legacy drone communication |
+| MavlinkV1 | 1 (0xFE) | 1 | 2 | 8 | Classic drone communication |
 | MavlinkV2 | 1 (0xFD) | 1 | 2-15 | 12-25 | Modern drone communication |
 
 ### UBX Format
@@ -187,7 +187,7 @@ u-blox proprietary binary protocol for GPS/GNSS receivers:
 
 ### MAVLink v1
 
-Legacy drone communication protocol:
+Classic drone communication protocol:
 
 ```
 [STX (0xFE)] [LEN (1)] [SEQ (1)] [SYS (1)] [COMP (1)] [MSG (1)] [PAYLOAD] [CRC (2)]

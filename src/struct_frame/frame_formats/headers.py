@@ -61,7 +61,7 @@ HEADER_UBX = HeaderDefinition(
 )
 
 
-# Header MAVLink V1 - Legacy drone protocol
+# Header MAVLink V1 - Classic drone protocol
 # 1 fixed start byte: 0xFE
 HEADER_MAVLINK_V1 = HeaderDefinition(
     header_type=HeaderType.MAVLINK_V1,

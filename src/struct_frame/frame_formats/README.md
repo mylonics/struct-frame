@@ -73,7 +73,7 @@ Available header types:
 - `TINY` - 1 start byte encoding payload type
 - `BASIC` - 2 start bytes (0x90 + payload-encoded byte)
 - `UBX` - u-blox GPS protocol (0xB5, 0x62)
-- `MAVLINK_V1` - Legacy drone protocol (0xFE)
+- `MAVLINK_V1` - Classic drone protocol (0xFE)
 - `MAVLINK_V2` - Modern drone protocol (0xFD)
 
 ### Payloads

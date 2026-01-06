@@ -198,7 +198,7 @@ class FileJsGen():
                     yield '  \n'
                     yield '  switch (local_msg_id) {\n'
                 else:
-                    # Legacy mode: 8-bit message ID
+                    # Flat namespace mode: 8-bit message ID
                     yield 'function get_message_length(msg_id) {\n'
                     yield '  switch (msg_id) {\n'
                 
