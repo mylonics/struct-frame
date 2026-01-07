@@ -13,15 +13,16 @@
 
 #include "serialization_test.sf.hpp"
 
-enum class MessageType { SerializationTest, BasicTypes };
+enum class MessageType { SerializationTest, BasicTypes, UnionTest };
 
 struct MixedMessage {
   MessageType type;
-  // Union-based storage for both message types
+  // Union-based storage for all message types
   union {
     SerializationTestSerializationTestMessage serial_test;
     SerializationTestBasicTypesMessage basic_types;
-    uint8_t bytes[256];  // Ensure enough space for either message
+    SerializationTestUnionTestMessage union_test;
+    uint8_t bytes[512];  // Ensure enough space for any message (UnionTestMessage is largest at 235 bytes)
   } data;
 
   MixedMessage() { std::memset(data.bytes, 0, sizeof(data.bytes)); }

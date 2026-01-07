@@ -5,6 +5,7 @@ Plugins allow tests to define their own execution and output logic.
 Simplified version that works with the consolidated runner.
 """
 
+import json
 import os
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -45,6 +46,16 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
     plugin_type = "frame_format_matrix"
 
+    def _get_expected_message_count(self) -> int:
+        """Get the expected message count from test_messages.json."""
+        test_messages_path = self.project_root / "tests" / "test_messages.json"
+        try:
+            with open(test_messages_path, 'r') as f:
+                data = json.load(f)
+                return len(data.get('MixedMessages', []))
+        except Exception:
+            return 0
+
     def run(self, suite: Dict[str, Any]) -> Dict[str, Any]:
         """Run frame format matrix tests and display consolidated results."""
         print(f"[TEST] {suite['description']}")
@@ -61,6 +72,12 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
         base_lang = suite.get(
             'base_language', self.config.get('base_language', 'c'))
+        
+        # Fall back to first testable language if base_lang is not available
+        if base_lang not in testable and testable:
+            base_lang = testable[0]
+        
+        expected_message_count = self._get_expected_message_count()
 
         self._print_matrix_header(testable)
 
@@ -89,7 +106,8 @@ class FrameFormatMatrixPlugin(TestPlugin):
                 matrix[display_name][lang_name] = {
                     'encode': encode_result,
                     'decode': None,
-                    'message_count': 0
+                    'message_count': 0,
+                    'expected_count': expected_message_count
                 }
                 results[lang_id][f"{display_name}_encode"] = encode_result
 
@@ -108,6 +126,7 @@ class FrameFormatMatrixPlugin(TestPlugin):
                     lang_id, format_name, base_data_file)
                 matrix[display_name][lang_name]['decode'] = decode_result
                 matrix[display_name][lang_name]['message_count'] = message_count
+                matrix[display_name][lang_name]['expected_count'] = expected_message_count
                 results[lang_id][f"{display_name}_decode"] = decode_result
 
             self._print_matrix_row(
@@ -169,7 +188,7 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
         col_width = 12
         print("\nFrame Format Language Test Matrix:")
-        print("Legend: OK(N)=pass with N messages, SER=serialization failed, DES(N)=deserialization failed (N decoded), BOTH=both failed")
+        print("Legend: OK(N)=pass with N messages, MISS(N/E)=missing messages (N decoded, E expected), SER=serialization failed, DES(N)=deserialization failed (N decoded), BOTH=both failed")
         header = "Frame Format".ljust(
             20) + "".join(l.center(col_width) for l in all_langs)
         print(header)
@@ -192,11 +211,18 @@ class FrameFormatMatrixPlugin(TestPlugin):
                 encode_ok = val.get('encode')
                 decode_ok = val.get('decode')
                 message_count = val.get('message_count', 0)
+                expected_count = val.get('expected_count', 0)
 
                 if encode_ok is None and decode_ok is None:
                     cell = "N/A"
                 elif encode_ok and decode_ok:
-                    cell = f"OK({message_count})" if message_count > 0 else "OK"
+                    # Check if all expected messages were decoded
+                    if expected_count > 0 and message_count < expected_count:
+                        cell = f"MISS({message_count}/{expected_count})"
+                    elif message_count > 0:
+                        cell = f"OK({message_count})"
+                    else:
+                        cell = "OK"
                 elif not encode_ok and (decode_ok is False or decode_ok is None):
                     cell = "BOTH"
                 elif not encode_ok:
@@ -224,12 +250,18 @@ class FrameFormatMatrixPlugin(TestPlugin):
                 elif isinstance(val, dict):
                     encode_ok = val.get('encode')
                     decode_ok = val.get('decode')
+                    message_count = val.get('message_count', 0)
+                    expected_count = val.get('expected_count', 0)
 
                     if encode_ok is None and decode_ok is None:
                         continue
                     elif encode_ok and decode_ok:
-                        success_count += 1
-                        total_count += 1
+                        # Only count as success if all expected messages were decoded
+                        if expected_count > 0 and message_count < expected_count:
+                            total_count += 1  # Missing messages = failure
+                        else:
+                            success_count += 1
+                            total_count += 1
                     else:
                         total_count += 1
                 elif val:

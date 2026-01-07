@@ -111,3 +111,27 @@ message SerializationTestMessage {
   bool test_bool = 4;
   repeated int32 test_array = 5 [max_size=5];
 }
+
+// ============================================================================
+// Union Message Test (msgid: 205)
+// ============================================================================
+
+// Enum to identify which payload type is active in the union
+enum UnionPayloadType {
+  UNION_PAYLOAD_NONE = 0;
+  UNION_PAYLOAD_COMPREHENSIVE_ARRAY = 1;
+  UNION_PAYLOAD_SERIALIZATION_TEST = 2;
+}
+
+// A message demonstrating union-like behavior with a type discriminator
+// The payload_type field indicates which of the embedded messages is valid
+message UnionTestMessage {
+  option msgid = 205;
+  
+  // Type discriminator - indicates which payload field is valid
+  UnionPayloadType payload_type = 1;
+  
+  // Union payload options (only one should be used based on payload_type)
+  ComprehensiveArrayMessage array_payload = 2;
+  SerializationTestMessage test_payload = 3;
+}

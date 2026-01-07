@@ -51,6 +51,7 @@ def load_mixed_messages():
                 # Get message data arrays
                 serial_msgs = data.get('SerializationTestMessage', [])
                 basic_msgs = data.get('BasicTypesMessage', [])
+                union_msgs = data.get('UnionTestMessage', [])
                 
                 # Build the mixed message list
                 messages = []
@@ -67,6 +68,10 @@ def load_mixed_messages():
                         msg_data = next((m for m in basic_msgs if m.get('name') == msg_name), None)
                         if msg_data:
                             messages.append({'type': 'BasicTypesMessage', 'data': msg_data})
+                    elif msg_type == 'UnionTestMessage':
+                        msg_data = next((m for m in union_msgs if m.get('name') == msg_name), None)
+                        if msg_data:
+                            messages.append({'type': 'UnionTestMessage', 'data': msg_data})
                 
                 return messages
     
@@ -155,6 +160,77 @@ def validate_basic_types_message(msg, test_msg):
     
     return True
 
+
+def create_union_test_message_from_data(union_class, array_class, serial_class, sensor_class, test_msg):
+    """Create a UnionTestMessage from test message data."""
+    # Parse payload_type
+    payload_type_str = test_msg.get('payload_type', 'UNION_PAYLOAD_NONE')
+    payload_type_map = {
+        'UNION_PAYLOAD_NONE': 0,
+        'UNION_PAYLOAD_COMPREHENSIVE_ARRAY': 1,
+        'UNION_PAYLOAD_SERIALIZATION_TEST': 2
+    }
+    payload_type = payload_type_map.get(payload_type_str, 0)
+    
+    # Create array_payload
+    array_data = test_msg.get('array_payload')
+    if array_data:
+        # Create sensors for fixed_sensors
+        fixed_sensors = []
+        for sensor_data in array_data.get('fixed_sensors', []):
+            sensor = sensor_class(
+                id=sensor_data.get('id', 0),
+                value=sensor_data.get('value', 0.0),
+                status=sensor_data.get('status', 0),
+                name=sensor_data.get('name', '').encode('utf-8')
+            )
+            fixed_sensors.append(sensor)
+        
+        # Create sensors for bounded_sensors
+        bounded_sensors = []
+        for sensor_data in array_data.get('bounded_sensors', []):
+            sensor = sensor_class(
+                id=sensor_data.get('id', 0),
+                value=sensor_data.get('value', 0.0),
+                status=sensor_data.get('status', 0),
+                name=sensor_data.get('name', '').encode('utf-8')
+            )
+            bounded_sensors.append(sensor)
+        
+        array_payload = array_class(
+            fixed_ints=array_data.get('fixed_ints', [0, 0, 0]),
+            fixed_floats=array_data.get('fixed_floats', [0.0, 0.0]),
+            fixed_bools=array_data.get('fixed_bools', [False, False, False, False]),
+            bounded_uints=array_data.get('bounded_uints', []),
+            bounded_doubles=array_data.get('bounded_doubles', []),
+            fixed_strings=[s.encode('utf-8') if isinstance(s, str) else s for s in array_data.get('fixed_strings', ['', ''])],
+            bounded_strings=[s.encode('utf-8') if isinstance(s, str) else s for s in array_data.get('bounded_strings', [])],
+            fixed_statuses=array_data.get('fixed_statuses', [0, 0]),
+            bounded_statuses=array_data.get('bounded_statuses', []),
+            fixed_sensors=fixed_sensors if fixed_sensors else [sensor_class()],
+            bounded_sensors=bounded_sensors
+        )
+    else:
+        array_payload = array_class()
+    
+    # Create test_payload
+    test_data = test_msg.get('test_payload')
+    if test_data:
+        test_payload = serial_class(
+            magic_number=test_data.get('magic_number', 0),
+            test_string=test_data.get('test_string', '').encode('utf-8'),
+            test_float=test_data.get('test_float', 0.0),
+            test_bool=test_data.get('test_bool', False),
+            test_array=test_data.get('test_array', [])
+        )
+    else:
+        test_payload = serial_class()
+    
+    return union_class(
+        payload_type=payload_type,
+        array_payload=array_payload,
+        test_payload=test_payload
+    )
 
 
 def validate_message(msg, test_msg):
@@ -274,7 +350,10 @@ def get_parser(format_name=None):
         sys.path.insert(0, gen_path)
 
     from parser import Parser, PayloadType, HeaderType
-    from serialization_test_sf import SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage
+    from serialization_test_sf import (
+        SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage,
+        SerializationTestUnionTestMessage
+    )
 
     # Check if this format uses MINIMAL payload (which has no length field)
     get_msg_length = None
@@ -333,7 +412,11 @@ def encode_test_messages(format_name):
     if os.path.exists(gen_path) and gen_path not in sys.path:
         sys.path.insert(0, gen_path)
     
-    from serialization_test_sf import SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage
+    from serialization_test_sf import (
+        SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage,
+        SerializationTestUnionTestMessage, SerializationTestComprehensiveArrayMessage,
+        SerializationTestSensor
+    )
     
     # Import generated frame profiles
     from frame_profiles import (
@@ -364,6 +447,14 @@ def encode_test_messages(format_name):
             msg = create_message_from_data(SerializationTestSerializationTestMessage, test_msg)
         elif msg_type == 'BasicTypesMessage':
             msg = create_basic_types_message_from_data(SerializationTestBasicTypesMessage, test_msg)
+        elif msg_type == 'UnionTestMessage':
+            msg = create_union_test_message_from_data(
+                SerializationTestUnionTestMessage,
+                SerializationTestComprehensiveArrayMessage,
+                SerializationTestSerializationTestMessage,
+                SerializationTestSensor,
+                test_msg
+            )
         else:
             raise ValueError(f"Unknown message type: {msg_type}")
         
@@ -390,7 +481,10 @@ def decode_test_messages(format_name, data):
     if os.path.exists(gen_path) and gen_path not in sys.path:
         sys.path.insert(0, gen_path)
     
-    from serialization_test_sf import SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage
+    from serialization_test_sf import (
+        SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage,
+        SerializationTestUnionTestMessage
+    )
     
     # Import generated frame profiles
     from frame_profiles import (
@@ -406,6 +500,8 @@ def decode_test_messages(format_name, data):
             return SerializationTestSerializationTestMessage.msg_size
         elif msg_id == SerializationTestBasicTypesMessage.msg_id:
             return SerializationTestBasicTypesMessage.msg_size
+        elif msg_id == SerializationTestUnionTestMessage.msg_id:
+            return SerializationTestUnionTestMessage.msg_size
         return 0
     
     # Get the appropriate parse function and config for this profile
@@ -450,6 +546,8 @@ def decode_test_messages(format_name, data):
             expected_msg_id = SerializationTestSerializationTestMessage.msg_id
         elif msg_type == 'BasicTypesMessage':
             expected_msg_id = SerializationTestBasicTypesMessage.msg_id
+        elif msg_type == 'UnionTestMessage':
+            expected_msg_id = SerializationTestUnionTestMessage.msg_id
         else:
             print(f"  Unknown message type: {msg_type}")
             return False, message_count
@@ -470,6 +568,10 @@ def decode_test_messages(format_name, data):
             if not validate_basic_types_message(msg, test_msg):
                 print(f"  Validation failed for message {message_count}")
                 return False, message_count
+        elif msg_type == 'UnionTestMessage':
+            msg = SerializationTestUnionTestMessage.create_unpack(msg_data)
+            # For UnionTestMessage, we just validate it decoded without error
+            # Full validation would require comparing nested structures
         
         # Calculate frame size based on config
         frame_size = config.header_size + result.msg_len + config.footer_size

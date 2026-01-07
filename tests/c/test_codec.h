@@ -11,20 +11,22 @@
 
 #include "serialization_test.sf.h"
 
-#define MAX_TEST_MESSAGES 10
+#define MAX_TEST_MESSAGES 15
 #define MAX_STRING_LENGTH 100
 #define MAX_ARRAY_LENGTH 20
 
 // Message type enum
 typedef enum {
   MSG_TYPE_SERIALIZATION_TEST = 0,
-  MSG_TYPE_BASIC_TYPES = 1
+  MSG_TYPE_BASIC_TYPES = 1,
+  MSG_TYPE_UNION_TEST = 2
 } message_type_t;
 
 // Union to hold either message type
 typedef union {
   SerializationTestSerializationTestMessage serialization_test;
   SerializationTestBasicTypesMessage basic_types;
+  SerializationTestUnionTestMessage union_test;
 } message_data_t;
 
 // Wrapper structure for mixed message types
