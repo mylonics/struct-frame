@@ -29,6 +29,7 @@ Issues = "https://github.com/mylonics/struct-frame/issues"
 
 [tool.hatch.build.targets.sdist.force-include]
 "src/struct_frame/boilerplate" = "src/struct_frame/boilerplate"
+"src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo/asio/include/asio" = "src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo/asio/include/asio"
 
 #[tool.hatch.build.targets.wheel.force-include]
 #"src/struct_frame/boilerplate" = "struct_frame/boilerplate"

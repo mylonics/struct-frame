@@ -1,0 +1,2 @@
+# Include asio submodule headers
+recursive-include src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo/asio/include *.hpp *.ipp
