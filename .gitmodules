@@ -1,3 +1,9 @@
 [submodule "docs/theme_overrides"]
 	path = docs/theme_overrides
 	url = https://github.com/mylonics/mylonics-mkdocs-theme
+[submodule "src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo"]
+	path = src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo
+	url = https://github.com/chriskohlhoff/asio.git
+	branch = asio-1-30-2
+[submodule "src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo"]
+	branch = asio-1-30-2
