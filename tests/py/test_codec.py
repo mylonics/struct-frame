@@ -163,16 +163,12 @@ def validate_basic_types_message(msg, test_msg):
 
 def create_union_test_message_from_data(union_class, array_class, serial_class, sensor_class, test_msg):
     """Create a UnionTestMessage from test message data."""
-    # Parse payload_type
-    payload_type_str = test_msg.get('payload_type', 'UNION_PAYLOAD_NONE')
-    payload_type_map = {
-        'UNION_PAYLOAD_NONE': 0,
-        'UNION_PAYLOAD_COMPREHENSIVE_ARRAY': 1,
-        'UNION_PAYLOAD_SERIALIZATION_TEST': 2
-    }
-    payload_type = payload_type_map.get(payload_type_str, 0)
+    # Determine which payload to use based on what's present in the test data
+    payload_dict = {}
+    payload_which = None
+    payload_discriminator = None
     
-    # Create array_payload
+    # Create array_payload if present
     array_data = test_msg.get('array_payload')
     if array_data:
         # Create sensors for fixed_sensors
@@ -210,10 +206,11 @@ def create_union_test_message_from_data(union_class, array_class, serial_class, 
             fixed_sensors=fixed_sensors if fixed_sensors else [sensor_class()],
             bounded_sensors=bounded_sensors
         )
-    else:
-        array_payload = array_class()
+        payload_dict['array_payload'] = array_payload
+        payload_which = 'array_payload'
+        payload_discriminator = array_class.msg_id
     
-    # Create test_payload
+    # Create test_payload if present
     test_data = test_msg.get('test_payload')
     if test_data:
         test_payload = serial_class(
@@ -223,13 +220,14 @@ def create_union_test_message_from_data(union_class, array_class, serial_class, 
             test_bool=test_data.get('test_bool', False),
             test_array=test_data.get('test_array', [])
         )
-    else:
-        test_payload = serial_class()
+        payload_dict['test_payload'] = test_payload
+        payload_which = 'test_payload'
+        payload_discriminator = serial_class.msg_id
     
     return union_class(
-        payload_type=payload_type,
-        array_payload=array_payload,
-        test_payload=test_payload
+        payload=payload_dict,
+        payload_which=payload_which,
+        payload_discriminator=payload_discriminator
     )
 
 
