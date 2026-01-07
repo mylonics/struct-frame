@@ -10,6 +10,64 @@ Package IDs enable 16-bit message addressing (package_id << 8 | msg_id) instead 
 - Better organization for large multi-package systems
 - Import and reuse of message definitions across files
 
+## Message ID Ranges and Validation
+
+The generator enforces strict validation rules for message IDs based on whether a package has a package ID:
+
+### With Package ID (option pkgid = N)
+- **Package ID range**: 0-255
+- **Message ID range**: 0-255 (8 bits)
+- **Combined ID**: `(package_id << 8) | msg_id` (16 bits total)
+- **Generated constants**: `uint16_t MSG_ID` with combined value
+
+Example:
+```protobuf
+package sensor_data;
+option pkgid = 1;
+
+message SensorReading {
+  option msgid = 1;  // Valid: 0 <= 1 < 256
+  // ...
+}
+// Generated constant: SENSOR_READING_MSG_ID = 257 (0x0101)
+// Where: (1 << 8) | 1 = 257
+```
+
+### Without Package ID
+- **Message ID range**: 0-65535 (16 bits)
+- **Generated constants**: Plain message ID value
+
+Example:
+```protobuf
+package simple_messages;
+// No pkgid option
+
+message Command {
+  option msgid = 1000;  // Valid: 0 <= 1000 < 65536
+  // ...
+}
+// Generated constant: COMMAND_MSG_ID = 1000
+```
+
+### Frame Format Restrictions
+
+When a package has a package ID OR any message ID is >= 256, the generator automatically filters available frame formats:
+
+**Allowed frame formats (Extended types only):**
+- `ExtendedMsgIds`: [LEN] [PKG_ID] [MSG_ID] [PACKET] [CRC]
+- `Extended`: [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC]
+- `ExtendedMinimal`: [PKG_ID] [MSG_ID] [PACKET]
+- `ExtendedMultiSystemStream`: [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC]
+- `ExtendedLength`: [LEN16] [MSG_ID] [PACKET] [CRC]
+
+**Blocked frame formats:**
+- `Minimal`, `Default`, `SysComp`, `Seq`, `MultiSystemStream`
+- Profiles: `ProfileStandard`, `ProfileSensor`, `ProfileIPC`
+
+**Allowed profiles:**
+- `ProfileBulk` (uses Extended)
+- `ProfileNetwork` (uses ExtendedMultiSystemStream)
+
 ## Importing Proto Files
 
 Proto files can import other proto files using standard protobuf import syntax:
