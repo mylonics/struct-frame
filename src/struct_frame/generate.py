@@ -289,12 +289,94 @@ class Field:
         return output
 
 
+class OneOf:
+    """Represents a oneof (union) construct in a message."""
+    def __init__(self, package, comments):
+        self.name = None
+        self.fields = {}  # Fields within this oneof
+        self.size = 0  # Size of the largest field
+        self.validated = False
+        self.comments = comments
+        self.package = package
+        self.auto_discriminator = None  # Will be set if all fields have message IDs
+        
+    def parse(self, oneof_element):
+        """Parse a oneof element from the AST."""
+        self.name = oneof_element.name
+        comments = []
+        
+        for e in oneof_element.elements:
+            if type(e) == ast.Comment:
+                comments.append(e.text)
+            elif type(e) == ast.Field:
+                if e.name in self.fields:
+                    print(f"Field Redclaration in oneof {self.name}")
+                    return False
+                self.fields[e.name] = Field(self.package, comments)
+                comments = []
+                if not self.fields[e.name].parse(e):
+                    return False
+        return True
+    
+    def validate(self, currentPackage, packages, debug=False):
+        """Validate all fields in the oneof and determine size."""
+        if self.validated:
+            return True
+            
+        # Validate each field and track the largest size
+        max_size = 0
+        all_have_msg_id = True
+        
+        for key, field in self.fields.items():
+            if not field.validate(currentPackage, packages, debug):
+                print(f"Failed to validate field {key} in oneof {self.name}")
+                return False
+            max_size = max(max_size, field.size)
+            
+            # Check if this field's type has a message ID
+            if not field.isDefaultType and not field.isEnum:
+                field_type = currentPackage.findFieldType(field.fieldType)
+                # If not found in current package, search in all packages
+                if not field_type:
+                    for pkg_name, pkg in packages.items():
+                        field_type = pkg.findFieldType(field.fieldType)
+                        if field_type:
+                            break
+                
+                if field_type and hasattr(field_type, 'id') and field_type.id is not None:
+                    # This message type has an ID
+                    pass
+                else:
+                    all_have_msg_id = False
+            else:
+                # Primitive types or enums don't have message IDs
+                all_have_msg_id = False
+        
+        self.size = max_size
+        
+        # If all fields have message IDs, we can auto-generate a discriminator
+        if all_have_msg_id and len(self.fields) > 0:
+            self.auto_discriminator = True
+        else:
+            self.auto_discriminator = False
+            
+        self.validated = True
+        return True
+    
+    def __str__(self):
+        output = f"OneOf: {self.name}, Size: {self.size}\n"
+        for key, value in self.fields.items():
+            output += "  " + value.__str__() + "\n"
+        return output
+
+
 class Message:
     def __init__(self, package, comments):
         self.id = None
         self.size = 0
         self.name = None
         self.fields = {}
+        self.oneofs = {}  # Dictionary of oneof constructs
         self.validated = False
         self.comments = comments
         self.package = package
@@ -311,6 +393,14 @@ class Message:
                     self.id = e.value
             elif type(e) == ast.Comment:
                 comments.append(e.text)
+            elif type(e) == ast.OneOf:
+                if e.name in self.oneofs:
+                    print(f"OneOf Redclaration")
+                    return False
+                self.oneofs[e.name] = OneOf(self.package, comments)
+                comments = []
+                if not self.oneofs[e.name].parse(e):
+                    return False
             elif type(e) == ast.Field:
                 if e.name in self.fields:
                     print(f"Field Redclaration")
@@ -327,12 +417,26 @@ class Message:
 
         global recErrCurrentMessage
         recErrCurrentMessage = self.name
+        
+        # Validate regular fields
         for key, value in self.fields.items():
             if not value.validate(currentPackage, packages, debug):
                 print(
                     f"Failed To validate Field: {key}, in Message {self.name}\n")
                 return False
             self.size = self.size + value.size
+
+        # Validate oneofs - they contribute their max size to the message
+        for key, oneof in self.oneofs.items():
+            if not oneof.validate(currentPackage, packages, debug):
+                print(
+                    f"Failed To validate OneOf: {key}, in Message {self.name}\n")
+                return False
+            # Add oneof size (largest field size)
+            self.size = self.size + oneof.size
+            # If auto-discriminator is enabled, add 1 byte for the message_id discriminator
+            if oneof.auto_discriminator:
+                self.size = self.size + 1
 
         # Flatten collision detection: if a field is marked as flatten and is a message,
         # ensure none of the child field names collide with fields in this message.
@@ -384,6 +488,10 @@ class Message:
 
         for key, value in self.fields.items():
             output = output + value.__str__() + "\n"
+        
+        for key, value in self.oneofs.items():
+            output = output + value.__str__() + "\n"
+        
         return output
 
 

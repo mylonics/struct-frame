@@ -150,6 +150,37 @@ class FieldCGen():
         return result
 
 
+
+class OneOfCGen():
+    @staticmethod
+    def generate(oneof):
+        """Generate C union for a oneof construct."""
+        result = ''
+        
+        # Add comments
+        if oneof.comments:
+            for c in oneof.comments:
+                result += '%s\n' % c
+        
+        # If auto-discriminator is enabled, add discriminator field first
+        if oneof.auto_discriminator:
+            result += f'    uint8_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
+        
+        # Generate the union
+        result += f'    union {{\n'
+        
+        # Generate each field in the union
+        for key, field in oneof.fields.items():
+            field_code = FieldCGen.generate(field)
+            # Indent the field code properly (remove leading spaces and add union indent)
+            field_code = field_code.strip()
+            result += f'        {field_code}\n'
+        
+        result += f'    }} {oneof.name};'
+        
+        return result
+
+
 class MessageCGen():
     @staticmethod
     def generate(msg, package=None):
@@ -166,15 +197,24 @@ class MessageCGen():
         result += '\n'
 
         size = 1
-        if not msg.fields:
+        if not msg.fields and not msg.oneofs:
             # Empty structs are not allowed in C standard.
             # Therefore add a dummy field if an empty message occurs.
             result += '    char dummy_field;'
         else:
             size = msg.size
 
+        # Generate regular fields
         result += '\n'.join([FieldCGen.generate(f)
                             for key, f in msg.fields.items()])
+        
+        # Generate oneofs
+        if msg.oneofs:
+            if msg.fields:
+                result += '\n'
+            result += '\n'.join([OneOfCGen.generate(o)
+                                for key, o in msg.oneofs.items()])
+        
         result += '\n}'
         result += ' %s;\n\n' % structName
 
