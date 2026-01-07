@@ -278,7 +278,7 @@ class MessagePyGen():
             if oneof.auto_discriminator:
                 result += f'        # Oneof {oneof_name} auto-discriminator\n'
                 result += f'        if self.{oneof_name}_which is not None:\n'
-                result += f'            data += struct.pack("<B", self.{oneof_name}[self.{oneof_name}_which].msg_id)\n'
+                result += f'            data += struct.pack("<B", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
                 result += f'        else:\n'
                 result += f'            data += struct.pack("<B", 0)\n'
             

@@ -310,7 +310,7 @@ class OneOf:
                 comments.append(e.text)
             elif type(e) == ast.Field:
                 if e.name in self.fields:
-                    print(f"Field Redclaration in oneof {self.name}")
+                    print(f"Field Redeclaration in oneof {self.name}")
                     return False
                 self.fields[e.name] = Field(self.package, comments)
                 comments = []
@@ -395,7 +395,7 @@ class Message:
                 comments.append(e.text)
             elif type(e) == ast.OneOf:
                 if e.name in self.oneofs:
-                    print(f"OneOf Redclaration")
+                    print(f"OneOf Redeclaration")
                     return False
                 self.oneofs[e.name] = OneOf(self.package, comments)
                 comments = []
@@ -403,7 +403,7 @@ class Message:
                     return False
             elif type(e) == ast.Field:
                 if e.name in self.fields:
-                    print(f"Field Redclaration")
+                    print(f"Field Redeclaration")
                     return False
                 self.fields[e.name] = Field(self.package, comments)
                 comments = []
