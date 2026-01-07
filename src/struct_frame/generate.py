@@ -819,8 +819,14 @@ def generateCSharpFileStrings(path, include_sdk_interface=False):
 
 
 def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_path, cpp_path, csharp_path,
-                             build_c, build_ts, build_js, build_py, build_cpp, build_csharp):
-    """Generate frame parser files from frame format definitions"""
+                             build_c, build_ts, build_js, build_py, build_cpp, build_csharp, filter_extended_only=False):
+    """Generate frame parser files from frame format definitions
+    
+    Args:
+        frame_formats_file: Path to frame formats proto file
+        ...: Various path and build flags
+        filter_extended_only: If True, only generate Extended* payload types
+    """
     from struct_frame.frame_format import parse_frame_formats, PayloadType
     from struct_frame.frame_parser_c_gen import generate_c_frame_parsers
     from struct_frame.frame_parser_py_gen import generate_py_frame_parsers
@@ -831,7 +837,7 @@ def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_pa
     formats = parse_frame_formats(frame_formats_file)
     
     # Filter payload types based on package configuration
-    if needs_extended_payload_types():
+    if filter_extended_only:
         # Only allow Extended* payload types
         allowed_payload_types = {
             PayloadType.EXTENDED_MSG_IDS,
@@ -989,7 +995,8 @@ def main():
             args.c_path[0], args.ts_path[0], args.js_path[0],
             args.py_path[0], args.cpp_path[0], args.csharp_path[0],
             args.build_c, args.build_ts, args.build_js,
-            args.build_py, args.build_cpp, args.build_csharp
+            args.build_py, args.build_cpp, args.build_csharp,
+            filter_extended_only=needs_extended_payload_types()
         )
         files.update(frame_parser_files)
 
