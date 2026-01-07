@@ -177,6 +177,7 @@ class MessagePyGen():
         result += '        """Pack the message into binary format"""\n'
         result += '        data = b""\n'
         
+        # Pack regular fields
         for key, f in msg.fields.items():
             if f.fieldType == "string" and not f.is_array:
                 # String field
@@ -270,6 +271,26 @@ class MessagePyGen():
                 else:
                     # Nested message
                     result += f'        data += self.{f.name}.pack()\n'
+        
+        # Pack oneofs
+        for oneof_name, oneof in msg.oneofs.items():
+            # Auto-discriminator if needed
+            if oneof.auto_discriminator:
+                result += f'        # Oneof {oneof_name} auto-discriminator\n'
+                result += f'        if self.{oneof_name}_which is not None:\n'
+                result += f'            data += struct.pack("<B", self.{oneof_name}[self.{oneof_name}_which].msg_id)\n'
+                result += f'        else:\n'
+                result += f'            data += struct.pack("<B", 0)\n'
+            
+            # Pack the union field (whichever is active)
+            result += f'        # Oneof {oneof_name} payload\n'
+            # We need to allocate the full size for the union
+            result += f'        union_data = b""\n'
+            result += f'        if self.{oneof_name}_which is not None:\n'
+            result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].pack()\n'
+            result += f'        # Pad to union size\n'
+            result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
+            result += f'        data += union_data\n'
         
         result += '        return data\n'
         return result
@@ -401,6 +422,31 @@ class MessagePyGen():
                     result += f'        fields["{f.name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
                     result += f'        offset += {type_name}.msg_size\n'
         
+        # Unpack oneofs
+        for oneof_name, oneof in msg.oneofs.items():
+            # Auto-discriminator if needed
+            if oneof.auto_discriminator:
+                result += f'        # Oneof {oneof_name} auto-discriminator\n'
+                result += f'        discriminator = struct.unpack_from("<B", data, offset)[0]\n'
+                result += f'        offset += 1\n'
+                result += f'        fields["{oneof_name}_discriminator"] = discriminator\n'
+            
+            # Unpack the union payload
+            result += f'        # Oneof {oneof_name} payload\n'
+            result += f'        fields["{oneof_name}"] = {{}}\n'
+            result += f'        fields["{oneof_name}_which"] = None\n'
+            
+            # Try to unpack based on discriminator if available
+            if oneof.auto_discriminator:
+                result += f'        # Determine which field is active based on message ID\n'
+                for field_name, field in oneof.fields.items():
+                    type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
+                    result += f'        if discriminator == {type_name}.msg_id:\n'
+                    result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
+            
+            result += f'        offset += {oneof.size}\n'
+        
         result += '        return cls(**fields)\n'
         return result
     
@@ -427,6 +473,13 @@ class MessagePyGen():
             type_hint = FieldPyGen.get_type_hint(f)
             init_params.append(f'{f.name}: {type_hint} = None')
         
+        # Add oneof parameters
+        for oneof_name, oneof in msg.oneofs.items():
+            init_params.append(f'{oneof_name}: dict = None')
+            init_params.append(f'{oneof_name}_which: str = None')
+            if oneof.auto_discriminator:
+                init_params.append(f'{oneof_name}_discriminator: int = None')
+        
         if init_params:
             result += ', ' + ', '.join(init_params)
         result += '):\n'
@@ -451,6 +504,13 @@ class MessagePyGen():
                 type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
                 result += f'        self.{f.name} = {f.name} if {f.name} is not None else {type_name}()\n'
 
+        # Initialize oneofs
+        for oneof_name, oneof in msg.oneofs.items():
+            result += f'        self.{oneof_name} = {oneof_name} if {oneof_name} is not None else {{}}\n'
+            result += f'        self.{oneof_name}_which = {oneof_name}_which\n'
+            if oneof.auto_discriminator:
+                result += f'        self.{oneof_name}_discriminator = {oneof_name}_discriminator\n'
+
         # Generate pack method
         result += MessagePyGen.generate_pack_method(msg)
 
@@ -463,6 +523,9 @@ class MessagePyGen():
         for key, f in msg.fields.items():
             result += f'        out += f"{key} = '
             result += '{self.' + key + '}\\n"\n'
+        for oneof_name, oneof in msg.oneofs.items():
+            result += f'        out += f"{oneof_name} = '
+            result += '{self.' + oneof_name + '}\\n"\n'
         result += f'        out += "\\n"\n'
         result += f'        return out'
 
@@ -482,6 +545,12 @@ class MessagePyGen():
                     result += f'        out.update(self.{key}.to_dict(False, False))\n'
                 else:
                     result += f'        out["{key}"] = self.{key}.to_dict(False, False)\n'
+        
+        # Add oneofs to dict
+        for oneof_name, oneof in msg.oneofs.items():
+            result += f'        if self.{oneof_name}_which:\n'
+            result += f'            out["{oneof_name}"] = self.{oneof_name}[self.{oneof_name}_which].to_dict(False, False)\n'
+        
         result += '        if include_name:\n'
         result += f'            out["name"] = "{msg.name}"\n'
         result += '        if include_id:\n'
