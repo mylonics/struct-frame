@@ -55,13 +55,48 @@ inline FrameChecksum fletcher_checksum(const uint8_t* data, size_t length) {
 // Parse result
 struct FrameMsgInfo {
     bool valid;
-    uint8_t msg_id;
+    uint16_t msg_id;
     size_t msg_len;
     uint8_t* msg_data;
 
     FrameMsgInfo() : valid(false), msg_id(0), msg_len(0), msg_data(nullptr) {}
-    FrameMsgInfo(bool v, uint8_t id, size_t len, uint8_t* data)
+    FrameMsgInfo(bool v, uint16_t id, size_t len, uint8_t* data)
         : valid(v), msg_id(id), msg_len(len), msg_data(data) {}
+};
+
+/**
+ * Base class for message types with associated metadata.
+ * Template parameters embed msg_id and max_size as compile-time constants.
+ * 
+ * Usage:
+ *   struct MyMessage : MessageBase<MyMessage, MSG_ID, MAX_SIZE> {
+ *       uint32_t field1;
+ *       float field2;
+ *   };
+ *   
+ *   // Encode directly without passing msg_id/size:
+ *   MyMessage msg{.field1 = 42, .field2 = 3.14f};
+ *   encode_profile_standard(buffer, sizeof(buffer), msg);
+ */
+template<typename Derived, uint16_t MsgId, size_t MaxSize>
+struct MessageBase {
+    static constexpr uint16_t MSG_ID = MsgId;
+    static constexpr size_t MAX_SIZE = MaxSize;
+    
+    // Get pointer to the message data (cast to derived type's data)
+    const uint8_t* data() const {
+        return reinterpret_cast<const uint8_t*>(static_cast<const Derived*>(this));
+    }
+    
+    uint8_t* data() {
+        return reinterpret_cast<uint8_t*>(static_cast<Derived*>(this));
+    }
+    
+    // Get the message size
+    static constexpr size_t size() { return MaxSize; }
+    
+    // Get the message ID
+    static constexpr uint16_t msg_id() { return MsgId; }
 };
 
 // =============================================================================

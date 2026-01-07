@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <type_traits>
 #include "frame_base.hpp"
 #include "frame_headers/base.hpp"
 #include "frame_headers/header_basic.hpp"
@@ -77,7 +78,7 @@ class FrameEncoderWithCrc {
 public:
     static size_t encode(uint8_t* buffer, size_t buffer_size,
                         uint8_t seq, uint8_t sys_id, uint8_t comp_id,
-                        uint8_t pkg_id, uint8_t msg_id,
+                        uint16_t msg_id,
                         const uint8_t* payload, size_t payload_size) {
         
         size_t total_size = Config::overhead + payload_size;
@@ -119,13 +120,11 @@ public:
             }
         }
         
-        // Write package ID if present
+        // Write message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id)
         if constexpr (Config::has_pkg_id) {
-            buffer[idx++] = pkg_id;
+            buffer[idx++] = static_cast<uint8_t>((msg_id >> 8) & 0xFF);  // pkg_id (high byte)
         }
-        
-        // Write message ID
-        buffer[idx++] = msg_id;
+        buffer[idx++] = static_cast<uint8_t>(msg_id & 0xFF);  // msg_id (low byte)
         
         // Write payload
         if (payload_size > 0 && payload != nullptr) {
@@ -227,11 +226,12 @@ public:
             }
         }
         
-        // Skip package ID
-        if constexpr (Config::has_pkg_id) idx++;
-        
-        // Read message ID
-        uint8_t msg_id = buffer[idx++];
+        // Read message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id)
+        uint16_t msg_id = 0;
+        if constexpr (Config::has_pkg_id) {
+            msg_id = static_cast<uint16_t>(buffer[idx++]) << 8;  // pkg_id (high byte)
+        }
+        msg_id |= buffer[idx++];  // msg_id (low byte)
         
         // Verify total size
         size_t total_size = Config::overhead + msg_len;
@@ -413,14 +413,14 @@ using ProfileNetworkParser = FrameParserWithCrc<ProfileNetworkConfig>;
 
 /*===========================================================================
  * Convenience Functions
- * These are simple wrapper functions for backward compatibility and ease of use.
+ * These are template functions that work with MessageBase-derived types.
+ * The message type provides its own MSG_ID and MAX_SIZE at compile time.
  *===========================================================================*/
 
 // Profile Standard (Basic + Default)
-inline size_t encode_profile_standard(uint8_t* buffer, size_t buffer_size,
-                                      uint8_t msg_id,
-                                      const uint8_t* payload, size_t payload_size) {
-    return ProfileStandardEncoder::encode(buffer, buffer_size, 0, 0, 0, 0, msg_id, payload, payload_size);
+template<typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
+inline size_t encode_profile_standard(uint8_t* buffer, size_t buffer_size, const T& msg) {
+    return ProfileStandardEncoder::encode(buffer, buffer_size, 0, 0, 0, T::MSG_ID, msg.data(), T::MAX_SIZE);
 }
 
 inline FrameMsgInfo parse_profile_standard_buffer(const uint8_t* buffer, size_t length) {
@@ -428,10 +428,9 @@ inline FrameMsgInfo parse_profile_standard_buffer(const uint8_t* buffer, size_t 
 }
 
 // Profile Sensor (Tiny + Minimal)
-inline size_t encode_profile_sensor(uint8_t* buffer, size_t buffer_size,
-                                    uint8_t msg_id,
-                                    const uint8_t* payload, size_t payload_size) {
-    return ProfileSensorEncoder::encode(buffer, buffer_size, msg_id, payload, payload_size);
+template<typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
+inline size_t encode_profile_sensor(uint8_t* buffer, size_t buffer_size, const T& msg) {
+    return ProfileSensorEncoder::encode(buffer, buffer_size, static_cast<uint8_t>(T::MSG_ID), msg.data(), T::MAX_SIZE);
 }
 
 inline FrameMsgInfo parse_profile_sensor_buffer(const uint8_t* buffer, size_t length,
@@ -440,10 +439,9 @@ inline FrameMsgInfo parse_profile_sensor_buffer(const uint8_t* buffer, size_t le
 }
 
 // Profile IPC (None + Minimal)
-inline size_t encode_profile_ipc(uint8_t* buffer, size_t buffer_size,
-                                 uint8_t msg_id,
-                                 const uint8_t* payload, size_t payload_size) {
-    return ProfileIPCEncoder::encode(buffer, buffer_size, msg_id, payload, payload_size);
+template<typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
+inline size_t encode_profile_ipc(uint8_t* buffer, size_t buffer_size, const T& msg) {
+    return ProfileIPCEncoder::encode(buffer, buffer_size, static_cast<uint8_t>(T::MSG_ID), msg.data(), T::MAX_SIZE);
 }
 
 inline FrameMsgInfo parse_profile_ipc_buffer(const uint8_t* buffer, size_t length,
@@ -452,10 +450,9 @@ inline FrameMsgInfo parse_profile_ipc_buffer(const uint8_t* buffer, size_t lengt
 }
 
 // Profile Bulk (Basic + Extended)
-inline size_t encode_profile_bulk(uint8_t* buffer, size_t buffer_size,
-                                  uint8_t pkg_id, uint8_t msg_id,
-                                  const uint8_t* payload, size_t payload_size) {
-    return ProfileBulkEncoder::encode(buffer, buffer_size, 0, 0, 0, pkg_id, msg_id, payload, payload_size);
+template<typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
+inline size_t encode_profile_bulk(uint8_t* buffer, size_t buffer_size, const T& msg) {
+    return ProfileBulkEncoder::encode(buffer, buffer_size, 0, 0, 0, T::MSG_ID, msg.data(), T::MAX_SIZE);
 }
 
 inline FrameMsgInfo parse_profile_bulk_buffer(const uint8_t* buffer, size_t length) {
@@ -463,13 +460,12 @@ inline FrameMsgInfo parse_profile_bulk_buffer(const uint8_t* buffer, size_t leng
 }
 
 // Profile Network (Basic + ExtendedMultiSystemStream)
+template<typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
 inline size_t encode_profile_network(uint8_t* buffer, size_t buffer_size,
                                      uint8_t sequence, uint8_t system_id,
-                                     uint8_t component_id, uint8_t pkg_id,
-                                     uint8_t msg_id,
-                                     const uint8_t* payload, size_t payload_size) {
+                                     uint8_t component_id, const T& msg) {
     return ProfileNetworkEncoder::encode(buffer, buffer_size, sequence, system_id, component_id,
-                                         pkg_id, msg_id, payload, payload_size);
+                                         T::MSG_ID, msg.data(), T::MAX_SIZE);
 }
 
 inline FrameMsgInfo parse_profile_network_buffer(const uint8_t* buffer, size_t length) {

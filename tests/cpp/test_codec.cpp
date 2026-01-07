@@ -16,15 +16,15 @@
 using json = nlohmann::json;
 using namespace FrameParsers;
 
-/* 
+/*
  * Frame format helper functions - Use generated profile functions from FrameProfiles.hpp
- * The manual implementations have been replaced with calls to the generated functions.
+ * These are template-based wrappers that work with MessageBase-derived types.
  */
 
 /* Basic + Default -> Profile Standard */
-inline size_t basic_default_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
-                                   size_t msg_size) {
-  return encode_profile_standard(buffer, buffer_size, msg_id, msg, msg_size);
+template<typename T>
+inline size_t basic_default_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
+  return encode_profile_standard(buffer, buffer_size, msg);
 }
 
 inline FrameMsgInfo basic_default_validate_packet(const uint8_t* buffer, size_t length) {
@@ -32,9 +32,9 @@ inline FrameMsgInfo basic_default_validate_packet(const uint8_t* buffer, size_t 
 }
 
 /* Tiny + Minimal -> Profile Sensor */
-inline size_t tiny_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
-                                  size_t msg_size) {
-  return encode_profile_sensor(buffer, buffer_size, msg_id, msg, msg_size);
+template<typename T>
+inline size_t tiny_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
+  return encode_profile_sensor(buffer, buffer_size, msg);
 }
 
 inline FrameMsgInfo tiny_minimal_validate_packet(const uint8_t* buffer, size_t length) {
@@ -42,9 +42,9 @@ inline FrameMsgInfo tiny_minimal_validate_packet(const uint8_t* buffer, size_t l
 }
 
 /* None + Minimal -> Profile IPC */
-inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
-                                  size_t msg_size) {
-  return encode_profile_ipc(buffer, buffer_size, msg_id, msg, msg_size);
+template<typename T>
+inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
+  return encode_profile_ipc(buffer, buffer_size, msg);
 }
 
 inline FrameMsgInfo none_minimal_validate_packet(const uint8_t* buffer, size_t length) {
@@ -52,9 +52,9 @@ inline FrameMsgInfo none_minimal_validate_packet(const uint8_t* buffer, size_t l
 }
 
 /* Basic + Extended -> Profile Bulk */
-inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
-                                    size_t msg_size) {
-  return encode_profile_bulk(buffer, buffer_size, 0, msg_id, msg, msg_size);  /* pkg_id = 0 */
+template<typename T>
+inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
+  return encode_profile_bulk(buffer, buffer_size, msg);
 }
 
 inline FrameMsgInfo basic_extended_validate_packet(const uint8_t* buffer, size_t length) {
@@ -62,9 +62,9 @@ inline FrameMsgInfo basic_extended_validate_packet(const uint8_t* buffer, size_t
 }
 
 /* Basic + Extended Multi System Stream -> Profile Network */
-inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id,
-                                                        const uint8_t* msg, size_t msg_size) {
-  return encode_profile_network(buffer, buffer_size, 0, 0, 0, 0, msg_id, msg, msg_size);  /* seq=0, sys=0, comp=0, pkg=0 */
+template<typename T>
+inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
+  return encode_profile_network(buffer, buffer_size, 0, 0, 0, msg); /* seq=0, sys=0, comp=0 */
 }
 
 inline FrameMsgInfo basic_extended_multi_system_stream_validate_packet(const uint8_t* buffer, size_t length) {
@@ -72,10 +72,10 @@ inline FrameMsgInfo basic_extended_multi_system_stream_validate_packet(const uin
 }
 
 /* Basic + Minimal - This combination is not a standard profile but is used in tests */
-inline size_t basic_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
-                                   size_t msg_size) {
+template<typename T>
+inline size_t basic_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   const size_t header_size = 3; /* [0x90] [0x70] [MSG_ID] */
-  const size_t total_size = header_size + msg_size;
+  const size_t total_size = header_size + T::MAX_SIZE;
 
   if (buffer_size < total_size) {
     return 0;
@@ -84,8 +84,8 @@ inline size_t basic_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t 
   buffer[0] = FrameHeaders::BASIC_START_BYTE;
   buffer[1] = FrameHeaders::get_basic_second_start_byte(
       static_cast<uint8_t>(PayloadTypes::PAYLOAD_MINIMAL_CONFIG.payload_type));
-  buffer[2] = msg_id;
-  std::memcpy(buffer + header_size, msg, msg_size);
+  buffer[2] = static_cast<uint8_t>(T::MSG_ID);
+  std::memcpy(buffer + header_size, msg.data(), T::MAX_SIZE);
 
   return total_size;
 }
@@ -119,23 +119,23 @@ inline FrameMsgInfo basic_minimal_validate_packet(const uint8_t* buffer, size_t 
 }
 
 /* Tiny + Default - This combination is not a standard profile but is used in tests */
-inline size_t tiny_default_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
-                                  size_t msg_size) {
+template<typename T>
+inline size_t tiny_default_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   const size_t header_size = 3; /* [0x71] [LEN] [MSG_ID] */
   const size_t footer_size = 2; /* [CRC1] [CRC2] */
-  const size_t total_size = header_size + msg_size + footer_size;
+  const size_t total_size = header_size + T::MAX_SIZE + footer_size;
 
-  if (buffer_size < total_size || msg_size > 255) {
+  if (buffer_size < total_size || T::MAX_SIZE > 255) {
     return 0;
   }
 
   buffer[0] =
       FrameHeaders::get_tiny_start_byte(static_cast<uint8_t>(PayloadTypes::PAYLOAD_DEFAULT_CONFIG.payload_type));
-  buffer[1] = static_cast<uint8_t>(msg_size);
-  buffer[2] = msg_id;
-  std::memcpy(buffer + header_size, msg, msg_size);
+  buffer[1] = static_cast<uint8_t>(T::MAX_SIZE);
+  buffer[2] = static_cast<uint8_t>(T::MSG_ID);
+  std::memcpy(buffer + header_size, msg.data(), T::MAX_SIZE);
 
-  FrameChecksum ck = fletcher_checksum(buffer + 1, msg_size + 2);
+  FrameChecksum ck = fletcher_checksum(buffer + 1, T::MAX_SIZE + 2);
   buffer[total_size - 2] = ck.byte1;
   buffer[total_size - 1] = ck.byte2;
 
@@ -427,39 +427,43 @@ bool encode_test_messages(const std::string& format, uint8_t* buffer, size_t buf
 
   for (const auto& mixed_msg : mixed_messages) {
     size_t msg_encoded_size = 0;
-    uint8_t msg_id;
-    const uint8_t* msg_ptr;
-    size_t msg_size;
 
     if (mixed_msg.type == MessageType::SerializationTest) {
-      const auto& msg =
-          *reinterpret_cast<const SerializationTestSerializationTestMessage*>(&mixed_msg.data.serial_test);
-      msg_id = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
-      msg_ptr = reinterpret_cast<const uint8_t*>(&msg);
-      msg_size = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE;
+      const auto& msg = mixed_msg.data.serial_test;
+
+      if (format == "profile_standard") {
+        msg_encoded_size = basic_default_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_sensor") {
+        msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_ipc") {
+        msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_bulk") {
+        msg_encoded_size = basic_extended_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_network") {
+        msg_encoded_size = basic_extended_multi_system_stream_encode(buffer + offset, buffer_size - offset, msg);
+      } else {
+        std::cout << "  Unknown frame format: " << format << "\n";
+        return false;
+      }
     } else if (mixed_msg.type == MessageType::BasicTypes) {
-      const auto& msg = *reinterpret_cast<const SerializationTestBasicTypesMessage*>(&mixed_msg.data.basic_types);
-      msg_id = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID;
-      msg_ptr = reinterpret_cast<const uint8_t*>(&msg);
-      msg_size = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAX_SIZE;
+      const auto& msg = mixed_msg.data.basic_types;
+
+      if (format == "profile_standard") {
+        msg_encoded_size = basic_default_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_sensor") {
+        msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_ipc") {
+        msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_bulk") {
+        msg_encoded_size = basic_extended_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_network") {
+        msg_encoded_size = basic_extended_multi_system_stream_encode(buffer + offset, buffer_size - offset, msg);
+      } else {
+        std::cout << "  Unknown frame format: " << format << "\n";
+        return false;
+      }
     } else {
       std::cout << "  Unknown message type\n";
-      return false;
-    }
-
-    if (format == "profile_standard") {
-      msg_encoded_size = basic_default_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
-    } else if (format == "profile_sensor") {
-      msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
-    } else if (format == "profile_ipc") {
-      msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
-    } else if (format == "profile_bulk") {
-      msg_encoded_size = basic_extended_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
-    } else if (format == "profile_network") {
-      msg_encoded_size =
-          basic_extended_multi_system_stream_encode(buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
-    } else {
-      std::cout << "  Unknown frame format: " << format << "\n";
       return false;
     }
 
@@ -513,14 +517,14 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
       return false;
     }
 
-    // Validate msg_id matches expected type
+    // Validate msg_id matches expected type using MessageBase MSG_ID constants
     const auto& mixed_msg = mixed_messages[message_count];
-    uint8_t expected_msg_id;
+    uint16_t expected_msg_id;
 
     if (mixed_msg.type == MessageType::SerializationTest) {
-      expected_msg_id = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
+      expected_msg_id = SerializationTestSerializationTestMessage::MSG_ID;
     } else if (mixed_msg.type == MessageType::BasicTypes) {
-      expected_msg_id = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID;
+      expected_msg_id = SerializationTestBasicTypesMessage::MSG_ID;
     } else {
       std::cout << "  Unknown message type for message " << message_count << "\n";
       return false;

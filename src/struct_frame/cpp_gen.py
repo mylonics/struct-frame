@@ -160,44 +160,46 @@ class MessageCppGen():
         # When using namespaces, don't prefix struct name
         if use_namespace:
             structName = msg.name
+            defineName = CamelToSnakeCase(msg.name).upper()
         else:
             structName = '%s%s' % (pascalCase(msg.package), msg.name)
-        result += 'struct %s {' % structName
-
-        result += '\n'
+            defineName = '%s_%s' % (CamelToSnakeCase(
+                msg.package).upper(), CamelToSnakeCase(msg.name).upper())
 
         size = 1
         if not msg.fields:
             # Empty structs are allowed in C++ but we add a dummy field
             # for consistency with the C implementation
-            result += '    char dummy_field;\n'
+            size = 1
         else:
             size = msg.size
 
+        # Determine if this message has an ID (for MessageBase inheritance)
+        has_msg_id = msg.id is not None
+        
+        # Compute the message ID value
+        msg_id_value = None
+        if has_msg_id:
+            if package and package.package_id is not None:
+                msg_id_value = (package.package_id << 8) | msg.id
+            else:
+                msg_id_value = msg.id
+
+        # Generate struct with optional MessageBase inheritance
+        if has_msg_id:
+            result += 'struct %s : FrameParsers::MessageBase<%s, %d, %d> {' % (
+                structName, structName, msg_id_value, size)
+        else:
+            result += 'struct %s {' % structName
+
+        result += '\n'
+
+        if not msg.fields:
+            result += '    char dummy_field;\n'
+
         result += '\n'.join([FieldCppGen.generate(f, use_namespace)
                             for key, f in msg.fields.items()])
-        result += '\n};\n\n'
-
-        # Define name depends on whether we're using namespaces
-        if use_namespace:
-            defineName = CamelToSnakeCase(msg.name).upper()
-        else:
-            defineName = '%s_%s' % (CamelToSnakeCase(
-                msg.package).upper(), CamelToSnakeCase(msg.name).upper())
-        
-        result += 'constexpr size_t %s_MAX_SIZE = %d;\n' % (defineName, size)
-
-        if msg.id is not None:
-            # When package has a package ID, generate 16-bit message ID as (pkg_id << 8) | msg_id
-            if package and package.package_id is not None:
-                # Compute combined 16-bit message ID
-                combined_msg_id = (package.package_id << 8) | msg.id
-                result += 'constexpr uint16_t %s_MSG_ID = %d;\n' % (
-                    defineName, combined_msg_id)
-            else:
-                # No package ID, use plain message ID (also uint16_t for consistency)
-                result += 'constexpr uint16_t %s_MSG_ID = %d;\n' % (
-                    defineName, msg.id)
+        result += '\n};\n'
 
         return result + '\n'
 
@@ -210,7 +212,13 @@ class FileCppGen():
 
         yield '#pragma once\n'
         yield '#include <cstdint>\n'
-        yield '#include <cstddef>\n\n'
+        yield '#include <cstddef>\n'
+        
+        # Check if any message has an ID (needs MessageBase from frame_base.hpp)
+        has_msg_with_id = any(msg.id is not None for msg in package.messages.values()) if package.messages else False
+        if has_msg_with_id:
+            yield '#include "frame_base.hpp"\n'
+        yield '\n'
 
         # Check if package has package ID - if so, use namespaces
         use_namespace = package.package_id is not None
@@ -264,17 +272,16 @@ class FileCppGen():
             
             for key, msg in package.sortedMessages().items():
                 if use_namespace:
-                    name = CamelToSnakeCase(msg.name).upper()
+                    structName = msg.name
                 else:
-                    name = '%s_%s' % (CamelToSnakeCase(
-                        msg.package).upper(), CamelToSnakeCase(msg.name).upper())
+                    structName = '%s%s' % (pascalCase(msg.package), msg.name)
                 if msg.id is not None:
                     if use_namespace:
                         # When using package ID, compare against local message ID
-                        yield '        case %d: *size = %s_MAX_SIZE; return true;\n' % (msg.id, name)
+                        yield '        case %d: *size = %s::MAX_SIZE; return true;\n' % (msg.id, structName)
                     else:
-                        # No package ID, compare against full message ID constant
-                        yield '        case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
+                        # No package ID, compare against MSG_ID from MessageBase
+                        yield '        case %s::MSG_ID: *size = %s::MAX_SIZE; return true;\n' % (structName, structName)
 
             yield '        default: break;\n'
             yield '    }\n'
