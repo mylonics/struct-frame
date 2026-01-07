@@ -55,12 +55,12 @@ inline FrameChecksum fletcher_checksum(const uint8_t* data, size_t length) {
 // Parse result
 struct FrameMsgInfo {
     bool valid;
-    uint8_t msg_id;
+    uint16_t msg_id;
     size_t msg_len;
     uint8_t* msg_data;
 
     FrameMsgInfo() : valid(false), msg_id(0), msg_len(0), msg_data(nullptr) {}
-    FrameMsgInfo(bool v, uint8_t id, size_t len, uint8_t* data)
+    FrameMsgInfo(bool v, uint16_t id, size_t len, uint8_t* data)
         : valid(v), msg_id(id), msg_len(len), msg_data(data) {}
 };
 

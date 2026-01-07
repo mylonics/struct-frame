@@ -16,7 +16,7 @@
 using json = nlohmann::json;
 using namespace FrameParsers;
 
-/* 
+/*
  * Frame format helper functions - Use generated profile functions from FrameProfiles.hpp
  * The manual implementations have been replaced with calls to the generated functions.
  */
@@ -54,7 +54,8 @@ inline FrameMsgInfo none_minimal_validate_packet(const uint8_t* buffer, size_t l
 /* Basic + Extended -> Profile Bulk */
 inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
                                     size_t msg_size) {
-  return encode_profile_bulk(buffer, buffer_size, 0, msg_id, msg, msg_size);  /* pkg_id = 0 */
+  return encode_profile_bulk(buffer, buffer_size, msg_id, msg,
+                             msg_size); /* msg_id only (pkg_id in high byte if needed) */
 }
 
 inline FrameMsgInfo basic_extended_validate_packet(const uint8_t* buffer, size_t length) {
@@ -64,7 +65,7 @@ inline FrameMsgInfo basic_extended_validate_packet(const uint8_t* buffer, size_t
 /* Basic + Extended Multi System Stream -> Profile Network */
 inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id,
                                                         const uint8_t* msg, size_t msg_size) {
-  return encode_profile_network(buffer, buffer_size, 0, 0, 0, 0, msg_id, msg, msg_size);  /* seq=0, sys=0, comp=0, pkg=0 */
+  return encode_profile_network(buffer, buffer_size, 0, 0, 0, msg_id, msg, msg_size); /* seq=0, sys=0, comp=0 */
 }
 
 inline FrameMsgInfo basic_extended_multi_system_stream_validate_packet(const uint8_t* buffer, size_t length) {
