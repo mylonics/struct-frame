@@ -74,20 +74,19 @@ def _frame_format_encode_with_crc(
     payload: bytes,
     seq: int = 0,
     sys_id: int = 0,
-    comp_id: int = 0,
-    pkg_id: int = 0
+    comp_id: int = 0
 ) -> bytes:
     """
     Generic encode function for frames with CRC.
     
     Args:
         config: Frame format configuration
-        msg_id: Message ID (0-255)
+        msg_id: Message ID. When config.has_pkg_id is True, this should be a 16-bit value
+                with package ID in upper 8 bits and message ID in lower 8 bits: (pkg_id << 8) | msg_id
         payload: Message payload bytes
         seq: Sequence number (for profiles with sequence)
         sys_id: System ID (for profiles with routing)
         comp_id: Component ID (for profiles with routing)
-        pkg_id: Package ID (for profiles with package namespacing)
     
     Returns:
         Encoded frame as bytes
@@ -123,12 +122,16 @@ def _frame_format_encode_with_crc(
             output.append(payload_size & 0xFF)
             output.append((payload_size >> 8) & 0xFF)
     
-    # Write package ID if present
+    # Write package ID and message ID
     if config.has_pkg_id:
-        output.append(pkg_id & 0xFF)
-    
-    # Write message ID
-    output.append(msg_id & 0xFF)
+        # Extract package ID from upper 8 bits and message ID from lower 8 bits
+        pkg_id = (msg_id >> 8) & 0xFF
+        local_msg_id = msg_id & 0xFF
+        output.append(pkg_id)
+        output.append(local_msg_id)
+    else:
+        # Write message ID only
+        output.append(msg_id & 0xFF)
     
     # Write payload
     output.extend(payload)
@@ -470,9 +473,17 @@ def parse_profile_ipc_buffer(buffer: bytes, get_msg_length: Callable[[int], int]
     return _frame_format_parse_minimal(PROFILE_IPC_CONFIG, buffer, get_msg_length)
 
 
-def encode_profile_bulk(msg_id: int, payload: bytes, pkg_id: int = 0) -> bytes:
-    """Encode using Profile Bulk (Basic + Extended)"""
-    return _frame_format_encode_with_crc(PROFILE_BULK_CONFIG, msg_id, payload, pkg_id=pkg_id)
+def encode_profile_bulk(msg_id: int, payload: bytes) -> bytes:
+    """Encode using Profile Bulk (Basic + Extended)
+    
+    Args:
+        msg_id: 16-bit message ID with package ID in upper 8 bits: (pkg_id << 8) | msg_id
+        payload: Message payload bytes
+    
+    Returns:
+        Encoded frame as bytes
+    """
+    return _frame_format_encode_with_crc(PROFILE_BULK_CONFIG, msg_id, payload)
 
 
 def parse_profile_bulk_buffer(buffer: bytes) -> FrameMsgInfo:
@@ -485,13 +496,23 @@ def encode_profile_network(
     payload: bytes,
     seq: int = 0,
     sys_id: int = 0,
-    comp_id: int = 0,
-    pkg_id: int = 0
+    comp_id: int = 0
 ) -> bytes:
-    """Encode using Profile Network (Basic + ExtendedMultiSystemStream)"""
+    """Encode using Profile Network (Basic + ExtendedMultiSystemStream)
+    
+    Args:
+        msg_id: 16-bit message ID with package ID in upper 8 bits: (pkg_id << 8) | msg_id
+        payload: Message payload bytes
+        seq: Sequence number
+        sys_id: System ID
+        comp_id: Component ID
+    
+    Returns:
+        Encoded frame as bytes
+    """
     return _frame_format_encode_with_crc(
         PROFILE_NETWORK_CONFIG, msg_id, payload,
-        seq=seq, sys_id=sys_id, comp_id=comp_id, pkg_id=pkg_id
+        seq=seq, sys_id=sys_id, comp_id=comp_id
     )
 
 
