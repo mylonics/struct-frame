@@ -733,7 +733,7 @@ def needs_extended_payload_types():
     - Any message ID is >= 256
     
     When this returns True, only Extended* payload types should be generated:
-    - ExtendedMsgIds, Extended, ExtendedMinimal, ExtendedMultiSystemStream
+    - ExtendedMsgIds, Extended, ExtendedMinimal, ExtendedMultiSystemStream, ExtendedLength
     
     Standard payload types (Minimal, Default, SysComp, Seq, MultiSystemStream)
     and their profiles (ProfileStandard, ProfileSensor, ProfileIPC) should not be generated.

@@ -189,8 +189,8 @@ class MessageCSharpGen():
                 combined_msg_id = (package.package_id << 8) | msg.id
                 result += '        public const ushort MsgId = %d;\n' % combined_msg_id
             else:
-                # No package ID, use plain message ID
-                result += '        public const int MsgId = %d;\n' % msg.id
+                # No package ID, use plain message ID (also ushort for consistency)
+                result += '        public const ushort MsgId = %d;\n' % msg.id
         result += '\n'
 
         if not msg.fields:

@@ -195,8 +195,8 @@ class MessageCppGen():
                 result += 'constexpr uint16_t %s_MSG_ID = %d;\n' % (
                     defineName, combined_msg_id)
             else:
-                # No package ID, use plain message ID
-                result += 'constexpr size_t %s_MSG_ID = %d;\n' % (
+                # No package ID, use plain message ID (also uint16_t for consistency)
+                result += 'constexpr uint16_t %s_MSG_ID = %d;\n' % (
                     defineName, msg.id)
 
         return result + '\n'
