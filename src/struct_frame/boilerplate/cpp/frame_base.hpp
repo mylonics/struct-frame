@@ -64,6 +64,41 @@ struct FrameMsgInfo {
         : valid(v), msg_id(id), msg_len(len), msg_data(data) {}
 };
 
+/**
+ * Base class for message types with associated metadata.
+ * Template parameters embed msg_id and max_size as compile-time constants.
+ * 
+ * Usage:
+ *   struct MyMessage : MessageBase<MyMessage, MSG_ID, MAX_SIZE> {
+ *       uint32_t field1;
+ *       float field2;
+ *   };
+ *   
+ *   // Encode directly without passing msg_id/size:
+ *   MyMessage msg{.field1 = 42, .field2 = 3.14f};
+ *   encode_profile_standard(buffer, sizeof(buffer), msg);
+ */
+template<typename Derived, uint16_t MsgId, size_t MaxSize>
+struct MessageBase {
+    static constexpr uint16_t MSG_ID = MsgId;
+    static constexpr size_t MAX_SIZE = MaxSize;
+    
+    // Get pointer to the message data (cast to derived type's data)
+    const uint8_t* data() const {
+        return reinterpret_cast<const uint8_t*>(static_cast<const Derived*>(this));
+    }
+    
+    uint8_t* data() {
+        return reinterpret_cast<uint8_t*>(static_cast<Derived*>(this));
+    }
+    
+    // Get the message size
+    static constexpr size_t size() { return MaxSize; }
+    
+    // Get the message ID
+    static constexpr uint16_t msg_id() { return MsgId; }
+};
+
 // =============================================================================
 // Shared Payload Parsing Functions
 // =============================================================================
