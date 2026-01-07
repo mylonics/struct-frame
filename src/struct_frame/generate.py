@@ -724,6 +724,33 @@ def validatePackages(debug=False):
     return True
 
 
+def needs_extended_payload_types():
+    """
+    Determine if only Extended* payload types should be used.
+    
+    Returns True if:
+    - Any package has a package ID, OR
+    - Any message ID is >= 256
+    
+    When this returns True, only Extended* payload types should be generated:
+    - ExtendedMsgIds, Extended, ExtendedMinimal, ExtendedMultiSystemStream
+    
+    Standard payload types (Minimal, Default, SysComp, Seq, MultiSystemStream)
+    and their profiles (ProfileStandard, ProfileSensor, ProfileIPC) should not be generated.
+    """
+    for pkg_name, pkg in packages.items():
+        # Check if package has package ID
+        if pkg.package_id is not None:
+            return True
+        
+        # Check if any message ID >= 256
+        for msg_name, msg in pkg.messages.items():
+            if msg.id is not None and msg.id >= 256:
+                return True
+    
+    return False
+
+
 def printPackages():
     for key, value in packages.items():
         print(value)
@@ -794,7 +821,7 @@ def generateCSharpFileStrings(path, include_sdk_interface=False):
 def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_path, cpp_path, csharp_path,
                              build_c, build_ts, build_js, build_py, build_cpp, build_csharp):
     """Generate frame parser files from frame format definitions"""
-    from struct_frame.frame_format import parse_frame_formats
+    from struct_frame.frame_format import parse_frame_formats, PayloadType
     from struct_frame.frame_parser_c_gen import generate_c_frame_parsers
     from struct_frame.frame_parser_py_gen import generate_py_frame_parsers
     from struct_frame.frame_parser_ts_gen import generate_ts_frame_parsers, generate_js_frame_parsers
@@ -802,6 +829,27 @@ def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_pa
     from struct_frame.frame_parser_csharp_gen import generate_csharp_frame_parsers
 
     formats = parse_frame_formats(frame_formats_file)
+    
+    # Filter payload types based on package configuration
+    if needs_extended_payload_types():
+        # Only allow Extended* payload types
+        allowed_payload_types = {
+            PayloadType.EXTENDED_MSG_IDS,
+            PayloadType.EXTENDED,
+            PayloadType.EXTENDED_MINIMAL,
+            PayloadType.EXTENDED_MULTI_SYSTEM_STREAM,
+            PayloadType.EXTENDED_LENGTH,  # Also an extended type
+        }
+        
+        # Filter the payload definitions
+        original_count = len(formats.payloads)
+        formats.payloads = {pt: pd for pt, pd in formats.payloads.items() if pt in allowed_payload_types}
+        
+        if original_count > len(formats.payloads):
+            print("Note: Package uses package IDs or message IDs >= 256.")
+            print("      Only generating Extended* payload type parsers.")
+            print(f"      Filtered to {len(formats.payloads)} payload types from {original_count}.")
+    
     files = {}
 
     if build_c:
