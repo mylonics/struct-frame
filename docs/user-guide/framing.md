@@ -313,6 +313,9 @@ All supported frame formats are defined in [`examples/frame_formats.proto`](http
 | Seq | 6 | 0x76 | `[SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | MultiSystemStream | 7 | 0x77 | `[SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
 | ExtendedMultiSystemStream | 8 | 0x78 | `[SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]` |
+| ExtendedMinimal | 9 | 0x79 | `[PKG_ID] [MSG_ID] [PACKET]` |
+
+**Note**: ExtendedMinimal (added in v0.0.2) provides package ID support with minimal overhead. Like other Minimal types, it requires known message sizes and has no length field or CRC.
 
 For more detailed information about the framing system architecture, payload types, frame types, and complete format reference, see the [Framing Architecture](framing-architecture.md) guide.
 

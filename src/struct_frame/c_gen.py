@@ -152,7 +152,7 @@ class FieldCGen():
 
 class MessageCGen():
     @staticmethod
-    def generate(msg):
+    def generate(msg, package=None):
         leading_comment = msg.comments
 
         result = ''
@@ -183,7 +183,14 @@ class MessageCGen():
         result += '#define %s_MAX_SIZE %d\n' % (defineName, size)
 
         if msg.id:
-            result += '#define %s_MSG_ID %d\n' % (defineName, msg.id)
+            # When package has a package ID, generate 16-bit message ID as (pkg_id << 8) | msg_id
+            if package and package.package_id is not None:
+                # Compute combined 16-bit message ID
+                combined_msg_id = (package.package_id << 8) | msg.id
+                result += '#define %s_MSG_ID %d\n' % (defineName, combined_msg_id)
+            else:
+                # No package ID, use plain message ID
+                result += '#define %s_MSG_ID %d\n' % (defineName, msg.id)
 
         return result + '\n'
 
@@ -228,7 +235,7 @@ class FileCGen():
             # Need to sort messages to make sure dependecies are properly met
 
             for key, msg in package.sortedMessages().items():
-                yield MessageCGen.generate(msg) + '\n'
+                yield MessageCGen.generate(msg, package) + '\n'
             yield '\n'
 
         # Add default initializers if needed
@@ -266,7 +273,12 @@ class FileCGen():
                 name = '%s_%s' % (CamelToSnakeCase(
                     msg.package).upper(), CamelToSnakeCase(msg.name).upper())
                 if msg.id:
-                    yield '        case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
+                    if package.package_id is not None:
+                        # When using package ID, compare against local message ID
+                        yield '        case %d: *size = %s_MAX_SIZE; return true;\n' % (msg.id, name)
+                    else:
+                        # No package ID, compare against full message ID constant
+                        yield '        case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
 
             yield '        default: break;\n'
             yield '    }\n'

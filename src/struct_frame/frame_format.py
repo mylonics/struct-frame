@@ -41,6 +41,7 @@ class PayloadType(Enum):
     SEQ = 6                          # [SEQ] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
     MULTI_SYSTEM_STREAM = 7          # [SEQ] [SYS_ID] [COMP_ID] [LEN] [MSG_ID] [PACKET] [CRC1] [CRC2]
     EXTENDED_MULTI_SYSTEM_STREAM = 8 # [SEQ] [SYS_ID] [COMP_ID] [LEN16] [PKG_ID] [MSG_ID] [PACKET] [CRC1] [CRC2]
+    EXTENDED_MINIMAL = 9             # [PKG_ID] [MSG_ID] [PACKET]
     # Third party
     UBX = 100                        # [CLASS] [ID] [LEN_LO] [LEN_HI] [MSG] [CK_A] [CK_B]
     MAVLINK_V1 = 101                 # [LEN] [SEQ] [SYS] [COMP] [MSG_ID] [PAYLOAD] [CRC_LO] [CRC_HI]
@@ -209,6 +210,7 @@ class FrameFormatCollection:
             'PayloadSeq': PayloadType.SEQ,
             'PayloadMultiSystemStream': PayloadType.MULTI_SYSTEM_STREAM,
             'PayloadExtendedMultiSystemStream': PayloadType.EXTENDED_MULTI_SYSTEM_STREAM,
+            'PayloadExtendedMinimal': PayloadType.EXTENDED_MINIMAL,
             'PayloadUbx': PayloadType.UBX,
             'PayloadMavlinkV1': PayloadType.MAVLINK_V1,
             'PayloadMavlinkV2': PayloadType.MAVLINK_V2,

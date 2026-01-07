@@ -91,6 +91,11 @@ enum PayloadType {
   // Full featured format with all extensions.
   PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM = 8;
 
+  // ExtendedMinimal: [PKG_ID] [MSG_ID] [PACKET]
+  // Package ID + Message ID, no length field, no CRC. Requires known message sizes.
+  // Use for low-overhead communication when package namespacing is needed.
+  PAYLOAD_EXTENDED_MINIMAL = 9;
+
   // Third-party protocol payloads
   PAYLOAD_UBX = 100;
   PAYLOAD_MAVLINK_V1 = 101;
