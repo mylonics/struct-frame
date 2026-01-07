@@ -288,7 +288,12 @@ class FileCSharpGen():
             for key, msg in package.sortedMessages().items():
                 if msg.id:
                     structName = '%s%s' % (pascalCase(msg.package), msg.name)
-                    yield '                case %s.MsgId: size = %s.MaxSize; return true;\n' % (structName, structName)
+                    if package.package_id is not None:
+                        # When using package ID, compare against local message ID (not the combined constant)
+                        yield '                case %d: size = %s.MaxSize; return true;\n' % (msg.id, structName)
+                    else:
+                        # No package ID, compare against full message ID constant
+                        yield '                case %s.MsgId: size = %s.MaxSize; return true;\n' % (structName, structName)
             yield '                default: size = 0; return false;\n'
             yield '            }\n'
             yield '        }\n'
