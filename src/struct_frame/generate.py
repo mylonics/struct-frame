@@ -434,6 +434,22 @@ class Package:
             # from the other through imports. The package_imports tracking handles this.
             # Only error if the same package NAME has different IDs (checked in validate_package_id).
 
+        # Validate message IDs based on whether package has a package ID
+        for key, value in self.messages.items():
+            if value.id is not None:
+                if self.package_id is not None:
+                    # If package has a package ID, message IDs must be < 256
+                    if value.id < 0 or value.id >= 256:
+                        print(f"Error: Message '{value.name}' in package '{self.name}' has msgid={value.id}")
+                        print(f"  When package has 'option pkgid={self.package_id}', all message IDs must be in range [0, 255]")
+                        return False
+                else:
+                    # If no package ID, message IDs must be < 65536
+                    if value.id < 0 or value.id >= 65536:
+                        print(f"Error: Message '{value.name}' in package '{self.name}' has msgid={value.id}")
+                        print(f"  Without package ID, message IDs must be in range [0, 65535]")
+                        return False
+
         for key, value in self.messages.items():
             if not value.validate(self, allPackages, debug):
                 print(

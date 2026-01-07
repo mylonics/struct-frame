@@ -163,7 +163,7 @@ class FieldCSharpGen():
 
 class MessageCSharpGen():
     @staticmethod
-    def generate(msg):
+    def generate(msg, package=None):
         leading_comment = msg.comments
 
         result = ''
@@ -183,7 +183,14 @@ class MessageCSharpGen():
 
         result += '        public const int MaxSize = %d;\n' % msg.size
         if msg.id:
-            result += '        public const int MsgId = %d;\n' % msg.id
+            # When package has a package ID, generate 16-bit message ID as (pkg_id << 8) | msg_id
+            if package and package.package_id is not None:
+                # Compute combined 16-bit message ID
+                combined_msg_id = (package.package_id << 8) | msg.id
+                result += '        public const ushort MsgId = %d;\n' % combined_msg_id
+            else:
+                # No package ID, use plain message ID
+                result += '        public const int MsgId = %d;\n' % msg.id
         result += '\n'
 
         if not msg.fields:
@@ -246,7 +253,7 @@ class FileCSharpGen():
             yield '    // Struct definitions\n'
             # Need to sort messages to make sure dependencies are properly met
             for key, msg in package.sortedMessages().items():
-                yield MessageCSharpGen.generate(msg)
+                yield MessageCSharpGen.generate(msg, package)
             yield '\n'
 
         # Generate helper class with message definitions
