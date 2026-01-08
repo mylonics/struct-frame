@@ -153,7 +153,7 @@ class FieldCGen():
 
 class OneOfCGen():
     @staticmethod
-    def generate(oneof):
+    def generate(oneof, package=None):
         """Generate C union for a oneof construct."""
         result = ''
         
@@ -164,7 +164,9 @@ class OneOfCGen():
         
         # If auto-discriminator is enabled, add discriminator field first
         if oneof.auto_discriminator:
-            result += f'    uint8_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
+            # Use uint16_t when package has package_id, uint8_t otherwise
+            discriminator_type = 'uint16_t' if (package and package.package_id is not None) else 'uint8_t'
+            result += f'    {discriminator_type} {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
         
         # Generate the union
         result += f'    union {{\n'
@@ -212,7 +214,7 @@ class MessageCGen():
         if msg.oneofs:
             if msg.fields:
                 result += '\n'
-            result += '\n'.join([OneOfCGen.generate(o)
+            result += '\n'.join([OneOfCGen.generate(o, package)
                                 for key, o in msg.oneofs.items()])
         
         result += '\n}'
