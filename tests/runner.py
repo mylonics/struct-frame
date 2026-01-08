@@ -636,14 +636,13 @@ class TestRunner:
             return False
 
         rate = 100 * passed / total
-        if rate >= 80:
-            print(f"SUCCESS: {rate:.1f}% pass rate")
-            return True
-        elif rate >= 50:
-            print(f"PARTIAL SUCCESS: {rate:.1f}% pass rate")
+        
+        # Only return success if 100% pass rate
+        if rate == 100.0:
+            print(f"SUCCESS: All tests passed")
             return True
         else:
-            print(f"NEEDS WORK: {rate:.1f}% pass rate")
+            print(f"FAILURE: {rate:.1f}% pass rate ({total - passed} test(s) failed)")
             return False
 
     # =========================================================================
