@@ -81,7 +81,7 @@ class FieldTsGen():
 
 class MessageTsGen():
     @staticmethod
-    def generate(msg, packageName):
+    def generate(msg, packageName, package=None):
         leading_comment = msg.comments
 
         result = ''
@@ -97,15 +97,27 @@ class MessageTsGen():
         result += '\n'
 
         size = 1
-        if not msg.fields:
+        if not msg.fields and not msg.oneofs:
             # Empty structs are not allowed in C standard.
             # Therefore add a dummy field if an empty message occurs.
             result += '    .UInt8(\'dummy_field\');'
         else:
             size = msg.size
 
+        # Generate regular fields
         result += '\n'.join([FieldTsGen.generate(f, packageName)
                             for key, f in msg.fields.items()])
+        
+        # Generate oneofs - add discriminator and allocate union size
+        for key, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                # Add discriminator field - use UInt16LE when package has package_id
+                discriminator_method = 'UInt16LE' if (package and package.package_id is not None) else 'UInt8'
+                result += f'\n    .{discriminator_method}(\'{oneof.name}_discriminator\')'
+            # Allocate space for the union (largest member size)
+            # Use a byte array to represent the union storage
+            result += f'\n    .ByteArray(\'{oneof.name}_data\', {oneof.size})'
+        
         result += '\n    .compile();\n\n'
 
         result += 'export const %s_max_size = %d;\n' % (package_msg_name, size)
@@ -187,7 +199,7 @@ class FileTsGen():
         if package.messages:
             yield '/* Struct definitions */\n'
             for key, msg in package.sortedMessages().items():
-                yield MessageTsGen.generate(msg, package.name) + '\n'
+                yield MessageTsGen.generate(msg, package.name, package) + '\n'
             yield '\n'
 
         if package.messages:
