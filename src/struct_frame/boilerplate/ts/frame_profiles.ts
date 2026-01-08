@@ -482,3 +482,639 @@ export const ProfileSensor = createProfileParserClass(ProfileSensorConfig);
 export const ProfileIPC = createProfileParserClass(ProfileIPCConfig);
 export const ProfileBulk = createProfileParserClass(ProfileBulkConfig);
 export const ProfileNetwork = createProfileParserClass(ProfileNetworkConfig);
+
+// =============================================================================
+// BufferReader - Iterate through multiple frames in a buffer
+// =============================================================================
+
+/**
+ * BufferReader - Iterate through a buffer parsing multiple frames.
+ *
+ * Usage:
+ *   const reader = new BufferReader(ProfileStandardConfig, buffer);
+ *   let result = reader.next();
+ *   while (result.valid) {
+ *       // Process result.msg_id, result.msg_data, result.msg_len
+ *       result = reader.next();
+ *   }
+ *
+ * For minimal profiles that need getMsgLength:
+ *   const reader = new BufferReader(ProfileSensorConfig, buffer, getMsgLength);
+ */
+export class BufferReader {
+    private config: FrameProfileConfig;
+    private buffer: Uint8Array;
+    private size: number;
+    private _offset: number;
+    private getMsgLength?: (msgId: number) => number | undefined;
+
+    constructor(
+        config: FrameProfileConfig,
+        buffer: Uint8Array,
+        getMsgLength?: (msgId: number) => number | undefined
+    ) {
+        this.config = config;
+        this.buffer = buffer;
+        this.size = buffer.length;
+        this._offset = 0;
+        this.getMsgLength = getMsgLength;
+    }
+
+    /**
+     * Parse the next frame in the buffer.
+     * Returns FrameMsgInfo with valid=true if successful, valid=false if no more frames.
+     */
+    next(): FrameMsgInfo {
+        if (this._offset >= this.size) {
+            return createFrameMsgInfo();
+        }
+
+        const remaining = this.buffer.slice(this._offset);
+        let result: FrameMsgInfo;
+
+        if (this.config.hasCrc || this.config.hasLength) {
+            result = parseFrameWithCrc(this.config, remaining);
+        } else {
+            if (!this.getMsgLength) {
+                return createFrameMsgInfo();
+            }
+            result = parseFrameMinimal(this.config, remaining, this.getMsgLength);
+        }
+
+        if (result.valid) {
+            const frameSize = this.config.headerSize + result.msg_len + this.config.footerSize;
+            this._offset += frameSize;
+        }
+
+        return result;
+    }
+
+    /** Reset the reader to the beginning of the buffer. */
+    reset(): void {
+        this._offset = 0;
+    }
+
+    /** Get the current offset in the buffer. */
+    get offset(): number {
+        return this._offset;
+    }
+
+    /** Get the remaining bytes in the buffer. */
+    get remaining(): number {
+        return Math.max(0, this.size - this._offset);
+    }
+
+    /** Check if there are more bytes to parse. */
+    hasMore(): boolean {
+        return this._offset < this.size;
+    }
+}
+
+// =============================================================================
+// BufferWriter - Encode multiple frames with automatic offset tracking
+// =============================================================================
+
+/**
+ * BufferWriter - Encode multiple frames into a buffer with automatic offset tracking.
+ *
+ * Usage:
+ *   const writer = new BufferWriter(ProfileStandardConfig, 1024);
+ *   writer.write(0x01, msg1Payload);
+ *   writer.write(0x02, msg2Payload);
+ *   const encodedData = writer.data();
+ *   const totalBytes = writer.size;
+ *
+ * For profiles with extra header fields:
+ *   const writer = new BufferWriter(ProfileNetworkConfig, 1024);
+ *   writer.write(0x01, payload, { seq: 1, sysId: 1, compId: 1 });
+ */
+export class BufferWriter {
+    private config: FrameProfileConfig;
+    private capacity: number;
+    private buffer: Uint8Array;
+    private _offset: number;
+
+    constructor(config: FrameProfileConfig, capacity: number) {
+        this.config = config;
+        this.capacity = capacity;
+        this.buffer = new Uint8Array(capacity);
+        this._offset = 0;
+    }
+
+    /**
+     * Write a message to the buffer.
+     * Returns the number of bytes written, or 0 on failure.
+     */
+    write(msgId: number, payload: Uint8Array, options: EncodeOptions = {}): number {
+        let encoded: Uint8Array;
+
+        if (this.config.hasCrc || this.config.hasLength) {
+            encoded = encodeFrameWithCrc(this.config, msgId, payload, options);
+        } else {
+            encoded = encodeFrameMinimal(this.config, msgId, payload);
+        }
+
+        const written = encoded.length;
+        if (this._offset + written > this.capacity) {
+            return 0;
+        }
+
+        this.buffer.set(encoded, this._offset);
+        this._offset += written;
+        return written;
+    }
+
+    /** Reset the writer to the beginning of the buffer. */
+    reset(): void {
+        this._offset = 0;
+    }
+
+    /** Get the total number of bytes written. */
+    get size(): number {
+        return this._offset;
+    }
+
+    /** Get the remaining capacity in the buffer. */
+    get remaining(): number {
+        return Math.max(0, this.capacity - this._offset);
+    }
+
+    /** Get the written data as a new Uint8Array. */
+    data(): Uint8Array {
+        return this.buffer.slice(0, this._offset);
+    }
+}
+
+// =============================================================================
+// AccumulatingReader - Unified parser for buffer and byte-by-byte streaming
+// =============================================================================
+
+/** Parser state for streaming mode */
+export enum AccumulatingReaderState {
+    IDLE = 0,
+    LOOKING_FOR_START1 = 1,
+    LOOKING_FOR_START2 = 2,
+    COLLECTING_HEADER = 3,
+    COLLECTING_PAYLOAD = 4,
+    BUFFER_MODE = 5
+}
+
+/**
+ * AccumulatingReader - Unified parser for buffer and byte-by-byte streaming input.
+ *
+ * Handles partial messages across buffer boundaries and supports both:
+ * - Buffer mode: addData() for processing chunks of data
+ * - Stream mode: pushByte() for byte-by-byte processing (e.g., UART)
+ *
+ * Buffer mode usage:
+ *   const reader = new AccumulatingReader(ProfileStandardConfig);
+ *   reader.addData(chunk1);
+ *   let result = reader.next();
+ *   while (result.valid) {
+ *       // Process complete messages
+ *       result = reader.next();
+ *   }
+ *
+ * Stream mode usage:
+ *   const reader = new AccumulatingReader(ProfileStandardConfig);
+ *   while (receiving) {
+ *       const byte = readByte();
+ *       const result = reader.pushByte(byte);
+ *       if (result.valid) {
+ *           // Process complete message
+ *       }
+ *   }
+ *
+ * For minimal profiles:
+ *   const reader = new AccumulatingReader(ProfileSensorConfig, getMsgLength);
+ */
+export class AccumulatingReader {
+    private config: FrameProfileConfig;
+    private getMsgLength?: (msgId: number) => number | undefined;
+    private bufferSize: number;
+
+    // Internal buffer for partial messages
+    private internalBuffer: Uint8Array;
+    private internalDataLen: number;
+    private expectedFrameSize: number;
+    private _state: AccumulatingReaderState;
+
+    // Buffer mode state
+    private currentBuffer: Uint8Array | null;
+    private currentSize: number;
+    private currentOffset: number;
+
+    constructor(
+        config: FrameProfileConfig,
+        getMsgLength?: (msgId: number) => number | undefined,
+        bufferSize: number = 1024
+    ) {
+        this.config = config;
+        this.getMsgLength = getMsgLength;
+        this.bufferSize = bufferSize;
+
+        this.internalBuffer = new Uint8Array(bufferSize);
+        this.internalDataLen = 0;
+        this.expectedFrameSize = 0;
+        this._state = AccumulatingReaderState.IDLE;
+
+        this.currentBuffer = null;
+        this.currentSize = 0;
+        this.currentOffset = 0;
+    }
+
+    // =========================================================================
+    // Buffer Mode API
+    // =========================================================================
+
+    /**
+     * Add a new buffer of data to process.
+     */
+    addData(buffer: Uint8Array): void {
+        this.currentBuffer = buffer;
+        this.currentSize = buffer.length;
+        this.currentOffset = 0;
+        this._state = AccumulatingReaderState.BUFFER_MODE;
+
+        // If we have partial data in internal buffer, try to complete it
+        if (this.internalDataLen > 0) {
+            const spaceAvailable = this.bufferSize - this.internalDataLen;
+            const bytesToCopy = Math.min(buffer.length, spaceAvailable);
+            this.internalBuffer.set(buffer.slice(0, bytesToCopy), this.internalDataLen);
+            this.internalDataLen += bytesToCopy;
+        }
+    }
+
+    /**
+     * Parse the next frame (buffer mode).
+     */
+    next(): FrameMsgInfo {
+        if (this._state !== AccumulatingReaderState.BUFFER_MODE) {
+            return createFrameMsgInfo();
+        }
+
+        // First, try to complete a partial message from the internal buffer
+        if (this.internalDataLen > 0 && this.currentOffset === 0) {
+            const internalBytes = this.internalBuffer.slice(0, this.internalDataLen);
+            const result = this.parseBuffer(internalBytes);
+
+            if (result.valid) {
+                const frameSize = this.config.headerSize + result.msg_len + this.config.footerSize;
+                const partialLen = this.internalDataLen > this.currentSize ? this.internalDataLen - this.currentSize : 0;
+                const bytesFromCurrent = frameSize > partialLen ? frameSize - partialLen : 0;
+                this.currentOffset = bytesFromCurrent;
+
+                this.internalDataLen = 0;
+                this.expectedFrameSize = 0;
+
+                return result;
+            } else {
+                return createFrameMsgInfo();
+            }
+        }
+
+        // Parse from current buffer
+        if (this.currentBuffer === null || this.currentOffset >= this.currentSize) {
+            return createFrameMsgInfo();
+        }
+
+        const remaining = this.currentBuffer.slice(this.currentOffset);
+        const result = this.parseBuffer(remaining);
+
+        if (result.valid) {
+            const frameSize = this.config.headerSize + result.msg_len + this.config.footerSize;
+            this.currentOffset += frameSize;
+            return result;
+        }
+
+        // Parse failed - might be partial message at end of buffer
+        const remainingLen = this.currentSize - this.currentOffset;
+        if (remainingLen > 0 && remainingLen < this.bufferSize) {
+            this.internalBuffer.set(remaining, 0);
+            this.internalDataLen = remainingLen;
+            this.currentOffset = this.currentSize;
+        }
+
+        return createFrameMsgInfo();
+    }
+
+    // =========================================================================
+    // Stream Mode API
+    // =========================================================================
+
+    /**
+     * Push a single byte for parsing (stream mode).
+     */
+    pushByte(byte: number): FrameMsgInfo {
+        // Initialize state on first byte if idle
+        if (this._state === AccumulatingReaderState.IDLE || this._state === AccumulatingReaderState.BUFFER_MODE) {
+            this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+            this.internalDataLen = 0;
+            this.expectedFrameSize = 0;
+        }
+
+        switch (this._state) {
+            case AccumulatingReaderState.LOOKING_FOR_START1:
+                return this.handleLookingForStart1(byte);
+            case AccumulatingReaderState.LOOKING_FOR_START2:
+                return this.handleLookingForStart2(byte);
+            case AccumulatingReaderState.COLLECTING_HEADER:
+                return this.handleCollectingHeader(byte);
+            case AccumulatingReaderState.COLLECTING_PAYLOAD:
+                return this.handleCollectingPayload(byte);
+            default:
+                this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                return createFrameMsgInfo();
+        }
+    }
+
+    private handleLookingForStart1(byte: number): FrameMsgInfo {
+        if (this.config.numStartBytes === 0) {
+            this.internalBuffer[0] = byte;
+            this.internalDataLen = 1;
+
+            if (!this.config.hasLength && !this.config.hasCrc) {
+                return this.handleMinimalMsgId(byte);
+            } else {
+                this._state = AccumulatingReaderState.COLLECTING_HEADER;
+            }
+        } else {
+            if (byte === this.config.startByte1) {
+                this.internalBuffer[0] = byte;
+                this.internalDataLen = 1;
+
+                if (this.config.numStartBytes === 1) {
+                    this._state = AccumulatingReaderState.COLLECTING_HEADER;
+                } else {
+                    this._state = AccumulatingReaderState.LOOKING_FOR_START2;
+                }
+            }
+        }
+        return createFrameMsgInfo();
+    }
+
+    private handleLookingForStart2(byte: number): FrameMsgInfo {
+        if (byte === this.config.startByte2) {
+            this.internalBuffer[this.internalDataLen++] = byte;
+            this._state = AccumulatingReaderState.COLLECTING_HEADER;
+        } else if (byte === this.config.startByte1) {
+            this.internalBuffer[0] = byte;
+            this.internalDataLen = 1;
+        } else {
+            this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+            this.internalDataLen = 0;
+        }
+        return createFrameMsgInfo();
+    }
+
+    private handleCollectingHeader(byte: number): FrameMsgInfo {
+        if (this.internalDataLen >= this.bufferSize) {
+            this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+            this.internalDataLen = 0;
+            return createFrameMsgInfo();
+        }
+
+        this.internalBuffer[this.internalDataLen++] = byte;
+
+        if (this.internalDataLen >= this.config.headerSize) {
+            if (!this.config.hasLength && !this.config.hasCrc) {
+                const msgId = this.internalBuffer[this.config.headerSize - 1];
+                if (this.getMsgLength) {
+                    const msgLen = this.getMsgLength(msgId);
+                    if (msgLen !== undefined) {
+                        this.expectedFrameSize = this.config.headerSize + msgLen;
+
+                        if (this.expectedFrameSize > this.bufferSize) {
+                            this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                            this.internalDataLen = 0;
+                            return createFrameMsgInfo();
+                        }
+
+                        if (msgLen === 0) {
+                            const result = createFrameMsgInfo();
+                            result.valid = true;
+                            result.msg_id = msgId;
+                            result.msg_len = 0;
+                            result.msg_data = new Uint8Array(0);
+                            this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                            this.internalDataLen = 0;
+                            this.expectedFrameSize = 0;
+                            return result;
+                        }
+
+                        this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
+                    } else {
+                        this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                        this.internalDataLen = 0;
+                    }
+                } else {
+                    this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                    this.internalDataLen = 0;
+                }
+            } else {
+                let lenOffset = this.config.numStartBytes;
+                if (this.config.hasSeq) lenOffset++;
+                if (this.config.hasSysId) lenOffset++;
+                if (this.config.hasCompId) lenOffset++;
+
+                let payloadLen = 0;
+                if (this.config.hasLength) {
+                    if (this.config.lengthBytes === 1) {
+                        payloadLen = this.internalBuffer[lenOffset];
+                    } else {
+                        payloadLen = this.internalBuffer[lenOffset] | (this.internalBuffer[lenOffset + 1] << 8);
+                    }
+                }
+
+                this.expectedFrameSize = this.config.headerSize + payloadLen + this.config.footerSize;
+
+                if (this.expectedFrameSize > this.bufferSize) {
+                    this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                    this.internalDataLen = 0;
+                    return createFrameMsgInfo();
+                }
+
+                if (this.internalDataLen >= this.expectedFrameSize) {
+                    return this.validateAndReturn();
+                }
+
+                this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
+            }
+        }
+
+        return createFrameMsgInfo();
+    }
+
+    private handleCollectingPayload(byte: number): FrameMsgInfo {
+        if (this.internalDataLen >= this.bufferSize) {
+            this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+            this.internalDataLen = 0;
+            return createFrameMsgInfo();
+        }
+
+        this.internalBuffer[this.internalDataLen++] = byte;
+
+        if (this.internalDataLen >= this.expectedFrameSize) {
+            return this.validateAndReturn();
+        }
+
+        return createFrameMsgInfo();
+    }
+
+    private handleMinimalMsgId(msgId: number): FrameMsgInfo {
+        if (this.getMsgLength) {
+            const msgLen = this.getMsgLength(msgId);
+            if (msgLen !== undefined) {
+                this.expectedFrameSize = this.config.headerSize + msgLen;
+
+                if (this.expectedFrameSize > this.bufferSize) {
+                    this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                    this.internalDataLen = 0;
+                    return createFrameMsgInfo();
+                }
+
+                if (msgLen === 0) {
+                    const result = createFrameMsgInfo();
+                    result.valid = true;
+                    result.msg_id = msgId;
+                    result.msg_len = 0;
+                    result.msg_data = new Uint8Array(0);
+                    this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                    this.internalDataLen = 0;
+                    this.expectedFrameSize = 0;
+                    return result;
+                }
+
+                this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
+            } else {
+                this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+                this.internalDataLen = 0;
+            }
+        } else {
+            this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+            this.internalDataLen = 0;
+        }
+        return createFrameMsgInfo();
+    }
+
+    private validateAndReturn(): FrameMsgInfo {
+        const internalBytes = this.internalBuffer.slice(0, this.internalDataLen);
+        const result = this.parseBuffer(internalBytes);
+
+        this._state = AccumulatingReaderState.LOOKING_FOR_START1;
+        this.internalDataLen = 0;
+        this.expectedFrameSize = 0;
+
+        return result;
+    }
+
+    private parseBuffer(buffer: Uint8Array): FrameMsgInfo {
+        if (this.config.hasCrc || this.config.hasLength) {
+            return parseFrameWithCrc(this.config, buffer);
+        } else {
+            if (!this.getMsgLength) {
+                return createFrameMsgInfo();
+            }
+            return parseFrameMinimal(this.config, buffer, this.getMsgLength);
+        }
+    }
+
+    // =========================================================================
+    // Common API
+    // =========================================================================
+
+    /** Check if there might be more data to parse (buffer mode only). */
+    hasMore(): boolean {
+        if (this._state !== AccumulatingReaderState.BUFFER_MODE) return false;
+        return (this.internalDataLen > 0) || (this.currentBuffer !== null && this.currentOffset < this.currentSize);
+    }
+
+    /** Check if there's a partial message waiting for more data. */
+    hasPartial(): boolean {
+        return this.internalDataLen > 0;
+    }
+
+    /** Get the size of the partial message data (0 if none). */
+    partialSize(): number {
+        return this.internalDataLen;
+    }
+
+    /** Get current parser state (for debugging). */
+    get state(): AccumulatingReaderState {
+        return this._state;
+    }
+
+    /** Reset the reader, clearing any partial message data. */
+    reset(): void {
+        this.internalDataLen = 0;
+        this.expectedFrameSize = 0;
+        this._state = AccumulatingReaderState.IDLE;
+        this.currentBuffer = null;
+        this.currentSize = 0;
+        this.currentOffset = 0;
+    }
+}
+
+// =============================================================================
+// Convenience factory functions for standard profiles
+// =============================================================================
+
+export function createProfileStandardReader(buffer: Uint8Array): BufferReader {
+    return new BufferReader(ProfileStandardConfig, buffer);
+}
+
+export function createProfileStandardWriter(capacity: number = 1024): BufferWriter {
+    return new BufferWriter(ProfileStandardConfig, capacity);
+}
+
+export function createProfileStandardAccumulatingReader(bufferSize: number = 1024): AccumulatingReader {
+    return new AccumulatingReader(ProfileStandardConfig, undefined, bufferSize);
+}
+
+export function createProfileSensorReader(buffer: Uint8Array, getMsgLength: (msgId: number) => number | undefined): BufferReader {
+    return new BufferReader(ProfileSensorConfig, buffer, getMsgLength);
+}
+
+export function createProfileSensorWriter(capacity: number = 1024): BufferWriter {
+    return new BufferWriter(ProfileSensorConfig, capacity);
+}
+
+export function createProfileSensorAccumulatingReader(getMsgLength: (msgId: number) => number | undefined, bufferSize: number = 1024): AccumulatingReader {
+    return new AccumulatingReader(ProfileSensorConfig, getMsgLength, bufferSize);
+}
+
+export function createProfileIPCReader(buffer: Uint8Array, getMsgLength: (msgId: number) => number | undefined): BufferReader {
+    return new BufferReader(ProfileIPCConfig, buffer, getMsgLength);
+}
+
+export function createProfileIPCWriter(capacity: number = 1024): BufferWriter {
+    return new BufferWriter(ProfileIPCConfig, capacity);
+}
+
+export function createProfileIPCAccumulatingReader(getMsgLength: (msgId: number) => number | undefined, bufferSize: number = 1024): AccumulatingReader {
+    return new AccumulatingReader(ProfileIPCConfig, getMsgLength, bufferSize);
+}
+
+export function createProfileBulkReader(buffer: Uint8Array): BufferReader {
+    return new BufferReader(ProfileBulkConfig, buffer);
+}
+
+export function createProfileBulkWriter(capacity: number = 1024): BufferWriter {
+    return new BufferWriter(ProfileBulkConfig, capacity);
+}
+
+export function createProfileBulkAccumulatingReader(bufferSize: number = 1024): AccumulatingReader {
+    return new AccumulatingReader(ProfileBulkConfig, undefined, bufferSize);
+}
+
+export function createProfileNetworkReader(buffer: Uint8Array): BufferReader {
+    return new BufferReader(ProfileNetworkConfig, buffer);
+}
+
+export function createProfileNetworkWriter(capacity: number = 1024): BufferWriter {
+    return new BufferWriter(ProfileNetworkConfig, capacity);
+}
+
+export function createProfileNetworkAccumulatingReader(bufferSize: number = 1024): AccumulatingReader {
+    return new AccumulatingReader(ProfileNetworkConfig, undefined, bufferSize);
+}

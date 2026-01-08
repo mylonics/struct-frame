@@ -17,6 +17,9 @@ const payloadMinimal = require('./payload_types/payload_minimal');
 // Frame format configuration
 const frameFormatConfig = require('./FrameFormatConfig');
 
+// Frame profiles - Pre-defined Header + Payload combinations
+const frameProfiles = require('./frame_profiles');
+
 module.exports = {
     // Base utilities
     ...frameBase,
@@ -30,4 +33,6 @@ module.exports = {
     ...payloadMinimal,
     // Frame format configuration
     ...frameFormatConfig,
+    // Frame profiles
+    ...frameProfiles,
 };
