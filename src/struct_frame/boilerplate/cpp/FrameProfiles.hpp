@@ -257,7 +257,7 @@ class BufferParserWithCrc {
       }
     }
 
-    return FrameMsgInfo(true, msg_id, msg_len, const_cast<uint8_t*>(buffer + Config::header_size));
+    return FrameMsgInfo(true, msg_id, msg_len, total_size, const_cast<uint8_t*>(buffer + Config::header_size));
   }
 };
 
@@ -301,7 +301,7 @@ class BufferParserMinimal {
       return FrameMsgInfo();
     }
 
-    return FrameMsgInfo(true, msg_id, msg_len, const_cast<uint8_t*>(buffer + Config::header_size));
+    return FrameMsgInfo(true, msg_id, msg_len, total_size, const_cast<uint8_t*>(buffer + Config::header_size));
   }
 };
 
@@ -626,92 +626,178 @@ using ProfileNetworkConfig =
     ProfileConfig<FrameHeaders::HEADER_BASIC_CONFIG, PayloadTypes::PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG>;
 
 /*===========================================================================
- * Profile-Specific Type Aliases for Encoders and Parsers
+ * Buffer Reader/Writer Classes
+ * These provide stateful iteration over buffers for encoding/decoding
+ * multiple messages without manual offset tracking.
  *===========================================================================*/
 
-// Profile Standard (Basic + Default)
-using ProfileStandardEncoder = FrameEncoderWithCrc<ProfileStandardConfig>;
-using ProfileStandardBufferParser = BufferParserWithCrc<ProfileStandardConfig>;
-using ProfileStandardStreamParser = StreamParserWithCrc<ProfileStandardConfig>;
+/**
+ * BufferReader - Iterate through a buffer parsing multiple frames.
+ * 
+ * Usage:
+ *   BufferReader<ProfileStandardConfig> reader(buffer, size);
+ *   while (auto result = reader.next()) {
+ *     // Process result.msg_id, result.msg_data, result.msg_len
+ *   }
+ * 
+ * For minimal profiles that need get_msg_length:
+ *   BufferReader<ProfileSensorConfig> reader(buffer, size, get_message_length);
+ */
+template <typename Config>
+class BufferReader {
+ public:
+  BufferReader(const uint8_t* buffer, size_t size)
+      : buffer_(buffer), size_(size), offset_(0), get_msg_length_(nullptr) {}
 
-// Profile Sensor (Tiny + Minimal)
-using ProfileSensorEncoder = FrameEncoderMinimal<ProfileSensorConfig>;
-using ProfileSensorBufferParser = BufferParserMinimal<ProfileSensorConfig>;
-using ProfileSensorStreamParser = StreamParserMinimal<ProfileSensorConfig>;
+  BufferReader(const uint8_t* buffer, size_t size, std::function<bool(uint8_t, size_t*)> get_msg_length)
+      : buffer_(buffer), size_(size), offset_(0), get_msg_length_(get_msg_length) {}
 
-// Profile IPC (None + Minimal)
-using ProfileIPCEncoder = FrameEncoderMinimal<ProfileIPCConfig>;
-using ProfileIPCBufferParser = BufferParserMinimal<ProfileIPCConfig>;
-using ProfileIPCStreamParser = StreamParserMinimal<ProfileIPCConfig>;
+  /**
+   * Parse the next frame in the buffer.
+   * Returns FrameMsgInfo with valid=true if successful, valid=false if no more frames.
+   */
+  FrameMsgInfo next() {
+    if (offset_ >= size_) {
+      return FrameMsgInfo();
+    }
 
-// Profile Bulk (Basic + Extended)
-using ProfileBulkEncoder = FrameEncoderWithCrc<ProfileBulkConfig>;
-using ProfileBulkBufferParser = BufferParserWithCrc<ProfileBulkConfig>;
-using ProfileBulkStreamParser = StreamParserWithCrc<ProfileBulkConfig>;
+    FrameMsgInfo result;
+    if constexpr (Config::has_length || Config::has_crc) {
+      result = BufferParserWithCrc<Config>::parse(buffer_ + offset_, size_ - offset_);
+    } else {
+      result = BufferParserMinimal<Config>::parse(buffer_ + offset_, size_ - offset_, get_msg_length_);
+    }
 
-// Profile Network (Basic + ExtendedMultiSystemStream)
-using ProfileNetworkEncoder = FrameEncoderWithCrc<ProfileNetworkConfig>;
-using ProfileNetworkBufferParser = BufferParserWithCrc<ProfileNetworkConfig>;
-using ProfileNetworkStreamParser = StreamParserWithCrc<ProfileNetworkConfig>;
+    if (result.valid && result.frame_size > 0) {
+      offset_ += result.frame_size;
+    }
 
-/*===========================================================================
- * Convenience Functions
- * These are template functions that work with MessageBase-derived types.
- * The message type provides its own MSG_ID and MAX_SIZE at compile time.
- *===========================================================================*/
+    return result;
+  }
 
-// Profile Standard (Basic + Default)
-template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
-inline size_t encode_profile_standard(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return ProfileStandardEncoder::encode(buffer, buffer_size, 0, 0, 0, T::MSG_ID, msg.data(), T::MAX_SIZE);
-}
+  /**
+   * Reset the reader to the beginning of the buffer.
+   */
+  void reset() { offset_ = 0; }
 
-inline FrameMsgInfo parse_profile_standard_buffer(const uint8_t* buffer, size_t length) {
-  return ProfileStandardBufferParser::parse(buffer, length);
-}
+  /**
+   * Get the current offset in the buffer.
+   */
+  size_t offset() const { return offset_; }
 
-// Profile Sensor (Tiny + Minimal)
-template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
-inline size_t encode_profile_sensor(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return ProfileSensorEncoder::encode(buffer, buffer_size, static_cast<uint8_t>(T::MSG_ID), msg.data(), T::MAX_SIZE);
-}
+  /**
+   * Get the remaining bytes in the buffer.
+   */
+  size_t remaining() const { return size_ > offset_ ? size_ - offset_ : 0; }
 
-inline FrameMsgInfo parse_profile_sensor_buffer(const uint8_t* buffer, size_t length,
-                                                std::function<bool(uint8_t, size_t*)> get_msg_length) {
-  return ProfileSensorBufferParser::parse(buffer, length, get_msg_length);
-}
+  /**
+   * Check if there are more bytes to parse.
+   */
+  bool has_more() const { return offset_ < size_; }
 
-// Profile IPC (None + Minimal)
-template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
-inline size_t encode_profile_ipc(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return ProfileIPCEncoder::encode(buffer, buffer_size, static_cast<uint8_t>(T::MSG_ID), msg.data(), T::MAX_SIZE);
-}
+ private:
+  const uint8_t* buffer_;
+  size_t size_;
+  size_t offset_;
+  std::function<bool(uint8_t, size_t*)> get_msg_length_;
+};
 
-inline FrameMsgInfo parse_profile_ipc_buffer(const uint8_t* buffer, size_t length,
-                                             std::function<bool(uint8_t, size_t*)> get_msg_length) {
-  return ProfileIPCBufferParser::parse(buffer, length, get_msg_length);
-}
+/**
+ * BufferWriter - Encode multiple frames into a buffer with automatic offset tracking.
+ * 
+ * Usage:
+ *   BufferWriter<ProfileStandardConfig> writer(buffer, sizeof(buffer));
+ *   writer.write(msg1);
+ *   writer.write(msg2);
+ *   size_t total = writer.size();  // Total bytes written
+ * 
+ * For profiles with extra header fields:
+ *   BufferWriter<ProfileNetworkConfig> writer(buffer, sizeof(buffer));
+ *   writer.write(msg, sequence, system_id, component_id);
+ */
+template <typename Config>
+class BufferWriter {
+ public:
+  BufferWriter(uint8_t* buffer, size_t capacity)
+      : buffer_(buffer), capacity_(capacity), offset_(0) {}
 
-// Profile Bulk (Basic + Extended)
-template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
-inline size_t encode_profile_bulk(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return ProfileBulkEncoder::encode(buffer, buffer_size, 0, 0, 0, T::MSG_ID, msg.data(), T::MAX_SIZE);
-}
+  /**
+   * Write a message to the buffer.
+   * Returns the number of bytes written, or 0 on failure.
+   */
+  template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
+  size_t write(const T& msg) {
+    if constexpr (Config::has_length || Config::has_crc) {
+      // Profiles with CRC use the full encoder signature
+      size_t written = FrameEncoderWithCrc<Config>::encode(
+          buffer_ + offset_, capacity_ - offset_, 0, 0, 0, T::MSG_ID, msg.data(), T::MAX_SIZE);
+      if (written > 0) {
+        offset_ += written;
+      }
+      return written;
+    } else {
+      // Minimal profiles use the simple encoder
+      size_t written = FrameEncoderMinimal<Config>::encode(
+          buffer_ + offset_, capacity_ - offset_, static_cast<uint8_t>(T::MSG_ID), msg.data(), T::MAX_SIZE);
+      if (written > 0) {
+        offset_ += written;
+      }
+      return written;
+    }
+  }
 
-inline FrameMsgInfo parse_profile_bulk_buffer(const uint8_t* buffer, size_t length) {
-  return ProfileBulkBufferParser::parse(buffer, length);
-}
+  /**
+   * Write a message with sequence and addressing (for profiles that support it).
+   */
+  template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
+  size_t write(const T& msg, uint8_t seq, uint8_t sys_id = 0, uint8_t comp_id = 0) {
+    static_assert(Config::has_seq || Config::has_sys_id || Config::has_comp_id,
+                  "This profile does not support sequence/addressing fields");
+    size_t written = FrameEncoderWithCrc<Config>::encode(
+        buffer_ + offset_, capacity_ - offset_, seq, sys_id, comp_id, T::MSG_ID, msg.data(), T::MAX_SIZE);
+    if (written > 0) {
+      offset_ += written;
+    }
+    return written;
+  }
 
-// Profile Network (Basic + ExtendedMultiSystemStream)
-template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
-inline size_t encode_profile_network(uint8_t* buffer, size_t buffer_size, uint8_t sequence, uint8_t system_id,
-                                     uint8_t component_id, const T& msg) {
-  return ProfileNetworkEncoder::encode(buffer, buffer_size, sequence, system_id, component_id, T::MSG_ID, msg.data(),
-                                       T::MAX_SIZE);
-}
+  /**
+   * Reset the writer to the beginning of the buffer.
+   */
+  void reset() { offset_ = 0; }
 
-inline FrameMsgInfo parse_profile_network_buffer(const uint8_t* buffer, size_t length) {
-  return ProfileNetworkBufferParser::parse(buffer, length);
-}
+  /**
+   * Get the total number of bytes written.
+   */
+  size_t size() const { return offset_; }
+
+  /**
+   * Get the remaining capacity in the buffer.
+   */
+  size_t remaining() const { return capacity_ > offset_ ? capacity_ - offset_ : 0; }
+
+  /**
+   * Get pointer to the buffer.
+   */
+  uint8_t* data() { return buffer_; }
+  const uint8_t* data() const { return buffer_; }
+
+ private:
+  uint8_t* buffer_;
+  size_t capacity_;
+  size_t offset_;
+};
+
+/* Convenience type aliases for BufferReader/Writer with standard profiles */
+using ProfileStandardReader = BufferReader<ProfileStandardConfig>;
+using ProfileStandardWriter = BufferWriter<ProfileStandardConfig>;
+using ProfileSensorReader = BufferReader<ProfileSensorConfig>;
+using ProfileSensorWriter = BufferWriter<ProfileSensorConfig>;
+using ProfileIPCReader = BufferReader<ProfileIPCConfig>;
+using ProfileIPCWriter = BufferWriter<ProfileIPCConfig>;
+using ProfileBulkReader = BufferReader<ProfileBulkConfig>;
+using ProfileBulkWriter = BufferWriter<ProfileBulkConfig>;
+using ProfileNetworkReader = BufferReader<ProfileNetworkConfig>;
+using ProfileNetworkWriter = BufferWriter<ProfileNetworkConfig>;
 
 }  // namespace FrameParsers
