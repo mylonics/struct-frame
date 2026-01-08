@@ -13,7 +13,9 @@
  * Each profile provides:
  * - Encoder: encode messages into a buffer
  * - BufferParser: parse/validate a complete frame in a buffer
- * - StreamParser: byte-by-byte streaming parser for serial/UART
+ * - BufferReader: iterate through multiple frames in a buffer
+ * - BufferWriter: encode multiple frames with automatic offset tracking
+ * - AccumulatingReader: unified parser supporting both buffer chunks and byte-by-byte streaming
  */
 
 #pragma once
@@ -306,300 +308,6 @@ class BufferParserMinimal {
 };
 
 /*===========================================================================
- * Streaming Parsers (Byte-by-Byte)
- *===========================================================================*/
-
-/**
- * Parser state for streaming parsers
- */
-enum class StreamParserState : uint8_t {
-  LookingForStart1 = 0,
-  LookingForStart2 = 1,
-  GettingHeader = 2,
-  GettingPayload = 3,
-  GettingFooter = 4
-};
-
-/**
- * Generic streaming parser for frames with length field and CRC.
- * Processes one byte at a time for use with serial/UART streams.
- */
-template <typename Config>
-class StreamParserWithCrc {
- public:
-  StreamParserWithCrc(uint8_t* buffer, size_t buffer_size)
-      : state_(StreamParserState::LookingForStart1),
-        buffer_(buffer),
-        buffer_max_size_(buffer_size),
-        buffer_index_(0),
-        packet_size_(0) {}
-
-  void reset() {
-    state_ = StreamParserState::LookingForStart1;
-    buffer_index_ = 0;
-    packet_size_ = 0;
-  }
-
-  /**
-   * Parse a single byte.
-   * Returns FrameMsgInfo with valid=true when a complete valid message is received.
-   */
-  FrameMsgInfo parse_byte(uint8_t byte) {
-    FrameMsgInfo result;
-
-    switch (state_) {
-      case StreamParserState::LookingForStart1:
-        if constexpr (Config::num_start_bytes == 0) {
-          // No start bytes - go directly to header
-          buffer_[0] = byte;
-          buffer_index_ = 1;
-          state_ = StreamParserState::GettingHeader;
-        } else {
-          if (byte == Config::computed_start_byte1()) {
-            buffer_[0] = byte;
-            buffer_index_ = 1;
-            if constexpr (Config::num_start_bytes == 1) {
-              state_ = StreamParserState::GettingHeader;
-            } else {
-              state_ = StreamParserState::LookingForStart2;
-            }
-          }
-        }
-        break;
-
-      case StreamParserState::LookingForStart2:
-        if (byte == Config::computed_start_byte2()) {
-          buffer_[buffer_index_++] = byte;
-          state_ = StreamParserState::GettingHeader;
-        } else if (byte == Config::computed_start_byte1()) {
-          // Restart - might be new frame
-          buffer_[0] = byte;
-          buffer_index_ = 1;
-        } else {
-          state_ = StreamParserState::LookingForStart1;
-        }
-        break;
-
-      case StreamParserState::GettingHeader:
-        if (buffer_index_ < buffer_max_size_) {
-          buffer_[buffer_index_++] = byte;
-        }
-
-        // Check if we have enough header bytes to determine length
-        if (buffer_index_ >= Config::header_size) {
-          // Calculate payload length from header
-          size_t header_fields_offset = Config::num_start_bytes;
-          size_t len_offset = header_fields_offset;
-
-          // Skip seq, sys_id, comp_id if present
-          if constexpr (Config::has_seq) len_offset++;
-          if constexpr (Config::has_sys_id) len_offset++;
-          if constexpr (Config::has_comp_id) len_offset++;
-
-          size_t payload_len = 0;
-          if constexpr (Config::has_length) {
-            if constexpr (Config::length_bytes == 1) {
-              payload_len = buffer_[len_offset];
-            } else {
-              payload_len = buffer_[len_offset] | (static_cast<size_t>(buffer_[len_offset + 1]) << 8);
-            }
-          }
-
-          packet_size_ = Config::overhead + payload_len;
-
-          if (packet_size_ > buffer_max_size_) {
-            // Frame too large for buffer
-            state_ = StreamParserState::LookingForStart1;
-          } else if (buffer_index_ >= packet_size_) {
-            // Already have complete frame
-            result = validate_frame();
-            state_ = StreamParserState::LookingForStart1;
-          } else {
-            state_ = StreamParserState::GettingPayload;
-          }
-        }
-        break;
-
-      case StreamParserState::GettingPayload:
-        if (buffer_index_ < buffer_max_size_) {
-          buffer_[buffer_index_++] = byte;
-        }
-
-        if (buffer_index_ >= packet_size_) {
-          result = validate_frame();
-          state_ = StreamParserState::LookingForStart1;
-        }
-        break;
-
-      default:
-        state_ = StreamParserState::LookingForStart1;
-        break;
-    }
-
-    return result;
-  }
-
-  /**
-   * Get current parser state (for debugging)
-   */
-  StreamParserState state() const { return state_; }
-
- private:
-  FrameMsgInfo validate_frame() {
-    // Use the buffer parser to validate the complete frame
-    return BufferParserWithCrc<Config>::parse(buffer_, packet_size_);
-  }
-
-  StreamParserState state_;
-  uint8_t* buffer_;
-  size_t buffer_max_size_;
-  size_t buffer_index_;
-  size_t packet_size_;
-};
-
-/**
- * Generic streaming parser for minimal frames (no length field, no CRC).
- * Requires a callback to determine message length from msg_id.
- */
-template <typename Config>
-class StreamParserMinimal {
- public:
-  using MsgLengthCallback = std::function<bool(uint8_t msg_id, size_t* length)>;
-
-  StreamParserMinimal(uint8_t* buffer, size_t buffer_size, MsgLengthCallback msg_length_cb = nullptr)
-      : state_(StreamParserState::LookingForStart1),
-        buffer_(buffer),
-        buffer_max_size_(buffer_size),
-        buffer_index_(0),
-        packet_size_(0),
-        msg_id_(0),
-        get_msg_length_(std::move(msg_length_cb)) {}
-
-  void reset() {
-    state_ = StreamParserState::LookingForStart1;
-    buffer_index_ = 0;
-    packet_size_ = 0;
-    msg_id_ = 0;
-  }
-
-  void set_msg_length_callback(MsgLengthCallback cb) { get_msg_length_ = std::move(cb); }
-
-  /**
-   * Parse a single byte.
-   * Returns FrameMsgInfo with valid=true when a complete valid message is received.
-   */
-  FrameMsgInfo parse_byte(uint8_t byte) {
-    FrameMsgInfo result;
-
-    switch (state_) {
-      case StreamParserState::LookingForStart1:
-        if constexpr (Config::num_start_bytes == 0) {
-          // No start bytes - this byte is the msg_id
-          buffer_[0] = byte;
-          buffer_index_ = 1;
-          msg_id_ = byte;
-
-          size_t msg_length = 0;
-          if (get_msg_length_ && get_msg_length_(byte, &msg_length)) {
-            packet_size_ = Config::header_size + msg_length;
-            if (packet_size_ <= buffer_max_size_) {
-              if (msg_length == 0) {
-                // Zero-length message, we're done
-                result = FrameMsgInfo(true, msg_id_, 0, buffer_ + Config::header_size);
-                state_ = StreamParserState::LookingForStart1;
-              } else {
-                state_ = StreamParserState::GettingPayload;
-              }
-            } else {
-              state_ = StreamParserState::LookingForStart1;
-            }
-          }
-          // If callback fails or missing, stay in LookingForStart1
-        } else {
-          if (byte == Config::computed_start_byte1()) {
-            buffer_[0] = byte;
-            buffer_index_ = 1;
-            if constexpr (Config::num_start_bytes == 1) {
-              state_ = StreamParserState::GettingHeader;
-            } else {
-              state_ = StreamParserState::LookingForStart2;
-            }
-          }
-        }
-        break;
-
-      case StreamParserState::LookingForStart2:
-        if (byte == Config::computed_start_byte2()) {
-          buffer_[buffer_index_++] = byte;
-          state_ = StreamParserState::GettingHeader;
-        } else if (byte == Config::computed_start_byte1()) {
-          buffer_[0] = byte;
-          buffer_index_ = 1;
-        } else {
-          state_ = StreamParserState::LookingForStart1;
-        }
-        break;
-
-      case StreamParserState::GettingHeader:
-        // For minimal frames, the next byte after start bytes is msg_id
-        buffer_[buffer_index_++] = byte;
-        msg_id_ = byte;
-
-        {
-          size_t msg_length = 0;
-          if (get_msg_length_ && get_msg_length_(byte, &msg_length)) {
-            packet_size_ = Config::header_size + msg_length;
-            if (packet_size_ <= buffer_max_size_) {
-              if (msg_length == 0) {
-                // Zero-length message
-                result = FrameMsgInfo(true, msg_id_, 0, buffer_ + Config::header_size);
-                state_ = StreamParserState::LookingForStart1;
-              } else {
-                state_ = StreamParserState::GettingPayload;
-              }
-            } else {
-              state_ = StreamParserState::LookingForStart1;
-            }
-          } else {
-            // Unknown message ID
-            state_ = StreamParserState::LookingForStart1;
-          }
-        }
-        break;
-
-      case StreamParserState::GettingPayload:
-        if (buffer_index_ < buffer_max_size_) {
-          buffer_[buffer_index_++] = byte;
-        }
-
-        if (buffer_index_ >= packet_size_) {
-          size_t msg_len = packet_size_ - Config::header_size;
-          result = FrameMsgInfo(true, msg_id_, msg_len, buffer_ + Config::header_size);
-          state_ = StreamParserState::LookingForStart1;
-        }
-        break;
-
-      default:
-        state_ = StreamParserState::LookingForStart1;
-        break;
-    }
-
-    return result;
-  }
-
-  StreamParserState state() const { return state_; }
-
- private:
-  StreamParserState state_;
-  uint8_t* buffer_;
-  size_t buffer_max_size_;
-  size_t buffer_index_;
-  size_t packet_size_;
-  uint8_t msg_id_;
-  MsgLengthCallback get_msg_length_;
-};
-
-/*===========================================================================
  * Profile Configuration Type Aliases
  * Profiles are composed from HeaderConfig + PayloadConfig
  *===========================================================================*/
@@ -633,13 +341,13 @@ using ProfileNetworkConfig =
 
 /**
  * BufferReader - Iterate through a buffer parsing multiple frames.
- * 
+ *
  * Usage:
  *   BufferReader<ProfileStandardConfig> reader(buffer, size);
  *   while (auto result = reader.next()) {
  *     // Process result.msg_id, result.msg_data, result.msg_len
  *   }
- * 
+ *
  * For minimal profiles that need get_msg_length:
  *   BufferReader<ProfileSensorConfig> reader(buffer, size, get_message_length);
  */
@@ -704,13 +412,13 @@ class BufferReader {
 
 /**
  * BufferWriter - Encode multiple frames into a buffer with automatic offset tracking.
- * 
+ *
  * Usage:
  *   BufferWriter<ProfileStandardConfig> writer(buffer, sizeof(buffer));
  *   writer.write(msg1);
  *   writer.write(msg2);
  *   size_t total = writer.size();  // Total bytes written
- * 
+ *
  * For profiles with extra header fields:
  *   BufferWriter<ProfileNetworkConfig> writer(buffer, sizeof(buffer));
  *   writer.write(msg, sequence, system_id, component_id);
@@ -718,8 +426,7 @@ class BufferReader {
 template <typename Config>
 class BufferWriter {
  public:
-  BufferWriter(uint8_t* buffer, size_t capacity)
-      : buffer_(buffer), capacity_(capacity), offset_(0) {}
+  BufferWriter(uint8_t* buffer, size_t capacity) : buffer_(buffer), capacity_(capacity), offset_(0) {}
 
   /**
    * Write a message to the buffer.
@@ -729,16 +436,16 @@ class BufferWriter {
   size_t write(const T& msg) {
     if constexpr (Config::has_length || Config::has_crc) {
       // Profiles with CRC use the full encoder signature
-      size_t written = FrameEncoderWithCrc<Config>::encode(
-          buffer_ + offset_, capacity_ - offset_, 0, 0, 0, T::MSG_ID, msg.data(), T::MAX_SIZE);
+      size_t written = FrameEncoderWithCrc<Config>::encode(buffer_ + offset_, capacity_ - offset_, 0, 0, 0, T::MSG_ID,
+                                                           msg.data(), T::MAX_SIZE);
       if (written > 0) {
         offset_ += written;
       }
       return written;
     } else {
       // Minimal profiles use the simple encoder
-      size_t written = FrameEncoderMinimal<Config>::encode(
-          buffer_ + offset_, capacity_ - offset_, static_cast<uint8_t>(T::MSG_ID), msg.data(), T::MAX_SIZE);
+      size_t written = FrameEncoderMinimal<Config>::encode(buffer_ + offset_, capacity_ - offset_,
+                                                           static_cast<uint8_t>(T::MSG_ID), msg.data(), T::MAX_SIZE);
       if (written > 0) {
         offset_ += written;
       }
@@ -753,8 +460,8 @@ class BufferWriter {
   size_t write(const T& msg, uint8_t seq, uint8_t sys_id = 0, uint8_t comp_id = 0) {
     static_assert(Config::has_seq || Config::has_sys_id || Config::has_comp_id,
                   "This profile does not support sequence/addressing fields");
-    size_t written = FrameEncoderWithCrc<Config>::encode(
-        buffer_ + offset_, capacity_ - offset_, seq, sys_id, comp_id, T::MSG_ID, msg.data(), T::MAX_SIZE);
+    size_t written = FrameEncoderWithCrc<Config>::encode(buffer_ + offset_, capacity_ - offset_, seq, sys_id, comp_id,
+                                                         T::MSG_ID, msg.data(), T::MAX_SIZE);
     if (written > 0) {
       offset_ += written;
     }
@@ -799,5 +506,479 @@ using ProfileBulkReader = BufferReader<ProfileBulkConfig>;
 using ProfileBulkWriter = BufferWriter<ProfileBulkConfig>;
 using ProfileNetworkReader = BufferReader<ProfileNetworkConfig>;
 using ProfileNetworkWriter = BufferWriter<ProfileNetworkConfig>;
+
+/**
+ * AccumulatingReader - Unified parser for buffer and byte-by-byte streaming input.
+ *
+ * Handles partial messages across buffer boundaries and supports both:
+ * - Buffer mode: add_data() for processing chunks of data
+ * - Stream mode: push_byte() for byte-by-byte processing (e.g., UART)
+ *
+ * Template parameters:
+ *   Config - The frame profile configuration (e.g., ProfileStandardConfig)
+ *   BufferSize - Size of internal buffer for partial messages (default: 1024)
+ *
+ * Buffer mode usage:
+ *   AccumulatingReader<ProfileStandardConfig> reader;
+ *   reader.add_data(chunk1, chunk1_size);
+ *   while (auto result = reader.next()) {
+ *     // Process complete messages
+ *   }
+ *
+ * Stream mode usage:
+ *   AccumulatingReader<ProfileStandardConfig> reader;
+ *   while (receiving) {
+ *     uint8_t byte = read_byte();
+ *     if (auto result = reader.push_byte(byte)) {
+ *       // Process complete message
+ *     }
+ *   }
+ *
+ * For minimal profiles:
+ *   AccumulatingReader<ProfileSensorConfig> reader(get_message_length);
+ */
+template <typename Config, size_t BufferSize = 1024>
+class AccumulatingReader {
+ public:
+  /**
+   * Parser state for streaming mode
+   */
+  enum class State : uint8_t {
+    Idle = 0,           // No data, waiting for input
+    LookingForStart1,   // Looking for first start byte
+    LookingForStart2,   // Looking for second start byte
+    CollectingHeader,   // Collecting header bytes to determine frame size
+    CollectingPayload,  // Collecting payload + footer bytes
+    BufferMode          // Processing external buffer via add_data/next
+  };
+
+  /**
+   * Construct an AccumulatingReader with internal buffer for partial messages.
+   */
+  AccumulatingReader()
+      : internal_data_len_(0),
+        expected_frame_size_(0),
+        state_(State::Idle),
+        current_buffer_(nullptr),
+        current_size_(0),
+        current_offset_(0),
+        get_msg_length_(nullptr) {}
+
+  /**
+   * Construct an AccumulatingReader with message length callback (for minimal profiles).
+   */
+  explicit AccumulatingReader(std::function<bool(uint8_t, size_t*)> get_msg_length)
+      : internal_data_len_(0),
+        expected_frame_size_(0),
+        state_(State::Idle),
+        current_buffer_(nullptr),
+        current_size_(0),
+        current_offset_(0),
+        get_msg_length_(get_msg_length) {}
+
+  // Default copy/move operations are fine with fixed array
+  AccumulatingReader(const AccumulatingReader&) = default;
+  AccumulatingReader& operator=(const AccumulatingReader&) = default;
+  AccumulatingReader(AccumulatingReader&&) = default;
+  AccumulatingReader& operator=(AccumulatingReader&&) = default;
+
+  /**
+   * Get the internal buffer size (template parameter).
+   */
+  static constexpr size_t buffer_size() { return BufferSize; }
+
+  /*=========================================================================
+   * Buffer Mode API - Process chunks of data
+   *=========================================================================*/
+
+  /**
+   * Add a new buffer of data to process.
+   * If there was a partial message from the previous buffer, data is appended
+   * to the internal buffer to complete it.
+   *
+   * Note: Do not mix add_data() with push_byte() on the same reader instance.
+   *
+   * @param buffer Pointer to new data
+   * @param size Size of new data
+   */
+  void add_data(const uint8_t* buffer, size_t size) {
+    current_buffer_ = buffer;
+    current_size_ = size;
+    current_offset_ = 0;
+    state_ = State::BufferMode;
+
+    // If we have partial data in internal buffer, try to complete it
+    if (internal_data_len_ > 0) {
+      // Append as much as needed/possible from new buffer to internal buffer
+      size_t space_available = BufferSize - internal_data_len_;
+      size_t bytes_to_copy = (size < space_available) ? size : space_available;
+
+      std::memcpy(internal_buffer_ + internal_data_len_, buffer, bytes_to_copy);
+      internal_data_len_ += bytes_to_copy;
+    }
+  }
+
+  /**
+   * Parse the next frame (buffer mode).
+   * Returns FrameMsgInfo with valid=true if successful, valid=false if no more complete frames.
+   *
+   * When returning a message completed from a partial, msg_data points to the internal buffer.
+   * When returning a message from the current buffer, msg_data points into that buffer.
+   */
+  FrameMsgInfo next() {
+    if (state_ != State::BufferMode) {
+      return FrameMsgInfo();
+    }
+
+    // First, try to complete a partial message from the internal buffer
+    size_t partial_len = internal_data_len_ > current_size_ ? internal_data_len_ - current_size_ : 0;
+    if (internal_data_len_ > 0 && current_offset_ == 0) {
+      // We have data in internal buffer that includes new data
+      FrameMsgInfo result = parse_buffer(internal_buffer_, internal_data_len_);
+
+      if (result.valid) {
+        // Successfully parsed from internal buffer
+        // Calculate how many bytes from the current buffer were consumed
+        size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
+        current_offset_ = bytes_from_current;
+
+        // Clear internal buffer state
+        internal_data_len_ = 0;
+        expected_frame_size_ = 0;
+
+        return result;
+      } else {
+        // Still not enough data for a complete message
+        // Keep partial state, wait for more data via add_data()
+        return FrameMsgInfo();
+      }
+    }
+
+    // Parse from current buffer
+    if (current_buffer_ == nullptr || current_offset_ >= current_size_) {
+      return FrameMsgInfo();
+    }
+
+    FrameMsgInfo result = parse_buffer(current_buffer_ + current_offset_, current_size_ - current_offset_);
+
+    if (result.valid && result.frame_size > 0) {
+      current_offset_ += result.frame_size;
+      return result;
+    }
+
+    // Parse failed - might be partial message at end of buffer
+    // Save remaining bytes to internal buffer for next add_data() call
+    size_t remaining = current_size_ - current_offset_;
+    if (remaining > 0 && remaining < BufferSize) {
+      std::memcpy(internal_buffer_, current_buffer_ + current_offset_, remaining);
+      internal_data_len_ = remaining;
+      current_offset_ = current_size_;  // Mark current buffer as consumed
+    }
+
+    return FrameMsgInfo();
+  }
+
+  /*=========================================================================
+   * Stream Mode API - Process byte-by-byte
+   *=========================================================================*/
+
+  /**
+   * Push a single byte for parsing (stream mode).
+   * Returns FrameMsgInfo with valid=true when a complete valid message is received.
+   *
+   * Note: Do not mix push_byte() with add_data() on the same reader instance.
+   *
+   * @param byte The byte to process
+   * @return FrameMsgInfo with valid=true if a complete message was parsed
+   */
+  FrameMsgInfo push_byte(uint8_t byte) {
+    // Initialize state on first byte if idle
+    if (state_ == State::Idle || state_ == State::BufferMode) {
+      state_ = State::LookingForStart1;
+      internal_data_len_ = 0;
+      expected_frame_size_ = 0;
+    }
+
+    switch (state_) {
+      case State::LookingForStart1:
+        return handle_looking_for_start1(byte);
+
+      case State::LookingForStart2:
+        return handle_looking_for_start2(byte);
+
+      case State::CollectingHeader:
+        return handle_collecting_header(byte);
+
+      case State::CollectingPayload:
+        return handle_collecting_payload(byte);
+
+      default:
+        state_ = State::LookingForStart1;
+        return FrameMsgInfo();
+    }
+  }
+
+  /*=========================================================================
+   * Common API
+   *=========================================================================*/
+
+  /**
+   * Check if there might be more data to parse (buffer mode only).
+   */
+  bool has_more() const {
+    if (state_ != State::BufferMode) return false;
+    return (internal_data_len_ > 0) || (current_buffer_ != nullptr && current_offset_ < current_size_);
+  }
+
+  /**
+   * Check if there's a partial message waiting for more data.
+   */
+  bool has_partial() const { return internal_data_len_ > 0; }
+
+  /**
+   * Get the size of the partial message data (0 if none).
+   */
+  size_t partial_size() const { return internal_data_len_; }
+
+  /**
+   * Get current parser state (for debugging).
+   */
+  State state() const { return state_; }
+
+  /**
+   * Reset the reader, clearing any partial message data.
+   */
+  void reset() {
+    internal_data_len_ = 0;
+    expected_frame_size_ = 0;
+    state_ = State::Idle;
+    current_buffer_ = nullptr;
+    current_size_ = 0;
+    current_offset_ = 0;
+  }
+
+ private:
+  /*=========================================================================
+   * Stream Mode State Handlers
+   *=========================================================================*/
+
+  FrameMsgInfo handle_looking_for_start1(uint8_t byte) {
+    if constexpr (Config::num_start_bytes == 0) {
+      // No start bytes - this byte is the beginning of the frame
+      internal_buffer_[0] = byte;
+      internal_data_len_ = 1;
+
+      // For minimal profiles without length, we need to check msg_id
+      if constexpr (!Config::has_length && !Config::has_crc) {
+        return handle_minimal_msg_id(byte);
+      } else {
+        state_ = State::CollectingHeader;
+      }
+    } else {
+      if (byte == Config::computed_start_byte1()) {
+        internal_buffer_[0] = byte;
+        internal_data_len_ = 1;
+
+        if constexpr (Config::num_start_bytes == 1) {
+          state_ = State::CollectingHeader;
+        } else {
+          state_ = State::LookingForStart2;
+        }
+      }
+      // Otherwise stay in LookingForStart1
+    }
+    return FrameMsgInfo();
+  }
+
+  FrameMsgInfo handle_looking_for_start2(uint8_t byte) {
+    if (byte == Config::computed_start_byte2()) {
+      internal_buffer_[internal_data_len_++] = byte;
+      state_ = State::CollectingHeader;
+    } else if (byte == Config::computed_start_byte1()) {
+      // Might be start of new frame - restart
+      internal_buffer_[0] = byte;
+      internal_data_len_ = 1;
+      // Stay in LookingForStart2
+    } else {
+      // Invalid - go back to looking for start
+      state_ = State::LookingForStart1;
+      internal_data_len_ = 0;
+    }
+    return FrameMsgInfo();
+  }
+
+  FrameMsgInfo handle_collecting_header(uint8_t byte) {
+    if (internal_data_len_ >= BufferSize) {
+      // Buffer overflow - reset
+      state_ = State::LookingForStart1;
+      internal_data_len_ = 0;
+      return FrameMsgInfo();
+    }
+
+    internal_buffer_[internal_data_len_++] = byte;
+
+    // Check if we have enough header bytes to determine frame size
+    if (internal_data_len_ >= Config::header_size) {
+      // For minimal profiles, we need the callback to determine length
+      if constexpr (!Config::has_length && !Config::has_crc) {
+        // msg_id is at header_size - 1 position
+        uint8_t msg_id = internal_buffer_[Config::header_size - 1];
+        size_t msg_len = 0;
+        if (get_msg_length_ && get_msg_length_(msg_id, &msg_len)) {
+          expected_frame_size_ = Config::header_size + msg_len;
+
+          if (expected_frame_size_ > BufferSize) {
+            // Too large - reset
+            state_ = State::LookingForStart1;
+            internal_data_len_ = 0;
+            return FrameMsgInfo();
+          }
+
+          if (msg_len == 0) {
+            // Zero-length message - complete!
+            FrameMsgInfo result(true, msg_id, 0, expected_frame_size_, internal_buffer_ + Config::header_size);
+            state_ = State::LookingForStart1;
+            internal_data_len_ = 0;
+            expected_frame_size_ = 0;
+            return result;
+          }
+
+          state_ = State::CollectingPayload;
+        } else {
+          // Unknown message ID - reset
+          state_ = State::LookingForStart1;
+          internal_data_len_ = 0;
+        }
+      } else {
+        // Calculate payload length from header
+        size_t len_offset = Config::num_start_bytes;
+
+        // Skip seq, sys_id, comp_id if present
+        if constexpr (Config::has_seq) len_offset++;
+        if constexpr (Config::has_sys_id) len_offset++;
+        if constexpr (Config::has_comp_id) len_offset++;
+
+        size_t payload_len = 0;
+        if constexpr (Config::has_length) {
+          if constexpr (Config::length_bytes == 1) {
+            payload_len = internal_buffer_[len_offset];
+          } else {
+            payload_len = internal_buffer_[len_offset] | (static_cast<size_t>(internal_buffer_[len_offset + 1]) << 8);
+          }
+        }
+
+        expected_frame_size_ = Config::overhead + payload_len;
+
+        if (expected_frame_size_ > BufferSize) {
+          // Too large - reset
+          state_ = State::LookingForStart1;
+          internal_data_len_ = 0;
+          return FrameMsgInfo();
+        }
+
+        // Check if we already have the complete frame
+        if (internal_data_len_ >= expected_frame_size_) {
+          return validate_and_return();
+        }
+
+        state_ = State::CollectingPayload;
+      }
+    }
+
+    return FrameMsgInfo();
+  }
+
+  FrameMsgInfo handle_collecting_payload(uint8_t byte) {
+    if (internal_data_len_ >= BufferSize) {
+      // Buffer overflow - reset
+      state_ = State::LookingForStart1;
+      internal_data_len_ = 0;
+      return FrameMsgInfo();
+    }
+
+    internal_buffer_[internal_data_len_++] = byte;
+
+    if (internal_data_len_ >= expected_frame_size_) {
+      return validate_and_return();
+    }
+
+    return FrameMsgInfo();
+  }
+
+  FrameMsgInfo handle_minimal_msg_id(uint8_t msg_id) {
+    size_t msg_len = 0;
+    if (get_msg_length_ && get_msg_length_(msg_id, &msg_len)) {
+      expected_frame_size_ = Config::header_size + msg_len;
+
+      if (expected_frame_size_ > BufferSize) {
+        state_ = State::LookingForStart1;
+        internal_data_len_ = 0;
+        return FrameMsgInfo();
+      }
+
+      if (msg_len == 0) {
+        // Zero-length message - complete!
+        FrameMsgInfo result(true, msg_id, 0, expected_frame_size_, internal_buffer_ + Config::header_size);
+        state_ = State::LookingForStart1;
+        internal_data_len_ = 0;
+        expected_frame_size_ = 0;
+        return result;
+      }
+
+      state_ = State::CollectingPayload;
+    } else {
+      // Unknown msg_id - stay looking for valid start
+      state_ = State::LookingForStart1;
+      internal_data_len_ = 0;
+    }
+    return FrameMsgInfo();
+  }
+
+  FrameMsgInfo validate_and_return() {
+    FrameMsgInfo result = parse_buffer(internal_buffer_, internal_data_len_);
+
+    // Reset state for next message
+    state_ = State::LookingForStart1;
+    internal_data_len_ = 0;
+    expected_frame_size_ = 0;
+
+    return result;
+  }
+
+  /*=========================================================================
+   * Shared Parsing
+   *=========================================================================*/
+
+  FrameMsgInfo parse_buffer(const uint8_t* buffer, size_t size) {
+    if constexpr (Config::has_length || Config::has_crc) {
+      return BufferParserWithCrc<Config>::parse(buffer, size);
+    } else {
+      return BufferParserMinimal<Config>::parse(buffer, size, get_msg_length_);
+    }
+  }
+
+  /*=========================================================================
+   * Member Variables
+   *=========================================================================*/
+
+  uint8_t internal_buffer_[BufferSize];  // Internal buffer for partial messages (stack allocated)
+  size_t internal_data_len_;             // Current data length in internal buffer
+  size_t expected_frame_size_;           // Expected total frame size (0 if not yet known)
+  State state_;                          // Current parser state
+
+  // Buffer mode state
+  const uint8_t* current_buffer_;  // Current external buffer being processed
+  size_t current_size_;            // Size of current external buffer
+  size_t current_offset_;          // Current position in external buffer
+
+  std::function<bool(uint8_t, size_t*)> get_msg_length_;
+};
+
+/* Convenience type aliases for AccumulatingReader with standard profiles (default 1024 byte buffer) */
+using ProfileStandardAccumulatingReader = AccumulatingReader<ProfileStandardConfig>;
+using ProfileSensorAccumulatingReader = AccumulatingReader<ProfileSensorConfig>;
+using ProfileIPCAccumulatingReader = AccumulatingReader<ProfileIPCConfig>;
+using ProfileBulkAccumulatingReader = AccumulatingReader<ProfileBulkConfig>;
+using ProfileNetworkAccumulatingReader = AccumulatingReader<ProfileNetworkConfig>;
 
 }  // namespace FrameParsers

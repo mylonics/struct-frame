@@ -282,6 +282,70 @@ std::vector<MixedMessage> load_mixed_messages() {
   return std::vector<MixedMessage>();
 }
 
+/* Helper function to validate a decoded message against expected data */
+bool validate_message(const FrameMsgInfo& decode_result, const std::vector<MixedMessage>& mixed_messages,
+                      size_t message_index) {
+  if (!decode_result.valid) {
+    std::cout << "  Decoding failed for message " << message_index << "\n";
+    return false;
+  }
+
+  if (message_index >= mixed_messages.size()) {
+    std::cout << "  Too many messages decoded: " << message_index << "\n";
+    return false;
+  }
+
+  const auto& mixed_msg = mixed_messages[message_index];
+  uint16_t expected_msg_id;
+
+  if (mixed_msg.type == MessageType::SerializationTest) {
+    expected_msg_id = SerializationTestSerializationTestMessage::MSG_ID;
+  } else if (mixed_msg.type == MessageType::BasicTypes) {
+    expected_msg_id = SerializationTestBasicTypesMessage::MSG_ID;
+  } else if (mixed_msg.type == MessageType::UnionTest) {
+    expected_msg_id = SerializationTestUnionTestMessage::MSG_ID;
+  } else {
+    std::cout << "  Unknown message type for message " << message_index << "\n";
+    return false;
+  }
+
+  if (decode_result.msg_id != expected_msg_id) {
+    std::cout << "  Message ID mismatch for message " << message_index << ": expected " << (int)expected_msg_id
+              << ", got " << (int)decode_result.msg_id << "\n";
+    return false;
+  }
+
+  // Validate message content by comparing decoded payload bytes against original message
+  const uint8_t* expected_data = nullptr;
+  size_t expected_size = 0;
+
+  if (mixed_msg.type == MessageType::SerializationTest) {
+    expected_data = mixed_msg.data.serial_test.data();
+    expected_size = SerializationTestSerializationTestMessage::MAX_SIZE;
+  } else if (mixed_msg.type == MessageType::BasicTypes) {
+    expected_data = mixed_msg.data.basic_types.data();
+    expected_size = SerializationTestBasicTypesMessage::MAX_SIZE;
+  } else if (mixed_msg.type == MessageType::UnionTest) {
+    expected_data = mixed_msg.data.union_test.data();
+    expected_size = SerializationTestUnionTestMessage::MAX_SIZE;
+  }
+
+  if (expected_data && decode_result.msg_data) {
+    if (decode_result.msg_len != expected_size) {
+      std::cout << "  Message " << message_index << " size mismatch: expected " << expected_size << ", got "
+                << decode_result.msg_len << "\n";
+      return false;
+    }
+
+    if (std::memcmp(decode_result.msg_data, expected_data, expected_size) != 0) {
+      std::cout << "  Message " << message_index << " content mismatch\n";
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool encode_test_messages(const std::string& format, uint8_t* buffer, size_t buffer_size, size_t& encoded_size) {
   auto mixed_messages = load_mixed_messages();
   if (mixed_messages.empty()) {
@@ -345,66 +409,41 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
 
   message_count = 0;
 
-  /* Lambda to decode and validate messages using the appropriate profile's BufferReader */
+  /* Split buffer into 3 chunks to simulate partial message scenarios */
+  size_t chunk1_size = buffer_size / 3;
+  size_t chunk2_size = buffer_size / 3;
+  size_t chunk3_size = buffer_size - chunk1_size - chunk2_size;
+
+  const uint8_t* chunk1 = buffer;
+  const uint8_t* chunk2 = buffer + chunk1_size;
+  const uint8_t* chunk3 = buffer + chunk1_size + chunk2_size;
+
+  /* Lambda to decode and validate messages using AccumulatingReader with split buffers */
   auto decode_all = [&](auto& reader) -> bool {
-    while (reader.has_more() && message_count < mixed_messages.size()) {
-      FrameMsgInfo decode_result = reader.next();
-
-      if (!decode_result.valid) {
-        std::cout << "  Decoding failed for message " << message_count << "\n";
+    // Add first chunk
+    reader.add_data(chunk1, chunk1_size);
+    while (auto decode_result = reader.next()) {
+      if (!validate_message(decode_result, mixed_messages, message_count)) {
         return false;
       }
+      message_count++;
+    }
 
-      // Validate msg_id matches expected type using MessageBase MSG_ID constants
-      const auto& mixed_msg = mixed_messages[message_count];
-      uint16_t expected_msg_id;
-
-      if (mixed_msg.type == MessageType::SerializationTest) {
-        expected_msg_id = SerializationTestSerializationTestMessage::MSG_ID;
-      } else if (mixed_msg.type == MessageType::BasicTypes) {
-        expected_msg_id = SerializationTestBasicTypesMessage::MSG_ID;
-      } else if (mixed_msg.type == MessageType::UnionTest) {
-        expected_msg_id = SerializationTestUnionTestMessage::MSG_ID;
-      } else {
-        std::cout << "  Unknown message type for message " << message_count << "\n";
+    // Add second chunk (may complete a partial message)
+    reader.add_data(chunk2, chunk2_size);
+    while (auto decode_result = reader.next()) {
+      if (!validate_message(decode_result, mixed_messages, message_count)) {
         return false;
       }
+      message_count++;
+    }
 
-      if (decode_result.msg_id != expected_msg_id) {
-        std::cout << "  Message ID mismatch for message " << message_count << ": expected " << (int)expected_msg_id
-                  << ", got " << (int)decode_result.msg_id << "\n";
+    // Add third chunk (may complete a partial message)
+    reader.add_data(chunk3, chunk3_size);
+    while (auto decode_result = reader.next()) {
+      if (!validate_message(decode_result, mixed_messages, message_count)) {
         return false;
       }
-
-      // Validate message content by comparing decoded payload bytes against original message
-      const uint8_t* expected_data = nullptr;
-      size_t expected_size = 0;
-
-      if (mixed_msg.type == MessageType::SerializationTest) {
-        expected_data = mixed_msg.data.serial_test.data();
-        expected_size = SerializationTestSerializationTestMessage::MAX_SIZE;
-      } else if (mixed_msg.type == MessageType::BasicTypes) {
-        expected_data = mixed_msg.data.basic_types.data();
-        expected_size = SerializationTestBasicTypesMessage::MAX_SIZE;
-      } else if (mixed_msg.type == MessageType::UnionTest) {
-        expected_data = mixed_msg.data.union_test.data();
-        expected_size = SerializationTestUnionTestMessage::MAX_SIZE;
-      }
-
-      if (expected_data && decode_result.msg_data) {
-        if (decode_result.msg_len != expected_size) {
-          std::cout << "  Message " << message_count << " size mismatch: expected " << expected_size << ", got "
-                    << decode_result.msg_len << "\n";
-          return false;
-        }
-
-        if (std::memcmp(decode_result.msg_data, expected_data, expected_size) != 0) {
-          std::cout << "  Message " << message_count << " content mismatch (decoded " << message_count
-                    << " messages successfully)\n";
-          return false;
-        }
-      }
-
       message_count++;
     }
 
@@ -413,8 +452,8 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
       return false;
     }
 
-    if (reader.remaining() != 0) {
-      std::cout << "  Extra data after messages: " << reader.remaining() << " bytes remaining\n";
+    if (reader.has_partial()) {
+      std::cout << "  Incomplete partial message remaining: " << reader.partial_size() << " bytes\n";
       return false;
     }
 
@@ -422,19 +461,19 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
   };
 
   if (format == "profile_standard") {
-    ProfileStandardReader reader(buffer, buffer_size);
+    AccumulatingReader<ProfileStandardConfig> reader;
     return decode_all(reader);
   } else if (format == "profile_sensor") {
-    ProfileSensorReader reader(buffer, buffer_size, get_message_length);
+    AccumulatingReader<ProfileSensorConfig> reader(get_message_length);
     return decode_all(reader);
   } else if (format == "profile_ipc") {
-    ProfileIPCReader reader(buffer, buffer_size, get_message_length);
+    AccumulatingReader<ProfileIPCConfig> reader(get_message_length);
     return decode_all(reader);
   } else if (format == "profile_bulk") {
-    ProfileBulkReader reader(buffer, buffer_size);
+    AccumulatingReader<ProfileBulkConfig> reader;
     return decode_all(reader);
   } else if (format == "profile_network") {
-    ProfileNetworkReader reader(buffer, buffer_size);
+    AccumulatingReader<ProfileNetworkConfig> reader;
     return decode_all(reader);
   }
 

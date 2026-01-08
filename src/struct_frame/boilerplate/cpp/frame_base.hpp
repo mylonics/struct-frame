@@ -66,6 +66,9 @@ struct FrameMsgInfo {
     // Legacy constructor for backwards compatibility
     FrameMsgInfo(bool v, uint16_t id, size_t len, uint8_t* data)
         : valid(v), msg_id(id), msg_len(len), frame_size(0), msg_data(data) {}
+
+    // Allow use in boolean context (e.g., while (auto result = reader.next()) { ... })
+    explicit operator bool() const { return valid; }
 };
 
 /**
