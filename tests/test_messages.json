@@ -31,6 +31,53 @@
     {
       "type": "BasicTypesMessage",
       "name": "negative_values"
+    },
+    {
+      "type": "UnionTestMessage",
+      "name": "with_array_payload"
+    },
+    {
+      "type": "UnionTestMessage",
+      "name": "with_test_payload"
+    },
+    {
+      "type": "BasicTypesMessage",
+      "name": "negative_values"
+    }
+  ],
+  "UnionTestMessage": [
+    {
+      "name": "with_array_payload",
+      "payload_type": 1,
+      "payload_type_name": "UNION_PAYLOAD_COMPREHENSIVE_ARRAY",
+      "array_payload": {
+        "fixed_ints": [10, 20, 30],
+        "fixed_floats": [1.5, 2.5],
+        "fixed_bools": [true, false, true, false],
+        "bounded_uints": [100, 200],
+        "bounded_doubles": [3.14159],
+        "fixed_strings": ["Hello", "World"],
+        "bounded_strings": ["Test"],
+        "fixed_statuses": [1, 2],
+        "bounded_statuses": [0],
+        "fixed_sensors": [{"id": 1, "value": 25.5, "status": 1, "name": "TempSensor"}],
+        "bounded_sensors": []
+      },
+      "test_payload": null
+    },
+    {
+      "name": "with_test_payload",
+      "payload_type": 2,
+      "payload_type_name": "UNION_PAYLOAD_SERIALIZATION_TEST",
+      "array_payload": null,
+      "test_payload": {
+        "magic_number": 305419896,
+        "magic_number_hex": "0x12345678",
+        "test_string": "Union test message",
+        "test_float": 99.99,
+        "test_bool": true,
+        "test_array": [1, 2, 3, 4, 5]
+      }
     }
   ],
   "SerializationTestMessage": [

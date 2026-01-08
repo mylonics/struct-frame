@@ -111,3 +111,20 @@ message SerializationTestMessage {
   bool test_bool = 4;
   repeated int32 test_array = 5 [max_size=5];
 }
+
+// ============================================================================
+// Union Message Test (msgid: 205)
+// ============================================================================
+
+// A message demonstrating union-like behavior using oneof
+// Since ComprehensiveArrayMessage and SerializationTestMessage both have
+// message IDs, the generator will automatically add a discriminator field
+message UnionTestMessage {
+  option msgid = 205;
+  
+  // oneof payload (auto-discriminator will be added for message ID)
+  oneof payload {
+    ComprehensiveArrayMessage array_payload = 1;
+    SerializationTestMessage test_payload = 2;
+  }
+}

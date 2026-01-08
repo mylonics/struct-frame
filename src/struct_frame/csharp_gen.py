@@ -193,16 +193,38 @@ class MessageCSharpGen():
                 result += '        public const ushort MsgId = %d;\n' % msg.id
         result += '\n'
 
-        if not msg.fields:
+        if not msg.fields and not msg.oneofs:
             # Empty structs need a dummy field
             result += '        [FieldOffset(0)]\n'
             result += '        public byte DummyField;\n'
         else:
-            # Calculate field offsets
+            # Calculate field offsets for regular fields
             offset = 0
             for key, f in msg.fields.items():
                 result += FieldCSharpGen.generate(f, offset)
                 offset += f.size
+            
+            # Generate oneofs - fields in union share the same offset
+            for key, oneof in msg.oneofs.items():
+                oneof_offset = offset
+                
+                # Add discriminator field if auto-discriminator is enabled
+                if oneof.auto_discriminator:
+                    # Always use ushort since message IDs can be up to 65535
+                    result += f'        [FieldOffset({oneof_offset})]\n'
+                    result += f'        public ushort {pascalCase(oneof.name)}Discriminator;  // Auto-generated message ID discriminator\n'
+                    oneof_offset += 2  # ushort is always 2 bytes
+                
+                # All union members start at the same offset (after discriminator)
+                union_start_offset = oneof_offset
+                
+                # Generate each field in the union with the same starting offset
+                for field_name, field in oneof.fields.items():
+                    result += f'        // Union member: {field_name}\n'
+                    result += FieldCSharpGen.generate(field, union_start_offset)
+                
+                # Move offset past the entire union
+                offset = union_start_offset + oneof.size
 
         result += '    }\n'
 

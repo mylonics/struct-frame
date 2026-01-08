@@ -22,7 +22,7 @@ using namespace FrameParsers;
  */
 
 /* Basic + Default -> Profile Standard */
-template<typename T>
+template <typename T>
 inline size_t basic_default_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   return encode_profile_standard(buffer, buffer_size, msg);
 }
@@ -32,7 +32,7 @@ inline FrameMsgInfo basic_default_validate_packet(const uint8_t* buffer, size_t 
 }
 
 /* Tiny + Minimal -> Profile Sensor */
-template<typename T>
+template <typename T>
 inline size_t tiny_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   return encode_profile_sensor(buffer, buffer_size, msg);
 }
@@ -42,7 +42,7 @@ inline FrameMsgInfo tiny_minimal_validate_packet(const uint8_t* buffer, size_t l
 }
 
 /* None + Minimal -> Profile IPC */
-template<typename T>
+template <typename T>
 inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   return encode_profile_ipc(buffer, buffer_size, msg);
 }
@@ -52,7 +52,7 @@ inline FrameMsgInfo none_minimal_validate_packet(const uint8_t* buffer, size_t l
 }
 
 /* Basic + Extended -> Profile Bulk */
-template<typename T>
+template <typename T>
 inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   return encode_profile_bulk(buffer, buffer_size, msg);
 }
@@ -62,7 +62,7 @@ inline FrameMsgInfo basic_extended_validate_packet(const uint8_t* buffer, size_t
 }
 
 /* Basic + Extended Multi System Stream -> Profile Network */
-template<typename T>
+template <typename T>
 inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   return encode_profile_network(buffer, buffer_size, 0, 0, 0, msg); /* seq=0, sys=0, comp=0 */
 }
@@ -72,7 +72,7 @@ inline FrameMsgInfo basic_extended_multi_system_stream_validate_packet(const uin
 }
 
 /* Basic + Minimal - This combination is not a standard profile but is used in tests */
-template<typename T>
+template <typename T>
 inline size_t basic_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   const size_t header_size = 3; /* [0x90] [0x70] [MSG_ID] */
   const size_t total_size = header_size + T::MAX_SIZE;
@@ -119,7 +119,7 @@ inline FrameMsgInfo basic_minimal_validate_packet(const uint8_t* buffer, size_t 
 }
 
 /* Tiny + Default - This combination is not a standard profile but is used in tests */
-template<typename T>
+template <typename T>
 inline size_t tiny_default_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
   const size_t header_size = 3; /* [0x71] [LEN] [MSG_ID] */
   const size_t footer_size = 2; /* [CRC1] [CRC2] */
@@ -242,6 +242,7 @@ std::vector<MixedMessage> load_mixed_messages() {
         json mixed_array = data["MixedMessages"];
         json serial_msgs = data["SerializationTestMessage"];
         json basic_msgs = data["BasicTypesMessage"];
+        json union_msgs = data.contains("UnionTestMessage") ? data["UnionTestMessage"] : json::array();
 
         std::vector<MixedMessage> messages;
 
@@ -308,6 +309,158 @@ std::vector<MixedMessage> load_mixed_messages() {
                 std::strncpy(msg.description.data, description.c_str(), sizeof(msg.description.data) - 1);
 
                 mixed_msg.data.basic_types = msg;
+                break;
+              }
+            }
+          } else if (msg_type == "UnionTestMessage") {
+            mixed_msg.type = MessageType::UnionTest;
+
+            // Find message by name
+            for (const auto& msg_data : union_msgs) {
+              if (msg_data["name"] == msg_name) {
+                SerializationTestUnionTestMessage msg;
+                std::memset(&msg, 0, sizeof(msg));
+
+                // Set the discriminator from the message ID of whichever message is being used
+                // Note: payload_type in JSON is legacy - we now use auto-discriminator
+                if (msg_data.contains("array_payload") && !msg_data["array_payload"].is_null()) {
+                  msg.payload_discriminator = SerializationTestComprehensiveArrayMessage::MSG_ID;
+                  const auto& ap = msg_data["array_payload"];
+
+                  // fixed_ints
+                  if (ap.contains("fixed_ints")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["fixed_ints"]) {
+                      if (idx >= 3) break;
+                      msg.payload.array_payload.fixed_ints[idx++] = val;
+                    }
+                  }
+                  // fixed_floats
+                  if (ap.contains("fixed_floats")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["fixed_floats"]) {
+                      if (idx >= 2) break;
+                      msg.payload.array_payload.fixed_floats[idx++] = val;
+                    }
+                  }
+                  // fixed_bools
+                  if (ap.contains("fixed_bools")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["fixed_bools"]) {
+                      if (idx >= 4) break;
+                      msg.payload.array_payload.fixed_bools[idx++] = val;
+                    }
+                  }
+                  // bounded_uints
+                  if (ap.contains("bounded_uints")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["bounded_uints"]) {
+                      if (idx >= 3) break;
+                      msg.payload.array_payload.bounded_uints.data[idx++] = val;
+                    }
+                    msg.payload.array_payload.bounded_uints.count = idx;
+                  }
+                  // bounded_doubles
+                  if (ap.contains("bounded_doubles")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["bounded_doubles"]) {
+                      if (idx >= 2) break;
+                      msg.payload.array_payload.bounded_doubles.data[idx++] = val;
+                    }
+                    msg.payload.array_payload.bounded_doubles.count = idx;
+                  }
+                  // fixed_strings
+                  if (ap.contains("fixed_strings")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["fixed_strings"]) {
+                      if (idx >= 2) break;
+                      std::string s = val;
+                      std::strncpy(msg.payload.array_payload.fixed_strings[idx], s.c_str(), 7);
+                      idx++;
+                    }
+                  }
+                  // bounded_strings
+                  if (ap.contains("bounded_strings")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["bounded_strings"]) {
+                      if (idx >= 2) break;
+                      std::string s = val;
+                      std::strncpy(msg.payload.array_payload.bounded_strings.data[idx], s.c_str(), 11);
+                      idx++;
+                    }
+                    msg.payload.array_payload.bounded_strings.count = idx;
+                  }
+                  // fixed_statuses
+                  if (ap.contains("fixed_statuses")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["fixed_statuses"]) {
+                      if (idx >= 2) break;
+                      msg.payload.array_payload.fixed_statuses[idx++] = static_cast<SerializationTestStatus>(val.get<int>());
+                    }
+                  }
+                  // bounded_statuses
+                  if (ap.contains("bounded_statuses")) {
+                    size_t idx = 0;
+                    for (const auto& val : ap["bounded_statuses"]) {
+                      if (idx >= 2) break;
+                      msg.payload.array_payload.bounded_statuses.data[idx++] =
+                          static_cast<SerializationTestStatus>(val.get<int>());
+                    }
+                    msg.payload.array_payload.bounded_statuses.count = idx;
+                  }
+                  // fixed_sensors
+                  if (ap.contains("fixed_sensors")) {
+                    size_t idx = 0;
+                    for (const auto& sensor : ap["fixed_sensors"]) {
+                      if (idx >= 1) break;
+                      msg.payload.array_payload.fixed_sensors[idx].id = sensor["id"];
+                      msg.payload.array_payload.fixed_sensors[idx].value = sensor["value"];
+                      msg.payload.array_payload.fixed_sensors[idx].status =
+                          static_cast<SerializationTestStatus>(sensor["status"].get<int>());
+                      std::string name = sensor["name"];
+                      std::strncpy(msg.payload.array_payload.fixed_sensors[idx].name, name.c_str(), 15);
+                      idx++;
+                    }
+                  }
+                  // bounded_sensors
+                  if (ap.contains("bounded_sensors")) {
+                    size_t idx = 0;
+                    for (const auto& sensor : ap["bounded_sensors"]) {
+                      if (idx >= 1) break;
+                      msg.payload.array_payload.bounded_sensors.data[idx].id = sensor["id"];
+                      msg.payload.array_payload.bounded_sensors.data[idx].value = sensor["value"];
+                      msg.payload.array_payload.bounded_sensors.data[idx].status =
+                          static_cast<SerializationTestStatus>(sensor["status"].get<int>());
+                      std::string name = sensor["name"];
+                      std::strncpy(msg.payload.array_payload.bounded_sensors.data[idx].name, name.c_str(), 15);
+                      idx++;
+                    }
+                    msg.payload.array_payload.bounded_sensors.count = idx;
+                  }
+                }
+
+                // Load test_payload if present
+                if (msg_data.contains("test_payload") && !msg_data["test_payload"].is_null()) {
+                  msg.payload_discriminator = SerializationTestSerializationTestMessage::MSG_ID;
+                  const auto& tp = msg_data["test_payload"];
+                  msg.payload.test_payload.magic_number = tp["magic_number"];
+                  std::string str = tp["test_string"];
+                  msg.payload.test_payload.test_string.length = str.length();
+                  std::strncpy(msg.payload.test_payload.test_string.data, str.c_str(),
+                               sizeof(msg.payload.test_payload.test_string.data) - 1);
+                  msg.payload.test_payload.test_float = tp["test_float"];
+                  msg.payload.test_payload.test_bool = tp["test_bool"];
+                  if (tp.contains("test_array") && tp["test_array"].is_array()) {
+                    size_t idx = 0;
+                    for (const auto& val : tp["test_array"]) {
+                      if (idx >= 5) break;
+                      msg.payload.test_payload.test_array.data[idx++] = val;
+                    }
+                    msg.payload.test_payload.test_array.count = idx;
+                  }
+                }
+
+                mixed_msg.data.union_test = msg;
                 break;
               }
             }
@@ -462,6 +615,23 @@ bool encode_test_messages(const std::string& format, uint8_t* buffer, size_t buf
         std::cout << "  Unknown frame format: " << format << "\n";
         return false;
       }
+    } else if (mixed_msg.type == MessageType::UnionTest) {
+      const auto& msg = mixed_msg.data.union_test;
+
+      if (format == "profile_standard") {
+        msg_encoded_size = basic_default_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_sensor") {
+        msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_ipc") {
+        msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_bulk") {
+        msg_encoded_size = basic_extended_encode(buffer + offset, buffer_size - offset, msg);
+      } else if (format == "profile_network") {
+        msg_encoded_size = basic_extended_multi_system_stream_encode(buffer + offset, buffer_size - offset, msg);
+      } else {
+        std::cout << "  Unknown frame format: " << format << "\n";
+        return false;
+      }
     } else {
       std::cout << "  Unknown message type\n";
       return false;
@@ -525,6 +695,8 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
       expected_msg_id = SerializationTestSerializationTestMessage::MSG_ID;
     } else if (mixed_msg.type == MessageType::BasicTypes) {
       expected_msg_id = SerializationTestBasicTypesMessage::MSG_ID;
+    } else if (mixed_msg.type == MessageType::UnionTest) {
+      expected_msg_id = SerializationTestUnionTestMessage::MSG_ID;
     } else {
       std::cout << "  Unknown message type for message " << message_count << "\n";
       return false;

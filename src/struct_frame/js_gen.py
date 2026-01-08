@@ -82,7 +82,7 @@ class FieldJsGen():
 
 class MessageJsGen():
     @staticmethod
-    def generate(msg, packageName):
+    def generate(msg, packageName, package=None):
         leading_comment = msg.comments
 
         result = ''
@@ -98,15 +98,26 @@ class MessageJsGen():
         result += '\n'
 
         size = 1
-        if not msg.fields:
+        if not msg.fields and not msg.oneofs:
             # Empty structs are not allowed in C standard.
             # Therefore add a dummy field if an empty message occurs.
             result += "    .UInt8('dummy_field');"
         else:
             size = msg.size
 
+        # Generate regular fields
         result += '\n'.join([FieldJsGen.generate(f, packageName)
                             for key, f in msg.fields.items()])
+        
+        # Generate oneofs - add discriminator and allocate union size
+        for key, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                # Always use UInt16LE since message IDs can be up to 65535
+                result += f"\n    .UInt16LE('{oneof.name}_discriminator')"
+            # Allocate space for the union (largest member size)
+            # Use a byte array to represent the union storage
+            result += f"\n    .ByteArray('{oneof.name}_data', {oneof.size})"
+        
         result += '\n    .compile();\n'
         result += 'module.exports.%s = %s;\n\n' % (package_msg_name, package_msg_name)
 
@@ -176,7 +187,7 @@ class FileJsGen():
         if package.messages:
             yield '/* Struct definitions */\n'
             for key, msg in package.sortedMessages().items():
-                yield MessageJsGen.generate(msg, package.name) + '\n'
+                yield MessageJsGen.generate(msg, package.name, package) + '\n'
             yield '\n'
 
         if package.messages:
