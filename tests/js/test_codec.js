@@ -197,14 +197,18 @@ function createBasicTypesMessageFromData(msgStruct, testData) {
   const buffer = Buffer.alloc(size);
   const msg = new msgStruct(buffer);
 
+  // large_int and large_uint may be stored as strings in JSON to preserve precision
+  const largeInt = typeof testData.large_int === 'string' ? BigInt(testData.large_int) : BigInt(testData.large_int);
+  const largeUint = typeof testData.large_uint === 'string' ? BigInt(testData.large_uint) : BigInt(testData.large_uint);
+
   msg.small_int = testData.small_int;
   msg.medium_int = testData.medium_int;
   msg.regular_int = testData.regular_int;
-  msg.large_int = testData.large_int;
+  msg.large_int = largeInt;
   msg.small_uint = testData.small_uint;
   msg.medium_uint = testData.medium_uint;
   msg.regular_uint = testData.regular_uint;
-  msg.large_uint = testData.large_uint;
+  msg.large_uint = largeUint;
   msg.single_precision = testData.single_precision;
   msg.double_precision = testData.double_precision;
   msg.flag = testData.flag;
@@ -265,6 +269,10 @@ function validateMessageAgainstData(msg, testData) {
 function validateBasicTypesMessageAgainstData(msg, testData) {
   const errors = [];
 
+  // large_int and large_uint may be stored as strings in JSON to preserve precision
+  const expectedLargeInt = typeof testData.large_int === 'string' ? BigInt(testData.large_int) : BigInt(testData.large_int);
+  const expectedLargeUint = typeof testData.large_uint === 'string' ? BigInt(testData.large_uint) : BigInt(testData.large_uint);
+
   if (msg.small_int !== testData.small_int) {
     errors.push(`small_int: expected ${testData.small_int}, got ${msg.small_int}`);
   }
@@ -274,9 +282,8 @@ function validateBasicTypesMessageAgainstData(msg, testData) {
   if (msg.regular_int !== testData.regular_int) {
     errors.push(`regular_int: expected ${testData.regular_int}, got ${msg.regular_int}`);
   }
-  // Use == for large_int to handle BigInt vs Number comparison
-  if (Math.abs(testData.large_int) < 9e18 && msg.large_int != testData.large_int) {
-    errors.push(`large_int: expected ${testData.large_int}, got ${msg.large_int}`);
+  if (BigInt(msg.large_int) !== expectedLargeInt) {
+    errors.push(`large_int: expected ${expectedLargeInt}, got ${msg.large_int}`);
   }
   if (msg.small_uint !== testData.small_uint) {
     errors.push(`small_uint: expected ${testData.small_uint}, got ${msg.small_uint}`);
@@ -287,9 +294,8 @@ function validateBasicTypesMessageAgainstData(msg, testData) {
   if (msg.regular_uint !== testData.regular_uint) {
     errors.push(`regular_uint: expected ${testData.regular_uint}, got ${msg.regular_uint}`);
   }
-  // Use == for large_uint to handle BigInt vs Number comparison
-  if (testData.large_uint < 9e18 && msg.large_uint != testData.large_uint) {
-    errors.push(`large_uint: expected ${testData.large_uint}, got ${msg.large_uint}`);
+  if (BigInt(msg.large_uint) !== expectedLargeUint) {
+    errors.push(`large_uint: expected ${expectedLargeUint}, got ${msg.large_uint}`);
   }
 
   if (Math.abs(msg.single_precision - testData.single_precision) > 0.01) {

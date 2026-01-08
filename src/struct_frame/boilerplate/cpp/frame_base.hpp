@@ -33,7 +33,6 @@ enum class FrameFormatType {
     UBX_FRAME = 18,
     MAVLINK_V1_FRAME = 19,
     MAVLINK_V2_FRAME = 20,
-    FRAME_FORMAT_CONFIG = 21,
 };
 
 // Checksum result
@@ -56,12 +55,20 @@ inline FrameChecksum fletcher_checksum(const uint8_t* data, size_t length) {
 struct FrameMsgInfo {
     bool valid;
     uint16_t msg_id;
-    size_t msg_len;
+    size_t msg_len;      // Payload length (message data only)
+    size_t frame_size;   // Total frame size (header + payload + footer)
     uint8_t* msg_data;
 
-    FrameMsgInfo() : valid(false), msg_id(0), msg_len(0), msg_data(nullptr) {}
+    FrameMsgInfo() : valid(false), msg_id(0), msg_len(0), frame_size(0), msg_data(nullptr) {}
+    FrameMsgInfo(bool v, uint16_t id, size_t len, size_t fsize, uint8_t* data)
+        : valid(v), msg_id(id), msg_len(len), frame_size(fsize), msg_data(data) {}
+    
+    // Legacy constructor for backwards compatibility
     FrameMsgInfo(bool v, uint16_t id, size_t len, uint8_t* data)
-        : valid(v), msg_id(id), msg_len(len), msg_data(data) {}
+        : valid(v), msg_id(id), msg_len(len), frame_size(0), msg_data(data) {}
+
+    // Allow use in boolean context (e.g., while (auto result = reader.next()) { ... })
+    explicit operator bool() const { return valid; }
 };
 
 /**

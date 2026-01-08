@@ -4,7 +4,6 @@
 
 #include "test_codec.hpp"
 
-#include <cmath>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -15,214 +14,6 @@
 
 using json = nlohmann::json;
 using namespace FrameParsers;
-
-/*
- * Frame format helper functions - Use generated profile functions from FrameProfiles.hpp
- * These are template-based wrappers that work with MessageBase-derived types.
- */
-
-/* Basic + Default -> Profile Standard */
-template <typename T>
-inline size_t basic_default_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return encode_profile_standard(buffer, buffer_size, msg);
-}
-
-inline FrameMsgInfo basic_default_validate_packet(const uint8_t* buffer, size_t length) {
-  return parse_profile_standard_buffer(buffer, length);
-}
-
-/* Tiny + Minimal -> Profile Sensor */
-template <typename T>
-inline size_t tiny_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return encode_profile_sensor(buffer, buffer_size, msg);
-}
-
-inline FrameMsgInfo tiny_minimal_validate_packet(const uint8_t* buffer, size_t length) {
-  return parse_profile_sensor_buffer(buffer, length, get_message_length);
-}
-
-/* None + Minimal -> Profile IPC */
-template <typename T>
-inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return encode_profile_ipc(buffer, buffer_size, msg);
-}
-
-inline FrameMsgInfo none_minimal_validate_packet(const uint8_t* buffer, size_t length) {
-  return parse_profile_ipc_buffer(buffer, length, get_message_length);
-}
-
-/* Basic + Extended -> Profile Bulk */
-template <typename T>
-inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return encode_profile_bulk(buffer, buffer_size, msg);
-}
-
-inline FrameMsgInfo basic_extended_validate_packet(const uint8_t* buffer, size_t length) {
-  return parse_profile_bulk_buffer(buffer, length);
-}
-
-/* Basic + Extended Multi System Stream -> Profile Network */
-template <typename T>
-inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  return encode_profile_network(buffer, buffer_size, 0, 0, 0, msg); /* seq=0, sys=0, comp=0 */
-}
-
-inline FrameMsgInfo basic_extended_multi_system_stream_validate_packet(const uint8_t* buffer, size_t length) {
-  return parse_profile_network_buffer(buffer, length);
-}
-
-/* Basic + Minimal - This combination is not a standard profile but is used in tests */
-template <typename T>
-inline size_t basic_minimal_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  const size_t header_size = 3; /* [0x90] [0x70] [MSG_ID] */
-  const size_t total_size = header_size + T::MAX_SIZE;
-
-  if (buffer_size < total_size) {
-    return 0;
-  }
-
-  buffer[0] = FrameHeaders::BASIC_START_BYTE;
-  buffer[1] = FrameHeaders::get_basic_second_start_byte(
-      static_cast<uint8_t>(PayloadTypes::PAYLOAD_MINIMAL_CONFIG.payload_type));
-  buffer[2] = static_cast<uint8_t>(T::MSG_ID);
-  std::memcpy(buffer + header_size, msg.data(), T::MAX_SIZE);
-
-  return total_size;
-}
-
-inline FrameMsgInfo basic_minimal_validate_packet(const uint8_t* buffer, size_t length) {
-  FrameMsgInfo result = {false, 0, 0, nullptr};
-
-  if (length < 3 || buffer[0] != FrameHeaders::BASIC_START_BYTE ||
-      !FrameHeaders::is_basic_second_start_byte(buffer[1])) {
-    return result;
-  }
-
-  /* For minimal payloads, we need to know the message size */
-  const uint8_t msg_id = buffer[2];
-  size_t msg_len = 0;
-  if (!get_message_length(msg_id, &msg_len)) {
-    return result; /* Unknown message ID */
-  }
-
-  const size_t total_size = 3 + msg_len; /* header + payload */
-  if (length < total_size) {
-    return result;
-  }
-
-  result.valid = true;
-  result.msg_id = msg_id;
-  result.msg_len = msg_len;
-  result.msg_data = (uint8_t*)(buffer + 3);
-
-  return result;
-}
-
-/* Tiny + Default - This combination is not a standard profile but is used in tests */
-template <typename T>
-inline size_t tiny_default_encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
-  const size_t header_size = 3; /* [0x71] [LEN] [MSG_ID] */
-  const size_t footer_size = 2; /* [CRC1] [CRC2] */
-  const size_t total_size = header_size + T::MAX_SIZE + footer_size;
-
-  if (buffer_size < total_size || T::MAX_SIZE > 255) {
-    return 0;
-  }
-
-  buffer[0] =
-      FrameHeaders::get_tiny_start_byte(static_cast<uint8_t>(PayloadTypes::PAYLOAD_DEFAULT_CONFIG.payload_type));
-  buffer[1] = static_cast<uint8_t>(T::MAX_SIZE);
-  buffer[2] = static_cast<uint8_t>(T::MSG_ID);
-  std::memcpy(buffer + header_size, msg.data(), T::MAX_SIZE);
-
-  FrameChecksum ck = fletcher_checksum(buffer + 1, T::MAX_SIZE + 2);
-  buffer[total_size - 2] = ck.byte1;
-  buffer[total_size - 1] = ck.byte2;
-
-  return total_size;
-}
-
-inline FrameMsgInfo tiny_default_validate_packet(const uint8_t* buffer, size_t length) {
-  FrameMsgInfo result = {false, 0, 0, nullptr};
-
-  if (length < 5 || !FrameHeaders::is_tiny_start_byte(buffer[0])) {
-    return result;
-  }
-
-  /* Extract length from the frame */
-  const size_t msg_len = buffer[1];
-  const size_t total_size = 3 + msg_len + 2; /* header + payload + crc */
-
-  if (length < total_size) {
-    return result;
-  }
-
-  /* Verify CRC: covers [LEN] [MSG_ID] [PAYLOAD] */
-  FrameChecksum ck = fletcher_checksum(buffer + 1, msg_len + 2);
-  if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
-    return result;
-  }
-
-  result.valid = true;
-  result.msg_id = buffer[2]; /* MSG_ID at position 2 */
-  result.msg_len = msg_len;
-  result.msg_data = (uint8_t*)(buffer + 3); /* Payload starts after header */
-
-  return result;
-}
-
-/* Load test messages from test_messages.json */
-std::vector<TestMessage> load_test_messages() {
-  std::vector<std::string> possible_paths = {"../test_messages.json", "../../test_messages.json", "test_messages.json",
-                                             "../../../tests/test_messages.json"};
-
-  for (const auto& filepath : possible_paths) {
-    std::ifstream file(filepath);
-    if (file.is_open()) {
-      try {
-        json data;
-        file >> data;
-
-        std::vector<TestMessage> messages;
-
-        // Try to read from SerializationTestMessage key, fall back to messages key
-        json message_array;
-        if (data.contains("SerializationTestMessage")) {
-          message_array = data["SerializationTestMessage"];
-        } else if (data.contains("messages")) {
-          message_array = data["messages"];
-        } else {
-          continue;
-        }
-
-        for (const auto& msg : message_array) {
-          TestMessage test_msg;
-          test_msg.magic_number = msg["magic_number"];
-          test_msg.test_string = msg["test_string"];
-          test_msg.test_float = msg["test_float"];
-          test_msg.test_bool = msg["test_bool"];
-
-          if (msg.contains("test_array") && msg["test_array"].is_array()) {
-            for (const auto& val : msg["test_array"]) {
-              test_msg.test_array.push_back(val);
-            }
-          }
-
-          messages.push_back(test_msg);
-        }
-
-        return messages;
-      } catch (const std::exception& e) {
-        // Try next path
-        continue;
-      }
-    }
-  }
-
-  /* If we couldn't load from JSON, return empty vector to indicate failure */
-  std::cerr << "Error: Could not load test_messages.json\n";
-  return std::vector<TestMessage>();
-}
 
 std::vector<MixedMessage> load_mixed_messages() {
   std::vector<std::string> possible_paths = {"../test_messages.json", "../../test_messages.json", "test_messages.json",
@@ -293,11 +84,21 @@ std::vector<MixedMessage> load_mixed_messages() {
                 msg.small_int = msg_data["small_int"];
                 msg.medium_int = msg_data["medium_int"];
                 msg.regular_int = msg_data["regular_int"];
-                msg.large_int = msg_data["large_int"];
+                // large_int is stored as string in JSON to preserve precision
+                if (msg_data["large_int"].is_string()) {
+                  msg.large_int = std::stoll(msg_data["large_int"].get<std::string>());
+                } else {
+                  msg.large_int = msg_data["large_int"];
+                }
                 msg.small_uint = msg_data["small_uint"];
                 msg.medium_uint = msg_data["medium_uint"];
                 msg.regular_uint = msg_data["regular_uint"];
-                msg.large_uint = msg_data["large_uint"];
+                // large_uint is stored as string in JSON to preserve precision
+                if (msg_data["large_uint"].is_string()) {
+                  msg.large_uint = std::stoull(msg_data["large_uint"].get<std::string>());
+                } else {
+                  msg.large_uint = msg_data["large_uint"];
+                }
                 msg.single_precision = msg_data["single_precision"];
                 msg.double_precision = msg_data["double_precision"];
                 msg.flag = msg_data["flag"];
@@ -395,7 +196,8 @@ std::vector<MixedMessage> load_mixed_messages() {
                     size_t idx = 0;
                     for (const auto& val : ap["fixed_statuses"]) {
                       if (idx >= 2) break;
-                      msg.payload.array_payload.fixed_statuses[idx++] = static_cast<SerializationTestStatus>(val.get<int>());
+                      msg.payload.array_payload.fixed_statuses[idx++] =
+                          static_cast<SerializationTestStatus>(val.get<int>());
                     }
                   }
                   // bounded_statuses
@@ -480,92 +282,68 @@ std::vector<MixedMessage> load_mixed_messages() {
   return std::vector<MixedMessage>();
 }
 
-void create_message_from_data(const TestMessage& test_msg, SerializationTestSerializationTestMessage& msg) {
-  std::memset(&msg, 0, sizeof(msg));
-
-  msg.magic_number = test_msg.magic_number;
-  msg.test_string.length = test_msg.test_string.length();
-  std::strncpy(msg.test_string.data, test_msg.test_string.c_str(), sizeof(msg.test_string.data) - 1);
-  msg.test_string.data[sizeof(msg.test_string.data) - 1] = '\0';
-  msg.test_float = test_msg.test_float;
-  msg.test_bool = test_msg.test_bool;
-  msg.test_array.count = test_msg.test_array.size();
-  for (size_t i = 0; i < test_msg.test_array.size() && i < sizeof(msg.test_array.data) / sizeof(msg.test_array.data[0]);
-       i++) {
-    msg.test_array.data[i] = test_msg.test_array[i];
-  }
-}
-
-bool validate_message(const SerializationTestSerializationTestMessage& msg, const TestMessage& test_msg) {
-  if (msg.magic_number != test_msg.magic_number) {
-    std::cout << "  Value mismatch: magic_number (expected " << test_msg.magic_number << ", got " << msg.magic_number
-              << ")\n";
+/* Helper function to validate a decoded message against expected data */
+bool validate_message(const FrameMsgInfo& decode_result, const std::vector<MixedMessage>& mixed_messages,
+                      size_t message_index) {
+  if (!decode_result.valid) {
+    std::cout << "  Decoding failed for message " << message_index << "\n";
     return false;
   }
 
-  std::string decoded_string(msg.test_string.data, msg.test_string.length);
-  if (decoded_string != test_msg.test_string) {
-    std::cout << "  Value mismatch: test_string (expected '" << test_msg.test_string << "', got '" << decoded_string
-              << "')\n";
+  if (message_index >= mixed_messages.size()) {
+    std::cout << "  Too many messages decoded: " << message_index << "\n";
     return false;
   }
 
-  if (std::fabs(msg.test_float - test_msg.test_float) > 0.0001f) {
-    std::cout << "  Value mismatch: test_float (expected " << test_msg.test_float << ", got " << msg.test_float
-              << ")\n";
+  const auto& mixed_msg = mixed_messages[message_index];
+  uint16_t expected_msg_id;
+
+  if (mixed_msg.type == MessageType::SerializationTest) {
+    expected_msg_id = SerializationTestSerializationTestMessage::MSG_ID;
+  } else if (mixed_msg.type == MessageType::BasicTypes) {
+    expected_msg_id = SerializationTestBasicTypesMessage::MSG_ID;
+  } else if (mixed_msg.type == MessageType::UnionTest) {
+    expected_msg_id = SerializationTestUnionTestMessage::MSG_ID;
+  } else {
+    std::cout << "  Unknown message type for message " << message_index << "\n";
     return false;
   }
 
-  if (msg.test_bool != test_msg.test_bool) {
-    std::cout << "  Value mismatch: test_bool (expected " << test_msg.test_bool << ", got " << msg.test_bool << ")\n";
+  if (decode_result.msg_id != expected_msg_id) {
+    std::cout << "  Message ID mismatch for message " << message_index << ": expected " << (int)expected_msg_id
+              << ", got " << (int)decode_result.msg_id << "\n";
     return false;
   }
 
-  if (msg.test_array.count != test_msg.test_array.size()) {
-    std::cout << "  Value mismatch: test_array.count (expected " << test_msg.test_array.size() << ", got "
-              << msg.test_array.count << ")\n";
-    return false;
+  // Validate message content by comparing decoded payload bytes against original message
+  const uint8_t* expected_data = nullptr;
+  size_t expected_size = 0;
+
+  if (mixed_msg.type == MessageType::SerializationTest) {
+    expected_data = mixed_msg.data.serial_test.data();
+    expected_size = SerializationTestSerializationTestMessage::MAX_SIZE;
+  } else if (mixed_msg.type == MessageType::BasicTypes) {
+    expected_data = mixed_msg.data.basic_types.data();
+    expected_size = SerializationTestBasicTypesMessage::MAX_SIZE;
+  } else if (mixed_msg.type == MessageType::UnionTest) {
+    expected_data = mixed_msg.data.union_test.data();
+    expected_size = SerializationTestUnionTestMessage::MAX_SIZE;
   }
 
-  for (size_t i = 0; i < test_msg.test_array.size(); i++) {
-    if (msg.test_array.data[i] != test_msg.test_array[i]) {
-      std::cout << "  Value mismatch: test_array[" << i << "] (expected " << test_msg.test_array[i] << ", got "
-                << msg.test_array.data[i] << ")\n";
+  if (expected_data && decode_result.msg_data) {
+    if (decode_result.msg_len != expected_size) {
+      std::cout << "  Message " << message_index << " size mismatch: expected " << expected_size << ", got "
+                << decode_result.msg_len << "\n";
+      return false;
+    }
+
+    if (std::memcmp(decode_result.msg_data, expected_data, expected_size) != 0) {
+      std::cout << "  Message " << message_index << " content mismatch\n";
       return false;
     }
   }
 
   return true;
-}
-
-/* Expected test values (from test_messages.json) - kept for backwards compatibility */
-static const uint32_t EXPECTED_MAGIC_NUMBER = 3735928559; /* 0xDEADBEEF */
-static const char* EXPECTED_TEST_STRING = "Cross-platform test!";
-static const float EXPECTED_TEST_FLOAT = 3.14159f;
-static const bool EXPECTED_TEST_BOOL = true;
-static const int32_t EXPECTED_TEST_ARRAY[] = {100, 200, 300};
-static const size_t EXPECTED_TEST_ARRAY_COUNT = 3;
-
-void create_test_message(SerializationTestSerializationTestMessage& msg) {
-  TestMessage test_msg;
-  test_msg.magic_number = EXPECTED_MAGIC_NUMBER;
-  test_msg.test_string = EXPECTED_TEST_STRING;
-  test_msg.test_float = EXPECTED_TEST_FLOAT;
-  test_msg.test_bool = EXPECTED_TEST_BOOL;
-  test_msg.test_array.assign(EXPECTED_TEST_ARRAY, EXPECTED_TEST_ARRAY + EXPECTED_TEST_ARRAY_COUNT);
-
-  create_message_from_data(test_msg, msg);
-}
-
-bool validate_test_message(const SerializationTestSerializationTestMessage& msg) {
-  TestMessage test_msg;
-  test_msg.magic_number = EXPECTED_MAGIC_NUMBER;
-  test_msg.test_string = EXPECTED_TEST_STRING;
-  test_msg.test_float = EXPECTED_TEST_FLOAT;
-  test_msg.test_bool = EXPECTED_TEST_BOOL;
-  test_msg.test_array.assign(EXPECTED_TEST_ARRAY, EXPECTED_TEST_ARRAY + EXPECTED_TEST_ARRAY_COUNT);
-
-  return validate_message(msg, test_msg);
 }
 
 bool encode_test_messages(const std::string& format, uint8_t* buffer, size_t buffer_size, size_t& encoded_size) {
@@ -576,81 +354,49 @@ bool encode_test_messages(const std::string& format, uint8_t* buffer, size_t buf
   }
 
   encoded_size = 0;
-  size_t offset = 0;
 
-  for (const auto& mixed_msg : mixed_messages) {
-    size_t msg_encoded_size = 0;
-
-    if (mixed_msg.type == MessageType::SerializationTest) {
-      const auto& msg = mixed_msg.data.serial_test;
-
-      if (format == "profile_standard") {
-        msg_encoded_size = basic_default_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_sensor") {
-        msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_ipc") {
-        msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_bulk") {
-        msg_encoded_size = basic_extended_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_network") {
-        msg_encoded_size = basic_extended_multi_system_stream_encode(buffer + offset, buffer_size - offset, msg);
+  /* Lambda to encode messages using the appropriate profile's BufferWriter */
+  auto encode_all = [&](auto& writer) -> bool {
+    for (const auto& mixed_msg : mixed_messages) {
+      size_t written = 0;
+      if (mixed_msg.type == MessageType::SerializationTest) {
+        written = writer.write(mixed_msg.data.serial_test);
+      } else if (mixed_msg.type == MessageType::BasicTypes) {
+        written = writer.write(mixed_msg.data.basic_types);
+      } else if (mixed_msg.type == MessageType::UnionTest) {
+        written = writer.write(mixed_msg.data.union_test);
       } else {
-        std::cout << "  Unknown frame format: " << format << "\n";
+        std::cout << "  Unknown message type\n";
         return false;
       }
-    } else if (mixed_msg.type == MessageType::BasicTypes) {
-      const auto& msg = mixed_msg.data.basic_types;
-
-      if (format == "profile_standard") {
-        msg_encoded_size = basic_default_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_sensor") {
-        msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_ipc") {
-        msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_bulk") {
-        msg_encoded_size = basic_extended_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_network") {
-        msg_encoded_size = basic_extended_multi_system_stream_encode(buffer + offset, buffer_size - offset, msg);
-      } else {
-        std::cout << "  Unknown frame format: " << format << "\n";
+      if (written == 0) {
+        std::cout << "  Encoding failed for message\n";
         return false;
       }
-    } else if (mixed_msg.type == MessageType::UnionTest) {
-      const auto& msg = mixed_msg.data.union_test;
-
-      if (format == "profile_standard") {
-        msg_encoded_size = basic_default_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_sensor") {
-        msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_ipc") {
-        msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_bulk") {
-        msg_encoded_size = basic_extended_encode(buffer + offset, buffer_size - offset, msg);
-      } else if (format == "profile_network") {
-        msg_encoded_size = basic_extended_multi_system_stream_encode(buffer + offset, buffer_size - offset, msg);
-      } else {
-        std::cout << "  Unknown frame format: " << format << "\n";
-        return false;
-      }
-    } else {
-      std::cout << "  Unknown message type\n";
-      return false;
     }
+    encoded_size = writer.size();
+    return true;
+  };
 
-    if (msg_encoded_size == 0) {
-      std::cout << "  Encoding failed for message\n";
-      return false;
-    }
-
-    offset += msg_encoded_size;
-    encoded_size = offset;
+  if (format == "profile_standard") {
+    ProfileStandardWriter writer(buffer, buffer_size);
+    return encode_all(writer);
+  } else if (format == "profile_sensor") {
+    ProfileSensorWriter writer(buffer, buffer_size);
+    return encode_all(writer);
+  } else if (format == "profile_ipc") {
+    ProfileIPCWriter writer(buffer, buffer_size);
+    return encode_all(writer);
+  } else if (format == "profile_bulk") {
+    ProfileBulkWriter writer(buffer, buffer_size);
+    return encode_all(writer);
+  } else if (format == "profile_network") {
+    ProfileNetworkWriter writer(buffer, buffer_size);
+    return encode_all(writer);
   }
 
-  return encoded_size > 0;
-}
-
-bool encode_test_message(const std::string& format, uint8_t* buffer, size_t buffer_size, size_t& encoded_size) {
-  return encode_test_messages(format, buffer, buffer_size, encoded_size);
+  std::cout << "  Unknown frame format: " << format << "\n";
+  return false;
 }
 
 bool decode_test_messages(const std::string& format, const uint8_t* buffer, size_t buffer_size, size_t& message_count) {
@@ -661,86 +407,76 @@ bool decode_test_messages(const std::string& format, const uint8_t* buffer, size
     return false;
   }
 
-  size_t offset = 0;
   message_count = 0;
 
-  while (offset < buffer_size && message_count < mixed_messages.size()) {
-    FrameMsgInfo decode_result;
+  /* Split buffer into 3 chunks to simulate partial message scenarios */
+  size_t chunk1_size = buffer_size / 3;
+  size_t chunk2_size = buffer_size / 3;
+  size_t chunk3_size = buffer_size - chunk1_size - chunk2_size;
 
-    if (format == "profile_standard") {
-      decode_result = basic_default_validate_packet(buffer + offset, buffer_size - offset);
-    } else if (format == "profile_sensor") {
-      decode_result = tiny_minimal_validate_packet(buffer + offset, buffer_size - offset);
-    } else if (format == "profile_ipc") {
-      decode_result = none_minimal_validate_packet(buffer + offset, buffer_size - offset);
-    } else if (format == "profile_bulk") {
-      decode_result = basic_extended_validate_packet(buffer + offset, buffer_size - offset);
-    } else if (format == "profile_network") {
-      decode_result = basic_extended_multi_system_stream_validate_packet(buffer + offset, buffer_size - offset);
-    } else {
-      std::cout << "  Unknown frame format: " << format << "\n";
+  const uint8_t* chunk1 = buffer;
+  const uint8_t* chunk2 = buffer + chunk1_size;
+  const uint8_t* chunk3 = buffer + chunk1_size + chunk2_size;
+
+  /* Lambda to decode and validate messages using AccumulatingReader with split buffers */
+  auto decode_all = [&](auto& reader) -> bool {
+    // Add first chunk
+    reader.add_data(chunk1, chunk1_size);
+    while (auto decode_result = reader.next()) {
+      if (!validate_message(decode_result, mixed_messages, message_count)) {
+        return false;
+      }
+      message_count++;
+    }
+
+    // Add second chunk (may complete a partial message)
+    reader.add_data(chunk2, chunk2_size);
+    while (auto decode_result = reader.next()) {
+      if (!validate_message(decode_result, mixed_messages, message_count)) {
+        return false;
+      }
+      message_count++;
+    }
+
+    // Add third chunk (may complete a partial message)
+    reader.add_data(chunk3, chunk3_size);
+    while (auto decode_result = reader.next()) {
+      if (!validate_message(decode_result, mixed_messages, message_count)) {
+        return false;
+      }
+      message_count++;
+    }
+
+    if (message_count != mixed_messages.size()) {
+      std::cout << "  Expected " << mixed_messages.size() << " messages, but decoded " << message_count << "\n";
       return false;
     }
 
-    if (!decode_result.valid) {
-      std::cout << "  Decoding failed for message " << message_count << "\n";
+    if (reader.has_partial()) {
+      std::cout << "  Incomplete partial message remaining: " << reader.partial_size() << " bytes\n";
       return false;
     }
 
-    // Validate msg_id matches expected type using MessageBase MSG_ID constants
-    const auto& mixed_msg = mixed_messages[message_count];
-    uint16_t expected_msg_id;
+    return true;
+  };
 
-    if (mixed_msg.type == MessageType::SerializationTest) {
-      expected_msg_id = SerializationTestSerializationTestMessage::MSG_ID;
-    } else if (mixed_msg.type == MessageType::BasicTypes) {
-      expected_msg_id = SerializationTestBasicTypesMessage::MSG_ID;
-    } else if (mixed_msg.type == MessageType::UnionTest) {
-      expected_msg_id = SerializationTestUnionTestMessage::MSG_ID;
-    } else {
-      std::cout << "  Unknown message type for message " << message_count << "\n";
-      return false;
-    }
-
-    if (decode_result.msg_id != expected_msg_id) {
-      std::cout << "  Message ID mismatch for message " << message_count << ": expected " << (int)expected_msg_id
-                << ", got " << (int)decode_result.msg_id << "\n";
-      return false;
-    }
-
-    // Calculate the size of this encoded message
-    size_t msg_size = 0;
-    if (format == "profile_standard") {
-      msg_size = 4 + decode_result.msg_len + 2;  // header + payload + crc
-    } else if (format == "profile_sensor") {
-      msg_size = 2 + decode_result.msg_len;  // header + payload
-    } else if (format == "profile_ipc") {
-      msg_size = 1 + decode_result.msg_len;  // header + payload
-    } else if (format == "profile_bulk") {
-      msg_size = 6 + decode_result.msg_len + 2;  // header + payload + crc
-    } else if (format == "profile_network") {
-      msg_size = 9 + decode_result.msg_len + 2;  // header + payload + crc
-    }
-
-    offset += msg_size;
-    message_count++;
+  if (format == "profile_standard") {
+    AccumulatingReader<ProfileStandardConfig> reader;
+    return decode_all(reader);
+  } else if (format == "profile_sensor") {
+    AccumulatingReader<ProfileSensorConfig> reader(get_message_length);
+    return decode_all(reader);
+  } else if (format == "profile_ipc") {
+    AccumulatingReader<ProfileIPCConfig> reader(get_message_length);
+    return decode_all(reader);
+  } else if (format == "profile_bulk") {
+    AccumulatingReader<ProfileBulkConfig> reader;
+    return decode_all(reader);
+  } else if (format == "profile_network") {
+    AccumulatingReader<ProfileNetworkConfig> reader;
+    return decode_all(reader);
   }
 
-  if (message_count != mixed_messages.size()) {
-    std::cout << "  Expected " << mixed_messages.size() << " messages, but decoded " << message_count << "\n";
-    return false;
-  }
-
-  if (offset != buffer_size) {
-    std::cout << "  Extra data after messages: expected " << offset << " bytes, got " << buffer_size << " bytes\n";
-    return false;
-  }
-
-  return true;
-}
-
-bool decode_test_message(const std::string& format, const uint8_t* buffer, size_t buffer_size,
-                         SerializationTestSerializationTestMessage& msg) {
-  size_t message_count = 0;
-  return decode_test_messages(format, buffer, buffer_size, message_count);
+  std::cout << "  Unknown frame format: " << format << "\n";
+  return false;
 }

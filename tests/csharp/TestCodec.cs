@@ -664,11 +664,25 @@ namespace StructFrameTests
             int valueStart = colonPos + 1;
             while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart])) valueStart++;
             
-            int valueEnd = valueStart;
-            while (valueEnd < json.Length && (char.IsDigit(json[valueEnd]) || json[valueEnd] == '-' || json[valueEnd] == '.')) valueEnd++;
+            // Check if value is a string (starts with quote) - for large int precision
+            if (json[valueStart] == '"')
+            {
+                valueStart++; // Skip opening quote
+                int valueEnd = json.IndexOf('"', valueStart);
+                if (valueEnd == -1) return 0;
+                string valueStr = json.Substring(valueStart, valueEnd - valueStart);
+                if (long.TryParse(valueStr, out long strResult))
+                {
+                    return strResult;
+                }
+                return 0;
+            }
             
-            string valueStr = json.Substring(valueStart, valueEnd - valueStart);
-            if (long.TryParse(valueStr, out long result))
+            int numEnd = valueStart;
+            while (numEnd < json.Length && (char.IsDigit(json[numEnd]) || json[numEnd] == '-' || json[numEnd] == '.')) numEnd++;
+            
+            string numStr = json.Substring(valueStart, numEnd - valueStart);
+            if (long.TryParse(numStr, out long result))
             {
                 return result;
             }
@@ -687,11 +701,25 @@ namespace StructFrameTests
             int valueStart = colonPos + 1;
             while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart])) valueStart++;
             
-            int valueEnd = valueStart;
-            while (valueEnd < json.Length && (char.IsDigit(json[valueEnd]) || json[valueEnd] == '.')) valueEnd++;
+            // Check if value is a string (starts with quote) - for large uint precision
+            if (json[valueStart] == '"')
+            {
+                valueStart++; // Skip opening quote
+                int valueEnd = json.IndexOf('"', valueStart);
+                if (valueEnd == -1) return 0;
+                string valueStr = json.Substring(valueStart, valueEnd - valueStart);
+                if (ulong.TryParse(valueStr, out ulong strResult))
+                {
+                    return strResult;
+                }
+                return 0;
+            }
             
-            string valueStr = json.Substring(valueStart, valueEnd - valueStart);
-            if (ulong.TryParse(valueStr, out ulong result))
+            int numEnd = valueStart;
+            while (numEnd < json.Length && (char.IsDigit(json[numEnd]) || json[numEnd] == '.')) numEnd++;
+            
+            string numStr = json.Substring(valueStart, numEnd - valueStart);
+            if (ulong.TryParse(numStr, out ulong result))
             {
                 return result;
             }

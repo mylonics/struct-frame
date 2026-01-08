@@ -28,33 +28,10 @@ struct MixedMessage {
   MixedMessage() { std::memset(data.bytes, 0, sizeof(data.bytes)); }
 };
 
-struct TestMessage {
-  uint32_t magic_number;
-  std::string test_string;
-  float test_float;
-  bool test_bool;
-  std::vector<int32_t> test_array;
-};
-
 /**
  * Load mixed messages from test_messages.json following MixedMessages sequence
  */
 std::vector<MixedMessage> load_mixed_messages();
-
-/**
- * Load test messages from test_messages.json (alternative format)
- */
-std::vector<TestMessage> load_test_messages();
-
-/**
- * Create a message struct from test message data.
- */
-void create_message_from_data(const TestMessage& test_msg, SerializationTestSerializationTestMessage& msg);
-
-/**
- * Validate that a decoded message matches expected test message data.
- */
-bool validate_message(const SerializationTestSerializationTestMessage& msg, const TestMessage& test_msg);
 
 /**
  * Encode multiple test messages using the specified frame format.
