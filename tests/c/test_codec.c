@@ -390,9 +390,10 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
           if ((field = cJSON_GetObjectItem(msg_data, "medium_int"))) msg->medium_int = (int16_t)cJSON_GetNumberValue(field);
           if ((field = cJSON_GetObjectItem(msg_data, "regular_int"))) msg->regular_int = (int32_t)cJSON_GetNumberValue(field);
           if ((field = cJSON_GetObjectItem(msg_data, "large_int"))) {
-            // For large integers, try to get valuestring if available, otherwise use double (may lose precision)
-            if (field->valuestring && strlen(field->valuestring) > 0) {
-              msg->large_int = (int64_t)strtoll(field->valuestring, NULL, 10);
+            // large_int is stored as string in JSON to preserve precision
+            const char* str = cJSON_GetStringValue(field);
+            if (str) {
+              msg->large_int = (int64_t)strtoll(str, NULL, 10);
             } else {
               msg->large_int = (int64_t)cJSON_GetNumberValue(field);
             }
@@ -401,9 +402,10 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
           if ((field = cJSON_GetObjectItem(msg_data, "medium_uint"))) msg->medium_uint = (uint16_t)cJSON_GetNumberValue(field);
           if ((field = cJSON_GetObjectItem(msg_data, "regular_uint"))) msg->regular_uint = (uint32_t)cJSON_GetNumberValue(field);
           if ((field = cJSON_GetObjectItem(msg_data, "large_uint"))) {
-            // For large integers, try to get valuestring if available, otherwise use double (may lose precision)
-            if (field->valuestring && strlen(field->valuestring) > 0) {
-              msg->large_uint = (uint64_t)strtoull(field->valuestring, NULL, 10);
+            // large_uint is stored as string in JSON to preserve precision
+            const char* str = cJSON_GetStringValue(field);
+            if (str) {
+              msg->large_uint = (uint64_t)strtoull(str, NULL, 10);
             } else {
               msg->large_uint = (uint64_t)cJSON_GetNumberValue(field);
             }

@@ -374,7 +374,7 @@ class CppLanguage(Language):
     build_dir = "tests/cpp/build"
 
     def _get_compile_flags(self) -> List[str]:
-        return ["-std=c++17", "-I{generated_dir}", "-o", "{output}", "{source}"]
+        return ["-std=c++20", "-I{generated_dir}", "-o", "{output}", "{source}"]
 
 
 class PythonLanguage(Language):

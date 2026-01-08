@@ -91,15 +91,18 @@ def create_message_from_data(msg_class, test_msg):
 
 def create_basic_types_message_from_data(msg_class, test_msg):
     """Create a BasicTypesMessage from test message data."""
+    # large_int and large_uint may be stored as strings in JSON to preserve precision
+    large_int = int(test_msg['large_int']) if isinstance(test_msg['large_int'], str) else test_msg['large_int']
+    large_uint = int(test_msg['large_uint']) if isinstance(test_msg['large_uint'], str) else test_msg['large_uint']
     return msg_class(
         small_int=test_msg['small_int'],
         medium_int=test_msg['medium_int'],
         regular_int=test_msg['regular_int'],
-        large_int=test_msg['large_int'],
+        large_int=large_int,
         small_uint=test_msg['small_uint'],
         medium_uint=test_msg['medium_uint'],
         regular_uint=test_msg['regular_uint'],
-        large_uint=test_msg['large_uint'],
+        large_uint=large_uint,
         single_precision=test_msg['single_precision'],
         double_precision=test_msg['double_precision'],
         flag=test_msg['flag'],
@@ -112,24 +115,26 @@ def validate_basic_types_message(msg, test_msg):
     """Validate BasicTypesMessage against expected data."""
     errors = []
     
+    # large_int and large_uint may be stored as strings in JSON to preserve precision
+    expected_large_int = int(test_msg['large_int']) if isinstance(test_msg['large_int'], str) else test_msg['large_int']
+    expected_large_uint = int(test_msg['large_uint']) if isinstance(test_msg['large_uint'], str) else test_msg['large_uint']
+    
     if msg.small_int != test_msg['small_int']:
         errors.append(f"small_int: expected {test_msg['small_int']}, got {msg.small_int}")
     if msg.medium_int != test_msg['medium_int']:
         errors.append(f"medium_int: expected {test_msg['medium_int']}, got {msg.medium_int}")
     if msg.regular_int != test_msg['regular_int']:
         errors.append(f"regular_int: expected {test_msg['regular_int']}, got {msg.regular_int}")
-    # Skip large_int validation for very large values due to JSON precision limits
-    if abs(test_msg['large_int']) < 9e18 and msg.large_int != test_msg['large_int']:
-        errors.append(f"large_int: expected {test_msg['large_int']}, got {msg.large_int}")
+    if msg.large_int != expected_large_int:
+        errors.append(f"large_int: expected {expected_large_int}, got {msg.large_int}")
     if msg.small_uint != test_msg['small_uint']:
         errors.append(f"small_uint: expected {test_msg['small_uint']}, got {msg.small_uint}")
     if msg.medium_uint != test_msg['medium_uint']:
         errors.append(f"medium_uint: expected {test_msg['medium_uint']}, got {msg.medium_uint}")
     if msg.regular_uint != test_msg['regular_uint']:
         errors.append(f"regular_uint: expected {test_msg['regular_uint']}, got {msg.regular_uint}")
-    # Skip large_uint validation for very large values due to JSON precision limits
-    if test_msg['large_uint'] < 9e18 and msg.large_uint != test_msg['large_uint']:
-        errors.append(f"large_uint: expected {test_msg['large_uint']}, got {msg.large_uint}")
+    if msg.large_uint != expected_large_uint:
+        errors.append(f"large_uint: expected {expected_large_uint}, got {msg.large_uint}")
     
     # Float tolerance
     if abs(msg.single_precision - test_msg['single_precision']) > 0.01:

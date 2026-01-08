@@ -6,29 +6,11 @@
 /* Base utilities */
 #include "frame_base.hpp"
 
-/* Frame headers - Start byte patterns and header types */
-#include "frame_headers/base.hpp"
-#include "frame_headers/header_tiny.hpp"
-#include "frame_headers/header_basic.hpp"
-#include "frame_headers/header_none.hpp"
-#include "frame_headers/header_ubx.hpp"
-#include "frame_headers/header_mavlink_v1.hpp"
-#include "frame_headers/header_mavlink_v2.hpp"
+/* Frame headers - Start byte patterns and header configurations */
+#include "frame_headers.hpp"
 
-/* Payload types - Message structure definitions */
-#include "payload_types/base.hpp"
-#include "payload_types/payload_minimal.hpp"
-#include "payload_types/payload_default.hpp"
-#include "payload_types/payload_extended_msg_ids.hpp"
-#include "payload_types/payload_extended_length.hpp"
-#include "payload_types/payload_extended.hpp"
-#include "payload_types/payload_sys_comp.hpp"
-#include "payload_types/payload_seq.hpp"
-#include "payload_types/payload_multi_system_stream.hpp"
-#include "payload_types/payload_extended_multi_system_stream.hpp"
-
-/* Frame format configuration */
-#include "FrameFormatConfig.hpp"
+/* Payload types - Message structure configurations */
+#include "payload_types.hpp"
 
 /* Frame profiles - Pre-defined Header + Payload combinations */
 #include "FrameProfiles.hpp"

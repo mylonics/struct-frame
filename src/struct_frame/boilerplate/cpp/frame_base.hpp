@@ -33,7 +33,6 @@ enum class FrameFormatType {
     UBX_FRAME = 18,
     MAVLINK_V1_FRAME = 19,
     MAVLINK_V2_FRAME = 20,
-    FRAME_FORMAT_CONFIG = 21,
 };
 
 // Checksum result
