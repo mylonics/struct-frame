@@ -56,6 +56,7 @@ export function loadMixedMessages(): any[] {
         const mixedArray = data.MixedMessages || [];
         const serialMsgs = data.SerializationTestMessage || [];
         const basicMsgs = data.BasicTypesMessage || [];
+        const unionMsgs = data.UnionTestMessage || [];
         
         const messages = [];
         for (const item of mixedArray) {
@@ -72,6 +73,11 @@ export function loadMixedMessages(): any[] {
             msgData = basicMsgs.find((m: any) => m.name === msgName);
             if (msgData) {
               messages.push({ type: 'BasicTypesMessage', data: msgData });
+            }
+          } else if (msgType === 'UnionTestMessage') {
+            msgData = unionMsgs.find((m: any) => m.name === msgName);
+            if (msgData) {
+              messages.push({ type: 'UnionTestMessage', data: msgData });
             }
           }
         }
@@ -123,6 +129,12 @@ const {
   serialization_test_BasicTypesMessage,
   serialization_test_BasicTypesMessage_msgid,
   serialization_test_BasicTypesMessage_max_size,
+  serialization_test_UnionTestMessage,
+  serialization_test_UnionTestMessage_msgid,
+  serialization_test_UnionTestMessage_max_size,
+  serialization_test_ComprehensiveArrayMessage,
+  serialization_test_ComprehensiveArrayMessage_msgid,
+  serialization_test_ComprehensiveArrayMessage_max_size,
   get_message_length
 } = require('./serialization_test.sf');
 
@@ -188,6 +200,17 @@ export function getBasicTypesMessageInfo() {
     struct: serialization_test_BasicTypesMessage,
     msgId: serialization_test_BasicTypesMessage_msgid,
     maxSize: serialization_test_BasicTypesMessage_max_size,
+  };
+}
+
+/**
+ * Get message info for UnionTestMessage
+ */
+export function getUnionTestMessageInfo() {
+  return {
+    struct: serialization_test_UnionTestMessage,
+    msgId: serialization_test_UnionTestMessage_msgid,
+    maxSize: serialization_test_UnionTestMessage_max_size,
   };
 }
 
@@ -274,6 +297,141 @@ export function validateBasicTypesMessageAgainstData(msg: any, testData: any): b
   const description = msg.description_data.substring(0, msg.description_length);
   if (description !== testData.description) {
     errors.push(`description: expected '${testData.description}', got '${description}'`);
+  }
+
+  if (errors.length > 0) {
+    for (const error of errors) {
+      console.log(`  Value mismatch: ${error}`);
+    }
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Create UnionTestMessage from test data
+ * UnionTestMessage has a discriminator (payload_discriminator) and payload_data (byte array).
+ * The payload_data contains either ComprehensiveArrayMessage or SerializationTestMessage.
+ * The discriminator is the message ID of the inner message type:
+ * - payload_type 1 (array_payload) -> ComprehensiveArrayMessage msg_id (203)
+ * - payload_type 2 (test_payload) -> SerializationTestMessage msg_id (204)
+ */
+export function createUnionTestMessageFromData(msgStruct: any, testData: any): { msg: any; buffer: Buffer } {
+  const size = msgStruct._size || msgStruct.getSize();
+  const buffer = Buffer.alloc(size);
+  const msg = new msgStruct(buffer);
+
+  // Create the inner payload based on the type and set discriminator to inner message's msg_id
+  if (testData.payload_type === 1 && testData.array_payload) {
+    // ComprehensiveArrayMessage - discriminator is its msg_id
+    msg.payload_discriminator = serialization_test_ComprehensiveArrayMessage_msgid;
+    
+    const innerSize = serialization_test_ComprehensiveArrayMessage_max_size;
+    const innerBuffer = Buffer.alloc(innerSize);
+    const innerMsg = new serialization_test_ComprehensiveArrayMessage(innerBuffer);
+    
+    // Set array fields from test data
+    const ap = testData.array_payload;
+    innerMsg.fixed_ints = ap.fixed_ints || [];
+    innerMsg.fixed_floats = ap.fixed_floats || [];
+    innerMsg.fixed_bools = ap.fixed_bools || [];
+    innerMsg.bounded_uints_count = (ap.bounded_uints || []).length;
+    innerMsg.bounded_uints_data = ap.bounded_uints || [];
+    innerMsg.bounded_doubles_count = (ap.bounded_doubles || []).length;
+    innerMsg.bounded_doubles_data = ap.bounded_doubles || [];
+    innerMsg.fixed_statuses = ap.fixed_statuses || [];
+    innerMsg.bounded_statuses_count = (ap.bounded_statuses || []).length;
+    innerMsg.bounded_statuses_data = ap.bounded_statuses || [];
+    
+    // Copy inner buffer to payload_data
+    (innerMsg as any)._buffer.copy((msg as any)._buffer, 2, 0, innerSize);
+  } else if (testData.payload_type === 2 && testData.test_payload) {
+    // SerializationTestMessage - discriminator is its msg_id
+    msg.payload_discriminator = serialization_test_SerializationTestMessage_msgid;
+    
+    const innerSize = serialization_test_SerializationTestMessage_max_size;
+    const innerBuffer = Buffer.alloc(innerSize);
+    const innerMsg = new serialization_test_SerializationTestMessage(innerBuffer);
+    
+    const tp = testData.test_payload;
+    innerMsg.magic_number = tp.magic_number;
+    innerMsg.test_string_length = tp.test_string.length;
+    innerMsg.test_string_data = tp.test_string;
+    innerMsg.test_float = tp.test_float;
+    innerMsg.test_bool = tp.test_bool;
+    innerMsg.test_array_count = tp.test_array.length;
+    innerMsg.test_array_data = tp.test_array;
+    
+    // Copy inner buffer to payload_data
+    (innerMsg as any)._buffer.copy((msg as any)._buffer, 2, 0, innerSize);
+  }
+
+  return { msg, buffer: (msg as any)._buffer };
+}
+
+/**
+ * Validate UnionTestMessage against test data
+ * The discriminator should be the message ID:
+ * - payload_type 1 -> msg_id 203 (ComprehensiveArrayMessage)
+ * - payload_type 2 -> msg_id 204 (SerializationTestMessage)
+ */
+export function validateUnionTestMessageAgainstData(msg: any, testData: any): boolean {
+  const errors: string[] = [];
+
+  // Map payload_type to expected discriminator (message ID)
+  const expectedDiscriminator = testData.payload_type === 1 
+    ? serialization_test_ComprehensiveArrayMessage_msgid 
+    : serialization_test_SerializationTestMessage_msgid;
+
+  if (msg.payload_discriminator !== expectedDiscriminator) {
+    errors.push(`payload_discriminator: expected ${expectedDiscriminator}, got ${msg.payload_discriminator}`);
+  }
+
+  // Validate the inner payload based on type
+  if (testData.payload_type === 1 && testData.array_payload) {
+    // ComprehensiveArrayMessage - extract from payload_data
+    const innerBuffer = Buffer.alloc(serialization_test_ComprehensiveArrayMessage_max_size);
+    (msg as any)._buffer.copy(innerBuffer, 0, 2, 2 + serialization_test_ComprehensiveArrayMessage_max_size);
+    const innerMsg = new serialization_test_ComprehensiveArrayMessage(innerBuffer);
+    
+    const ap = testData.array_payload;
+    // Validate fixed arrays
+    for (let i = 0; i < (ap.fixed_ints || []).length; i++) {
+      if (innerMsg.fixed_ints[i] !== ap.fixed_ints[i]) {
+        errors.push(`array_payload.fixed_ints[${i}]: expected ${ap.fixed_ints[i]}, got ${innerMsg.fixed_ints[i]}`);
+      }
+    }
+    for (let i = 0; i < (ap.fixed_floats || []).length; i++) {
+      if (Math.abs(innerMsg.fixed_floats[i] - ap.fixed_floats[i]) > 0.01) {
+        errors.push(`array_payload.fixed_floats[${i}]: expected ${ap.fixed_floats[i]}, got ${innerMsg.fixed_floats[i]}`);
+      }
+    }
+  } else if (testData.payload_type === 2 && testData.test_payload) {
+    // SerializationTestMessage
+    const innerBuffer = Buffer.alloc(serialization_test_SerializationTestMessage_max_size);
+    (msg as any)._buffer.copy(innerBuffer, 0, 2, 2 + serialization_test_SerializationTestMessage_max_size);
+    const innerMsg = new serialization_test_SerializationTestMessage(innerBuffer);
+    
+    const tp = testData.test_payload;
+    if (innerMsg.magic_number !== tp.magic_number) {
+      errors.push(`test_payload.magic_number: expected ${tp.magic_number}, got ${innerMsg.magic_number}`);
+    }
+    const testString = innerMsg.test_string_data.substring(0, innerMsg.test_string_length);
+    if (testString !== tp.test_string) {
+      errors.push(`test_payload.test_string: expected '${tp.test_string}', got '${testString}'`);
+    }
+    if (Math.abs(innerMsg.test_float - tp.test_float) > 0.1) {
+      errors.push(`test_payload.test_float: expected ${tp.test_float}, got ${innerMsg.test_float}`);
+    }
+    if (innerMsg.test_bool !== tp.test_bool) {
+      errors.push(`test_payload.test_bool: expected ${tp.test_bool}, got ${innerMsg.test_bool}`);
+    }
+    for (let i = 0; i < tp.test_array.length; i++) {
+      if (innerMsg.test_array_data[i] !== tp.test_array[i]) {
+        errors.push(`test_payload.test_array[${i}]: expected ${tp.test_array[i]}, got ${innerMsg.test_array_data[i]}`);
+      }
+    }
   }
 
   if (errors.length > 0) {
@@ -423,6 +581,7 @@ export function encodeTestMessage(formatName: string): Buffer {
   const ParserClass = getParserClass(formatName);
   const serialMsgInfo = getMessageInfo();
   const basicMsgInfo = getBasicTypesMessageInfo();
+  const unionMsgInfo = getUnionTestMessageInfo();
 
   const mixedMessages = loadMixedMessages();
   const encodedBuffers: Buffer[] = [];
@@ -438,6 +597,9 @@ export function encodeTestMessage(formatName: string): Buffer {
     } else if (msgType === 'BasicTypesMessage') {
       msgInfo = basicMsgInfo;
       createFunc = createBasicTypesMessageFromData;
+    } else if (msgType === 'UnionTestMessage') {
+      msgInfo = unionMsgInfo;
+      createFunc = createUnionTestMessageFromData;
     } else {
       console.log(`  Unknown message type: ${msgType}`);
       return Buffer.alloc(0);
@@ -464,6 +626,7 @@ export function decodeTestMessage(formatName: string, data: Buffer): number {
   const ParserClass = getParserClass(formatName);
   const serialMsgInfo = getMessageInfo();
   const basicMsgInfo = getBasicTypesMessageInfo();
+  const unionMsgInfo = getUnionTestMessageInfo();
 
   const mixedMessages = loadMixedMessages();
   let offset = 0;
@@ -496,6 +659,10 @@ export function decodeTestMessage(formatName: string, data: Buffer): number {
       expectedMsgId = basicMsgInfo.msgId;
       msgStruct = basicMsgInfo.struct;
       validateFunc = validateBasicTypesMessageAgainstData;
+    } else if (msgType === 'UnionTestMessage') {
+      expectedMsgId = unionMsgInfo.msgId;
+      msgStruct = unionMsgInfo.struct;
+      validateFunc = validateUnionTestMessageAgainstData;
     } else {
       console.log(`  Unknown message type: ${msgType}`);
       return messageCount;

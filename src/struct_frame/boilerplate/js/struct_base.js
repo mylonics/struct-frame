@@ -165,6 +165,14 @@ class Struct {
     return this;
   }
 
+  /**
+   * ByteArray is an alias for UInt8Array, used for union data storage.
+   */
+  ByteArray(fieldName, length) {
+    this._addArrayField(fieldName, 'UInt8Array', length);
+    return this;
+  }
+
   StructArray(fieldName, length, structType) {
     const elementSize = structType.getSize();
     this.fields.push({
