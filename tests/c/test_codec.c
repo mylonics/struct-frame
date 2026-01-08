@@ -427,23 +427,11 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
           SerializationTestUnionTestMessage* msg = &messages[count].data.union_test;
           memset(msg, 0, sizeof(*msg));
           
-          cJSON* payload_type_json = cJSON_GetObjectItem(msg_data, "payload_type");
-          if (payload_type_json) {
-            const char* pt_str = cJSON_GetStringValue(payload_type_json);
-            if (pt_str) {
-              if (strcmp(pt_str, "UNION_PAYLOAD_NONE") == 0) {
-                msg->payload_type = UNION_PAYLOAD_TYPE_UNION_PAYLOAD_NONE;
-              } else if (strcmp(pt_str, "UNION_PAYLOAD_COMPREHENSIVE_ARRAY") == 0) {
-                msg->payload_type = UNION_PAYLOAD_TYPE_UNION_PAYLOAD_COMPREHENSIVE_ARRAY;
-              } else if (strcmp(pt_str, "UNION_PAYLOAD_SERIALIZATION_TEST") == 0) {
-                msg->payload_type = UNION_PAYLOAD_TYPE_UNION_PAYLOAD_SERIALIZATION_TEST;
-              }
-            }
-          }
-          
           // Parse array_payload if present
           cJSON* array_payload = cJSON_GetObjectItem(msg_data, "array_payload");
           if (array_payload && !cJSON_IsNull(array_payload)) {
+            // Set discriminator to ComprehensiveArrayMessage ID
+            msg->payload_discriminator = SERIALIZATION_TEST_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID;
             cJSON* field = NULL;
             
             // fixed_ints
@@ -452,7 +440,7 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
               cJSON* item = NULL;
               cJSON_ArrayForEach(item, field) {
                 if (idx >= 3) break;
-                msg->array_payload.fixed_ints[idx++] = (int32_t)cJSON_GetNumberValue(item);
+                msg->payload.array_payload.fixed_ints[idx++] = (int32_t)cJSON_GetNumberValue(item);
               }
             }
             
@@ -462,7 +450,7 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
               cJSON* item = NULL;
               cJSON_ArrayForEach(item, field) {
                 if (idx >= 2) break;
-                msg->array_payload.fixed_floats[idx++] = (float)cJSON_GetNumberValue(item);
+                msg->payload.array_payload.fixed_floats[idx++] = (float)cJSON_GetNumberValue(item);
               }
             }
             
@@ -472,7 +460,7 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
               cJSON* item = NULL;
               cJSON_ArrayForEach(item, field) {
                 if (idx >= 4) break;
-                msg->array_payload.fixed_bools[idx++] = cJSON_IsTrue(item);
+                msg->payload.array_payload.fixed_bools[idx++] = cJSON_IsTrue(item);
               }
             }
             
@@ -482,9 +470,9 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
               cJSON* item = NULL;
               cJSON_ArrayForEach(item, field) {
                 if (idx >= 3) break;
-                msg->array_payload.bounded_uints.data[idx++] = (uint16_t)cJSON_GetNumberValue(item);
+                msg->payload.array_payload.bounded_uints.data[idx++] = (uint16_t)cJSON_GetNumberValue(item);
               }
-              msg->array_payload.bounded_uints.count = idx;
+              msg->payload.array_payload.bounded_uints.count = idx;
             }
             
             // bounded_doubles
@@ -493,9 +481,9 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
               cJSON* item = NULL;
               cJSON_ArrayForEach(item, field) {
                 if (idx >= 2) break;
-                msg->array_payload.bounded_doubles.data[idx++] = cJSON_GetNumberValue(item);
+                msg->payload.array_payload.bounded_doubles.data[idx++] = cJSON_GetNumberValue(item);
               }
-              msg->array_payload.bounded_doubles.count = idx;
+              msg->payload.array_payload.bounded_doubles.count = idx;
             }
             
             // fixed_strings
@@ -506,8 +494,8 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
                 if (idx >= 2) break;
                 const char* str = cJSON_GetStringValue(item);
                 if (str) {
-                  strncpy(msg->array_payload.fixed_strings[idx], str, 8);
-                  msg->array_payload.fixed_strings[idx][7] = '\0';
+                  strncpy(msg->payload.array_payload.fixed_strings[idx], str, 8);
+                  msg->payload.array_payload.fixed_strings[idx][7] = '\0';
                 }
                 idx++;
               }
@@ -521,12 +509,12 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
                 if (idx >= 2) break;
                 const char* str = cJSON_GetStringValue(item);
                 if (str) {
-                  strncpy(msg->array_payload.bounded_strings.data[idx], str, 12);
-                  msg->array_payload.bounded_strings.data[idx][11] = '\0';
+                  strncpy(msg->payload.array_payload.bounded_strings.data[idx], str, 12);
+                  msg->payload.array_payload.bounded_strings.data[idx][11] = '\0';
                 }
                 idx++;
               }
-              msg->array_payload.bounded_strings.count = idx;
+              msg->payload.array_payload.bounded_strings.count = idx;
             }
             
             // fixed_statuses
@@ -535,7 +523,7 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
               cJSON* item = NULL;
               cJSON_ArrayForEach(item, field) {
                 if (idx >= 2) break;
-                msg->array_payload.fixed_statuses[idx++] = (uint8_t)cJSON_GetNumberValue(item);
+                msg->payload.array_payload.fixed_statuses[idx++] = (uint8_t)cJSON_GetNumberValue(item);
               }
             }
             
@@ -545,9 +533,9 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
               cJSON* item = NULL;
               cJSON_ArrayForEach(item, field) {
                 if (idx >= 2) break;
-                msg->array_payload.bounded_statuses.data[idx++] = (uint8_t)cJSON_GetNumberValue(item);
+                msg->payload.array_payload.bounded_statuses.data[idx++] = (uint8_t)cJSON_GetNumberValue(item);
               }
-              msg->array_payload.bounded_statuses.count = idx;
+              msg->payload.array_payload.bounded_statuses.count = idx;
             }
             
             // fixed_sensors
@@ -560,12 +548,12 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
                 cJSON* sensor_value = cJSON_GetObjectItem(item, "value");
                 cJSON* sensor_status = cJSON_GetObjectItem(item, "status");
                 cJSON* sensor_name = cJSON_GetObjectItem(item, "name");
-                if (sensor_id) msg->array_payload.fixed_sensors[idx].id = (uint8_t)cJSON_GetNumberValue(sensor_id);
-                if (sensor_value) msg->array_payload.fixed_sensors[idx].value = (float)cJSON_GetNumberValue(sensor_value);
-                if (sensor_status) msg->array_payload.fixed_sensors[idx].status = (uint8_t)cJSON_GetNumberValue(sensor_status);
+                if (sensor_id) msg->payload.array_payload.fixed_sensors[idx].id = (uint8_t)cJSON_GetNumberValue(sensor_id);
+                if (sensor_value) msg->payload.array_payload.fixed_sensors[idx].value = (float)cJSON_GetNumberValue(sensor_value);
+                if (sensor_status) msg->payload.array_payload.fixed_sensors[idx].status = (uint8_t)cJSON_GetNumberValue(sensor_status);
                 if (sensor_name) {
                   const char* str = cJSON_GetStringValue(sensor_name);
-                  if (str) strncpy(msg->array_payload.fixed_sensors[idx].name, str, 16);
+                  if (str) strncpy(msg->payload.array_payload.fixed_sensors[idx].name, str, 16);
                 }
                 idx++;
               }
@@ -581,45 +569,47 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
                 cJSON* sensor_value = cJSON_GetObjectItem(item, "value");
                 cJSON* sensor_status = cJSON_GetObjectItem(item, "status");
                 cJSON* sensor_name = cJSON_GetObjectItem(item, "name");
-                if (sensor_id) msg->array_payload.bounded_sensors.data[idx].id = (uint8_t)cJSON_GetNumberValue(sensor_id);
-                if (sensor_value) msg->array_payload.bounded_sensors.data[idx].value = (float)cJSON_GetNumberValue(sensor_value);
-                if (sensor_status) msg->array_payload.bounded_sensors.data[idx].status = (uint8_t)cJSON_GetNumberValue(sensor_status);
+                if (sensor_id) msg->payload.array_payload.bounded_sensors.data[idx].id = (uint8_t)cJSON_GetNumberValue(sensor_id);
+                if (sensor_value) msg->payload.array_payload.bounded_sensors.data[idx].value = (float)cJSON_GetNumberValue(sensor_value);
+                if (sensor_status) msg->payload.array_payload.bounded_sensors.data[idx].status = (uint8_t)cJSON_GetNumberValue(sensor_status);
                 if (sensor_name) {
                   const char* str = cJSON_GetStringValue(sensor_name);
-                  if (str) strncpy(msg->array_payload.bounded_sensors.data[idx].name, str, 16);
+                  if (str) strncpy(msg->payload.array_payload.bounded_sensors.data[idx].name, str, 16);
                 }
                 idx++;
               }
-              msg->array_payload.bounded_sensors.count = idx;
+              msg->payload.array_payload.bounded_sensors.count = idx;
             }
           }
           
           // Parse test_payload if present
           cJSON* test_payload = cJSON_GetObjectItem(msg_data, "test_payload");
           if (test_payload && !cJSON_IsNull(test_payload)) {
+            // Set discriminator to SerializationTestMessage ID
+            msg->payload_discriminator = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
             cJSON* magic = cJSON_GetObjectItem(test_payload, "magic_number");
             cJSON* tstr = cJSON_GetObjectItem(test_payload, "test_string");
             cJSON* tflt = cJSON_GetObjectItem(test_payload, "test_float");
             cJSON* tbool = cJSON_GetObjectItem(test_payload, "test_bool");
             cJSON* tarr = cJSON_GetObjectItem(test_payload, "test_array");
             
-            if (magic) msg->test_payload.magic_number = (uint32_t)cJSON_GetNumberValue(magic);
+            if (magic) msg->payload.test_payload.magic_number = (uint32_t)cJSON_GetNumberValue(magic);
             if (tstr) {
               const char* str = cJSON_GetStringValue(tstr);
-              msg->test_payload.test_string.length = strlen(str);
-              if (msg->test_payload.test_string.length > 64) msg->test_payload.test_string.length = 64;
-              strncpy(msg->test_payload.test_string.data, str, msg->test_payload.test_string.length);
+              msg->payload.test_payload.test_string.length = strlen(str);
+              if (msg->payload.test_payload.test_string.length > 64) msg->payload.test_payload.test_string.length = 64;
+              strncpy(msg->payload.test_payload.test_string.data, str, msg->payload.test_payload.test_string.length);
             }
-            if (tflt) msg->test_payload.test_float = (float)cJSON_GetNumberValue(tflt);
-            if (tbool) msg->test_payload.test_bool = cJSON_IsTrue(tbool);
+            if (tflt) msg->payload.test_payload.test_float = (float)cJSON_GetNumberValue(tflt);
+            if (tbool) msg->payload.test_payload.test_bool = cJSON_IsTrue(tbool);
             if (tarr && cJSON_IsArray(tarr)) {
               size_t idx = 0;
               cJSON* item = NULL;
               cJSON_ArrayForEach(item, tarr) {
                 if (idx >= 5) break;
-                msg->test_payload.test_array.data[idx++] = (int32_t)cJSON_GetNumberValue(item);
+                msg->payload.test_payload.test_array.data[idx++] = (int32_t)cJSON_GetNumberValue(item);
               }
-              msg->test_payload.test_array.count = idx;
+              msg->payload.test_payload.test_array.count = idx;
             }
           }
         }

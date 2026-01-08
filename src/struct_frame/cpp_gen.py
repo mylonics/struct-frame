@@ -147,6 +147,38 @@ class FieldCppGen():
         return result
 
 
+
+class OneOfCppGen():
+    @staticmethod
+    def generate(oneof, use_namespace=False, package=None):
+        """Generate C++ union for a oneof construct."""
+        result = ''
+        
+        # Add comments
+        if oneof.comments:
+            for c in oneof.comments:
+                result += '%s\n' % c
+        
+        # If auto-discriminator is enabled, add discriminator field first
+        if oneof.auto_discriminator:
+            # Always use uint16_t since message IDs can be up to 65535
+            result += f'    uint16_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
+        
+        # Generate the union
+        result += f'    union {{\n'
+        
+        # Generate each field in the union
+        for key, field in oneof.fields.items():
+            field_code = FieldCppGen.generate(field, use_namespace)
+            # Indent the field code properly (remove leading spaces and add union indent)
+            field_code = field_code.strip()
+            result += f'        {field_code}\n'
+        
+        result += f'    }} {oneof.name};'
+        
+        return result
+
+
 class MessageCppGen():
     @staticmethod
     def generate(msg, use_namespace=False, package=None):
@@ -167,7 +199,7 @@ class MessageCppGen():
                 msg.package).upper(), CamelToSnakeCase(msg.name).upper())
 
         size = 1
-        if not msg.fields:
+        if not msg.fields and not msg.oneofs:
             # Empty structs are allowed in C++ but we add a dummy field
             # for consistency with the C implementation
             size = 1
@@ -194,11 +226,20 @@ class MessageCppGen():
 
         result += '\n'
 
-        if not msg.fields:
+        if not msg.fields and not msg.oneofs:
             result += '    char dummy_field;\n'
 
+        # Generate regular fields
         result += '\n'.join([FieldCppGen.generate(f, use_namespace)
                             for key, f in msg.fields.items()])
+        
+        # Generate oneofs
+        if msg.oneofs:
+            if msg.fields:
+                result += '\n'
+            result += '\n'.join([OneOfCppGen.generate(o, use_namespace, package)
+                                for key, o in msg.oneofs.items()])
+        
         result += '\n};\n'
 
         return result + '\n'

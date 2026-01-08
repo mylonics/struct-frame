@@ -321,10 +321,10 @@ std::vector<MixedMessage> load_mixed_messages() {
                 SerializationTestUnionTestMessage msg;
                 std::memset(&msg, 0, sizeof(msg));
 
-                msg.payload_type = static_cast<SerializationTestUnionPayloadType>(msg_data["payload_type"].get<int>());
-
-                // Load array_payload if present
+                // Set the discriminator from the message ID of whichever message is being used
+                // Note: payload_type in JSON is legacy - we now use auto-discriminator
                 if (msg_data.contains("array_payload") && !msg_data["array_payload"].is_null()) {
+                  msg.payload_discriminator = SerializationTestComprehensiveArrayMessage::MSG_ID;
                   const auto& ap = msg_data["array_payload"];
 
                   // fixed_ints
@@ -332,7 +332,7 @@ std::vector<MixedMessage> load_mixed_messages() {
                     size_t idx = 0;
                     for (const auto& val : ap["fixed_ints"]) {
                       if (idx >= 3) break;
-                      msg.array_payload.fixed_ints[idx++] = val;
+                      msg.payload.array_payload.fixed_ints[idx++] = val;
                     }
                   }
                   // fixed_floats
@@ -340,7 +340,7 @@ std::vector<MixedMessage> load_mixed_messages() {
                     size_t idx = 0;
                     for (const auto& val : ap["fixed_floats"]) {
                       if (idx >= 2) break;
-                      msg.array_payload.fixed_floats[idx++] = val;
+                      msg.payload.array_payload.fixed_floats[idx++] = val;
                     }
                   }
                   // fixed_bools
@@ -348,7 +348,7 @@ std::vector<MixedMessage> load_mixed_messages() {
                     size_t idx = 0;
                     for (const auto& val : ap["fixed_bools"]) {
                       if (idx >= 4) break;
-                      msg.array_payload.fixed_bools[idx++] = val;
+                      msg.payload.array_payload.fixed_bools[idx++] = val;
                     }
                   }
                   // bounded_uints
@@ -356,18 +356,18 @@ std::vector<MixedMessage> load_mixed_messages() {
                     size_t idx = 0;
                     for (const auto& val : ap["bounded_uints"]) {
                       if (idx >= 3) break;
-                      msg.array_payload.bounded_uints.data[idx++] = val;
+                      msg.payload.array_payload.bounded_uints.data[idx++] = val;
                     }
-                    msg.array_payload.bounded_uints.count = idx;
+                    msg.payload.array_payload.bounded_uints.count = idx;
                   }
                   // bounded_doubles
                   if (ap.contains("bounded_doubles")) {
                     size_t idx = 0;
                     for (const auto& val : ap["bounded_doubles"]) {
                       if (idx >= 2) break;
-                      msg.array_payload.bounded_doubles.data[idx++] = val;
+                      msg.payload.array_payload.bounded_doubles.data[idx++] = val;
                     }
-                    msg.array_payload.bounded_doubles.count = idx;
+                    msg.payload.array_payload.bounded_doubles.count = idx;
                   }
                   // fixed_strings
                   if (ap.contains("fixed_strings")) {
@@ -375,7 +375,7 @@ std::vector<MixedMessage> load_mixed_messages() {
                     for (const auto& val : ap["fixed_strings"]) {
                       if (idx >= 2) break;
                       std::string s = val;
-                      std::strncpy(msg.array_payload.fixed_strings[idx], s.c_str(), 7);
+                      std::strncpy(msg.payload.array_payload.fixed_strings[idx], s.c_str(), 7);
                       idx++;
                     }
                   }
@@ -385,17 +385,17 @@ std::vector<MixedMessage> load_mixed_messages() {
                     for (const auto& val : ap["bounded_strings"]) {
                       if (idx >= 2) break;
                       std::string s = val;
-                      std::strncpy(msg.array_payload.bounded_strings.data[idx], s.c_str(), 11);
+                      std::strncpy(msg.payload.array_payload.bounded_strings.data[idx], s.c_str(), 11);
                       idx++;
                     }
-                    msg.array_payload.bounded_strings.count = idx;
+                    msg.payload.array_payload.bounded_strings.count = idx;
                   }
                   // fixed_statuses
                   if (ap.contains("fixed_statuses")) {
                     size_t idx = 0;
                     for (const auto& val : ap["fixed_statuses"]) {
                       if (idx >= 2) break;
-                      msg.array_payload.fixed_statuses[idx++] = static_cast<SerializationTestStatus>(val.get<int>());
+                      msg.payload.array_payload.fixed_statuses[idx++] = static_cast<SerializationTestStatus>(val.get<int>());
                     }
                   }
                   // bounded_statuses
@@ -403,22 +403,22 @@ std::vector<MixedMessage> load_mixed_messages() {
                     size_t idx = 0;
                     for (const auto& val : ap["bounded_statuses"]) {
                       if (idx >= 2) break;
-                      msg.array_payload.bounded_statuses.data[idx++] =
+                      msg.payload.array_payload.bounded_statuses.data[idx++] =
                           static_cast<SerializationTestStatus>(val.get<int>());
                     }
-                    msg.array_payload.bounded_statuses.count = idx;
+                    msg.payload.array_payload.bounded_statuses.count = idx;
                   }
                   // fixed_sensors
                   if (ap.contains("fixed_sensors")) {
                     size_t idx = 0;
                     for (const auto& sensor : ap["fixed_sensors"]) {
                       if (idx >= 1) break;
-                      msg.array_payload.fixed_sensors[idx].id = sensor["id"];
-                      msg.array_payload.fixed_sensors[idx].value = sensor["value"];
-                      msg.array_payload.fixed_sensors[idx].status =
+                      msg.payload.array_payload.fixed_sensors[idx].id = sensor["id"];
+                      msg.payload.array_payload.fixed_sensors[idx].value = sensor["value"];
+                      msg.payload.array_payload.fixed_sensors[idx].status =
                           static_cast<SerializationTestStatus>(sensor["status"].get<int>());
                       std::string name = sensor["name"];
-                      std::strncpy(msg.array_payload.fixed_sensors[idx].name, name.c_str(), 15);
+                      std::strncpy(msg.payload.array_payload.fixed_sensors[idx].name, name.c_str(), 15);
                       idx++;
                     }
                   }
@@ -427,35 +427,36 @@ std::vector<MixedMessage> load_mixed_messages() {
                     size_t idx = 0;
                     for (const auto& sensor : ap["bounded_sensors"]) {
                       if (idx >= 1) break;
-                      msg.array_payload.bounded_sensors.data[idx].id = sensor["id"];
-                      msg.array_payload.bounded_sensors.data[idx].value = sensor["value"];
-                      msg.array_payload.bounded_sensors.data[idx].status =
+                      msg.payload.array_payload.bounded_sensors.data[idx].id = sensor["id"];
+                      msg.payload.array_payload.bounded_sensors.data[idx].value = sensor["value"];
+                      msg.payload.array_payload.bounded_sensors.data[idx].status =
                           static_cast<SerializationTestStatus>(sensor["status"].get<int>());
                       std::string name = sensor["name"];
-                      std::strncpy(msg.array_payload.bounded_sensors.data[idx].name, name.c_str(), 15);
+                      std::strncpy(msg.payload.array_payload.bounded_sensors.data[idx].name, name.c_str(), 15);
                       idx++;
                     }
-                    msg.array_payload.bounded_sensors.count = idx;
+                    msg.payload.array_payload.bounded_sensors.count = idx;
                   }
                 }
 
                 // Load test_payload if present
                 if (msg_data.contains("test_payload") && !msg_data["test_payload"].is_null()) {
+                  msg.payload_discriminator = SerializationTestSerializationTestMessage::MSG_ID;
                   const auto& tp = msg_data["test_payload"];
-                  msg.test_payload.magic_number = tp["magic_number"];
+                  msg.payload.test_payload.magic_number = tp["magic_number"];
                   std::string str = tp["test_string"];
-                  msg.test_payload.test_string.length = str.length();
-                  std::strncpy(msg.test_payload.test_string.data, str.c_str(),
-                               sizeof(msg.test_payload.test_string.data) - 1);
-                  msg.test_payload.test_float = tp["test_float"];
-                  msg.test_payload.test_bool = tp["test_bool"];
+                  msg.payload.test_payload.test_string.length = str.length();
+                  std::strncpy(msg.payload.test_payload.test_string.data, str.c_str(),
+                               sizeof(msg.payload.test_payload.test_string.data) - 1);
+                  msg.payload.test_payload.test_float = tp["test_float"];
+                  msg.payload.test_payload.test_bool = tp["test_bool"];
                   if (tp.contains("test_array") && tp["test_array"].is_array()) {
                     size_t idx = 0;
                     for (const auto& val : tp["test_array"]) {
                       if (idx >= 5) break;
-                      msg.test_payload.test_array.data[idx++] = val;
+                      msg.payload.test_payload.test_array.data[idx++] = val;
                     }
-                    msg.test_payload.test_array.count = idx;
+                    msg.payload.test_payload.test_array.count = idx;
                   }
                 }
 
