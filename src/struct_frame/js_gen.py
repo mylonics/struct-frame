@@ -112,9 +112,8 @@ class MessageJsGen():
         # Generate oneofs - add discriminator and allocate union size
         for key, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
-                # Add discriminator field - use UInt16LE when package has package_id
-                discriminator_method = 'UInt16LE' if (package and package.package_id is not None) else 'UInt8'
-                result += f"\n    .{discriminator_method}('{oneof.name}_discriminator')"
+                # Always use UInt16LE since message IDs can be up to 65535
+                result += f"\n    .UInt16LE('{oneof.name}_discriminator')"
             # Allocate space for the union (largest member size)
             # Use a byte array to represent the union storage
             result += f"\n    .ByteArray('{oneof.name}_data', {oneof.size})"

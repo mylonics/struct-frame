@@ -210,11 +210,10 @@ class MessageCSharpGen():
                 
                 # Add discriminator field if auto-discriminator is enabled
                 if oneof.auto_discriminator:
-                    discriminator_type = 'ushort' if (package and package.package_id is not None) else 'byte'
-                    discriminator_size = 2 if discriminator_type == 'ushort' else 1
+                    # Always use ushort since message IDs can be up to 65535
                     result += f'        [FieldOffset({oneof_offset})]\n'
-                    result += f'        public {discriminator_type} {pascalCase(oneof.name)}Discriminator;  // Auto-generated message ID discriminator\n'
-                    oneof_offset += discriminator_size
+                    result += f'        public ushort {pascalCase(oneof.name)}Discriminator;  // Auto-generated message ID discriminator\n'
+                    oneof_offset += 2  # ushort is always 2 bytes
                 
                 # All union members start at the same offset (after discriminator)
                 union_start_offset = oneof_offset
