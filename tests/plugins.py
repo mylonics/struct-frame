@@ -78,10 +78,14 @@ class FrameFormatMatrixPlugin(TestPlugin):
             base_lang = testable[0]
         
         expected_message_count = self._get_expected_message_count()
+        
+        lang_names = [self.runner.get_lang(l).name for l in testable if self.runner.get_lang(l)]
+        print(f"  Testing {len(frame_formats)} frame format(s) across {len(testable)} language(s): {', '.join(lang_names)}")
+        print(f"  Expected messages per format: {expected_message_count}")
 
         self._print_matrix_header(testable)
 
-        for frame_format in frame_formats:
+        for idx, frame_format in enumerate(frame_formats, 1):
             format_name = frame_format.get('name')
             output_file_pattern = frame_format.get(
                 'output_file', '{lang_name}_output.bin')
