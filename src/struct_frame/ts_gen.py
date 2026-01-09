@@ -91,8 +91,12 @@ class MessageTsGen():
 
         package_msg_name = '%s_%s' % (packageName, msg.name)
 
-        result += 'export const %s = new Struct(\'%s\') ' % (
+        result += 'export const %s = new Struct(\'%s\')' % (
             package_msg_name, package_msg_name)
+        
+        # Add message ID if present
+        if msg.id:
+            result += '.msgId(%d)' % msg.id
 
         result += '\n'
 
@@ -117,13 +121,7 @@ class MessageTsGen():
             # Use a byte array to represent the union storage
             result += f'\n    .ByteArray(\'{oneof.name}_data\', {oneof.size})'
         
-        result += '\n    .compile();\n\n'
-
-        result += 'export const %s_max_size = %d;\n' % (package_msg_name, size)
-
-        if msg.id:
-            result += 'export const %s_msgid = %d\n' % (
-                package_msg_name, msg.id)
+        result += '\n    .compile();\n'
         return result + '\n'
 
     @staticmethod
@@ -208,7 +206,7 @@ class FileTsGen():
                 
                 for msg in messages_with_id:
                     package_msg_name = '%s_%s' % (package.name, msg.name)
-                    yield '        case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
+                    yield '        case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
 
                 yield '        default: break;\n'
                 yield '    }\n'

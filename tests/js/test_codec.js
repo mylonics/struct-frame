@@ -82,19 +82,19 @@ function loadMixedMessages() {
   throw new Error('Could not find test_messages.json');
 }
 
-// Import generated frame profile functions - BufferReader/Writer factory functions only
+// Import generated frame profile subclasses
 const {
-  createProfileStandardReader,
-  createProfileStandardWriter,
-  createProfileSensorReader,
-  createProfileSensorWriter,
-  createProfileIPCReader,
-  createProfileIPCWriter,
-  createProfileBulkReader,
-  createProfileBulkWriter,
-  createProfileNetworkReader,
-  createProfileNetworkWriter,
-} = require('../generated/js/frame_profiles');
+  ProfileStandardReader,
+  ProfileStandardWriter,
+  ProfileSensorReader,
+  ProfileSensorWriter,
+  ProfileIPCReader,
+  ProfileIPCWriter,
+  ProfileBulkReader,
+  ProfileBulkWriter,
+  ProfileNetworkReader,
+  ProfileNetworkWriter,
+} = require('./frame_profiles');
 
 // Helper to get message length for minimal payloads
 function getMsgLength(msgId) {
@@ -109,8 +109,8 @@ function getMessageInfo() {
   const module = require('../generated/js/serialization_test.sf');
   return {
     struct: module.serialization_test_SerializationTestMessage,
-    msgId: module.serialization_test_SerializationTestMessage_msgid,
-    maxSize: module.serialization_test_SerializationTestMessage_max_size,
+    msgId: module.serialization_test_SerializationTestMessage._msgid,
+    maxSize: module.serialization_test_SerializationTestMessage._size,
   };
 }
 
@@ -121,8 +121,8 @@ function getBasicTypesMessageInfo() {
   const module = require('../generated/js/serialization_test.sf');
   return {
     struct: module.serialization_test_BasicTypesMessage,
-    msgId: module.serialization_test_BasicTypesMessage_msgid,
-    maxSize: module.serialization_test_BasicTypesMessage_max_size,
+    msgId: module.serialization_test_BasicTypesMessage._msgid,
+    maxSize: module.serialization_test_BasicTypesMessage._size,
   };
 }
 
@@ -133,15 +133,15 @@ function getUnionTestMessageInfo() {
   const module = require('../generated/js/serialization_test.sf');
   return {
     struct: module.serialization_test_UnionTestMessage,
-    msgId: module.serialization_test_UnionTestMessage_msgid,
-    maxSize: module.serialization_test_UnionTestMessage_max_size,
+    msgId: module.serialization_test_UnionTestMessage._msgid,
+    maxSize: module.serialization_test_UnionTestMessage._size,
     // For inner messages
     comprehensiveArrayStruct: module.serialization_test_ComprehensiveArrayMessage,
-    comprehensiveArrayMsgId: module.serialization_test_ComprehensiveArrayMessage_msgid,
-    comprehensiveArrayMaxSize: module.serialization_test_ComprehensiveArrayMessage_max_size,
+    comprehensiveArrayMsgId: module.serialization_test_ComprehensiveArrayMessage._msgid,
+    comprehensiveArrayMaxSize: module.serialization_test_ComprehensiveArrayMessage._size,
     serializationTestStruct: module.serialization_test_SerializationTestMessage,
-    serializationTestMsgId: module.serialization_test_SerializationTestMessage_msgid,
-    serializationTestMaxSize: module.serialization_test_SerializationTestMessage_max_size,
+    serializationTestMsgId: module.serialization_test_SerializationTestMessage._msgid,
+    serializationTestMaxSize: module.serialization_test_SerializationTestMessage._size,
   };
 }
 
@@ -455,11 +455,11 @@ function encodeTestMessage(formatName) {
   // Create the appropriate BufferWriter for this profile
   const capacity = 4096; // Should be enough for test messages
   const writerCreators = {
-    'profile_standard': () => createProfileStandardWriter(capacity),
-    'profile_sensor': () => createProfileSensorWriter(capacity),
-    'profile_ipc': () => createProfileIPCWriter(capacity),
-    'profile_bulk': () => createProfileBulkWriter(capacity),
-    'profile_network': () => createProfileNetworkWriter(capacity),
+    'profile_standard': () => new ProfileStandardWriter(capacity),
+    'profile_sensor': () => new ProfileSensorWriter(capacity),
+    'profile_ipc': () => new ProfileIPCWriter(capacity),
+    'profile_bulk': () => new ProfileBulkWriter(capacity),
+    'profile_network': () => new ProfileNetworkWriter(capacity),
   };
   
   const creator = writerCreators[formatName];
@@ -489,9 +489,9 @@ function encodeTestMessage(formatName) {
       return Buffer.alloc(0);
     }
 
-    const { msg, buffer } = createFunc(msgInfo.struct, testData);
+    const { msg } = createFunc(msgInfo.struct, testData);
     // Use BufferWriter to encode and append frame - it tracks offset automatically
-    const bytesWritten = writer.write(msgInfo.msgId, buffer);
+    const bytesWritten = writer.write(msg);
     if (bytesWritten === 0) {
       console.log('  Encoding failed for message');
       return Buffer.alloc(0);
@@ -516,11 +516,11 @@ function decodeTestMessage(formatName, data) {
   
   // Create the appropriate BufferReader for this profile
   const readerCreators = {
-    'profile_standard': () => createProfileStandardReader(data),
-    'profile_sensor': () => createProfileSensorReader(data, getMsgLength),
-    'profile_ipc': () => createProfileIPCReader(data, getMsgLength),
-    'profile_bulk': () => createProfileBulkReader(data),
-    'profile_network': () => createProfileNetworkReader(data),
+    'profile_standard': () => new ProfileStandardReader(data),
+    'profile_sensor': () => new ProfileSensorReader(data, getMsgLength),
+    'profile_ipc': () => new ProfileIPCReader(data, getMsgLength),
+    'profile_bulk': () => new ProfileBulkReader(data),
+    'profile_network': () => new ProfileNetworkReader(data),
   };
   
   const creator = readerCreators[formatName];
