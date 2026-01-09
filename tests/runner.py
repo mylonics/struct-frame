@@ -37,6 +37,9 @@ class TestRunner:
 
         # Cache language instances
         self._languages: Dict[str, 'Language'] = {}
+        
+        # Cache tool availability (expensive to compute)
+        self._tool_availability: Optional[Dict[str, Dict[str, Any]]] = None
 
         # Results tracking
         self.generation_results: Dict[str, bool] = {}
@@ -190,13 +193,21 @@ class TestRunner:
     # =========================================================================
 
     def check_tool_availability(self) -> Dict[str, Dict[str, Any]]:
-        """Check which compilers/interpreters are available for each language."""
+        """Check which compilers/interpreters are available for each language.
+        
+        Results are cached since tool availability doesn't change during a test run.
+        """
+        if self._tool_availability is not None:
+            return self._tool_availability
+            
         results = {}
         for lang_id in self.config['language_ids']:
             lang = self.get_lang(lang_id)
             if not lang or not lang.enabled:
                 continue
             results[lang_id] = lang.check_tools()
+        
+        self._tool_availability = results
         return results
 
     def print_tool_availability(self) -> bool:
@@ -249,12 +260,18 @@ class TestRunner:
         self.print_section("CODE GENERATION")
         active = self.get_active_languages()
         all_success = True
+        
+        proto_files = self.config.get('proto_files', [])
+        lang_names = [self.get_lang(l).name for l in active if self.get_lang(l)]
+        print(f"  Generating code for {len(proto_files)} proto file(s) in languages: {', '.join(lang_names)}")
 
-        for proto_file in self.config.get('proto_files', []):
+        for proto_file in proto_files:
             proto_path = self.tests_dir / "proto" / proto_file
             if not proto_path.exists():
                 self.log(f"Proto file not found: {proto_file}", "WARNING")
                 continue
+            
+            print(f"  Processing: {proto_file}...")
 
             # Build generation command
             cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path)]
@@ -294,8 +311,13 @@ class TestRunner:
         if not compiled:
             print("  No languages require compilation")
             return True
+        
+        lang_names = [self.get_lang(l).name for l in compiled if self.get_lang(l)]
+        print(f"  Compiling: {', '.join(lang_names)}")
 
         for lang_id in compiled:
+            lang = self.get_lang(lang_id)
+            print(f"  Building {lang.name if lang else lang_id}...")
             self._compile_language(lang_id)
 
         self.print_lang_results(compiled, self.compilation_results)
@@ -400,6 +422,8 @@ class TestRunner:
         if not test_scripts:
             return
         
+        print(f"\n  Running {len(test_scripts)} standalone Python test(s)...")
+        
         for test_script in test_scripts:
             script_name = test_script.name
             self.log(f"Running {script_name}...", "INFO")
@@ -428,8 +452,12 @@ class TestRunner:
         from plugins import get_plugin
 
         self.print_section("TEST EXECUTION")
+        
+        test_suites = self.config.get('test_suites', [])
+        print(f"  Running {len(test_suites)} test suite(s)...")
 
-        for suite in self.config.get('test_suites', []):
+        for suite in test_suites:
+            print(f"\n  Starting test suite: {suite.get('name', 'unnamed')}")
             plugin_type = suite.get('plugin', 'standard')
             if 'input_from' in suite and plugin_type == 'standard':
                 plugin_type = 'cross_platform_matrix'
@@ -608,14 +636,13 @@ class TestRunner:
             return False
 
         rate = 100 * passed / total
-        if rate >= 80:
-            print(f"SUCCESS: {rate:.1f}% pass rate")
-            return True
-        elif rate >= 50:
-            print(f"PARTIAL SUCCESS: {rate:.1f}% pass rate")
+        
+        # Only return success if 100% pass rate
+        if rate == 100.0:
+            print(f"SUCCESS: All tests passed")
             return True
         else:
-            print(f"NEEDS WORK: {rate:.1f}% pass rate")
+            print(f"FAILURE: {rate:.1f}% pass rate ({total - passed} test(s) failed)")
             return False
 
     # =========================================================================

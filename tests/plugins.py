@@ -78,10 +78,14 @@ class FrameFormatMatrixPlugin(TestPlugin):
             base_lang = testable[0]
         
         expected_message_count = self._get_expected_message_count()
+        
+        lang_names = [self.runner.get_lang(l).name for l in testable if self.runner.get_lang(l)]
+        print(f"  Testing {len(frame_formats)} frame format(s) across {len(testable)} language(s): {', '.join(lang_names)}")
+        print(f"  Expected messages per format: {expected_message_count}")
 
         self._print_matrix_header(testable)
 
-        for frame_format in frame_formats:
+        for idx, frame_format in enumerate(frame_formats, 1):
             format_name = frame_format.get('name')
             output_file_pattern = frame_format.get(
                 'output_file', '{lang_name}_output.bin')
@@ -124,10 +128,14 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
                 decode_result, message_count = self._run_decode_with_file(
                     lang_id, format_name, base_data_file)
-                matrix[display_name][lang_name]['decode'] = decode_result
+                
+                # Consider decode failed if not all expected messages were decoded
+                decode_success = decode_result and (expected_message_count == 0 or message_count >= expected_message_count)
+                
+                matrix[display_name][lang_name]['decode'] = decode_success
                 matrix[display_name][lang_name]['message_count'] = message_count
                 matrix[display_name][lang_name]['expected_count'] = expected_message_count
-                results[lang_id][f"{display_name}_decode"] = decode_result
+                results[lang_id][f"{display_name}_decode"] = decode_success
 
             self._print_matrix_row(
                 display_name, matrix[display_name], testable)
@@ -212,17 +220,21 @@ class FrameFormatMatrixPlugin(TestPlugin):
                 decode_ok = val.get('decode')
                 message_count = val.get('message_count', 0)
                 expected_count = val.get('expected_count', 0)
+                
+                # Check for missing messages (decode ran but didn't get all messages)
+                has_missing_messages = expected_count > 0 and message_count < expected_count
 
                 if encode_ok is None and decode_ok is None:
                     cell = "N/A"
                 elif encode_ok and decode_ok:
-                    # Check if all expected messages were decoded
-                    if expected_count > 0 and message_count < expected_count:
-                        cell = f"MISS({message_count}/{expected_count})"
-                    elif message_count > 0:
+                    # Full success
+                    if message_count > 0:
                         cell = f"OK({message_count})"
                     else:
                         cell = "OK"
+                elif encode_ok and not decode_ok and has_missing_messages:
+                    # Encode OK but missing messages during decode
+                    cell = f"MISS({message_count}/{expected_count})"
                 elif not encode_ok and (decode_ok is False or decode_ok is None):
                     cell = "BOTH"
                 elif not encode_ok:
@@ -250,20 +262,19 @@ class FrameFormatMatrixPlugin(TestPlugin):
                 elif isinstance(val, dict):
                     encode_ok = val.get('encode')
                     decode_ok = val.get('decode')
-                    message_count = val.get('message_count', 0)
-                    expected_count = val.get('expected_count', 0)
 
                     if encode_ok is None and decode_ok is None:
                         continue
-                    elif encode_ok and decode_ok:
-                        # Only count as success if all expected messages were decoded
-                        if expected_count > 0 and message_count < expected_count:
-                            total_count += 1  # Missing messages = failure
-                        else:
-                            success_count += 1
-                            total_count += 1
-                    else:
+                    
+                    # Count encode/decode as separate tests
+                    if encode_ok is not None:
                         total_count += 1
+                        if encode_ok:
+                            success_count += 1
+                    if decode_ok is not None:
+                        total_count += 1
+                        if decode_ok:
+                            success_count += 1
                 elif val:
                     success_count += 1
                     total_count += 1
