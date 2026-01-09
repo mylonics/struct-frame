@@ -14,6 +14,14 @@ from struct_frame.ts_js_base import (
     common_typed_array_methods,
     BaseFieldGen,
     BaseEnumGen,
+    # New class-based generation utilities
+    TYPE_SIZES,
+    READ_METHODS,
+    WRITE_METHODS,
+    READ_ARRAY_METHODS,
+    WRITE_ARRAY_METHODS,
+    calculate_field_layout,
+    FieldInfo,
 )
 import time
 
@@ -138,14 +146,203 @@ class MessageJsGen():
         return '{' + ', '.join(parts) + '}'
 
 
+class MessageJsClassGen():
+    """Generate JavaScript message classes that extend MessageBase."""
+    
+    @staticmethod
+    def generate(msg, packageName, package, packages):
+        """Generate a class-based message definition."""
+        leading_comment = msg.comments
+        result = ''
+        if leading_comment:
+            for c in msg.comments:
+                result = '%s\n' % c
+
+        package_msg_name = '%s_%s' % (packageName, msg.name)
+        
+        # Calculate field layout with offsets
+        fields = calculate_field_layout(msg, package, packages)
+        total_size = msg.size
+        
+        # Generate class declaration
+        result += f'class {package_msg_name} extends MessageBase {{\n'
+        
+        # Static properties
+        result += f'  static _size = {total_size};\n'
+        if msg.id:
+            result += f'  static _msgid = {msg.id};\n'
+        result += '\n'
+        
+        # Generate constructor that supports init object
+        result += f'  /**\n'
+        result += f'   * Create a new {package_msg_name} instance.\n'
+        result += f'   * @param {{Buffer|Object}} [bufferOrInit] - Buffer to wrap or init object with field values\n'
+        result += f'   */\n'
+        result += f'  constructor(bufferOrInit) {{\n'
+        result += f'    super(Buffer.isBuffer(bufferOrInit) ? bufferOrInit : undefined);\n'
+        result += f'    if (bufferOrInit && !Buffer.isBuffer(bufferOrInit)) {{\n'
+        result += f'      this._applyInit(bufferOrInit);\n'
+        result += f'    }}\n'
+        result += f'  }}\n\n'
+        
+        # Generate getters and setters for each field
+        for field_info in fields:
+            result += MessageJsClassGen._generate_field_accessors(field_info, package_msg_name, packages)
+        
+        # Static getSize method
+        result += f'  static getSize() {{\n'
+        result += f'    return {total_size};\n'
+        result += f'  }}\n'
+        
+        result += '}\n'
+        result += f'module.exports.{package_msg_name} = {package_msg_name};\n'
+        return result + '\n'
+    
+    @staticmethod
+    def _generate_field_accessors(field_info, class_name, packages):
+        """Generate getter and setter for a single field."""
+        name = field_info.name
+        offset = field_info.offset
+        field_type = field_info.field_type
+        result = ''
+        
+        # Add comments if present
+        for comment in field_info.comments:
+            result += f'{comment}\n'
+        
+        if field_info.is_array:
+            result += MessageJsClassGen._generate_array_accessors(field_info)
+        elif field_type == "string":
+            result += MessageJsClassGen._generate_string_accessors(field_info)
+        elif field_info.is_enum or field_type in TYPE_SIZES:
+            result += MessageJsClassGen._generate_primitive_accessors(field_info)
+        
+        return result
+    
+    @staticmethod
+    def _generate_primitive_accessors(field_info):
+        """Generate accessors for primitive types."""
+        name = field_info.name
+        offset = field_info.offset
+        field_type = field_info.field_type
+        
+        # Handle enum as uint8
+        if field_info.is_enum:
+            field_type = "uint8"
+        
+        read_method = READ_METHODS.get(field_type, "_readUInt8")
+        write_method = WRITE_METHODS.get(field_type, "_writeUInt8")
+        
+        result = f'  get {name}() {{\n'
+        result += f'    return this.{read_method}({offset});\n'
+        result += f'  }}\n'
+        result += f'  set {name}(value) {{\n'
+        result += f'    this.{write_method}({offset}, value);\n'
+        result += f'  }}\n\n'
+        
+        return result
+    
+    @staticmethod
+    def _generate_string_accessors(field_info):
+        """Generate accessors for string types."""
+        name = field_info.name
+        offset = field_info.offset
+        size = field_info.element_size or field_info.size
+        
+        result = f'  get {name}() {{\n'
+        result += f'    return this._readString({offset}, {size});\n'
+        result += f'  }}\n'
+        result += f'  set {name}(value) {{\n'
+        result += f'    this._writeString({offset}, {size}, value);\n'
+        result += f'  }}\n\n'
+        
+        return result
+    
+    @staticmethod
+    def _generate_array_accessors(field_info):
+        """Generate accessors for array types."""
+        name = field_info.name
+        offset = field_info.offset
+        field_type = field_info.field_type
+        length = field_info.array_length
+        elem_size = field_info.element_size
+        
+        if field_info.is_nested:
+            # Struct array
+            nested_type = field_info.nested_type
+            result = f'  get {name}() {{\n'
+            result += f'    return this._readStructArray({offset}, {length}, {nested_type});\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value) {{\n'
+            result += f'    this._writeStructArray({offset}, {length}, {elem_size}, value, {nested_type});\n'
+            result += f'  }}\n\n'
+        elif field_type == "string":
+            # String array
+            result = f'  get {name}() {{\n'
+            result += f'    const result = [];\n'
+            result += f'    for (let i = 0; i < {length}; i++) {{\n'
+            result += f'      result.push(this._readString({offset} + i * {elem_size}, {elem_size}));\n'
+            result += f'    }}\n'
+            result += f'    return result;\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value) {{\n'
+            result += f'    const arr = value || [];\n'
+            result += f'    for (let i = 0; i < {length}; i++) {{\n'
+            result += f'      this._writeString({offset} + i * {elem_size}, {elem_size}, i < arr.length ? arr[i] : \'\');\n'
+            result += f'    }}\n'
+            result += f'  }}\n\n'
+        else:
+            # Primitive array
+            if field_info.is_enum:
+                field_type = "uint8"
+            
+            read_method = READ_ARRAY_METHODS.get(field_type, "_readUInt8Array")
+            write_method = WRITE_ARRAY_METHODS.get(field_type, "_writeUInt8Array")
+            
+            result = f'  get {name}() {{\n'
+            result += f'    return this.{read_method}({offset}, {length});\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value) {{\n'
+            result += f'    this.{write_method}({offset}, {length}, value);\n'
+            result += f'  }}\n\n'
+        
+        return result
+
+
 class FileJsGen():
     @staticmethod
-    def generate(package):
+    def generate(package, use_class_based=False, packages=None):
         yield '/* Automatically generated struct frame header */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
         yield '"use strict";\n\n'
 
-        yield "const { Struct } = require('./struct_base');\n"
+        # Only import MessageBase/Struct if there are messages
+        if package.messages:
+            if use_class_based:
+                yield "const { MessageBase } = require('./struct_base');\n"
+            else:
+                yield "const { Struct } = require('./struct_base');\n"
+        
+        # Collect cross-package type dependencies
+        external_types = {}  # {package_name: set of type names}
+        if package.messages:
+            for key, msg in package.messages.items():
+                for field_name, field in msg.fields.items():
+                    type_package = getattr(field, 'type_package', None)
+                    # Only track types from other packages that aren't enums
+                    if type_package and type_package != package.name and not field.isEnum:
+                        if type_package not in external_types:
+                            external_types[type_package] = set()
+                        external_types[type_package].add(field.fieldType)
+        
+        # Generate require statements for cross-package types
+        for ext_package, type_names in sorted(external_types.items()):
+            for t in sorted(type_names):
+                type_var = '%s_%s' % (ext_package, t)
+                yield "const { %s } = require('./%s.sf');\n" % (type_var, ext_package)
+        
+        if external_types:
+            yield "\n"
 
         # Add package ID constant if present
         if package.package_id is not None:
@@ -161,9 +358,14 @@ class FileJsGen():
                 yield EnumJsGen.generate(enum, package.name) + '\n\n'
 
         if package.messages:
-            yield '/* Struct definitions */\n'
-            for key, msg in package.sortedMessages().items():
-                yield MessageJsGen.generate(msg, package.name, package) + '\n'
+            if use_class_based:
+                yield '/* Message class definitions */\n'
+                for key, msg in package.sortedMessages().items():
+                    yield MessageJsClassGen.generate(msg, package.name, package, packages or {}) + '\n'
+            else:
+                yield '/* Struct definitions */\n'
+                for key, msg in package.sortedMessages().items():
+                    yield MessageJsGen.generate(msg, package.name, package) + '\n'
             yield '\n'
 
         if package.messages:
