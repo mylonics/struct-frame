@@ -16,14 +16,29 @@
 class MessageBase {
   /**
    * Create a new message instance.
-   * @param {Buffer} [buffer] - Optional buffer to wrap. If not provided, allocates a new buffer.
+   * @param {Buffer|Object} [bufferOrInit] - Optional buffer to wrap, or an init object with field values.
+   *                                         If not provided, allocates a new zero-filled buffer.
    */
-  constructor(buffer) {
+  constructor(bufferOrInit) {
     const size = this.constructor._size;
-    if (buffer) {
-      this._buffer = Buffer.from(buffer);
+    if (Buffer.isBuffer(bufferOrInit)) {
+      this._buffer = Buffer.from(bufferOrInit);
     } else {
       this._buffer = Buffer.alloc(size);
+      // If init object provided, it will be applied by generated constructors
+    }
+  }
+
+  /**
+   * Apply initialization values from an object.
+   * Called by generated constructors after super() when init object is provided.
+   * @param {Object} init - Object with field values to apply
+   */
+  _applyInit(init) {
+    for (const [key, value] of Object.entries(init)) {
+      if (value !== undefined && key in this) {
+        this[key] = value;
+      }
     }
   }
 

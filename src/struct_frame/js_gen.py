@@ -173,6 +173,18 @@ class MessageJsClassGen():
             result += f'  static _msgid = {msg.id};\n'
         result += '\n'
         
+        # Generate constructor that supports init object
+        result += f'  /**\n'
+        result += f'   * Create a new {package_msg_name} instance.\n'
+        result += f'   * @param {{Buffer|Object}} [bufferOrInit] - Buffer to wrap or init object with field values\n'
+        result += f'   */\n'
+        result += f'  constructor(bufferOrInit) {{\n'
+        result += f'    super(Buffer.isBuffer(bufferOrInit) ? bufferOrInit : undefined);\n'
+        result += f'    if (bufferOrInit && !Buffer.isBuffer(bufferOrInit)) {{\n'
+        result += f'      this._applyInit(bufferOrInit);\n'
+        result += f'    }}\n'
+        result += f'  }}\n\n'
+        
         # Generate getters and setters for each field
         for field_info in fields:
             result += MessageJsClassGen._generate_field_accessors(field_info, package_msg_name, packages)

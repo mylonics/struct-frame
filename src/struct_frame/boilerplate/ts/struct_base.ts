@@ -11,7 +11,7 @@
  * Used for nested message types and StructArray fields.
  */
 export interface MessageConstructor<T extends MessageBase = MessageBase> {
-  new (buffer?: Buffer): T;
+  new (bufferOrInit?: Buffer | Record<string, unknown>): T;
   readonly _size: number;
   readonly _msgid?: number;
   getSize(): number;
@@ -30,14 +30,29 @@ export abstract class MessageBase {
 
   /**
    * Create a new message instance.
-   * @param buffer Optional buffer to wrap. If not provided, allocates a new buffer.
+   * @param bufferOrInit Optional buffer to wrap, or an init object with field values.
+   *                     If not provided, allocates a new zero-filled buffer.
    */
-  constructor(buffer?: Buffer) {
+  constructor(bufferOrInit?: Buffer | Record<string, unknown>) {
     const size = (this.constructor as MessageConstructor)._size;
-    if (buffer) {
-      this._buffer = Buffer.from(buffer);
+    if (Buffer.isBuffer(bufferOrInit)) {
+      this._buffer = Buffer.from(bufferOrInit);
     } else {
       this._buffer = Buffer.alloc(size);
+      // If init object provided, apply values after subclass constructor runs
+      // This is handled by generated constructors calling _applyInit()
+    }
+  }
+
+  /**
+   * Apply initialization values from an object.
+   * Called by generated constructors after super() when init object is provided.
+   */
+  protected _applyInit(init: Record<string, unknown>): void {
+    for (const [key, value] of Object.entries(init)) {
+      if (value !== undefined && key in this) {
+        (this as Record<string, unknown>)[key] = value;
+      }
     }
   }
 

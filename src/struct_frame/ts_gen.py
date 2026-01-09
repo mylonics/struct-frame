@@ -163,6 +163,9 @@ class MessageTsClassGen():
         fields = calculate_field_layout(msg, package, packages)
         total_size = msg.size
         
+        # Generate init interface for this message
+        result += MessageTsClassGen._generate_init_interface(package_msg_name, fields)
+        
         # Generate class declaration
         result += f'export class {package_msg_name} extends MessageBase {{\n'
         
@@ -171,6 +174,14 @@ class MessageTsClassGen():
         if msg.id:
             result += f'  static readonly _msgid: number = {msg.id};\n'
         result += '\n'
+        
+        # Generate constructor that supports init object
+        result += f'  constructor(bufferOrInit?: Buffer | {package_msg_name}Init) {{\n'
+        result += f'    super(Buffer.isBuffer(bufferOrInit) ? bufferOrInit : undefined);\n'
+        result += f'    if (bufferOrInit && !Buffer.isBuffer(bufferOrInit)) {{\n'
+        result += f'      this._applyInit(bufferOrInit as Record<string, unknown>);\n'
+        result += f'    }}\n'
+        result += f'  }}\n\n'
         
         # Generate getters and setters for each field
         for field_info in fields:
@@ -183,6 +194,40 @@ class MessageTsClassGen():
         
         result += '}\n'
         return result + '\n'
+    
+    @staticmethod
+    def _generate_init_interface(class_name, fields):
+        """Generate the Init interface for a message class."""
+        result = f'export interface {class_name}Init {{\n'
+        
+        for field_info in fields:
+            ts_type = MessageTsClassGen._get_ts_type_for_field(field_info)
+            result += f'  {field_info.name}?: {ts_type};\n'
+        
+        result += '}\n\n'
+        return result
+    
+    @staticmethod
+    def _get_ts_type_for_field(field_info):
+        """Get the TypeScript type annotation for a field."""
+        field_type = field_info.field_type
+        
+        if field_info.is_array:
+            if field_info.is_nested:
+                return f'({field_info.nested_type} | Record<string, unknown>)[]'
+            elif field_type == "string":
+                return 'string[]'
+            else:
+                if field_info.is_enum:
+                    field_type = "uint8"
+                ts_elem_type = TS_ARRAY_TYPE_ANNOTATIONS.get(field_type, "number")
+                return f'{ts_elem_type}[]'
+        elif field_type == "string":
+            return 'string'
+        else:
+            if field_info.is_enum:
+                field_type = "uint8"
+            return TS_TYPE_ANNOTATIONS.get(field_type, "number")
     
     @staticmethod
     def _generate_field_accessors(field_info, class_name, packages):
