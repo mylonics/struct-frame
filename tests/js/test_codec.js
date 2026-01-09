@@ -100,13 +100,23 @@ const EXPECTED_VALUES = TEST_MESSAGES.length > 0 ? {
   test_array: [],
 };
 
-// Import generated frame profile functions
+// Import generated frame profile functions - include BufferReader/Writer factory functions
 const {
   ProfileStandard,
   ProfileSensor,
   ProfileIPC,
   ProfileBulk,
   ProfileNetwork,
+  createProfileStandardReader,
+  createProfileStandardWriter,
+  createProfileSensorReader,
+  createProfileSensorWriter,
+  createProfileIPCReader,
+  createProfileIPCWriter,
+  createProfileBulkReader,
+  createProfileBulkWriter,
+  createProfileNetworkReader,
+  createProfileNetworkWriter,
 } = require('./frame_profiles');
 
 // Helper to get message length for minimal payloads
@@ -558,15 +568,32 @@ function validateTestMessage(msg) {
 
 /**
  * Encode multiple test messages using the specified frame format.
+ * Uses BufferWriter for efficient multi-frame encoding.
  */
 function encodeTestMessage(formatName) {
-  const ParserClass = getParserClass(formatName);
   const serialMsgInfo = getMessageInfo();
   const basicMsgInfo = getBasicTypesMessageInfo();
   const unionMsgInfo = getUnionTestMessageInfo();
 
   const mixedMessages = loadMixedMessages();
-  const encodedBuffers = [];
+  
+  // Create the appropriate BufferWriter for this profile
+  const capacity = 4096; // Should be enough for test messages
+  const writerCreators = {
+    'profile_standard': () => createProfileStandardWriter(capacity),
+    'profile_sensor': () => createProfileSensorWriter(capacity),
+    'profile_ipc': () => createProfileIPCWriter(capacity),
+    'profile_bulk': () => createProfileBulkWriter(capacity),
+    'profile_network': () => createProfileNetworkWriter(capacity),
+  };
+  
+  const creator = writerCreators[formatName];
+  if (!creator) {
+    console.log(`  Unknown format: ${formatName}`);
+    return Buffer.alloc(0);
+  }
+  
+  const writer = creator();
 
   for (const item of mixedMessages) {
     const msgType = item.type;
@@ -588,38 +615,51 @@ function encodeTestMessage(formatName) {
     }
 
     const { msg, buffer } = createFunc(msgInfo.struct, testData);
-    const encoded = ParserClass.encodeMsg(msgInfo.msgId, buffer);
-    if (!encoded || encoded.length === 0) {
+    // Use BufferWriter to encode and append frame - it tracks offset automatically
+    const bytesWritten = writer.write(msgInfo.msgId, buffer);
+    if (bytesWritten === 0) {
       console.log('  Encoding failed for message');
       return Buffer.alloc(0);
     }
-    encodedBuffers.push(encoded);
   }
 
-  // Concatenate all encoded messages
-  return Buffer.concat(encodedBuffers);
+  // Return the encoded data from BufferWriter
+  return Buffer.from(writer.data());
 }
 
 /**
  * Decode and validate multiple test messages using the specified frame format.
+ * Uses BufferReader for efficient multi-frame parsing.
  * Returns the number of messages successfully decoded.
  */
 function decodeTestMessage(formatName, data) {
-  const ParserClass = getParserClass(formatName);
   const serialMsgInfo = getMessageInfo();
   const basicMsgInfo = getBasicTypesMessageInfo();
   const unionMsgInfo = getUnionTestMessageInfo();
 
   const mixedMessages = loadMixedMessages();
-  let offset = 0;
+  
+  // Create the appropriate BufferReader for this profile
+  const readerCreators = {
+    'profile_standard': () => createProfileStandardReader(data),
+    'profile_sensor': () => createProfileSensorReader(data, getMsgLength),
+    'profile_ipc': () => createProfileIPCReader(data, getMsgLength),
+    'profile_bulk': () => createProfileBulkReader(data),
+    'profile_network': () => createProfileNetworkReader(data),
+  };
+  
+  const creator = readerCreators[formatName];
+  if (!creator) {
+    console.log(`  Unknown format: ${formatName}`);
+    return 0;
+  }
+  
+  const reader = creator();
   let messageCount = 0;
 
-  while (offset < data.length && messageCount < mixedMessages.length) {
-    // Extract remaining data
-    const remainingData = data.slice(offset);
-
-    // Use static validatePacket method
-    const result = ParserClass.validatePacket(remainingData);
+  // Use BufferReader to iterate through frames - it handles offset tracking automatically
+  while (reader.hasMore() && messageCount < mixedMessages.length) {
+    const result = reader.next();
 
     if (!result || !result.valid) {
       console.log(`  Decoding failed for message ${messageCount}`);
@@ -664,21 +704,6 @@ function decodeTestMessage(formatName, data) {
       return messageCount;
     }
 
-    // Calculate message size based on format
-    let msgSize = 0;
-    if (formatName === 'profile_standard') {
-      msgSize = 4 + result.msg_len + 2; // header + payload + crc
-    } else if (formatName === 'profile_sensor') {
-      msgSize = 2 + result.msg_len; // header + payload
-    } else if (formatName === 'profile_ipc') {
-      msgSize = 1 + result.msg_len; // header + payload
-    } else if (formatName === 'profile_bulk') {
-      msgSize = 6 + result.msg_len + 2; // header + payload + crc
-    } else if (formatName === 'profile_network') {
-      msgSize = 9 + result.msg_len + 2; // header + payload + crc
-    }
-
-    offset += msgSize;
     messageCount++;
   }
 
@@ -687,8 +712,9 @@ function decodeTestMessage(formatName, data) {
     return messageCount;
   }
 
-  if (offset !== data.length) {
-    console.log(`  Extra data after messages: processed ${offset} bytes, got ${data.length} bytes`);
+  // Ensure all data was consumed (BufferReader tracks remaining bytes)
+  if (reader.remaining > 0) {
+    console.log(`  Extra data after messages: ${reader.remaining} bytes remaining`);
     return messageCount;
   }
 

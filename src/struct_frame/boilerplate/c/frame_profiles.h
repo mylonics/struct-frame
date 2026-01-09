@@ -508,6 +508,11 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
     if (reader->config->has_crc || reader->config->has_length) {
         result = frame_format_parse_with_crc(reader->config, remaining, remaining_size);
     } else {
+        /* For minimal profiles, check if get_msg_length callback is provided */
+        if (reader->get_msg_length == NULL) {
+            reader->offset = reader->size;
+            return result;
+        }
         result = frame_format_parse_minimal(reader->config, remaining, remaining_size, reader->get_msg_length);
     }
     

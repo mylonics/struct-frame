@@ -408,7 +408,9 @@ def encode_test_message(format_name):
 
 
 def encode_test_messages(format_name):
-    """Encode multiple test messages using the specified frame format."""
+    """Encode multiple test messages using the specified frame format.
+    Uses BufferWriter for efficient multi-frame encoding.
+    """
     import sys
     import os
     gen_path = os.path.join(os.path.dirname(__file__), '..', 'generated', 'py')
@@ -421,26 +423,29 @@ def encode_test_messages(format_name):
         SerializationTestSensor
     )
     
-    # Import generated frame profiles
+    # Import generated frame profiles - use BufferWriter for multi-frame encoding
     from frame_profiles import (
-        encode_profile_standard, encode_profile_sensor, encode_profile_ipc,
-        encode_profile_bulk, encode_profile_network
+        create_profile_standard_writer, create_profile_sensor_writer, create_profile_ipc_writer,
+        create_profile_bulk_writer, create_profile_network_writer
     )
     
     mixed_messages = load_mixed_messages()
-    encoded_data = bytearray()
     
-    # Get the appropriate encode function for this profile
-    encode_funcs = {
-        'profile_standard': encode_profile_standard,
-        'profile_sensor': encode_profile_sensor,
-        'profile_ipc': encode_profile_ipc,
-        'profile_bulk': encode_profile_bulk,
-        'profile_network': encode_profile_network,
+    # Create the appropriate BufferWriter for this profile (with enough capacity)
+    capacity = 4096  # Should be enough for test messages
+    writer_creators = {
+        'profile_standard': lambda: create_profile_standard_writer(capacity),
+        'profile_sensor': lambda: create_profile_sensor_writer(capacity),
+        'profile_ipc': lambda: create_profile_ipc_writer(capacity),
+        'profile_bulk': lambda: create_profile_bulk_writer(capacity),
+        'profile_network': lambda: create_profile_network_writer(capacity),
     }
-    encode_func = encode_funcs.get(format_name)
-    if not encode_func:
+    
+    creator = writer_creators.get(format_name)
+    if not creator:
         raise ValueError(f"Unknown format: {format_name}")
+    
+    writer = creator()
     
     for item in mixed_messages:
         msg_type = item['type']
@@ -463,11 +468,12 @@ def encode_test_messages(format_name):
         
         msg_data = bytes(msg.pack())
         
-        # Use the generated profile encode function
-        frame_data = encode_func(msg.msg_id, msg_data)
-        encoded_data.extend(frame_data)
+        # Use BufferWriter to encode and append frame - it tracks offset automatically
+        bytes_written = writer.write(msg.msg_id, msg_data)
+        if bytes_written == 0:
+            raise RuntimeError(f"Failed to encode message: buffer full or encoding error")
     
-    return bytes(encoded_data)
+    return writer.data()
 
 
 def decode_test_message(format_name, data):
@@ -476,7 +482,9 @@ def decode_test_message(format_name, data):
 
 
 def decode_test_messages(format_name, data):
-    """Decode and validate multiple test messages using the specified frame format."""
+    """Decode and validate multiple test messages using the specified frame format.
+    Uses BufferReader for efficient multi-frame parsing.
+    """
     # Import from generated py package
     import sys
     import os
@@ -489,12 +497,10 @@ def decode_test_messages(format_name, data):
         SerializationTestUnionTestMessage
     )
     
-    # Import generated frame profiles
+    # Import generated frame profiles - use BufferReader for multi-frame parsing
     from frame_profiles import (
-        parse_profile_standard_buffer, parse_profile_sensor_buffer, parse_profile_ipc_buffer,
-        parse_profile_bulk_buffer, parse_profile_network_buffer,
-        PROFILE_STANDARD_CONFIG, PROFILE_SENSOR_CONFIG, PROFILE_IPC_CONFIG,
-        PROFILE_BULK_CONFIG, PROFILE_NETWORK_CONFIG
+        create_profile_standard_reader, create_profile_sensor_reader, create_profile_ipc_reader,
+        create_profile_bulk_reader, create_profile_network_reader
     )
     
     # Get message length callback for minimal profiles
@@ -505,35 +511,28 @@ def decode_test_messages(format_name, data):
             return SerializationTestBasicTypesMessage.msg_size
         elif msg_id == SerializationTestUnionTestMessage.msg_id:
             return SerializationTestUnionTestMessage.msg_size
-        return 0
+        return None
     
-    # Get the appropriate parse function and config for this profile
-    parse_configs = {
-        'profile_standard': (parse_profile_standard_buffer, PROFILE_STANDARD_CONFIG, False),
-        'profile_sensor': (parse_profile_sensor_buffer, PROFILE_SENSOR_CONFIG, True),
-        'profile_ipc': (parse_profile_ipc_buffer, PROFILE_IPC_CONFIG, True),
-        'profile_bulk': (parse_profile_bulk_buffer, PROFILE_BULK_CONFIG, False),
-        'profile_network': (parse_profile_network_buffer, PROFILE_NETWORK_CONFIG, False),
+    # Create the appropriate BufferReader for this profile
+    reader_creators = {
+        'profile_standard': lambda: create_profile_standard_reader(data),
+        'profile_sensor': lambda: create_profile_sensor_reader(data, get_msg_length),
+        'profile_ipc': lambda: create_profile_ipc_reader(data, get_msg_length),
+        'profile_bulk': lambda: create_profile_bulk_reader(data),
+        'profile_network': lambda: create_profile_network_reader(data),
     }
     
-    parse_info = parse_configs.get(format_name)
-    if not parse_info:
+    creator = reader_creators.get(format_name)
+    if not creator:
         raise ValueError(f"Unknown format: {format_name}")
     
-    parse_func, config, needs_callback = parse_info
-    
+    reader = creator()
     mixed_messages = load_mixed_messages()
     message_count = 0
-    data_index = 0
     
-    while data_index < len(data) and message_count < len(mixed_messages):
-        # Parse the frame from current position
-        remaining = data[data_index:]
-        
-        if needs_callback:
-            result = parse_func(remaining, get_msg_length)
-        else:
-            result = parse_func(remaining)
+    # Use BufferReader to iterate through frames - it handles offset tracking automatically
+    while reader.has_more() and message_count < len(mixed_messages):
+        result = reader.next()
         
         if not result or not result.valid:
             print(f"  Decoding failed for message {message_count}")
@@ -576,9 +575,6 @@ def decode_test_messages(format_name, data):
             # For UnionTestMessage, we just validate it decoded without error
             # Full validation would require comparing nested structures
         
-        # Calculate frame size based on config
-        frame_size = config.header_size + result.msg_len + config.footer_size
-        data_index += frame_size
         message_count += 1
     
     # Ensure all messages were decoded
@@ -586,9 +582,9 @@ def decode_test_messages(format_name, data):
         print(f"  Expected {len(mixed_messages)} messages, but decoded {message_count}")
         return False, message_count
     
-    # Ensure all data was consumed
-    if data_index != len(data):
-        print(f"  Extra data after messages: processed {data_index} bytes, got {len(data)} bytes")
+    # Ensure all data was consumed (BufferReader tracks remaining bytes)
+    if reader.remaining != 0:
+        print(f"  Extra data after messages: {reader.remaining} bytes remaining")
         return False, message_count
     
     return True, message_count

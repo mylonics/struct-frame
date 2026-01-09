@@ -510,6 +510,13 @@ namespace StructFrame
             if (_offset >= _size)
                 return new FrameParseResult();
 
+            // For minimal profiles, check if getMsgLength callback is provided
+            if (!_config.HasCrc && !_config.HasLength && _getMsgLength == null)
+            {
+                _offset = _size;
+                return new FrameParseResult();
+            }
+
             int remaining = _size - _offset;
             byte[] remainingBuffer = new byte[remaining];
             Array.Copy(_buffer, _offset, remainingBuffer, 0, remaining);
