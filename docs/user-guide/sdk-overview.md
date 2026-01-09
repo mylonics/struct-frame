@@ -28,6 +28,7 @@ python -m struct_frame your_messages.proto --build_cpp --cpp_path gen/cpp --sdk_
 - **Auto-Reconnection**: Configurable automatic reconnection on connection loss
 - **Cross-Platform**: Works across embedded systems, desktop, and mobile platforms
 - **Generated SDK Interface** (C#): High-level, type-safe send methods for each message type with field-level and struct-level overloads
+- **Profile-Based Parsing**: BufferReader, BufferWriter, and AccumulatingReader classes for efficient multi-frame parsing across all languages
 
 ## Available SDKs
 
@@ -39,6 +40,18 @@ python -m struct_frame your_messages.proto --build_cpp --cpp_path gen/cpp --sdk_
 | **C#** | Async (Task-based) | UDP, TCP, WebSocket*, Serial | Event-based | `--sdk` |
 
 *UDP, TCP, WebSocket transports in C++ require ASIO and Simple-WebSocket-Server libraries (included with `--sdk`). Use `--sdk_embedded` for serial-only with no external dependencies.
+
+## Frame Profile Parsing Classes
+
+All SDKs provide profile-specific classes for efficient frame parsing and encoding:
+
+| Class | Description |
+|-------|-------------|
+| **BufferReader** | Parse multiple frames from a buffer with automatic offset tracking |
+| **BufferWriter** | Encode multiple frames into a buffer with automatic offset tracking |
+| **AccumulatingReader** | Unified parser for buffer and streaming modes, handles partial messages |
+
+See individual SDK documentation for language-specific examples.
 
 ## Quick Start
 

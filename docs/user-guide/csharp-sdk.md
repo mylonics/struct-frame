@@ -174,6 +174,174 @@ var frame = parser.Encode(1, data);
 
 See the [Minimal Frames Guide](minimal-frames.md) for complete details.
 
+## Profile-Based Parsing API
+
+The C# SDK provides high-performance parsing classes that match the C++ gold standard implementation. These are optimized for specific frame profiles and provide convenient factory methods.
+
+### Available Profiles
+
+| Profile | Header | Payload | Use Case |
+|---------|--------|---------|----------|
+| `ProfileStandard` | Basic | Default | General serial/UART communication |
+| `ProfileSensor` | Tiny | Minimal | Low-bandwidth sensors, radio links |
+| `ProfileIPC` | None | Minimal | Trusted inter-process communication |
+| `ProfileBulk` | Basic | Extended | Firmware/file transfers |
+| `ProfileNetwork` | Basic | ExtendedMultiSystemStream | Multi-node mesh networks |
+
+### BufferReader - Parse Multiple Frames from a Buffer
+
+`BufferReader` iterates through a buffer containing one or more frames, automatically tracking the offset:
+
+```csharp
+using StructFrame;
+
+// Parse a buffer containing multiple ProfileStandard frames
+var reader = FrameProfiles.CreateProfileStandardReader(bufferData);
+while (reader.HasMore())
+{
+    var result = reader.Next();
+    if (!result.Valid) break;
+    Console.WriteLine($"Message ID: {result.MsgId}, Length: {result.MsgLen}");
+    ProcessMessage(result.MsgData);
+}
+
+Console.WriteLine($"Processed {reader.Offset} bytes, {reader.Remaining} remaining");
+```
+
+For minimal profiles (no length field), provide a message length callback:
+
+```csharp
+// Parse ProfileSensor frames (minimal payload)
+var reader = FrameProfiles.CreateProfileSensorReader(bufferData, GetMessageLength);
+while (reader.HasMore())
+{
+    var result = reader.Next();
+    if (result.Valid)
+    {
+        ProcessMessage(result.MsgId, result.MsgData);
+    }
+}
+
+int? GetMessageLength(int msgId)
+{
+    return msgId switch
+    {
+        1 => 10,  // Status message
+        2 => 20,  // Command message
+        _ => null
+    };
+}
+```
+
+### BufferWriter - Encode Multiple Frames
+
+`BufferWriter` encodes multiple frames into a buffer with automatic offset tracking:
+
+```csharp
+using StructFrame;
+
+// Create writer with capacity
+var writer = FrameProfiles.CreateProfileStandardWriter(4096);
+
+// Write multiple messages
+writer.Write(1, msg1Data);
+writer.Write(2, msg2Data);
+writer.Write(3, msg3Data);
+
+// Get the encoded data
+var encodedBuffer = writer.Data();
+Console.WriteLine($"Encoded {writer.Size} bytes with {writer.Count} messages");
+```
+
+For network profiles with extra header fields:
+
+```csharp
+var writer = FrameProfiles.CreateProfileNetworkWriter(4096);
+writer.Write(1, data, seq: 1, sysId: 10, compId: 1);
+```
+
+### AccumulatingReader - Unified Buffer and Streaming Parser
+
+`AccumulatingReader` handles both buffer mode and byte-by-byte streaming, with support for partial messages across buffer boundaries:
+
+**Buffer Mode** - Processing chunks of data:
+
+```csharp
+using StructFrame;
+
+var reader = FrameProfiles.CreateProfileStandardAccumulatingReader();
+
+// Process incoming chunks (e.g., from network or file)
+reader.AddData(chunk1);
+while (true)
+{
+    var result = reader.Next();
+    if (!result.Valid) break;
+    ProcessMessage(result.MsgId, result.MsgData);
+}
+
+// Add more data (handles partial messages automatically)
+reader.AddData(chunk2);
+while (true)
+{
+    var result = reader.Next();
+    if (!result.Valid) break;
+    ProcessMessage(result.MsgId, result.MsgData);
+}
+```
+
+**Stream Mode** - Byte-by-byte processing (UART/serial):
+
+```csharp
+using StructFrame;
+
+var reader = FrameProfiles.CreateProfileSensorAccumulatingReader(GetMessageLength);
+
+// Process incoming bytes one at a time
+serialPort.DataReceived += (sender, e) =>
+{
+    while (serialPort.BytesToRead > 0)
+    {
+        var b = (byte)serialPort.ReadByte();
+        var result = reader.PushByte(b);
+        if (result.Valid)
+        {
+            // Complete message received
+            ProcessMessage(result.MsgId, result.MsgData);
+        }
+    }
+};
+```
+
+### Factory Methods
+
+All profiles have factory methods for creating readers and writers:
+
+```csharp
+using StructFrame;
+
+// BufferReader factories
+var reader = FrameProfiles.CreateProfileStandardReader(buffer);
+var reader = FrameProfiles.CreateProfileSensorReader(buffer, getMsgLength);
+var reader = FrameProfiles.CreateProfileIPCReader(buffer, getMsgLength);
+var reader = FrameProfiles.CreateProfileBulkReader(buffer);
+var reader = FrameProfiles.CreateProfileNetworkReader(buffer);
+
+// BufferWriter factories
+var writer = FrameProfiles.CreateProfileStandardWriter(capacity);
+var writer = FrameProfiles.CreateProfileSensorWriter(capacity);
+var writer = FrameProfiles.CreateProfileIPCWriter(capacity);
+var writer = FrameProfiles.CreateProfileBulkWriter(capacity);
+var writer = FrameProfiles.CreateProfileNetworkWriter(capacity);
+
+// AccumulatingReader factories
+var reader = FrameProfiles.CreateProfileStandardAccumulatingReader();
+var reader = FrameProfiles.CreateProfileSensorAccumulatingReader(getMsgLength);
+var reader = FrameProfiles.CreateProfileIPCAccumulatingReader(getMsgLength);
+var reader = FrameProfiles.CreateProfileBulkAccumulatingReader();
+var reader = FrameProfiles.CreateProfileNetworkAccumulatingReader();
+```
+
 ### Creating the SDK
 
 ```csharp
