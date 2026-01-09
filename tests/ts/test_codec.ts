@@ -109,19 +109,21 @@ import {
 
 const {
   serialization_test_SerializationTestMessage,
-  serialization_test_SerializationTestMessage_msgid,
-  serialization_test_SerializationTestMessage_max_size,
   serialization_test_BasicTypesMessage,
-  serialization_test_BasicTypesMessage_msgid,
-  serialization_test_BasicTypesMessage_max_size,
   serialization_test_UnionTestMessage,
-  serialization_test_UnionTestMessage_msgid,
-  serialization_test_UnionTestMessage_max_size,
   serialization_test_ComprehensiveArrayMessage,
-  serialization_test_ComprehensiveArrayMessage_msgid,
-  serialization_test_ComprehensiveArrayMessage_max_size,
   get_message_length
 } = require('./serialization_test.sf');
+
+// Get msgid and size from struct static properties
+const serialization_test_SerializationTestMessage_msgid = serialization_test_SerializationTestMessage._msgid;
+const serialization_test_SerializationTestMessage_max_size = serialization_test_SerializationTestMessage._size;
+const serialization_test_BasicTypesMessage_msgid = serialization_test_BasicTypesMessage._msgid;
+const serialization_test_BasicTypesMessage_max_size = serialization_test_BasicTypesMessage._size;
+const serialization_test_UnionTestMessage_msgid = serialization_test_UnionTestMessage._msgid;
+const serialization_test_UnionTestMessage_max_size = serialization_test_UnionTestMessage._size;
+const serialization_test_ComprehensiveArrayMessage_msgid = serialization_test_ComprehensiveArrayMessage._msgid;
+const serialization_test_ComprehensiveArrayMessage_max_size = serialization_test_ComprehensiveArrayMessage._size;
 
 // Helper to get message length for minimal payloads
 function getMsgLength(msgId: number): number | undefined {
@@ -503,9 +505,9 @@ export function encodeTestMessage(formatName: string): Buffer {
       return Buffer.alloc(0);
     }
 
-    const { msg, buffer } = createFunc(msgInfo.struct, testData);
+    const { msg } = createFunc(msgInfo.struct, testData);
     // Use BufferWriter to encode and append frame - it tracks offset automatically
-    const bytesWritten = writer.write(msgInfo.msgId, buffer);
+    const bytesWritten = writer.write(msg);
     if (bytesWritten === 0) {
       console.log('  Encoding failed for message');
       return Buffer.alloc(0);

@@ -497,14 +497,14 @@ export class BufferReader {
  *
  * Usage:
  *   const writer = new BufferWriter(ProfileStandardConfig, 1024);
- *   writer.write(0x01, msg1Payload);
- *   writer.write(0x02, msg2Payload);
+ *   writer.write(msg1);  // msg1 is a struct instance with _msgid and _buffer
+ *   writer.write(msg2);
  *   const encodedData = writer.data();
  *   const totalBytes = writer.size;
  *
  * For profiles with extra header fields:
  *   const writer = new BufferWriter(ProfileNetworkConfig, 1024);
- *   writer.write(0x01, payload, { seq: 1, sysId: 1, compId: 1 });
+ *   writer.write(msg, { seq: 1, sysId: 1, compId: 1 });
  */
 export class BufferWriter {
     private config: FrameProfileConfig;
@@ -521,9 +521,18 @@ export class BufferWriter {
 
     /**
      * Write a message to the buffer.
+     * The message must be a struct instance with a constructor that has _msgid static property
+     * and the instance must have _buffer property.
      * Returns the number of bytes written, or 0 on failure.
      */
-    write(msgId: number, payload: Uint8Array, options: EncodeOptions = {}): number {
+    write(msg: { _buffer: Buffer; constructor: { _msgid?: number; _size?: number } }, options: EncodeOptions = {}): number {
+        const msgId = (msg.constructor as any)._msgid;
+        const payload = new Uint8Array(msg._buffer);
+
+        if (msgId === undefined) {
+            throw new Error('Message struct must have _msgid static property');
+        }
+
         let encoded: Uint8Array;
 
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {

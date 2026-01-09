@@ -434,9 +434,9 @@ class Message:
                 return False
             # Add oneof size (largest field size)
             self.size = self.size + oneof.size
-            # If auto-discriminator is enabled, add 1 byte for the message_id discriminator
+            # If auto-discriminator is enabled, add 2 bytes for the uint16_t message_id discriminator
             if oneof.auto_discriminator:
-                self.size = self.size + 1
+                self.size = self.size + 2
 
         # Flatten collision detection: if a field is marked as flatten and is a message,
         # ensure none of the child field names collide with fields in this message.

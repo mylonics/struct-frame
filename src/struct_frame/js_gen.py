@@ -92,8 +92,12 @@ class MessageJsGen():
 
         package_msg_name = '%s_%s' % (packageName, msg.name)
 
-        result += "const %s = new Struct('%s') " % (
+        result += "const %s = new Struct('%s')" % (
             package_msg_name, package_msg_name)
+        
+        # Add message ID if present
+        if msg.id:
+            result += '.msgId(%d)' % msg.id
 
         result += '\n'
 
@@ -119,15 +123,7 @@ class MessageJsGen():
             result += f"\n    .ByteArray('{oneof.name}_data', {oneof.size})"
         
         result += '\n    .compile();\n'
-        result += 'module.exports.%s = %s;\n\n' % (package_msg_name, package_msg_name)
-
-        result += 'const %s_max_size = %d;\n' % (package_msg_name, size)
-        result += 'module.exports.%s_max_size = %s_max_size;\n' % (package_msg_name, package_msg_name)
-
-        if msg.id:
-            result += 'const %s_msgid = %d;\n' % (
-                package_msg_name, msg.id)
-            result += 'module.exports.%s_msgid = %s_msgid;\n' % (package_msg_name, package_msg_name)
+        result += 'module.exports.%s = %s;\n' % (package_msg_name, package_msg_name)
 
         return result + '\n'
 
@@ -195,7 +191,7 @@ class FileJsGen():
                 
                 for msg in messages_with_id:
                     package_msg_name = '%s_%s' % (package.name, msg.name)
-                    yield '    case %s_msgid: return %s_max_size;\n' % (package_msg_name, package_msg_name)
+                    yield '    case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
 
                 yield '    default: break;\n'
                 yield '  }\n'

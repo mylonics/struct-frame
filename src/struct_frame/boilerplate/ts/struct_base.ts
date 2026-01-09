@@ -56,6 +56,8 @@ const ARRAY_ELEMENT_SIZES: Record<string, number> = {
 export interface CompiledStruct {
   new (buffer?: Buffer): StructInstance;
   getSize(): number;
+  readonly _size: number;
+  readonly _msgid?: number;
 }
 
 /**
@@ -81,9 +83,19 @@ export class Struct {
   private name: string;
   private fields: FieldDefinition[] = [];
   private currentOffset: number = 0;
+  private _msgid?: number;
 
   constructor(name?: string) {
     this.name = name || 'Struct';
+  }
+
+  /**
+   * Set the message ID for this struct type.
+   * This will be available as a static property on the compiled struct.
+   */
+  msgId(id: number): Struct {
+    this._msgid = id;
+    return this;
   }
 
   // Primitive field methods
@@ -256,7 +268,7 @@ export class Struct {
       // and allow Struct.raw() to access it
       _buffer: Buffer;
       private static _fields: FieldDefinition[] = fields;
-      private static _size: number = totalSize;
+      static readonly _size: number = totalSize;
       private static _structName: string = structName;
 
       constructor(buffer?: Buffer) {
@@ -554,6 +566,11 @@ export class Struct {
         return totalSize;
       }
     };
+
+    // Assign message ID if set
+    if (this._msgid !== undefined) {
+      (CompiledStructClass as any)._msgid = this._msgid;
+    }
 
     return CompiledStructClass as CompiledStruct;
   }

@@ -109,8 +109,8 @@ function getMessageInfo() {
   const module = require('./serialization_test.sf');
   return {
     struct: module.serialization_test_SerializationTestMessage,
-    msgId: module.serialization_test_SerializationTestMessage_msgid,
-    maxSize: module.serialization_test_SerializationTestMessage_max_size,
+    msgId: module.serialization_test_SerializationTestMessage._msgid,
+    maxSize: module.serialization_test_SerializationTestMessage._size,
   };
 }
 
@@ -121,8 +121,8 @@ function getBasicTypesMessageInfo() {
   const module = require('./serialization_test.sf');
   return {
     struct: module.serialization_test_BasicTypesMessage,
-    msgId: module.serialization_test_BasicTypesMessage_msgid,
-    maxSize: module.serialization_test_BasicTypesMessage_max_size,
+    msgId: module.serialization_test_BasicTypesMessage._msgid,
+    maxSize: module.serialization_test_BasicTypesMessage._size,
   };
 }
 
@@ -133,15 +133,15 @@ function getUnionTestMessageInfo() {
   const module = require('./serialization_test.sf');
   return {
     struct: module.serialization_test_UnionTestMessage,
-    msgId: module.serialization_test_UnionTestMessage_msgid,
-    maxSize: module.serialization_test_UnionTestMessage_max_size,
+    msgId: module.serialization_test_UnionTestMessage._msgid,
+    maxSize: module.serialization_test_UnionTestMessage._size,
     // For inner messages
     comprehensiveArrayStruct: module.serialization_test_ComprehensiveArrayMessage,
-    comprehensiveArrayMsgId: module.serialization_test_ComprehensiveArrayMessage_msgid,
-    comprehensiveArrayMaxSize: module.serialization_test_ComprehensiveArrayMessage_max_size,
+    comprehensiveArrayMsgId: module.serialization_test_ComprehensiveArrayMessage._msgid,
+    comprehensiveArrayMaxSize: module.serialization_test_ComprehensiveArrayMessage._size,
     serializationTestStruct: module.serialization_test_SerializationTestMessage,
-    serializationTestMsgId: module.serialization_test_SerializationTestMessage_msgid,
-    serializationTestMaxSize: module.serialization_test_SerializationTestMessage_max_size,
+    serializationTestMsgId: module.serialization_test_SerializationTestMessage._msgid,
+    serializationTestMaxSize: module.serialization_test_SerializationTestMessage._size,
   };
 }
 
@@ -489,9 +489,9 @@ function encodeTestMessage(formatName) {
       return Buffer.alloc(0);
     }
 
-    const { msg, buffer } = createFunc(msgInfo.struct, testData);
+    const { msg } = createFunc(msgInfo.struct, testData);
     // Use BufferWriter to encode and append frame - it tracks offset automatically
-    const bytesWritten = writer.write(msgInfo.msgId, buffer);
+    const bytesWritten = writer.write(msg);
     if (bytesWritten === 0) {
       console.log('  Encoding failed for message');
       return Buffer.alloc(0);
