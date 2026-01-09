@@ -1127,8 +1127,8 @@ def main():
     utility_files = {
         'c': ['frame_base.h'],
         'cpp': ['frame_base.hpp'],
-        'ts': ['struct_base.ts', 'struct_frame.ts', 'struct_frame_types.ts', 'frame_base.ts'],
-        'js': ['struct_base.js', 'struct_frame.js', 'struct_frame_types.js', 'frame_base.js'],
+        'ts': ['struct_base.ts', 'frame_base.ts'],
+        'js': ['struct_base.js', 'frame_base.js'],
         'py': [],  # __init__.py will be generated with the custom frame formats
         'csharp': ['FrameBase.cs']
     }
