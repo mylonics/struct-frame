@@ -31,7 +31,7 @@ export function loadTestMessages(): TestMessage[] {
         // Return SerializationTestMessage data for backwards compatibility
         return (data.SerializationTestMessage || data.messages || []) as TestMessage[];
       }
-    } catch (e) {
+    } catch (_e) {
       // Continue to next path
     }
   }
@@ -84,7 +84,7 @@ export function loadMixedMessages(): any[] {
 
         return messages;
       }
-    } catch (e) {
+    } catch (_e) {
       // Continue to next path
     }
   }
@@ -107,23 +107,13 @@ import {
   ProfileNetworkWriter,
 } from '../generated/ts/frame_profiles';
 
-const {
+import {
   serialization_test_SerializationTestMessage,
   serialization_test_BasicTypesMessage,
   serialization_test_UnionTestMessage,
   serialization_test_ComprehensiveArrayMessage,
   get_message_length
-} = require('../generated/ts/serialization_test.sf');
-
-// Get msgid and size from struct static properties
-const serialization_test_SerializationTestMessage_msgid = serialization_test_SerializationTestMessage._msgid;
-const serialization_test_SerializationTestMessage_max_size = serialization_test_SerializationTestMessage._size;
-const serialization_test_BasicTypesMessage_msgid = serialization_test_BasicTypesMessage._msgid;
-const serialization_test_BasicTypesMessage_max_size = serialization_test_BasicTypesMessage._size;
-const serialization_test_UnionTestMessage_msgid = serialization_test_UnionTestMessage._msgid;
-const serialization_test_UnionTestMessage_max_size = serialization_test_UnionTestMessage._size;
-const serialization_test_ComprehensiveArrayMessage_msgid = serialization_test_ComprehensiveArrayMessage._msgid;
-const serialization_test_ComprehensiveArrayMessage_max_size = serialization_test_ComprehensiveArrayMessage._size;
+} from '../generated/ts/serialization_test.sf';
 
 // Helper to get message length for minimal payloads
 function getMsgLength(msgId: number): number | undefined {
@@ -131,65 +121,29 @@ function getMsgLength(msgId: number): number | undefined {
 }
 
 /**
- * Get the message struct and metadata.
+ * Create BasicTypesMessage from test data using object initialization
  */
-export function getMessageInfo() {
-  return {
-    struct: serialization_test_SerializationTestMessage,
-    msgId: serialization_test_SerializationTestMessage_msgid,
-    maxSize: serialization_test_SerializationTestMessage_max_size,
-  };
-}
-
-/**
- * Get message info for BasicTypesMessage
- */
-export function getBasicTypesMessageInfo() {
-  return {
-    struct: serialization_test_BasicTypesMessage,
-    msgId: serialization_test_BasicTypesMessage_msgid,
-    maxSize: serialization_test_BasicTypesMessage_max_size,
-  };
-}
-
-/**
- * Get message info for UnionTestMessage
- */
-export function getUnionTestMessageInfo() {
-  return {
-    struct: serialization_test_UnionTestMessage,
-    msgId: serialization_test_UnionTestMessage_msgid,
-    maxSize: serialization_test_UnionTestMessage_max_size,
-  };
-}
-
-/**
- * Create BasicTypesMessage from test data
- */
-export function createBasicTypesMessageFromData(msgStruct: any, testData: any): { msg: any } {
-  // Struct constructor auto-allocates buffer when none provided
-  const msg = new msgStruct();
-
+export function createBasicTypesMessageFromData(testData: any): serialization_test_BasicTypesMessage {
   // large_int and large_uint may be stored as strings in JSON to preserve precision
   const largeInt = typeof testData.large_int === 'string' ? BigInt(testData.large_int) : BigInt(testData.large_int);
   const largeUint = typeof testData.large_uint === 'string' ? BigInt(testData.large_uint) : BigInt(testData.large_uint);
 
-  msg.small_int = testData.small_int;
-  msg.medium_int = testData.medium_int;
-  msg.regular_int = testData.regular_int;
-  msg.large_int = largeInt;
-  msg.small_uint = testData.small_uint;
-  msg.medium_uint = testData.medium_uint;
-  msg.regular_uint = testData.regular_uint;
-  msg.large_uint = largeUint;
-  msg.single_precision = testData.single_precision;
-  msg.double_precision = testData.double_precision;
-  msg.flag = testData.flag;
-  msg.device_id = testData.device_id;
-  msg.description_length = testData.description.length;
-  msg.description_data = testData.description;
-
-  return { msg };
+  return new serialization_test_BasicTypesMessage({
+    small_int: testData.small_int,
+    medium_int: testData.medium_int,
+    regular_int: testData.regular_int,
+    large_int: largeInt,
+    small_uint: testData.small_uint,
+    medium_uint: testData.medium_uint,
+    regular_uint: testData.regular_uint,
+    large_uint: largeUint,
+    single_precision: testData.single_precision,
+    double_precision: testData.double_precision,
+    flag: testData.flag,
+    device_id: testData.device_id,
+    description_length: testData.description.length,
+    description_data: testData.description,
+  });
 }
 
 /**
@@ -265,56 +219,52 @@ export function validateBasicTypesMessageAgainstData(msg: any, testData: any): b
  * - payload_type 1 (array_payload) -> ComprehensiveArrayMessage msg_id (203)
  * - payload_type 2 (test_payload) -> SerializationTestMessage msg_id (204)
  */
-export function createUnionTestMessageFromData(msgStruct: any, testData: any): { msg: any } {
-  // Struct constructor auto-allocates buffer when none provided
-  const msg = new msgStruct();
+export function createUnionTestMessageFromData(testData: any): serialization_test_UnionTestMessage {
+  const msg = new serialization_test_UnionTestMessage();
 
   // Create the inner payload based on the type and set discriminator to inner message's msg_id
   if (testData.payload_type === 1 && testData.array_payload) {
     // ComprehensiveArrayMessage - discriminator is its msg_id
-    msg.payload_discriminator = serialization_test_ComprehensiveArrayMessage_msgid;
+    msg.payload_discriminator = serialization_test_ComprehensiveArrayMessage._msgid!;
 
-    // Inner message auto-allocates its own buffer
-    const innerMsg = new serialization_test_ComprehensiveArrayMessage();
-
-    // Set array fields from test data
+    // Inner message using object initialization
     const ap = testData.array_payload;
-    innerMsg.fixed_ints = ap.fixed_ints || [];
-    innerMsg.fixed_floats = ap.fixed_floats || [];
-    innerMsg.fixed_bools = ap.fixed_bools || [];
-    innerMsg.bounded_uints_count = (ap.bounded_uints || []).length;
-    innerMsg.bounded_uints_data = ap.bounded_uints || [];
-    innerMsg.bounded_doubles_count = (ap.bounded_doubles || []).length;
-    innerMsg.bounded_doubles_data = ap.bounded_doubles || [];
-    innerMsg.fixed_statuses = ap.fixed_statuses || [];
-    innerMsg.bounded_statuses_count = (ap.bounded_statuses || []).length;
-    innerMsg.bounded_statuses_data = ap.bounded_statuses || [];
+    const innerMsg = new serialization_test_ComprehensiveArrayMessage({
+      fixed_ints: ap.fixed_ints || [],
+      fixed_floats: ap.fixed_floats || [],
+      fixed_bools: ap.fixed_bools || [],
+      bounded_uints_count: (ap.bounded_uints || []).length,
+      bounded_uints_data: ap.bounded_uints || [],
+      bounded_doubles_count: (ap.bounded_doubles || []).length,
+      bounded_doubles_data: ap.bounded_doubles || [],
+      fixed_statuses: ap.fixed_statuses || [],
+      bounded_statuses_count: (ap.bounded_statuses || []).length,
+      bounded_statuses_data: ap.bounded_statuses || [],
+    });
 
     // Copy inner buffer to payload_data (offset 2 for discriminator)
-    const innerSize = serialization_test_ComprehensiveArrayMessage_max_size;
-    (innerMsg as any)._buffer.copy((msg as any)._buffer, 2, 0, innerSize);
+    innerMsg._buffer.copy(msg._buffer, 2, 0, serialization_test_ComprehensiveArrayMessage._size);
   } else if (testData.payload_type === 2 && testData.test_payload) {
     // SerializationTestMessage - discriminator is its msg_id
-    msg.payload_discriminator = serialization_test_SerializationTestMessage_msgid;
+    msg.payload_discriminator = serialization_test_SerializationTestMessage._msgid!;
 
-    // Inner message auto-allocates its own buffer
-    const innerMsg = new serialization_test_SerializationTestMessage();
-
+    // Inner message using object initialization
     const tp = testData.test_payload;
-    innerMsg.magic_number = tp.magic_number;
-    innerMsg.test_string_length = tp.test_string.length;
-    innerMsg.test_string_data = tp.test_string;
-    innerMsg.test_float = tp.test_float;
-    innerMsg.test_bool = tp.test_bool;
-    innerMsg.test_array_count = tp.test_array.length;
-    innerMsg.test_array_data = tp.test_array;
+    const innerMsg = new serialization_test_SerializationTestMessage({
+      magic_number: tp.magic_number,
+      test_string_length: tp.test_string.length,
+      test_string_data: tp.test_string,
+      test_float: tp.test_float,
+      test_bool: tp.test_bool,
+      test_array_count: tp.test_array.length,
+      test_array_data: tp.test_array,
+    });
 
     // Copy inner buffer to payload_data (offset 2 for discriminator)
-    const innerSize = serialization_test_SerializationTestMessage_max_size;
-    (innerMsg as any)._buffer.copy((msg as any)._buffer, 2, 0, innerSize);
+    innerMsg._buffer.copy(msg._buffer, 2, 0, serialization_test_SerializationTestMessage._size);
   }
 
-  return { msg };
+  return msg;
 }
 
 /**
@@ -328,8 +278,8 @@ export function validateUnionTestMessageAgainstData(msg: any, testData: any): bo
 
   // Map payload_type to expected discriminator (message ID)
   const expectedDiscriminator = testData.payload_type === 1
-    ? serialization_test_ComprehensiveArrayMessage_msgid
-    : serialization_test_SerializationTestMessage_msgid;
+    ? serialization_test_ComprehensiveArrayMessage._msgid
+    : serialization_test_SerializationTestMessage._msgid;
 
   if (msg.payload_discriminator !== expectedDiscriminator) {
     errors.push(`payload_discriminator: expected ${expectedDiscriminator}, got ${msg.payload_discriminator}`);
@@ -338,8 +288,8 @@ export function validateUnionTestMessageAgainstData(msg: any, testData: any): bo
   // Validate the inner payload based on type
   if (testData.payload_type === 1 && testData.array_payload) {
     // ComprehensiveArrayMessage - extract from payload_data
-    const innerBuffer = Buffer.alloc(serialization_test_ComprehensiveArrayMessage_max_size);
-    (msg as any)._buffer.copy(innerBuffer, 0, 2, 2 + serialization_test_ComprehensiveArrayMessage_max_size);
+    const innerBuffer = Buffer.alloc(serialization_test_ComprehensiveArrayMessage._size);
+    msg._buffer.copy(innerBuffer, 0, 2, 2 + serialization_test_ComprehensiveArrayMessage._size);
     const innerMsg = new serialization_test_ComprehensiveArrayMessage(innerBuffer);
 
     const ap = testData.array_payload;
@@ -356,8 +306,8 @@ export function validateUnionTestMessageAgainstData(msg: any, testData: any): bo
     }
   } else if (testData.payload_type === 2 && testData.test_payload) {
     // SerializationTestMessage
-    const innerBuffer = Buffer.alloc(serialization_test_SerializationTestMessage_max_size);
-    (msg as any)._buffer.copy(innerBuffer, 0, 2, 2 + serialization_test_SerializationTestMessage_max_size);
+    const innerBuffer = Buffer.alloc(serialization_test_SerializationTestMessage._size);
+    msg._buffer.copy(innerBuffer, 0, 2, 2 + serialization_test_SerializationTestMessage._size);
     const innerMsg = new serialization_test_SerializationTestMessage(innerBuffer);
 
     const tp = testData.test_payload;
@@ -392,21 +342,18 @@ export function validateUnionTestMessageAgainstData(msg: any, testData: any): bo
 }
 
 /**
- * Create message from test data
+ * Create message from test data using object initialization
  */
-export function createMessageFromData(msgStruct: any, testData: TestMessage): { msg: any } {
-  // Struct constructor auto-allocates buffer when none provided
-  const msg = new msgStruct();
-
-  msg.magic_number = testData.magic_number;
-  msg.test_string_length = testData.test_string.length;
-  msg.test_string_data = testData.test_string;
-  msg.test_float = testData.test_float;
-  msg.test_bool = testData.test_bool;
-  msg.test_array_count = testData.test_array.length;
-  msg.test_array_data = testData.test_array;
-
-  return { msg };
+export function createMessageFromData(testData: TestMessage): serialization_test_SerializationTestMessage {
+  return new serialization_test_SerializationTestMessage({
+    magic_number: testData.magic_number,
+    test_string_length: testData.test_string.length,
+    test_string_data: testData.test_string,
+    test_float: testData.test_float,
+    test_bool: testData.test_bool,
+    test_array_count: testData.test_array.length,
+    test_array_data: testData.test_array,
+  });
 }
 
 /**
@@ -458,10 +405,6 @@ export function validateMessageAgainstData(msg: any, testData: TestMessage): boo
  * Uses BufferWriter for efficient multi-frame encoding.
  */
 export function encodeTestMessage(formatName: string): Buffer {
-  const serialMsgInfo = getMessageInfo();
-  const basicMsgInfo = getBasicTypesMessageInfo();
-  const unionMsgInfo = getUnionTestMessageInfo();
-
   const mixedMessages = loadMixedMessages();
 
   // Create the appropriate BufferWriter for this profile
@@ -486,22 +429,18 @@ export function encodeTestMessage(formatName: string): Buffer {
     const msgType = item.type;
     const testData = item.data;
 
-    let msgInfo: any, createFunc: any;
+    let msg: any;
     if (msgType === 'SerializationTestMessage') {
-      msgInfo = serialMsgInfo;
-      createFunc = createMessageFromData;
+      msg = createMessageFromData(testData);
     } else if (msgType === 'BasicTypesMessage') {
-      msgInfo = basicMsgInfo;
-      createFunc = createBasicTypesMessageFromData;
+      msg = createBasicTypesMessageFromData(testData);
     } else if (msgType === 'UnionTestMessage') {
-      msgInfo = unionMsgInfo;
-      createFunc = createUnionTestMessageFromData;
+      msg = createUnionTestMessageFromData(testData);
     } else {
       console.log(`  Unknown message type: ${msgType}`);
       return Buffer.alloc(0);
     }
 
-    const { msg } = createFunc(msgInfo.struct, testData);
     // Use BufferWriter to encode and append frame - it tracks offset automatically
     const bytesWritten = writer.write(msg);
     if (bytesWritten === 0) {
@@ -520,10 +459,6 @@ export function encodeTestMessage(formatName: string): Buffer {
  * Returns the number of messages successfully decoded.
  */
 export function decodeTestMessage(formatName: string, data: Buffer): number {
-  const serialMsgInfo = getMessageInfo();
-  const basicMsgInfo = getBasicTypesMessageInfo();
-  const unionMsgInfo = getUnionTestMessageInfo();
-
   const mixedMessages = loadMixedMessages();
 
   // Create the appropriate BufferReader for this profile
@@ -558,19 +493,19 @@ export function decodeTestMessage(formatName: string, data: Buffer): number {
     const msgType = item.type;
     const testData = item.data;
 
-    // Validate msg_id matches expected type
-    let expectedMsgId: number, msgStruct: any, validateFunc: any;
+    // Validate msg_id matches expected type and get appropriate class/validator
+    let expectedMsgId: number | undefined, MsgClass: any, validateFunc: any;
     if (msgType === 'SerializationTestMessage') {
-      expectedMsgId = serialMsgInfo.msgId;
-      msgStruct = serialMsgInfo.struct;
+      expectedMsgId = serialization_test_SerializationTestMessage._msgid;
+      MsgClass = serialization_test_SerializationTestMessage;
       validateFunc = validateMessageAgainstData;
     } else if (msgType === 'BasicTypesMessage') {
-      expectedMsgId = basicMsgInfo.msgId;
-      msgStruct = basicMsgInfo.struct;
+      expectedMsgId = serialization_test_BasicTypesMessage._msgid;
+      MsgClass = serialization_test_BasicTypesMessage;
       validateFunc = validateBasicTypesMessageAgainstData;
     } else if (msgType === 'UnionTestMessage') {
-      expectedMsgId = unionMsgInfo.msgId;
-      msgStruct = unionMsgInfo.struct;
+      expectedMsgId = serialization_test_UnionTestMessage._msgid;
+      MsgClass = serialization_test_UnionTestMessage;
       validateFunc = validateUnionTestMessageAgainstData;
     } else {
       console.log(`  Unknown message type: ${msgType}`);
@@ -583,7 +518,7 @@ export function decodeTestMessage(formatName: string, data: Buffer): number {
     }
 
     // Create message object from decoded data
-    const msg = new msgStruct(Buffer.from(result.msg_data));
+    const msg = new MsgClass(Buffer.from(result.msg_data));
 
     // Validate the message against test data
     if (!validateFunc(msg, testData)) {

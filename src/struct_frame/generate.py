@@ -878,7 +878,7 @@ def generateTsFileStrings(path):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".sf.ts")
-        data = ''.join(FileTsGen.generate(value))
+        data = ''.join(FileTsGen.generate(value, use_class_based=True, packages=packages))
         out[name] = data
     return out
 
@@ -887,7 +887,7 @@ def generateJsFileStrings(path):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".sf.js")
-        data = ''.join(FileJsGen.generate(value))
+        data = ''.join(FileJsGen.generate(value, use_class_based=True, packages=packages))
         out[name] = data
     return out
 

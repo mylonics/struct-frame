@@ -51,7 +51,7 @@ export class WebSocketTransport extends BaseTransport {
           this.handleData(data);
         };
 
-        this.ws.onerror = (event) => {
+        this.ws.onerror = (_event) => {
           const error = new Error('WebSocket error');
           this.handleError(error);
           if (!this.connected) {
