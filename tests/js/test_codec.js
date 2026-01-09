@@ -82,31 +82,8 @@ function loadMixedMessages() {
   throw new Error('Could not find test_messages.json');
 }
 
-// Load test messages at module initialization
-const TEST_MESSAGES = loadTestMessages();
-
-// Expected test values (from test_messages.json) - first message for backwards compatibility
-const EXPECTED_VALUES = TEST_MESSAGES.length > 0 ? {
-  magic_number: TEST_MESSAGES[0].magic_number,
-  test_string: TEST_MESSAGES[0].test_string,
-  test_float: TEST_MESSAGES[0].test_float,
-  test_bool: TEST_MESSAGES[0].test_bool,
-  test_array: TEST_MESSAGES[0].test_array,
-} : {
-  magic_number: 0,
-  test_string: '',
-  test_float: 0.0,
-  test_bool: false,
-  test_array: [],
-};
-
-// Import generated frame profile functions - include BufferReader/Writer factory functions
+// Import generated frame profile functions - BufferReader/Writer factory functions only
 const {
-  ProfileStandard,
-  ProfileSensor,
-  ProfileIPC,
-  ProfileBulk,
-  ProfileNetwork,
   createProfileStandardReader,
   createProfileStandardWriter,
   createProfileSensorReader,
@@ -123,42 +100,6 @@ const {
 function getMsgLength(msgId) {
   const module = require('./serialization_test.sf');
   return module.get_message_length(msgId);
-}
-
-// Wrap ProfileSensor and ProfileIPC to include getMsgLength callback
-const ProfileSensorWithLength = {
-  encodeMsg: ProfileSensor.encodeMsg,
-  validatePacket: function(buffer) {
-    return ProfileSensor.validatePacket(buffer, getMsgLength);
-  }
-};
-
-const ProfileIPCWithLength = {
-  encodeMsg: ProfileIPC.encodeMsg,
-  validatePacket: function(buffer) {
-    return ProfileIPC.validatePacket(buffer, getMsgLength);
-  }
-};
-
-/**
- * Get the parser class for a frame format or profile.
- */
-function getParserClass(formatName) {
-  const formatMap = {
-    // Profile names (preferred) - using generated profile functions
-    'profile_standard': ProfileStandard,
-    'profile_sensor': ProfileSensorWithLength,
-    'profile_ipc': ProfileIPCWithLength,
-    'profile_bulk': ProfileBulk,
-    'profile_network': ProfileNetwork,
-  };
-
-  const parserClass = formatMap[formatName];
-  if (!parserClass) {
-    throw new Error(`Unknown frame format: ${formatName}`);
-  }
-
-  return parserClass;
 }
 
 /**
@@ -501,72 +442,6 @@ function validateUnionTestMessageAgainstData(msg, testData) {
 }
 
 /**
- * Create a test message with expected values.
- */
-function createTestMessage(msgStruct) {
-  const size = msgStruct._size || msgStruct.getSize();
-  const buffer = Buffer.alloc(size);
-  const msg = new msgStruct(buffer);
-
-  msg.magic_number = EXPECTED_VALUES.magic_number;
-  msg.test_string_length = EXPECTED_VALUES.test_string.length;
-  msg.test_string_data = EXPECTED_VALUES.test_string;
-  msg.test_float = EXPECTED_VALUES.test_float;
-  msg.test_bool = EXPECTED_VALUES.test_bool;
-  msg.test_array_count = EXPECTED_VALUES.test_array.length;
-
-  for (let i = 0; i < EXPECTED_VALUES.test_array.length; i++) {
-    msg.test_array_data[i] = EXPECTED_VALUES.test_array[i];
-  }
-
-  return { msg, buffer };
-}
-
-/**
- * Validate that a decoded message matches expected values.
- */
-function validateTestMessage(msg) {
-  const errors = [];
-
-  if (msg.magic_number !== EXPECTED_VALUES.magic_number) {
-    errors.push(`magic_number: expected ${EXPECTED_VALUES.magic_number}, got ${msg.magic_number}`);
-  }
-
-  const testString = msg.test_string_data.substring(0, msg.test_string_length);
-  if (testString !== EXPECTED_VALUES.test_string) {
-    errors.push(`test_string: expected '${EXPECTED_VALUES.test_string}', got '${testString}'`);
-  }
-
-  if (Math.abs(msg.test_float - EXPECTED_VALUES.test_float) > 0.0001) {
-    errors.push(`test_float: expected ${EXPECTED_VALUES.test_float}, got ${msg.test_float}`);
-  }
-
-  if (msg.test_bool !== EXPECTED_VALUES.test_bool) {
-    errors.push(`test_bool: expected ${EXPECTED_VALUES.test_bool}, got ${msg.test_bool}`);
-  }
-
-  const arrayCount = msg.test_array_count;
-  if (arrayCount !== EXPECTED_VALUES.test_array.length) {
-    errors.push(`test_array.count: expected ${EXPECTED_VALUES.test_array.length}, got ${arrayCount}`);
-  } else {
-    for (let i = 0; i < arrayCount; i++) {
-      if (msg.test_array_data[i] !== EXPECTED_VALUES.test_array[i]) {
-        errors.push(`test_array[${i}]: expected ${EXPECTED_VALUES.test_array[i]}, got ${msg.test_array_data[i]}`);
-      }
-    }
-  }
-
-  if (errors.length > 0) {
-    for (const error of errors) {
-      console.log(`  Value mismatch: ${error}`);
-    }
-    return false;
-  }
-
-  return true;
-}
-
-/**
  * Encode multiple test messages using the specified frame format.
  * Uses BufferWriter for efficient multi-frame encoding.
  */
@@ -722,11 +597,7 @@ function decodeTestMessage(formatName, data) {
 }
 
 module.exports = {
-  EXPECTED_VALUES,
-  createTestMessage,
-  validateTestMessage,
   encodeTestMessage,
   decodeTestMessage,
-  getParserClass,
   getMessageInfo,
 };

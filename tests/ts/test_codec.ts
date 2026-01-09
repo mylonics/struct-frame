@@ -93,33 +93,8 @@ export function loadMixedMessages(): any[] {
 }
 
 
-// Load test messages at module initialization
-const TEST_MESSAGES: TestMessage[] = loadTestMessages();
-
-// Expected test values (from test_messages.json) - first message for backwards compatibility
-export const EXPECTED_VALUES = TEST_MESSAGES.length > 0 ? {
-  magic_number: TEST_MESSAGES[0].magic_number,
-  test_string: TEST_MESSAGES[0].test_string,
-  test_float: TEST_MESSAGES[0].test_float,
-  test_bool: TEST_MESSAGES[0].test_bool,
-  test_array: TEST_MESSAGES[0].test_array as number[],
-} : {
-  magic_number: 0,
-  test_string: '',
-  test_float: 0.0,
-  test_bool: false,
-  test_array: [] as number[],
-};
-
-
-// Import generated frame profile functions - include BufferReader/Writer factory functions
+// Import generated frame profile functions - BufferReader/Writer factory functions only
 import {
-  ProfileStandard,
-  ProfileSensor,
-  ProfileIPC,
-  ProfileBulk,
-  ProfileNetwork,
-  ProfileParser,
   createProfileStandardReader,
   createProfileStandardWriter,
   createProfileSensorReader,
@@ -151,44 +126,6 @@ const {
 // Helper to get message length for minimal payloads
 function getMsgLength(msgId: number): number | undefined {
   return get_message_length(msgId);
-}
-
-// Wrap ProfileSensor and ProfileIPC to include getMsgLength callback
-const ProfileSensorWithLength: ProfileParser = {
-  config: ProfileSensor.config,
-  encodeMsg: ProfileSensor.encodeMsg.bind(ProfileSensor),
-  validatePacket: function(buffer: Uint8Array) {
-    return ProfileSensor.validatePacket(buffer, getMsgLength);
-  }
-};
-
-const ProfileIPCWithLength: ProfileParser = {
-  config: ProfileIPC.config,
-  encodeMsg: ProfileIPC.encodeMsg.bind(ProfileIPC),
-  validatePacket: function(buffer: Uint8Array) {
-    return ProfileIPC.validatePacket(buffer, getMsgLength);
-  }
-};
-
-/**
- * Get the parser class for a frame format or profile.
- */
-export function getParserClass(formatName: string): any {
-  const formatMap: { [key: string]: any } = {
-    // Profile names (preferred) - using generated profile functions
-    'profile_standard': ProfileStandard,
-    'profile_sensor': ProfileSensorWithLength,
-    'profile_ipc': ProfileIPCWithLength,
-    'profile_bulk': ProfileBulk,
-    'profile_network': ProfileNetwork,
-  };
-
-  const ParserClass = formatMap[formatName];
-  if (!ParserClass) {
-    throw new Error(`Unknown frame format: ${formatName}`);
-  }
-
-  return ParserClass;
 }
 
 /**
@@ -504,72 +441,6 @@ export function validateMessageAgainstData(msg: any, testData: TestMessage): boo
     for (let i = 0; i < arrayCount; i++) {
       if (msg.test_array_data[i] !== testData.test_array[i]) {
         errors.push(`test_array[${i}]: expected ${testData.test_array[i]}, got ${msg.test_array_data[i]}`);
-      }
-    }
-  }
-
-  if (errors.length > 0) {
-    for (const error of errors) {
-      console.log(`  Value mismatch: ${error}`);
-    }
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * Create a test message with expected values.
- */
-export function createTestMessage(msgStruct: any): { msg: any; buffer: Buffer } {
-  const size = msgStruct._size || msgStruct.getSize();
-  const buffer = Buffer.alloc(size);
-  const msg = new msgStruct(buffer);
-
-  msg.magic_number = EXPECTED_VALUES.magic_number;
-  msg.test_string_length = EXPECTED_VALUES.test_string.length;
-  msg.test_string_data = EXPECTED_VALUES.test_string;
-  msg.test_float = EXPECTED_VALUES.test_float;
-  msg.test_bool = EXPECTED_VALUES.test_bool;
-  msg.test_array_count = EXPECTED_VALUES.test_array.length;
-
-  for (let i = 0; i < EXPECTED_VALUES.test_array.length; i++) {
-    msg.test_array_data[i] = EXPECTED_VALUES.test_array[i];
-  }
-
-  return { msg, buffer };
-}
-
-/**
- * Validate that a decoded message matches expected values.
- */
-export function validateTestMessage(msg: any): boolean {
-  const errors: string[] = [];
-
-  if (msg.magic_number !== EXPECTED_VALUES.magic_number) {
-    errors.push(`magic_number: expected ${EXPECTED_VALUES.magic_number}, got ${msg.magic_number}`);
-  }
-
-  const testString = msg.test_string_data.substring(0, msg.test_string_length);
-  if (testString !== EXPECTED_VALUES.test_string) {
-    errors.push(`test_string: expected '${EXPECTED_VALUES.test_string}', got '${testString}'`);
-  }
-
-  if (Math.abs(msg.test_float - EXPECTED_VALUES.test_float) > 0.0001) {
-    errors.push(`test_float: expected ${EXPECTED_VALUES.test_float}, got ${msg.test_float}`);
-  }
-
-  if (msg.test_bool !== EXPECTED_VALUES.test_bool) {
-    errors.push(`test_bool: expected ${EXPECTED_VALUES.test_bool}, got ${msg.test_bool}`);
-  }
-
-  const arrayCount = msg.test_array_count;
-  if (arrayCount !== EXPECTED_VALUES.test_array.length) {
-    errors.push(`test_array.count: expected ${EXPECTED_VALUES.test_array.length}, got ${arrayCount}`);
-  } else {
-    for (let i = 0; i < arrayCount; i++) {
-      if (msg.test_array_data[i] !== EXPECTED_VALUES.test_array[i]) {
-        errors.push(`test_array[${i}]: expected ${EXPECTED_VALUES.test_array[i]}, got ${msg.test_array_data[i]}`);
       }
     }
   }
