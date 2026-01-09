@@ -240,6 +240,23 @@ TS_TYPE_ANNOTATIONS = {
     "string": "string",
 }
 
+# TypeScript type annotations for array elements
+# Boolean arrays are stored as UInt8Array internally, so they return number[]
+TS_ARRAY_TYPE_ANNOTATIONS = {
+    "int8": "number",
+    "uint8": "number",
+    "int16": "number",
+    "uint16": "number",
+    "int32": "number",
+    "uint32": "number",
+    "int64": "bigint",
+    "uint64": "bigint",
+    "float": "number",
+    "double": "number",
+    "bool": "number",  # Boolean arrays stored as UInt8Array return number[]
+    "string": "string",
+}
+
 # Read method names for MessageBase helper methods
 READ_METHODS = {
     "int8": "_readInt8",
@@ -403,7 +420,9 @@ def calculate_field_layout(msg, package, packages):
                 else:
                     # Nested message type
                     nested_msg = _find_message_type(field_type, package, packages)
-                    elem_size = nested_msg.size if nested_msg else 0
+                    if nested_msg is None:
+                        raise ValueError(f"Unknown nested message type '{field_type}' for array field '{field.name}'")
+                    elem_size = nested_msg.size
                 
                 if field.size_option is not None:
                     # Fixed array
@@ -517,7 +536,9 @@ def calculate_field_layout(msg, package, packages):
             else:
                 # Nested message type - treated as single element struct array
                 nested_msg = _find_message_type(field_type, package, packages)
-                nested_size = nested_msg.size if nested_msg else 0
+                if nested_msg is None:
+                    raise ValueError(f"Unknown nested message type '{field_type}' for field '{field.name}'")
+                nested_size = nested_msg.size
                 fields.append(FieldInfo(
                     name=var_name,
                     offset=offset,

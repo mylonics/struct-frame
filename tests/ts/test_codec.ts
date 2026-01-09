@@ -107,15 +107,15 @@ import {
   ProfileNetworkWriter,
 } from '../generated/ts/frame_profiles';
 
-const {
+import {
   serialization_test_SerializationTestMessage,
   serialization_test_BasicTypesMessage,
   serialization_test_UnionTestMessage,
   serialization_test_ComprehensiveArrayMessage,
   get_message_length
-} = require('../generated/ts/serialization_test.sf');
+} from '../generated/ts/serialization_test.sf';
 
-// Get msgid and size from struct static properties
+// Get msgid and size from class static properties
 const serialization_test_SerializationTestMessage_msgid = serialization_test_SerializationTestMessage._msgid;
 const serialization_test_SerializationTestMessage_max_size = serialization_test_SerializationTestMessage._size;
 const serialization_test_BasicTypesMessage_msgid = serialization_test_BasicTypesMessage._msgid;
