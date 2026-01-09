@@ -201,3 +201,381 @@ class BaseEnumGen:
                 'is_last': is_last
             })
         return enum_length, enum_values_data
+
+
+# ==============================================================================
+# New class-based generation utilities
+# These utilities help generate classes that extend MessageBase for better
+# performance by avoiding runtime type resolution.
+# ==============================================================================
+
+# Type sizes for offset calculation
+TYPE_SIZES = {
+    "int8": 1,
+    "uint8": 1,
+    "int16": 2,
+    "uint16": 2,
+    "int32": 4,
+    "uint32": 4,
+    "int64": 8,
+    "uint64": 8,
+    "float": 4,
+    "double": 8,
+    "bool": 1,
+}
+
+# TypeScript type annotations for fields
+TS_TYPE_ANNOTATIONS = {
+    "int8": "number",
+    "uint8": "number",
+    "int16": "number",
+    "uint16": "number",
+    "int32": "number",
+    "uint32": "number",
+    "int64": "bigint",
+    "uint64": "bigint",
+    "float": "number",
+    "double": "number",
+    "bool": "boolean",
+    "string": "string",
+}
+
+# Read method names for MessageBase helper methods
+READ_METHODS = {
+    "int8": "_readInt8",
+    "uint8": "_readUInt8",
+    "int16": "_readInt16LE",
+    "uint16": "_readUInt16LE",
+    "int32": "_readInt32LE",
+    "uint32": "_readUInt32LE",
+    "int64": "_readBigInt64LE",
+    "uint64": "_readBigUInt64LE",
+    "float": "_readFloat32LE",
+    "double": "_readFloat64LE",
+    "bool": "_readBoolean8",
+}
+
+# Write method names for MessageBase helper methods
+WRITE_METHODS = {
+    "int8": "_writeInt8",
+    "uint8": "_writeUInt8",
+    "int16": "_writeInt16LE",
+    "uint16": "_writeUInt16LE",
+    "int32": "_writeInt32LE",
+    "uint32": "_writeUInt32LE",
+    "int64": "_writeBigInt64LE",
+    "uint64": "_writeBigUInt64LE",
+    "float": "_writeFloat32LE",
+    "double": "_writeFloat64LE",
+    "bool": "_writeBoolean8",
+}
+
+# Array read method names
+READ_ARRAY_METHODS = {
+    "int8": "_readInt8Array",
+    "uint8": "_readUInt8Array",
+    "int16": "_readInt16Array",
+    "uint16": "_readUInt16Array",
+    "int32": "_readInt32Array",
+    "uint32": "_readUInt32Array",
+    "int64": "_readBigInt64Array",
+    "uint64": "_readBigUInt64Array",
+    "float": "_readFloat32Array",
+    "double": "_readFloat64Array",
+    "bool": "_readUInt8Array",  # Boolean arrays stored as UInt8Array
+}
+
+# Array write method names
+WRITE_ARRAY_METHODS = {
+    "int8": "_writeInt8Array",
+    "uint8": "_writeUInt8Array",
+    "int16": "_writeInt16Array",
+    "uint16": "_writeUInt16Array",
+    "int32": "_writeInt32Array",
+    "uint32": "_writeUInt32Array",
+    "int64": "_writeBigInt64Array",
+    "uint64": "_writeBigUInt64Array",
+    "float": "_writeFloat32Array",
+    "double": "_writeFloat64Array",
+    "bool": "_writeUInt8Array",  # Boolean arrays stored as UInt8Array
+}
+
+
+class FieldInfo:
+    """Information about a field for class-based code generation."""
+    
+    def __init__(self, name, offset, size, field_type, is_array=False, 
+                 array_length=None, element_size=None, is_enum=False,
+                 is_nested=False, nested_type=None, is_variable=False,
+                 count_field=None, data_field=None, comments=None):
+        self.name = name
+        self.offset = offset
+        self.size = size
+        self.field_type = field_type
+        self.is_array = is_array
+        self.array_length = array_length
+        self.element_size = element_size
+        self.is_enum = is_enum
+        self.is_nested = is_nested
+        self.nested_type = nested_type
+        self.is_variable = is_variable  # Variable length array/string
+        self.count_field = count_field  # For variable arrays
+        self.data_field = data_field    # For variable strings/arrays
+        self.comments = comments or []
+
+
+def calculate_field_layout(msg, package, packages):
+    """
+    Calculate the byte offset for each field in a message.
+    
+    Args:
+        msg: Message object
+        package: Current package
+        packages: All packages for resolving nested types
+        
+    Returns:
+        List of FieldInfo objects with calculated offsets
+    """
+    fields = []
+    offset = 0
+    
+    # Process regular fields
+    for key, field in msg.fields.items():
+        var_name = StyleC.var_name(field.name)
+        field_type = field.fieldType
+        is_enum = field.isEnum
+        comments = field.comments
+        
+        if field.is_array:
+            # Array field
+            if field_type == "string":
+                # String array
+                if field.size_option is not None:
+                    # Fixed string array
+                    elem_size = field.element_size
+                    array_len = field.size_option
+                    total_size = elem_size * array_len
+                    fields.append(FieldInfo(
+                        name=var_name,
+                        offset=offset,
+                        size=total_size,
+                        field_type="string",
+                        is_array=True,
+                        array_length=array_len,
+                        element_size=elem_size,
+                        comments=comments
+                    ))
+                    offset += total_size
+                else:
+                    # Variable string array - has count + data
+                    elem_size = field.element_size
+                    max_count = field.max_size
+                    # Count field
+                    count_name = f"{var_name}_count"
+                    data_name = f"{var_name}_data"
+                    fields.append(FieldInfo(
+                        name=count_name,
+                        offset=offset,
+                        size=1,
+                        field_type="uint8",
+                        comments=comments
+                    ))
+                    offset += 1
+                    # Data field
+                    total_data_size = elem_size * max_count
+                    fields.append(FieldInfo(
+                        name=data_name,
+                        offset=offset,
+                        size=total_data_size,
+                        field_type="string",
+                        is_array=True,
+                        array_length=max_count,
+                        element_size=elem_size,
+                        is_variable=True
+                    ))
+                    offset += total_data_size
+            else:
+                # Non-string array
+                if is_enum:
+                    elem_size = 1
+                elif field_type in TYPE_SIZES:
+                    elem_size = TYPE_SIZES[field_type]
+                else:
+                    # Nested message type
+                    nested_msg = _find_message_type(field_type, package, packages)
+                    elem_size = nested_msg.size if nested_msg else 0
+                
+                if field.size_option is not None:
+                    # Fixed array
+                    array_len = field.size_option
+                    total_size = elem_size * array_len
+                    fields.append(FieldInfo(
+                        name=var_name,
+                        offset=offset,
+                        size=total_size,
+                        field_type=field_type,
+                        is_array=True,
+                        array_length=array_len,
+                        element_size=elem_size,
+                        is_enum=is_enum,
+                        is_nested=field_type not in TYPE_SIZES and not is_enum,
+                        nested_type=_get_nested_type_name(field, package),
+                        comments=comments
+                    ))
+                    offset += total_size
+                else:
+                    # Variable array
+                    max_count = field.max_size
+                    count_name = f"{var_name}_count"
+                    data_name = f"{var_name}_data"
+                    # Count field
+                    fields.append(FieldInfo(
+                        name=count_name,
+                        offset=offset,
+                        size=1,
+                        field_type="uint8",
+                        comments=comments
+                    ))
+                    offset += 1
+                    # Data field
+                    total_data_size = elem_size * max_count
+                    fields.append(FieldInfo(
+                        name=data_name,
+                        offset=offset,
+                        size=total_data_size,
+                        field_type=field_type,
+                        is_array=True,
+                        array_length=max_count,
+                        element_size=elem_size,
+                        is_enum=is_enum,
+                        is_nested=field_type not in TYPE_SIZES and not is_enum,
+                        nested_type=_get_nested_type_name(field, package),
+                        is_variable=True
+                    ))
+                    offset += total_data_size
+        elif field_type == "string":
+            # Non-array string
+            if field.size_option is not None:
+                # Fixed string
+                str_size = field.size_option
+                fields.append(FieldInfo(
+                    name=var_name,
+                    offset=offset,
+                    size=str_size,
+                    field_type="string",
+                    element_size=str_size,
+                    comments=comments
+                ))
+                offset += str_size
+            elif field.max_size is not None:
+                # Variable string - has length + data
+                max_len = field.max_size
+                length_name = f"{var_name}_length"
+                data_name = f"{var_name}_data"
+                # Length field
+                fields.append(FieldInfo(
+                    name=length_name,
+                    offset=offset,
+                    size=1,
+                    field_type="uint8",
+                    comments=comments
+                ))
+                offset += 1
+                # Data field
+                fields.append(FieldInfo(
+                    name=data_name,
+                    offset=offset,
+                    size=max_len,
+                    field_type="string",
+                    element_size=max_len,
+                    is_variable=True
+                ))
+                offset += max_len
+        else:
+            # Primitive or nested message type
+            if is_enum:
+                fields.append(FieldInfo(
+                    name=var_name,
+                    offset=offset,
+                    size=1,
+                    field_type="uint8",
+                    is_enum=True,
+                    comments=comments
+                ))
+                offset += 1
+            elif field_type in TYPE_SIZES:
+                # Primitive type
+                type_size = TYPE_SIZES[field_type]
+                fields.append(FieldInfo(
+                    name=var_name,
+                    offset=offset,
+                    size=type_size,
+                    field_type=field_type,
+                    comments=comments
+                ))
+                offset += type_size
+            else:
+                # Nested message type - treated as single element struct array
+                nested_msg = _find_message_type(field_type, package, packages)
+                nested_size = nested_msg.size if nested_msg else 0
+                fields.append(FieldInfo(
+                    name=var_name,
+                    offset=offset,
+                    size=nested_size,
+                    field_type=field_type,
+                    is_array=True,
+                    array_length=1,
+                    element_size=nested_size,
+                    is_nested=True,
+                    nested_type=_get_nested_type_name(field, package),
+                    comments=comments
+                ))
+                offset += nested_size
+    
+    # Process oneofs
+    for key, oneof in msg.oneofs.items():
+        oneof_name = oneof.name
+        if oneof.auto_discriminator:
+            # Discriminator field (UInt16LE)
+            discrim_name = f"{oneof_name}_discriminator"
+            fields.append(FieldInfo(
+                name=discrim_name,
+                offset=offset,
+                size=2,
+                field_type="uint16"
+            ))
+            offset += 2
+        # Union data (byte array)
+        data_name = f"{oneof_name}_data"
+        fields.append(FieldInfo(
+            name=data_name,
+            offset=offset,
+            size=oneof.size,
+            field_type="uint8",
+            is_array=True,
+            array_length=oneof.size,
+            element_size=1
+        ))
+        offset += oneof.size
+    
+    return fields
+
+
+def _find_message_type(type_name, package, packages):
+    """Find a message type by name in packages."""
+    # First check current package
+    msg = package.findFieldType(type_name)
+    if msg:
+        return msg
+    # Then check all packages
+    for pkg_name, pkg in packages.items():
+        msg = pkg.findFieldType(type_name)
+        if msg:
+            return msg
+    return None
+
+
+def _get_nested_type_name(field, package):
+    """Get the fully qualified nested type name."""
+    type_package = getattr(field, 'type_package', None) or package.name
+    return f"{type_package}_{field.fieldType}"

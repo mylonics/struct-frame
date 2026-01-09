@@ -14,6 +14,15 @@ from struct_frame.ts_js_base import (
     ts_array_types,
     BaseFieldGen,
     BaseEnumGen,
+    # New class-based generation utilities
+    TYPE_SIZES,
+    TS_TYPE_ANNOTATIONS,
+    READ_METHODS,
+    WRITE_METHODS,
+    READ_ARRAY_METHODS,
+    WRITE_ARRAY_METHODS,
+    calculate_field_layout,
+    FieldInfo,
 )
 import time
 
@@ -135,13 +144,170 @@ class MessageTsGen():
         return '{' + ', '.join(parts) + '}'
 
 
+class MessageTsClassGen():
+    """Generate TypeScript message classes that extend MessageBase."""
+    
+    @staticmethod
+    def generate(msg, packageName, package, packages):
+        """Generate a class-based message definition."""
+        leading_comment = msg.comments
+        result = ''
+        if leading_comment:
+            for c in msg.comments:
+                result = '%s\n' % c
+
+        package_msg_name = '%s_%s' % (packageName, msg.name)
+        
+        # Calculate field layout with offsets
+        fields = calculate_field_layout(msg, package, packages)
+        total_size = msg.size
+        
+        # Generate class declaration
+        result += f'export class {package_msg_name} extends MessageBase {{\n'
+        
+        # Static properties
+        result += f'  static readonly _size: number = {total_size};\n'
+        if msg.id:
+            result += f'  static readonly _msgid: number = {msg.id};\n'
+        result += '\n'
+        
+        # Generate getters and setters for each field
+        for field_info in fields:
+            result += MessageTsClassGen._generate_field_accessors(field_info, package_msg_name, packages)
+        
+        # Static getSize method
+        result += f'  static getSize(): number {{\n'
+        result += f'    return {total_size};\n'
+        result += f'  }}\n'
+        
+        result += '}\n'
+        return result + '\n'
+    
+    @staticmethod
+    def _generate_field_accessors(field_info, class_name, packages):
+        """Generate getter and setter for a single field."""
+        name = field_info.name
+        offset = field_info.offset
+        field_type = field_info.field_type
+        result = ''
+        
+        # Add comments if present
+        for comment in field_info.comments:
+            result += f'{comment}\n'
+        
+        if field_info.is_array:
+            result += MessageTsClassGen._generate_array_accessors(field_info)
+        elif field_type == "string":
+            result += MessageTsClassGen._generate_string_accessors(field_info)
+        elif field_info.is_enum or field_type in TYPE_SIZES:
+            result += MessageTsClassGen._generate_primitive_accessors(field_info)
+        
+        return result
+    
+    @staticmethod
+    def _generate_primitive_accessors(field_info):
+        """Generate accessors for primitive types."""
+        name = field_info.name
+        offset = field_info.offset
+        field_type = field_info.field_type
+        
+        # Handle enum as uint8
+        if field_info.is_enum:
+            field_type = "uint8"
+        
+        ts_type = TS_TYPE_ANNOTATIONS.get(field_type, "number")
+        read_method = READ_METHODS.get(field_type, "_readUInt8")
+        write_method = WRITE_METHODS.get(field_type, "_writeUInt8")
+        
+        result = f'  get {name}(): {ts_type} {{\n'
+        result += f'    return this.{read_method}({offset});\n'
+        result += f'  }}\n'
+        result += f'  set {name}(value: {ts_type}) {{\n'
+        result += f'    this.{write_method}({offset}, value);\n'
+        result += f'  }}\n\n'
+        
+        return result
+    
+    @staticmethod
+    def _generate_string_accessors(field_info):
+        """Generate accessors for string types."""
+        name = field_info.name
+        offset = field_info.offset
+        size = field_info.element_size or field_info.size
+        
+        result = f'  get {name}(): string {{\n'
+        result += f'    return this._readString({offset}, {size});\n'
+        result += f'  }}\n'
+        result += f'  set {name}(value: string) {{\n'
+        result += f'    this._writeString({offset}, {size}, value);\n'
+        result += f'  }}\n\n'
+        
+        return result
+    
+    @staticmethod
+    def _generate_array_accessors(field_info):
+        """Generate accessors for array types."""
+        name = field_info.name
+        offset = field_info.offset
+        field_type = field_info.field_type
+        length = field_info.array_length
+        elem_size = field_info.element_size
+        
+        if field_info.is_nested:
+            # Struct array
+            nested_type = field_info.nested_type
+            result = f'  get {name}(): {nested_type}[] {{\n'
+            result += f'    return this._readStructArray({offset}, {length}, {nested_type});\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value: ({nested_type} | Record<string, unknown>)[]) {{\n'
+            result += f'    this._writeStructArray({offset}, {length}, {elem_size}, value, {nested_type});\n'
+            result += f'  }}\n\n'
+        elif field_type == "string":
+            # String array using struct array internally (for fixed strings)
+            # This is a special case handled by StructArray
+            result = f'  get {name}(): any[] {{\n'
+            result += f'    // String array - internal struct array representation\n'
+            result += f'    const result: any[] = [];\n'
+            result += f'    for (let i = 0; i < {length}; i++) {{\n'
+            result += f'      result.push(this._readString({offset} + i * {elem_size}, {elem_size}));\n'
+            result += f'    }}\n'
+            result += f'    return result;\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value: string[]) {{\n'
+            result += f'    const arr = value || [];\n'
+            result += f'    for (let i = 0; i < {length}; i++) {{\n'
+            result += f'      this._writeString({offset} + i * {elem_size}, {elem_size}, i < arr.length ? arr[i] : \'\');\n'
+            result += f'    }}\n'
+            result += f'  }}\n\n'
+        else:
+            # Primitive array
+            if field_info.is_enum:
+                field_type = "uint8"
+            
+            ts_elem_type = TS_TYPE_ANNOTATIONS.get(field_type, "number")
+            read_method = READ_ARRAY_METHODS.get(field_type, "_readUInt8Array")
+            write_method = WRITE_ARRAY_METHODS.get(field_type, "_writeUInt8Array")
+            
+            result = f'  get {name}(): {ts_elem_type}[] {{\n'
+            result += f'    return this.{read_method}({offset}, {length});\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value: {ts_elem_type}[]) {{\n'
+            result += f'    this.{write_method}({offset}, {length}, value);\n'
+            result += f'  }}\n\n'
+        
+        return result
+
+
 class FileTsGen():
     @staticmethod
-    def generate(package):
+    def generate(package, use_class_based=False, packages=None):
         yield '/* Automatically generated struct frame header */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
 
-        yield "import { Struct, ExtractType } from './struct_base';\n"
+        if use_class_based:
+            yield "import { MessageBase } from './struct_base';\n"
+        else:
+            yield "import { Struct, ExtractType } from './struct_base';\n"
         
         # Collect cross-package type dependencies
         external_types = {}  # {package_name: set of type names}
@@ -176,9 +342,14 @@ class FileTsGen():
                 yield EnumTsGen.generate(enum, package.name) + '\n\n'
 
         if package.messages:
-            yield '/* Struct definitions */\n'
-            for key, msg in package.sortedMessages().items():
-                yield MessageTsGen.generate(msg, package.name, package) + '\n'
+            if use_class_based:
+                yield '/* Message class definitions */\n'
+                for key, msg in package.sortedMessages().items():
+                    yield MessageTsClassGen.generate(msg, package.name, package, packages or {}) + '\n'
+            else:
+                yield '/* Struct definitions */\n'
+                for key, msg in package.sortedMessages().items():
+                    yield MessageTsGen.generate(msg, package.name, package) + '\n'
             yield '\n'
 
         if package.messages:
