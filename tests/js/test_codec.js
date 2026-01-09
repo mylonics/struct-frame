@@ -98,7 +98,7 @@ const {
 
 // Helper to get message length for minimal payloads
 function getMsgLength(msgId) {
-  const module = require('./serialization_test.sf');
+  const module = require('../generated/js/serialization_test.sf');
   return module.get_message_length(msgId);
 }
 
@@ -106,7 +106,7 @@ function getMsgLength(msgId) {
  * Get the message struct and metadata.
  */
 function getMessageInfo() {
-  const module = require('./serialization_test.sf');
+  const module = require('../generated/js/serialization_test.sf');
   return {
     struct: module.serialization_test_SerializationTestMessage,
     msgId: module.serialization_test_SerializationTestMessage._msgid,
@@ -118,7 +118,7 @@ function getMessageInfo() {
  * Get message info for BasicTypesMessage
  */
 function getBasicTypesMessageInfo() {
-  const module = require('./serialization_test.sf');
+  const module = require('../generated/js/serialization_test.sf');
   return {
     struct: module.serialization_test_BasicTypesMessage,
     msgId: module.serialization_test_BasicTypesMessage._msgid,
@@ -130,7 +130,7 @@ function getBasicTypesMessageInfo() {
  * Get message info for UnionTestMessage
  */
 function getUnionTestMessageInfo() {
-  const module = require('./serialization_test.sf');
+  const module = require('../generated/js/serialization_test.sf');
   return {
     struct: module.serialization_test_UnionTestMessage,
     msgId: module.serialization_test_UnionTestMessage._msgid,

@@ -113,7 +113,7 @@ const {
   serialization_test_UnionTestMessage,
   serialization_test_ComprehensiveArrayMessage,
   get_message_length
-} = require('./serialization_test.sf');
+} = require('../generated/ts/serialization_test.sf');
 
 // Get msgid and size from struct static properties
 const serialization_test_SerializationTestMessage_msgid = serialization_test_SerializationTestMessage._msgid;

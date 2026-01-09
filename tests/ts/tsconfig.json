@@ -3,13 +3,12 @@
     "target": "ES2020",
     "module": "commonjs",
     "moduleResolution": "node",
-    "outDir": "./build/ts",
+    "outDir": "./build",
     "baseUrl": ".",
     "paths": {
       "*": [
         "./node_modules/*",
-        "./node_modules/@types/*",
-        "../generated/ts/*"
+        "./node_modules/@types/*"
       ]
     },
     "types": [
@@ -29,6 +28,7 @@
     "resolveJsonModule": true
   },
   "include": [
-    "./*.ts"
+    "./*.ts",
+    "../generated/ts/*.ts"
   ]
 }
