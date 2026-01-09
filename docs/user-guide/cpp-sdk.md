@@ -318,6 +318,187 @@ size_t frame_len = parser.encode(1, msg_data, 10, output, sizeof(output));
 
 See the [Minimal Frames Guide](minimal-frames.md) for complete examples and best practices.
 
+## Recommended Encoding/Decoding Patterns
+
+**The patterns shown in this section are the recommended way to encode and decode messages, as demonstrated in the test suite (`tests/cpp/test_codec.cpp`).** These high-level APIs handle common use cases efficiently and are the gold standard for library usage.
+
+### BufferWriter - Encode Multiple Frames
+
+`BufferWriter` encodes multiple frames into a buffer with automatic offset tracking. This is the recommended way to encode messages.
+
+```cpp
+#include "FrameProfiles.hpp"
+#include "my_messages.sf.hpp"
+
+// Create a BufferWriter for your chosen profile
+uint8_t buffer[2048];
+ProfileStandardWriter writer(buffer, sizeof(buffer));
+
+// Encode multiple messages - writer tracks offset automatically
+StatusMessage status{};
+status.temperature = 25.5f;
+status.battery = 95;
+
+size_t bytes_written = writer.write(status);
+if (bytes_written == 0) {
+    // Buffer full or encoding error
+}
+
+CommandMessage cmd{};
+cmd.action = 1;
+cmd.value = 42;
+
+bytes_written = writer.write(cmd);
+if (bytes_written == 0) {
+    // Buffer full or encoding error
+}
+
+// Get total encoded size
+size_t total_size = writer.size();
+
+// Get pointer to encoded data
+const uint8_t* encoded_data = buffer;
+
+// Send encoded_data over your transport (UART, TCP, etc.)
+serial_send(encoded_data, total_size);
+```
+
+**Available Profile Writers:**
+- `ProfileStandardWriter` - Basic header + Default payload (general purpose, CRC protected)
+- `ProfileSensorWriter` - Tiny header + Minimal payload (low bandwidth, no CRC)
+- `ProfileIPCWriter` - No header + Minimal payload (trusted IPC, minimal overhead)
+- `ProfileBulkWriter` - Basic header + Extended payload (file transfers, includes package ID)
+- `ProfileNetworkWriter` - Basic header + Extended Multi-System Stream (networked systems)
+
+### BufferReader - Parse Multiple Frames from a Buffer
+
+`BufferReader` iterates through a buffer containing one or more frames, automatically tracking the offset:
+
+```cpp
+#include "FrameProfiles.hpp"
+
+// Received data from transport
+uint8_t recv_buffer[2048];
+size_t recv_size = serial_receive(recv_buffer, sizeof(recv_buffer));
+
+// Create a BufferReader for your chosen profile
+ProfileStandardReader reader(recv_buffer, recv_size);
+
+// Parse all messages in the buffer
+while (reader.has_more()) {
+    auto result = reader.next();
+    
+    if (!result.valid) {
+        // No more valid frames
+        break;
+    }
+    
+    // Process the message based on msg_id
+    switch (result.msg_id) {
+        case StatusMessage::MSG_ID: {
+            auto* msg = reinterpret_cast<const StatusMessage*>(result.msg_data);
+            process_status(*msg);
+            break;
+        }
+        case CommandMessage::MSG_ID: {
+            auto* msg = reinterpret_cast<const CommandMessage*>(result.msg_data);
+            process_command(*msg);
+            break;
+        }
+        default:
+            // Unknown message type
+            break;
+    }
+}
+```
+
+**Available Profile Readers:**
+- `ProfileStandardReader` - Basic + Default (general purpose)
+- `ProfileSensorReader` - Tiny + Minimal (requires `get_message_length` callback)
+- `ProfileIPCReader` - None + Minimal (requires `get_message_length` callback)
+- `ProfileBulkReader` - Basic + Extended
+- `ProfileNetworkReader` - Basic + Extended Multi-System Stream
+
+### AccumulatingReader - Unified Buffer and Streaming Parser
+
+`AccumulatingReader` is the **recommended parser for production use**. It handles both buffer mode (processing chunks) and streaming mode (byte-by-byte), with automatic handling of partial messages across buffer boundaries.
+
+**Buffer Mode** - Processing chunks of data:
+
+```cpp
+#include "FrameProfiles.hpp"
+
+// Create reader with internal buffer (default 1024 bytes)
+AccumulatingReader<ProfileStandardConfig> reader;
+
+// Process incoming chunks (e.g., from network or DMA)
+void on_data_received(const uint8_t* chunk, size_t size) {
+    reader.add_data(chunk, size);
+    
+    // Extract all complete messages
+    while (auto result = reader.next()) {
+        if (!result.valid) {
+            break;
+        }
+        process_message(result.msg_id, result.msg_data, result.msg_len);
+    }
+    
+    // Partial message state is automatically preserved
+    // Next call to add_data() will continue where we left off
+}
+```
+
+**Stream Mode** - Byte-by-byte processing (UART/serial):
+
+```cpp
+#include "FrameProfiles.hpp"
+
+// Create reader with internal buffer
+AccumulatingReader<ProfileStandardConfig> reader;
+
+// Process incoming bytes one at a time
+void on_serial_byte(uint8_t byte) {
+    if (auto result = reader.push_byte(byte)) {
+        // Complete message received
+        process_message(result.msg_id, result.msg_data, result.msg_len);
+    }
+}
+```
+
+**Using with Minimal Profiles** (requires message length callback):
+
+```cpp
+#include "FrameProfiles.hpp"
+#include "my_messages.sf.hpp"
+
+// For minimal profiles, provide get_message_length callback
+AccumulatingReader<ProfileSensorConfig> reader(get_message_length);
+
+// Use add_data() or push_byte() as shown above
+void on_data_received(const uint8_t* chunk, size_t size) {
+    reader.add_data(chunk, size);
+    while (auto result = reader.next()) {
+        if (!result.valid) break;
+        process_message(result.msg_id, result.msg_data, result.msg_len);
+    }
+}
+```
+
+**Key Features of AccumulatingReader:**
+- **Stack-allocated internal buffer** (configurable size via template parameter)
+- **State machine tracks parsing progress** - avoids re-parsing on partial messages
+- **Handles partial messages** across buffer boundaries automatically
+- **Works in both buffer and streaming modes** with the same API
+
+**Available Profile AccumulatingReaders:**
+- `AccumulatingReader<ProfileStandardConfig>` - Basic + Default
+- `AccumulatingReader<ProfileSensorConfig>` - Tiny + Minimal (requires callback)
+- `AccumulatingReader<ProfileIPCConfig>` - None + Minimal (requires callback)
+- `AccumulatingReader<ProfileBulkConfig>` - Basic + Extended
+- `AccumulatingReader<ProfileNetworkConfig>` - Basic + Extended Multi-System Stream
+
+**See the test suite for complete examples:** The file `tests/cpp/test_codec.cpp` demonstrates production-ready usage of these APIs, including handling of mixed message types, partial message scenarios, and validation patterns.
+
 ## Transport Layers
 
 ### Generic Serial Transport (Embedded Systems)

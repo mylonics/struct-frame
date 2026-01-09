@@ -161,9 +161,11 @@ const frame = parser.encode(1, data);
 
 For more details on minimal frames, see the [Minimal Frames Guide](minimal-frames.md).
 
-## Profile-Based Parsing API
+## Profile-Based Parsing API (Recommended)
 
-The TypeScript/JavaScript SDK provides high-performance parsing classes that match the C++ gold standard implementation. These are optimized for specific frame profiles and provide convenient factory functions.
+**The patterns shown in this section are the recommended way to encode and decode messages, as demonstrated in the test suite (`tests/ts/test_codec.ts`).** These are the gold standard APIs for production use.
+
+The TypeScript/JavaScript SDK provides high-performance parsing classes that match the C++ implementation. These are optimized for specific frame profiles and provide convenient factory functions.
 
 ### Available Profiles
 
