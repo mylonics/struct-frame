@@ -57,12 +57,12 @@ export function loadMixedMessages(): any[] {
         const serialMsgs = data.SerializationTestMessage || [];
         const basicMsgs = data.BasicTypesMessage || [];
         const unionMsgs = data.UnionTestMessage || [];
-        
+
         const messages = [];
         for (const item of mixedArray) {
           const msgType = item.type;
           const msgName = item.name;
-          
+
           let msgData = null;
           if (msgType === 'SerializationTestMessage') {
             msgData = serialMsgs.find((m: any) => m.name === msgName);
@@ -81,7 +81,7 @@ export function loadMixedMessages(): any[] {
             }
           }
         }
-        
+
         return messages;
       }
     } catch (e) {
@@ -105,7 +105,7 @@ import {
   ProfileBulkWriter,
   ProfileNetworkReader,
   ProfileNetworkWriter,
-} from './frame_profiles';
+} from '../generated/ts/frame_profiles';
 
 const {
   serialization_test_SerializationTestMessage,
@@ -166,10 +166,9 @@ export function getUnionTestMessageInfo() {
 /**
  * Create BasicTypesMessage from test data
  */
-export function createBasicTypesMessageFromData(msgStruct: any, testData: any): { msg: any; buffer: Buffer } {
-  const size = msgStruct._size || msgStruct.getSize();
-  const buffer = Buffer.alloc(size);
-  const msg = new msgStruct(buffer);
+export function createBasicTypesMessageFromData(msgStruct: any, testData: any): { msg: any } {
+  // Struct constructor auto-allocates buffer when none provided
+  const msg = new msgStruct();
 
   // large_int and large_uint may be stored as strings in JSON to preserve precision
   const largeInt = typeof testData.large_int === 'string' ? BigInt(testData.large_int) : BigInt(testData.large_int);
@@ -190,7 +189,7 @@ export function createBasicTypesMessageFromData(msgStruct: any, testData: any): 
   msg.description_length = testData.description.length;
   msg.description_data = testData.description;
 
-  return { msg, buffer: (msg as any)._buffer };
+  return { msg };
 }
 
 /**
@@ -266,20 +265,18 @@ export function validateBasicTypesMessageAgainstData(msg: any, testData: any): b
  * - payload_type 1 (array_payload) -> ComprehensiveArrayMessage msg_id (203)
  * - payload_type 2 (test_payload) -> SerializationTestMessage msg_id (204)
  */
-export function createUnionTestMessageFromData(msgStruct: any, testData: any): { msg: any; buffer: Buffer } {
-  const size = msgStruct._size || msgStruct.getSize();
-  const buffer = Buffer.alloc(size);
-  const msg = new msgStruct(buffer);
+export function createUnionTestMessageFromData(msgStruct: any, testData: any): { msg: any } {
+  // Struct constructor auto-allocates buffer when none provided
+  const msg = new msgStruct();
 
   // Create the inner payload based on the type and set discriminator to inner message's msg_id
   if (testData.payload_type === 1 && testData.array_payload) {
     // ComprehensiveArrayMessage - discriminator is its msg_id
     msg.payload_discriminator = serialization_test_ComprehensiveArrayMessage_msgid;
-    
-    const innerSize = serialization_test_ComprehensiveArrayMessage_max_size;
-    const innerBuffer = Buffer.alloc(innerSize);
-    const innerMsg = new serialization_test_ComprehensiveArrayMessage(innerBuffer);
-    
+
+    // Inner message auto-allocates its own buffer
+    const innerMsg = new serialization_test_ComprehensiveArrayMessage();
+
     // Set array fields from test data
     const ap = testData.array_payload;
     innerMsg.fixed_ints = ap.fixed_ints || [];
@@ -292,17 +289,17 @@ export function createUnionTestMessageFromData(msgStruct: any, testData: any): {
     innerMsg.fixed_statuses = ap.fixed_statuses || [];
     innerMsg.bounded_statuses_count = (ap.bounded_statuses || []).length;
     innerMsg.bounded_statuses_data = ap.bounded_statuses || [];
-    
-    // Copy inner buffer to payload_data
+
+    // Copy inner buffer to payload_data (offset 2 for discriminator)
+    const innerSize = serialization_test_ComprehensiveArrayMessage_max_size;
     (innerMsg as any)._buffer.copy((msg as any)._buffer, 2, 0, innerSize);
   } else if (testData.payload_type === 2 && testData.test_payload) {
     // SerializationTestMessage - discriminator is its msg_id
     msg.payload_discriminator = serialization_test_SerializationTestMessage_msgid;
-    
-    const innerSize = serialization_test_SerializationTestMessage_max_size;
-    const innerBuffer = Buffer.alloc(innerSize);
-    const innerMsg = new serialization_test_SerializationTestMessage(innerBuffer);
-    
+
+    // Inner message auto-allocates its own buffer
+    const innerMsg = new serialization_test_SerializationTestMessage();
+
     const tp = testData.test_payload;
     innerMsg.magic_number = tp.magic_number;
     innerMsg.test_string_length = tp.test_string.length;
@@ -311,12 +308,13 @@ export function createUnionTestMessageFromData(msgStruct: any, testData: any): {
     innerMsg.test_bool = tp.test_bool;
     innerMsg.test_array_count = tp.test_array.length;
     innerMsg.test_array_data = tp.test_array;
-    
-    // Copy inner buffer to payload_data
+
+    // Copy inner buffer to payload_data (offset 2 for discriminator)
+    const innerSize = serialization_test_SerializationTestMessage_max_size;
     (innerMsg as any)._buffer.copy((msg as any)._buffer, 2, 0, innerSize);
   }
 
-  return { msg, buffer: (msg as any)._buffer };
+  return { msg };
 }
 
 /**
@@ -329,8 +327,8 @@ export function validateUnionTestMessageAgainstData(msg: any, testData: any): bo
   const errors: string[] = [];
 
   // Map payload_type to expected discriminator (message ID)
-  const expectedDiscriminator = testData.payload_type === 1 
-    ? serialization_test_ComprehensiveArrayMessage_msgid 
+  const expectedDiscriminator = testData.payload_type === 1
+    ? serialization_test_ComprehensiveArrayMessage_msgid
     : serialization_test_SerializationTestMessage_msgid;
 
   if (msg.payload_discriminator !== expectedDiscriminator) {
@@ -343,7 +341,7 @@ export function validateUnionTestMessageAgainstData(msg: any, testData: any): bo
     const innerBuffer = Buffer.alloc(serialization_test_ComprehensiveArrayMessage_max_size);
     (msg as any)._buffer.copy(innerBuffer, 0, 2, 2 + serialization_test_ComprehensiveArrayMessage_max_size);
     const innerMsg = new serialization_test_ComprehensiveArrayMessage(innerBuffer);
-    
+
     const ap = testData.array_payload;
     // Validate fixed arrays
     for (let i = 0; i < (ap.fixed_ints || []).length; i++) {
@@ -361,7 +359,7 @@ export function validateUnionTestMessageAgainstData(msg: any, testData: any): bo
     const innerBuffer = Buffer.alloc(serialization_test_SerializationTestMessage_max_size);
     (msg as any)._buffer.copy(innerBuffer, 0, 2, 2 + serialization_test_SerializationTestMessage_max_size);
     const innerMsg = new serialization_test_SerializationTestMessage(innerBuffer);
-    
+
     const tp = testData.test_payload;
     if (innerMsg.magic_number !== tp.magic_number) {
       errors.push(`test_payload.magic_number: expected ${tp.magic_number}, got ${innerMsg.magic_number}`);
@@ -396,10 +394,9 @@ export function validateUnionTestMessageAgainstData(msg: any, testData: any): bo
 /**
  * Create message from test data
  */
-export function createMessageFromData(msgStruct: any, testData: TestMessage): { msg: any; buffer: Buffer } {
-  const size = msgStruct._size || msgStruct.getSize();
-  const buffer = Buffer.alloc(size);
-  const msg = new msgStruct(buffer);
+export function createMessageFromData(msgStruct: any, testData: TestMessage): { msg: any } {
+  // Struct constructor auto-allocates buffer when none provided
+  const msg = new msgStruct();
 
   msg.magic_number = testData.magic_number;
   msg.test_string_length = testData.test_string.length;
@@ -407,10 +404,9 @@ export function createMessageFromData(msgStruct: any, testData: TestMessage): { 
   msg.test_float = testData.test_float;
   msg.test_bool = testData.test_bool;
   msg.test_array_count = testData.test_array.length;
-  msg.test_array_data = testData.test_array; // Set the whole array at once
+  msg.test_array_data = testData.test_array;
 
-  // Return the message's internal buffer which has been updated
-  return { msg, buffer: (msg as any)._buffer };
+  return { msg };
 }
 
 /**
@@ -467,7 +463,7 @@ export function encodeTestMessage(formatName: string): Buffer {
   const unionMsgInfo = getUnionTestMessageInfo();
 
   const mixedMessages = loadMixedMessages();
-  
+
   // Create the appropriate BufferWriter for this profile
   const capacity = 4096; // Should be enough for test messages
   const writerCreators: { [key: string]: () => any } = {
@@ -477,13 +473,13 @@ export function encodeTestMessage(formatName: string): Buffer {
     'profile_bulk': () => new ProfileBulkWriter(capacity),
     'profile_network': () => new ProfileNetworkWriter(capacity),
   };
-  
+
   const creator = writerCreators[formatName];
   if (!creator) {
     console.log(`  Unknown format: ${formatName}`);
     return Buffer.alloc(0);
   }
-  
+
   const writer = creator();
 
   for (const item of mixedMessages) {
@@ -529,7 +525,7 @@ export function decodeTestMessage(formatName: string, data: Buffer): number {
   const unionMsgInfo = getUnionTestMessageInfo();
 
   const mixedMessages = loadMixedMessages();
-  
+
   // Create the appropriate BufferReader for this profile
   const readerCreators: { [key: string]: () => any } = {
     'profile_standard': () => new ProfileStandardReader(data),
@@ -538,13 +534,13 @@ export function decodeTestMessage(formatName: string, data: Buffer): number {
     'profile_bulk': () => new ProfileBulkReader(data),
     'profile_network': () => new ProfileNetworkReader(data),
   };
-  
+
   const creator = readerCreators[formatName];
   if (!creator) {
     console.log(`  Unknown format: ${formatName}`);
     return 0;
   }
-  
+
   const reader = creator();
   let messageCount = 0;
 
