@@ -591,46 +591,52 @@ class TestRunner:
 
         active_languages = [l for l in self.get_active_languages()
                             if l in self.get_available_languages()]
-        passed = total = 0
+        
+        # Track counts per section
+        gen_passed = gen_total = 0
+        compile_passed = compile_total = 0
+        matrix_passed = matrix_total = 0
+        standalone_passed = standalone_total = 0
 
         # Generation
         for lang_id in active_languages:
-            total += 1
-            passed += self.generation_results.get(lang_id, False)
+            gen_total += 1
+            gen_passed += self.generation_results.get(lang_id, False)
 
         # Compilation
         for lang_id in active_languages:
             lang = self.get_lang(lang_id)
             if lang and lang.compiler:
-                total += 1
-                passed += self.compilation_results.get(lang_id, False)
+                compile_total += 1
+                compile_passed += self.compilation_results.get(lang_id, False)
 
-        # Tests
+        # Tests - separate matrix tests from standalone tests
         for lang_id in active_languages:
-            for result in self.test_results.get(lang_id, {}).values():
+            for test_name, result in self.test_results.get(lang_id, {}).items():
                 if result is not None and isinstance(result, bool):
-                    total += 1
-                    passed += result
+                    # Skip standalone tests - they are counted separately
+                    if test_name.startswith('standalone_'):
+                        continue
+                    matrix_total += 1
+                    matrix_passed += result
+        
+        # Standalone tests (stored under 'python' key with 'standalone_' prefix)
+        for test_name, result in self.test_results.get('python', {}).items():
+            if test_name.startswith('standalone_') and result is not None and isinstance(result, bool):
+                standalone_total += 1
+                standalone_passed += result
 
-        # Cross-platform
-        for decoders in self.cross_platform_results.values():
-            for result in decoders.values():
-                if result is None:
-                    continue
-                if isinstance(result, dict):
-                    encode_ok = result.get('encode')
-                    decode_ok = result.get('decode')
-                    if encode_ok is not None:
-                        total += 1
-                        passed += encode_ok
-                    if decode_ok is not None:
-                        total += 1
-                        passed += decode_ok
-                elif isinstance(result, bool):
-                    total += 1
-                    passed += result
+        # Print breakdown
+        print(f"\n  Code Generation:    {gen_passed}/{gen_total}")
+        print(f"  Compilation:        {compile_passed}/{compile_total}")
+        print(f"  Cross-Platform:     {matrix_passed}/{matrix_total}")
+        if standalone_total > 0:
+            print(f"  Standalone Tests:   {standalone_passed}/{standalone_total}")
 
-        print(f"\n{passed}/{total} tests passed")
+        passed = gen_passed + compile_passed + matrix_passed + standalone_passed
+        total = gen_total + compile_total + matrix_total + standalone_total
+
+        print(f"\n  Total: {passed}/{total} tests passed")
 
         if total == 0:
             return False
@@ -639,10 +645,10 @@ class TestRunner:
         
         # Only return success if 100% pass rate
         if rate == 100.0:
-            print(f"SUCCESS: All tests passed")
+            print(f"  SUCCESS: All tests passed")
             return True
         else:
-            print(f"FAILURE: {rate:.1f}% pass rate ({total - passed} test(s) failed)")
+            print(f"  FAILURE: {rate:.1f}% pass rate ({total - passed} test(s) failed)")
             return False
 
     # =========================================================================
