@@ -82,18 +82,18 @@ function loadMixedMessages() {
   throw new Error('Could not find test_messages.json');
 }
 
-// Import generated frame profile functions - BufferReader/Writer factory functions only
+// Import generated frame profile subclasses
 const {
-  createProfileStandardReader,
-  createProfileStandardWriter,
-  createProfileSensorReader,
-  createProfileSensorWriter,
-  createProfileIPCReader,
-  createProfileIPCWriter,
-  createProfileBulkReader,
-  createProfileBulkWriter,
-  createProfileNetworkReader,
-  createProfileNetworkWriter,
+  ProfileStandardReader,
+  ProfileStandardWriter,
+  ProfileSensorReader,
+  ProfileSensorWriter,
+  ProfileIPCReader,
+  ProfileIPCWriter,
+  ProfileBulkReader,
+  ProfileBulkWriter,
+  ProfileNetworkReader,
+  ProfileNetworkWriter,
 } = require('./frame_profiles');
 
 // Helper to get message length for minimal payloads
@@ -455,11 +455,11 @@ function encodeTestMessage(formatName) {
   // Create the appropriate BufferWriter for this profile
   const capacity = 4096; // Should be enough for test messages
   const writerCreators = {
-    'profile_standard': () => createProfileStandardWriter(capacity),
-    'profile_sensor': () => createProfileSensorWriter(capacity),
-    'profile_ipc': () => createProfileIPCWriter(capacity),
-    'profile_bulk': () => createProfileBulkWriter(capacity),
-    'profile_network': () => createProfileNetworkWriter(capacity),
+    'profile_standard': () => new ProfileStandardWriter(capacity),
+    'profile_sensor': () => new ProfileSensorWriter(capacity),
+    'profile_ipc': () => new ProfileIPCWriter(capacity),
+    'profile_bulk': () => new ProfileBulkWriter(capacity),
+    'profile_network': () => new ProfileNetworkWriter(capacity),
   };
   
   const creator = writerCreators[formatName];
@@ -516,11 +516,11 @@ function decodeTestMessage(formatName, data) {
   
   // Create the appropriate BufferReader for this profile
   const readerCreators = {
-    'profile_standard': () => createProfileStandardReader(data),
-    'profile_sensor': () => createProfileSensorReader(data, getMsgLength),
-    'profile_ipc': () => createProfileIPCReader(data, getMsgLength),
-    'profile_bulk': () => createProfileBulkReader(data),
-    'profile_network': () => createProfileNetworkReader(data),
+    'profile_standard': () => new ProfileStandardReader(data),
+    'profile_sensor': () => new ProfileSensorReader(data, getMsgLength),
+    'profile_ipc': () => new ProfileIPCReader(data, getMsgLength),
+    'profile_bulk': () => new ProfileBulkReader(data),
+    'profile_network': () => new ProfileNetworkReader(data),
   };
   
   const creator = readerCreators[formatName];

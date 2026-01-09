@@ -129,24 +129,6 @@ class MessageJsGen():
                 package_msg_name, msg.id)
             result += 'module.exports.%s_msgid = %s_msgid;\n' % (package_msg_name, package_msg_name)
 
-            result += 'function %s_encode(buffer, msg) {\n' % (
-                package_msg_name)
-            result += '  msg_encode(buffer, msg, %s_msgid);\n}\n' % (package_msg_name)
-            result += 'module.exports.%s_encode = %s_encode;\n' % (package_msg_name, package_msg_name)
-
-            result += 'function %s_reserve(buffer) {\n' % (
-                package_msg_name)
-            result += '  const msg_buffer = msg_reserve(buffer, %s_msgid, %s_max_size);\n' % (
-                package_msg_name, package_msg_name)
-            result += '  if (msg_buffer){\n'
-            result += '    return new %s(msg_buffer);\n  }\n  return;\n}\n' % (
-                package_msg_name)
-            result += 'module.exports.%s_reserve = %s_reserve;\n' % (package_msg_name, package_msg_name)
-
-            result += 'function %s_finish(buffer) {\n' % (
-                package_msg_name)
-            result += '  msg_finish(buffer);\n}\n'
-            result += 'module.exports.%s_finish = %s_finish;\n' % (package_msg_name, package_msg_name)
         return result + '\n'
 
     @staticmethod
@@ -168,8 +150,6 @@ class FileJsGen():
         yield '"use strict";\n\n'
 
         yield "const { Struct } = require('./struct_base');\n"
-        yield "const { struct_frame_buffer } = require('./struct_frame_types');\n"
-        yield "const { msg_encode, msg_reserve, msg_finish } = require('./struct_frame');\n\n"
 
         # Add package ID constant if present
         if package.package_id is not None:
