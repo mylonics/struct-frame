@@ -715,12 +715,17 @@ class BufferReader:
             result = _frame_format_parse_with_crc(self._config, remaining)
         else:
             if self._get_msg_length is None:
+                # No more valid data to parse without length callback
+                self._offset = self._size
                 return FrameMsgInfo()
             result = _frame_format_parse_minimal(self._config, remaining, self._get_msg_length)
         
         if result.valid:
             frame_size = self._config.overhead + result.msg_len
             self._offset += frame_size
+        else:
+            # No more valid frames - stop parsing
+            self._offset = self._size
         
         return result
     

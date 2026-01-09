@@ -536,6 +536,8 @@ export class BufferReader {
             result = parseFrameWithCrc(this.config, remaining);
         } else {
             if (!this.getMsgLength) {
+                // No more valid data to parse without length callback
+                this._offset = this.size;
                 return createFrameMsgInfo();
             }
             result = parseFrameMinimal(this.config, remaining, this.getMsgLength);
@@ -544,6 +546,9 @@ export class BufferReader {
         if (result.valid) {
             const frameSize = this.config.headerSize + result.msg_len + this.config.footerSize;
             this._offset += frameSize;
+        } else {
+            // No more valid frames - stop parsing
+            this._offset = this.size;
         }
 
         return result;
