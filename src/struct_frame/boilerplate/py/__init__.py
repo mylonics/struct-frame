@@ -50,6 +50,27 @@ from .frame_profiles import (
     encode_frame,
     parse_frame_buffer,
     create_custom_config,
+    # BufferReader/BufferWriter/AccumulatingReader classes
+    BufferReader,
+    BufferWriter,
+    AccumulatingReader,
+    AccumulatingReaderState,
+    # Convenience factory functions for profiles
+    create_profile_standard_reader,
+    create_profile_standard_writer,
+    create_profile_standard_accumulating_reader,
+    create_profile_sensor_reader,
+    create_profile_sensor_writer,
+    create_profile_sensor_accumulating_reader,
+    create_profile_ipc_reader,
+    create_profile_ipc_writer,
+    create_profile_ipc_accumulating_reader,
+    create_profile_bulk_reader,
+    create_profile_bulk_writer,
+    create_profile_bulk_accumulating_reader,
+    create_profile_network_reader,
+    create_profile_network_writer,
+    create_profile_network_accumulating_reader,
 )
 
 # Re-export all
@@ -63,6 +84,10 @@ __all__ = [
     "FrameMsgInfo",
     "Parser",
     "FrameFormatConfig",
+    "BufferReader",
+    "BufferWriter",
+    "AccumulatingReader",
+    "AccumulatingReaderState",
     # Constants
     "BASIC_START_BYTE",
     "PAYLOAD_TYPE_BASE",
@@ -94,6 +119,22 @@ __all__ = [
     "encode_frame",
     "parse_frame_buffer",
     "create_custom_config",
+    # Convenience factory functions for profiles
+    "create_profile_standard_reader",
+    "create_profile_standard_writer",
+    "create_profile_standard_accumulating_reader",
+    "create_profile_sensor_reader",
+    "create_profile_sensor_writer",
+    "create_profile_sensor_accumulating_reader",
+    "create_profile_ipc_reader",
+    "create_profile_ipc_writer",
+    "create_profile_ipc_accumulating_reader",
+    "create_profile_bulk_reader",
+    "create_profile_bulk_writer",
+    "create_profile_bulk_accumulating_reader",
+    "create_profile_network_reader",
+    "create_profile_network_writer",
+    "create_profile_network_accumulating_reader",
     # Utilities
     "fletcher_checksum",
 ]

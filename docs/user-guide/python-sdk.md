@@ -123,6 +123,161 @@ for byte in stream:
 print(f"Parsed {len(messages)} messages from mixed stream")
 ```
 
+## Profile-Based Parsing API
+
+The Python SDK provides high-performance parsing classes that match the C++ gold standard implementation. These are optimized for specific frame profiles and provide convenient factory functions.
+
+### Available Profiles
+
+| Profile | Header | Payload | Use Case |
+|---------|--------|---------|----------|
+| `ProfileStandard` | Basic | Default | General serial/UART communication |
+| `ProfileSensor` | Tiny | Minimal | Low-bandwidth sensors, radio links |
+| `ProfileIPC` | None | Minimal | Trusted inter-process communication |
+| `ProfileBulk` | Basic | Extended | Firmware/file transfers |
+| `ProfileNetwork` | Basic | ExtendedMultiSystemStream | Multi-node mesh networks |
+
+### BufferReader - Parse Multiple Frames from a Buffer
+
+`BufferReader` iterates through a buffer containing one or more frames, automatically tracking the offset:
+
+```python
+from frame_profiles import (
+    create_profile_standard_reader,
+    create_profile_sensor_reader,
+)
+
+# Parse a buffer containing multiple ProfileStandard frames
+reader = create_profile_standard_reader(buffer_data)
+while reader.has_more():
+    result = reader.next()
+    if not result.valid:
+        break
+    print(f"Message ID: {result.msg_id}, Length: {result.msg_len}")
+    process_message(result.msg_data)
+
+print(f"Processed {reader.offset} bytes, {reader.remaining} remaining")
+```
+
+For minimal profiles (no length field), provide a message length callback:
+
+```python
+from my_messages_sf import get_message_length
+
+# Parse ProfileSensor frames (minimal payload)
+reader = create_profile_sensor_reader(buffer_data, get_message_length)
+while reader.has_more():
+    result = reader.next()
+    if result.valid:
+        process_message(result.msg_id, result.msg_data)
+```
+
+### BufferWriter - Encode Multiple Frames
+
+`BufferWriter` encodes multiple frames into a buffer with automatic offset tracking:
+
+```python
+from frame_profiles import (
+    create_profile_standard_writer,
+    create_profile_network_writer,
+)
+
+# Create writer with capacity
+writer = create_profile_standard_writer(capacity=4096)
+
+# Write multiple messages
+writer.write(msg_id=1, payload=msg1_data)
+writer.write(msg_id=2, payload=msg2_data)
+writer.write(msg_id=3, payload=msg3_data)
+
+# Get the encoded data
+encoded_buffer = writer.data()
+print(f"Encoded {writer.size()} bytes with {writer.count()} messages")
+```
+
+For network profiles with extra header fields:
+
+```python
+writer = create_profile_network_writer(capacity=4096)
+writer.write(msg_id=1, payload=data, seq=1, sys_id=10, comp_id=1)
+```
+
+### AccumulatingReader - Unified Buffer and Streaming Parser
+
+`AccumulatingReader` handles both buffer mode and byte-by-byte streaming, with support for partial messages across buffer boundaries:
+
+**Buffer Mode** - Processing chunks of data:
+
+```python
+from frame_profiles import create_profile_standard_accumulating_reader
+
+reader = create_profile_standard_accumulating_reader()
+
+# Process incoming chunks (e.g., from network or file)
+reader.add_data(chunk1)
+while True:
+    result = reader.next()
+    if not result.valid:
+        break
+    process_message(result.msg_id, result.msg_data)
+
+# Add more data (handles partial messages automatically)
+reader.add_data(chunk2)
+while True:
+    result = reader.next()
+    if not result.valid:
+        break
+    process_message(result.msg_id, result.msg_data)
+```
+
+**Stream Mode** - Byte-by-byte processing (UART/serial):
+
+```python
+from frame_profiles import create_profile_sensor_accumulating_reader
+from my_messages_sf import get_message_length
+
+reader = create_profile_sensor_accumulating_reader(get_message_length)
+
+# Process incoming bytes one at a time
+while True:
+    byte = serial_port.read(1)
+    if not byte:
+        break
+    result = reader.push_byte(byte[0])
+    if result.valid:
+        # Complete message received
+        process_message(result.msg_id, result.msg_data)
+```
+
+### Factory Functions
+
+All profiles have factory functions for creating readers and writers:
+
+```python
+from frame_profiles import (
+    # BufferReader factories
+    create_profile_standard_reader,
+    create_profile_sensor_reader,
+    create_profile_ipc_reader,
+    create_profile_bulk_reader,
+    create_profile_network_reader,
+    
+    # BufferWriter factories
+    create_profile_standard_writer,
+    create_profile_sensor_writer,
+    create_profile_ipc_writer,
+    create_profile_bulk_writer,
+    create_profile_network_writer,
+    
+    # AccumulatingReader factories
+    create_profile_standard_accumulating_reader,
+    create_profile_sensor_accumulating_reader,
+    create_profile_ipc_accumulating_reader,
+    create_profile_bulk_accumulating_reader,
+    create_profile_network_accumulating_reader,
+)
+```
+
 ## Available Transports
 
 ### Synchronous Transports

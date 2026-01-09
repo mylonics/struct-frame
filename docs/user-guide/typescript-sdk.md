@@ -161,6 +161,164 @@ const frame = parser.encode(1, data);
 
 For more details on minimal frames, see the [Minimal Frames Guide](minimal-frames.md).
 
+## Profile-Based Parsing API
+
+The TypeScript/JavaScript SDK provides high-performance parsing classes that match the C++ gold standard implementation. These are optimized for specific frame profiles and provide convenient factory functions.
+
+### Available Profiles
+
+| Profile | Header | Payload | Use Case |
+|---------|--------|---------|----------|
+| `ProfileStandard` | Basic | Default | General serial/UART communication |
+| `ProfileSensor` | Tiny | Minimal | Low-bandwidth sensors, radio links |
+| `ProfileIPC` | None | Minimal | Trusted inter-process communication |
+| `ProfileBulk` | Basic | Extended | Firmware/file transfers |
+| `ProfileNetwork` | Basic | ExtendedMultiSystemStream | Multi-node mesh networks |
+
+### BufferReader - Parse Multiple Frames from a Buffer
+
+`BufferReader` iterates through a buffer containing one or more frames, automatically tracking the offset:
+
+```typescript
+import {
+  createProfileStandardReader,
+  createProfileSensorReader,
+} from './frame_profiles';
+
+// Parse a buffer containing multiple ProfileStandard frames
+const reader = createProfileStandardReader(bufferData);
+while (reader.hasMore()) {
+    const result = reader.next();
+    if (!result.valid) break;
+    console.log(`Message ID: ${result.msg_id}, Length: ${result.msg_len}`);
+    processMessage(result.msg_data);
+}
+
+console.log(`Processed ${reader.offset} bytes, ${reader.remaining} remaining`);
+```
+
+For minimal profiles (no length field), provide a message length callback:
+
+```typescript
+import { get_message_length } from './my_messages.sf';
+
+// Parse ProfileSensor frames (minimal payload)
+const reader = createProfileSensorReader(bufferData, get_message_length);
+while (reader.hasMore()) {
+    const result = reader.next();
+    if (result.valid) {
+        processMessage(result.msg_id, result.msg_data);
+    }
+}
+```
+
+### BufferWriter - Encode Multiple Frames
+
+`BufferWriter` encodes multiple frames into a buffer with automatic offset tracking:
+
+```typescript
+import {
+  createProfileStandardWriter,
+  createProfileNetworkWriter,
+} from './frame_profiles';
+
+// Create writer with capacity
+const writer = createProfileStandardWriter(4096);
+
+// Write multiple messages
+writer.write(1, msg1Data);
+writer.write(2, msg2Data);
+writer.write(3, msg3Data);
+
+// Get the encoded data
+const encodedBuffer = writer.data();
+console.log(`Encoded ${writer.size()} bytes with ${writer.count()} messages`);
+```
+
+For network profiles with extra header fields:
+
+```typescript
+const writer = createProfileNetworkWriter(4096);
+writer.write(1, data, { seq: 1, sysId: 10, compId: 1 });
+```
+
+### AccumulatingReader - Unified Buffer and Streaming Parser
+
+`AccumulatingReader` handles both buffer mode and byte-by-byte streaming, with support for partial messages across buffer boundaries:
+
+**Buffer Mode** - Processing chunks of data:
+
+```typescript
+import { createProfileStandardAccumulatingReader } from './frame_profiles';
+
+const reader = createProfileStandardAccumulatingReader();
+
+// Process incoming chunks (e.g., from network or file)
+reader.addData(chunk1);
+while (true) {
+    const result = reader.next();
+    if (!result.valid) break;
+    processMessage(result.msg_id, result.msg_data);
+}
+
+// Add more data (handles partial messages automatically)
+reader.addData(chunk2);
+while (true) {
+    const result = reader.next();
+    if (!result.valid) break;
+    processMessage(result.msg_id, result.msg_data);
+}
+```
+
+**Stream Mode** - Byte-by-byte processing (UART/serial):
+
+```typescript
+import { createProfileSensorAccumulatingReader } from './frame_profiles';
+import { get_message_length } from './my_messages.sf';
+
+const reader = createProfileSensorAccumulatingReader(get_message_length);
+
+// Process incoming bytes one at a time
+serialPort.on('data', (data: Buffer) => {
+    for (const byte of data) {
+        const result = reader.pushByte(byte);
+        if (result.valid) {
+            // Complete message received
+            processMessage(result.msg_id, result.msg_data);
+        }
+    }
+});
+```
+
+### Factory Functions
+
+All profiles have factory functions for creating readers and writers:
+
+```typescript
+import {
+    // BufferReader factories
+    createProfileStandardReader,
+    createProfileSensorReader,
+    createProfileIPCReader,
+    createProfileBulkReader,
+    createProfileNetworkReader,
+    
+    // BufferWriter factories
+    createProfileStandardWriter,
+    createProfileSensorWriter,
+    createProfileIPCWriter,
+    createProfileBulkWriter,
+    createProfileNetworkWriter,
+    
+    // AccumulatingReader factories
+    createProfileStandardAccumulatingReader,
+    createProfileSensorAccumulatingReader,
+    createProfileIPCAccumulatingReader,
+    createProfileBulkAccumulatingReader,
+    createProfileNetworkAccumulatingReader,
+} from './frame_profiles';
+```
+
 ## SDK Usage
 
 ### Creating the SDK

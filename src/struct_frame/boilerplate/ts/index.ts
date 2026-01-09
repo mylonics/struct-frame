@@ -33,3 +33,61 @@ export { PAYLOAD_MINIMAL_CONFIG } from './payload_types/payload_minimal';
 
 // Frame format configuration
 export { FrameFormatConfig, FrameFormatConfigConfig, FrameFormatConfigParserState } from './FrameFormatConfig';
+
+// Frame profiles - Pre-defined Header + Payload combinations
+export {
+    // Profile configuration interface
+    FrameProfileConfig,
+    EncodeOptions,
+    // Profile configurations
+    ProfileStandardConfig,
+    ProfileSensorConfig,
+    ProfileIPCConfig,
+    ProfileBulkConfig,
+    ProfileNetworkConfig,
+    // Generic encode/parse functions
+    encodeFrameWithCrc,
+    encodeFrameMinimal,
+    parseFrameWithCrc,
+    parseFrameMinimal,
+    // Profile-specific convenience functions
+    encodeProfileStandard,
+    parseProfileStandardBuffer,
+    encodeProfileSensor,
+    parseProfileSensorBuffer,
+    encodeProfileIPC,
+    parseProfileIPCBuffer,
+    encodeProfileBulk,
+    parseProfileBulkBuffer,
+    encodeProfileNetwork,
+    parseProfileNetworkBuffer,
+    // Profile parser interface
+    ProfileParser,
+    createProfileParserClass,
+    ProfileStandard,
+    ProfileSensor,
+    ProfileIPC,
+    ProfileBulk,
+    ProfileNetwork,
+    // BufferReader/BufferWriter/AccumulatingReader classes
+    BufferReader,
+    BufferWriter,
+    AccumulatingReader,
+    AccumulatingReaderState,
+    // Convenience factory functions for profiles
+    createProfileStandardReader,
+    createProfileStandardWriter,
+    createProfileStandardAccumulatingReader,
+    createProfileSensorReader,
+    createProfileSensorWriter,
+    createProfileSensorAccumulatingReader,
+    createProfileIPCReader,
+    createProfileIPCWriter,
+    createProfileIPCAccumulatingReader,
+    createProfileBulkReader,
+    createProfileBulkWriter,
+    createProfileBulkAccumulatingReader,
+    createProfileNetworkReader,
+    createProfileNetworkWriter,
+    createProfileNetworkAccumulatingReader,
+} from './frame_profiles';

@@ -446,3 +446,639 @@ static inline size_t encode_profile_network(uint8_t* buffer, size_t buffer_size,
 static inline frame_msg_info_t parse_profile_network_buffer(const uint8_t* buffer, size_t length) {
     return frame_format_parse_with_crc(&PROFILE_NETWORK_CONFIG, buffer, length);
 }
+
+/*===========================================================================
+ * BufferReader - Iterate through multiple frames in a buffer
+ *===========================================================================*/
+
+/**
+ * BufferReader state structure for iterating through multiple frames.
+ * 
+ * Usage:
+ *   buffer_reader_t reader;
+ *   buffer_reader_init(&reader, &PROFILE_STANDARD_CONFIG, buffer, size, NULL);
+ *   frame_msg_info_t result;
+ *   while ((result = buffer_reader_next(&reader)).valid) {
+ *       // Process result.msg_id, result.msg_data, result.msg_len
+ *   }
+ * 
+ * For minimal profiles that need get_msg_length:
+ *   buffer_reader_init(&reader, &PROFILE_SENSOR_CONFIG, buffer, size, get_msg_length);
+ */
+typedef struct buffer_reader {
+    const frame_format_config_t* config;
+    const uint8_t* buffer;
+    size_t size;
+    size_t offset;
+    bool (*get_msg_length)(size_t msg_id, size_t* len);
+} buffer_reader_t;
+
+/**
+ * Initialize a buffer reader
+ */
+static inline void buffer_reader_init(
+    buffer_reader_t* reader,
+    const frame_format_config_t* config,
+    const uint8_t* buffer,
+    size_t size,
+    bool (*get_msg_length)(size_t msg_id, size_t* len))
+{
+    reader->config = config;
+    reader->buffer = buffer;
+    reader->size = size;
+    reader->offset = 0;
+    reader->get_msg_length = get_msg_length;
+}
+
+/**
+ * Parse the next frame in the buffer.
+ * Returns frame_msg_info_t with valid=true if successful, valid=false if no more frames.
+ */
+static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
+{
+    frame_msg_info_t result = {false, 0, 0, NULL};
+    
+    if (reader->offset >= reader->size) {
+        return result;
+    }
+    
+    const uint8_t* remaining = reader->buffer + reader->offset;
+    size_t remaining_size = reader->size - reader->offset;
+    
+    if (reader->config->has_crc || reader->config->has_length) {
+        result = frame_format_parse_with_crc(reader->config, remaining, remaining_size);
+    } else {
+        /* For minimal profiles, check if get_msg_length callback is provided */
+        if (reader->get_msg_length == NULL) {
+            reader->offset = reader->size;
+            return result;
+        }
+        result = frame_format_parse_minimal(reader->config, remaining, remaining_size, reader->get_msg_length);
+    }
+    
+    if (result.valid) {
+        size_t frame_size = reader->config->header_size + reader->config->footer_size + result.msg_len;
+        reader->offset += frame_size;
+    } else {
+        /* No more valid frames - stop parsing */
+        reader->offset = reader->size;
+    }
+    
+    return result;
+}
+
+/**
+ * Reset the reader to the beginning of the buffer.
+ */
+static inline void buffer_reader_reset(buffer_reader_t* reader)
+{
+    reader->offset = 0;
+}
+
+/**
+ * Get the current offset in the buffer.
+ */
+static inline size_t buffer_reader_offset(const buffer_reader_t* reader)
+{
+    return reader->offset;
+}
+
+/**
+ * Get the remaining bytes in the buffer.
+ */
+static inline size_t buffer_reader_remaining(const buffer_reader_t* reader)
+{
+    return reader->size > reader->offset ? reader->size - reader->offset : 0;
+}
+
+/**
+ * Check if there are more bytes to parse.
+ */
+static inline bool buffer_reader_has_more(const buffer_reader_t* reader)
+{
+    return reader->offset < reader->size;
+}
+
+/*===========================================================================
+ * BufferWriter - Encode multiple frames with automatic offset tracking
+ *===========================================================================*/
+
+/**
+ * BufferWriter state structure for encoding multiple frames.
+ * 
+ * Usage:
+ *   uint8_t buffer[1024];
+ *   buffer_writer_t writer;
+ *   buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
+ *   buffer_writer_write(&writer, msg_id, payload, payload_size, 0, 0, 0, 0);
+ *   size_t total_written = buffer_writer_size(&writer);
+ */
+typedef struct buffer_writer {
+    const frame_format_config_t* config;
+    uint8_t* buffer;
+    size_t capacity;
+    size_t offset;
+} buffer_writer_t;
+
+/**
+ * Initialize a buffer writer
+ */
+static inline void buffer_writer_init(
+    buffer_writer_t* writer,
+    const frame_format_config_t* config,
+    uint8_t* buffer,
+    size_t capacity)
+{
+    writer->config = config;
+    writer->buffer = buffer;
+    writer->capacity = capacity;
+    writer->offset = 0;
+}
+
+/**
+ * Write a message to the buffer.
+ * Returns the number of bytes written, or 0 on failure.
+ */
+static inline size_t buffer_writer_write(
+    buffer_writer_t* writer,
+    uint8_t msg_id,
+    const uint8_t* payload,
+    size_t payload_size,
+    uint8_t seq,
+    uint8_t sys_id,
+    uint8_t comp_id,
+    uint8_t pkg_id)
+{
+    size_t remaining = writer->capacity - writer->offset;
+    size_t written;
+    
+    if (writer->config->has_crc || writer->config->has_length) {
+        written = frame_format_encode_with_crc(
+            writer->config,
+            writer->buffer + writer->offset,
+            remaining,
+            seq, sys_id, comp_id, pkg_id, msg_id,
+            payload, payload_size);
+    } else {
+        written = frame_format_encode_minimal(
+            writer->config,
+            writer->buffer + writer->offset,
+            remaining,
+            msg_id, payload, payload_size);
+    }
+    
+    if (written > 0) {
+        writer->offset += written;
+    }
+    
+    return written;
+}
+
+/**
+ * Reset the writer to the beginning of the buffer.
+ */
+static inline void buffer_writer_reset(buffer_writer_t* writer)
+{
+    writer->offset = 0;
+}
+
+/**
+ * Get the total number of bytes written.
+ */
+static inline size_t buffer_writer_size(const buffer_writer_t* writer)
+{
+    return writer->offset;
+}
+
+/**
+ * Get the remaining capacity in the buffer.
+ */
+static inline size_t buffer_writer_remaining(const buffer_writer_t* writer)
+{
+    return writer->capacity > writer->offset ? writer->capacity - writer->offset : 0;
+}
+
+/**
+ * Get pointer to the buffer.
+ */
+static inline uint8_t* buffer_writer_data(buffer_writer_t* writer)
+{
+    return writer->buffer;
+}
+
+/*===========================================================================
+ * AccumulatingReader - Unified parser for buffer and byte-by-byte streaming
+ *===========================================================================*/
+
+/**
+ * Parser state enumeration for AccumulatingReader
+ */
+typedef enum accumulating_reader_state {
+    ACC_STATE_IDLE = 0,
+    ACC_STATE_LOOKING_FOR_START1 = 1,
+    ACC_STATE_LOOKING_FOR_START2 = 2,
+    ACC_STATE_COLLECTING_HEADER = 3,
+    ACC_STATE_COLLECTING_PAYLOAD = 4,
+    ACC_STATE_BUFFER_MODE = 5
+} accumulating_reader_state_t;
+
+/**
+ * AccumulatingReader state structure for unified buffer and streaming parsing.
+ * 
+ * Buffer mode usage:
+ *   accumulating_reader_t reader;
+ *   accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buf, 1024, NULL);
+ *   accumulating_reader_add_data(&reader, chunk, chunk_size);
+ *   frame_msg_info_t result;
+ *   while ((result = accumulating_reader_next(&reader)).valid) {
+ *       // Process complete messages
+ *   }
+ * 
+ * Stream mode usage:
+ *   accumulating_reader_t reader;
+ *   accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buf, 1024, NULL);
+ *   while (receiving) {
+ *       uint8_t byte = read_byte();
+ *       frame_msg_info_t result = accumulating_reader_push_byte(&reader, byte);
+ *       if (result.valid) {
+ *           // Process complete message
+ *       }
+ *   }
+ */
+typedef struct accumulating_reader {
+    const frame_format_config_t* config;
+    bool (*get_msg_length)(size_t msg_id, size_t* len);
+    
+    /* Internal buffer for partial messages */
+    uint8_t* internal_buffer;
+    size_t buffer_size;
+    size_t internal_data_len;
+    size_t expected_frame_size;
+    accumulating_reader_state_t state;
+    
+    /* Buffer mode state */
+    const uint8_t* current_buffer;
+    size_t current_size;
+    size_t current_offset;
+} accumulating_reader_t;
+
+/**
+ * Initialize an accumulating reader
+ * Note: caller must provide the internal_buffer for partial message storage
+ */
+static inline void accumulating_reader_init(
+    accumulating_reader_t* reader,
+    const frame_format_config_t* config,
+    uint8_t* internal_buffer,
+    size_t buffer_size,
+    bool (*get_msg_length)(size_t msg_id, size_t* len))
+{
+    reader->config = config;
+    reader->get_msg_length = get_msg_length;
+    reader->internal_buffer = internal_buffer;
+    reader->buffer_size = buffer_size;
+    reader->internal_data_len = 0;
+    reader->expected_frame_size = 0;
+    reader->state = ACC_STATE_IDLE;
+    reader->current_buffer = NULL;
+    reader->current_size = 0;
+    reader->current_offset = 0;
+}
+
+/**
+ * Add a new buffer of data to process (buffer mode).
+ */
+static inline void accumulating_reader_add_data(
+    accumulating_reader_t* reader,
+    const uint8_t* buffer,
+    size_t size)
+{
+    reader->current_buffer = buffer;
+    reader->current_size = size;
+    reader->current_offset = 0;
+    reader->state = ACC_STATE_BUFFER_MODE;
+    
+    /* If we have partial data, try to complete it */
+    if (reader->internal_data_len > 0 && buffer != NULL) {
+        size_t space_available = reader->buffer_size - reader->internal_data_len;
+        size_t bytes_to_copy = (size < space_available) ? size : space_available;
+        memcpy(reader->internal_buffer + reader->internal_data_len, buffer, bytes_to_copy);
+        reader->internal_data_len += bytes_to_copy;
+    }
+}
+
+/* Forward declarations for internal functions */
+static inline frame_msg_info_t _acc_parse_buffer(
+    const accumulating_reader_t* reader,
+    const uint8_t* buffer,
+    size_t size);
+
+/**
+ * Parse the next frame (buffer mode).
+ */
+static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
+{
+    frame_msg_info_t result = {false, 0, 0, NULL};
+    
+    if (reader->state != ACC_STATE_BUFFER_MODE) {
+        return result;
+    }
+    
+    /* First, try to complete a partial message from the internal buffer */
+    if (reader->internal_data_len > 0 && reader->current_offset == 0) {
+        result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
+        
+        if (result.valid) {
+            size_t frame_size = reader->config->header_size + reader->config->footer_size + result.msg_len;
+            size_t partial_len = reader->internal_data_len > reader->current_size ? 
+                                 reader->internal_data_len - reader->current_size : 0;
+            size_t bytes_from_current = frame_size > partial_len ? frame_size - partial_len : 0;
+            reader->current_offset = bytes_from_current;
+            
+            reader->internal_data_len = 0;
+            reader->expected_frame_size = 0;
+            
+            return result;
+        } else {
+            return result;
+        }
+    }
+    
+    /* Parse from current buffer */
+    if (reader->current_buffer == NULL || reader->current_offset >= reader->current_size) {
+        return result;
+    }
+    
+    const uint8_t* remaining = reader->current_buffer + reader->current_offset;
+    size_t remaining_size = reader->current_size - reader->current_offset;
+    result = _acc_parse_buffer(reader, remaining, remaining_size);
+    
+    if (result.valid) {
+        size_t frame_size = reader->config->header_size + reader->config->footer_size + result.msg_len;
+        reader->current_offset += frame_size;
+        return result;
+    }
+    
+    /* Parse failed - might be partial message at end of buffer */
+    size_t remaining_len = reader->current_size - reader->current_offset;
+    if (remaining_len > 0 && remaining_len < reader->buffer_size) {
+        memcpy(reader->internal_buffer, remaining, remaining_len);
+        reader->internal_data_len = remaining_len;
+        reader->current_offset = reader->current_size;
+    }
+    
+    return result;
+}
+
+/**
+ * Push a single byte for parsing (stream mode).
+ */
+static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader_t* reader, uint8_t byte)
+{
+    frame_msg_info_t result = {false, 0, 0, NULL};
+    
+    /* Initialize state on first byte if idle */
+    if (reader->state == ACC_STATE_IDLE || reader->state == ACC_STATE_BUFFER_MODE) {
+        reader->state = ACC_STATE_LOOKING_FOR_START1;
+        reader->internal_data_len = 0;
+        reader->expected_frame_size = 0;
+    }
+    
+    switch (reader->state) {
+        case ACC_STATE_LOOKING_FOR_START1:
+            if (reader->config->num_start_bytes == 0) {
+                reader->internal_buffer[0] = byte;
+                reader->internal_data_len = 1;
+                
+                if (!reader->config->has_length && !reader->config->has_crc) {
+                    /* Handle minimal msg_id */
+                    if (reader->get_msg_length) {
+                        size_t msg_len = 0;
+                        if (reader->get_msg_length(byte, &msg_len)) {
+                            reader->expected_frame_size = reader->config->header_size + msg_len;
+                            
+                            if (reader->expected_frame_size > reader->buffer_size) {
+                                reader->state = ACC_STATE_LOOKING_FOR_START1;
+                                reader->internal_data_len = 0;
+                                return result;
+                            }
+                            
+                            if (msg_len == 0) {
+                                result.valid = true;
+                                result.msg_id = byte;
+                                result.msg_len = 0;
+                                result.msg_data = reader->internal_buffer + reader->config->header_size;
+                                reader->state = ACC_STATE_LOOKING_FOR_START1;
+                                reader->internal_data_len = 0;
+                                reader->expected_frame_size = 0;
+                                return result;
+                            }
+                            
+                            reader->state = ACC_STATE_COLLECTING_PAYLOAD;
+                        } else {
+                            reader->state = ACC_STATE_LOOKING_FOR_START1;
+                            reader->internal_data_len = 0;
+                        }
+                    } else {
+                        reader->state = ACC_STATE_LOOKING_FOR_START1;
+                        reader->internal_data_len = 0;
+                    }
+                } else {
+                    reader->state = ACC_STATE_COLLECTING_HEADER;
+                }
+            } else {
+                if (byte == reader->config->start_byte1) {
+                    reader->internal_buffer[0] = byte;
+                    reader->internal_data_len = 1;
+                    
+                    if (reader->config->num_start_bytes == 1) {
+                        reader->state = ACC_STATE_COLLECTING_HEADER;
+                    } else {
+                        reader->state = ACC_STATE_LOOKING_FOR_START2;
+                    }
+                }
+            }
+            break;
+            
+        case ACC_STATE_LOOKING_FOR_START2:
+            if (byte == reader->config->start_byte2) {
+                reader->internal_buffer[reader->internal_data_len++] = byte;
+                reader->state = ACC_STATE_COLLECTING_HEADER;
+            } else if (byte == reader->config->start_byte1) {
+                reader->internal_buffer[0] = byte;
+                reader->internal_data_len = 1;
+            } else {
+                reader->state = ACC_STATE_LOOKING_FOR_START1;
+                reader->internal_data_len = 0;
+            }
+            break;
+            
+        case ACC_STATE_COLLECTING_HEADER:
+            if (reader->internal_data_len >= reader->buffer_size) {
+                reader->state = ACC_STATE_LOOKING_FOR_START1;
+                reader->internal_data_len = 0;
+                return result;
+            }
+            
+            reader->internal_buffer[reader->internal_data_len++] = byte;
+            
+            if (reader->internal_data_len >= reader->config->header_size) {
+                if (!reader->config->has_length && !reader->config->has_crc) {
+                    uint8_t msg_id = reader->internal_buffer[reader->config->header_size - 1];
+                    if (reader->get_msg_length) {
+                        size_t msg_len = 0;
+                        if (reader->get_msg_length(msg_id, &msg_len)) {
+                            reader->expected_frame_size = reader->config->header_size + msg_len;
+                            
+                            if (reader->expected_frame_size > reader->buffer_size) {
+                                reader->state = ACC_STATE_LOOKING_FOR_START1;
+                                reader->internal_data_len = 0;
+                                return result;
+                            }
+                            
+                            if (msg_len == 0) {
+                                result.valid = true;
+                                result.msg_id = msg_id;
+                                result.msg_len = 0;
+                                result.msg_data = reader->internal_buffer + reader->config->header_size;
+                                reader->state = ACC_STATE_LOOKING_FOR_START1;
+                                reader->internal_data_len = 0;
+                                reader->expected_frame_size = 0;
+                                return result;
+                            }
+                            
+                            reader->state = ACC_STATE_COLLECTING_PAYLOAD;
+                        } else {
+                            reader->state = ACC_STATE_LOOKING_FOR_START1;
+                            reader->internal_data_len = 0;
+                        }
+                    } else {
+                        reader->state = ACC_STATE_LOOKING_FOR_START1;
+                        reader->internal_data_len = 0;
+                    }
+                } else {
+                    /* Calculate payload length from header */
+                    size_t len_offset = reader->config->num_start_bytes;
+                    if (reader->config->has_seq) len_offset++;
+                    if (reader->config->has_sys_id) len_offset++;
+                    if (reader->config->has_comp_id) len_offset++;
+                    
+                    size_t payload_len = 0;
+                    if (reader->config->has_length) {
+                        if (reader->config->length_bytes == 1) {
+                            payload_len = reader->internal_buffer[len_offset];
+                        } else {
+                            payload_len = reader->internal_buffer[len_offset] | 
+                                         ((size_t)reader->internal_buffer[len_offset + 1] << 8);
+                        }
+                    }
+                    
+                    reader->expected_frame_size = reader->config->header_size + 
+                                                  reader->config->footer_size + payload_len;
+                    
+                    if (reader->expected_frame_size > reader->buffer_size) {
+                        reader->state = ACC_STATE_LOOKING_FOR_START1;
+                        reader->internal_data_len = 0;
+                        return result;
+                    }
+                    
+                    if (reader->internal_data_len >= reader->expected_frame_size) {
+                        result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
+                        reader->state = ACC_STATE_LOOKING_FOR_START1;
+                        reader->internal_data_len = 0;
+                        reader->expected_frame_size = 0;
+                        return result;
+                    }
+                    
+                    reader->state = ACC_STATE_COLLECTING_PAYLOAD;
+                }
+            }
+            break;
+            
+        case ACC_STATE_COLLECTING_PAYLOAD:
+            if (reader->internal_data_len >= reader->buffer_size) {
+                reader->state = ACC_STATE_LOOKING_FOR_START1;
+                reader->internal_data_len = 0;
+                return result;
+            }
+            
+            reader->internal_buffer[reader->internal_data_len++] = byte;
+            
+            if (reader->internal_data_len >= reader->expected_frame_size) {
+                result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
+                reader->state = ACC_STATE_LOOKING_FOR_START1;
+                reader->internal_data_len = 0;
+                reader->expected_frame_size = 0;
+                return result;
+            }
+            break;
+            
+        default:
+            reader->state = ACC_STATE_LOOKING_FOR_START1;
+            break;
+    }
+    
+    return result;
+}
+
+/**
+ * Internal helper to parse a buffer
+ */
+static inline frame_msg_info_t _acc_parse_buffer(
+    const accumulating_reader_t* reader,
+    const uint8_t* buffer,
+    size_t size)
+{
+    if (reader->config->has_crc || reader->config->has_length) {
+        return frame_format_parse_with_crc(reader->config, buffer, size);
+    } else {
+        return frame_format_parse_minimal(reader->config, buffer, size, reader->get_msg_length);
+    }
+}
+
+/**
+ * Check if there might be more data to parse (buffer mode only).
+ */
+static inline bool accumulating_reader_has_more(const accumulating_reader_t* reader)
+{
+    if (reader->state != ACC_STATE_BUFFER_MODE) return false;
+    return (reader->internal_data_len > 0) || 
+           (reader->current_buffer != NULL && reader->current_offset < reader->current_size);
+}
+
+/**
+ * Check if there's a partial message waiting for more data.
+ */
+static inline bool accumulating_reader_has_partial(const accumulating_reader_t* reader)
+{
+    return reader->internal_data_len > 0;
+}
+
+/**
+ * Get the size of the partial message data (0 if none).
+ */
+static inline size_t accumulating_reader_partial_size(const accumulating_reader_t* reader)
+{
+    return reader->internal_data_len;
+}
+
+/**
+ * Get current parser state (for debugging).
+ */
+static inline accumulating_reader_state_t accumulating_reader_state(const accumulating_reader_t* reader)
+{
+    return reader->state;
+}
+
+/**
+ * Reset the reader, clearing any partial message data.
+ */
+static inline void accumulating_reader_reset(accumulating_reader_t* reader)
+{
+    reader->internal_data_len = 0;
+    reader->expected_frame_size = 0;
+    reader->state = ACC_STATE_IDLE;
+    reader->current_buffer = NULL;
+    reader->current_size = 0;
+    reader->current_offset = 0;
+}

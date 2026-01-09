@@ -471,6 +471,648 @@ namespace StructFrame
     }
 
     /// <summary>
+    /// BufferReader - Iterate through a buffer parsing multiple frames.
+    /// 
+    /// Usage:
+    ///   var reader = new BufferReader(FrameProfiles.Standard, buffer);
+    ///   while (true) {
+    ///       var result = reader.Next();
+    ///       if (!result.Valid) break;
+    ///       // Process result.MsgId, result.MsgData, result.MsgSize
+    ///   }
+    /// 
+    /// For minimal profiles that need getMsgLength:
+    ///   var reader = new BufferReader(FrameProfiles.Sensor, buffer, getMsgLength);
+    /// </summary>
+    public class BufferReader
+    {
+        private readonly FrameProfileConfig _config;
+        private readonly byte[] _buffer;
+        private readonly int _size;
+        private int _offset;
+        private readonly Func<int, int?> _getMsgLength;
+
+        public BufferReader(FrameProfileConfig config, byte[] buffer, Func<int, int?> getMsgLength = null)
+        {
+            _config = config;
+            _buffer = buffer;
+            _size = buffer?.Length ?? 0;
+            _offset = 0;
+            _getMsgLength = getMsgLength;
+        }
+
+        /// <summary>
+        /// Parse the next frame in the buffer.
+        /// Returns FrameParseResult with Valid=true if successful, Valid=false if no more frames.
+        /// </summary>
+        public FrameParseResult Next()
+        {
+            if (_offset >= _size)
+                return new FrameParseResult();
+
+            // For minimal profiles, check if getMsgLength callback is provided
+            if (!_config.HasCrc && !_config.HasLength && _getMsgLength == null)
+            {
+                _offset = _size;
+                return new FrameParseResult();
+            }
+
+            int remaining = _size - _offset;
+            byte[] remainingBuffer = new byte[remaining];
+            Array.Copy(_buffer, _offset, remainingBuffer, 0, remaining);
+
+            var parser = new FrameProfileParser(_config, _getMsgLength);
+            var result = parser.ValidateBuffer(remainingBuffer);
+
+            if (result.Valid)
+            {
+                int frameSize = _config.Overhead + result.MsgSize;
+                _offset += frameSize;
+            }
+            else
+            {
+                // No more valid frames - stop parsing
+                _offset = _size;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Reset the reader to the beginning of the buffer.
+        /// </summary>
+        public void Reset() => _offset = 0;
+
+        /// <summary>
+        /// Get the current offset in the buffer.
+        /// </summary>
+        public int Offset => _offset;
+
+        /// <summary>
+        /// Get the remaining bytes in the buffer.
+        /// </summary>
+        public int Remaining => Math.Max(0, _size - _offset);
+
+        /// <summary>
+        /// Check if there are more bytes to parse.
+        /// </summary>
+        public bool HasMore => _offset < _size;
+    }
+
+    /// <summary>
+    /// BufferWriter - Encode multiple frames into a buffer with automatic offset tracking.
+    /// 
+    /// Usage:
+    ///   var writer = new BufferWriter(FrameProfiles.Standard, 1024);
+    ///   writer.Write(0x01, msg1Payload);
+    ///   writer.Write(0x02, msg2Payload);
+    ///   byte[] encodedData = writer.Data();
+    ///   int totalBytes = writer.Size;
+    /// 
+    /// For profiles with extra header fields:
+    ///   var writer = new BufferWriter(FrameProfiles.Network, 1024);
+    ///   writer.Write(0x01, payload, seq: 1, sysId: 1, compId: 1);
+    /// </summary>
+    public class BufferWriter
+    {
+        private readonly FrameProfileConfig _config;
+        private readonly int _capacity;
+        private readonly byte[] _buffer;
+        private int _offset;
+        private readonly FrameProfileParser _encoder;
+
+        public BufferWriter(FrameProfileConfig config, int capacity)
+        {
+            _config = config;
+            _capacity = capacity;
+            _buffer = new byte[capacity];
+            _offset = 0;
+            _encoder = new FrameProfileParser(config);
+        }
+
+        /// <summary>
+        /// Write a message to the buffer.
+        /// Returns the number of bytes written, or 0 on failure.
+        /// </summary>
+        public int Write(int msgId, byte[] payload, int seq = 0, int sysId = 0, int compId = 0, int pkgId = 0)
+        {
+            byte[] encoded = _encoder.Encode(msgId, payload, seq, sysId, compId, pkgId);
+            int written = encoded.Length;
+
+            if (_offset + written > _capacity)
+                return 0;
+
+            Array.Copy(encoded, 0, _buffer, _offset, written);
+            _offset += written;
+            return written;
+        }
+
+        /// <summary>
+        /// Reset the writer to the beginning of the buffer.
+        /// </summary>
+        public void Reset() => _offset = 0;
+
+        /// <summary>
+        /// Get the total number of bytes written.
+        /// </summary>
+        public int Size => _offset;
+
+        /// <summary>
+        /// Get the remaining capacity in the buffer.
+        /// </summary>
+        public int Remaining => Math.Max(0, _capacity - _offset);
+
+        /// <summary>
+        /// Get the written data as a new byte array.
+        /// </summary>
+        public byte[] Data()
+        {
+            byte[] result = new byte[_offset];
+            Array.Copy(_buffer, 0, result, 0, _offset);
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// Parser state for AccumulatingReader
+    /// </summary>
+    public enum AccumulatingReaderState
+    {
+        Idle = 0,
+        LookingForStart1 = 1,
+        LookingForStart2 = 2,
+        CollectingHeader = 3,
+        CollectingPayload = 4,
+        BufferMode = 5
+    }
+
+    /// <summary>
+    /// AccumulatingReader - Unified parser for buffer and byte-by-byte streaming input.
+    /// 
+    /// Handles partial messages across buffer boundaries and supports both:
+    /// - Buffer mode: AddData() for processing chunks of data
+    /// - Stream mode: PushByte() for byte-by-byte processing (e.g., UART)
+    /// 
+    /// Buffer mode usage:
+    ///   var reader = new AccumulatingReader(FrameProfiles.Standard);
+    ///   reader.AddData(chunk1);
+    ///   while (true) {
+    ///       var result = reader.Next();
+    ///       if (!result.Valid) break;
+    ///       // Process complete messages
+    ///   }
+    /// 
+    /// Stream mode usage:
+    ///   var reader = new AccumulatingReader(FrameProfiles.Standard);
+    ///   while (receiving) {
+    ///       byte b = ReadByte();
+    ///       var result = reader.PushByte(b);
+    ///       if (result.Valid) {
+    ///           // Process complete message
+    ///       }
+    ///   }
+    /// 
+    /// For minimal profiles:
+    ///   var reader = new AccumulatingReader(FrameProfiles.Sensor, getMsgLength);
+    /// </summary>
+    public class AccumulatingReader
+    {
+        private readonly FrameProfileConfig _config;
+        private readonly Func<int, int?> _getMsgLength;
+        private readonly int _bufferSize;
+
+        // Internal buffer for partial messages
+        private readonly byte[] _internalBuffer;
+        private int _internalDataLen;
+        private int _expectedFrameSize;
+        private AccumulatingReaderState _state;
+
+        // Buffer mode state
+        private byte[] _currentBuffer;
+        private int _currentSize;
+        private int _currentOffset;
+
+        public AccumulatingReader(FrameProfileConfig config, Func<int, int?> getMsgLength = null, int bufferSize = 1024)
+        {
+            _config = config;
+            _getMsgLength = getMsgLength;
+            _bufferSize = bufferSize;
+
+            _internalBuffer = new byte[bufferSize];
+            _internalDataLen = 0;
+            _expectedFrameSize = 0;
+            _state = AccumulatingReaderState.Idle;
+
+            _currentBuffer = null;
+            _currentSize = 0;
+            _currentOffset = 0;
+        }
+
+        // =========================================================================
+        // Buffer Mode API
+        // =========================================================================
+
+        /// <summary>
+        /// Add a new buffer of data to process.
+        /// </summary>
+        public void AddData(byte[] buffer)
+        {
+            _currentBuffer = buffer;
+            _currentSize = buffer?.Length ?? 0;
+            _currentOffset = 0;
+            _state = AccumulatingReaderState.BufferMode;
+
+            // If we have partial data in internal buffer, try to complete it
+            if (_internalDataLen > 0 && buffer != null)
+            {
+                int spaceAvailable = _bufferSize - _internalDataLen;
+                int bytesToCopy = Math.Min(buffer.Length, spaceAvailable);
+                Array.Copy(buffer, 0, _internalBuffer, _internalDataLen, bytesToCopy);
+                _internalDataLen += bytesToCopy;
+            }
+        }
+
+        /// <summary>
+        /// Parse the next frame (buffer mode).
+        /// </summary>
+        public FrameParseResult Next()
+        {
+            if (_state != AccumulatingReaderState.BufferMode)
+                return new FrameParseResult();
+
+            // First, try to complete a partial message from the internal buffer
+            if (_internalDataLen > 0 && _currentOffset == 0)
+            {
+                byte[] internalBytes = new byte[_internalDataLen];
+                Array.Copy(_internalBuffer, 0, internalBytes, 0, _internalDataLen);
+                var result = ParseBuffer(internalBytes);
+
+                if (result.Valid)
+                {
+                    int frameSize = _config.Overhead + result.MsgSize;
+                    int partialLen = _internalDataLen > _currentSize ? _internalDataLen - _currentSize : 0;
+                    int bytesFromCurrent = frameSize > partialLen ? frameSize - partialLen : 0;
+                    _currentOffset = bytesFromCurrent;
+
+                    _internalDataLen = 0;
+                    _expectedFrameSize = 0;
+
+                    return result;
+                }
+                else
+                {
+                    return new FrameParseResult();
+                }
+            }
+
+            // Parse from current buffer
+            if (_currentBuffer == null || _currentOffset >= _currentSize)
+                return new FrameParseResult();
+
+            int remaining = _currentSize - _currentOffset;
+            byte[] remainingBuffer = new byte[remaining];
+            Array.Copy(_currentBuffer, _currentOffset, remainingBuffer, 0, remaining);
+            var parseResult = ParseBuffer(remainingBuffer);
+
+            if (parseResult.Valid)
+            {
+                int frameSize = _config.Overhead + parseResult.MsgSize;
+                _currentOffset += frameSize;
+                return parseResult;
+            }
+
+            // Parse failed - might be partial message at end of buffer
+            int remainingLen = _currentSize - _currentOffset;
+            if (remainingLen > 0 && remainingLen < _bufferSize)
+            {
+                Array.Copy(_currentBuffer, _currentOffset, _internalBuffer, 0, remainingLen);
+                _internalDataLen = remainingLen;
+                _currentOffset = _currentSize;
+            }
+
+            return new FrameParseResult();
+        }
+
+        // =========================================================================
+        // Stream Mode API
+        // =========================================================================
+
+        /// <summary>
+        /// Push a single byte for parsing (stream mode).
+        /// </summary>
+        public FrameParseResult PushByte(byte b)
+        {
+            // Initialize state on first byte if idle
+            if (_state == AccumulatingReaderState.Idle || _state == AccumulatingReaderState.BufferMode)
+            {
+                _state = AccumulatingReaderState.LookingForStart1;
+                _internalDataLen = 0;
+                _expectedFrameSize = 0;
+            }
+
+            switch (_state)
+            {
+                case AccumulatingReaderState.LookingForStart1:
+                    return HandleLookingForStart1(b);
+                case AccumulatingReaderState.LookingForStart2:
+                    return HandleLookingForStart2(b);
+                case AccumulatingReaderState.CollectingHeader:
+                    return HandleCollectingHeader(b);
+                case AccumulatingReaderState.CollectingPayload:
+                    return HandleCollectingPayload(b);
+                default:
+                    _state = AccumulatingReaderState.LookingForStart1;
+                    return new FrameParseResult();
+            }
+        }
+
+        private FrameParseResult HandleLookingForStart1(byte b)
+        {
+            if (_config.NumStartBytes == 0)
+            {
+                _internalBuffer[0] = b;
+                _internalDataLen = 1;
+
+                if (!_config.HasLength && !_config.HasCrc)
+                {
+                    return HandleMinimalMsgId(b);
+                }
+                else
+                {
+                    _state = AccumulatingReaderState.CollectingHeader;
+                }
+            }
+            else
+            {
+                if (b == _config.StartByte1)
+                {
+                    _internalBuffer[0] = b;
+                    _internalDataLen = 1;
+
+                    if (_config.NumStartBytes == 1)
+                    {
+                        _state = AccumulatingReaderState.CollectingHeader;
+                    }
+                    else
+                    {
+                        _state = AccumulatingReaderState.LookingForStart2;
+                    }
+                }
+            }
+            return new FrameParseResult();
+        }
+
+        private FrameParseResult HandleLookingForStart2(byte b)
+        {
+            if (b == _config.StartByte2)
+            {
+                _internalBuffer[_internalDataLen++] = b;
+                _state = AccumulatingReaderState.CollectingHeader;
+            }
+            else if (b == _config.StartByte1)
+            {
+                _internalBuffer[0] = b;
+                _internalDataLen = 1;
+            }
+            else
+            {
+                _state = AccumulatingReaderState.LookingForStart1;
+                _internalDataLen = 0;
+            }
+            return new FrameParseResult();
+        }
+
+        private FrameParseResult HandleCollectingHeader(byte b)
+        {
+            if (_internalDataLen >= _bufferSize)
+            {
+                _state = AccumulatingReaderState.LookingForStart1;
+                _internalDataLen = 0;
+                return new FrameParseResult();
+            }
+
+            _internalBuffer[_internalDataLen++] = b;
+
+            if (_internalDataLen >= _config.HeaderSize)
+            {
+                if (!_config.HasLength && !_config.HasCrc)
+                {
+                    int msgId = _internalBuffer[_config.HeaderSize - 1];
+                    if (_getMsgLength != null)
+                    {
+                        int? msgLen = _getMsgLength(msgId);
+                        if (msgLen.HasValue)
+                        {
+                            _expectedFrameSize = _config.HeaderSize + msgLen.Value;
+
+                            if (_expectedFrameSize > _bufferSize)
+                            {
+                                _state = AccumulatingReaderState.LookingForStart1;
+                                _internalDataLen = 0;
+                                return new FrameParseResult();
+                            }
+
+                            if (msgLen.Value == 0)
+                            {
+                                var result = new FrameParseResult
+                                {
+                                    Valid = true,
+                                    MsgId = msgId,
+                                    MsgSize = 0,
+                                    MsgData = new byte[0]
+                                };
+                                _state = AccumulatingReaderState.LookingForStart1;
+                                _internalDataLen = 0;
+                                _expectedFrameSize = 0;
+                                return result;
+                            }
+
+                            _state = AccumulatingReaderState.CollectingPayload;
+                        }
+                        else
+                        {
+                            _state = AccumulatingReaderState.LookingForStart1;
+                            _internalDataLen = 0;
+                        }
+                    }
+                    else
+                    {
+                        _state = AccumulatingReaderState.LookingForStart1;
+                        _internalDataLen = 0;
+                    }
+                }
+                else
+                {
+                    int lenOffset = _config.NumStartBytes;
+                    if (_config.HasSeq) lenOffset++;
+                    if (_config.HasSysId) lenOffset++;
+                    if (_config.HasCompId) lenOffset++;
+
+                    int payloadLen = 0;
+                    if (_config.HasLength)
+                    {
+                        if (_config.LengthBytes == 1)
+                        {
+                            payloadLen = _internalBuffer[lenOffset];
+                        }
+                        else
+                        {
+                            payloadLen = _internalBuffer[lenOffset] | (_internalBuffer[lenOffset + 1] << 8);
+                        }
+                    }
+
+                    _expectedFrameSize = _config.Overhead + payloadLen;
+
+                    if (_expectedFrameSize > _bufferSize)
+                    {
+                        _state = AccumulatingReaderState.LookingForStart1;
+                        _internalDataLen = 0;
+                        return new FrameParseResult();
+                    }
+
+                    if (_internalDataLen >= _expectedFrameSize)
+                    {
+                        return ValidateAndReturn();
+                    }
+
+                    _state = AccumulatingReaderState.CollectingPayload;
+                }
+            }
+
+            return new FrameParseResult();
+        }
+
+        private FrameParseResult HandleCollectingPayload(byte b)
+        {
+            if (_internalDataLen >= _bufferSize)
+            {
+                _state = AccumulatingReaderState.LookingForStart1;
+                _internalDataLen = 0;
+                return new FrameParseResult();
+            }
+
+            _internalBuffer[_internalDataLen++] = b;
+
+            if (_internalDataLen >= _expectedFrameSize)
+            {
+                return ValidateAndReturn();
+            }
+
+            return new FrameParseResult();
+        }
+
+        private FrameParseResult HandleMinimalMsgId(byte msgId)
+        {
+            if (_getMsgLength != null)
+            {
+                int? msgLen = _getMsgLength(msgId);
+                if (msgLen.HasValue)
+                {
+                    _expectedFrameSize = _config.HeaderSize + msgLen.Value;
+
+                    if (_expectedFrameSize > _bufferSize)
+                    {
+                        _state = AccumulatingReaderState.LookingForStart1;
+                        _internalDataLen = 0;
+                        return new FrameParseResult();
+                    }
+
+                    if (msgLen.Value == 0)
+                    {
+                        var result = new FrameParseResult
+                        {
+                            Valid = true,
+                            MsgId = msgId,
+                            MsgSize = 0,
+                            MsgData = new byte[0]
+                        };
+                        _state = AccumulatingReaderState.LookingForStart1;
+                        _internalDataLen = 0;
+                        _expectedFrameSize = 0;
+                        return result;
+                    }
+
+                    _state = AccumulatingReaderState.CollectingPayload;
+                }
+                else
+                {
+                    _state = AccumulatingReaderState.LookingForStart1;
+                    _internalDataLen = 0;
+                }
+            }
+            else
+            {
+                _state = AccumulatingReaderState.LookingForStart1;
+                _internalDataLen = 0;
+            }
+            return new FrameParseResult();
+        }
+
+        private FrameParseResult ValidateAndReturn()
+        {
+            byte[] internalBytes = new byte[_internalDataLen];
+            Array.Copy(_internalBuffer, 0, internalBytes, 0, _internalDataLen);
+            var result = ParseBuffer(internalBytes);
+
+            _state = AccumulatingReaderState.LookingForStart1;
+            _internalDataLen = 0;
+            _expectedFrameSize = 0;
+
+            return result;
+        }
+
+        private FrameParseResult ParseBuffer(byte[] buffer)
+        {
+            var parser = new FrameProfileParser(_config, _getMsgLength);
+            return parser.ValidateBuffer(buffer);
+        }
+
+        // =========================================================================
+        // Common API
+        // =========================================================================
+
+        /// <summary>
+        /// Check if there might be more data to parse (buffer mode only).
+        /// </summary>
+        public bool HasMore
+        {
+            get
+            {
+                if (_state != AccumulatingReaderState.BufferMode) return false;
+                return (_internalDataLen > 0) || (_currentBuffer != null && _currentOffset < _currentSize);
+            }
+        }
+
+        /// <summary>
+        /// Check if there's a partial message waiting for more data.
+        /// </summary>
+        public bool HasPartial => _internalDataLen > 0;
+
+        /// <summary>
+        /// Get the size of the partial message data (0 if none).
+        /// </summary>
+        public int PartialSize => _internalDataLen;
+
+        /// <summary>
+        /// Get current parser state (for debugging).
+        /// </summary>
+        public AccumulatingReaderState State => _state;
+
+        /// <summary>
+        /// Reset the reader, clearing any partial message data.
+        /// </summary>
+        public void Reset()
+        {
+            _internalDataLen = 0;
+            _expectedFrameSize = 0;
+            _state = AccumulatingReaderState.Idle;
+            _currentBuffer = null;
+            _currentSize = 0;
+            _currentOffset = 0;
+        }
+    }
+
+    /// <summary>
     /// Pre-defined profile configurations
     /// </summary>
     public static class FrameProfiles
@@ -610,6 +1252,92 @@ namespace StructFrame
         /// Create a parser for Profile Network
         /// </summary>
         public static FrameProfileParser CreateNetworkParser() => new FrameProfileParser(Network);
+
+        // =========================================================================
+        // Convenience factory functions for BufferReader/BufferWriter/AccumulatingReader
+        // =========================================================================
+
+        /// <summary>
+        /// Create a BufferReader for Profile Standard
+        /// </summary>
+        public static BufferReader CreateStandardReader(byte[] buffer) => new BufferReader(Standard, buffer);
+
+        /// <summary>
+        /// Create a BufferWriter for Profile Standard
+        /// </summary>
+        public static BufferWriter CreateStandardWriter(int capacity = 1024) => new BufferWriter(Standard, capacity);
+
+        /// <summary>
+        /// Create an AccumulatingReader for Profile Standard
+        /// </summary>
+        public static AccumulatingReader CreateStandardAccumulatingReader(int bufferSize = 1024) => 
+            new AccumulatingReader(Standard, null, bufferSize);
+
+        /// <summary>
+        /// Create a BufferReader for Profile Sensor
+        /// </summary>
+        public static BufferReader CreateSensorReader(byte[] buffer, Func<int, int?> getMsgLength) => 
+            new BufferReader(Sensor, buffer, getMsgLength);
+
+        /// <summary>
+        /// Create a BufferWriter for Profile Sensor
+        /// </summary>
+        public static BufferWriter CreateSensorWriter(int capacity = 1024) => new BufferWriter(Sensor, capacity);
+
+        /// <summary>
+        /// Create an AccumulatingReader for Profile Sensor
+        /// </summary>
+        public static AccumulatingReader CreateSensorAccumulatingReader(Func<int, int?> getMsgLength, int bufferSize = 1024) => 
+            new AccumulatingReader(Sensor, getMsgLength, bufferSize);
+
+        /// <summary>
+        /// Create a BufferReader for Profile IPC
+        /// </summary>
+        public static BufferReader CreateIPCReader(byte[] buffer, Func<int, int?> getMsgLength) => 
+            new BufferReader(IPC, buffer, getMsgLength);
+
+        /// <summary>
+        /// Create a BufferWriter for Profile IPC
+        /// </summary>
+        public static BufferWriter CreateIPCWriter(int capacity = 1024) => new BufferWriter(IPC, capacity);
+
+        /// <summary>
+        /// Create an AccumulatingReader for Profile IPC
+        /// </summary>
+        public static AccumulatingReader CreateIPCAccumulatingReader(Func<int, int?> getMsgLength, int bufferSize = 1024) => 
+            new AccumulatingReader(IPC, getMsgLength, bufferSize);
+
+        /// <summary>
+        /// Create a BufferReader for Profile Bulk
+        /// </summary>
+        public static BufferReader CreateBulkReader(byte[] buffer) => new BufferReader(Bulk, buffer);
+
+        /// <summary>
+        /// Create a BufferWriter for Profile Bulk
+        /// </summary>
+        public static BufferWriter CreateBulkWriter(int capacity = 1024) => new BufferWriter(Bulk, capacity);
+
+        /// <summary>
+        /// Create an AccumulatingReader for Profile Bulk
+        /// </summary>
+        public static AccumulatingReader CreateBulkAccumulatingReader(int bufferSize = 1024) => 
+            new AccumulatingReader(Bulk, null, bufferSize);
+
+        /// <summary>
+        /// Create a BufferReader for Profile Network
+        /// </summary>
+        public static BufferReader CreateNetworkReader(byte[] buffer) => new BufferReader(Network, buffer);
+
+        /// <summary>
+        /// Create a BufferWriter for Profile Network
+        /// </summary>
+        public static BufferWriter CreateNetworkWriter(int capacity = 1024) => new BufferWriter(Network, capacity);
+
+        /// <summary>
+        /// Create an AccumulatingReader for Profile Network
+        /// </summary>
+        public static AccumulatingReader CreateNetworkAccumulatingReader(int bufferSize = 1024) => 
+            new AccumulatingReader(Network, null, bufferSize);
 
         /// <summary>
         /// Create a custom profile configuration
