@@ -174,9 +174,11 @@ var frame = parser.Encode(1, data);
 
 See the [Minimal Frames Guide](minimal-frames.md) for complete details.
 
-## Profile-Based Parsing API
+## Profile-Based Parsing API (Recommended)
 
-The C# SDK provides high-performance parsing classes that match the C++ gold standard implementation. These are optimized for specific frame profiles and provide convenient factory methods.
+**The patterns shown in this section are the recommended way to encode and decode messages, as demonstrated in the test suite (`tests/csharp/TestCodec.cs`).** These are the gold standard APIs for production use.
+
+The C# SDK provides high-performance parsing classes that match the C++ implementation. These are optimized for specific frame profiles and provide convenient factory methods.
 
 ### Available Profiles
 

@@ -2,6 +2,16 @@
 
 This guide shows how to use generated Struct Frame code in each supported language.
 
+!!! tip "Production-Ready Patterns"
+    **For production use, see the recommended patterns in the language-specific SDK documentation:**
+    
+    - [C++ SDK - Recommended Encoding/Decoding Patterns](../user-guide/cpp-sdk.md#recommended-encodingdecoding-patterns)
+    - [Python SDK - Profile-Based Parsing API](../user-guide/python-sdk.md#profile-based-parsing-api-recommended)
+    - [TypeScript SDK - Profile-Based Parsing API](../user-guide/typescript-sdk.md#profile-based-parsing-api-recommended)
+    - [C# SDK - Profile-Based Parsing API](../user-guide/csharp-sdk.md#profile-based-parsing-api-recommended)
+    
+    These patterns use `BufferWriter`, `BufferReader`, and `AccumulatingReader` classes, which are demonstrated in the test suite (`tests/*/test_codec.*`) and represent the gold standard for library usage.
+
 ## C
 
 Include the generated header and parser boilerplate:

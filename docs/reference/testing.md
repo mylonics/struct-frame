@@ -1,5 +1,26 @@
 # Testing
 
+## Test Codec Files - The Gold Standard
+
+**The `test_codec` files are the canonical examples of how to use the struct-frame library.** They demonstrate production-ready patterns for encoding and decoding messages using the recommended APIs:
+
+- **`tests/cpp/test_codec.cpp`** - C++ examples using `ProfileStandardWriter`, `ProfileStandardReader`, and `AccumulatingReader`
+- **`tests/py/test_codec.py`** - Python examples using factory functions like `create_profile_standard_writer()` and `create_profile_standard_reader()`
+- **`tests/ts/test_codec.ts`** - TypeScript examples using `ProfileStandardWriter` and `ProfileStandardReader`
+- **`tests/js/test_codec.js`** - JavaScript examples
+- **`tests/c/test_codec.c`** - C examples using profile functions
+- **`tests/csharp/TestCodec.cs`** - C# examples using `FrameProfiles.CreateProfileStandardWriter()`
+
+These files showcase:
+
+- ✅ Encoding multiple messages into a buffer using `BufferWriter`
+- ✅ Decoding multiple messages from a buffer using `BufferReader`
+- ✅ Handling partial messages across buffer boundaries using `AccumulatingReader`
+- ✅ Working with all frame profiles (Standard, Sensor, IPC, Bulk, Network)
+- ✅ Message validation and error handling patterns
+
+**When learning struct-frame, study these files first.** The patterns demonstrated here are referenced throughout the SDK documentation.
+
 ## Running Tests
 
 From the project root:
