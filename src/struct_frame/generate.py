@@ -434,9 +434,9 @@ class Message:
                 return False
             # Add oneof size (largest field size)
             self.size = self.size + oneof.size
-            # If auto-discriminator is enabled, add 1 byte for the message_id discriminator
+            # If auto-discriminator is enabled, add 2 bytes for the uint16_t message_id discriminator
             if oneof.auto_discriminator:
-                self.size = self.size + 1
+                self.size = self.size + 2
 
         # Flatten collision detection: if a field is marked as flatten and is a message,
         # ensure none of the child field names collide with fields in this message.
@@ -1127,8 +1127,8 @@ def main():
     utility_files = {
         'c': ['frame_base.h'],
         'cpp': ['frame_base.hpp'],
-        'ts': ['struct_base.ts', 'struct_frame.ts', 'struct_frame_types.ts', 'frame_base.ts'],
-        'js': ['struct_base.js', 'struct_frame.js', 'struct_frame_types.js', 'frame_base.js'],
+        'ts': ['struct_base.ts', 'frame_base.ts'],
+        'js': ['struct_base.js', 'frame_base.js'],
         'py': [],  # __init__.py will be generated with the custom frame formats
         'csharp': ['FrameBase.cs']
     }

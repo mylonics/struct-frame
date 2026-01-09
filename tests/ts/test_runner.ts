@@ -8,8 +8,7 @@
  * Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
  */
 import * as fs from 'fs';
-import * as path from 'path';
-import { encodeTestMessage, decodeTestMessage, validateTestMessage } from './test_codec';
+import { encodeTestMessage, decodeTestMessage } from './test_codec';
 
 function printUsage(): void {
   console.log('Usage:');

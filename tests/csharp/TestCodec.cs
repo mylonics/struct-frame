@@ -1113,7 +1113,7 @@ namespace StructFrameTests
     /// </summary>
     public static class UnionTestMessageSerializer
     {
-        public const int MessageSize = 140;  // 2 bytes discriminator + 139 bytes payload
+        public const int MessageSize = 141;  // 2 bytes discriminator + 139 bytes payload
         public const ushort MsgId = 205;
         // Inner message IDs for discriminator
         public const ushort ComprehensiveArrayMessageMsgId = 203;
@@ -1625,6 +1625,10 @@ namespace StructFrameTests
             {
                 msgLen = BasicTypesMessageSerializer.MessageSize;
             }
+            else if (msgId == 205) // UnionTestMessage
+            {
+                msgLen = UnionTestMessageSerializer.MessageSize;
+            }
             else
             {
                 msgLen = MessageSerializer.MessageSize; // default
@@ -1682,6 +1686,10 @@ namespace StructFrameTests
             else if (msgId == 201) // BasicTypesMessage
             {
                 msgLen = BasicTypesMessageSerializer.MessageSize;
+            }
+            else if (msgId == 205) // UnionTestMessage
+            {
+                msgLen = UnionTestMessageSerializer.MessageSize;
             }
             else
             {

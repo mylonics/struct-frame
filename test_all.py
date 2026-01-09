@@ -24,6 +24,15 @@ def clean_generated_folder():
         print("[CLEAN] Done.")
     else:
         print("[CLEAN] tests/generated folder does not exist, skipping.")
+    
+    # Also clean ts/ts_out folder (TypeScript build output)
+    ts_out_dir = Path(__file__).parent / "tests" / "ts" / "ts_out"
+    if ts_out_dir.exists():
+        print("[CLEAN] Deleting tests/ts/ts_out folder...")
+        shutil.rmtree(ts_out_dir)
+        print("[CLEAN] Done.")
+    else:
+        print("[CLEAN] tests/ts/ts_out folder does not exist, skipping.")
 
 
 try:

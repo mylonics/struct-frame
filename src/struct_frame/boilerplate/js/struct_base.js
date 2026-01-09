@@ -50,6 +50,17 @@ class Struct {
     this.name = name || 'Struct';
     this.fields = [];
     this.currentOffset = 0;
+    this._msgid = undefined;
+  }
+
+  /**
+   * Set the message ID for this struct type.
+   * @param {number} id - The message ID
+   * @returns {Struct} - Returns this for chaining
+   */
+  msgId(id) {
+    this._msgid = id;
+    return this;
   }
 
   // Primitive field methods
@@ -216,6 +227,7 @@ class Struct {
     const fields = [...this.fields];
     const totalSize = this.currentOffset;
     const structName = this.name;
+    const msgid = this._msgid;
 
     // Create a class that can be instantiated with optional buffer
     function CompiledStructClass(buffer) {
@@ -230,6 +242,9 @@ class Struct {
     CompiledStructClass._fields = fields;
     CompiledStructClass._size = totalSize;
     CompiledStructClass._structName = structName;
+    if (msgid !== undefined) {
+      CompiledStructClass._msgid = msgid;
+    }
 
     CompiledStructClass.prototype._defineProperties = function() {
       for (const field of fields) {

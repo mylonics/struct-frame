@@ -302,9 +302,6 @@ class TestRunner:
         """Compile code for all languages that require compilation."""
         self.print_section("COMPILATION (all test files)")
 
-        # Copy JS test files first (no compilation needed but files must be in place)
-        self._copy_js_test_files()
-
         compiled = [l for l in self.get_active_languages()
                     if self.get_lang(l) and self.get_lang(l).compiler]
 
@@ -322,22 +319,6 @@ class TestRunner:
 
         self.print_lang_results(compiled, self.compilation_results)
         return all(self.compilation_results.get(l, False) for l in compiled)
-
-    def _copy_js_test_files(self):
-        """Copy JavaScript test files to the generated JS directory."""
-        lang = self.get_lang('js')
-        if not lang or not lang.enabled:
-            return
-
-        test_dir = lang.get_test_dir()
-        script_dir = lang.get_script_dir()
-
-        if script_dir:
-            script_dir.mkdir(parents=True, exist_ok=True)
-            for filename in ['test_runner.js', 'test_codec.js']:
-                source_file = test_dir / filename
-                if source_file.exists():
-                    shutil.copy2(source_file, script_dir / filename)
 
     def _compile_language(self, lang_id: str) -> bool:
         """Compile code for a specific language."""
@@ -380,30 +361,6 @@ class TestRunner:
 
         # Project-based compilation (TypeScript, C#)
         if lang.compile_command and source_ext:
-            if source_ext == '.ts':
-                for source_file in test_dir.glob(f"*{source_ext}"):
-                    shutil.copy2(source_file, gen_dir / source_file.name)
-
-                # Create tsconfig.json in generated dir
-                tsconfig_path = gen_dir / 'tsconfig.json'
-                if not tsconfig_path.exists():
-                    tsconfig = {
-                        "extends": "../../ts/tsconfig.json",
-                        "compilerOptions": {
-                            "rootDir": ".",
-                            "outDir": "./js",
-                            "baseUrl": "../../ts",
-                            "paths": {
-                                "typed-struct": ["node_modules/typed-struct"],
-                                "*": ["node_modules/*", "node_modules/@types/*"]
-                            },
-                            "types": ["node"],
-                            "typeRoots": ["../../ts/node_modules/@types"]
-                        },
-                        "include": [f"./*{source_ext}"]
-                    }
-                    tsconfig_path.write_text(json.dumps(tsconfig, indent=2))
-
             if not lang.compile_project(test_dir, build_dir, gen_dir):
                 all_success = False
 
@@ -591,46 +548,52 @@ class TestRunner:
 
         active_languages = [l for l in self.get_active_languages()
                             if l in self.get_available_languages()]
-        passed = total = 0
+        
+        # Track counts per section
+        gen_passed = gen_total = 0
+        compile_passed = compile_total = 0
+        matrix_passed = matrix_total = 0
+        standalone_passed = standalone_total = 0
 
         # Generation
         for lang_id in active_languages:
-            total += 1
-            passed += self.generation_results.get(lang_id, False)
+            gen_total += 1
+            gen_passed += self.generation_results.get(lang_id, False)
 
         # Compilation
         for lang_id in active_languages:
             lang = self.get_lang(lang_id)
             if lang and lang.compiler:
-                total += 1
-                passed += self.compilation_results.get(lang_id, False)
+                compile_total += 1
+                compile_passed += self.compilation_results.get(lang_id, False)
 
-        # Tests
+        # Tests - separate matrix tests from standalone tests
         for lang_id in active_languages:
-            for result in self.test_results.get(lang_id, {}).values():
+            for test_name, result in self.test_results.get(lang_id, {}).items():
                 if result is not None and isinstance(result, bool):
-                    total += 1
-                    passed += result
+                    # Skip standalone tests - they are counted separately
+                    if test_name.startswith('standalone_'):
+                        continue
+                    matrix_total += 1
+                    matrix_passed += result
+        
+        # Standalone tests (stored under 'python' key with 'standalone_' prefix)
+        for test_name, result in self.test_results.get('python', {}).items():
+            if test_name.startswith('standalone_') and result is not None and isinstance(result, bool):
+                standalone_total += 1
+                standalone_passed += result
 
-        # Cross-platform
-        for decoders in self.cross_platform_results.values():
-            for result in decoders.values():
-                if result is None:
-                    continue
-                if isinstance(result, dict):
-                    encode_ok = result.get('encode')
-                    decode_ok = result.get('decode')
-                    if encode_ok is not None:
-                        total += 1
-                        passed += encode_ok
-                    if decode_ok is not None:
-                        total += 1
-                        passed += decode_ok
-                elif isinstance(result, bool):
-                    total += 1
-                    passed += result
+        # Print breakdown
+        print(f"\n  Code Generation:    {gen_passed}/{gen_total}")
+        print(f"  Compilation:        {compile_passed}/{compile_total}")
+        print(f"  Cross-Platform:     {matrix_passed}/{matrix_total}")
+        if standalone_total > 0:
+            print(f"  Standalone Tests:   {standalone_passed}/{standalone_total}")
 
-        print(f"\n{passed}/{total} tests passed")
+        passed = gen_passed + compile_passed + matrix_passed + standalone_passed
+        total = gen_total + compile_total + matrix_total + standalone_total
+
+        print(f"\n  Total: {passed}/{total} tests passed")
 
         if total == 0:
             return False
@@ -639,10 +602,10 @@ class TestRunner:
         
         # Only return success if 100% pass rate
         if rate == 100.0:
-            print(f"SUCCESS: All tests passed")
+            print(f"  SUCCESS: All tests passed")
             return True
         else:
-            print(f"FAILURE: {rate:.1f}% pass rate ({total - passed} test(s) failed)")
+            print(f"  FAILURE: {rate:.1f}% pass rate ({total - passed} test(s) failed)")
             return False
 
     # =========================================================================
