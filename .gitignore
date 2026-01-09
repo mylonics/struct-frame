@@ -37,6 +37,7 @@ tests/c/build/
 tests/cpp/build/
 tests/py/build/
 tests/ts/build/
+tests/js/build/
 
 # Test artifacts
 tests/c/*.exe

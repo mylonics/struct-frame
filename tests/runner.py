@@ -302,9 +302,6 @@ class TestRunner:
         """Compile code for all languages that require compilation."""
         self.print_section("COMPILATION (all test files)")
 
-        # Copy JS test files first (no compilation needed but files must be in place)
-        self._copy_js_test_files()
-
         compiled = [l for l in self.get_active_languages()
                     if self.get_lang(l) and self.get_lang(l).compiler]
 
@@ -322,22 +319,6 @@ class TestRunner:
 
         self.print_lang_results(compiled, self.compilation_results)
         return all(self.compilation_results.get(l, False) for l in compiled)
-
-    def _copy_js_test_files(self):
-        """Copy JavaScript test files to the generated JS directory."""
-        lang = self.get_lang('js')
-        if not lang or not lang.enabled:
-            return
-
-        test_dir = lang.get_test_dir()
-        script_dir = lang.get_script_dir()
-
-        if script_dir:
-            script_dir.mkdir(parents=True, exist_ok=True)
-            for filename in ['test_runner.js', 'test_codec.js']:
-                source_file = test_dir / filename
-                if source_file.exists():
-                    shutil.copy2(source_file, script_dir / filename)
 
     def _compile_language(self, lang_id: str) -> bool:
         """Compile code for a specific language."""
@@ -380,30 +361,6 @@ class TestRunner:
 
         # Project-based compilation (TypeScript, C#)
         if lang.compile_command and source_ext:
-            if source_ext == '.ts':
-                for source_file in test_dir.glob(f"*{source_ext}"):
-                    shutil.copy2(source_file, gen_dir / source_file.name)
-
-                # Create tsconfig.json in generated dir
-                tsconfig_path = gen_dir / 'tsconfig.json'
-                if not tsconfig_path.exists():
-                    tsconfig = {
-                        "extends": "../../ts/tsconfig.json",
-                        "compilerOptions": {
-                            "rootDir": ".",
-                            "outDir": "./js",
-                            "baseUrl": "../../ts",
-                            "paths": {
-                                "typed-struct": ["node_modules/typed-struct"],
-                                "*": ["node_modules/*", "node_modules/@types/*"]
-                            },
-                            "types": ["node"],
-                            "typeRoots": ["../../ts/node_modules/@types"]
-                        },
-                        "include": [f"./*{source_ext}"]
-                    }
-                    tsconfig_path.write_text(json.dumps(tsconfig, indent=2))
-
             if not lang.compile_project(test_dir, build_dir, gen_dir):
                 all_success = False
 

@@ -105,7 +105,7 @@ import {
   createProfileBulkWriter,
   createProfileNetworkReader,
   createProfileNetworkWriter,
-} from './frame_profiles';
+} from '../generated/ts/frame_profiles';
 
 const {
   serialization_test_SerializationTestMessage,
@@ -121,7 +121,7 @@ const {
   serialization_test_ComprehensiveArrayMessage_msgid,
   serialization_test_ComprehensiveArrayMessage_max_size,
   get_message_length
-} = require('./serialization_test.sf');
+} = require('../generated/ts/serialization_test.sf');
 
 // Helper to get message length for minimal payloads
 function getMsgLength(msgId: number): number | undefined {

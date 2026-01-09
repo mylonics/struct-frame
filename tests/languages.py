@@ -405,14 +405,14 @@ class TypeScriptLanguage(Language):
 
     compiler = "npx tsc"
     compiler_check_cmd = "npx tsc --version"
-    compile_command = "npx tsc --project {generated_dir}/tsconfig.json"
-    compile_output_dir = "tests/generated/ts/js"
+    compile_command = "npx tsc --project {test_dir}/tsconfig.json"
+    compile_output_dir = "tests/ts/build"
     compile_working_dir = "tests/ts"
     source_extension = ".ts"
     compiled_extension = ".js"
 
     interpreter = "node"
-    script_dir = "tests/generated/ts/js"
+    script_dir = "tests/ts/build/ts"
 
     test_dir = "tests/ts"
     build_dir = "tests/ts/build"
@@ -428,7 +428,6 @@ class JavaScriptLanguage(Language):
 
     interpreter = "node"
     source_extension = ".js"
-    script_dir = "tests/generated/js"
 
     test_dir = "tests/js"
     build_dir = "tests/js/build"
