@@ -29,6 +29,7 @@ import {
     payloadFooterSize,
 } from './payload_types';
 import { fletcher_checksum, createFrameMsgInfo, FrameMsgInfo } from './frame_base';
+import { MessageBase } from './struct_base';
 
 // =============================================================================
 // Profile Configuration Interface
@@ -521,12 +522,12 @@ export class BufferWriter {
 
     /**
      * Write a message to the buffer.
-     * The message must be a struct instance with a constructor that has _msgid static property
-     * and the instance must have _buffer property.
+     * The message must be a MessageBase instance (generated struct class).
      * Returns the number of bytes written, or 0 on failure.
      */
-    write(msg: { _buffer: Buffer; constructor: { _msgid?: number; _size?: number } }, options: EncodeOptions = {}): number {
-        const msgId = (msg.constructor as any)._msgid;
+    write(msg: MessageBase, options: EncodeOptions = {}): number {
+        const ctor = msg.constructor as typeof MessageBase & { _msgid?: number };
+        const msgId = ctor._msgid;
         const payload = new Uint8Array(msg._buffer);
 
         if (msgId === undefined) {
