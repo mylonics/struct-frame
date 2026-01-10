@@ -103,19 +103,17 @@ function createExtendedMessage(MsgClass, testData, msgType) {
       description_data: testData.description,
     });
   } else if (msgType === 'ExtendedIdMessage3') {
-    const timestamp = typeof testData.timestamp === 'string' ? BigInt(testData.timestamp) : BigInt(testData.timestamp);
     return new MsgClass({
-      timestamp: timestamp,
+      timestamp: BigInt(testData.timestamp),
       temperature: testData.temperature,
       humidity: testData.humidity,
       location: testData.location,
     });
   } else if (msgType === 'ExtendedIdMessage4') {
-    const eventTime = typeof testData.event_time === 'string' ? BigInt(testData.event_time) : BigInt(testData.event_time);
     return new MsgClass({
       event_id: testData.event_id,
       event_type: testData.event_type,
-      event_time: eventTime,
+      event_time: BigInt(testData.event_time),
       event_data_length: testData.event_data.length,
       event_data_data: testData.event_data,
     });
@@ -149,11 +147,9 @@ function createExtendedMessage(MsgClass, testData, msgType) {
       tag: testData.tag,
     });
   } else if (msgType === 'ExtendedIdMessage9') {
-    const bigNumber = typeof testData.big_number === 'string' ? BigInt(testData.big_number) : BigInt(testData.big_number);
-    const bigUnsigned = typeof testData.big_unsigned === 'string' ? BigInt(testData.big_unsigned) : BigInt(testData.big_unsigned);
     return new MsgClass({
-      big_number: bigNumber,
-      big_unsigned: bigUnsigned,
+      big_number: BigInt(testData.big_number),
+      big_unsigned: BigInt(testData.big_unsigned),
       precision_value: testData.precision_value,
     });
   } else if (msgType === 'ExtendedIdMessage10') {
@@ -163,11 +159,10 @@ function createExtendedMessage(MsgClass, testData, msgType) {
       flag: testData.flag,
     });
   } else if (msgType === 'LargePayloadMessage1') {
-    const timestamp = typeof testData.timestamp === 'string' ? BigInt(testData.timestamp) : BigInt(testData.timestamp);
     return new MsgClass({
       sensor_readings: testData.sensor_readings,
       reading_count: testData.reading_count,
-      timestamp: timestamp,
+      timestamp: BigInt(testData.timestamp),
       device_name: testData.device_name,
     });
   } else if (msgType === 'LargePayloadMessage2') {
