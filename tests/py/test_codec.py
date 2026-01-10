@@ -4,78 +4,31 @@ Test codec - Encode/decode functions for all frame formats (Python).
 Uses the new Parser with header + payload architecture.
 """
 
-import json
-import os
+from test_messages_data import MessageType, get_test_message_count, get_test_message
 
 
 def load_test_messages():
-    """Load test messages from test_messages.json"""
-    # Try different paths to find the JSON file
-    possible_paths = [
-        os.path.join(os.path.dirname(__file__), '..', 'test_messages.json'),
-        os.path.join(os.path.dirname(__file__), '..', '..', 'test_messages.json'),
-        'test_messages.json',
-        '../test_messages.json',
-    ]
-    
-    for path in possible_paths:
-        if os.path.exists(path):
-            with open(path, 'r') as f:
-                data = json.load(f)
-                # Return SerializationTestMessage data for backwards compatibility
-                return data.get('SerializationTestMessage', data.get('messages', []))
-    
-    raise FileNotFoundError("Could not find test_messages.json")
+    """Load test messages - now uses hardcoded data instead of JSON"""
+    messages = []
+    for i in range(get_test_message_count()):
+        msg_type, msg_data = get_test_message(i)
+        if msg_type == MessageType.SERIALIZATION_TEST:
+            messages.append(msg_data)
+    return messages
 
 
 def load_mixed_messages():
-    """Load mixed messages from test_messages.json following MixedMessages sequence"""
-    # Try different paths to find the JSON file
-    possible_paths = [
-        os.path.join(os.path.dirname(__file__), '..', 'test_messages.json'),
-        os.path.join(os.path.dirname(__file__), '..', '..', 'test_messages.json'),
-        'test_messages.json',
-        '../test_messages.json',
-    ]
-    
-    for path in possible_paths:
-        if os.path.exists(path):
-            with open(path, 'r') as f:
-                data = json.load(f)
-                
-                # Get the MixedMessages array
-                mixed_array = data.get('MixedMessages')
-                if not mixed_array:
-                    raise ValueError("MixedMessages array not found in test_messages.json")
-                
-                # Get message data arrays
-                serial_msgs = data.get('SerializationTestMessage', [])
-                basic_msgs = data.get('BasicTypesMessage', [])
-                union_msgs = data.get('UnionTestMessage', [])
-                
-                # Build the mixed message list
-                messages = []
-                for item in mixed_array:
-                    msg_type = item.get('type')
-                    msg_name = item.get('name')
-                    
-                    # Find the message by name in the appropriate array
-                    if msg_type == 'SerializationTestMessage':
-                        msg_data = next((m for m in serial_msgs if m.get('name') == msg_name), None)
-                        if msg_data:
-                            messages.append({'type': 'SerializationTestMessage', 'data': msg_data})
-                    elif msg_type == 'BasicTypesMessage':
-                        msg_data = next((m for m in basic_msgs if m.get('name') == msg_name), None)
-                        if msg_data:
-                            messages.append({'type': 'BasicTypesMessage', 'data': msg_data})
-                    elif msg_type == 'UnionTestMessage':
-                        msg_data = next((m for m in union_msgs if m.get('name') == msg_name), None)
-                        if msg_data:
-                            messages.append({'type': 'UnionTestMessage', 'data': msg_data})
-                
-                return messages
-    
-    raise FileNotFoundError("Could not find test_messages.json")
+    """Load mixed messages - now uses hardcoded data instead of JSON"""
+    messages = []
+    for i in range(get_test_message_count()):
+        msg_type, msg_data = get_test_message(i)
+        if msg_type == MessageType.SERIALIZATION_TEST:
+            messages.append({'type': 'SerializationTestMessage', 'data': msg_data})
+        elif msg_type == MessageType.BASIC_TYPES:
+            messages.append({'type': 'BasicTypesMessage', 'data': msg_data})
+        elif msg_type == MessageType.UNION_TEST:
+            messages.append({'type': 'UnionTestMessage', 'data': msg_data})
+    return messages
 
 
 def create_message_from_data(msg_class, test_msg):

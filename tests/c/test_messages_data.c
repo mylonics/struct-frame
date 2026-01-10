@@ -6,6 +6,8 @@
 #include "test_messages_data.h"
 #include <string.h>
 
+#include "serialization_test.sf.h"
+
 // Helper macros for creating messages
 #define CREATE_SERIALIZATION_TEST(name_var, magic, str, flt, bl, ...) \
   { \
@@ -17,22 +19,13 @@
                    .data = {__VA_ARGS__}} \
   }
 
-#define CREATE_BASIC_TYPES(si, mi, ri, li, su, mu, ru, lu, sp, dp, fl, dev, desc) \
-  { \
-    .small_int = si, \
-    .medium_int = mi, \
-    .regular_int = ri, \
-    .large_int = li, \
-    .small_uint = su, \
-    .medium_uint = mu, \
-    .regular_uint = ru, \
-    .large_uint = lu, \
-    .single_precision = sp, \
-    .double_precision = dp, \
-    .flag = fl, \
-    .device_id = {.data = dev}, \
-    .description = {.length = strlen(desc), .data = desc} \
-  }
+// Note: device_id is a fixed char array, description is a variable string struct
+#define INIT_DEVICE_ID(msg, dev) strncpy((msg).device_id, dev, 31); (msg).device_id[31] = '\0'
+
+#define INIT_DESCRIPTION(msg, desc) \
+  (msg).description.length = strlen(desc); \
+  strncpy((msg).description.data, desc, 128); \
+  if ((msg).description.length > 128) (msg).description.length = 128
 
 // Total number of test messages
 #define TEST_MESSAGE_COUNT 11
@@ -79,53 +72,77 @@ bool get_test_message(size_t index, mixed_message_t* out_message) {
         CREATE_SERIALIZATION_TEST(msg, 1234567890, "Special: !@#$%^&*()", 2.71828f, true, 0, 1, 1, 2, 3);
       break;
 
-    case 5: // BasicTypesMessage - basic_values
+    case 5: { // BasicTypesMessage - basic_values
       out_message->type = MSG_TYPE_BASIC_TYPES;
-      out_message->data.basic_types = (SerializationTestBasicTypesMessage)
-        CREATE_BASIC_TYPES(42, 1000, 123456, 9876543210LL, 200, 50000, 4000000000U, 9223372036854775807ULL, 
-                          3.14159f, 2.718281828459045, true, "DEVICE-001", "Basic test values");
+      SerializationTestBasicTypesMessage* msg = &out_message->data.basic_types;
+      memset(msg, 0, sizeof(*msg));
+      msg->small_int = 42;
+      msg->medium_int = 1000;
+      msg->regular_int = 123456;
+      msg->large_int = 9876543210LL;
+      msg->small_uint = 200;
+      msg->medium_uint = 50000;
+      msg->regular_uint = 4000000000U;
+      msg->large_uint = 9223372036854775807ULL;
+      msg->single_precision = 3.14159f;
+      msg->double_precision = 2.718281828459045;
+      msg->flag = true;
+      INIT_DEVICE_ID(*msg, "DEVICE-001");
+      INIT_DESCRIPTION(*msg, "Basic test values");
       break;
+    }
 
-    case 6: // BasicTypesMessage - zero_values
+    case 6: { // BasicTypesMessage - zero_values
       out_message->type = MSG_TYPE_BASIC_TYPES;
-      out_message->data.basic_types = (SerializationTestBasicTypesMessage)
-        CREATE_BASIC_TYPES(0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0, false, "", "");
+      SerializationTestBasicTypesMessage* msg = &out_message->data.basic_types;
+      memset(msg, 0, sizeof(*msg));
       break;
+    }
 
-    case 7: // BasicTypesMessage - negative_values
+    case 7: { // BasicTypesMessage - negative_values
       out_message->type = MSG_TYPE_BASIC_TYPES;
-      out_message->data.basic_types = (SerializationTestBasicTypesMessage)
-        CREATE_BASIC_TYPES(-128, -32768, -2147483648, -9223372036854775807LL, 255, 65535, 4294967295U, 9223372036854775807ULL,
-                          -273.15f, -9999.999999, false, "NEG-TEST", "Negative and max values");
+      SerializationTestBasicTypesMessage* msg = &out_message->data.basic_types;
+      memset(msg, 0, sizeof(*msg));
+      msg->small_int = -128;
+      msg->medium_int = -32768;
+      msg->regular_int = -2147483648;
+      msg->large_int = -9223372036854775807LL;
+      msg->small_uint = 255;
+      msg->medium_uint = 65535;
+      msg->regular_uint = 4294967295U;
+      msg->large_uint = 9223372036854775807ULL;
+      msg->single_precision = -273.15f;
+      msg->double_precision = -9999.999999;
+      msg->flag = false;
+      INIT_DEVICE_ID(*msg, "NEG-TEST");
+      INIT_DESCRIPTION(*msg, "Negative and max values");
       break;
+    }
 
     case 8: { // UnionTestMessage - with_array_payload
       out_message->type = MSG_TYPE_UNION_TEST;
       SerializationTestUnionTestMessage* msg = &out_message->data.union_test;
+      memset(msg, 0, sizeof(*msg));
       
-      msg->payload_type = SERIALIZATION_TEST_UNION_PAYLOAD_COMPREHENSIVE_ARRAY;
+      msg->payload_discriminator = SERIALIZATION_TEST_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID;
       
       // Initialize array_payload
       SerializationTestComprehensiveArrayMessage* arr = &msg->payload.array_payload;
-      memset(arr, 0, sizeof(*arr));
       
-      // Fixed arrays
-      arr->fixed_ints.data[0] = 10;
-      arr->fixed_ints.data[1] = 20;
-      arr->fixed_ints.data[2] = 30;
-      arr->fixed_ints.count = 3;
+      // Fixed arrays (direct arrays, no .data/.count)
+      arr->fixed_ints[0] = 10;
+      arr->fixed_ints[1] = 20;
+      arr->fixed_ints[2] = 30;
       
-      arr->fixed_floats.data[0] = 1.5f;
-      arr->fixed_floats.data[1] = 2.5f;
-      arr->fixed_floats.count = 2;
+      arr->fixed_floats[0] = 1.5f;
+      arr->fixed_floats[1] = 2.5f;
       
-      arr->fixed_bools.data[0] = true;
-      arr->fixed_bools.data[1] = false;
-      arr->fixed_bools.data[2] = true;
-      arr->fixed_bools.data[3] = false;
-      arr->fixed_bools.count = 4;
+      arr->fixed_bools[0] = true;
+      arr->fixed_bools[1] = false;
+      arr->fixed_bools[2] = true;
+      arr->fixed_bools[3] = false;
       
-      // Bounded arrays
+      // Bounded arrays (have .count and .data)
       arr->bounded_uints.data[0] = 100;
       arr->bounded_uints.data[1] = 200;
       arr->bounded_uints.count = 2;
@@ -133,32 +150,26 @@ bool get_test_message(size_t index, mixed_message_t* out_message) {
       arr->bounded_doubles.data[0] = 3.14159;
       arr->bounded_doubles.count = 1;
       
-      // String arrays
-      strcpy(arr->fixed_strings.data[0].data, "Hello");
-      arr->fixed_strings.data[0].length = 5;
-      strcpy(arr->fixed_strings.data[1].data, "World");
-      arr->fixed_strings.data[1].length = 5;
-      arr->fixed_strings.count = 2;
+      // String arrays (fixed arrays are 2D char arrays)
+      strcpy(arr->fixed_strings[0], "Hello");
+      strcpy(arr->fixed_strings[1], "World");
       
-      strcpy(arr->bounded_strings.data[0].data, "Test");
-      arr->bounded_strings.data[0].length = 4;
+      strcpy(arr->bounded_strings.data[0], "Test");
       arr->bounded_strings.count = 1;
       
-      // Enum arrays
-      arr->fixed_statuses.data[0] = SERIALIZATION_TEST_ACTIVE;
-      arr->fixed_statuses.data[1] = SERIALIZATION_TEST_ERROR;
-      arr->fixed_statuses.count = 2;
+      // Enum arrays (fixed is direct array)
+      arr->fixed_statuses[0] = STATUS_ACTIVE;
+      arr->fixed_statuses[1] = STATUS_ERROR;
       
-      arr->bounded_statuses.data[0] = SERIALIZATION_TEST_INACTIVE;
+      arr->bounded_statuses.data[0] = STATUS_INACTIVE;
       arr->bounded_statuses.count = 1;
       
-      // Sensor arrays
-      arr->fixed_sensors.data[0].id = 1;
-      arr->fixed_sensors.data[0].value = 25.5f;
-      arr->fixed_sensors.data[0].status = SERIALIZATION_TEST_ACTIVE;
-      strcpy(arr->fixed_sensors.data[0].name.data, "TempSensor");
-      arr->fixed_sensors.data[0].name.length = 10;
-      arr->fixed_sensors.count = 1;
+      // Sensor arrays (fixed is direct array of structs)
+      arr->fixed_sensors[0].id = 1;
+      arr->fixed_sensors[0].value = 25.5f;
+      arr->fixed_sensors[0].status = STATUS_ACTIVE;
+      arr->fixed_sensors[0].name[0] = '\0';  // Initialize first
+      strcpy(arr->fixed_sensors[0].name, "TempSensor");
       
       arr->bounded_sensors.count = 0;
       break;
@@ -167,8 +178,9 @@ bool get_test_message(size_t index, mixed_message_t* out_message) {
     case 9: { // UnionTestMessage - with_test_payload
       out_message->type = MSG_TYPE_UNION_TEST;
       SerializationTestUnionTestMessage* msg = &out_message->data.union_test;
+      memset(msg, 0, sizeof(*msg));
       
-      msg->payload_type = SERIALIZATION_TEST_UNION_PAYLOAD_SERIALIZATION_TEST;
+      msg->payload_discriminator = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
       
       // Initialize test_payload
       SerializationTestSerializationTestMessage* test = &msg->payload.test_payload;
@@ -186,12 +198,25 @@ bool get_test_message(size_t index, mixed_message_t* out_message) {
       break;
     }
 
-    case 10: // BasicTypesMessage - negative_values (duplicate)
+    case 10: { // BasicTypesMessage - negative_values (duplicate)
       out_message->type = MSG_TYPE_BASIC_TYPES;
-      out_message->data.basic_types = (SerializationTestBasicTypesMessage)
-        CREATE_BASIC_TYPES(-128, -32768, -2147483648, -9223372036854775807LL, 255, 65535, 4294967295U, 9223372036854775807ULL,
-                          -273.15f, -9999.999999, false, "NEG-TEST", "Negative and max values");
+      SerializationTestBasicTypesMessage* msg = &out_message->data.basic_types;
+      memset(msg, 0, sizeof(*msg));
+      msg->small_int = -128;
+      msg->medium_int = -32768;
+      msg->regular_int = -2147483648;
+      msg->large_int = -9223372036854775807LL;
+      msg->small_uint = 255;
+      msg->medium_uint = 65535;
+      msg->regular_uint = 4294967295U;
+      msg->large_uint = 9223372036854775807ULL;
+      msg->single_precision = -273.15f;
+      msg->double_precision = -9999.999999;
+      msg->flag = false;
+      INIT_DEVICE_ID(*msg, "NEG-TEST");
+      INIT_DESCRIPTION(*msg, "Negative and max values");
       break;
+    }
 
     default:
       return false;

@@ -363,7 +363,12 @@ class TestRunner:
 
                 sources = [runner_source, codec_source]
                 
-                # Add cJSON.c for C language
+                # Add test_messages_data source file
+                messages_data_source = test_dir / f"test_messages_data{source_ext}"
+                if messages_data_source.exists():
+                    sources.append(messages_data_source)
+                
+                # Add cJSON.c for C language (will be removed once JSON dependency is fully removed)
                 if source_ext == '.c':
                     cjson_source = test_dir / "cJSON.c"
                     if cjson_source.exists():

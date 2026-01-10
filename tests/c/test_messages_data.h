@@ -9,29 +9,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 
-#include "serialization_test.sf.h"
-
-// Message type enum
-typedef enum {
-  MSG_TYPE_SERIALIZATION_TEST = 0,
-  MSG_TYPE_BASIC_TYPES = 1,
-  MSG_TYPE_UNION_TEST = 2
-} message_type_t;
-
-// Union to hold either message type
-typedef union {
-  SerializationTestSerializationTestMessage serialization_test;
-  SerializationTestBasicTypesMessage basic_types;
-  SerializationTestUnionTestMessage union_test;
-} message_data_t;
-
-// Wrapper structure for mixed message types
-typedef struct {
-  message_type_t type;
-  message_data_t data;
-} mixed_message_t;
+#include "test_codec.h"  // For message_type_t, message_data_t, mixed_message_t
 
 /**
  * Get the total number of test messages.
