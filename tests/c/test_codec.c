@@ -6,9 +6,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "cJSON.h"
 #include "frame_parsers.h"
 #include "serialization_test.sf.h"
+#include "test_messages_data.h"
 
 /* 
  * Frame format helper functions - Use generated profile functions from frame_profiles.h
@@ -163,471 +163,57 @@ static inline frame_msg_info_t tiny_default_validate_packet(const uint8_t* buffe
   return result;
 }
 
-/* Load test messages from test_messages.json */
+/* Load test messages - now uses hardcoded data instead of JSON */
 size_t load_test_messages(test_message_t* messages, size_t max_count) {
-  const char* possible_paths[] = {
-    "../test_messages.json",
-    "../../test_messages.json",
-    "test_messages.json",
-    "../../../tests/test_messages.json"
-  };
+  /* This function is deprecated but kept for backwards compatibility.
+   * It returns only SerializationTestMessage entries from the test data.
+   */
+  size_t count = 0;
+  size_t total_count = get_test_message_count();
   
-  for (size_t i = 0; i < sizeof(possible_paths) / sizeof(possible_paths[0]); i++) {
-    FILE* file = fopen(possible_paths[i], "r");
-    if (file) {
-      fseek(file, 0, SEEK_END);
-      long file_size = ftell(file);
-      fseek(file, 0, SEEK_SET);
+  for (size_t i = 0; i < total_count && count < max_count; i++) {
+    mixed_message_t msg;
+    if (!get_test_message(i, &msg)) {
+      continue;
+    }
+    
+    /* Only include SerializationTestMessage types */
+    if (msg.type == MSG_TYPE_SERIALIZATION_TEST) {
+      SerializationTestSerializationTestMessage* src = &msg.data.serialization_test;
+      messages[count].magic_number = src->magic_number;
       
-      char* json_str = (char*)malloc(file_size + 1);
-      if (!json_str) {
-        fclose(file);
-        continue;
+      strncpy(messages[count].test_string, src->test_string.data, MAX_STRING_LENGTH - 1);
+      messages[count].test_string[MAX_STRING_LENGTH - 1] = '\0';
+      
+      messages[count].test_float = src->test_float;
+      messages[count].test_bool = src->test_bool;
+      messages[count].test_array_count = src->test_array.count;
+      
+      for (size_t j = 0; j < src->test_array.count && j < MAX_ARRAY_LENGTH; j++) {
+        messages[count].test_array[j] = src->test_array.data[j];
       }
       
-      size_t read_size = fread(json_str, 1, file_size, file);
-      json_str[read_size] = '\0';
-      fclose(file);
-      
-      cJSON* root = cJSON_Parse(json_str);
-      free(json_str);
-      
-      if (!root) {
-        continue;
-      }
-      
-      // Try to read from SerializationTestMessage key, fall back to messages key
-      cJSON* message_array = cJSON_GetObjectItem(root, "SerializationTestMessage");
-      if (!message_array) {
-        message_array = cJSON_GetObjectItem(root, "messages");
-      }
-      
-      if (!message_array || !cJSON_IsArray(message_array)) {
-        cJSON_Delete(root);
-        continue;
-      }
-      
-      size_t count = 0;
-      cJSON* msg_item = NULL;
-      cJSON_ArrayForEach(msg_item, message_array) {
-        if (count >= max_count) break;
-        
-        cJSON* magic_number = cJSON_GetObjectItem(msg_item, "magic_number");
-        cJSON* test_string = cJSON_GetObjectItem(msg_item, "test_string");
-        cJSON* test_float = cJSON_GetObjectItem(msg_item, "test_float");
-        cJSON* test_bool = cJSON_GetObjectItem(msg_item, "test_bool");
-        cJSON* test_array = cJSON_GetObjectItem(msg_item, "test_array");
-        
-        if (magic_number && test_string && test_float && test_bool) {
-          messages[count].magic_number = (uint32_t)cJSON_GetNumberValue(magic_number);
-          
-          strncpy(messages[count].test_string, cJSON_GetStringValue(test_string), MAX_STRING_LENGTH - 1);
-          messages[count].test_string[MAX_STRING_LENGTH - 1] = '\0';
-          
-          messages[count].test_float = (float)cJSON_GetNumberValue(test_float);
-          messages[count].test_bool = cJSON_IsTrue(test_bool);
-          
-          messages[count].test_array_count = 0;
-          if (test_array && cJSON_IsArray(test_array)) {
-            size_t array_idx = 0;
-            cJSON* array_item = NULL;
-            cJSON_ArrayForEach(array_item, test_array) {
-              if (array_idx >= MAX_ARRAY_LENGTH) break;
-              messages[count].test_array[array_idx++] = (int32_t)cJSON_GetNumberValue(array_item);
-            }
-            messages[count].test_array_count = array_idx;
-          }
-          
-          count++;
-        }
-      }
-      
-      cJSON_Delete(root);
-      if (count > 0) {
-        return count;
-      }
+      count++;
     }
   }
   
-  /* If we couldn't load from JSON, return 0 to indicate failure */
-  fprintf(stderr, "Error: Could not load test_messages.json\n");
-  return 0;
+  return count;
 }
 
-/* Load mixed test messages from test_messages.json */
+/* Load mixed test messages - now uses hardcoded data instead of JSON */
 size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
-  const char* possible_paths[] = {
-    "../test_messages.json",
-    "../../test_messages.json",
-    "test_messages.json",
-    "../../../tests/test_messages.json"
-  };
+  size_t count = 0;
+  size_t total_count = get_test_message_count();
   
-  for (size_t i = 0; i < sizeof(possible_paths) / sizeof(possible_paths[0]); i++) {
-    FILE* file = fopen(possible_paths[i], "r");
-    if (file) {
-      fseek(file, 0, SEEK_END);
-      long file_size = ftell(file);
-      fseek(file, 0, SEEK_SET);
-      
-      char* json_str = (char*)malloc(file_size + 1);
-      if (!json_str) {
-        fclose(file);
-        continue;
-      }
-      
-      size_t read_size = fread(json_str, 1, file_size, file);
-      json_str[read_size] = '\0';
-      fclose(file);
-      
-      cJSON* root = cJSON_Parse(json_str);
-      free(json_str);
-      
-      if (!root) {
-        continue;
-      }
-      
-      // Load MixedMessages array which specifies the sequence
-      cJSON* mixed_array = cJSON_GetObjectItem(root, "MixedMessages");
-      if (!mixed_array || !cJSON_IsArray(mixed_array)) {
-        cJSON_Delete(root);
-        continue;
-      }
-      
-      // Load message data arrays
-      cJSON* serial_msgs = cJSON_GetObjectItem(root, "SerializationTestMessage");
-      cJSON* basic_msgs = cJSON_GetObjectItem(root, "BasicTypesMessage");
-      cJSON* union_msgs = cJSON_GetObjectItem(root, "UnionTestMessage");
-      
-      if (!serial_msgs || !basic_msgs) {
-        cJSON_Delete(root);
-        continue;
-      }
-      
-      size_t count = 0;
-      cJSON* mix_item = NULL;
-      cJSON_ArrayForEach(mix_item, mixed_array) {
-        if (count >= max_count) break;
-        
-        cJSON* type_json = cJSON_GetObjectItem(mix_item, "type");
-        cJSON* name_json = cJSON_GetObjectItem(mix_item, "name");
-        
-        if (!type_json || !name_json) continue;
-        
-        const char* type_str = cJSON_GetStringValue(type_json);
-        const char* name_str = cJSON_GetStringValue(name_json);
-        
-        if (!type_str || !name_str) continue;
-        
-        // Find the message by name in the appropriate array
-        cJSON* msg_data = NULL;
-        cJSON* msg_array = NULL;
-        message_type_t msg_type;
-        
-        if (strcmp(type_str, "SerializationTestMessage") == 0) {
-          msg_type = MSG_TYPE_SERIALIZATION_TEST;
-          msg_array = serial_msgs;
-        } else if (strcmp(type_str, "BasicTypesMessage") == 0) {
-          msg_type = MSG_TYPE_BASIC_TYPES;
-          msg_array = basic_msgs;
-        } else if (strcmp(type_str, "UnionTestMessage") == 0) {
-          msg_type = MSG_TYPE_UNION_TEST;
-          msg_array = union_msgs;
-        } else {
-          continue;
-        }
-        
-        // Find message by name
-        cJSON* item = NULL;
-        cJSON_ArrayForEach(item, msg_array) {
-          cJSON* item_name = cJSON_GetObjectItem(item, "name");
-          if (item_name && strcmp(cJSON_GetStringValue(item_name), name_str) == 0) {
-            msg_data = item;
-            break;
-          }
-        }
-        
-        if (!msg_data) continue;
-        
-        messages[count].type = msg_type;
-        
-        if (msg_type == MSG_TYPE_SERIALIZATION_TEST) {
-          // Parse SerializationTestMessage
-          SerializationTestSerializationTestMessage* msg = &messages[count].data.serialization_test;
-          memset(msg, 0, sizeof(*msg));
-          
-          cJSON* magic_number = cJSON_GetObjectItem(msg_data, "magic_number");
-          cJSON* test_string = cJSON_GetObjectItem(msg_data, "test_string");
-          cJSON* test_float = cJSON_GetObjectItem(msg_data, "test_float");
-          cJSON* test_bool = cJSON_GetObjectItem(msg_data, "test_bool");
-          cJSON* test_array = cJSON_GetObjectItem(msg_data, "test_array");
-          
-          if (magic_number) msg->magic_number = (uint32_t)cJSON_GetNumberValue(magic_number);
-          if (test_string) {
-            const char* str = cJSON_GetStringValue(test_string);
-            msg->test_string.length = strlen(str);
-            if (msg->test_string.length > 64) msg->test_string.length = 64;
-            strncpy(msg->test_string.data, str, msg->test_string.length);
-          }
-          if (test_float) msg->test_float = (float)cJSON_GetNumberValue(test_float);
-          if (test_bool) msg->test_bool = cJSON_IsTrue(test_bool);
-          if (test_array && cJSON_IsArray(test_array)) {
-            size_t idx = 0;
-            cJSON* arr_item = NULL;
-            cJSON_ArrayForEach(arr_item, test_array) {
-              if (idx >= 5) break;
-              msg->test_array.data[idx++] = (int32_t)cJSON_GetNumberValue(arr_item);
-            }
-            msg->test_array.count = idx;
-          }
-        } else if (msg_type == MSG_TYPE_BASIC_TYPES) {
-          // Parse BasicTypesMessage
-          SerializationTestBasicTypesMessage* msg = &messages[count].data.basic_types;
-          memset(msg, 0, sizeof(*msg));
-          
-          cJSON* field = NULL;
-          if ((field = cJSON_GetObjectItem(msg_data, "small_int"))) msg->small_int = (int8_t)cJSON_GetNumberValue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "medium_int"))) msg->medium_int = (int16_t)cJSON_GetNumberValue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "regular_int"))) msg->regular_int = (int32_t)cJSON_GetNumberValue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "large_int"))) {
-            // large_int is stored as string in JSON to preserve precision
-            const char* str = cJSON_GetStringValue(field);
-            if (str) {
-              msg->large_int = (int64_t)strtoll(str, NULL, 10);
-            } else {
-              msg->large_int = (int64_t)cJSON_GetNumberValue(field);
-            }
-          }
-          if ((field = cJSON_GetObjectItem(msg_data, "small_uint"))) msg->small_uint = (uint8_t)cJSON_GetNumberValue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "medium_uint"))) msg->medium_uint = (uint16_t)cJSON_GetNumberValue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "regular_uint"))) msg->regular_uint = (uint32_t)cJSON_GetNumberValue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "large_uint"))) {
-            // large_uint is stored as string in JSON to preserve precision
-            const char* str = cJSON_GetStringValue(field);
-            if (str) {
-              msg->large_uint = (uint64_t)strtoull(str, NULL, 10);
-            } else {
-              msg->large_uint = (uint64_t)cJSON_GetNumberValue(field);
-            }
-          }
-          if ((field = cJSON_GetObjectItem(msg_data, "single_precision"))) msg->single_precision = (float)cJSON_GetNumberValue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "double_precision"))) msg->double_precision = cJSON_GetNumberValue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "flag"))) msg->flag = cJSON_IsTrue(field);
-          if ((field = cJSON_GetObjectItem(msg_data, "device_id"))) {
-            const char* str = cJSON_GetStringValue(field);
-            strncpy(msg->device_id, str, 32);
-            msg->device_id[31] = '\0';
-          }
-          if ((field = cJSON_GetObjectItem(msg_data, "description"))) {
-            const char* str = cJSON_GetStringValue(field);
-            msg->description.length = strlen(str);
-            if (msg->description.length > 128) msg->description.length = 128;
-            strncpy(msg->description.data, str, msg->description.length);
-          }
-        } else if (msg_type == MSG_TYPE_UNION_TEST) {
-          // Parse UnionTestMessage
-          SerializationTestUnionTestMessage* msg = &messages[count].data.union_test;
-          memset(msg, 0, sizeof(*msg));
-          
-          // Parse array_payload if present
-          cJSON* array_payload = cJSON_GetObjectItem(msg_data, "array_payload");
-          if (array_payload && !cJSON_IsNull(array_payload)) {
-            // Set discriminator to ComprehensiveArrayMessage ID
-            msg->payload_discriminator = SERIALIZATION_TEST_COMPREHENSIVE_ARRAY_MESSAGE_MSG_ID;
-            cJSON* field = NULL;
-            
-            // fixed_ints
-            if ((field = cJSON_GetObjectItem(array_payload, "fixed_ints")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 3) break;
-                msg->payload.array_payload.fixed_ints[idx++] = (int32_t)cJSON_GetNumberValue(item);
-              }
-            }
-            
-            // fixed_floats
-            if ((field = cJSON_GetObjectItem(array_payload, "fixed_floats")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 2) break;
-                msg->payload.array_payload.fixed_floats[idx++] = (float)cJSON_GetNumberValue(item);
-              }
-            }
-            
-            // fixed_bools
-            if ((field = cJSON_GetObjectItem(array_payload, "fixed_bools")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 4) break;
-                msg->payload.array_payload.fixed_bools[idx++] = cJSON_IsTrue(item);
-              }
-            }
-            
-            // bounded_uints
-            if ((field = cJSON_GetObjectItem(array_payload, "bounded_uints")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 3) break;
-                msg->payload.array_payload.bounded_uints.data[idx++] = (uint16_t)cJSON_GetNumberValue(item);
-              }
-              msg->payload.array_payload.bounded_uints.count = idx;
-            }
-            
-            // bounded_doubles
-            if ((field = cJSON_GetObjectItem(array_payload, "bounded_doubles")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 2) break;
-                msg->payload.array_payload.bounded_doubles.data[idx++] = cJSON_GetNumberValue(item);
-              }
-              msg->payload.array_payload.bounded_doubles.count = idx;
-            }
-            
-            // fixed_strings
-            if ((field = cJSON_GetObjectItem(array_payload, "fixed_strings")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 2) break;
-                const char* str = cJSON_GetStringValue(item);
-                if (str) {
-                  strncpy(msg->payload.array_payload.fixed_strings[idx], str, 8);
-                  msg->payload.array_payload.fixed_strings[idx][7] = '\0';
-                }
-                idx++;
-              }
-            }
-            
-            // bounded_strings
-            if ((field = cJSON_GetObjectItem(array_payload, "bounded_strings")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 2) break;
-                const char* str = cJSON_GetStringValue(item);
-                if (str) {
-                  strncpy(msg->payload.array_payload.bounded_strings.data[idx], str, 12);
-                  msg->payload.array_payload.bounded_strings.data[idx][11] = '\0';
-                }
-                idx++;
-              }
-              msg->payload.array_payload.bounded_strings.count = idx;
-            }
-            
-            // fixed_statuses
-            if ((field = cJSON_GetObjectItem(array_payload, "fixed_statuses")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 2) break;
-                msg->payload.array_payload.fixed_statuses[idx++] = (uint8_t)cJSON_GetNumberValue(item);
-              }
-            }
-            
-            // bounded_statuses
-            if ((field = cJSON_GetObjectItem(array_payload, "bounded_statuses")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 2) break;
-                msg->payload.array_payload.bounded_statuses.data[idx++] = (uint8_t)cJSON_GetNumberValue(item);
-              }
-              msg->payload.array_payload.bounded_statuses.count = idx;
-            }
-            
-            // fixed_sensors
-            if ((field = cJSON_GetObjectItem(array_payload, "fixed_sensors")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 1) break;
-                cJSON* sensor_id = cJSON_GetObjectItem(item, "id");
-                cJSON* sensor_value = cJSON_GetObjectItem(item, "value");
-                cJSON* sensor_status = cJSON_GetObjectItem(item, "status");
-                cJSON* sensor_name = cJSON_GetObjectItem(item, "name");
-                if (sensor_id) msg->payload.array_payload.fixed_sensors[idx].id = (uint8_t)cJSON_GetNumberValue(sensor_id);
-                if (sensor_value) msg->payload.array_payload.fixed_sensors[idx].value = (float)cJSON_GetNumberValue(sensor_value);
-                if (sensor_status) msg->payload.array_payload.fixed_sensors[idx].status = (uint8_t)cJSON_GetNumberValue(sensor_status);
-                if (sensor_name) {
-                  const char* str = cJSON_GetStringValue(sensor_name);
-                  if (str) strncpy(msg->payload.array_payload.fixed_sensors[idx].name, str, 16);
-                }
-                idx++;
-              }
-            }
-            
-            // bounded_sensors
-            if ((field = cJSON_GetObjectItem(array_payload, "bounded_sensors")) && cJSON_IsArray(field)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, field) {
-                if (idx >= 1) break;
-                cJSON* sensor_id = cJSON_GetObjectItem(item, "id");
-                cJSON* sensor_value = cJSON_GetObjectItem(item, "value");
-                cJSON* sensor_status = cJSON_GetObjectItem(item, "status");
-                cJSON* sensor_name = cJSON_GetObjectItem(item, "name");
-                if (sensor_id) msg->payload.array_payload.bounded_sensors.data[idx].id = (uint8_t)cJSON_GetNumberValue(sensor_id);
-                if (sensor_value) msg->payload.array_payload.bounded_sensors.data[idx].value = (float)cJSON_GetNumberValue(sensor_value);
-                if (sensor_status) msg->payload.array_payload.bounded_sensors.data[idx].status = (uint8_t)cJSON_GetNumberValue(sensor_status);
-                if (sensor_name) {
-                  const char* str = cJSON_GetStringValue(sensor_name);
-                  if (str) strncpy(msg->payload.array_payload.bounded_sensors.data[idx].name, str, 16);
-                }
-                idx++;
-              }
-              msg->payload.array_payload.bounded_sensors.count = idx;
-            }
-          }
-          
-          // Parse test_payload if present
-          cJSON* test_payload = cJSON_GetObjectItem(msg_data, "test_payload");
-          if (test_payload && !cJSON_IsNull(test_payload)) {
-            // Set discriminator to SerializationTestMessage ID
-            msg->payload_discriminator = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
-            cJSON* magic = cJSON_GetObjectItem(test_payload, "magic_number");
-            cJSON* tstr = cJSON_GetObjectItem(test_payload, "test_string");
-            cJSON* tflt = cJSON_GetObjectItem(test_payload, "test_float");
-            cJSON* tbool = cJSON_GetObjectItem(test_payload, "test_bool");
-            cJSON* tarr = cJSON_GetObjectItem(test_payload, "test_array");
-            
-            if (magic) msg->payload.test_payload.magic_number = (uint32_t)cJSON_GetNumberValue(magic);
-            if (tstr) {
-              const char* str = cJSON_GetStringValue(tstr);
-              msg->payload.test_payload.test_string.length = strlen(str);
-              if (msg->payload.test_payload.test_string.length > 64) msg->payload.test_payload.test_string.length = 64;
-              strncpy(msg->payload.test_payload.test_string.data, str, msg->payload.test_payload.test_string.length);
-            }
-            if (tflt) msg->payload.test_payload.test_float = (float)cJSON_GetNumberValue(tflt);
-            if (tbool) msg->payload.test_payload.test_bool = cJSON_IsTrue(tbool);
-            if (tarr && cJSON_IsArray(tarr)) {
-              size_t idx = 0;
-              cJSON* item = NULL;
-              cJSON_ArrayForEach(item, tarr) {
-                if (idx >= 5) break;
-                msg->payload.test_payload.test_array.data[idx++] = (int32_t)cJSON_GetNumberValue(item);
-              }
-              msg->payload.test_payload.test_array.count = idx;
-            }
-          }
-        }
-        
-        count++;
-      }
-      
-      cJSON_Delete(root);
-      if (count > 0) {
-        return count;
-      }
+  for (size_t i = 0; i < total_count && i < max_count; i++) {
+    if (!get_test_message(i, &messages[count])) {
+      fprintf(stderr, "Error: Failed to get test message %zu\n", i);
+      return 0;
     }
+    count++;
   }
   
-  fprintf(stderr, "Error: Could not load mixed messages from test_messages.json\n");
-  return 0;
+  return count;
 }
 
 
