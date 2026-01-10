@@ -276,70 +276,26 @@ bool validate_message(const SerializationTestSerializationTestMessage* msg, cons
 }
 
 bool encode_test_messages(const char* format, uint8_t* buffer, size_t buffer_size, size_t* encoded_size) {
-  mixed_message_t mixed_messages[MAX_TEST_MESSAGES];
-  size_t msg_count = load_mixed_messages(mixed_messages, MAX_TEST_MESSAGES);
-
-  if (msg_count == 0) {
-    printf("  Failed to load mixed test messages\n");
+  // Select the appropriate encoder based on format
+  encode_message_fn encoder = NULL;
+  
+  if (strcmp(format, "profile_standard") == 0) {
+    encoder = basic_default_encode;
+  } else if (strcmp(format, "profile_sensor") == 0) {
+    encoder = tiny_minimal_encode;
+  } else if (strcmp(format, "profile_ipc") == 0) {
+    encoder = none_minimal_encode;
+  } else if (strcmp(format, "profile_bulk") == 0) {
+    encoder = basic_extended_encode;
+  } else if (strcmp(format, "profile_network") == 0) {
+    encoder = basic_extended_multi_system_stream_encode;
+  } else {
+    printf("  Unknown frame format: %s\n", format);
     return false;
   }
 
-  *encoded_size = 0;
-  size_t offset = 0;
-
-  for (size_t i = 0; i < msg_count; i++) {
-    size_t msg_encoded_size = 0;
-    uint8_t msg_id;
-    const uint8_t* msg_ptr;
-    size_t msg_size;
-    
-    if (mixed_messages[i].type == MSG_TYPE_SERIALIZATION_TEST) {
-      msg_id = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
-      msg_ptr = (const uint8_t*)&mixed_messages[i].data.serialization_test;
-      msg_size = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE;
-    } else if (mixed_messages[i].type == MSG_TYPE_BASIC_TYPES) {
-      msg_id = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID;
-      msg_ptr = (const uint8_t*)&mixed_messages[i].data.basic_types;
-      msg_size = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAX_SIZE;
-    } else if (mixed_messages[i].type == MSG_TYPE_UNION_TEST) {
-      msg_id = SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID;
-      msg_ptr = (const uint8_t*)&mixed_messages[i].data.union_test;
-      msg_size = SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAX_SIZE;
-    } else {
-      printf("  Unknown message type for message %zu\n", i);
-      return false;
-    }
-
-    if (strcmp(format, "profile_standard") == 0) {
-      msg_encoded_size = basic_default_encode(
-          buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
-    } else if (strcmp(format, "profile_sensor") == 0) {
-      msg_encoded_size = tiny_minimal_encode(buffer + offset, buffer_size - offset,
-                                             msg_id, msg_ptr, msg_size);
-    } else if (strcmp(format, "profile_ipc") == 0) {
-      msg_encoded_size = none_minimal_encode(buffer + offset, buffer_size - offset,
-                                             msg_id, msg_ptr, msg_size);
-    } else if (strcmp(format, "profile_bulk") == 0) {
-      msg_encoded_size = basic_extended_encode(
-          buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
-    } else if (strcmp(format, "profile_network") == 0) {
-      msg_encoded_size = basic_extended_multi_system_stream_encode(
-          buffer + offset, buffer_size - offset, msg_id, msg_ptr, msg_size);
-    } else {
-      printf("  Unknown frame format: %s\n", format);
-      return false;
-    }
-
-    if (msg_encoded_size == 0) {
-      printf("  Encoding failed for message %zu\n", i);
-      return false;
-    }
-
-    offset += msg_encoded_size;
-    *encoded_size = offset;
-  }
-
-  return *encoded_size > 0;
+  // Use the streaming interface to write messages directly
+  return write_test_messages(buffer, buffer_size, encoder, encoded_size);
 }
 
 bool decode_test_messages(const char* format, const uint8_t* buffer, size_t buffer_size, size_t* message_count) {

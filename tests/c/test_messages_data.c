@@ -4,6 +4,7 @@
  */
 
 #include "test_messages_data.h"
+#include <stdio.h>
 #include <string.h>
 
 #include "serialization_test.sf.h"
@@ -220,6 +221,61 @@ bool get_test_message(size_t index, mixed_message_t* out_message) {
 
     default:
       return false;
+  }
+
+  return true;
+}
+
+bool write_test_messages(uint8_t* buffer, size_t buffer_size, 
+                        encode_message_fn encoder, size_t* encoded_size) {
+  if (!buffer || !encoder || !encoded_size) {
+    return false;
+  }
+
+  *encoded_size = 0;
+  size_t offset = 0;
+  size_t total_count = get_test_message_count();
+
+  for (size_t i = 0; i < total_count; i++) {
+    mixed_message_t msg;
+    if (!get_test_message(i, &msg)) {
+      fprintf(stderr, "Error: Failed to get test message %zu\n", i);
+      return false;
+    }
+
+    // Determine message ID, pointer, and size based on type
+    uint16_t msg_id;
+    const uint8_t* msg_ptr;
+    size_t msg_size;
+
+    if (msg.type == MSG_TYPE_SERIALIZATION_TEST) {
+      msg_id = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
+      msg_ptr = (const uint8_t*)&msg.data.serialization_test;
+      msg_size = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAX_SIZE;
+    } else if (msg.type == MSG_TYPE_BASIC_TYPES) {
+      msg_id = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID;
+      msg_ptr = (const uint8_t*)&msg.data.basic_types;
+      msg_size = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAX_SIZE;
+    } else if (msg.type == MSG_TYPE_UNION_TEST) {
+      msg_id = SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID;
+      msg_ptr = (const uint8_t*)&msg.data.union_test;
+      msg_size = SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAX_SIZE;
+    } else {
+      fprintf(stderr, "Error: Unknown message type for message %zu\n", i);
+      return false;
+    }
+
+    // Encode the message using the callback
+    size_t msg_encoded_size = encoder(buffer + offset, buffer_size - offset, 
+                                      msg_id, msg_ptr, msg_size);
+
+    if (msg_encoded_size == 0) {
+      fprintf(stderr, "Error: Encoding failed for message %zu\n", i);
+      return false;
+    }
+
+    offset += msg_encoded_size;
+    *encoded_size = offset;
   }
 
   return true;
