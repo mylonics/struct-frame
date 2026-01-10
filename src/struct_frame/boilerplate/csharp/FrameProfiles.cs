@@ -311,8 +311,23 @@ namespace StructFrame
         /// <summary>
         /// Encode a message using this profile
         /// </summary>
-        public byte[] Encode(int msgId, byte[] payload, int seq = 0, int sysId = 0, int compId = 0, int pkgId = 0)
+        public byte[] Encode(int msgId, byte[] payload, int seq = 0, int sysId = 0, int compId = 0, int pkgId = -1)
         {
+            // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id
+            // unless pkgId is explicitly provided (not -1)
+            int pkgIdValue;
+            int msgIdValue;
+            if (_config.HasPkgId && pkgId == -1)
+            {
+                pkgIdValue = (msgId >> 8) & 0xFF;  // high byte
+                msgIdValue = msgId & 0xFF;          // low byte
+            }
+            else
+            {
+                pkgIdValue = pkgId == -1 ? 0 : pkgId;
+                msgIdValue = msgId;
+            }
+            
             var output = new List<byte>();
             int payloadSize = payload?.Length ?? 0;
 
@@ -348,10 +363,10 @@ namespace StructFrame
 
             // Package ID
             if (_config.HasPkgId)
-                output.Add((byte)(pkgId & 0xFF));
+                output.Add((byte)(pkgIdValue & 0xFF));
 
             // Message ID
-            output.Add((byte)(msgId & 0xFF));
+            output.Add((byte)(msgIdValue & 0xFF));
 
             // Payload
             if (payload != null && payloadSize > 0)
@@ -426,11 +441,13 @@ namespace StructFrame
                 msgLen = lenResult.Value;
             }
 
-            // Skip package ID
-            if (_config.HasPkgId) idx++;
-
-            // Read message ID
-            int msgId = buffer[idx++];
+            // Read message ID (16-bit: high byte is pkg_id when HasPkgId, low byte is msg_id)
+            int msgId = 0;
+            if (_config.HasPkgId)
+            {
+                msgId = buffer[idx++] << 8;  // pkg_id (high byte)
+            }
+            msgId |= buffer[idx++];  // msg_id (low byte)
 
             // Verify total size
             int totalSize = _config.Overhead + msgLen;
@@ -594,7 +611,7 @@ namespace StructFrame
         /// Write a message to the buffer.
         /// Returns the number of bytes written, or 0 on failure.
         /// </summary>
-        public int Write(int msgId, byte[] payload, int seq = 0, int sysId = 0, int compId = 0, int pkgId = 0)
+        public int Write(int msgId, byte[] payload, int seq = 0, int sysId = 0, int compId = 0, int pkgId = -1)
         {
             byte[] encoded = _encoder.Encode(msgId, payload, seq, sysId, compId, pkgId);
             int written = encoded.Length;
