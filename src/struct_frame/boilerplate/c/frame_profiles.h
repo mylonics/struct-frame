@@ -209,11 +209,12 @@ static inline frame_msg_info_t frame_format_parse_with_crc(
         }
     }
     
-    /* Skip package ID */
-    if (config->has_pkg_id) idx++;
-    
-    /* Read message ID */
-    uint8_t msg_id = buffer[idx++];
+    /* Read message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id) */
+    uint16_t msg_id = 0;
+    if (config->has_pkg_id) {
+        msg_id = (uint16_t)buffer[idx++] << 8;  /* pkg_id (high byte) */
+    }
+    msg_id |= buffer[idx++];  /* msg_id (low byte) */
     
     /* Verify total size */
     size_t total_size = overhead + msg_len;
@@ -421,11 +422,14 @@ static inline frame_msg_info_t parse_profile_ipc_buffer(const uint8_t* buffer, s
 }
 
 /* Profile Bulk (Basic + Extended) */
+/* When msg_id > 255, the high byte is used as pkg_id */
 static inline size_t encode_profile_bulk(uint8_t* buffer, size_t buffer_size,
-                                         uint8_t pkg_id, uint8_t msg_id,
+                                         uint16_t msg_id,
                                          const uint8_t* payload, size_t payload_size) {
+    uint8_t pkg_id = (uint8_t)((msg_id >> 8) & 0xFF);  /* high byte */
+    uint8_t low_msg_id = (uint8_t)(msg_id & 0xFF);     /* low byte */
     return frame_format_encode_with_crc(&PROFILE_BULK_CONFIG, buffer, buffer_size,
-                                        0, 0, 0, pkg_id, msg_id, payload, payload_size);
+                                        0, 0, 0, pkg_id, low_msg_id, payload, payload_size);
 }
 
 static inline frame_msg_info_t parse_profile_bulk_buffer(const uint8_t* buffer, size_t length) {
@@ -433,13 +437,15 @@ static inline frame_msg_info_t parse_profile_bulk_buffer(const uint8_t* buffer, 
 }
 
 /* Profile Network (Basic + ExtendedMultiSystemStream) */
+/* When msg_id > 255, the high byte is used as pkg_id */
 static inline size_t encode_profile_network(uint8_t* buffer, size_t buffer_size,
                                             uint8_t sequence, uint8_t system_id,
-                                            uint8_t component_id, uint8_t pkg_id,
-                                            uint8_t msg_id,
+                                            uint8_t component_id, uint16_t msg_id,
                                             const uint8_t* payload, size_t payload_size) {
+    uint8_t pkg_id = (uint8_t)((msg_id >> 8) & 0xFF);  /* high byte */
+    uint8_t low_msg_id = (uint8_t)(msg_id & 0xFF);     /* low byte */
     return frame_format_encode_with_crc(&PROFILE_NETWORK_CONFIG, buffer, buffer_size,
-                                        sequence, system_id, component_id, pkg_id, msg_id,
+                                        sequence, system_id, component_id, pkg_id, low_msg_id,
                                         payload, payload_size);
 }
 

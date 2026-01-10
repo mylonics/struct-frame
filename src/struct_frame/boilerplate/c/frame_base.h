@@ -58,7 +58,7 @@ static inline frame_checksum_t frame_fletcher_checksum(const uint8_t* data, size
 /* Parse result */
 typedef struct frame_msg_info {
     bool valid;
-    uint8_t msg_id;
+    uint16_t msg_id;  /* 16-bit to support pkg_id (high byte) + msg_id (low byte) */
     size_t msg_len;
     uint8_t* msg_data;
 } frame_msg_info_t;
