@@ -1,0 +1,135 @@
+// Extended test messages for struct-frame code generation framework
+// Tests for message IDs > 255 (require extended profiles with pkg_id)
+// Also tests for extended payloads > 255 bytes (require 2-byte length field)
+//
+// These messages are only compatible with extended profiles:
+// - profile_bulk (BasicExtended): supports extended msg_id and extended payload
+// - profile_network (BasicExtendedMultiSystemStream): supports extended msg_id and extended payload
+package extended_test;
+
+// ============================================================================
+// Extended Message ID Tests (msgid > 255)
+// ============================================================================
+
+// Message with ID 750 - tests 2-byte message ID encoding
+message ExtendedIdMessage1 {
+  option msgid = 750;
+  
+  uint32 sequence_number = 1;
+  string label = 2 [size=32];
+  float value = 3;
+  bool enabled = 4;
+}
+
+// Message with ID 1000 - tests larger message ID
+message ExtendedIdMessage2 {
+  option msgid = 1000;
+  
+  int32 sensor_id = 1;
+  double reading = 2;
+  uint16 status_code = 3;
+  string description = 4 [max_size=64];
+}
+
+// Message with ID 500 - tests mid-range extended ID
+message ExtendedIdMessage3 {
+  option msgid = 500;
+  
+  uint64 timestamp = 1;
+  int16 temperature = 2;
+  uint8 humidity = 3;
+  string location = 4 [size=16];
+}
+
+// Message with ID 2048 - tests higher extended ID
+message ExtendedIdMessage4 {
+  option msgid = 2048;
+  
+  uint32 event_id = 1;
+  uint32 event_type = 2;
+  int64 event_time = 3;
+  string event_data = 4 [max_size=128];
+}
+
+// Message with ID 300 - tests ID just above 255
+message ExtendedIdMessage5 {
+  option msgid = 300;
+  
+  float x_position = 1;
+  float y_position = 2;
+  float z_position = 3;
+  uint32 frame_number = 4;
+}
+
+// Message with ID 1500 - tests another extended ID
+message ExtendedIdMessage6 {
+  option msgid = 1500;
+  
+  int32 command_id = 1;
+  uint16 parameter1 = 2;
+  uint16 parameter2 = 3;
+  bool acknowledged = 4;
+  string command_name = 5 [size=24];
+}
+
+// Message with ID 999 - tests ID close to 1000
+message ExtendedIdMessage7 {
+  option msgid = 999;
+  
+  uint32 counter = 1;
+  double average = 2;
+  float minimum = 3;
+  float maximum = 4;
+}
+
+// Message with ID 1234 - tests easy-to-verify ID
+message ExtendedIdMessage8 {
+  option msgid = 1234;
+  
+  uint8 level = 1;
+  int16 offset = 2;
+  uint32 duration = 3;
+  string tag = 4 [size=8];
+}
+
+// Message with ID 4000 - tests high extended ID
+message ExtendedIdMessage9 {
+  option msgid = 4000;
+  
+  int64 big_number = 1;
+  uint64 big_unsigned = 2;
+  double precision_value = 3;
+}
+
+// Message with ID 256 - tests minimum extended ID (just above 255)
+message ExtendedIdMessage10 {
+  option msgid = 256;
+  
+  uint16 small_value = 1;
+  string short_text = 2 [size=16];
+  bool flag = 3;
+}
+
+// ============================================================================
+// Extended Payload Tests (payload > 255 bytes)
+// These require profiles with 2-byte length field
+// ============================================================================
+
+// Large message with payload > 255 bytes
+message LargePayloadMessage1 {
+  option msgid = 800;
+  
+  // Fixed arrays to ensure large payload
+  repeated float sensor_readings = 1 [size=64];     // 64 * 4 = 256 bytes
+  uint32 reading_count = 2;
+  int64 timestamp = 3;
+  string device_name = 4 [size=32];
+}
+
+// Another large message with different structure
+message LargePayloadMessage2 {
+  option msgid = 801;
+  
+  // Large array to ensure extended payload (> 255 bytes)
+  repeated uint8 large_data = 1 [size=280];
+}
