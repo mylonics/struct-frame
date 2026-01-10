@@ -163,8 +163,9 @@ class MessageTsClassGen():
         fields = calculate_field_layout(msg, package, packages)
         total_size = msg.size
         
-        # Generate init interface for this message
-        result += MessageTsClassGen._generate_init_interface(package_msg_name, fields)
+        # Generate init interface for this message (only if there are fields)
+        if fields:
+            result += MessageTsClassGen._generate_init_interface(package_msg_name, fields)
         
         # Generate class declaration
         result += f'export class {package_msg_name} extends MessageBase {{\n'
@@ -175,13 +176,18 @@ class MessageTsClassGen():
             result += f'  static readonly _msgid: number = {msg.id};\n'
         result += '\n'
         
-        # Generate constructor that supports init object
-        result += f'  constructor(bufferOrInit?: Buffer | {package_msg_name}Init) {{\n'
-        result += f'    super(Buffer.isBuffer(bufferOrInit) ? bufferOrInit : undefined);\n'
-        result += f'    if (bufferOrInit && !Buffer.isBuffer(bufferOrInit)) {{\n'
-        result += f'      this._applyInit(bufferOrInit as Record<string, unknown>);\n'
-        result += f'    }}\n'
-        result += f'  }}\n\n'
+        # Generate constructor that supports init object (only reference Init type if fields exist)
+        if fields:
+            result += f'  constructor(bufferOrInit?: Buffer | {package_msg_name}Init) {{\n'
+            result += f'    super(Buffer.isBuffer(bufferOrInit) ? bufferOrInit : undefined);\n'
+            result += f'    if (bufferOrInit && !Buffer.isBuffer(bufferOrInit)) {{\n'
+            result += f'      this._applyInit(bufferOrInit as Record<string, unknown>);\n'
+            result += f'    }}\n'
+            result += f'  }}\n\n'
+        else:
+            result += f'  constructor(buffer?: Buffer) {{\n'
+            result += f'    super(buffer);\n'
+            result += f'  }}\n\n'
         
         # Generate getters and setters for each field
         for field_info in fields:

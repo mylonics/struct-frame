@@ -459,8 +459,9 @@ class BufferWriter {
 
   /**
    * Write a message to the buffer.
-   * The message must be a struct instance with a constructor that has _msgid static property
-   * and the instance must have _buffer property.
+   * The message must be a MessageBase instance (generated struct class).
+   * @param {MessageBase} msg - The message to write
+   * @param {Object} options - Optional encode options
    * Returns the number of bytes written, or 0 on failure.
    */
   write(msg, options = {}) {
