@@ -244,7 +244,7 @@ def encode_test_message(format_name):
 
 def encode_test_messages(format_name):
     """Encode multiple test messages using the specified frame format.
-    Uses BufferWriter for efficient multi-frame encoding.
+    Uses BufferWriter for efficient multi-frame encoding with streaming interface.
     """
     import sys
     import os
@@ -264,7 +264,7 @@ def encode_test_messages(format_name):
         create_profile_bulk_writer, create_profile_network_writer
     )
     
-    mixed_messages = load_mixed_messages()
+    from test_messages_data import write_test_messages
     
     # Create the appropriate BufferWriter for this profile (with enough capacity)
     capacity = 4096  # Should be enough for test messages
@@ -282,31 +282,16 @@ def encode_test_messages(format_name):
     
     writer = creator()
     
-    for item in mixed_messages:
-        msg_type = item['type']
-        test_msg = item['data']
-        
-        if msg_type == 'SerializationTestMessage':
-            msg = create_message_from_data(SerializationTestSerializationTestMessage, test_msg)
-        elif msg_type == 'BasicTypesMessage':
-            msg = create_basic_types_message_from_data(SerializationTestBasicTypesMessage, test_msg)
-        elif msg_type == 'UnionTestMessage':
-            msg = create_union_test_message_from_data(
-                SerializationTestUnionTestMessage,
-                SerializationTestComprehensiveArrayMessage,
-                SerializationTestSerializationTestMessage,
-                SerializationTestSensor,
-                test_msg
-            )
-        else:
-            raise ValueError(f"Unknown message type: {msg_type}")
-        
-        msg_data = bytes(msg.pack())
-        
-        # Use BufferWriter to encode and append frame - it tracks offset automatically
-        bytes_written = writer.write(msg.msg_id, msg_data)
-        if bytes_written == 0:
-            raise RuntimeError(f"Failed to encode message: buffer full or encoding error")
+    # Use streaming interface to write messages directly
+    message_classes = {
+        'SerializationTestMessage': SerializationTestSerializationTestMessage,
+        'BasicTypesMessage': SerializationTestBasicTypesMessage,
+        'UnionTestMessage': SerializationTestUnionTestMessage,
+        'ComprehensiveArrayMessage': SerializationTestComprehensiveArrayMessage,
+        'Sensor': SerializationTestSensor
+    }
+    
+    write_test_messages(writer, message_classes)
     
     return writer.data()
 

@@ -3,6 +3,10 @@
 Test message data definitions.
 Hardcoded test messages for cross-platform compatibility testing.
 Replaces JSON-based test data loading.
+
+This module provides a streaming interface where messages are directly
+encoded to a buffer using a writer object, eliminating intermediate
+message list allocations.
 """
 
 from enum import IntEnum
@@ -18,6 +22,65 @@ class MessageType(IntEnum):
 def get_test_message_count():
     """Get the total number of test messages."""
     return 11
+
+
+def write_test_messages(writer, message_classes):
+    """
+    Write all test messages to a writer object.
+    
+    This function iterates through all test messages and encodes them
+    directly using the writer's write() method.
+    
+    Args:
+        writer: Writer object with write(msg_id, msg_data) method
+        message_classes: Dictionary mapping message types to their classes
+            {
+                'SerializationTestMessage': class,
+                'BasicTypesMessage': class,
+                'UnionTestMessage': class,
+                'ComprehensiveArrayMessage': class,
+                'Sensor': class
+            }
+    
+    Returns:
+        Number of messages written
+    """
+    from test_codec import (
+        create_message_from_data, 
+        create_basic_types_message_from_data,
+        create_union_test_message_from_data
+    )
+    
+    count = 0
+    for i in range(get_test_message_count()):
+        msg_type, msg_data = get_test_message(i)
+        
+        if msg_type == MessageType.SERIALIZATION_TEST:
+            msg = create_message_from_data(
+                message_classes['SerializationTestMessage'], msg_data)
+        elif msg_type == MessageType.BASIC_TYPES:
+            msg = create_basic_types_message_from_data(
+                message_classes['BasicTypesMessage'], msg_data)
+        elif msg_type == MessageType.UNION_TEST:
+            msg = create_union_test_message_from_data(
+                message_classes['UnionTestMessage'],
+                message_classes['ComprehensiveArrayMessage'],
+                message_classes['SerializationTestMessage'],
+                message_classes['Sensor'],
+                msg_data
+            )
+        else:
+            raise ValueError(f"Unknown message type: {msg_type}")
+        
+        msg_bytes = bytes(msg.pack())
+        bytes_written = writer.write(msg.msg_id, msg_bytes)
+        
+        if bytes_written == 0:
+            raise RuntimeError(f"Failed to encode message {i}: buffer full or encoding error")
+        
+        count += 1
+    
+    return count
 
 
 def get_test_message(index):
