@@ -46,9 +46,9 @@ static inline frame_msg_info_t none_minimal_validate_packet(const uint8_t* buffe
 }
 
 /* Basic + Extended -> Profile Bulk */
-static inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
+static inline size_t basic_extended_encode(uint8_t* buffer, size_t buffer_size, uint16_t msg_id, const uint8_t* msg,
                                            size_t msg_size) {
-  return encode_profile_bulk(buffer, buffer_size, 0, msg_id, msg, msg_size);  /* pkg_id = 0 */
+  return encode_profile_bulk(buffer, buffer_size, msg_id, msg, msg_size);
 }
 
 static inline frame_msg_info_t basic_extended_validate_packet(const uint8_t* buffer, size_t length) {
@@ -56,9 +56,9 @@ static inline frame_msg_info_t basic_extended_validate_packet(const uint8_t* buf
 }
 
 /* Basic + Extended Multi System Stream -> Profile Network */
-static inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id,
+static inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, uint16_t msg_id,
                                                                const uint8_t* msg, size_t msg_size) {
-  return encode_profile_network(buffer, buffer_size, 0, 0, 0, 0, msg_id, msg, msg_size);  /* seq=0, sys=0, comp=0, pkg=0 */
+  return encode_profile_network(buffer, buffer_size, 0, 0, 0, msg_id, msg, msg_size);  /* seq=0, sys=0, comp=0 */
 }
 
 static inline frame_msg_info_t basic_extended_multi_system_stream_validate_packet(const uint8_t* buffer,
@@ -798,7 +798,7 @@ bool decode_test_messages(const char* format, const uint8_t* buffer, size_t buff
     }
 
     // Validate msg_id matches expected type
-    uint8_t expected_msg_id;
+    uint16_t expected_msg_id;
     if (mixed_messages[*message_count].type == MSG_TYPE_SERIALIZATION_TEST) {
       expected_msg_id = SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID;
     } else if (mixed_messages[*message_count].type == MSG_TYPE_BASIC_TYPES) {

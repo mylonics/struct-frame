@@ -41,6 +41,28 @@
           "output_file": "{lang_name}_profile_network_test_data.bin"
         }
       ]
+    },
+    {
+      "name": "extended_msgid_matrix",
+      "description": "Extended message ID tests (>255) for profiles with pkg_id support",
+      "plugin": "frame_format_matrix",
+      "test_runner": "test_runner_extended",
+      "messages_file": "extended_messages.json",
+      "base_language": "cpp",
+      "frame_formats": [
+        {
+          "name": "profile_bulk",
+          "display_name": "ProfileBulk",
+          "profile": "BasicExtended",
+          "output_file": "{lang_name}_extended_bulk_test_data.bin"
+        },
+        {
+          "name": "profile_network",
+          "display_name": "ProfileNetwork",
+          "profile": "BasicExtendedMultiSystemStream",
+          "output_file": "{lang_name}_extended_network_test_data.bin"
+        }
+      ]
     }
   ]
 }
