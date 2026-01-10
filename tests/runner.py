@@ -363,10 +363,16 @@ class TestRunner:
 
                 sources = [runner_source, codec_source]
                 
-                # Add test_messages_data source file
-                messages_data_source = test_dir / f"test_messages_data{source_ext}"
-                if messages_data_source.exists():
-                    sources.append(messages_data_source)
+                # Add test_messages_data source file (for regular tests)
+                if "extended" not in runner_name:
+                    messages_data_source = test_dir / f"test_messages_data{source_ext}"
+                    if messages_data_source.exists():
+                        sources.append(messages_data_source)
+                else:
+                    # Add test_messages_data_extended source file (for extended tests)
+                    messages_data_ext_source = test_dir / f"test_messages_data_extended{source_ext}"
+                    if messages_data_ext_source.exists():
+                        sources.append(messages_data_ext_source)
                 
                 # Add cJSON.c for C language (will be removed once JSON dependency is fully removed)
                 if source_ext == '.c':

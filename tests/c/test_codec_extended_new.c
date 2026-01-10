@@ -49,14 +49,29 @@ bool encode_extended_messages(const char* format, uint8_t* buffer, size_t buffer
 }
 
 bool decode_extended_messages(const char* format, const uint8_t* buffer, size_t buffer_size, size_t* message_count) {
-  // Decoding validation uses get_extended_test_message for comparison
-  // For now, just count frames by looking for message IDs
   *message_count = 0;
   size_t offset = 0;
-  size_t expected_count = get_extended_test_message_count();
   
-  // Simple frame counting - just verify we can parse the expected number of messages
-  // The actual validation happens in the test runner
-  *message_count = expected_count;
-  return true;
+  while (offset < buffer_size) {
+    frame_msg_info_t frame_info;
+    size_t msg_length = 0;
+    
+    if (strcmp(format, "profile_bulk") == 0) {
+      msg_length = decode_profile_bulk(buffer + offset, buffer_size - offset, &frame_info);
+    } else if (strcmp(format, "profile_network") == 0) {
+      msg_length = decode_profile_network(buffer + offset, buffer_size - offset, &frame_info);
+    } else {
+      printf("  Unknown or unsupported frame format for extended tests: %s\n", format);
+      return false;
+    }
+    
+    if (msg_length == 0) {
+      break; // No more messages or error
+    }
+    
+    (*message_count)++;
+    offset += msg_length;
+  }
+  
+  return *message_count > 0;
 }
