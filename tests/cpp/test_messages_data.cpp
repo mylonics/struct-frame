@@ -1,276 +1,209 @@
 /**
  * Test message data definitions.
  * Hardcoded test messages for cross-platform compatibility testing.
+ * Uses std::array for efficient storage instead of switch statement.
  */
 
 #include "test_messages_data.hpp"
+#include <array>
 #include <cstring>
 
-constexpr std::size_t TEST_MESSAGE_COUNT = 11;
+// Helper function to create SerializationTestMessage
+static SerializationTestSerializationTestMessage create_serialization_test(
+    uint32_t magic, const char* str, float flt, bool bl, 
+    const std::initializer_list<int32_t>& arr) {
+  SerializationTestSerializationTestMessage msg{};
+  msg.magic_number = magic;
+  msg.test_string.length = std::strlen(str);
+  std::strcpy(msg.test_string.data, str);
+  msg.test_float = flt;
+  msg.test_bool = bl;
+  size_t i = 0;
+  for (auto val : arr) {
+    if (i >= 5) break;
+    msg.test_array.data[i++] = val;
+  }
+  msg.test_array.count = i;
+  return msg;
+}
+
+// Helper function to create BasicTypesMessage
+static SerializationTestBasicTypesMessage create_basic_types(
+    int8_t si, int16_t mi, int32_t ri, int64_t li,
+    uint8_t su, uint16_t mu, uint32_t ru, uint64_t lu,
+    float sp, double dp, bool fl,
+    const char* dev, const char* desc) {
+  SerializationTestBasicTypesMessage msg{};
+  msg.small_int = si;
+  msg.medium_int = mi;
+  msg.regular_int = ri;
+  msg.large_int = li;
+  msg.small_uint = su;
+  msg.medium_uint = mu;
+  msg.regular_uint = ru;
+  msg.large_uint = lu;
+  msg.single_precision = sp;
+  msg.double_precision = dp;
+  msg.flag = fl;
+  std::strncpy(msg.device_id, dev, 31);
+  msg.device_id[31] = '\0';
+  msg.description.length = std::strlen(desc);
+  std::strncpy(msg.description.data, desc, 128);
+  if (msg.description.length > 128) msg.description.length = 128;
+  return msg;
+}
+
+// Helper function to create UnionTestMessage with array payload
+static SerializationTestUnionTestMessage create_union_with_array() {
+  SerializationTestUnionTestMessage msg{};
+  msg.payload_discriminator = SerializationTestComprehensiveArrayMessage::MSG_ID;
+  
+  auto& arr = msg.payload.array_payload;
+  
+  // Fixed arrays (direct access, not .data/.count)
+  arr.fixed_ints[0] = 10;
+  arr.fixed_ints[1] = 20;
+  arr.fixed_ints[2] = 30;
+  
+  arr.fixed_floats[0] = 1.5f;
+  arr.fixed_floats[1] = 2.5f;
+  
+  arr.fixed_bools[0] = true;
+  arr.fixed_bools[1] = false;
+  arr.fixed_bools[2] = true;
+  arr.fixed_bools[3] = false;
+  
+  // Bounded arrays (have .data and .count)
+  arr.bounded_uints.data[0] = 100;
+  arr.bounded_uints.data[1] = 200;
+  arr.bounded_uints.count = 2;
+  
+  arr.bounded_doubles.data[0] = 3.14159;
+  arr.bounded_doubles.count = 1;
+  
+  // Fixed string arrays (2D char arrays)
+  std::strcpy(arr.fixed_strings[0], "Hello");
+  std::strcpy(arr.fixed_strings[1], "World");
+  
+  // Bounded string arrays
+  std::strcpy(arr.bounded_strings.data[0], "Test");
+  arr.bounded_strings.count = 1;
+  
+  // Enum arrays (fixed is direct array)
+  arr.fixed_statuses[0] = SerializationTestStatus::ACTIVE;
+  arr.fixed_statuses[1] = SerializationTestStatus::ERROR;
+  
+  arr.bounded_statuses.data[0] = SerializationTestStatus::INACTIVE;
+  arr.bounded_statuses.count = 1;
+  
+  // Sensor arrays
+  arr.fixed_sensors[0].id = 1;
+  arr.fixed_sensors[0].value = 25.5f;
+  arr.fixed_sensors[0].status = SerializationTestStatus::ACTIVE;
+  std::strcpy(arr.fixed_sensors[0].name, "TempSensor");
+  
+  arr.bounded_sensors.count = 0;
+  
+  return msg;
+}
+
+// Helper function to create UnionTestMessage with test payload
+static SerializationTestUnionTestMessage create_union_with_test() {
+  SerializationTestUnionTestMessage msg{};
+  msg.payload_discriminator = SerializationTestSerializationTestMessage::MSG_ID;
+  
+  auto& test = msg.payload.test_payload;
+  test.magic_number = 0x12345678;
+  const char* str = "Union test message";
+  test.test_string.length = std::strlen(str);
+  std::strcpy(test.test_string.data, str);
+  test.test_float = 99.99f;
+  test.test_bool = true;
+  test.test_array.data[0] = 1;
+  test.test_array.data[1] = 2;
+  test.test_array.data[2] = 3;
+  test.test_array.data[3] = 4;
+  test.test_array.data[4] = 5;
+  test.test_array.count = 5;
+  
+  return msg;
+}
+
+// Static array of all test messages - more efficient than switch statement
+static const std::array<MixedMessage, 11> test_messages = []() {
+  std::array<MixedMessage, 11> messages{};
+  
+  // 0: SerializationTestMessage - basic_values
+  messages[0].type = MessageType::SerializationTest;
+  messages[0].data.serialization_test = create_serialization_test(
+      0xDEADBEEF, "Cross-platform test!", 3.14159f, true, {100, 200, 300});
+  
+  // 1: SerializationTestMessage - zero_values
+  messages[1].type = MessageType::SerializationTest;
+  messages[1].data.serialization_test = create_serialization_test(
+      0, "", 0.0f, false, {});
+  
+  // 2: SerializationTestMessage - max_values
+  messages[2].type = MessageType::SerializationTest;
+  messages[2].data.serialization_test = create_serialization_test(
+      0xFFFFFFFF, "Maximum length test string for coverage!", 999999.9f, true,
+      {2147483647, -2147483648, 0, 1, -1});
+  
+  // 3: SerializationTestMessage - negative_values
+  messages[3].type = MessageType::SerializationTest;
+  messages[3].data.serialization_test = create_serialization_test(
+      0xAAAAAAAA, "Negative test", -273.15f, false, {-100, -200, -300, -400});
+  
+  // 4: SerializationTestMessage - special_chars
+  messages[4].type = MessageType::SerializationTest;
+  messages[4].data.serialization_test = create_serialization_test(
+      1234567890, "Special: !@#$%^&*()", 2.71828f, true, {0, 1, 1, 2, 3});
+  
+  // 5: BasicTypesMessage - basic_values
+  messages[5].type = MessageType::BasicTypes;
+  messages[5].data.basic_types = create_basic_types(
+      42, 1000, 123456, 9876543210LL, 200, 50000, 4000000000U, 9223372036854775807ULL,
+      3.14159f, 2.718281828459045, true, "DEVICE-001", "Basic test values");
+  
+  // 6: BasicTypesMessage - zero_values
+  messages[6].type = MessageType::BasicTypes;
+  messages[6].data.basic_types = create_basic_types(
+      0, 0, 0, 0, 0, 0, 0, 0, 0.0f, 0.0, false, "", "");
+  
+  // 7: BasicTypesMessage - negative_values
+  messages[7].type = MessageType::BasicTypes;
+  messages[7].data.basic_types = create_basic_types(
+      -128, -32768, -2147483648, -9223372036854775807LL, 255, 65535, 4294967295U,
+      9223372036854775807ULL, -273.15f, -9999.999999, false, "NEG-TEST",
+      "Negative and max values");
+  
+  // 8: UnionTestMessage - with_array_payload
+  messages[8].type = MessageType::UnionTest;
+  messages[8].data.union_test = create_union_with_array();
+  
+  // 9: UnionTestMessage - with_test_payload
+  messages[9].type = MessageType::UnionTest;
+  messages[9].data.union_test = create_union_with_test();
+  
+  // 10: BasicTypesMessage - negative_values (duplicate)
+  messages[10].type = MessageType::BasicTypes;
+  messages[10].data.basic_types = create_basic_types(
+      -128, -32768, -2147483648, -9223372036854775807LL, 255, 65535, 4294967295U,
+      9223372036854775807ULL, -273.15f, -9999.999999, false, "NEG-TEST",
+      "Negative and max values");
+  
+  return messages;
+}();
 
 std::size_t get_test_message_count() {
-  return TEST_MESSAGE_COUNT;
+  return test_messages.size();
 }
 
 bool get_test_message(std::size_t index, MixedMessage& out_message) {
-  if (index >= TEST_MESSAGE_COUNT) {
+  if (index >= test_messages.size()) {
     return false;
   }
-
-  std::memset(&out_message, 0, sizeof(MixedMessage));
-
-  switch (index) {
-    case 0: { // SerializationTestMessage - basic_values
-      out_message.type = MessageType::SerializationTest;
-      auto& msg = out_message.data.serialization_test;
-      msg.magic_number = 0xDEADBEEF;
-      const char* str = "Cross-platform test!";
-      msg.test_string.length = std::strlen(str);
-      std::strcpy(msg.test_string.data, str);
-      msg.test_float = 3.14159f;
-      msg.test_bool = true;
-      msg.test_array.data[0] = 100;
-      msg.test_array.data[1] = 200;
-      msg.test_array.data[2] = 300;
-      msg.test_array.count = 3;
-      break;
-    }
-
-    case 1: { // SerializationTestMessage - zero_values
-      out_message.type = MessageType::SerializationTest;
-      auto& msg = out_message.data.serialization_test;
-      msg.magic_number = 0;
-      msg.test_string.length = 0;
-      msg.test_string.data[0] = '\0';
-      msg.test_float = 0.0f;
-      msg.test_bool = false;
-      msg.test_array.count = 0;
-      break;
-    }
-
-    case 2: { // SerializationTestMessage - max_values
-      out_message.type = MessageType::SerializationTest;
-      auto& msg = out_message.data.serialization_test;
-      msg.magic_number = 0xFFFFFFFF;
-      const char* str = "Maximum length test string for coverage!";
-      msg.test_string.length = std::strlen(str);
-      std::strcpy(msg.test_string.data, str);
-      msg.test_float = 999999.9f;
-      msg.test_bool = true;
-      msg.test_array.data[0] = 2147483647;
-      msg.test_array.data[1] = -2147483648;
-      msg.test_array.data[2] = 0;
-      msg.test_array.data[3] = 1;
-      msg.test_array.data[4] = -1;
-      msg.test_array.count = 5;
-      break;
-    }
-
-    case 3: { // SerializationTestMessage - negative_values
-      out_message.type = MessageType::SerializationTest;
-      auto& msg = out_message.data.serialization_test;
-      msg.magic_number = 0xAAAAAAAA;
-      const char* str = "Negative test";
-      msg.test_string.length = std::strlen(str);
-      std::strcpy(msg.test_string.data, str);
-      msg.test_float = -273.15f;
-      msg.test_bool = false;
-      msg.test_array.data[0] = -100;
-      msg.test_array.data[1] = -200;
-      msg.test_array.data[2] = -300;
-      msg.test_array.data[3] = -400;
-      msg.test_array.count = 4;
-      break;
-    }
-
-    case 4: { // SerializationTestMessage - special_chars
-      out_message.type = MessageType::SerializationTest;
-      auto& msg = out_message.data.serialization_test;
-      msg.magic_number = 1234567890;
-      const char* str = "Special: !@#$%^&*()";
-      msg.test_string.length = std::strlen(str);
-      std::strcpy(msg.test_string.data, str);
-      msg.test_float = 2.71828f;
-      msg.test_bool = true;
-      msg.test_array.data[0] = 0;
-      msg.test_array.data[1] = 1;
-      msg.test_array.data[2] = 1;
-      msg.test_array.data[3] = 2;
-      msg.test_array.data[4] = 3;
-      msg.test_array.count = 5;
-      break;
-    }
-
-    case 5: { // BasicTypesMessage - basic_values
-      out_message.type = MessageType::BasicTypes;
-      auto& msg = out_message.data.basic_types;
-      msg.small_int = 42;
-      msg.medium_int = 1000;
-      msg.regular_int = 123456;
-      msg.large_int = 9876543210LL;
-      msg.small_uint = 200;
-      msg.medium_uint = 50000;
-      msg.regular_uint = 4000000000U;
-      msg.large_uint = 9223372036854775807ULL;
-      msg.single_precision = 3.14159f;
-      msg.double_precision = 2.718281828459045;
-      msg.flag = true;
-      std::strcpy(msg.device_id.data, "DEVICE-001");
-      const char* desc = "Basic test values";
-      msg.description.length = std::strlen(desc);
-      std::strcpy(msg.description.data, desc);
-      break;
-    }
-
-    case 6: { // BasicTypesMessage - zero_values
-      out_message.type = MessageType::BasicTypes;
-      auto& msg = out_message.data.basic_types;
-      msg.small_int = 0;
-      msg.medium_int = 0;
-      msg.regular_int = 0;
-      msg.large_int = 0;
-      msg.small_uint = 0;
-      msg.medium_uint = 0;
-      msg.regular_uint = 0;
-      msg.large_uint = 0;
-      msg.single_precision = 0.0f;
-      msg.double_precision = 0.0;
-      msg.flag = false;
-      msg.device_id.data[0] = '\0';
-      msg.description.length = 0;
-      msg.description.data[0] = '\0';
-      break;
-    }
-
-    case 7: { // BasicTypesMessage - negative_values
-      out_message.type = MessageType::BasicTypes;
-      auto& msg = out_message.data.basic_types;
-      msg.small_int = -128;
-      msg.medium_int = -32768;
-      msg.regular_int = -2147483648;
-      msg.large_int = -9223372036854775807LL;
-      msg.small_uint = 255;
-      msg.medium_uint = 65535;
-      msg.regular_uint = 4294967295U;
-      msg.large_uint = 9223372036854775807ULL;
-      msg.single_precision = -273.15f;
-      msg.double_precision = -9999.999999;
-      msg.flag = false;
-      std::strcpy(msg.device_id.data, "NEG-TEST");
-      const char* desc = "Negative and max values";
-      msg.description.length = std::strlen(desc);
-      std::strcpy(msg.description.data, desc);
-      break;
-    }
-
-    case 8: { // UnionTestMessage - with_array_payload
-      out_message.type = MessageType::UnionTest;
-      auto& msg = out_message.data.union_test;
-      msg.payload_type = SERIALIZATION_TEST_UNION_PAYLOAD_COMPREHENSIVE_ARRAY;
-      
-      auto& arr = msg.payload.array_payload;
-      std::memset(&arr, 0, sizeof(arr));
-      
-      // Fixed arrays
-      arr.fixed_ints.data[0] = 10;
-      arr.fixed_ints.data[1] = 20;
-      arr.fixed_ints.data[2] = 30;
-      arr.fixed_ints.count = 3;
-      
-      arr.fixed_floats.data[0] = 1.5f;
-      arr.fixed_floats.data[1] = 2.5f;
-      arr.fixed_floats.count = 2;
-      
-      arr.fixed_bools.data[0] = true;
-      arr.fixed_bools.data[1] = false;
-      arr.fixed_bools.data[2] = true;
-      arr.fixed_bools.data[3] = false;
-      arr.fixed_bools.count = 4;
-      
-      // Bounded arrays
-      arr.bounded_uints.data[0] = 100;
-      arr.bounded_uints.data[1] = 200;
-      arr.bounded_uints.count = 2;
-      
-      arr.bounded_doubles.data[0] = 3.14159;
-      arr.bounded_doubles.count = 1;
-      
-      // String arrays
-      std::strcpy(arr.fixed_strings.data[0].data, "Hello");
-      arr.fixed_strings.data[0].length = 5;
-      std::strcpy(arr.fixed_strings.data[1].data, "World");
-      arr.fixed_strings.data[1].length = 5;
-      arr.fixed_strings.count = 2;
-      
-      std::strcpy(arr.bounded_strings.data[0].data, "Test");
-      arr.bounded_strings.data[0].length = 4;
-      arr.bounded_strings.count = 1;
-      
-      // Enum arrays
-      arr.fixed_statuses.data[0] = SERIALIZATION_TEST_ACTIVE;
-      arr.fixed_statuses.data[1] = SERIALIZATION_TEST_ERROR;
-      arr.fixed_statuses.count = 2;
-      
-      arr.bounded_statuses.data[0] = SERIALIZATION_TEST_INACTIVE;
-      arr.bounded_statuses.count = 1;
-      
-      // Sensor arrays
-      arr.fixed_sensors.data[0].id = 1;
-      arr.fixed_sensors.data[0].value = 25.5f;
-      arr.fixed_sensors.data[0].status = SERIALIZATION_TEST_ACTIVE;
-      std::strcpy(arr.fixed_sensors.data[0].name.data, "TempSensor");
-      arr.fixed_sensors.data[0].name.length = 10;
-      arr.fixed_sensors.count = 1;
-      
-      arr.bounded_sensors.count = 0;
-      break;
-    }
-
-    case 9: { // UnionTestMessage - with_test_payload
-      out_message.type = MessageType::UnionTest;
-      auto& msg = out_message.data.union_test;
-      msg.payload_type = SERIALIZATION_TEST_UNION_PAYLOAD_SERIALIZATION_TEST;
-      
-      auto& test = msg.payload.test_payload;
-      test.magic_number = 0x12345678;
-      const char* str = "Union test message";
-      test.test_string.length = std::strlen(str);
-      std::strcpy(test.test_string.data, str);
-      test.test_float = 99.99f;
-      test.test_bool = true;
-      test.test_array.data[0] = 1;
-      test.test_array.data[1] = 2;
-      test.test_array.data[2] = 3;
-      test.test_array.data[3] = 4;
-      test.test_array.data[4] = 5;
-      test.test_array.count = 5;
-      break;
-    }
-
-    case 10: { // BasicTypesMessage - negative_values (duplicate)
-      out_message.type = MessageType::BasicTypes;
-      auto& msg = out_message.data.basic_types;
-      msg.small_int = -128;
-      msg.medium_int = -32768;
-      msg.regular_int = -2147483648;
-      msg.large_int = -9223372036854775807LL;
-      msg.small_uint = 255;
-      msg.medium_uint = 65535;
-      msg.regular_uint = 4294967295U;
-      msg.large_uint = 9223372036854775807ULL;
-      msg.single_precision = -273.15f;
-      msg.double_precision = -9999.999999;
-      msg.flag = false;
-      std::strcpy(msg.device_id.data, "NEG-TEST");
-      const char* desc = "Negative and max values";
-      msg.description.length = std::strlen(desc);
-      std::strcpy(msg.description.data, desc);
-      break;
-    }
-
-    default:
-      return false;
-  }
-
+  
+  out_message = test_messages[index];
   return true;
 }
