@@ -114,17 +114,17 @@ if result['valid']:
 #### TypeScript
 
 ```typescript
-import { BasicDefaultParser } from './frame_parsers_gen';
+import { createProfileStandardAccumulatingReader } from './frame_profiles';
 
-// Profile-specific parser (STANDARD profile)
-const parser = new BasicDefaultParser();
+// Create an accumulating reader for ProfileStandard
+const reader = createProfileStandardAccumulatingReader();
 
-// Parse byte-by-byte
-const result = parser.parseByte(byte);
-if (result.valid) {
-    const msgId = result.msgId;
-    const msgData = result.msgData;
-    const msgLen = result.msgLen;
+// Parse byte-by-byte (streaming mode)
+const result = reader.pushByte(byte);
+if (result && result.valid) {
+    const msgId = result.msg_id;
+    const msgData = result.msg_data;
+    const msgLen = result.msg_len;
 }
 ```
 

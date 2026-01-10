@@ -602,7 +602,7 @@ parser = argparse.ArgumentParser(
     description='Message serialization and header generation program')
 
 parser.add_argument('filename', nargs='?', default=None,
-                    help='Proto file to process (required unless --regenerate_boiler_plate is used)')
+                    help='Proto file to process')
 parser.add_argument('--debug', action='store_true')
 parser.add_argument('--validate', action='store_true',
                     help='Validate the proto file without generating any output files')
@@ -623,11 +623,6 @@ parser.add_argument('--csharp_path', nargs=1, type=str,
 parser.add_argument('--build_gql', action='store_true')
 parser.add_argument('--gql_path', nargs=1, type=str,
                     default=['generated/gql/'])
-parser.add_argument('--frame_formats', nargs=1, type=str,
-                    help='Proto file containing frame format definitions to generate frame parsers')
-parser.add_argument('--regenerate_boiler_plate', action='store_true',
-                    help='Regenerate boilerplate code. Uses --frame_formats file if provided, '
-                         'otherwise uses default frame_formats.proto')
 parser.add_argument('--sdk', action='store_true',
                     help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
 parser.add_argument('--sdk_embedded', action='store_true',
@@ -926,118 +921,13 @@ def generateCSharpFileStrings(path, include_sdk_interface=False):
     return out
 
 
-def generateFrameParserFiles(frame_formats_file, c_path, ts_path, js_path, py_path, cpp_path, csharp_path,
-                             build_c, build_ts, build_js, build_py, build_cpp, build_csharp, filter_extended_only=False):
-    """Generate frame parser files from frame format definitions
-    
-    Args:
-        frame_formats_file: Path to frame formats proto file
-        ...: Various path and build flags
-        filter_extended_only: If True, only generate Extended* payload types
-    """
-    from struct_frame.frame_format import parse_frame_formats, PayloadType
-    from struct_frame.frame_parser_c_gen import generate_c_frame_parsers
-    from struct_frame.frame_parser_py_gen import generate_py_frame_parsers
-    from struct_frame.frame_parser_ts_gen import generate_ts_frame_parsers, generate_js_frame_parsers
-    from struct_frame.frame_parser_cpp_gen import generate_cpp_frame_parsers
-    from struct_frame.frame_parser_csharp_gen import generate_csharp_frame_parsers
-
-    formats = parse_frame_formats(frame_formats_file)
-    
-    # Filter payload types based on package configuration
-    if filter_extended_only:
-        # Only allow Extended* payload types
-        allowed_payload_types = {
-            PayloadType.EXTENDED_MSG_IDS,
-            PayloadType.EXTENDED,
-            PayloadType.EXTENDED_MINIMAL,
-            PayloadType.EXTENDED_MULTI_SYSTEM_STREAM,
-            PayloadType.EXTENDED_LENGTH,  # Also an extended type
-        }
-        
-        # Filter the payload definitions
-        original_count = len(formats.payloads)
-        formats.payloads = {pt: pd for pt, pd in formats.payloads.items() if pt in allowed_payload_types}
-        
-        if original_count > len(formats.payloads):
-            print("Note: Package uses package IDs or message IDs >= 256.")
-            print("      Only generating Extended* payload type parsers.")
-            print(f"      Filtered to {len(formats.payloads)} payload types from {original_count}.")
-    
-    files = {}
-
-    if build_c:
-        name = os.path.join(c_path, "frame_parsers_gen.h")
-        files[name] = generate_c_frame_parsers(formats)
-
-    if build_ts:
-        name = os.path.join(ts_path, "frame_parsers_gen.ts")
-        files[name] = generate_ts_frame_parsers(formats)
-
-    if build_js:
-        name = os.path.join(js_path, "frame_parsers_gen.js")
-        files[name] = generate_js_frame_parsers(formats)
-
-    if build_py:
-        name = os.path.join(py_path, "frame_parsers_gen.py")
-        files[name] = generate_py_frame_parsers(formats)
-
-    if build_cpp:
-        name = os.path.join(cpp_path, "frame_parsers_gen.hpp")
-        files[name] = generate_cpp_frame_parsers(formats)
-
-    if build_csharp:
-        name = os.path.join(csharp_path, "FrameParsersGen.cs")
-        files[name] = generate_csharp_frame_parsers(formats)
-
-    return files
-
-
 def main():
-    from struct_frame.generate_boilerplate import update_src_boilerplate, generate_boilerplate_to_paths, get_default_frame_formats_path
 
     args = parser.parse_args()
 
-    # Handle --regenerate_boiler_plate mode
-    if args.regenerate_boiler_plate:
-        # Determine which frame_formats file to use
-        if args.frame_formats:
-            frame_formats_file = args.frame_formats[0]
-            print(f"Regenerating boilerplate from: {frame_formats_file}")
-            # Generate to boilerplate directory using custom frame_formats file
-            from struct_frame.generate_boilerplate import get_boilerplate_dir, write_file
-            boilerplate_dir = get_boilerplate_dir()
-
-            if not os.path.exists(frame_formats_file):
-                print(
-                    f"Error: frame_formats file not found at {frame_formats_file}")
-                return
-
-            files = generate_boilerplate_to_paths(
-                frame_formats_file,
-                c_path=os.path.join(boilerplate_dir, 'c'),
-                ts_path=os.path.join(boilerplate_dir, 'ts'),
-                js_path=os.path.join(boilerplate_dir, 'js'),
-                py_path=os.path.join(boilerplate_dir, 'py'),
-                cpp_path=os.path.join(boilerplate_dir, 'cpp')
-            )
-
-            for path, content in files.items():
-                write_file(path, content)
-
-            print(f"Successfully regenerated {len(files)} boilerplate files")
-        else:
-            # Use default frame_formats.proto
-            print("Regenerating boilerplate from default frame_formats.proto")
-            success = update_src_boilerplate()
-            if not success:
-                print("Failed to regenerate boilerplate")
-                return
-        return
-
     # Normal mode requires a filename
     if not args.filename:
-        print("Error: filename is required unless --regenerate_boiler_plate is used")
+        print("Error: filename is required")
         parser.print_help()
         return
 
@@ -1096,18 +986,6 @@ def main():
             data = ''.join(FileGqlGen.generate(value))
             files[name] = data
 
-    # Generate frame parsers if frame_formats proto is provided
-    if args.frame_formats:
-        frame_parser_files = generateFrameParserFiles(
-            args.frame_formats[0],
-            args.c_path[0], args.ts_path[0], args.js_path[0],
-            args.py_path[0], args.cpp_path[0], args.csharp_path[0],
-            args.build_c, args.build_ts, args.build_js,
-            args.build_py, args.build_cpp, args.build_csharp,
-            filter_extended_only=needs_extended_payload_types()
-        )
-        files.update(frame_parser_files)
-
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)
         if dirname and not os.path.exists(dirname):
@@ -1118,26 +996,7 @@ def main():
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
 
-    # When --frame_formats is provided, the frame parser boilerplate files are
-    # replaced by the generated frame parsers, so we only copy utility files.
-    # Otherwise, copy all boilerplate files (now multi-file structure).
-    
-    # Utility files that should be copied even when generating custom frame parsers
-    # (files that are not frame format specific)
-    utility_files = {
-        'c': ['frame_base.h'],
-        'cpp': ['frame_base.hpp'],
-        'ts': ['struct_base.ts', 'frame_base.ts'],
-        'js': ['struct_base.js', 'frame_base.js'],
-        'py': [],  # __init__.py will be generated with the custom frame formats
-        'csharp': ['FrameBase.cs']
-    }
-    
-    def copy_files_list(src_dir, dst_dir, files_to_copy):
-        """Copy specified files from src_dir to dst_dir"""
-        if not os.path.exists(dst_dir):
-            os.makedirs(dst_dir)
-        for item in files_to_copy:
+    def copy_all_files(src_dir, dst_dir, exclude_dirs=None):
             src_path = os.path.join(src_dir, item)
             dst_path = os.path.join(dst_dir, item)
             if os.path.isfile(src_path):
@@ -1204,72 +1063,39 @@ def main():
             # Copy all SDK files
             shutil.copytree(sdk_src, sdk_dst, dirs_exist_ok=True)
 
-    if args.frame_formats:
-        # When generating custom frame parsers, only copy utility files
-        # (the generated frame parsers will be written separately)
-        if args.build_c:
-            copy_files_list(
-                os.path.join(dir_path, "boilerplate/c"),
-                args.c_path[0], utility_files['c'])
+    # Copy all boilerplate files (excluding SDK by default)
+    # SDK is handled separately below based on --sdk or --sdk_embedded flags
+    exclude_sdk = ['struct_frame_sdk']
+    
+    if (args.build_c):
+        copy_all_files(
+            os.path.join(dir_path, "boilerplate/c"),
+            args.c_path[0], exclude_sdk)
 
-        if args.build_ts:
-            copy_files_list(
-                os.path.join(dir_path, "boilerplate/ts"),
-                args.ts_path[0], utility_files['ts'])
+    if (args.build_ts):
+        copy_all_files(
+            os.path.join(dir_path, "boilerplate/ts"),
+            args.ts_path[0], exclude_sdk)
 
-        if args.build_js:
-            copy_files_list(
-                os.path.join(dir_path, "boilerplate/js"),
-                args.js_path[0], utility_files['js'])
+    if (args.build_js):
+        copy_all_files(
+            os.path.join(dir_path, "boilerplate/js"),
+            args.js_path[0], exclude_sdk)
 
-        if args.build_py:
-            copy_files_list(
-                os.path.join(dir_path, "boilerplate/py"),
-                args.py_path[0], utility_files['py'])
+    if (args.build_py):
+        copy_all_files(
+            os.path.join(dir_path, "boilerplate/py"),
+            args.py_path[0], exclude_sdk)
 
-        if args.build_cpp:
-            copy_files_list(
-                os.path.join(dir_path, "boilerplate/cpp"),
-                args.cpp_path[0], utility_files['cpp'])
+    if (args.build_cpp):
+        copy_all_files(
+            os.path.join(dir_path, "boilerplate/cpp"),
+            args.cpp_path[0], exclude_sdk)
 
-        if args.build_csharp:
-            copy_files_list(
-                os.path.join(dir_path, "boilerplate/csharp"),
-                args.csharp_path[0], utility_files['csharp'])
-    else:
-        # Copy all boilerplate files (excluding SDK by default)
-        # SDK is handled separately below based on --sdk or --sdk_embedded flags
-        exclude_sdk = ['struct_frame_sdk']
-        
-        if (args.build_c):
-            copy_all_files(
-                os.path.join(dir_path, "boilerplate/c"),
-                args.c_path[0], exclude_sdk)
-
-        if (args.build_ts):
-            copy_all_files(
-                os.path.join(dir_path, "boilerplate/ts"),
-                args.ts_path[0], exclude_sdk)
-
-        if (args.build_js):
-            copy_all_files(
-                os.path.join(dir_path, "boilerplate/js"),
-                args.js_path[0], exclude_sdk)
-
-        if (args.build_py):
-            copy_all_files(
-                os.path.join(dir_path, "boilerplate/py"),
-                args.py_path[0], exclude_sdk)
-
-        if (args.build_cpp):
-            copy_all_files(
-                os.path.join(dir_path, "boilerplate/cpp"),
-                args.cpp_path[0], exclude_sdk)
-
-        if (args.build_csharp):
-            copy_all_files(
-                os.path.join(dir_path, "boilerplate/csharp"),
-                args.csharp_path[0], exclude_sdk)
+    if (args.build_csharp):
+        copy_all_files(
+            os.path.join(dir_path, "boilerplate/csharp"),
+            args.csharp_path[0], exclude_sdk)
     
     # Copy SDK files if requested
     if args.sdk or args.sdk_embedded:

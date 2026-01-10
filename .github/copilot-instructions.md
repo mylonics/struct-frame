@@ -82,7 +82,7 @@ Always reference these instructions first and fallback to search or bash command
 │       ├── py_gen.py        # Python code generator
 │       ├── gql_gen.py       # GraphQL code generator
 │       ├── csharp_gen.py    # C# code generator
-│       ├── frame_parser_*   # Frame parser generators per language
+│       ├── frame_formats/   # Frame format definitions (Python module)
 │       └── boilerplate/     # SDK templates for each language
 │           ├── c/           # C SDK boilerplate
 │           ├── cpp/         # C++ SDK boilerplate (FrameProfiles.hpp, etc.)
