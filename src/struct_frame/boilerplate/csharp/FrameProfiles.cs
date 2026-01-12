@@ -154,6 +154,38 @@ namespace StructFrame
                 _ => throw new ArgumentException($"Unknown profile: {name}")
             };
         }
+
+        /// <summary>
+        /// Create a BufferWriter for the specified profile name
+        /// </summary>
+        public static BufferWriter CreateWriter(string profileName)
+        {
+            return new BufferWriter(GetByName(profileName));
+        }
+
+        /// <summary>
+        /// Create a BufferReader for the specified profile name
+        /// </summary>
+        public static BufferReader CreateReader(string profileName, Func<int, int?> getMsgLength = null)
+        {
+            return new BufferReader(GetByName(profileName), getMsgLength);
+        }
+
+        /// <summary>
+        /// Create a FrameEncoder for the specified profile name
+        /// </summary>
+        public static FrameEncoder CreateEncoder(string profileName)
+        {
+            return new FrameEncoder(GetByName(profileName));
+        }
+
+        /// <summary>
+        /// Create a BufferParser for the specified profile name
+        /// </summary>
+        public static BufferParser CreateParser(string profileName, Func<int, int?> getMsgLength = null)
+        {
+            return new BufferParser(GetByName(profileName), getMsgLength);
+        }
     }
 
     /// <summary>
@@ -176,7 +208,13 @@ namespace StructFrame
         {
             int totalSize = _config.Overhead + payloadSize;
 
-            if (buffer.Length - offset < totalSize || payloadSize > _config.MaxPayload)
+            // Check buffer capacity and max payload (skip max payload check for minimal profiles without length field)
+            if (buffer.Length - offset < totalSize)
+            {
+                return 0;
+            }
+            
+            if (_config.HasLength && payloadSize > _config.MaxPayload)
             {
                 return 0;
             }
@@ -1027,41 +1065,124 @@ namespace StructFrame
     }
 
     // ============================================================================
-    // Convenience Type Aliases for Profile-Specific Classes
+    // Profile Providers - Compile-time profile selection using generics
+    // ============================================================================
+
+    /// <summary>
+    /// Interface for profile providers - enables compile-time profile selection
+    /// </summary>
+    public interface IProfileProvider
+    {
+        static abstract ProfileConfig Profile { get; }
+    }
+
+    public struct StandardProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.Standard;
+    }
+
+    public struct SensorProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.Sensor;
+    }
+
+    public struct IPCProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.IPC;
+    }
+
+    public struct BulkProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.Bulk;
+    }
+
+    public struct NetworkProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.Network;
+    }
+
+    // ============================================================================
+    // Generic Profile-Based Classes
+    // ============================================================================
+
+    /// <summary>
+    /// Generic frame encoder with compile-time profile selection
+    /// Usage: var encoder = new FrameEncoder&lt;StandardProfile&gt;();
+    /// </summary>
+    public class FrameEncoder<TProfile> : FrameEncoder where TProfile : struct, IProfileProvider
+    {
+        public FrameEncoder() : base(TProfile.Profile) { }
+    }
+
+    /// <summary>
+    /// Generic buffer parser with compile-time profile selection
+    /// </summary>
+    public class BufferParser<TProfile> : BufferParser where TProfile : struct, IProfileProvider
+    {
+        public BufferParser(Func<int, int?> getMsgLength = null) : base(TProfile.Profile, getMsgLength) { }
+    }
+
+    /// <summary>
+    /// Generic buffer reader with compile-time profile selection
+    /// </summary>
+    public class BufferReader<TProfile> : BufferReader where TProfile : struct, IProfileProvider
+    {
+        public BufferReader(Func<int, int?> getMsgLength = null) : base(TProfile.Profile, getMsgLength) { }
+    }
+
+    /// <summary>
+    /// Generic buffer writer with compile-time profile selection
+    /// </summary>
+    public class BufferWriter<TProfile> : BufferWriter where TProfile : struct, IProfileProvider
+    {
+        public BufferWriter() : base(TProfile.Profile) { }
+    }
+
+    /// <summary>
+    /// Generic accumulating reader with compile-time profile selection
+    /// </summary>
+    public class AccumulatingReader<TProfile> : AccumulatingReader where TProfile : struct, IProfileProvider
+    {
+        public AccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) 
+            : base(TProfile.Profile, bufferSize, getMsgLength) { }
+    }
+
+    // ============================================================================
+    // Type Aliases for Backwards Compatibility (optional - can be removed)
     // ============================================================================
 
     // FrameEncoder aliases
-    public class ProfileStandardEncoder : FrameEncoder { public ProfileStandardEncoder() : base(Profiles.Standard) { } }
-    public class ProfileSensorEncoder : FrameEncoder { public ProfileSensorEncoder() : base(Profiles.Sensor) { } }
-    public class ProfileIPCEncoder : FrameEncoder { public ProfileIPCEncoder() : base(Profiles.IPC) { } }
-    public class ProfileBulkEncoder : FrameEncoder { public ProfileBulkEncoder() : base(Profiles.Bulk) { } }
-    public class ProfileNetworkEncoder : FrameEncoder { public ProfileNetworkEncoder() : base(Profiles.Network) { } }
+    public class ProfileStandardEncoder : FrameEncoder<StandardProfile> { }
+    public class ProfileSensorEncoder : FrameEncoder<SensorProfile> { }
+    public class ProfileIPCEncoder : FrameEncoder<IPCProfile> { }
+    public class ProfileBulkEncoder : FrameEncoder<BulkProfile> { }
+    public class ProfileNetworkEncoder : FrameEncoder<NetworkProfile> { }
 
     // BufferParser aliases
-    public class ProfileStandardParser : BufferParser { public ProfileStandardParser(Func<int, int?> getMsgLength = null) : base(Profiles.Standard, getMsgLength) { } }
-    public class ProfileSensorParser : BufferParser { public ProfileSensorParser(Func<int, int?> getMsgLength = null) : base(Profiles.Sensor, getMsgLength) { } }
-    public class ProfileIPCParser : BufferParser { public ProfileIPCParser(Func<int, int?> getMsgLength = null) : base(Profiles.IPC, getMsgLength) { } }
-    public class ProfileBulkParser : BufferParser { public ProfileBulkParser(Func<int, int?> getMsgLength = null) : base(Profiles.Bulk, getMsgLength) { } }
-    public class ProfileNetworkParser : BufferParser { public ProfileNetworkParser(Func<int, int?> getMsgLength = null) : base(Profiles.Network, getMsgLength) { } }
+    public class ProfileStandardParser : BufferParser<StandardProfile> { public ProfileStandardParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileSensorParser : BufferParser<SensorProfile> { public ProfileSensorParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileIPCParser : BufferParser<IPCProfile> { public ProfileIPCParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileBulkParser : BufferParser<BulkProfile> { public ProfileBulkParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileNetworkParser : BufferParser<NetworkProfile> { public ProfileNetworkParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
 
     // BufferReader aliases
-    public class ProfileStandardReader : BufferReader { public ProfileStandardReader(Func<int, int?> getMsgLength = null) : base(Profiles.Standard, getMsgLength) { } }
-    public class ProfileSensorReader : BufferReader { public ProfileSensorReader(Func<int, int?> getMsgLength = null) : base(Profiles.Sensor, getMsgLength) { } }
-    public class ProfileIPCReader : BufferReader { public ProfileIPCReader(Func<int, int?> getMsgLength = null) : base(Profiles.IPC, getMsgLength) { } }
-    public class ProfileBulkReader : BufferReader { public ProfileBulkReader(Func<int, int?> getMsgLength = null) : base(Profiles.Bulk, getMsgLength) { } }
-    public class ProfileNetworkReader : BufferReader { public ProfileNetworkReader(Func<int, int?> getMsgLength = null) : base(Profiles.Network, getMsgLength) { } }
+    public class ProfileStandardReader : BufferReader<StandardProfile> { public ProfileStandardReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileSensorReader : BufferReader<SensorProfile> { public ProfileSensorReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileIPCReader : BufferReader<IPCProfile> { public ProfileIPCReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileBulkReader : BufferReader<BulkProfile> { public ProfileBulkReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileNetworkReader : BufferReader<NetworkProfile> { public ProfileNetworkReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
 
     // BufferWriter aliases
-    public class ProfileStandardWriter : BufferWriter { public ProfileStandardWriter() : base(Profiles.Standard) { } }
-    public class ProfileSensorWriter : BufferWriter { public ProfileSensorWriter() : base(Profiles.Sensor) { } }
-    public class ProfileIPCWriter : BufferWriter { public ProfileIPCWriter() : base(Profiles.IPC) { } }
-    public class ProfileBulkWriter : BufferWriter { public ProfileBulkWriter() : base(Profiles.Bulk) { } }
-    public class ProfileNetworkWriter : BufferWriter { public ProfileNetworkWriter() : base(Profiles.Network) { } }
+    public class ProfileStandardWriter : BufferWriter<StandardProfile> { }
+    public class ProfileSensorWriter : BufferWriter<SensorProfile> { }
+    public class ProfileIPCWriter : BufferWriter<IPCProfile> { }
+    public class ProfileBulkWriter : BufferWriter<BulkProfile> { }
+    public class ProfileNetworkWriter : BufferWriter<NetworkProfile> { }
 
     // AccumulatingReader aliases
-    public class ProfileStandardAccumulatingReader : AccumulatingReader { public ProfileStandardAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(Profiles.Standard, bufferSize, getMsgLength) { } }
-    public class ProfileSensorAccumulatingReader : AccumulatingReader { public ProfileSensorAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(Profiles.Sensor, bufferSize, getMsgLength) { } }
-    public class ProfileIPCAccumulatingReader : AccumulatingReader { public ProfileIPCAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(Profiles.IPC, bufferSize, getMsgLength) { } }
-    public class ProfileBulkAccumulatingReader : AccumulatingReader { public ProfileBulkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(Profiles.Bulk, bufferSize, getMsgLength) { } }
-    public class ProfileNetworkAccumulatingReader : AccumulatingReader { public ProfileNetworkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(Profiles.Network, bufferSize, getMsgLength) { } }
+    public class ProfileStandardAccumulatingReader : AccumulatingReader<StandardProfile> { public ProfileStandardAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileSensorAccumulatingReader : AccumulatingReader<SensorProfile> { public ProfileSensorAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileIPCAccumulatingReader : AccumulatingReader<IPCProfile> { public ProfileIPCAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileBulkAccumulatingReader : AccumulatingReader<BulkProfile> { public ProfileBulkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileNetworkAccumulatingReader : AccumulatingReader<NetworkProfile> { public ProfileNetworkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
 }

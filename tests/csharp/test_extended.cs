@@ -13,7 +13,7 @@ using StructFrameTests;
 
 class TestExtended
 {
-    static int Main(string[] args)
+    public static int Main(string[] args)
     {
         return TestCodec.RunTestMain(
             args,

@@ -22,90 +22,24 @@ using UnionTestMessage = StructFrame.SerializationTest.SerializationTestUnionTes
 
 namespace StructFrameTests
 {
-    // ============================================================================
-    // TestBufferWriter - Simple frame writer for testing (using boilerplate)
-    // ============================================================================
-    public class TestBufferWriter
-    {
-        private readonly BufferWriter _writer;
-        private readonly string _format;
-
-        public TestBufferWriter(string format, int capacity)
-        {
-            _format = format;
-            _writer = CreateWriter(format);
-            _writer.SetBuffer(new byte[capacity], 0, capacity);
-        }
-
-        private static BufferWriter CreateWriter(string format)
-        {
-            return format.ToLowerInvariant() switch
-            {
-                "profile_standard" => new ProfileStandardWriter(),
-                "profile_sensor" => new ProfileSensorWriter(),
-                "profile_ipc" => new ProfileIPCWriter(),
-                "profile_bulk" => new ProfileBulkWriter(),
-                "profile_network" => new ProfileNetworkWriter(),
-                _ => throw new ArgumentException($"Unknown format: {format}")
-            };
-        }
-
-        public int Write(int msgId, byte[] msgData)
-        {
-            return _writer.Write((ushort)msgId, msgData);
-        }
-
-        public byte[] GetData()
-        {
-            return _writer.GetData();
-        }
-    }
-
-    // ============================================================================
-    // TestBufferReader - Simple frame reader for testing (using boilerplate)
-    // ============================================================================
-    public class TestBufferReader
-    {
-        private readonly BufferReader _reader;
-        private readonly string _format;
-
-        public TestBufferReader(string format, byte[] data, Func<int, int> getMsgLength = null)
-        {
-            _format = format;
-            _reader = CreateReader(format, getMsgLength);
-            _reader.SetBuffer(data);
-        }
-
-        private static BufferReader CreateReader(string format, Func<int, int> getMsgLength)
-        {
-            Func<int, int?> getMsgLengthNullable = getMsgLength != null ? (Func<int, int?>)(msgId => getMsgLength(msgId)) : null;
-
-            return format.ToLowerInvariant() switch
-            {
-                "profile_standard" => new ProfileStandardReader(getMsgLengthNullable),
-                "profile_sensor" => new ProfileSensorReader(getMsgLengthNullable),
-                "profile_ipc" => new ProfileIPCReader(getMsgLengthNullable),
-                "profile_bulk" => new ProfileBulkReader(getMsgLengthNullable),
-                "profile_network" => new ProfileNetworkReader(getMsgLengthNullable),
-                _ => throw new ArgumentException($"Unknown format: {format}")
-            };
-        }
-
-        public int Remaining => _reader.Remaining;
-
-        public bool HasMore() => _reader.HasMore;
-
-        public FrameMsgInfo Next()
-        {
-            return _reader.Next();
-        }
-    }
-
     public static class TestCodec
     {
         // ============================================================================
         // Utility functions
         // ============================================================================
+
+        /// <summary>
+        /// Extract the message payload from FrameMsgInfo
+        /// </summary>
+        private static byte[] ExtractPayload(FrameMsgInfo info)
+        {
+            if (!info.Valid || info.MsgData == null)
+                return null;
+
+            byte[] payload = new byte[info.MsgLen];
+            Array.Copy(info.MsgData, info.MsgDataOffset, payload, 0, info.MsgLen);
+            return payload;
+        }
 
         public static void PrintUsage(string formatsHelp)
         {
@@ -220,7 +154,8 @@ namespace StructFrameTests
 
         public static byte[] EncodeStandardMessages(string formatName)
         {
-            var writer = new TestBufferWriter(formatName, 4096);
+            var writer = Profiles.CreateWriter(formatName);
+            writer.SetBuffer(new byte[4096]);
 
             for (int i = 0; i < StandardTestData.MESSAGE_COUNT; i++)
             {
@@ -239,7 +174,7 @@ namespace StructFrameTests
                 byte[] msgData = EncodeMessage(msg);
                 int msgId = GetMessageId(msg);
                 
-                int bytesWritten = writer.Write(msgId, msgData);
+                int bytesWritten = writer.Write((ushort)msgId, msgData);
                 if (bytesWritten == 0)
                     throw new Exception($"Failed to encode message {i}");
             }
@@ -249,7 +184,8 @@ namespace StructFrameTests
 
         public static byte[] EncodeExtendedMessages(string formatName)
         {
-            var writer = new TestBufferWriter(formatName, 8192);
+            var writer = Profiles.CreateWriter(formatName);
+            writer.SetBuffer(new byte[8192]);
 
             for (int i = 0; i < ExtendedTestData.MESSAGE_COUNT; i++)
             {
@@ -260,7 +196,7 @@ namespace StructFrameTests
                 byte[] msgData = msg.Pack();
                 int msgId = msg.MsgId;
 
-                int bytesWritten = writer.Write(msgId, msgData);
+                int bytesWritten = writer.Write((ushort)msgId, msgData);
                 if (bytesWritten == 0)
                     throw new Exception($"Failed to encode extended message {i}");
             }
@@ -381,10 +317,11 @@ namespace StructFrameTests
 
         public static (bool success, int messageCount) DecodeStandardMessages(string formatName, byte[] data)
         {
-            var reader = new TestBufferReader(formatName, data, GetStandardMessageLength);
+            var reader = Profiles.CreateReader(formatName, msgId => GetStandardMessageLength(msgId));
+            reader.SetBuffer(data);
             int messageCount = 0;
 
-            while (reader.HasMore() && messageCount < StandardTestData.MESSAGE_COUNT)
+            while (reader.HasMore && messageCount < StandardTestData.MESSAGE_COUNT)
             {
                 var result = reader.Next();
                 if (!result.Valid)
@@ -417,7 +354,7 @@ namespace StructFrameTests
                 // Decode and validate
                 if (expected.Type == MessageType.SerializationTest)
                 {
-                    var msg = SerializationTestMessage.Unpack(result.MsgData);
+                    var msg = SerializationTestMessage.Unpack(ExtractPayload(result));
                     if (!ValidateSerializationTestMessage(msg, expected.Data))
                     {
                         Console.WriteLine($"  Validation failed for message {messageCount}");
@@ -426,7 +363,7 @@ namespace StructFrameTests
                 }
                 else if (expected.Type == MessageType.BasicTypes)
                 {
-                    var msg = BasicTypesMessage.Unpack(result.MsgData);
+                    var msg = BasicTypesMessage.Unpack(ExtractPayload(result));
                     if (!ValidateBasicTypesMessage(msg, expected.Data))
                     {
                         Console.WriteLine($"  Validation failed for message {messageCount}");
@@ -435,7 +372,7 @@ namespace StructFrameTests
                 }
                 else if (expected.Type == MessageType.UnionTest)
                 {
-                    var msg = UnionTestMessage.Unpack(result.MsgData);
+                    var msg = UnionTestMessage.Unpack(ExtractPayload(result));
                     // Just verify it decoded without error
                 }
 
@@ -459,10 +396,11 @@ namespace StructFrameTests
 
         public static (bool success, int messageCount) DecodeExtendedMessages(string formatName, byte[] data)
         {
-            var reader = new TestBufferReader(formatName, data, ExtendedTestData.GetMessageLength);
+            var reader = Profiles.CreateReader(formatName, msgId => ExtendedTestData.GetMessageLength(msgId));
+            reader.SetBuffer(data);
             int messageCount = 0;
 
-            while (reader.HasMore() && messageCount < ExtendedTestData.MESSAGE_COUNT)
+            while (reader.HasMore && messageCount < ExtendedTestData.MESSAGE_COUNT)
             {
                 var result = reader.Next();
                 if (!result.Valid)
@@ -474,9 +412,12 @@ namespace StructFrameTests
                 var (expectedMsg, typeName) = ExtendedTestData.GetExtendedTestMessage(messageCount);
                 int expectedMsgId = expectedMsg.MsgId;
 
-                if (result.MsgId != expectedMsgId)
+                // For extended profiles, combine pkg_id (high byte) and msg_id (low byte)
+                int decodedMsgId = (result.PkgId << 8) | result.MsgId;
+
+                if (decodedMsgId != expectedMsgId)
                 {
-                    Console.WriteLine($"  Message ID mismatch for message {messageCount}: expected {expectedMsgId}, got {result.MsgId}");
+                    Console.WriteLine($"  Message ID mismatch for message {messageCount}: expected {expectedMsgId}, got {decodedMsgId}");
                     return (false, messageCount);
                 }
 

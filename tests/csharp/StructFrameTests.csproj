@@ -5,7 +5,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <StartupObject>TestStandard</StartupObject>
+    <StartupObject>TestRunner</StartupObject>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
@@ -16,6 +16,7 @@
     <Compile Include="include\ExtendedTestData.cs" />
     
     <!-- Test entry points -->
+    <Compile Include="TestRunner.cs" />
     <Compile Include="test_standard.cs" />
     <Compile Include="test_extended.cs" />
     
