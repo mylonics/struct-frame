@@ -15,8 +15,9 @@ import os
 # Add include directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'include'))
 
-from test_codec import run_test_main, encode_extended_messages, decode_extended_messages
-from extended_test_data import extended_test_config
+from test_codec import run_test_main
+from extended_test_data import Config
 
 if __name__ == "__main__":
-    sys.exit(run_test_main(extended_test_config, encode_extended_messages, decode_extended_messages))
+    sys.exit(run_test_main(Config))
+

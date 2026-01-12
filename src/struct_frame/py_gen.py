@@ -276,11 +276,11 @@ class MessagePyGen():
         for oneof_name, oneof in msg.oneofs.items():
             # Auto-discriminator if needed
             if oneof.auto_discriminator:
-                result += f'        # Oneof {oneof_name} auto-discriminator\n'
+                result += f'        # Oneof {oneof_name} auto-discriminator (uint16)\n'
                 result += f'        if self.{oneof_name}_which is not None:\n'
-                result += f'            data += struct.pack("<B", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
+                result += f'            data += struct.pack("<H", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
                 result += f'        else:\n'
-                result += f'            data += struct.pack("<B", 0)\n'
+                result += f'            data += struct.pack("<H", 0)\n'
             
             # Pack the union field (whichever is active)
             result += f'        # Oneof {oneof_name} payload\n'
@@ -426,9 +426,9 @@ class MessagePyGen():
         for oneof_name, oneof in msg.oneofs.items():
             # Auto-discriminator if needed
             if oneof.auto_discriminator:
-                result += f'        # Oneof {oneof_name} auto-discriminator\n'
-                result += f'        discriminator = struct.unpack_from("<B", data, offset)[0]\n'
-                result += f'        offset += 1\n'
+                result += f'        # Oneof {oneof_name} auto-discriminator (uint16)\n'
+                result += f'        discriminator = struct.unpack_from("<H", data, offset)[0]\n'
+                result += f'        offset += 2\n'
                 result += f'        fields["{oneof_name}_discriminator"] = discriminator\n'
             
             # Unpack the union payload
@@ -451,6 +451,14 @@ class MessagePyGen():
         return result
     
     @staticmethod
+    def generate_data_method(msg):
+        """Generate the data() method that returns packed bytes (C++ compatible API)"""
+        result = '\n    def data(self) -> bytes:\n'
+        result += '        """Return packed message bytes (C++ MessageBase compatible API)"""\n'
+        result += '        return self.pack()\n'
+        return result
+    
+    @staticmethod
     def generate(msg):
         leading_comment = msg.comments
 
@@ -461,9 +469,12 @@ class MessagePyGen():
 
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
         result += 'class %s:\n' % structName
+        # Add both old and new naming for compatibility
         result += '    msg_size = %s\n' % msg.size
+        result += '    MAX_SIZE = %s  # C++ compatible alias\n' % msg.size
         if msg.id != None:
             result += '    msg_id = %s\n' % msg.id
+            result += '    MSG_ID = %s  # C++ compatible alias\n' % msg.id
         result += '\n'
 
         # Generate __init__ method
@@ -516,6 +527,9 @@ class MessagePyGen():
 
         # Generate unpack method
         result += MessagePyGen.generate_unpack_method(msg)
+
+        # Generate data() method (C++ compatible API)
+        result += MessagePyGen.generate_data_method(msg)
 
         # Generate __str__ method
         result += '\n    def __str__(self):\n'

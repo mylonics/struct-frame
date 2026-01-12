@@ -104,7 +104,7 @@ static inline bool encode_messages(const test_config_t* config, const char* form
   *encoded_size = 0;
 
   /* Get the appropriate profile config */
-  const frame_format_config_t* profile_config = NULL;
+  const profile_config_t* profile_config = NULL;
 
   if (strcmp(format, "profile_standard") == 0) {
     profile_config = &PROFILE_STANDARD_CONFIG;
@@ -166,7 +166,7 @@ static inline bool decode_messages(const test_config_t* config, const char* form
   const uint8_t* chunk3 = buffer + chunk1_size + chunk2_size;
 
   /* Get the appropriate profile config */
-  const frame_format_config_t* profile_config = NULL;
+  const profile_config_t* profile_config = NULL;
 
   if (strcmp(format, "profile_standard") == 0) {
     profile_config = &PROFILE_STANDARD_CONFIG;

@@ -3,200 +3,345 @@
 Extended test message data definitions (Python).
 Hardcoded test messages for extended message ID and payload testing.
 
-This module follows the same pattern as C, C++, TypeScript, and JavaScript
-test data files.
+This module follows the same pattern as C++ extended_test_data.hpp, providing:
+1. Message getter functions (one per message type)
+2. Message ID order array
+3. Encoder class with write_message() method
+4. Validator class with get_expected() method
+5. Config class for TestCodec templates
 """
 
+import sys
+import os
+from typing import List, Tuple, Optional
+
+# Add generated directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
+
+from extended_test_sf import (
+    ExtendedTestExtendedIdMessage1,
+    ExtendedTestExtendedIdMessage2,
+    ExtendedTestExtendedIdMessage3,
+    ExtendedTestExtendedIdMessage4,
+    ExtendedTestExtendedIdMessage5,
+    ExtendedTestExtendedIdMessage6,
+    ExtendedTestExtendedIdMessage7,
+    ExtendedTestExtendedIdMessage8,
+    ExtendedTestExtendedIdMessage9,
+    ExtendedTestExtendedIdMessage10,
+    ExtendedTestLargePayloadMessage1,
+    ExtendedTestLargePayloadMessage2,
+    get_msg_length as parser_get_message_length,
+)
+
+
 # ============================================================================
-# Message count
+# Helper functions to create messages (like C++ create_* functions)
+# ============================================================================
+
+def create_ext_id_1() -> ExtendedTestExtendedIdMessage1:
+    return ExtendedTestExtendedIdMessage1(
+        sequence_number=12345678,
+        label=b"Test Label Extended 1",
+        value=3.14159,
+        enabled=True
+    )
+
+
+def create_ext_id_2() -> ExtendedTestExtendedIdMessage2:
+    return ExtendedTestExtendedIdMessage2(
+        sensor_id=-42,
+        reading=2.718281828,
+        status_code=50000,
+        description=b"Extended ID test message 2"
+    )
+
+
+def create_ext_id_3() -> ExtendedTestExtendedIdMessage3:
+    return ExtendedTestExtendedIdMessage3(
+        timestamp=1704067200000000,
+        temperature=-40,
+        humidity=85,
+        location=b"Sensor Room A"
+    )
+
+
+def create_ext_id_4() -> ExtendedTestExtendedIdMessage4:
+    return ExtendedTestExtendedIdMessage4(
+        event_id=999999,
+        event_type=42,
+        event_time=1704067200000,
+        event_data=b"Event payload with extended message ID"
+    )
+
+
+def create_ext_id_5() -> ExtendedTestExtendedIdMessage5:
+    return ExtendedTestExtendedIdMessage5(
+        x_position=100.5,
+        y_position=-200.25,
+        z_position=50.125,
+        frame_number=1000000
+    )
+
+
+def create_ext_id_6() -> ExtendedTestExtendedIdMessage6:
+    return ExtendedTestExtendedIdMessage6(
+        command_id=-12345,
+        parameter1=1000,
+        parameter2=2000,
+        acknowledged=False,
+        command_name=b"CALIBRATE_SENSOR"
+    )
+
+
+def create_ext_id_7() -> ExtendedTestExtendedIdMessage7:
+    return ExtendedTestExtendedIdMessage7(
+        counter=4294967295,
+        average=123.456789,
+        minimum=-999.99,
+        maximum=999.99
+    )
+
+
+def create_ext_id_8() -> ExtendedTestExtendedIdMessage8:
+    return ExtendedTestExtendedIdMessage8(
+        level=255,
+        offset=-32768,
+        duration=86400000,
+        tag=b"TEST123"
+    )
+
+
+def create_ext_id_9() -> ExtendedTestExtendedIdMessage9:
+    return ExtendedTestExtendedIdMessage9(
+        big_number=-9223372036854775807,
+        big_unsigned=18446744073709551615,
+        precision_value=1.7976931348623157e+308
+    )
+
+
+def create_ext_id_10() -> ExtendedTestExtendedIdMessage10:
+    return ExtendedTestExtendedIdMessage10(
+        small_value=256,
+        short_text=b"Boundary Test",
+        flag=True
+    )
+
+
+def create_large_1() -> ExtendedTestLargePayloadMessage1:
+    sensor_readings = [float(i + 1) for i in range(64)]
+    return ExtendedTestLargePayloadMessage1(
+        sensor_readings=sensor_readings,
+        reading_count=64,
+        timestamp=1704067200000000,
+        device_name=b"Large Sensor Array Device"
+    )
+
+
+def create_large_2() -> ExtendedTestLargePayloadMessage2:
+    large_data = bytes([(i % 256) for i in range(280)])
+    return ExtendedTestLargePayloadMessage2(
+        large_data=large_data
+    )
+
+
+# ============================================================================
+# Message getters - return cached instances (like C++ static functions)
+# ============================================================================
+
+_message_cache = {}
+
+
+def get_message_ext_1() -> ExtendedTestExtendedIdMessage1:
+    if 1 not in _message_cache:
+        _message_cache[1] = create_ext_id_1()
+    return _message_cache[1]
+
+
+def get_message_ext_2() -> ExtendedTestExtendedIdMessage2:
+    if 2 not in _message_cache:
+        _message_cache[2] = create_ext_id_2()
+    return _message_cache[2]
+
+
+def get_message_ext_3() -> ExtendedTestExtendedIdMessage3:
+    if 3 not in _message_cache:
+        _message_cache[3] = create_ext_id_3()
+    return _message_cache[3]
+
+
+def get_message_ext_4() -> ExtendedTestExtendedIdMessage4:
+    if 4 not in _message_cache:
+        _message_cache[4] = create_ext_id_4()
+    return _message_cache[4]
+
+
+def get_message_ext_5() -> ExtendedTestExtendedIdMessage5:
+    if 5 not in _message_cache:
+        _message_cache[5] = create_ext_id_5()
+    return _message_cache[5]
+
+
+def get_message_ext_6() -> ExtendedTestExtendedIdMessage6:
+    if 6 not in _message_cache:
+        _message_cache[6] = create_ext_id_6()
+    return _message_cache[6]
+
+
+def get_message_ext_7() -> ExtendedTestExtendedIdMessage7:
+    if 7 not in _message_cache:
+        _message_cache[7] = create_ext_id_7()
+    return _message_cache[7]
+
+
+def get_message_ext_8() -> ExtendedTestExtendedIdMessage8:
+    if 8 not in _message_cache:
+        _message_cache[8] = create_ext_id_8()
+    return _message_cache[8]
+
+
+def get_message_ext_9() -> ExtendedTestExtendedIdMessage9:
+    if 9 not in _message_cache:
+        _message_cache[9] = create_ext_id_9()
+    return _message_cache[9]
+
+
+def get_message_ext_10() -> ExtendedTestExtendedIdMessage10:
+    if 10 not in _message_cache:
+        _message_cache[10] = create_ext_id_10()
+    return _message_cache[10]
+
+
+def get_message_large_1() -> ExtendedTestLargePayloadMessage1:
+    if 11 not in _message_cache:
+        _message_cache[11] = create_large_1()
+    return _message_cache[11]
+
+
+def get_message_large_2() -> ExtendedTestLargePayloadMessage2:
+    if 12 not in _message_cache:
+        _message_cache[12] = create_large_2()
+    return _message_cache[12]
+
+
+# ============================================================================
+# Message ID order array - defines the encode/decode sequence
 # ============================================================================
 
 MESSAGE_COUNT = 12
 
 
-def get_extended_test_message_count():
-    """Get the total number of extended test messages."""
-    return MESSAGE_COUNT
+def get_msg_id_order() -> List[int]:
+    """Get the message ID order array (maps position to msg_id)."""
+    return [
+        ExtendedTestExtendedIdMessage1.MSG_ID,    # 0
+        ExtendedTestExtendedIdMessage2.MSG_ID,    # 1
+        ExtendedTestExtendedIdMessage3.MSG_ID,    # 2
+        ExtendedTestExtendedIdMessage4.MSG_ID,    # 3
+        ExtendedTestExtendedIdMessage5.MSG_ID,    # 4
+        ExtendedTestExtendedIdMessage6.MSG_ID,    # 5
+        ExtendedTestExtendedIdMessage7.MSG_ID,    # 6
+        ExtendedTestExtendedIdMessage8.MSG_ID,    # 7
+        ExtendedTestExtendedIdMessage9.MSG_ID,    # 8
+        ExtendedTestExtendedIdMessage10.MSG_ID,   # 9
+        ExtendedTestLargePayloadMessage1.MSG_ID,  # 10
+        ExtendedTestLargePayloadMessage2.MSG_ID,  # 11
+    ]
 
 
 # ============================================================================
-# Message creation
+# Encoder helper - writes messages by msg_id lookup (like C++)
 # ============================================================================
 
-def get_extended_test_message(index, message_classes):
-    """
-    Get an extended test message by index.
+class Encoder:
+    """Encoder that writes messages by msg_id lookup (no index tracking needed)."""
     
-    Args:
-        index: Message index (0-11)
-        message_classes: Dictionary mapping message type names to their classes
-    
-    Returns:
-        Tuple of (message_instance, message_type_name)
-    """
-    # Message 0: ExtendedIdMessage1
-    if index == 0:
-        return (
-            message_classes['ExtendedIdMessage1'](
-                sequence_number=12345678,
-                label=b"Test Label Extended 1",
-                value=3.14159,
-                enabled=True
-            ),
-            'ExtendedIdMessage1'
-        )
-    
-    # Message 1: ExtendedIdMessage2
-    elif index == 1:
-        return (
-            message_classes['ExtendedIdMessage2'](
-                sensor_id=-42,
-                reading=2.718281828,
-                status_code=50000,
-                description=b"Extended ID test message 2"
-            ),
-            'ExtendedIdMessage2'
-        )
-    
-    # Message 2: ExtendedIdMessage3
-    elif index == 2:
-        return (
-            message_classes['ExtendedIdMessage3'](
-                timestamp=1704067200000000,
-                temperature=-40,
-                humidity=85,
-                location=b"Sensor Room A"
-            ),
-            'ExtendedIdMessage3'
-        )
-    
-    # Message 3: ExtendedIdMessage4
-    elif index == 3:
-        return (
-            message_classes['ExtendedIdMessage4'](
-                event_id=999999,
-                event_type=42,
-                event_time=1704067200000,
-                event_data=b"Event payload with extended message ID"
-            ),
-            'ExtendedIdMessage4'
-        )
-    
-    # Message 4: ExtendedIdMessage5
-    elif index == 4:
-        return (
-            message_classes['ExtendedIdMessage5'](
-                x_position=1.0,
-                y_position=2.0,
-                z_position=3.0,
-                frame_number=255
-            ),
-            'ExtendedIdMessage5'
-        )
-    
-    # Message 5: ExtendedIdMessage6
-    elif index == 5:
-        return (
-            message_classes['ExtendedIdMessage6'](
-                command_id=12345,
-                parameter1=100,
-                parameter2=200,
-                acknowledged=True,
-                command_name=b"Command parameters ext 6"
-            ),
-            'ExtendedIdMessage6'
-        )
-    
-    # Message 6: ExtendedIdMessage7
-    elif index == 6:
-        return (
-            message_classes['ExtendedIdMessage7'](
-                counter=0xFFFFFFFF,
-                average=3.14159265,
-                minimum=1.0,
-                maximum=100.0
-            ),
-            'ExtendedIdMessage7'
-        )
-    
-    # Message 7: ExtendedIdMessage8
-    elif index == 7:
-        return (
-            message_classes['ExtendedIdMessage8'](
-                level=8,
-                offset=888,
-                duration=8888,
-                tag=b"Tag8----"
-            ),
-            'ExtendedIdMessage8'
-        )
-    
-    # Message 8: ExtendedIdMessage9
-    elif index == 8:
-        return (
-            message_classes['ExtendedIdMessage9'](
-                big_number=9876543210,
-                big_unsigned=9876543210,
-                precision_value=9.87654321
-            ),
-            'ExtendedIdMessage9'
-        )
-    
-    # Message 9: ExtendedIdMessage10
-    elif index == 9:
-        return (
-            message_classes['ExtendedIdMessage10'](
-                small_value=1000,
-                short_text=b"Log message 10--",
-                flag=True
-            ),
-            'ExtendedIdMessage10'
-        )
-    
-    # Message 10: LargePayloadMessage1 - payload > 255 bytes
-    elif index == 10:
-        # Create a large payload with 64 float sensor readings (256 bytes)
-        sensor_readings = [float(i) for i in range(64)]
-        return (
-            message_classes['LargePayloadMessage1'](
-                sensor_readings=sensor_readings,
-                reading_count=64,
-                timestamp=1704067200000,
-                device_name=b"Large Payload Device 1          "
-            ),
-            'LargePayloadMessage1'
-        )
-    
-    # Message 11: LargePayloadMessage2 - payload > 255 bytes
-    elif index == 11:
-        # Create a large payload (280 bytes)
-        large_data = bytes([ord('Y')] * 280)
-        return (
-            message_classes['LargePayloadMessage2'](
-                large_data=large_data
-            ),
-            'LargePayloadMessage2'
-        )
-    
-    return None, None
+    def write_message(self, writer, msg_id: int) -> int:
+        """Write a message to the writer based on msg_id. Returns bytes written."""
+        msg_getters = {
+            ExtendedTestExtendedIdMessage1.MSG_ID: get_message_ext_1,
+            ExtendedTestExtendedIdMessage2.MSG_ID: get_message_ext_2,
+            ExtendedTestExtendedIdMessage3.MSG_ID: get_message_ext_3,
+            ExtendedTestExtendedIdMessage4.MSG_ID: get_message_ext_4,
+            ExtendedTestExtendedIdMessage5.MSG_ID: get_message_ext_5,
+            ExtendedTestExtendedIdMessage6.MSG_ID: get_message_ext_6,
+            ExtendedTestExtendedIdMessage7.MSG_ID: get_message_ext_7,
+            ExtendedTestExtendedIdMessage8.MSG_ID: get_message_ext_8,
+            ExtendedTestExtendedIdMessage9.MSG_ID: get_message_ext_9,
+            ExtendedTestExtendedIdMessage10.MSG_ID: get_message_ext_10,
+            ExtendedTestLargePayloadMessage1.MSG_ID: get_message_large_1,
+            ExtendedTestLargePayloadMessage2.MSG_ID: get_message_large_2,
+        }
+        
+        getter = msg_getters.get(msg_id)
+        if getter:
+            return writer.write_msg(getter())
+        return 0
 
 
 # ============================================================================
-# Test configuration
+# Validator helper - validates decoded messages against expected data (like C++)
 # ============================================================================
 
-class ExtendedTestConfig:
+class Validator:
+    """Validator that returns expected message data by msg_id lookup."""
+    
+    def get_expected(self, msg_id: int) -> Tuple[Optional[bytes], Optional[int]]:
+        """Get expected message data for validation. Returns (data, size)."""
+        msg_getters = {
+            ExtendedTestExtendedIdMessage1.MSG_ID: get_message_ext_1,
+            ExtendedTestExtendedIdMessage2.MSG_ID: get_message_ext_2,
+            ExtendedTestExtendedIdMessage3.MSG_ID: get_message_ext_3,
+            ExtendedTestExtendedIdMessage4.MSG_ID: get_message_ext_4,
+            ExtendedTestExtendedIdMessage5.MSG_ID: get_message_ext_5,
+            ExtendedTestExtendedIdMessage6.MSG_ID: get_message_ext_6,
+            ExtendedTestExtendedIdMessage7.MSG_ID: get_message_ext_7,
+            ExtendedTestExtendedIdMessage8.MSG_ID: get_message_ext_8,
+            ExtendedTestExtendedIdMessage9.MSG_ID: get_message_ext_9,
+            ExtendedTestExtendedIdMessage10.MSG_ID: get_message_ext_10,
+            ExtendedTestLargePayloadMessage1.MSG_ID: get_message_large_1,
+            ExtendedTestLargePayloadMessage2.MSG_ID: get_message_large_2,
+        }
+        
+        getter = msg_getters.get(msg_id)
+        if getter:
+            msg = getter()
+            data = msg.data()
+            return data, len(data)
+        return None, None
+
+
+# ============================================================================
+# Test configuration - provides all data for TestCodec templates (like C++ Config)
+# ============================================================================
+
+class Config:
     """Test configuration for extended messages."""
     MESSAGE_COUNT = MESSAGE_COUNT
-    BUFFER_SIZE = 8192
+    BUFFER_SIZE = 8192  # Larger for extended payloads
     FORMATS_HELP = "profile_bulk, profile_network"
-    TEST_NAME = "extended"
+    TEST_NAME = "Python Extended"
     
     @staticmethod
-    def supports_format(format_name):
-        """Check if the given format is supported (only extended profiles)."""
+    def get_msg_id_order() -> List[int]:
+        return get_msg_id_order()
+    
+    @staticmethod
+    def create_encoder() -> Encoder:
+        return Encoder()
+    
+    @staticmethod
+    def create_validator() -> Validator:
+        return Validator()
+    
+    @staticmethod
+    def get_message_length(msg_id: int) -> Optional[int]:
+        return parser_get_message_length(msg_id)
+    
+    @staticmethod
+    def supports_format(format_name: str) -> bool:
         return format_name in ['profile_bulk', 'profile_network']
 
 
-# Export config instance
-extended_test_config = ExtendedTestConfig()
+# Export config instance for convenience
+extended_test_config = Config
