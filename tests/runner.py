@@ -338,52 +338,73 @@ class TestRunner:
 
         build_dir.mkdir(parents=True, exist_ok=True)
 
-        # Compile unified test_runner with test_codec for C/C++
+        # Compile test runners for C/C++
         source_ext = lang.source_extension
         exe_ext = lang.executable_extension
 
         if exe_ext and source_ext in ['.c', '.cpp']:
-            # List of test runners to compile: (runner_source, codec_source, output_name)
-            test_runners = [
-                (f"test_runner{source_ext}", f"test_codec{source_ext}", f"test_runner{exe_ext}"),
-            ]
+            # For C++: source files are test_standard.cpp and test_extended.cpp
+            # For C: test_runner.c and test_runner_extended.c with additional source files
+            if source_ext == '.cpp':
+                # C++: header-only design, entry points are test_standard.cpp and test_extended.cpp
+                test_runners = [
+                    (f"test_standard{source_ext}", f"test_runner{exe_ext}"),
+                ]
+                
+                # Add extended test runner if it exists
+                extended_runner = test_dir / f"test_extended{source_ext}"
+                if extended_runner.exists():
+                    test_runners.append(
+                        (f"test_extended{source_ext}", f"test_runner_extended{exe_ext}")
+                    )
+            else:
+                # C: test_runner.c naming convention
+                test_runners = [
+                    (f"test_runner{source_ext}", f"test_runner{exe_ext}"),
+                ]
+                
+                # Add extended test runner if it exists
+                extended_runner = test_dir / f"test_runner_extended{source_ext}"
+                if extended_runner.exists():
+                    test_runners.append(
+                        (f"test_runner_extended{source_ext}", f"test_runner_extended{exe_ext}")
+                    )
             
-            # Add extended test runner if it exists
-            extended_runner = test_dir / f"test_runner_extended{source_ext}"
-            extended_codec = test_dir / f"test_codec_extended{source_ext}"
-            if extended_runner.exists() and extended_codec.exists():
-                test_runners.append(
-                    (f"test_runner_extended{source_ext}", f"test_codec_extended{source_ext}", f"test_runner_extended{exe_ext}")
-                )
-            
-            for runner_name, codec_name, output_name in test_runners:
+            for runner_name, output_name in test_runners:
                 runner_source = test_dir / runner_name
-                codec_source = test_dir / codec_name
                 runner_output = build_dir / output_name
 
-                # Only the runner source is compiled - all other files are header-only
+                if not runner_source.exists():
+                    continue
+
+                # For C++: header-only, just compile the runner
+                # For C: need to add codec, messages data, and cJSON sources
                 sources = [runner_source]
                 
-                # Add cJSON.c for C language (C tests still have separate source files)
                 if source_ext == '.c':
-                    sources.append(codec_source)
-                    # Add test_messages_data source file (for regular tests)
+                    # Add codec source
+                    codec_name = runner_name.replace("test_runner", "test_codec")
+                    codec_source = test_dir / codec_name
+                    if codec_source.exists():
+                        sources.append(codec_source)
+                    
+                    # Add test_messages_data source file
                     if "extended" not in runner_name:
                         messages_data_source = test_dir / f"test_messages_data{source_ext}"
                         if messages_data_source.exists():
                             sources.append(messages_data_source)
                     else:
-                        # Add test_messages_data_extended source file (for extended tests)
                         messages_data_ext_source = test_dir / f"test_messages_data_extended{source_ext}"
                         if messages_data_ext_source.exists():
                             sources.append(messages_data_ext_source)
+                    
+                    # Add cJSON
                     cjson_source = test_dir / "cJSON.c"
                     if cjson_source.exists():
                         sources.append(cjson_source)
 
-                if runner_source.exists() and codec_source.exists():
-                    if not lang.compile(sources, runner_output, gen_dir, test_dir):
-                        all_success = False
+                if not lang.compile(sources, runner_output, gen_dir, test_dir):
+                    all_success = False
 
         # Project-based compilation (TypeScript, C#)
         if lang.compile_command and source_ext:

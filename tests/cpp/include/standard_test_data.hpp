@@ -1,7 +1,13 @@
 /**
  * Test message data definitions (header-only).
  * Hardcoded test messages for cross-platform compatibility testing.
- * Uses separate arrays per message type with a unified MessageRef array for ordering.
+ *
+ * Structure:
+ * - Separate arrays for each message type (SerializationTest, BasicTypes, UnionTest)
+ * - Index variables track position within each typed array
+ * - A msg_id order array (length 11) defines the encode/decode sequence
+ * - Encoding uses msg_id array to select which typed array to pull from
+ * - Decoding uses decoded msg_id to find the right array for comparison
  */
 
 #pragma once
@@ -10,23 +16,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
-#include "serialization_test.sf.hpp"
-
-/**
- * A lightweight reference to a message that provides uniform access to
- * message ID, size, and data regardless of the concrete message type.
- */
-struct MessageRef {
-  uint16_t msg_id;
-  size_t msg_size;
-  const uint8_t* msg_data;
-
-  template <typename T>
-  static MessageRef from(const T& msg) {
-    return {T::MSG_ID, T::MAX_SIZE, msg.data()};
-  }
-};
+#include "../../generated/cpp/serialization_test.sf.hpp"
 
 namespace TestMessagesData {
 
@@ -147,6 +139,7 @@ inline SerializationTestUnionTestMessage create_union_with_test() {
 // Typed message arrays (one per message type)
 // ============================================================================
 
+// SerializationTestMessage array (5 messages)
 inline const std::array<SerializationTestSerializationTestMessage, 5>& get_serialization_test_messages() {
   static const std::array<SerializationTestSerializationTestMessage, 5> messages = {
       create_serialization_test(0xDEADBEEF, "Cross-platform test!", 3.14159f, true, {100, 200, 300}),
@@ -159,6 +152,7 @@ inline const std::array<SerializationTestSerializationTestMessage, 5>& get_seria
   return messages;
 }
 
+// BasicTypesMessage array (4 messages)
 inline const std::array<SerializationTestBasicTypesMessage, 4>& get_basic_types_messages() {
   static const std::array<SerializationTestBasicTypesMessage, 4> messages = {
       create_basic_types(42, 1000, 123456, 9876543210LL, 200, 50000, 4000000000U, 9223372036854775807ULL, 3.14159f,
@@ -172,6 +166,7 @@ inline const std::array<SerializationTestBasicTypesMessage, 4>& get_basic_types_
   return messages;
 }
 
+// UnionTestMessage array (2 messages)
 inline const std::array<SerializationTestUnionTestMessage, 2>& get_union_test_messages() {
   static const std::array<SerializationTestUnionTestMessage, 2> messages = {
       create_union_with_array(),
@@ -181,40 +176,109 @@ inline const std::array<SerializationTestUnionTestMessage, 2>& get_union_test_me
 }
 
 // ============================================================================
-// Unified message reference array (defines encode/decode order)
+// Message ID order array - defines the encode/decode sequence
 // ============================================================================
 
-inline const std::array<MessageRef, 11>& get_message_order() {
-  static const std::array<MessageRef, 11> order = []() {
-    const auto& serial = get_serialization_test_messages();
-    const auto& basic = get_basic_types_messages();
-    const auto& unions = get_union_test_messages();
+// Message count constant
+constexpr size_t MESSAGE_COUNT = 11;
 
-    return std::array<MessageRef, 11>{
-        MessageRef::from(serial[0]),  // 0: SerializationTest - basic_values
-        MessageRef::from(serial[1]),  // 1: SerializationTest - zero_values
-        MessageRef::from(serial[2]),  // 2: SerializationTest - max_values
-        MessageRef::from(serial[3]),  // 3: SerializationTest - negative_values
-        MessageRef::from(serial[4]),  // 4: SerializationTest - special_chars
-        MessageRef::from(basic[0]),   // 5: BasicTypes - basic_values
-        MessageRef::from(basic[1]),   // 6: BasicTypes - zero_values
-        MessageRef::from(basic[2]),   // 7: BasicTypes - negative_values
-        MessageRef::from(unions[0]),  // 8: UnionTest - with_array_payload
-        MessageRef::from(unions[1]),  // 9: UnionTest - with_test_payload
-        MessageRef::from(basic[3]),   // 10: BasicTypes - negative_values (duplicate)
-    };
-  }();
+// The msg_id order array - maps position to which message type to use
+inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
+  static const std::array<uint16_t, MESSAGE_COUNT> order = {
+      SerializationTestSerializationTestMessage::MSG_ID,  // 0: SerializationTest[0]
+      SerializationTestSerializationTestMessage::MSG_ID,  // 1: SerializationTest[1]
+      SerializationTestSerializationTestMessage::MSG_ID,  // 2: SerializationTest[2]
+      SerializationTestSerializationTestMessage::MSG_ID,  // 3: SerializationTest[3]
+      SerializationTestSerializationTestMessage::MSG_ID,  // 4: SerializationTest[4]
+      SerializationTestBasicTypesMessage::MSG_ID,         // 5: BasicTypes[0]
+      SerializationTestBasicTypesMessage::MSG_ID,         // 6: BasicTypes[1]
+      SerializationTestBasicTypesMessage::MSG_ID,         // 7: BasicTypes[2]
+      SerializationTestUnionTestMessage::MSG_ID,          // 8: UnionTest[0]
+      SerializationTestUnionTestMessage::MSG_ID,          // 9: UnionTest[1]
+      SerializationTestBasicTypesMessage::MSG_ID,         // 10: BasicTypes[3]
+  };
   return order;
 }
 
+// ============================================================================
+// Encoder helper - writes messages in order using index tracking
+// ============================================================================
+
+struct Encoder {
+  size_t serial_idx = 0;
+  size_t basic_idx = 0;
+  size_t union_idx = 0;
+
+  template <typename WriterType>
+  size_t write_message(WriterType& writer, uint16_t msg_id) {
+    if (msg_id == SerializationTestSerializationTestMessage::MSG_ID) {
+      return writer.write(get_serialization_test_messages()[serial_idx++]);
+    } else if (msg_id == SerializationTestBasicTypesMessage::MSG_ID) {
+      return writer.write(get_basic_types_messages()[basic_idx++]);
+    } else if (msg_id == SerializationTestUnionTestMessage::MSG_ID) {
+      return writer.write(get_union_test_messages()[union_idx++]);
+    }
+    return 0;
+  }
+};
+
+// ============================================================================
+// Validator helper - validates decoded messages against expected data
+// ============================================================================
+
+struct Validator {
+  size_t serial_idx = 0;
+  size_t basic_idx = 0;
+  size_t union_idx = 0;
+
+  bool get_expected(uint16_t msg_id, const uint8_t*& data, size_t& size) {
+    if (msg_id == SerializationTestSerializationTestMessage::MSG_ID) {
+      const auto& msg = get_serialization_test_messages()[serial_idx++];
+      data = msg.data();
+      size = msg.size();
+      return true;
+    } else if (msg_id == SerializationTestBasicTypesMessage::MSG_ID) {
+      const auto& msg = get_basic_types_messages()[basic_idx++];
+      data = msg.data();
+      size = msg.size();
+      return true;
+    } else if (msg_id == SerializationTestUnionTestMessage::MSG_ID) {
+      const auto& msg = get_union_test_messages()[union_idx++];
+      data = msg.data();
+      size = msg.size();
+      return true;
+    }
+    return false;
+  }
+};
+
+// ============================================================================
+// Test configuration - provides all data for TestCodec templates
+// ============================================================================
+
+struct Config {
+  static constexpr size_t MESSAGE_COUNT = TestMessagesData::MESSAGE_COUNT;
+  static constexpr size_t BUFFER_SIZE = 4096;
+  static constexpr const char* FORMATS_HELP =
+      "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network";
+  static constexpr const char* TEST_NAME = "C++";
+
+  using Encoder = TestMessagesData::Encoder;
+  using Validator = TestMessagesData::Validator;
+
+  static const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
+    return TestMessagesData::get_msg_id_order();
+  }
+
+  static bool get_message_length(size_t msg_id, size_t* size) {
+    return FrameParsers::get_message_length(msg_id, size);
+  }
+
+  static bool supports_format(const std::string& format) {
+    return format == "profile_standard" || format == "profile_sensor" ||
+           format == "profile_ipc" || format == "profile_bulk" ||
+           format == "profile_network";
+  }
+};
+
 }  // namespace TestMessagesData
-
-/**
- * Get the total number of test messages.
- */
-inline size_t get_test_message_count() { return TestMessagesData::get_message_order().size(); }
-
-/**
- * Get a message reference by index.
- */
-inline const MessageRef& get_test_message(size_t index) { return TestMessagesData::get_message_order()[index]; }
