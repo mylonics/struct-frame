@@ -358,16 +358,16 @@ class TestRunner:
                         (f"test_extended{source_ext}", f"test_runner_extended{exe_ext}")
                     )
             else:
-                # C: test_runner.c naming convention
+                # C: header-only design, entry points are test_standard.c and test_extended.c
                 test_runners = [
-                    (f"test_runner{source_ext}", f"test_runner{exe_ext}"),
+                    (f"test_standard{source_ext}", f"test_runner{exe_ext}"),
                 ]
                 
                 # Add extended test runner if it exists
-                extended_runner = test_dir / f"test_runner_extended{source_ext}"
+                extended_runner = test_dir / f"test_extended{source_ext}"
                 if extended_runner.exists():
                     test_runners.append(
-                        (f"test_runner_extended{source_ext}", f"test_runner_extended{exe_ext}")
+                        (f"test_extended{source_ext}", f"test_runner_extended{exe_ext}")
                     )
             
             for runner_name, output_name in test_runners:
@@ -377,31 +377,8 @@ class TestRunner:
                 if not runner_source.exists():
                     continue
 
-                # For C++: header-only, just compile the runner
-                # For C: need to add codec, messages data, and cJSON sources
+                # For both C and C++: header-only design, just compile the entry point
                 sources = [runner_source]
-                
-                if source_ext == '.c':
-                    # Add codec source
-                    codec_name = runner_name.replace("test_runner", "test_codec")
-                    codec_source = test_dir / codec_name
-                    if codec_source.exists():
-                        sources.append(codec_source)
-                    
-                    # Add test_messages_data source file
-                    if "extended" not in runner_name:
-                        messages_data_source = test_dir / f"test_messages_data{source_ext}"
-                        if messages_data_source.exists():
-                            sources.append(messages_data_source)
-                    else:
-                        messages_data_ext_source = test_dir / f"test_messages_data_extended{source_ext}"
-                        if messages_data_ext_source.exists():
-                            sources.append(messages_data_ext_source)
-                    
-                    # Add cJSON
-                    cjson_source = test_dir / "cJSON.c"
-                    if cjson_source.exists():
-                        sources.append(cjson_source)
 
                 if not lang.compile(sources, runner_output, gen_dir, test_dir):
                     all_success = False
