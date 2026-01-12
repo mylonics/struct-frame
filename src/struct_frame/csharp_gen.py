@@ -210,43 +210,21 @@ class FieldCSharpGen():
             elif type_name == "int8":
                 lines.append(f'            buffer[{offset}] = (byte){var_name};')
             elif type_name == "uint16":
-                lines.append(f'            buffer[{offset}] = (byte)({var_name} & 0xFF);')
-                lines.append(f'            buffer[{offset + 1}] = (byte)(({var_name} >> 8) & 0xFF);')
+                lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({offset}, 2), {var_name});')
             elif type_name == "int16":
-                lines.append(f'            buffer[{offset}] = (byte)((ushort){var_name} & 0xFF);')
-                lines.append(f'            buffer[{offset + 1}] = (byte)(((ushort){var_name} >> 8) & 0xFF);')
+                lines.append(f'            BinaryPrimitives.WriteInt16LittleEndian(buffer.AsSpan({offset}, 2), {var_name});')
             elif type_name == "uint32":
-                lines.append(f'            buffer[{offset}] = (byte)({var_name} & 0xFF);')
-                lines.append(f'            buffer[{offset + 1}] = (byte)(({var_name} >> 8) & 0xFF);')
-                lines.append(f'            buffer[{offset + 2}] = (byte)(({var_name} >> 16) & 0xFF);')
-                lines.append(f'            buffer[{offset + 3}] = (byte)(({var_name} >> 24) & 0xFF);')
+                lines.append(f'            BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan({offset}, 4), {var_name});')
             elif type_name == "int32":
-                lines.append(f'            buffer[{offset}] = (byte)((uint){var_name} & 0xFF);')
-                lines.append(f'            buffer[{offset + 1}] = (byte)(((uint){var_name} >> 8) & 0xFF);')
-                lines.append(f'            buffer[{offset + 2}] = (byte)(((uint){var_name} >> 16) & 0xFF);')
-                lines.append(f'            buffer[{offset + 3}] = (byte)(((uint){var_name} >> 24) & 0xFF);')
+                lines.append(f'            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan({offset}, 4), {var_name});')
             elif type_name == "uint64":
-                lines.append(f'            buffer[{offset}] = (byte)({var_name} & 0xFF);')
-                lines.append(f'            buffer[{offset + 1}] = (byte)(({var_name} >> 8) & 0xFF);')
-                lines.append(f'            buffer[{offset + 2}] = (byte)(({var_name} >> 16) & 0xFF);')
-                lines.append(f'            buffer[{offset + 3}] = (byte)(({var_name} >> 24) & 0xFF);')
-                lines.append(f'            buffer[{offset + 4}] = (byte)(({var_name} >> 32) & 0xFF);')
-                lines.append(f'            buffer[{offset + 5}] = (byte)(({var_name} >> 40) & 0xFF);')
-                lines.append(f'            buffer[{offset + 6}] = (byte)(({var_name} >> 48) & 0xFF);')
-                lines.append(f'            buffer[{offset + 7}] = (byte)(({var_name} >> 56) & 0xFF);')
+                lines.append(f'            BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan({offset}, 8), {var_name});')
             elif type_name == "int64":
-                lines.append(f'            buffer[{offset}] = (byte)((ulong){var_name} & 0xFF);')
-                lines.append(f'            buffer[{offset + 1}] = (byte)(((ulong){var_name} >> 8) & 0xFF);')
-                lines.append(f'            buffer[{offset + 2}] = (byte)(((ulong){var_name} >> 16) & 0xFF);')
-                lines.append(f'            buffer[{offset + 3}] = (byte)(((ulong){var_name} >> 24) & 0xFF);')
-                lines.append(f'            buffer[{offset + 4}] = (byte)(((ulong){var_name} >> 32) & 0xFF);')
-                lines.append(f'            buffer[{offset + 5}] = (byte)(((ulong){var_name} >> 40) & 0xFF);')
-                lines.append(f'            buffer[{offset + 6}] = (byte)(((ulong){var_name} >> 48) & 0xFF);')
-                lines.append(f'            buffer[{offset + 7}] = (byte)(((ulong){var_name} >> 56) & 0xFF);')
+                lines.append(f'            BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan({offset}, 8), {var_name});')
             elif type_name == "float":
-                lines.append(f'            BitConverter.TryWriteBytes(new Span<byte>(buffer, {offset}, 4), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteSingleLittleEndian(buffer.AsSpan({offset}, 4), {var_name});')
             elif type_name == "double":
-                lines.append(f'            BitConverter.TryWriteBytes(new Span<byte>(buffer, {offset}, 8), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteDoubleLittleEndian(buffer.AsSpan({offset}, 8), {var_name});')
             elif type_name == "bool":
                 lines.append(f'            buffer[{offset}] = (byte)({var_name} ? 1 : 0);')
         elif field.fieldType == "string":
@@ -336,21 +314,21 @@ class FieldCSharpGen():
             elif type_name == "int8":
                 lines.append(f'            msg.{var_name} = (sbyte)data[offset + {offset}];')
             elif type_name == "uint16":
-                lines.append(f'            msg.{var_name} = (ushort)(data[offset + {offset}] | (data[offset + {offset + 1}] << 8));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 2));')
             elif type_name == "int16":
-                lines.append(f'            msg.{var_name} = (short)(data[offset + {offset}] | (data[offset + {offset + 1}] << 8));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt16LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 2));')
             elif type_name == "uint32":
-                lines.append(f'            msg.{var_name} = (uint)(data[offset + {offset}] | (data[offset + {offset + 1}] << 8) | (data[offset + {offset + 2}] << 16) | (data[offset + {offset + 3}] << 24));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt32LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 4));')
             elif type_name == "int32":
-                lines.append(f'            msg.{var_name} = (int)(data[offset + {offset}] | (data[offset + {offset + 1}] << 8) | (data[offset + {offset + 2}] << 16) | (data[offset + {offset + 3}] << 24));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 4));')
             elif type_name == "uint64":
-                lines.append(f'            msg.{var_name} = (ulong)data[offset + {offset}] | ((ulong)data[offset + {offset + 1}] << 8) | ((ulong)data[offset + {offset + 2}] << 16) | ((ulong)data[offset + {offset + 3}] << 24) | ((ulong)data[offset + {offset + 4}] << 32) | ((ulong)data[offset + {offset + 5}] << 40) | ((ulong)data[offset + {offset + 6}] << 48) | ((ulong)data[offset + {offset + 7}] << 56);')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt64LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 8));')
             elif type_name == "int64":
-                lines.append(f'            msg.{var_name} = (long)((ulong)data[offset + {offset}] | ((ulong)data[offset + {offset + 1}] << 8) | ((ulong)data[offset + {offset + 2}] << 16) | ((ulong)data[offset + {offset + 3}] << 24) | ((ulong)data[offset + {offset + 4}] << 32) | ((ulong)data[offset + {offset + 5}] << 40) | ((ulong)data[offset + {offset + 6}] << 48) | ((ulong)data[offset + {offset + 7}] << 56));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt64LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 8));')
             elif type_name == "float":
-                lines.append(f'            msg.{var_name} = BitConverter.ToSingle(data, offset + {offset});')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadSingleLittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 4));')
             elif type_name == "double":
-                lines.append(f'            msg.{var_name} = BitConverter.ToDouble(data, offset + {offset});')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 8));')
             elif type_name == "bool":
                 lines.append(f'            msg.{var_name} = data[offset + {offset}] != 0;')
         elif field.fieldType == "string":
@@ -391,7 +369,7 @@ class MessageCSharpGen():
 
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
 
-        result += '    public class %s\n' % structName
+        result += '    public class %s : IStructFrameMessage\n' % structName
         result += '    {\n'
 
         result += '        public const int MaxSize = %d;\n' % msg.size
@@ -453,6 +431,21 @@ class MessageCSharpGen():
         result += '            return msg;\n'
         result += '        }\n'
 
+        # Generate interface implementation methods
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Get the message ID (IStructFrameMessage)\n'
+        result += '        /// </summary>\n'
+        if msg.id is not None:
+            result += '        public ushort GetMsgId() => MsgId;\n'
+        else:
+            result += '        public ushort GetMsgId() => 0;\n'
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Get the message size (IStructFrameMessage)\n'
+        result += '        /// </summary>\n'
+        result += '        public int GetSize() => MaxSize;\n'
+
         result += '    }\n'
 
         return result + '\n'
@@ -465,6 +458,7 @@ class FileCSharpGen():
         yield '// Generated by %s at %s.\n\n' % (version, time.asctime())
 
         yield 'using System;\n'
+        yield 'using System.Buffers.Binary;\n'
         yield 'using System.Runtime.InteropServices;\n'
         yield 'using StructFrame;\n'
         

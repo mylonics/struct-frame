@@ -41,6 +41,33 @@ namespace StructFrameTests
             return payload;
         }
 
+        /// <summary>
+        /// Generic field validation with automatic error reporting
+        /// </summary>
+        private static bool ValidateField<T>(T actual, T expected, string fieldName)
+        {
+            if (!EqualityComparer<T>.Default.Equals(actual, expected))
+            {
+                Console.WriteLine($"  {fieldName} mismatch: expected {expected}, got {actual}");
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Validate float with tolerance
+        /// </summary>
+        private static bool ValidateFloatField(float actual, float expected, string fieldName, float? tolerance = null)
+        {
+            float tol = tolerance ?? Math.Max(Math.Abs(expected) * 1e-4f, 1e-4f);
+            if (Math.Abs(actual - expected) > tol)
+            {
+                Console.WriteLine($"  {fieldName} mismatch: expected {expected}, got {actual}");
+                return false;
+            }
+            return true;
+        }
+
         public static void PrintUsage(string formatsHelp)
         {
             Console.WriteLine("Usage:");
@@ -149,15 +176,108 @@ namespace StructFrameTests
         }
 
         // ============================================================================
-        // Encoding functions
+        // Generic encoding/decoding (unified logic)
+        // ============================================================================
+
+        /// <summary>
+        /// Generic message encoding for any test data source
+        /// </summary>
+        /// <param name="formatName">Frame format profile name</param>
+        /// <param name="messageCount">Total number of messages to encode</param>
+        /// <param name="bufferSize">Buffer size for encoded data</param>
+        /// <param name="getMessageData">Delegate to get (msgData, msgId) for each index</param>
+        public static byte[] EncodeMessages(
+            string formatName,
+            int messageCount,
+            int bufferSize,
+            Func<int, (byte[] msgData, int msgId)> getMessageData)
+        {
+            var writer = Profiles.CreateWriter(formatName);
+            writer.SetBuffer(new byte[bufferSize]);
+
+            for (int i = 0; i < messageCount; i++)
+            {
+                var (msgData, msgId) = getMessageData(i);
+                int bytesWritten = writer.Write((ushort)msgId, msgData);
+                if (bytesWritten == 0)
+                    throw new Exception($"Failed to encode message {i}");
+            }
+
+            return writer.GetData();
+        }
+
+        /// <summary>
+        /// Generic message decoding and validation for any test data source
+        /// </summary>
+        /// <param name="formatName">Frame format profile name</param>
+        /// <param name="data">Encoded data buffer</param>
+        /// <param name="expectedCount">Expected number of messages</param>
+        /// <param name="getMsgLength">Delegate to get message length from ID</param>
+        /// <param name="validateMessage">Delegate to validate message at index, returns (expectedMsgId, isValid)</param>
+        /// <param name="usePkgId">Whether to combine pkg_id with msg_id</param>
+        public static (bool success, int messageCount) DecodeMessages(
+            string formatName,
+            byte[] data,
+            int expectedCount,
+            Func<int, int?> getMsgLength,
+            Func<int, FrameMsgInfo, (int expectedMsgId, bool isValid)> validateMessage,
+            bool usePkgId = false)
+        {
+            var reader = Profiles.CreateReader(formatName, getMsgLength);
+            reader.SetBuffer(data);
+            int messageCount = 0;
+
+            while (reader.HasMore && messageCount < expectedCount)
+            {
+                var result = reader.Next();
+                if (!result.Valid)
+                {
+                    Console.WriteLine($"  Decoding failed for message {messageCount}");
+                    return (false, messageCount);
+                }
+
+                var (expectedMsgId, isValid) = validateMessage(messageCount, result);
+
+                // Get decoded message ID (handle extended profiles with pkg_id)
+                int decodedMsgId = usePkgId ? (result.PkgId << 8) | result.MsgId : result.MsgId;
+
+                if (decodedMsgId != expectedMsgId)
+                {
+                    Console.WriteLine($"  Message ID mismatch for message {messageCount}: expected {expectedMsgId}, got {decodedMsgId}");
+                    return (false, messageCount);
+                }
+
+                if (!isValid)
+                {
+                    Console.WriteLine($"  Validation failed for message {messageCount}");
+                    return (false, messageCount);
+                }
+
+                messageCount++;
+            }
+
+            if (messageCount != expectedCount)
+            {
+                Console.WriteLine($"  Expected {expectedCount} messages, but decoded {messageCount}");
+                return (false, messageCount);
+            }
+
+            if (reader.Remaining != 0)
+            {
+                Console.WriteLine($"  Extra data after messages: {reader.Remaining} bytes remaining");
+                return (false, messageCount);
+            }
+
+            return (true, messageCount);
+        }
+
+        // ============================================================================
+        // Encoding functions (using generic implementation)
         // ============================================================================
 
         public static byte[] EncodeStandardMessages(string formatName)
         {
-            var writer = Profiles.CreateWriter(formatName);
-            writer.SetBuffer(new byte[4096]);
-
-            for (int i = 0; i < StandardTestData.MESSAGE_COUNT; i++)
+            return EncodeMessages(formatName, StandardTestData.MESSAGE_COUNT, 4096, i =>
             {
                 var mixedMsg = StandardTestData.GetTestMessage(i);
                 object msg;
@@ -171,88 +291,57 @@ namespace StructFrameTests
                 else
                     throw new Exception($"Unknown message type: {mixedMsg.Type}");
 
-                byte[] msgData = EncodeMessage(msg);
-                int msgId = GetMessageId(msg);
-                
-                int bytesWritten = writer.Write((ushort)msgId, msgData);
-                if (bytesWritten == 0)
-                    throw new Exception($"Failed to encode message {i}");
-            }
-
-            return writer.GetData();
+                return (EncodeMessage(msg), GetMessageId(msg));
+            });
         }
 
         public static byte[] EncodeExtendedMessages(string formatName)
         {
-            var writer = Profiles.CreateWriter(formatName);
-            writer.SetBuffer(new byte[8192]);
-
-            for (int i = 0; i < ExtendedTestData.MESSAGE_COUNT; i++)
+            return EncodeMessages(formatName, ExtendedTestData.MESSAGE_COUNT, 8192, i =>
             {
-                var (msg, typeName) = ExtendedTestData.GetExtendedTestMessage(i);
+                var (msg, _) = ExtendedTestData.GetExtendedTestMessage(i);
                 if (msg == null)
                     throw new Exception($"Failed to get extended message {i}");
-
-                byte[] msgData = msg.Pack();
-                int msgId = msg.MsgId;
-
-                int bytesWritten = writer.Write((ushort)msgId, msgData);
-                if (bytesWritten == 0)
-                    throw new Exception($"Failed to encode extended message {i}");
-            }
-
-            return writer.GetData();
+                return (msg.Pack(), msg.MsgId);
+            });
         }
 
         // ============================================================================
-        // Decoding functions
+        // Decoding functions (using generic implementation)
         // ============================================================================
+
+        private static int? GetStandardMessageLength(int msgId)
+        {
+            if (MessageDefinitions.GetMessageLength(msgId, out int size))
+                return size;
+            return null;
+        }
 
         private static bool ValidateSerializationTestMessage(SerializationTestMessage msg, Dictionary<string, object> expected)
         {
-            if (msg.MagicNumber != (uint)expected["magic_number"])
-            {
-                Console.WriteLine($"  magic_number mismatch: expected {expected["magic_number"]}, got {msg.MagicNumber}");
+            if (!ValidateField(msg.MagicNumber, (uint)expected["magic_number"], "magic_number"))
                 return false;
-            }
 
             // Get string from length + data fields
             string testString = Encoding.UTF8.GetString(msg.TestStringData, 0, msg.TestStringLength);
             string expectedString = (string)expected["test_string"];
-            if (testString != expectedString)
-            {
-                Console.WriteLine($"  test_string mismatch: expected '{expectedString}', got '{testString}'");
+            if (!ValidateField(testString, expectedString, "test_string"))
                 return false;
-            }
 
-            float expectedFloat = (float)expected["test_float"];
-            float tolerance = Math.Max(Math.Abs(expectedFloat) * 1e-4f, 1e-4f);
-            if (Math.Abs(msg.TestFloat - expectedFloat) > tolerance)
-            {
-                Console.WriteLine($"  test_float mismatch: expected {expectedFloat}, got {msg.TestFloat}");
+            if (!ValidateFloatField(msg.TestFloat, (float)expected["test_float"], "test_float"))
                 return false;
-            }
 
-            if (msg.TestBool != (bool)expected["test_bool"])
-            {
-                Console.WriteLine($"  test_bool mismatch: expected {expected["test_bool"]}, got {msg.TestBool}");
+            if (!ValidateField(msg.TestBool, (bool)expected["test_bool"], "test_bool"))
                 return false;
-            }
 
             var expectedArray = (List<int>)expected["test_array"];
-            if (msg.TestArrayCount != expectedArray.Count)
-            {
-                Console.WriteLine($"  test_array count mismatch: expected {expectedArray.Count}, got {msg.TestArrayCount}");
+            if (!ValidateField(msg.TestArrayCount, (byte)expectedArray.Count, "test_array count"))
                 return false;
-            }
 
             for (int i = 0; i < expectedArray.Count; i++)
             {
-                if (msg.TestArrayData[i] != expectedArray[i])
-                {
-                    Console.WriteLine($"  test_array[{i}] mismatch: expected {expectedArray[i]}, got {msg.TestArrayData[i]}");
+                if (!ValidateField(msg.TestArrayData[i], expectedArray[i], $"test_array[{i}]"))
                     return false;
-                }
             }
 
             return true;
@@ -260,183 +349,72 @@ namespace StructFrameTests
 
         private static bool ValidateBasicTypesMessage(BasicTypesMessage msg, Dictionary<string, object> expected)
         {
-            if (msg.SmallInt != (sbyte)expected["small_int"])
-            {
-                Console.WriteLine($"  small_int mismatch");
-                return false;
-            }
-            if (msg.MediumInt != (short)expected["medium_int"])
-            {
-                Console.WriteLine($"  medium_int mismatch");
-                return false;
-            }
-            if (msg.RegularInt != (int)expected["regular_int"])
-            {
-                Console.WriteLine($"  regular_int mismatch");
-                return false;
-            }
-            if (msg.LargeInt != (long)expected["large_int"])
-            {
-                Console.WriteLine($"  large_int mismatch");
-                return false;
-            }
-            if (msg.SmallUint != (byte)expected["small_uint"])
-            {
-                Console.WriteLine($"  small_uint mismatch");
-                return false;
-            }
-            if (msg.MediumUint != (ushort)expected["medium_uint"])
-            {
-                Console.WriteLine($"  medium_uint mismatch");
-                return false;
-            }
-            if (msg.RegularUint != (uint)expected["regular_uint"])
-            {
-                Console.WriteLine($"  regular_uint mismatch");
-                return false;
-            }
-            if (msg.LargeUint != (ulong)expected["large_uint"])
-            {
-                Console.WriteLine($"  large_uint mismatch");
-                return false;
-            }
-            if (msg.Flag != (bool)expected["flag"])
-            {
-                Console.WriteLine($"  flag mismatch");
-                return false;
-            }
-            return true;
-        }
-
-        private static int GetStandardMessageLength(int msgId)
-        {
-            if (MessageDefinitions.GetMessageLength(msgId, out int size))
-                return size;
-            return 0;
+            return ValidateField(msg.SmallInt, (sbyte)expected["small_int"], "small_int")
+                && ValidateField(msg.MediumInt, (short)expected["medium_int"], "medium_int")
+                && ValidateField(msg.RegularInt, (int)expected["regular_int"], "regular_int")
+                && ValidateField(msg.LargeInt, (long)expected["large_int"], "large_int")
+                && ValidateField(msg.SmallUint, (byte)expected["small_uint"], "small_uint")
+                && ValidateField(msg.MediumUint, (ushort)expected["medium_uint"], "medium_uint")
+                && ValidateField(msg.RegularUint, (uint)expected["regular_uint"], "regular_uint")
+                && ValidateField(msg.LargeUint, (ulong)expected["large_uint"], "large_uint")
+                && ValidateField(msg.Flag, (bool)expected["flag"], "flag");
         }
 
         public static (bool success, int messageCount) DecodeStandardMessages(string formatName, byte[] data)
         {
-            var reader = Profiles.CreateReader(formatName, msgId => GetStandardMessageLength(msgId));
-            reader.SetBuffer(data);
-            int messageCount = 0;
-
-            while (reader.HasMore && messageCount < StandardTestData.MESSAGE_COUNT)
-            {
-                var result = reader.Next();
-                if (!result.Valid)
+            return DecodeMessages(
+                formatName,
+                data,
+                StandardTestData.MESSAGE_COUNT,
+                GetStandardMessageLength,
+                (i, result) =>
                 {
-                    Console.WriteLine($"  Decoding failed for message {messageCount}");
-                    return (false, messageCount);
-                }
+                    var expected = StandardTestData.GetTestMessage(i);
+                    int expectedMsgId;
+                    bool isValid = true;
 
-                var expected = StandardTestData.GetTestMessage(messageCount);
-                int expectedMsgId;
-
-                if (expected.Type == MessageType.SerializationTest)
-                    expectedMsgId = SerializationTestMessage.MsgId;
-                else if (expected.Type == MessageType.BasicTypes)
-                    expectedMsgId = BasicTypesMessage.MsgId;
-                else if (expected.Type == MessageType.UnionTest)
-                    expectedMsgId = UnionTestMessage.MsgId;
-                else
-                {
-                    Console.WriteLine($"  Unknown message type: {expected.Type}");
-                    return (false, messageCount);
-                }
-
-                if (result.MsgId != expectedMsgId)
-                {
-                    Console.WriteLine($"  Message ID mismatch for message {messageCount}: expected {expectedMsgId}, got {result.MsgId}");
-                    return (false, messageCount);
-                }
-
-                // Decode and validate
-                if (expected.Type == MessageType.SerializationTest)
-                {
-                    var msg = SerializationTestMessage.Unpack(ExtractPayload(result));
-                    if (!ValidateSerializationTestMessage(msg, expected.Data))
+                    if (expected.Type == MessageType.SerializationTest)
                     {
-                        Console.WriteLine($"  Validation failed for message {messageCount}");
-                        return (false, messageCount);
+                        expectedMsgId = SerializationTestMessage.MsgId;
+                        var msg = SerializationTestMessage.Unpack(ExtractPayload(result));
+                        isValid = ValidateSerializationTestMessage(msg, expected.Data);
                     }
-                }
-                else if (expected.Type == MessageType.BasicTypes)
-                {
-                    var msg = BasicTypesMessage.Unpack(ExtractPayload(result));
-                    if (!ValidateBasicTypesMessage(msg, expected.Data))
+                    else if (expected.Type == MessageType.BasicTypes)
                     {
-                        Console.WriteLine($"  Validation failed for message {messageCount}");
-                        return (false, messageCount);
+                        expectedMsgId = BasicTypesMessage.MsgId;
+                        var msg = BasicTypesMessage.Unpack(ExtractPayload(result));
+                        isValid = ValidateBasicTypesMessage(msg, expected.Data);
                     }
-                }
-                else if (expected.Type == MessageType.UnionTest)
-                {
-                    var msg = UnionTestMessage.Unpack(ExtractPayload(result));
-                    // Just verify it decoded without error
-                }
+                    else if (expected.Type == MessageType.UnionTest)
+                    {
+                        expectedMsgId = UnionTestMessage.MsgId;
+                        var _ = UnionTestMessage.Unpack(ExtractPayload(result));
+                        // Just verify it decoded without error
+                    }
+                    else
+                    {
+                        throw new Exception($"Unknown message type: {expected.Type}");
+                    }
 
-                messageCount++;
-            }
-
-            if (messageCount != StandardTestData.MESSAGE_COUNT)
-            {
-                Console.WriteLine($"  Expected {StandardTestData.MESSAGE_COUNT} messages, but decoded {messageCount}");
-                return (false, messageCount);
-            }
-
-            if (reader.Remaining != 0)
-            {
-                Console.WriteLine($"  Extra data after messages: {reader.Remaining} bytes remaining");
-                return (false, messageCount);
-            }
-
-            return (true, messageCount);
+                    return (expectedMsgId, isValid);
+                },
+                usePkgId: false);
         }
 
         public static (bool success, int messageCount) DecodeExtendedMessages(string formatName, byte[] data)
         {
-            var reader = Profiles.CreateReader(formatName, msgId => ExtendedTestData.GetMessageLength(msgId));
-            reader.SetBuffer(data);
-            int messageCount = 0;
-
-            while (reader.HasMore && messageCount < ExtendedTestData.MESSAGE_COUNT)
-            {
-                var result = reader.Next();
-                if (!result.Valid)
+            return DecodeMessages(
+                formatName,
+                data,
+                ExtendedTestData.MESSAGE_COUNT,
+                msgId => (int?)ExtendedTestData.GetMessageLength(msgId),
+                (i, result) =>
                 {
-                    Console.WriteLine($"  Decoding failed for message {messageCount}");
-                    return (false, messageCount);
-                }
-
-                var (expectedMsg, typeName) = ExtendedTestData.GetExtendedTestMessage(messageCount);
-                int expectedMsgId = expectedMsg.MsgId;
-
-                // For extended profiles, combine pkg_id (high byte) and msg_id (low byte)
-                int decodedMsgId = (result.PkgId << 8) | result.MsgId;
-
-                if (decodedMsgId != expectedMsgId)
-                {
-                    Console.WriteLine($"  Message ID mismatch for message {messageCount}: expected {expectedMsgId}, got {decodedMsgId}");
-                    return (false, messageCount);
-                }
-
-                messageCount++;
-            }
-
-            if (messageCount != ExtendedTestData.MESSAGE_COUNT)
-            {
-                Console.WriteLine($"  Expected {ExtendedTestData.MESSAGE_COUNT} messages, but decoded {messageCount}");
-                return (false, messageCount);
-            }
-
-            if (reader.Remaining != 0)
-            {
-                Console.WriteLine($"  Extra data after messages: {reader.Remaining} bytes remaining");
-                return (false, messageCount);
-            }
-
-            return (true, messageCount);
+                    var (expectedMsg, _) = ExtendedTestData.GetExtendedTestMessage(i);
+                    // Extended messages: just check ID matches
+                    return (expectedMsg.MsgId, true);
+                },
+                usePkgId: true);
         }
 
         // ============================================================================
