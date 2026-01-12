@@ -361,27 +361,28 @@ class TestRunner:
                 codec_source = test_dir / codec_name
                 runner_output = build_dir / output_name
 
-                sources = [runner_source, codec_source]
+                # Only the runner source is compiled - all other files are header-only
+                sources = [runner_source]
                 
-                # Add test_messages_data source file (for regular tests)
-                if "extended" not in runner_name:
-                    messages_data_source = test_dir / f"test_messages_data{source_ext}"
-                    if messages_data_source.exists():
-                        sources.append(messages_data_source)
-                else:
-                    # Add test_messages_data_extended source file (for extended tests)
-                    messages_data_ext_source = test_dir / f"test_messages_data_extended{source_ext}"
-                    if messages_data_ext_source.exists():
-                        sources.append(messages_data_ext_source)
-                
-                # Add cJSON.c for C language (will be removed once JSON dependency is fully removed)
+                # Add cJSON.c for C language (C tests still have separate source files)
                 if source_ext == '.c':
+                    sources.append(codec_source)
+                    # Add test_messages_data source file (for regular tests)
+                    if "extended" not in runner_name:
+                        messages_data_source = test_dir / f"test_messages_data{source_ext}"
+                        if messages_data_source.exists():
+                            sources.append(messages_data_source)
+                    else:
+                        # Add test_messages_data_extended source file (for extended tests)
+                        messages_data_ext_source = test_dir / f"test_messages_data_extended{source_ext}"
+                        if messages_data_ext_source.exists():
+                            sources.append(messages_data_ext_source)
                     cjson_source = test_dir / "cJSON.c"
                     if cjson_source.exists():
                         sources.append(cjson_source)
 
                 if runner_source.exists() and codec_source.exists():
-                    if not lang.compile(sources, runner_output, gen_dir):
+                    if not lang.compile(sources, runner_output, gen_dir, test_dir):
                         all_success = False
 
         # Project-based compilation (TypeScript, C#)

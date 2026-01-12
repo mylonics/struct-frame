@@ -10,15 +10,15 @@
 #include "serialization_test.sf.h"
 #include "test_messages_data.h"
 
-/* 
+/*
  * Frame format helper functions - Use generated profile functions from frame_profiles.h
  * The manual implementations have been replaced with calls to the generated functions.
  */
 
 /* Basic + Default -> Profile Standard */
-static inline size_t basic_default_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
+static inline size_t basic_default_encode(uint8_t* buffer, size_t buffer_size, uint16_t msg_id, const uint8_t* msg,
                                           size_t msg_size) {
-  return encode_profile_standard(buffer, buffer_size, msg_id, msg, msg_size);
+  return encode_profile_standard(buffer, buffer_size, (uint8_t)msg_id, msg, msg_size);
 }
 
 static inline frame_msg_info_t basic_default_validate_packet(const uint8_t* buffer, size_t length) {
@@ -26,9 +26,9 @@ static inline frame_msg_info_t basic_default_validate_packet(const uint8_t* buff
 }
 
 /* Tiny + Minimal -> Profile Sensor */
-static inline size_t tiny_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
+static inline size_t tiny_minimal_encode(uint8_t* buffer, size_t buffer_size, uint16_t msg_id, const uint8_t* msg,
                                          size_t msg_size) {
-  return encode_profile_sensor(buffer, buffer_size, msg_id, msg, msg_size);
+  return encode_profile_sensor(buffer, buffer_size, (uint8_t)msg_id, msg, msg_size);
 }
 
 static inline frame_msg_info_t tiny_minimal_validate_packet(const uint8_t* buffer, size_t length) {
@@ -36,9 +36,9 @@ static inline frame_msg_info_t tiny_minimal_validate_packet(const uint8_t* buffe
 }
 
 /* None + Minimal -> Profile IPC */
-static inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
+static inline size_t none_minimal_encode(uint8_t* buffer, size_t buffer_size, uint16_t msg_id, const uint8_t* msg,
                                          size_t msg_size) {
-  return encode_profile_ipc(buffer, buffer_size, msg_id, msg, msg_size);
+  return encode_profile_ipc(buffer, buffer_size, (uint8_t)msg_id, msg, msg_size);
 }
 
 static inline frame_msg_info_t none_minimal_validate_packet(const uint8_t* buffer, size_t length) {
@@ -58,7 +58,7 @@ static inline frame_msg_info_t basic_extended_validate_packet(const uint8_t* buf
 /* Basic + Extended Multi System Stream -> Profile Network */
 static inline size_t basic_extended_multi_system_stream_encode(uint8_t* buffer, size_t buffer_size, uint16_t msg_id,
                                                                const uint8_t* msg, size_t msg_size) {
-  return encode_profile_network(buffer, buffer_size, 0, 0, 0, msg_id, msg, msg_size);  /* seq=0, sys=0, comp=0 */
+  return encode_profile_network(buffer, buffer_size, 0, 0, 0, msg_id, msg, msg_size); /* seq=0, sys=0, comp=0 */
 }
 
 static inline frame_msg_info_t basic_extended_multi_system_stream_validate_packet(const uint8_t* buffer,
@@ -67,7 +67,7 @@ static inline frame_msg_info_t basic_extended_multi_system_stream_validate_packe
 }
 
 /* Basic + Minimal - This combination is not a standard profile but is used in tests */
-static inline size_t basic_minimal_encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* msg,
+static inline size_t basic_minimal_encode(uint8_t* buffer, size_t buffer_size, uint16_t msg_id, const uint8_t* msg,
                                           size_t msg_size) {
   const size_t header_size = 3; /* [0x90] [0x70] [MSG_ID] */
   const size_t total_size = header_size + msg_size;
@@ -170,33 +170,33 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
    */
   size_t count = 0;
   size_t total_count = get_test_message_count();
-  
+
   for (size_t i = 0; i < total_count && count < max_count; i++) {
     mixed_message_t msg;
     if (!get_test_message(i, &msg)) {
       continue;
     }
-    
+
     /* Only include SerializationTestMessage types */
     if (msg.type == MSG_TYPE_SERIALIZATION_TEST) {
       SerializationTestSerializationTestMessage* src = &msg.data.serialization_test;
       messages[count].magic_number = src->magic_number;
-      
+
       strncpy(messages[count].test_string, src->test_string.data, MAX_STRING_LENGTH - 1);
       messages[count].test_string[MAX_STRING_LENGTH - 1] = '\0';
-      
+
       messages[count].test_float = src->test_float;
       messages[count].test_bool = src->test_bool;
       messages[count].test_array_count = src->test_array.count;
-      
+
       for (size_t j = 0; j < src->test_array.count && j < MAX_ARRAY_LENGTH; j++) {
         messages[count].test_array[j] = src->test_array.data[j];
       }
-      
+
       count++;
     }
   }
-  
+
   return count;
 }
 
@@ -204,7 +204,7 @@ size_t load_test_messages(test_message_t* messages, size_t max_count) {
 size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
   size_t count = 0;
   size_t total_count = get_test_message_count();
-  
+
   for (size_t i = 0; i < total_count && i < max_count; i++) {
     if (!get_test_message(i, &messages[count])) {
       fprintf(stderr, "Error: Failed to get test message %zu\n", i);
@@ -212,10 +212,9 @@ size_t load_mixed_messages(mixed_message_t* messages, size_t max_count) {
     }
     count++;
   }
-  
+
   return count;
 }
-
 
 void create_message_from_data(const test_message_t* test_msg, SerializationTestSerializationTestMessage* msg) {
   memset(msg, 0, sizeof(*msg));
@@ -278,7 +277,7 @@ bool validate_message(const SerializationTestSerializationTestMessage* msg, cons
 bool encode_test_messages(const char* format, uint8_t* buffer, size_t buffer_size, size_t* encoded_size) {
   // Select the appropriate encoder based on format
   encode_message_fn encoder = NULL;
-  
+
   if (strcmp(format, "profile_standard") == 0) {
     encoder = basic_default_encode;
   } else if (strcmp(format, "profile_sensor") == 0) {
@@ -332,9 +331,8 @@ bool decode_test_messages(const char* format, const uint8_t* buffer, size_t buff
     if (!decode_result.valid) {
       printf("  Decoding failed for message %zu at offset %zu\n", *message_count, offset);
       if (buffer_size - offset >= 6) {
-        printf("  Buffer first bytes: %02x %02x %02x %02x %02x %02x\n",
-               buffer[offset], buffer[offset+1], buffer[offset+2], 
-               buffer[offset+3], buffer[offset+4], buffer[offset+5]);
+        printf("  Buffer first bytes: %02x %02x %02x %02x %02x %02x\n", buffer[offset], buffer[offset + 1],
+               buffer[offset + 2], buffer[offset + 3], buffer[offset + 4], buffer[offset + 5]);
       }
       return false;
     }
@@ -353,8 +351,8 @@ bool decode_test_messages(const char* format, const uint8_t* buffer, size_t buff
     }
 
     if (decode_result.msg_id != expected_msg_id) {
-      printf("  Message ID mismatch for message %zu: expected %u, got %u\n", 
-             *message_count, expected_msg_id, decode_result.msg_id);
+      printf("  Message ID mismatch for message %zu: expected %u, got %u\n", *message_count, expected_msg_id,
+             decode_result.msg_id);
       return false;
     }
 
