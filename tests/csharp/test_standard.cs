@@ -15,7 +15,7 @@ class TestStandard
 {
     static int Main(string[] args)
     {
-        return TestCodec.RunTestMain<StandardTestData.Config>(
+        return TestCodec.RunTestMain(
             args,
             StandardTestData.Config.SupportsFormat,
             StandardTestData.Config.FORMATS_HELP,

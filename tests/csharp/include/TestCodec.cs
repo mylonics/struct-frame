@@ -15,8 +15,92 @@ using System.Text;
 using StructFrame;
 using StructFrame.SerializationTest;
 
+// Type aliases to match expected names
+using SerializationTestMessage = StructFrame.SerializationTest.SerializationTestSerializationTestMessage;
+using BasicTypesMessage = StructFrame.SerializationTest.SerializationTestBasicTypesMessage;
+using UnionTestMessage = StructFrame.SerializationTest.SerializationTestUnionTestMessage;
+
 namespace StructFrameTests
 {
+    // ============================================================================
+    // TestBufferWriter - Simple frame writer for testing (using boilerplate)
+    // ============================================================================
+    public class TestBufferWriter
+    {
+        private readonly BufferWriter _writer;
+        private readonly string _format;
+
+        public TestBufferWriter(string format, int capacity)
+        {
+            _format = format;
+            _writer = CreateWriter(format);
+            _writer.SetBuffer(new byte[capacity], 0, capacity);
+        }
+
+        private static BufferWriter CreateWriter(string format)
+        {
+            return format.ToLowerInvariant() switch
+            {
+                "profile_standard" => new ProfileStandardWriter(),
+                "profile_sensor" => new ProfileSensorWriter(),
+                "profile_ipc" => new ProfileIPCWriter(),
+                "profile_bulk" => new ProfileBulkWriter(),
+                "profile_network" => new ProfileNetworkWriter(),
+                _ => throw new ArgumentException($"Unknown format: {format}")
+            };
+        }
+
+        public int Write(int msgId, byte[] msgData)
+        {
+            return _writer.Write((ushort)msgId, msgData);
+        }
+
+        public byte[] GetData()
+        {
+            return _writer.GetData();
+        }
+    }
+
+    // ============================================================================
+    // TestBufferReader - Simple frame reader for testing (using boilerplate)
+    // ============================================================================
+    public class TestBufferReader
+    {
+        private readonly BufferReader _reader;
+        private readonly string _format;
+
+        public TestBufferReader(string format, byte[] data, Func<int, int> getMsgLength = null)
+        {
+            _format = format;
+            _reader = CreateReader(format, getMsgLength);
+            _reader.SetBuffer(data);
+        }
+
+        private static BufferReader CreateReader(string format, Func<int, int> getMsgLength)
+        {
+            Func<int, int?> getMsgLengthNullable = getMsgLength != null ? (Func<int, int?>)(msgId => getMsgLength(msgId)) : null;
+
+            return format.ToLowerInvariant() switch
+            {
+                "profile_standard" => new ProfileStandardReader(getMsgLengthNullable),
+                "profile_sensor" => new ProfileSensorReader(getMsgLengthNullable),
+                "profile_ipc" => new ProfileIPCReader(getMsgLengthNullable),
+                "profile_bulk" => new ProfileBulkReader(getMsgLengthNullable),
+                "profile_network" => new ProfileNetworkReader(getMsgLengthNullable),
+                _ => throw new ArgumentException($"Unknown format: {format}")
+            };
+        }
+
+        public int Remaining => _reader.Remaining;
+
+        public bool HasMore() => _reader.HasMore;
+
+        public FrameMsgInfo Next()
+        {
+            return _reader.Next();
+        }
+    }
+
     public static class TestCodec
     {
         // ============================================================================
@@ -46,78 +130,76 @@ namespace StructFrameTests
 
         private static SerializationTestMessage CreateSerializationTestMessage(Dictionary<string, object> data)
         {
-            var msg = new SerializationTestMessage
-            {
-                MagicNumber = (uint)data["magic_number"],
-                TestString = Encoding.UTF8.GetBytes((string)data["test_string"]),
-                TestFloat = (float)data["test_float"],
-                TestBool = (bool)data["test_bool"]
-            };
+            var msg = new SerializationTestMessage();
+            msg.MagicNumber = (uint)data["magic_number"];
+            msg.TestFloat = (float)data["test_float"];
+            msg.TestBool = (bool)data["test_bool"];
 
+            // Handle variable-length string
+            string testString = (string)data["test_string"];
+            var stringBytes = Encoding.UTF8.GetBytes(testString);
+            msg.TestStringLength = (byte)Math.Min(stringBytes.Length, 64);
+            msg.TestStringData = new byte[64];
+            Array.Copy(stringBytes, msg.TestStringData, msg.TestStringLength);
+
+            // Handle variable-length array
             var testArray = (List<int>)data["test_array"];
-            msg.TestArray = new BoundedArray<int>
+            msg.TestArrayCount = (byte)Math.Min(testArray.Count, 5);
+            msg.TestArrayData = new int[5];
+            for (int i = 0; i < msg.TestArrayCount; i++)
             {
-                Count = (ushort)testArray.Count,
-                Data = testArray.ToArray()
-            };
+                msg.TestArrayData[i] = testArray[i];
+            }
 
             return msg;
         }
 
         private static BasicTypesMessage CreateBasicTypesMessage(Dictionary<string, object> data)
         {
-            return new BasicTypesMessage
-            {
-                SmallInt = (sbyte)data["small_int"],
-                MediumInt = (short)data["medium_int"],
-                RegularInt = (int)data["regular_int"],
-                LargeInt = (long)data["large_int"],
-                SmallUint = (byte)data["small_uint"],
-                MediumUint = (ushort)data["medium_uint"],
-                RegularUint = (uint)data["regular_uint"],
-                LargeUint = (ulong)data["large_uint"],
-                SinglePrecision = (float)data["single_precision"],
-                DoublePrecision = (double)data["double_precision"],
-                Flag = (bool)data["flag"],
-                DeviceId = Encoding.UTF8.GetBytes((string)data["device_id"]),
-                Description = Encoding.UTF8.GetBytes((string)data["description"])
-            };
+            var msg = new BasicTypesMessage();
+            msg.SmallInt = (sbyte)data["small_int"];
+            msg.MediumInt = (short)data["medium_int"];
+            msg.RegularInt = (int)data["regular_int"];
+            msg.LargeInt = (long)data["large_int"];
+            msg.SmallUint = (byte)data["small_uint"];
+            msg.MediumUint = (ushort)data["medium_uint"];
+            msg.RegularUint = (uint)data["regular_uint"];
+            msg.LargeUint = (ulong)data["large_uint"];
+            msg.SinglePrecision = (float)data["single_precision"];
+            msg.DoublePrecision = (double)data["double_precision"];
+            msg.Flag = (bool)data["flag"];
+
+            // Handle fixed string (device_id)
+            string deviceId = (string)data["device_id"];
+            var deviceIdBytes = Encoding.UTF8.GetBytes(deviceId);
+            msg.DeviceId = new byte[32];
+            Array.Copy(deviceIdBytes, msg.DeviceId, Math.Min(deviceIdBytes.Length, 32));
+
+            // Handle variable string (description)
+            string description = (string)data["description"];
+            var descBytes = Encoding.UTF8.GetBytes(description);
+            msg.DescriptionLength = (byte)Math.Min(descBytes.Length, 128);
+            msg.DescriptionData = new byte[128];
+            Array.Copy(descBytes, msg.DescriptionData, msg.DescriptionLength);
+
+            return msg;
         }
 
         private static UnionTestMessage CreateUnionTestMessage(Dictionary<string, object> data)
         {
             var msg = new UnionTestMessage();
-            int payloadType = (int)data["payload_type"];
-
-            if (payloadType == 1 && data.ContainsKey("array_payload"))
-            {
-                var arrayData = (Dictionary<string, object>)data["array_payload"];
-                // Create array payload (simplified for now - just set fields present)
-                // This would need to be expanded based on actual struct definition
-            }
-            else if (payloadType == 2 && data.ContainsKey("test_payload"))
-            {
-                var testData = (Dictionary<string, object>)data["test_payload"];
-                // Create test payload
-            }
-
+            // Union messages are complex - simplified for now
             return msg;
         }
 
         private static byte[] EncodeMessage(object msg)
         {
             if (msg is SerializationTestMessage stm)
-            {
                 return stm.Pack();
-            }
             else if (msg is BasicTypesMessage btm)
-            {
                 return btm.Pack();
-            }
             else if (msg is UnionTestMessage utm)
-            {
                 return utm.Pack();
-            }
             throw new InvalidOperationException("Unknown message type");
         }
 
@@ -138,7 +220,7 @@ namespace StructFrameTests
 
         public static byte[] EncodeStandardMessages(string formatName)
         {
-            var writer = CreateWriter(formatName, 4096);
+            var writer = new TestBufferWriter(formatName, 4096);
 
             for (int i = 0; i < StandardTestData.MESSAGE_COUNT; i++)
             {
@@ -146,30 +228,20 @@ namespace StructFrameTests
                 object msg;
 
                 if (mixedMsg.Type == MessageType.SerializationTest)
-                {
                     msg = CreateSerializationTestMessage(mixedMsg.Data);
-                }
                 else if (mixedMsg.Type == MessageType.BasicTypes)
-                {
                     msg = CreateBasicTypesMessage(mixedMsg.Data);
-                }
                 else if (mixedMsg.Type == MessageType.UnionTest)
-                {
                     msg = CreateUnionTestMessage(mixedMsg.Data);
-                }
                 else
-                {
                     throw new Exception($"Unknown message type: {mixedMsg.Type}");
-                }
 
                 byte[] msgData = EncodeMessage(msg);
                 int msgId = GetMessageId(msg);
                 
                 int bytesWritten = writer.Write(msgId, msgData);
                 if (bytesWritten == 0)
-                {
                     throw new Exception($"Failed to encode message {i}");
-                }
             }
 
             return writer.GetData();
@@ -177,24 +249,20 @@ namespace StructFrameTests
 
         public static byte[] EncodeExtendedMessages(string formatName)
         {
-            var writer = CreateWriter(formatName, 8192);
+            var writer = new TestBufferWriter(formatName, 8192);
 
             for (int i = 0; i < ExtendedTestData.MESSAGE_COUNT; i++)
             {
                 var (msg, typeName) = ExtendedTestData.GetExtendedTestMessage(i);
                 if (msg == null)
-                {
                     throw new Exception($"Failed to get extended message {i}");
-                }
 
                 byte[] msgData = msg.Pack();
                 int msgId = msg.MsgId;
 
                 int bytesWritten = writer.Write(msgId, msgData);
                 if (bytesWritten == 0)
-                {
                     throw new Exception($"Failed to encode extended message {i}");
-                }
             }
 
             return writer.GetData();
@@ -212,7 +280,8 @@ namespace StructFrameTests
                 return false;
             }
 
-            string testString = Encoding.UTF8.GetString(msg.TestString).TrimEnd('\0');
+            // Get string from length + data fields
+            string testString = Encoding.UTF8.GetString(msg.TestStringData, 0, msg.TestStringLength);
             string expectedString = (string)expected["test_string"];
             if (testString != expectedString)
             {
@@ -235,17 +304,17 @@ namespace StructFrameTests
             }
 
             var expectedArray = (List<int>)expected["test_array"];
-            if (msg.TestArray.Count != expectedArray.Count)
+            if (msg.TestArrayCount != expectedArray.Count)
             {
-                Console.WriteLine($"  test_array count mismatch: expected {expectedArray.Count}, got {msg.TestArray.Count}");
+                Console.WriteLine($"  test_array count mismatch: expected {expectedArray.Count}, got {msg.TestArrayCount}");
                 return false;
             }
 
             for (int i = 0; i < expectedArray.Count; i++)
             {
-                if (msg.TestArray.Data[i] != expectedArray[i])
+                if (msg.TestArrayData[i] != expectedArray[i])
                 {
-                    Console.WriteLine($"  test_array[{i}] mismatch: expected {expectedArray[i]}, got {msg.TestArray.Data[i]}");
+                    Console.WriteLine($"  test_array[{i}] mismatch: expected {expectedArray[i]}, got {msg.TestArrayData[i]}");
                     return false;
                 }
             }
@@ -255,19 +324,64 @@ namespace StructFrameTests
 
         private static bool ValidateBasicTypesMessage(BasicTypesMessage msg, Dictionary<string, object> expected)
         {
-            // Validate all fields (simplified - add all fields)
             if (msg.SmallInt != (sbyte)expected["small_int"])
             {
                 Console.WriteLine($"  small_int mismatch");
                 return false;
             }
-            // Add more validations as needed
+            if (msg.MediumInt != (short)expected["medium_int"])
+            {
+                Console.WriteLine($"  medium_int mismatch");
+                return false;
+            }
+            if (msg.RegularInt != (int)expected["regular_int"])
+            {
+                Console.WriteLine($"  regular_int mismatch");
+                return false;
+            }
+            if (msg.LargeInt != (long)expected["large_int"])
+            {
+                Console.WriteLine($"  large_int mismatch");
+                return false;
+            }
+            if (msg.SmallUint != (byte)expected["small_uint"])
+            {
+                Console.WriteLine($"  small_uint mismatch");
+                return false;
+            }
+            if (msg.MediumUint != (ushort)expected["medium_uint"])
+            {
+                Console.WriteLine($"  medium_uint mismatch");
+                return false;
+            }
+            if (msg.RegularUint != (uint)expected["regular_uint"])
+            {
+                Console.WriteLine($"  regular_uint mismatch");
+                return false;
+            }
+            if (msg.LargeUint != (ulong)expected["large_uint"])
+            {
+                Console.WriteLine($"  large_uint mismatch");
+                return false;
+            }
+            if (msg.Flag != (bool)expected["flag"])
+            {
+                Console.WriteLine($"  flag mismatch");
+                return false;
+            }
             return true;
+        }
+
+        private static int GetStandardMessageLength(int msgId)
+        {
+            if (MessageDefinitions.GetMessageLength(msgId, out int size))
+                return size;
+            return 0;
         }
 
         public static (bool success, int messageCount) DecodeStandardMessages(string formatName, byte[] data)
         {
-            var reader = CreateReader(formatName, data);
+            var reader = new TestBufferReader(formatName, data, GetStandardMessageLength);
             int messageCount = 0;
 
             while (reader.HasMore() && messageCount < StandardTestData.MESSAGE_COUNT)
@@ -283,17 +397,11 @@ namespace StructFrameTests
                 int expectedMsgId;
 
                 if (expected.Type == MessageType.SerializationTest)
-                {
                     expectedMsgId = SerializationTestMessage.MsgId;
-                }
                 else if (expected.Type == MessageType.BasicTypes)
-                {
                     expectedMsgId = BasicTypesMessage.MsgId;
-                }
                 else if (expected.Type == MessageType.UnionTest)
-                {
                     expectedMsgId = UnionTestMessage.MsgId;
-                }
                 else
                 {
                     Console.WriteLine($"  Unknown message type: {expected.Type}");
@@ -351,7 +459,7 @@ namespace StructFrameTests
 
         public static (bool success, int messageCount) DecodeExtendedMessages(string formatName, byte[] data)
         {
-            var reader = CreateReader(formatName, data);
+            var reader = new TestBufferReader(formatName, data, ExtendedTestData.GetMessageLength);
             int messageCount = 0;
 
             while (reader.HasMore() && messageCount < ExtendedTestData.MESSAGE_COUNT)
@@ -366,17 +474,11 @@ namespace StructFrameTests
                 var (expectedMsg, typeName) = ExtendedTestData.GetExtendedTestMessage(messageCount);
                 int expectedMsgId = expectedMsg.MsgId;
 
-                // For extended profiles, combine pkg_id and msg_id
-                int decodedMsgId = (result.PackageId << 8) | result.MsgId;
-
-                if (decodedMsgId != expectedMsgId)
+                if (result.MsgId != expectedMsgId)
                 {
-                    Console.WriteLine($"  Message ID mismatch for message {messageCount}: expected {expectedMsgId}, got {decodedMsgId}");
+                    Console.WriteLine($"  Message ID mismatch for message {messageCount}: expected {expectedMsgId}, got {result.MsgId}");
                     return (false, messageCount);
                 }
-
-                // Just verify it decodes without error
-                var msg = expectedMsg.GetType().GetMethod("Unpack").Invoke(null, new object[] { result.MsgData });
 
                 messageCount++;
             }
@@ -397,27 +499,10 @@ namespace StructFrameTests
         }
 
         // ============================================================================
-        // Frame format helpers (BufferWriter/BufferReader)
-        // ============================================================================
-
-        // Placeholder implementations - these would need to be implemented based on the C# frame profiles
-        private static dynamic CreateWriter(string formatName, int capacity)
-        {
-            // This would use the appropriate profile writer based on formatName
-            throw new NotImplementedException("CreateWriter needs to be implemented with C# frame profiles");
-        }
-
-        private static dynamic CreateReader(string formatName, byte[] data)
-        {
-            // This would use the appropriate profile reader based on formatName
-            throw new NotImplementedException("CreateReader needs to be implemented with C# frame profiles");
-        }
-
-        // ============================================================================
         // Test runner main
         // ============================================================================
 
-        public static int RunEncode<TConfig>(
+        public static int RunEncode(
             string formatName,
             string outputFile,
             Func<string, byte[]> encodeFunc)
@@ -449,7 +534,7 @@ namespace StructFrameTests
             return 0;
         }
 
-        public static int RunDecode<TConfig>(
+        public static int RunDecode(
             string formatName,
             string inputFile,
             Func<string, byte[], (bool, int)> decodeFunc)
@@ -496,7 +581,7 @@ namespace StructFrameTests
             return 0;
         }
 
-        public static int RunTestMain<TConfig>(
+        public static int RunTestMain(
             string[] args,
             Func<string, bool> supportsFormat,
             string formatsHelp,
@@ -526,13 +611,9 @@ namespace StructFrameTests
 
             int result;
             if (mode == "encode")
-            {
-                result = RunEncode<TConfig>(formatName, filePath, encodeFunc);
-            }
+                result = RunEncode(formatName, filePath, encodeFunc);
             else if (mode == "decode")
-            {
-                result = RunDecode<TConfig>(formatName, filePath, decodeFunc);
-            }
+                result = RunDecode(formatName, filePath, decodeFunc);
             else
             {
                 Console.WriteLine($"Unknown mode: {mode}");

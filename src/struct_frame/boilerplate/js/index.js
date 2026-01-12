@@ -2,7 +2,6 @@
 
 // Base utilities and generic parser infrastructure
 const {
-  FrameFormatType,
   FrameMsgInfo,
   createFrameMsgInfo,
   fletcher_checksum,
@@ -95,7 +94,6 @@ const {
 
 module.exports = {
   // Base utilities
-  FrameFormatType,
   FrameMsgInfo,
   createFrameMsgInfo,
   fletcher_checksum,

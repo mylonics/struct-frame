@@ -8,7 +8,7 @@
 
 using System;
 using System.Collections.Generic;
-using SerializationTest;
+using StructFrame.SerializationTest;
 
 namespace StructFrameTests
 {

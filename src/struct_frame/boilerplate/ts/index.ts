@@ -7,7 +7,6 @@ export type { MessageConstructor } from './struct_base';
 // Base utilities and generic parser infrastructure
 export type { FrameMsgInfo, FrameParserConfig } from './frame_base';
 export {
-    FrameFormatType,
     createFrameMsgInfo,
     fletcher_checksum,
     // Generic parser class (use createFrameParserClass for type-safe wrappers)

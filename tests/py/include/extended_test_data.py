@@ -86,8 +86,10 @@ def get_extended_test_message(index, message_classes):
     elif index == 4:
         return (
             message_classes['ExtendedIdMessage5'](
-                config_version=255,
-                config_data=b"Configuration data for extended message 5"
+                x_position=1.0,
+                y_position=2.0,
+                z_position=3.0,
+                frame_number=255
             ),
             'ExtendedIdMessage5'
         )
@@ -97,7 +99,10 @@ def get_extended_test_message(index, message_classes):
         return (
             message_classes['ExtendedIdMessage6'](
                 command_id=12345,
-                command_params=b"Command parameters for extended message 6"
+                parameter1=100,
+                parameter2=200,
+                acknowledged=True,
+                command_name=b"Command parameters ext 6"
             ),
             'ExtendedIdMessage6'
         )
@@ -106,8 +111,10 @@ def get_extended_test_message(index, message_classes):
     elif index == 6:
         return (
             message_classes['ExtendedIdMessage7'](
-                state_flags=0xFFFFFFFF,
-                state_info=b"State information extended message 7"
+                counter=0xFFFFFFFF,
+                average=3.14159265,
+                minimum=1.0,
+                maximum=100.0
             ),
             'ExtendedIdMessage7'
         )
@@ -116,8 +123,10 @@ def get_extended_test_message(index, message_classes):
     elif index == 7:
         return (
             message_classes['ExtendedIdMessage8'](
-                diagnostics_code=8888,
-                diagnostics_details=b"Diagnostics details for extended message 8"
+                level=8,
+                offset=888,
+                duration=8888,
+                tag=b"Tag8----"
             ),
             'ExtendedIdMessage8'
         )
@@ -126,8 +135,9 @@ def get_extended_test_message(index, message_classes):
     elif index == 8:
         return (
             message_classes['ExtendedIdMessage9'](
-                metrics_counter=9876543210,
-                metrics_data=b"Metrics data extended message 9"
+                big_number=9876543210,
+                big_unsigned=9876543210,
+                precision_value=9.87654321
             ),
             'ExtendedIdMessage9'
         )
@@ -136,32 +146,34 @@ def get_extended_test_message(index, message_classes):
     elif index == 9:
         return (
             message_classes['ExtendedIdMessage10'](
-                log_level=3,
-                log_message=b"Log message from extended message 10"
+                small_value=1000,
+                short_text=b"Log message 10--",
+                flag=True
             ),
             'ExtendedIdMessage10'
         )
     
     # Message 10: LargePayloadMessage1 - payload > 255 bytes
     elif index == 10:
-        # Create a large payload (300 bytes)
-        large_data = b"X" * 300
+        # Create a large payload with 64 float sensor readings (256 bytes)
+        sensor_readings = [float(i) for i in range(64)]
         return (
             message_classes['LargePayloadMessage1'](
-                payload_id=1,
-                data=large_data
+                sensor_readings=sensor_readings,
+                reading_count=64,
+                timestamp=1704067200000,
+                device_name=b"Large Payload Device 1          "
             ),
             'LargePayloadMessage1'
         )
     
     # Message 11: LargePayloadMessage2 - payload > 255 bytes
     elif index == 11:
-        # Create a large payload (400 bytes)
-        large_data = b"Y" * 400
+        # Create a large payload (280 bytes)
+        large_data = bytes([ord('Y')] * 280)
         return (
             message_classes['LargePayloadMessage2'](
-                chunk_number=42,
-                chunk_data=large_data
+                large_data=large_data
             ),
             'LargePayloadMessage2'
         )

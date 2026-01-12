@@ -15,7 +15,7 @@ class TestExtended
 {
     static int Main(string[] args)
     {
-        return TestCodec.RunTestMain<ExtendedTestData.Config>(
+        return TestCodec.RunTestMain(
             args,
             ExtendedTestData.Config.SupportsFormat,
             ExtendedTestData.Config.FORMATS_HELP,
