@@ -170,7 +170,7 @@ namespace StructFrameTests
             bool useExtended = false;
             for (int i = 3; i < args.Length - 1; i++)
             {
-                if (args[i] == "--runner" && args[i + 1] == "test_runner_extended")
+                if (args[i] == "--runner" && args[i + 1] == "test_extended")
                 {
                     useExtended = true;
                     break;
