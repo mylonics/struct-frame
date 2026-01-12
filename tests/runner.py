@@ -344,30 +344,30 @@ class TestRunner:
 
         if exe_ext and source_ext in ['.c', '.cpp']:
             # For C++: source files are test_standard.cpp and test_extended.cpp
-            # For C: test_runner.c and test_runner_extended.c with additional source files
+            # For C: test_standard.c and test_extended.c
             if source_ext == '.cpp':
                 # C++: header-only design, entry points are test_standard.cpp and test_extended.cpp
                 test_runners = [
-                    (f"test_standard{source_ext}", f"test_runner{exe_ext}"),
+                    (f"test_standard{source_ext}", f"test_standard{exe_ext}"),
                 ]
                 
                 # Add extended test runner if it exists
                 extended_runner = test_dir / f"test_extended{source_ext}"
                 if extended_runner.exists():
                     test_runners.append(
-                        (f"test_extended{source_ext}", f"test_runner_extended{exe_ext}")
+                        (f"test_extended{source_ext}", f"test_extended{exe_ext}")
                     )
             else:
                 # C: header-only design, entry points are test_standard.c and test_extended.c
                 test_runners = [
-                    (f"test_standard{source_ext}", f"test_runner{exe_ext}"),
+                    (f"test_standard{source_ext}", f"test_standard{exe_ext}"),
                 ]
                 
                 # Add extended test runner if it exists
                 extended_runner = test_dir / f"test_extended{source_ext}"
                 if extended_runner.exists():
                     test_runners.append(
-                        (f"test_extended{source_ext}", f"test_runner_extended{exe_ext}")
+                        (f"test_extended{source_ext}", f"test_extended{exe_ext}")
                     )
             
             for runner_name, output_name in test_runners:
