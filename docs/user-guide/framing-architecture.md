@@ -32,14 +32,6 @@ frame_formats/
 - ✓ Maintainable: Each concept in its own file
 - ✓ Extensible: Easy to add new types via PR
 
-## Simplified Proto File
-
-The `frame_formats.proto` file contains **only**:
-- Enumerations: `HeaderType`, `PayloadType`, `Profile`
-- Profile aliases for custom combinations
-
-The proto file does not contain message definitions for each frame format variant.
-
 ## Framing Architecture
 
 The framing system uses a two-level architecture:
@@ -55,7 +47,7 @@ The framing system uses a two-level architecture:
 
 ## Frame Format Definitions
 
-Frame format definitions are in language-agnostic Python modules. This allows for code reuse, better documentation, and type safety.
+Frame format definitions are provided as hand-crafted boilerplate code for each language. The boilerplate files (`frame_profiles.ts`, `frame_profiles.py`, `FrameProfiles.hpp`, etc.) contain the pre-defined profile configurations.
 
 For examples and usage, see:
 - [`src/struct_frame/frame_formats/`](https://github.com/mylonics/struct-frame/tree/main/src/struct_frame/frame_formats) - Definition source code

@@ -46,9 +46,9 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
     plugin_type = "frame_format_matrix"
 
-    def _get_expected_message_count(self) -> int:
-        """Get the expected message count from test_messages.json."""
-        test_messages_path = self.project_root / "tests" / "test_messages.json"
+    def _get_expected_message_count(self, messages_file: str = "test_messages.json") -> int:
+        """Get the expected message count from the specified messages JSON file."""
+        test_messages_path = self.project_root / "tests" / messages_file
         try:
             with open(test_messages_path, 'r') as f:
                 data = json.load(f)
@@ -77,11 +77,17 @@ class FrameFormatMatrixPlugin(TestPlugin):
         if base_lang not in testable and testable:
             base_lang = testable[0]
         
-        expected_message_count = self._get_expected_message_count()
+        # Get test runner name and messages file from suite config
+        test_runner_name = suite.get('test_runner', 'test_runner')
+        messages_file = suite.get('messages_file', 'test_messages.json')
+        
+        expected_message_count = self._get_expected_message_count(messages_file)
         
         lang_names = [self.runner.get_lang(l).name for l in testable if self.runner.get_lang(l)]
         print(f"  Testing {len(frame_formats)} frame format(s) across {len(testable)} language(s): {', '.join(lang_names)}")
         print(f"  Expected messages per format: {expected_message_count}")
+        if messages_file != 'test_messages.json':
+            print(f"  Using messages file: {messages_file}")
 
         self._print_matrix_header(testable)
 
@@ -102,7 +108,7 @@ class FrameFormatMatrixPlugin(TestPlugin):
                     lang_id, output_file_pattern)
 
                 encode_result, _ = self.runner.run_test_runner(
-                    lang_id, 'encode', format_name, output_file)
+                    lang_id, 'encode', format_name, output_file, test_runner_name)
 
                 if encode_result and output_file and output_file.exists():
                     encoded_files[lang_id] = output_file
@@ -127,7 +133,7 @@ class FrameFormatMatrixPlugin(TestPlugin):
                     continue
 
                 decode_result, message_count = self._run_decode_with_file(
-                    lang_id, format_name, base_data_file)
+                    lang_id, format_name, base_data_file, test_runner_name)
                 
                 # Consider decode failed if not all expected messages were decoded
                 decode_success = decode_result and (expected_message_count == 0 or message_count >= expected_message_count)
@@ -144,7 +150,8 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
         return {'results': results, 'matrix': matrix}
 
-    def _run_decode_with_file(self, lang_id: str, format_name: str, data_file: Path) -> tuple[bool, int]:
+    def _run_decode_with_file(self, lang_id: str, format_name: str, data_file: Path, 
+                              test_runner_name: str = 'test_runner') -> tuple[bool, int]:
         """Run decoder with a specific input file.
         
         Returns:
@@ -164,9 +171,9 @@ class FrameFormatMatrixPlugin(TestPlugin):
                 if script_dir:
                     script_target = script_dir / data_file.name
                     with self.runner.temp_copy(data_file, script_target):
-                        return self.runner.run_test_runner(lang_id, 'decode', format_name, script_target)
+                        return self.runner.run_test_runner(lang_id, 'decode', format_name, script_target, test_runner_name)
                 else:
-                    return self.runner.run_test_runner(lang_id, 'decode', format_name, target_file)
+                    return self.runner.run_test_runner(lang_id, 'decode', format_name, target_file, test_runner_name)
         except Exception as e:
             if self.verbose:
                 self.log(f"Decode failed: {e}", "WARNING")

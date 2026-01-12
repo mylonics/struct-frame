@@ -7,6 +7,7 @@
   
   "proto_files": [
     "test_messages.proto",
-    "pkg_test_messages.proto"
+    "pkg_test_messages.proto",
+    "extended_messages.proto"
   ]
 }

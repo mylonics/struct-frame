@@ -338,25 +338,49 @@ class TestRunner:
 
         build_dir.mkdir(parents=True, exist_ok=True)
 
-        # Compile unified test_runner with test_codec for C/C++
+        # Compile test runners for C/C++
         source_ext = lang.source_extension
         exe_ext = lang.executable_extension
 
         if exe_ext and source_ext in ['.c', '.cpp']:
-            runner_source = test_dir / f"test_runner{source_ext}"
-            codec_source = test_dir / f"test_codec{source_ext}"
-            runner_output = build_dir / f"test_runner{exe_ext}"
-
-            sources = [runner_source, codec_source]
+            # For C++: source files are test_standard.cpp and test_extended.cpp
+            # For C: test_standard.c and test_extended.c
+            if source_ext == '.cpp':
+                # C++: header-only design, entry points are test_standard.cpp and test_extended.cpp
+                test_runners = [
+                    (f"test_standard{source_ext}", f"test_standard{exe_ext}"),
+                ]
+                
+                # Add extended test runner if it exists
+                extended_runner = test_dir / f"test_extended{source_ext}"
+                if extended_runner.exists():
+                    test_runners.append(
+                        (f"test_extended{source_ext}", f"test_extended{exe_ext}")
+                    )
+            else:
+                # C: header-only design, entry points are test_standard.c and test_extended.c
+                test_runners = [
+                    (f"test_standard{source_ext}", f"test_standard{exe_ext}"),
+                ]
+                
+                # Add extended test runner if it exists
+                extended_runner = test_dir / f"test_extended{source_ext}"
+                if extended_runner.exists():
+                    test_runners.append(
+                        (f"test_extended{source_ext}", f"test_extended{exe_ext}")
+                    )
             
-            # Add cJSON.c for C language
-            if source_ext == '.c':
-                cjson_source = test_dir / "cJSON.c"
-                if cjson_source.exists():
-                    sources.append(cjson_source)
+            for runner_name, output_name in test_runners:
+                runner_source = test_dir / runner_name
+                runner_output = build_dir / output_name
 
-            if runner_source.exists() and codec_source.exists():
-                if not lang.compile(sources, runner_output, gen_dir):
+                if not runner_source.exists():
+                    continue
+
+                # For both C and C++: header-only design, just compile the entry point
+                sources = [runner_source]
+
+                if not lang.compile(sources, runner_output, gen_dir, test_dir):
                     all_success = False
 
         # Project-based compilation (TypeScript, C#)
@@ -441,8 +465,15 @@ class TestRunner:
         return self._output_files.get(suite_name, {})
 
     def run_test_runner(self, lang_id: str, mode: str, format_name: str,
-                        output_file: Path) -> tuple[bool, int]:
+                        output_file: Path, test_runner_name: str = 'test_runner') -> tuple[bool, int]:
         """Run the unified test_runner for a language.
+        
+        Args:
+            lang_id: Language identifier
+            mode: 'encode' or 'decode'
+            format_name: Frame format name (e.g., 'profile_standard')
+            output_file: Path to output/input file
+            test_runner_name: Name of test runner executable/script (default: 'test_runner')
         
         Returns:
             (success, message_count): success status and number of messages decoded (for decode mode)
@@ -456,7 +487,7 @@ class TestRunner:
 
         # Compiled executable (C, C++)
         if lang.executable_extension:
-            runner_path = build_dir / f"test_runner{lang.executable_extension}"
+            runner_path = build_dir / f"{test_runner_name}{lang.executable_extension}"
             if not runner_path.exists():
                 return False, 0
             cmd = f'"{runner_path}" {mode} {format_name} "{output_file}"'
@@ -470,7 +501,9 @@ class TestRunner:
             csproj_path = test_dir / 'StructFrameTests.csproj'
             if not csproj_path.exists():
                 return False, 0
-            cmd = f'dotnet run --project "{csproj_path}" --verbosity quiet -- {mode} {format_name} "{output_file}"'
+            # For extended tests, we pass an extra argument to indicate the test runner type
+            runner_arg = f'--runner {test_runner_name}' if test_runner_name != 'test_runner' else ''
+            cmd = f'dotnet run --project "{csproj_path}" --verbosity quiet -- {mode} {format_name} "{output_file}" {runner_arg}'
             success, stdout, stderr = self.run_command(cmd, cwd=test_dir)
             message_count = self._extract_message_count(stdout, mode)
             return success, message_count
@@ -480,7 +513,7 @@ class TestRunner:
             script_dir = lang.get_script_dir()
             if not script_dir:
                 return False, 0
-            runner_path = script_dir / 'test_runner.js'
+            runner_path = script_dir / f'{test_runner_name}.js'
             if not runner_path.exists():
                 return False, 0
             interpreter = lang.interpreter or 'node'
@@ -493,11 +526,11 @@ class TestRunner:
         if lang.interpreter:
             script_dir = lang.get_script_dir()
             if script_dir:
-                runner_path = script_dir / 'test_runner.js'
+                runner_path = script_dir / f'{test_runner_name}.js'
             else:
                 test_dir = lang.get_test_dir()
                 source_ext = lang.source_extension or '.py'
-                runner_path = test_dir / f'test_runner{source_ext}'
+                runner_path = test_dir / f'{test_runner_name}{source_ext}'
 
             if not runner_path.exists():
                 return False, 0

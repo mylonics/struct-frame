@@ -294,11 +294,11 @@ var customParser = new FrameProfileParser(customConfig);
 
 ## Frame Format Definitions
 
-All supported frame formats are defined in [`examples/frame_formats.proto`](https://github.com/mylonics/struct-frame/blob/main/examples/frame_formats.proto). This file provides:
+All supported frame formats are provided as boilerplate code files that are copied to your project when generating code. The frame profiles define:
 
-- Protocol Buffer definitions for each frame format
-- Enumeration of frame types and payload types
-- Configuration message for runtime format selection
+- Pre-configured encoder/decoder classes for each profile
+- Header and payload type configurations
+- Convenience type aliases for common use cases
 
 ## Start Byte Scheme
 

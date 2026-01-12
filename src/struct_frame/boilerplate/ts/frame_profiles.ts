@@ -178,7 +178,19 @@ export function encodeFrameWithCrc(
     payload: Uint8Array,
     options: EncodeOptions = {}
 ): Uint8Array {
-    const { seq = 0, sysId = 0, compId = 0, pkgId = 0 } = options;
+    const { seq = 0, sysId = 0, compId = 0 } = options;
+    
+    // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id
+    // unless pkgId is explicitly provided in options
+    let pkgIdValue = options.pkgId;
+    let msgIdValue = msgId;
+    if (config.payload.hasPkgId && pkgIdValue === undefined) {
+        pkgIdValue = (msgId >> 8) & 0xFF;  // high byte
+        msgIdValue = msgId & 0xFF;          // low byte
+    } else {
+        pkgIdValue = pkgIdValue ?? 0;
+    }
+    
     const payloadSize = payload.length;
     const headerSize = profileHeaderSize(config);
     const footerSize = profileFooterSize(config);
@@ -220,11 +232,11 @@ export function encodeFrameWithCrc(
 
     // Write package ID if present
     if (config.payload.hasPkgId) {
-        buffer[idx++] = pkgId & 0xFF;
+        buffer[idx++] = pkgIdValue & 0xFF;
     }
 
     // Write message ID
-    buffer[idx++] = msgId & 0xFF;
+    buffer[idx++] = msgIdValue & 0xFF;
 
     // Write payload
     buffer.set(payload, idx);
@@ -317,11 +329,12 @@ export function parseFrameWithCrc(
         }
     }
 
-    // Skip package ID
-    if (config.payload.hasPkgId) idx++;
-
-    // Read message ID
-    const msgId = buffer[idx++];
+    // Read message ID (16-bit: high byte is pkg_id when hasPkgId, low byte is msg_id)
+    let msgId = 0;
+    if (config.payload.hasPkgId) {
+        msgId = buffer[idx++] << 8;  // pkg_id (high byte)
+    }
+    msgId |= buffer[idx++];  // msg_id (low byte)
 
     // Verify total size
     const totalSize = headerSize + msgLen + footerSize;
