@@ -5,15 +5,19 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <StartupObject>StructFrameTests.TestRunner</StartupObject>
+    <StartupObject>TestStandard</StartupObject>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Test files -->
-    <Compile Include="TestRunner.cs" />
-    <Compile Include="TestCodec.cs" />
-    <Compile Include="TestCodecExtended.cs" />
+    <!-- Test infrastructure -->
+    <Compile Include="include\TestCodec.cs" />
+    <Compile Include="include\StandardTestData.cs" />
+    <Compile Include="include\ExtendedTestData.cs" />
+    
+    <!-- Test entry points -->
+    <Compile Include="test_standard.cs" />
+    <Compile Include="test_extended.cs" />
     
     <!-- Generated struct files -->
     <Compile Include="..\generated\csharp\*.cs" Link="Generated\%(Filename)%(Extension)" />
