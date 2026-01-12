@@ -182,13 +182,14 @@ class Language:
     # Compilation Methods
     # -------------------------------------------------------------------------
 
-    def compile(self, sources: List[Path], output: Path, gen_dir: Path) -> bool:
+    def compile(self, sources: List[Path], output: Path, gen_dir: Path, test_dir: Path = None) -> bool:
         """Compile source files into an executable.
 
         Args:
             sources: List of source file paths
             output: Output executable path
             gen_dir: Generated code directory (for includes)
+            test_dir: Test source directory (for includes, optional)
 
         Returns:
             True if compilation succeeded
@@ -206,6 +207,8 @@ class Language:
         for f in self.compile_flags:
             f = f.replace('{generated_dir}', str(gen_dir))
             f = f.replace('{output}', str(output))
+            if test_dir:
+                f = f.replace('{test_dir}', str(test_dir))
             if '{source}' in f:
                 f = sources_str
             flags.append(f)
@@ -374,7 +377,7 @@ class CppLanguage(Language):
     build_dir = "tests/cpp/build"
 
     def _get_compile_flags(self) -> List[str]:
-        return ["-std=c++20", "-I{generated_dir}", "-o", "{output}", "{source}"]
+        return ["-std=c++20", "-I{generated_dir}", "-I{test_dir}", "-o", "{output}", "{source}"]
 
 
 class PythonLanguage(Language):
