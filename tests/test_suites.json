@@ -47,7 +47,6 @@
       "description": "Extended message ID tests (>255) for profiles with pkg_id support",
       "plugin": "frame_format_matrix",
       "test_runner": "test_extended",
-      "messages_file": "extended_messages.json",
       "base_language": "cpp",
       "frame_formats": [
         {

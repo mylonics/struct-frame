@@ -46,15 +46,14 @@ class FrameFormatMatrixPlugin(TestPlugin):
 
     plugin_type = "frame_format_matrix"
 
-    def _get_expected_message_count(self, messages_file: str = "test_messages.json") -> int:
-        """Get the expected message count from the specified messages JSON file."""
-        test_messages_path = self.project_root / "tests" / messages_file
-        try:
-            with open(test_messages_path, 'r') as f:
-                data = json.load(f)
-                return len(data.get('MixedMessages', []))
-        except Exception:
-            return 0
+    def _get_expected_message_count(self, test_runner: str = "test_standard") -> int:
+        """Get the expected message count based on the test runner type."""
+        # Standard tests have 11 messages, extended tests have 12 messages
+        # This is now hardcoded in the test data files (not JSON)
+        if test_runner == "test_extended":
+            return 12
+        else:  # test_standard or default
+            return 11
 
     def run(self, suite: Dict[str, Any]) -> Dict[str, Any]:
         """Run frame format matrix tests and display consolidated results."""
@@ -77,17 +76,16 @@ class FrameFormatMatrixPlugin(TestPlugin):
         if base_lang not in testable and testable:
             base_lang = testable[0]
         
-        # Get test runner name and messages file from suite config
-        test_runner_name = suite.get('test_runner', 'test_runner')
-        messages_file = suite.get('messages_file', 'test_messages.json')
+        # Get test runner name from suite config
+        test_runner_name = suite.get('test_runner', 'test_standard')
         
-        expected_message_count = self._get_expected_message_count(messages_file)
+        expected_message_count = self._get_expected_message_count(test_runner_name)
         
         lang_names = [self.runner.get_lang(l).name for l in testable if self.runner.get_lang(l)]
         print(f"  Testing {len(frame_formats)} frame format(s) across {len(testable)} language(s): {', '.join(lang_names)}")
         print(f"  Expected messages per format: {expected_message_count}")
-        if messages_file != 'test_messages.json':
-            print(f"  Using messages file: {messages_file}")
+        if test_runner_name != 'test_standard':
+            print(f"  Using test runner: {test_runner_name}")
 
         self._print_matrix_header(testable)
 
