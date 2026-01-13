@@ -28,12 +28,16 @@ struct FrameChecksum {
 };
 
 // Fletcher-16 checksum calculation
-inline FrameChecksum fletcher_checksum(const uint8_t* data, size_t length, uint8_t init1 = 0, uint8_t init2 = 0) {
-  FrameChecksum ck{init1, init2};
+inline FrameChecksum fletcher_checksum(const uint8_t* data, size_t length, uint8_t magic1 = 0, uint8_t magic2 = 0) {
+  FrameChecksum ck{0, 0};
   for (size_t i = 0; i < length; i++) {
     ck.byte1 = static_cast<uint8_t>(ck.byte1 + data[i]);
     ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
   }
+  ck.byte1 = static_cast<uint8_t>(ck.byte1 + magic1);
+  ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
+  ck.byte1 = static_cast<uint8_t>(ck.byte1 + magic2);
+  ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
   return ck;
 }
 

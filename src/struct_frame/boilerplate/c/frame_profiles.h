@@ -159,7 +159,7 @@ static inline size_t profile_encode_with_crc(
     /* Calculate and write CRC */
     if (config->payload.has_crc) {
         size_t crc_len = idx - crc_start;
-        frame_checksum_t ck = frame_fletcher_checksum_with_init(buffer + crc_start, crc_len, magic1, magic2);
+        frame_checksum_t ck = frame_fletcher_checksum_with_magic(buffer + crc_start, crc_len, magic1, magic2);
         buffer[idx++] = ck.byte1;
         buffer[idx++] = ck.byte2;
     }
@@ -286,7 +286,7 @@ static inline frame_msg_info_t profile_parse_with_crc(
             }
         }
         
-        frame_checksum_t ck = frame_fletcher_checksum_with_init(buffer + crc_start, crc_len, magic1, magic2);
+        frame_checksum_t ck = frame_fletcher_checksum_with_magic(buffer + crc_start, crc_len, magic1, magic2);
         if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
             return result;
         }

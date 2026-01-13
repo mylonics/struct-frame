@@ -34,8 +34,8 @@ def fletcher_checksum(data: Union[bytes, List[int]], start: int = 0, end: Option
         data: Buffer to checksum
         start: Start index (inclusive)
         end: End index (exclusive), defaults to len(data)
-        init1: Initial value for byte1 (magic number)
-        init2: Initial value for byte2 (magic number)
+        init1: Magic number 1 (added at the end)
+        init2: Magic number 2 (added at the end)
     
     Returns:
         FrameChecksum with byte1 and byte2
@@ -43,11 +43,17 @@ def fletcher_checksum(data: Union[bytes, List[int]], start: int = 0, end: Option
     if end is None:
         end = len(data)
     
-    byte1 = init1
-    byte2 = init2
+    byte1 = 0
+    byte2 = 0
     for i in range(start, end):
         byte1 = (byte1 + data[i]) & 0xFF
         byte2 = (byte2 + byte1) & 0xFF
+    
+    # Add magic numbers at the end
+    byte1 = (byte1 + init1) & 0xFF
+    byte2 = (byte2 + byte1) & 0xFF
+    byte1 = (byte1 + init2) & 0xFF
+    byte2 = (byte2 + byte1) & 0xFF
     
     return FrameChecksum(byte1, byte2)
 

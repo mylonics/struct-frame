@@ -17,15 +17,19 @@ typedef struct frame_checksum {
 } frame_checksum_t;
 
 /**
- * Calculate Fletcher-16 checksum with initial values (magic numbers)
+ * Calculate Fletcher-16 checksum with magic numbers added at the end
  */
-static inline frame_checksum_t frame_fletcher_checksum_with_init(const uint8_t* data, size_t length, uint8_t init1,
-                                                                 uint8_t init2) {
-  frame_checksum_t ck = {init1, init2};
+static inline frame_checksum_t frame_fletcher_checksum_with_magic(const uint8_t* data, size_t length, uint8_t magic1,
+                                                                  uint8_t magic2) {
+  frame_checksum_t ck = {0, 0};
   for (size_t i = 0; i < length; i++) {
     ck.byte1 = (uint8_t)(ck.byte1 + data[i]);
     ck.byte2 = (uint8_t)(ck.byte2 + ck.byte1);
   }
+  ck.byte1 = (uint8_t)(ck.byte1 + magic1);
+  ck.byte2 = (uint8_t)(ck.byte2 + ck.byte1);
+  ck.byte1 = (uint8_t)(ck.byte1 + magic2);
+  ck.byte2 = (uint8_t)(ck.byte2 + ck.byte1);
   return ck;
 }
 
@@ -33,7 +37,7 @@ static inline frame_checksum_t frame_fletcher_checksum_with_init(const uint8_t* 
  * Calculate Fletcher-16 checksum over the given data
  */
 static inline frame_checksum_t frame_fletcher_checksum(const uint8_t* data, size_t length) {
-  return frame_fletcher_checksum_with_init(data, length, 0, 0);
+  return frame_fletcher_checksum_with_magic(data, length, 0, 0);
 }
 
 /* Message info - unified type for size and magic numbers lookup */

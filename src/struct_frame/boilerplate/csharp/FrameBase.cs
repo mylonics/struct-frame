@@ -86,15 +86,20 @@ namespace StructFrame
         /// <summary>
         /// Fletcher-16 checksum calculation
         /// </summary>
-        public static FrameChecksum FletcherChecksum(byte[] data, int offset, int length, byte init1 = 0, byte init2 = 0)
+        public static FrameChecksum FletcherChecksum(byte[] data, int offset, int length, byte magic1 = 0, byte magic2 = 0)
         {
-            byte ck1 = init1;
-            byte ck2 = init2;
+            byte ck1 = 0;
+            byte ck2 = 0;
             for (int i = 0; i < length; i++)
             {
                 ck1 = (byte)(ck1 + data[offset + i]);
                 ck2 = (byte)(ck2 + ck1);
             }
+            // Add magic numbers at the end
+            ck1 = (byte)(ck1 + magic1);
+            ck2 = (byte)(ck2 + ck1);
+            ck1 = (byte)(ck1 + magic2);
+            ck2 = (byte)(ck2 + ck1);
             return new FrameChecksum(ck1, ck2);
         }
 
@@ -109,15 +114,20 @@ namespace StructFrame
         /// <summary>
         /// Fletcher-16 checksum calculation on a span
         /// </summary>
-        public static FrameChecksum FletcherChecksum(ReadOnlySpan<byte> data, byte init1 = 0, byte init2 = 0)
+        public static FrameChecksum FletcherChecksum(ReadOnlySpan<byte> data, byte magic1 = 0, byte magic2 = 0)
         {
-            byte ck1 = init1;
-            byte ck2 = init2;
+            byte ck1 = 0;
+            byte ck2 = 0;
             for (int i = 0; i < data.Length; i++)
             {
                 ck1 = (byte)(ck1 + data[i]);
                 ck2 = (byte)(ck2 + ck1);
             }
+            // Add magic numbers at the end
+            ck1 = (byte)(ck1 + magic1);
+            ck2 = (byte)(ck2 + ck1);
+            ck1 = (byte)(ck1 + magic2);
+            ck2 = (byte)(ck2 + ck1);
             return new FrameChecksum(ck1, ck2);
         }
     }

@@ -69,9 +69,9 @@ export interface EncodeOptions {
 export interface MessageInfo {
     /** Message size in bytes */
     size: number;
-    /** Magic number 1 for CRC checksum initialization */
+    /** Magic number 1 (added at end of CRC checksum calculation) */
     magic1: number;
-    /** Magic number 2 for CRC checksum initialization */
+    /** Magic number 2 (added at end of CRC checksum calculation) */
     magic2: number;
 }
 
