@@ -2,7 +2,7 @@
 
 
 // Fletcher-16 checksum calculation
-function fletcher_checksum(buffer, start = 0, end = undefined) {
+function fletcherChecksum(buffer, start = 0, end = undefined) {
     if (end === undefined) {
         end = buffer.length;
     }
@@ -37,7 +37,7 @@ function createFrameMsgInfo() {
 /**
  * Validate a payload with CRC (shared by Default, Extended, etc. payload types).
  */
-function validate_payload_with_crc(buffer, headerSize, lengthBytes, crcStartOffset) {
+function validatePayloadWithCrc(buffer, headerSize, lengthBytes, crcStartOffset) {
     const result = createFrameMsgInfo();
     const footerSize = 2; // CRC is always 2 bytes
     const overhead = headerSize + footerSize;
@@ -50,7 +50,7 @@ function validate_payload_with_crc(buffer, headerSize, lengthBytes, crcStartOffs
 
     // Calculate expected CRC range: from crcStartOffset to before the CRC bytes
     const crcDataLen = msgLength + 1 + lengthBytes; // msg_id (1) + lengthBytes + payload
-    const ck = fletcher_checksum(buffer, crcStartOffset, crcStartOffset + crcDataLen);
+    const ck = fletcherChecksum(buffer, crcStartOffset, crcStartOffset + crcDataLen);
 
     if (ck[0] === buffer[buffer.length - 2] && ck[1] === buffer[buffer.length - 1]) {
         result.valid = true;
@@ -65,7 +65,7 @@ function validate_payload_with_crc(buffer, headerSize, lengthBytes, crcStartOffs
 /**
  * Validate a minimal payload (no CRC, no length field).
  */
-function validate_payload_minimal(buffer, headerSize) {
+function validatePayloadMinimal(buffer, headerSize) {
     const result = createFrameMsgInfo();
 
     if (buffer.length < headerSize) {
@@ -83,7 +83,7 @@ function validate_payload_minimal(buffer, headerSize) {
 /**
  * Encode payload with length and CRC (modifies output array in place).
  */
-function encode_payload_with_crc(output, msgId, msg, lengthBytes, crcStartOffset) {
+function encodePayloadWithCrc(output, msgId, msg, lengthBytes, crcStartOffset) {
     // Add length field
     if (lengthBytes === 1) {
         output.push(msg.length & 0xFF);
@@ -102,7 +102,7 @@ function encode_payload_with_crc(output, msgId, msg, lengthBytes, crcStartOffset
 
     // Calculate and add CRC
     const crcDataLen = msg.length + 1 + lengthBytes;
-    const ck = fletcher_checksum(output, crcStartOffset, crcStartOffset + crcDataLen);
+    const ck = fletcherChecksum(output, crcStartOffset, crcStartOffset + crcDataLen);
     output.push(ck[0]);
     output.push(ck[1]);
 }
@@ -110,7 +110,7 @@ function encode_payload_with_crc(output, msgId, msg, lengthBytes, crcStartOffset
 /**
  * Encode minimal payload (no length, no CRC).
  */
-function encode_payload_minimal(output, msgId, msg) {
+function encodePayloadMinimal(output, msgId, msg) {
     output.push(msgId);
     for (let i = 0; i < msg.length; i++) {
         output.push(msg[i]);
@@ -234,7 +234,7 @@ class GenericFrameParser {
                 this.buffer.push(byte);
                 if (this.buffer.length >= this.packet_size) {
                     if (this.config.hasCrc) {
-                        const validationResult = validate_payload_with_crc(
+                        const validationResult = validatePayloadWithCrc(
                             this.buffer, this.config.headerSize, this.config.lengthBytes, startBytes.length);
                         if (validationResult.valid) {
                             result.valid = validationResult.valid;
@@ -243,7 +243,7 @@ class GenericFrameParser {
                             result.msg_data = validationResult.msg_data;
                         }
                     } else {
-                        const validationResult = validate_payload_minimal(this.buffer, this.config.headerSize);
+                        const validationResult = validatePayloadMinimal(this.buffer, this.config.headerSize);
                         result.valid = validationResult.valid;
                         result.msg_id = validationResult.msg_id;
                         result.msg_len = validationResult.msg_len;
@@ -270,9 +270,9 @@ class GenericFrameParser {
 
         // Use appropriate payload encoding
         if (config.hasCrc) {
-            encode_payload_with_crc(output, msg_id, msg, config.lengthBytes, config.startBytes.length);
+            encodePayloadWithCrc(output, msg_id, msg, config.lengthBytes, config.startBytes.length);
         } else {
-            encode_payload_minimal(output, msg_id, msg);
+            encodePayloadMinimal(output, msg_id, msg);
         }
 
         return new Uint8Array(output);
@@ -297,9 +297,9 @@ class GenericFrameParser {
 
         // Validate payload
         if (config.hasCrc) {
-            return validate_payload_with_crc(buffer, config.headerSize, config.lengthBytes, config.startBytes.length);
+            return validatePayloadWithCrc(buffer, config.headerSize, config.lengthBytes, config.startBytes.length);
         } else {
-            return validate_payload_minimal(buffer, config.headerSize);
+            return validatePayloadMinimal(buffer, config.headerSize);
         }
     }
 }
@@ -338,12 +338,12 @@ function createFrameParserClass(config) {
 }
 
 module.exports = {
-    fletcher_checksum,
+    fletcherChecksum,
     createFrameMsgInfo,
-    validate_payload_with_crc,
-    validate_payload_minimal,
-    encode_payload_with_crc,
-    encode_payload_minimal,
+    validatePayloadWithCrc,
+    validatePayloadMinimal,
+    encodePayloadWithCrc,
+    encodePayloadMinimal,
     GenericParserState,
     GenericFrameParser,
     createFrameParserClass,

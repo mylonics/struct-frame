@@ -8,16 +8,16 @@ export type { MessageConstructor } from './struct-base';
 export type { FrameMsgInfo, FrameParserConfig } from './frame-base';
 export {
     createFrameMsgInfo,
-    fletcher_checksum,
+    fletcherChecksum,
     // Generic parser class (use createFrameParserClass for type-safe wrappers)
     GenericFrameParser,
     GenericParserState,
     createFrameParserClass,
     // Shared payload parsing functions
-    validate_payload_with_crc,
-    validate_payload_minimal,
-    encode_payload_with_crc,
-    encode_payload_minimal,
+    validatePayloadWithCrc,
+    validatePayloadMinimal,
+    encodePayloadWithCrc,
+    encodePayloadMinimal,
 } from './frame-base';
 
 // Frame headers - Start byte patterns and header types

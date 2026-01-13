@@ -99,7 +99,7 @@ class MessageTsGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s_%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (packageName, msg.name)
 
         result += 'export const %s = new Struct(\'%s\')' % (
             package_msg_name, package_msg_name)
@@ -157,7 +157,7 @@ class MessageTsClassGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s_%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (packageName, msg.name)
         
         # Calculate field layout with offsets
         fields = calculate_field_layout(msg, package, packages)
@@ -414,7 +414,7 @@ class FileTsGen():
         for ext_package, type_names in sorted(external_types.items()):
             # Convert package name to PascalCase for TypeScript conventions
             ext_package_pascal = pascalCase(ext_package)
-            imports = ', '.join('%s_%s' % (ext_package_pascal, t) for t in sorted(type_names))
+            imports = ', '.join('%s%s' % (ext_package_pascal, t) for t in sorted(type_names))
             yield "import { %s } from './%s.structframe';\n" % (imports, ext_package)
         
         yield "\n"
@@ -469,7 +469,7 @@ class FileTsGen():
                     yield '    switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
-                    package_msg_name = '%s_%s' % (package_name_pascal, msg.name)
+                    package_msg_name = '%s%s' % (package_name_pascal, msg.name)
                     yield '        case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
 
                 yield '        default: break;\n'

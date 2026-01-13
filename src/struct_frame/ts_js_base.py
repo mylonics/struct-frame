@@ -601,4 +601,4 @@ def _get_nested_type_name(field, package):
     type_package = getattr(field, 'type_package', None) or package.name
     # Convert package name to PascalCase for TypeScript/JavaScript conventions
     type_package_pascal = pascalCase(type_package)
-    return f"{type_package_pascal}_{field.fieldType}"
+    return f"{type_package_pascal}{field.fieldType}"

@@ -99,7 +99,7 @@ class MessageJsGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s_%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (packageName, msg.name)
 
         result += "const %s = new Struct('%s')" % (
             package_msg_name, package_msg_name)
@@ -159,7 +159,7 @@ class MessageJsClassGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s_%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (packageName, msg.name)
         
         # Calculate field layout with offsets
         fields = calculate_field_layout(msg, package, packages)
@@ -380,7 +380,7 @@ class FileJsGen():
             # Convert package name to PascalCase for JavaScript conventions
             ext_package_pascal = pascalCase(ext_package)
             for t in sorted(type_names):
-                type_var = '%s_%s' % (ext_package_pascal, t)
+                type_var = '%s%s' % (ext_package_pascal, t)
                 yield "const { %s } = require('./%s.structframe');\n" % (type_var, ext_package)
         
         if external_types:
@@ -437,7 +437,7 @@ class FileJsGen():
                     yield '  switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
-                    package_msg_name = '%s_%s' % (package_name_pascal, msg.name)
+                    package_msg_name = '%s%s' % (package_name_pascal, msg.name)
                     yield '    case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
 
                 yield '    default: break;\n'

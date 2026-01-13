@@ -28,7 +28,7 @@ import {
     payloadHeaderSize,
     payloadFooterSize,
 } from './payload-types';
-import { fletcher_checksum, createFrameMsgInfo, FrameMsgInfo } from './frame-base';
+import { fletcherChecksum, createFrameMsgInfo, FrameMsgInfo } from './frame-base';
 import { MessageBase } from './struct-base';
 
 // =============================================================================
@@ -244,7 +244,7 @@ export function encodeFrameWithCrc(
 
     // Calculate and write CRC
     const crcLen = idx - crcStart;
-    const ck = fletcher_checksum(buffer, crcStart, crcStart + crcLen);
+    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen);
     buffer[idx++] = ck[0];
     buffer[idx++] = ck[1];
 
@@ -344,7 +344,7 @@ export function parseFrameWithCrc(
 
     // Verify CRC
     const crcLen = totalSize - crcStart - footerSize;
-    const ck = fletcher_checksum(buffer, crcStart, crcStart + crcLen);
+    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen);
     if (ck[0] !== buffer[totalSize - 2] || ck[1] !== buffer[totalSize - 1]) {
         return result;
     }
