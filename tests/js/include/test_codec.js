@@ -20,7 +20,7 @@ const {
   ProfileBulkWriter,
   ProfileNetworkAccumulatingReader,
   ProfileNetworkWriter,
-} = require('../../generated/js/frame_profiles');
+} = require('../../generated/js/frame-profiles');
 
 /** Print hex dump of data (up to 64 bytes) */
 function printHex(data) {

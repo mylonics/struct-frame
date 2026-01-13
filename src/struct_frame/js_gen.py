@@ -359,9 +359,9 @@ class FileJsGen():
         # Only import MessageBase/Struct if there are messages
         if package.messages:
             if use_class_based:
-                yield "const { MessageBase } = require('./struct_base');\n"
+                yield "const { MessageBase } = require('./struct-base');\n"
             else:
-                yield "const { Struct } = require('./struct_base');\n"
+                yield "const { Struct } = require('./struct-base');\n"
         
         # Collect cross-package type dependencies
         external_types = {}  # {package_name: set of type names}

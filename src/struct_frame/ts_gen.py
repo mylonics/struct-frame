@@ -394,9 +394,9 @@ class FileTsGen():
         # Only import MessageBase/Struct if there are messages
         if package.messages:
             if use_class_based:
-                yield "import { MessageBase } from './struct_base';\n"
+                yield "import { MessageBase } from './struct-base';\n"
             else:
-                yield "import { Struct, ExtractType } from './struct_base';\n"
+                yield "import { Struct, ExtractType } from './struct-base';\n"
         
         # Collect cross-package type dependencies
         external_types = {}  # {package_name: set of type names}
