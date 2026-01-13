@@ -127,7 +127,8 @@ private:
     }
 
     void handleError(const std::string& error) {
-        log("Transport error: " + error);
+        log("Transport error: ");
+        log(error);
     }
 
     void handleClose() {
@@ -142,6 +143,29 @@ private:
         }
     }
 
+    void log(const char* message) {
+        if (debug_) {
+            // In a real implementation, this would use platform-specific logging
+            // printf("[StructFrameSdk] %s\n", message);
+        }
+    }
+
+    // Static callback wrappers for transport
+    static void dataCallbackWrapper(const uint8_t* data, size_t length, void* user_data) {
+        auto* self = static_cast<StructFrameSdk*>(user_data);
+        self->handleIncomingData(data, length);
+    }
+
+    static void errorCallbackWrapper(const char* error, void* user_data) {
+        auto* self = static_cast<StructFrameSdk*>(user_data);
+        self->handleError(error);
+    }
+
+    static void closeCallbackWrapper(void* user_data) {
+        auto* self = static_cast<StructFrameSdk*>(user_data);
+        self->handleClose();
+    }
+
 public:
     StructFrameSdk(const StructFrameSdkConfig& config)
         : transport_(config.transport),
@@ -151,18 +175,10 @@ public:
 
         buffer_.reserve(maxBufferSize_);
 
-        // Set up transport callbacks
-        transport_->onData([this](const uint8_t* data, size_t length) {
-            handleIncomingData(data, length);
-        });
-
-        transport_->onError([this](const std::string& error) {
-            handleError(error);
-        });
-
-        transport_->onClose([this]() {
-            handleClose();
-        });
+        // Set up transport callbacks using static wrappers
+        transport_->onData(dataCallbackWrapper, this);
+        transport_->onError(errorCallbackWrapper, this);
+        transport_->onClose(closeCallbackWrapper, this);
     }
 
     ~StructFrameSdk() {
@@ -222,17 +238,17 @@ public:
     }
 
     /**
-     * Subscribe with lambda function
+     * Subscribe with a callable (lambda, functor, etc.)
      * @tparam TMessage The message type
+     * @tparam Callable The callable type
      * @tparam MaxObservers Maximum number of observers (default 16)
      * @param msgId The message ID
-     * @param callback Lambda to call when message is received
+     * @param callback Callable to invoke when message is received
      * @return Subscription handle (RAII) - keep alive as long as subscription is needed
      */
-    template<typename TMessage, size_t MaxObservers = 16>
-    Subscription<TMessage, MaxObservers> subscribe(uint8_t msgId,
-                                    std::function<void(const TMessage&, uint8_t)> callback) {
-        auto* observer = new LambdaObserver<TMessage>(std::move(callback));
+    template<typename TMessage, typename Callable, size_t MaxObservers = 16>
+    Subscription<TMessage, MaxObservers> subscribe(uint8_t msgId, Callable callback) {
+        auto* observer = new CallableObserver<TMessage, Callable>(callback);
         auto* observable = getObservable<TMessage, MaxObservers>(msgId);
         observable->subscribe(observer);
         log("Subscribed to message ID " + std::to_string(msgId));

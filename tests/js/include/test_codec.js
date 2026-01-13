@@ -51,13 +51,13 @@ function getWriter(format, capacity) {
 }
 
 /** Get reader for a profile format */
-function getReader(format, getMsgLength) {
+function getReader(format, getMessageInfo) {
   const readers = {
-    'profile_standard': () => new ProfileStandardAccumulatingReader(),
-    'profile_sensor': () => new ProfileSensorAccumulatingReader(getMsgLength),
-    'profile_ipc': () => new ProfileIPCAccumulatingReader(getMsgLength),
-    'profile_bulk': () => new ProfileBulkAccumulatingReader(),
-    'profile_network': () => new ProfileNetworkAccumulatingReader(),
+    'profile_standard': () => new ProfileStandardAccumulatingReader(getMessageInfo),
+    'profile_sensor': () => new ProfileSensorAccumulatingReader(getMessageInfo),
+    'profile_ipc': () => new ProfileIPCAccumulatingReader(getMessageInfo),
+    'profile_bulk': () => new ProfileBulkAccumulatingReader(getMessageInfo),
+    'profile_network': () => new ProfileNetworkAccumulatingReader(getMessageInfo),
   };
 
   const creator = readers[format];
@@ -112,7 +112,7 @@ function decodeMessages(config, format, data) {
   const chunk2 = data.slice(chunk1Size, chunk1Size + chunk2Size);
   const chunk3 = data.slice(chunk1Size + chunk2Size);
 
-  const reader = getReader(format, config.getMessageLength.bind(config));
+  const reader = getReader(format, config.getMessageInfo.bind(config));
   if (!reader) {
     console.log(`  Unknown frame format: ${format}`);
     return 0;

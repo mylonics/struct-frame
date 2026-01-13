@@ -322,51 +322,63 @@ static inline size_t ext_encode_message(buffer_writer_t* writer, size_t index) {
   switch (msg_id) {
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MSG_ID: {
       const ExtendedTestExtendedIdMessage1* msg = get_message_ext_1();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MSG_ID: {
       const ExtendedTestExtendedIdMessage2* msg = get_message_ext_2();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MSG_ID: {
       const ExtendedTestExtendedIdMessage3* msg = get_message_ext_3();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MSG_ID: {
       const ExtendedTestExtendedIdMessage4* msg = get_message_ext_4();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MSG_ID: {
       const ExtendedTestExtendedIdMessage5* msg = get_message_ext_5();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MSG_ID: {
       const ExtendedTestExtendedIdMessage6* msg = get_message_ext_6();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MSG_ID: {
       const ExtendedTestExtendedIdMessage7* msg = get_message_ext_7();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MSG_ID: {
       const ExtendedTestExtendedIdMessage8* msg = get_message_ext_8();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MSG_ID: {
       const ExtendedTestExtendedIdMessage9* msg = get_message_ext_9();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MSG_ID: {
       const ExtendedTestExtendedIdMessage10* msg = get_message_ext_10();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MAGIC2);
     }
     case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MSG_ID: {
       const ExtendedTestLargePayloadMessage1* msg = get_message_large_1();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MAGIC1, EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MAGIC2);
     }
     case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MSG_ID: {
       const ExtendedTestLargePayloadMessage2* msg = get_message_large_2();
-      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAGIC1, EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAGIC2);
     }
     default:
       return 0;
@@ -467,55 +479,6 @@ static inline bool ext_supports_format(const char* format) {
 }
 
 /* ============================================================================
- * Get message length wrapper for extended messages
- * ============================================================================ */
-
-/* Note: We need to rename the generated function to avoid conflicts */
-static inline bool ext_get_message_length(size_t msg_id, size_t* size) {
-  switch (msg_id) {
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MSG_ID:
-      *size = EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MSG_ID:
-      *size = EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAX_SIZE;
-      return true;
-    default:
-      break;
-  }
-  return false;
-}
-
-/* ============================================================================
  * Test configuration
  * ============================================================================ */
 
@@ -528,6 +491,6 @@ static const test_config_t ext_test_config = {
     .encode_message = ext_encode_message,
     .validate_message = ext_validate_message,
     .reset_state = ext_reset_state,
-    .get_message_length = ext_get_message_length,
+    .get_message_info = get_message_info,
     .supports_format = ext_supports_format,
 };

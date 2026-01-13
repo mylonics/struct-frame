@@ -2,7 +2,7 @@
 
 
 // Fletcher-16 checksum calculation
-function fletcherChecksum(buffer, start = 0, end = undefined) {
+function fletcherChecksum(buffer, start = 0, end = undefined, init1 = 0, init2 = 0) {
     if (end === undefined) {
         end = buffer.length;
     }
@@ -14,6 +14,12 @@ function fletcherChecksum(buffer, start = 0, end = undefined) {
         byte1 = (byte1 + buffer[i]) % 256;
         byte2 = (byte2 + byte1) % 256;
     }
+
+    // Add magic numbers at the end
+    byte1 = (byte1 + init1) % 256;
+    byte2 = (byte2 + byte1) % 256;
+    byte1 = (byte1 + init2) % 256;
+    byte2 = (byte2 + byte1) % 256;
 
     return [byte1, byte2];
 }

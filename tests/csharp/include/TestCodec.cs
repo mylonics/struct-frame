@@ -14,6 +14,7 @@ using System.Linq;
 using System.Text;
 using StructFrame;
 using StructFrame.SerializationTest;
+using ExtendedMessageDefinitions = StructFrame.ExtendedTest.MessageDefinitions;
 
 // Type aliases to match expected names
 using SerializationTestMessage = StructFrame.SerializationTest.SerializationTestSerializationTestMessage;
@@ -285,6 +286,17 @@ namespace StructFrameTests
             throw new InvalidOperationException("Unknown message type");
         }
 
+        private static (byte magic1, byte magic2) GetMessageMagicNumbers(object msg)
+        {
+            if (msg is SerializationTestMessage)
+                return (SerializationTestMessage.Magic1, SerializationTestMessage.Magic2);
+            else if (msg is BasicTypesMessage)
+                return (BasicTypesMessage.Magic1, BasicTypesMessage.Magic2);
+            else if (msg is UnionTestMessage)
+                return (UnionTestMessage.Magic1, UnionTestMessage.Magic2);
+            throw new InvalidOperationException("Unknown message type");
+        }
+
         // ============================================================================
         // Generic encoding/decoding (unified logic)
         // ============================================================================
@@ -295,20 +307,20 @@ namespace StructFrameTests
         /// <param name="formatName">Frame format profile name</param>
         /// <param name="messageCount">Total number of messages to encode</param>
         /// <param name="bufferSize">Buffer size for encoded data</param>
-        /// <param name="getMessageData">Delegate to get (msgData, msgId) for each index</param>
-        public static byte[] EncodeMessages(
+        /// <param name="getMessage">Delegate to get IStructFrameMessage for each index</param>
+        public static byte[] EncodeMessages<T>(
             string formatName,
             int messageCount,
             int bufferSize,
-            Func<int, (byte[] msgData, int msgId)> getMessageData)
+            Func<int, T> getMessage) where T : struct, IStructFrameMessage
         {
             var writer = Profiles.CreateWriter(formatName);
             writer.SetBuffer(new byte[bufferSize]);
 
             for (int i = 0; i < messageCount; i++)
             {
-                var (msgData, msgId) = getMessageData(i);
-                int bytesWritten = writer.Write((ushort)msgId, msgData);
+                T msg = getMessage(i);
+                int bytesWritten = writer.Write(msg);
                 if (bytesWritten == 0)
                     throw new Exception($"Failed to encode message {i}");
             }
@@ -322,18 +334,18 @@ namespace StructFrameTests
         /// <param name="formatName">Frame format profile name</param>
         /// <param name="data">Encoded data buffer</param>
         /// <param name="expectedCount">Expected number of messages</param>
-        /// <param name="getMsgLength">Delegate to get message length from ID</param>
+        /// <param name="getMessageInfo">Delegate to get message info from ID</param>
         /// <param name="validateMessage">Delegate to validate message at index, returns (expectedMsgId, isValid)</param>
         /// <param name="usePkgId">Whether to combine pkg_id with msg_id</param>
         public static (bool success, int messageCount) DecodeMessages(
             string formatName,
             byte[] data,
             int expectedCount,
-            Func<int, int?> getMsgLength,
+            Func<int, MessageInfo?> getMessageInfo,
             Func<int, FrameMsgInfo, (int expectedMsgId, bool isValid)> validateMessage,
             bool usePkgId = false)
         {
-            var reader = Profiles.CreateReader(formatName, getMsgLength);
+            var reader = Profiles.CreateReader(formatName, getMessageInfo);
             reader.SetBuffer(data);
             int messageCount = 0;
 
@@ -387,44 +399,73 @@ namespace StructFrameTests
 
         public static byte[] EncodeStandardMessages(string formatName)
         {
-            return EncodeMessages(formatName, StandardTestData.MESSAGE_COUNT, 4096, i =>
+            // Create a generic encoder that handles dynamic message types
+            var writer = Profiles.CreateWriter(formatName);
+            writer.SetBuffer(new byte[4096]);
+
+            for (int i = 0; i < StandardTestData.MESSAGE_COUNT; i++)
             {
                 var mixedMsg = StandardTestData.GetTestMessage(i);
-                object msg;
+                int bytesWritten = 0;
 
                 if (mixedMsg.Type == MessageType.SerializationTest)
-                    msg = CreateSerializationTestMessage(mixedMsg.Data);
+                {
+                    var msg = CreateSerializationTestMessage(mixedMsg.Data);
+                    bytesWritten = writer.Write(msg);
+                }
                 else if (mixedMsg.Type == MessageType.BasicTypes)
-                    msg = CreateBasicTypesMessage(mixedMsg.Data);
+                {
+                    var msg = CreateBasicTypesMessage(mixedMsg.Data);
+                    bytesWritten = writer.Write(msg);
+                }
                 else if (mixedMsg.Type == MessageType.UnionTest)
-                    msg = CreateUnionTestMessage(mixedMsg.Data);
+                {
+                    var msg = CreateUnionTestMessage(mixedMsg.Data);
+                    bytesWritten = writer.Write(msg);
+                }
                 else
+                {
                     throw new Exception($"Unknown message type: {mixedMsg.Type}");
+                }
 
-                return (EncodeMessage(msg), GetMessageId(msg));
-            });
+                if (bytesWritten == 0)
+                    throw new Exception($"Failed to encode message {i}");
+            }
+
+            return writer.GetData();
         }
 
         public static byte[] EncodeExtendedMessages(string formatName)
         {
-            return EncodeMessages(formatName, ExtendedTestData.MESSAGE_COUNT, 8192, i =>
+            var writer = Profiles.CreateWriter(formatName);
+            writer.SetBuffer(new byte[8192]);
+
+            for (int i = 0; i < ExtendedTestData.MESSAGE_COUNT; i++)
             {
                 var (msg, _) = ExtendedTestData.GetExtendedTestMessage(i);
                 if (msg == null)
                     throw new Exception($"Failed to get extended message {i}");
-                return (msg.Pack(), msg.MsgId);
-            });
+                
+                int bytesWritten = writer.Write(msg);
+                if (bytesWritten == 0)
+                    throw new Exception($"Failed to encode message {i}");
+            }
+
+            return writer.GetData();
         }
 
         // ============================================================================
         // Decoding functions (using generic implementation)
         // ============================================================================
 
-        private static int? GetStandardMessageLength(int msgId)
+        private static MessageInfo? GetStandardMessageInfo(int msgId)
         {
-            if (MessageDefinitions.GetMessageLength(msgId, out int size))
-                return size;
-            return null;
+            return MessageDefinitions.GetMessageInfo(msgId);
+        }
+
+        private static MessageInfo? GetExtendedMessageInfo(int msgId)
+        {
+            return ExtendedTestData.GetMessageInfo(msgId);
         }
 
         private static bool ValidateSerializationTestMessage(SerializationTestMessage msg, Dictionary<string, object> expected)
@@ -500,7 +541,7 @@ namespace StructFrameTests
                 formatName,
                 data,
                 StandardTestData.MESSAGE_COUNT,
-                GetStandardMessageLength,
+                GetStandardMessageInfo,
                 (i, result) =>
                 {
                     var expected = StandardTestData.GetTestMessage(i);
@@ -540,7 +581,7 @@ namespace StructFrameTests
                 formatName,
                 data,
                 ExtendedTestData.MESSAGE_COUNT,
-                msgId => (int?)ExtendedTestData.GetMessageLength(msgId),
+                GetExtendedMessageInfo,
                 (i, result) =>
                 {
                     var (expectedMsg, _) = ExtendedTestData.GetExtendedTestMessage(i);
@@ -551,7 +592,7 @@ namespace StructFrameTests
                     if (decodedPayload == null)
                     {
                         Console.WriteLine($"    Failed to extract payload for message {i}");
-                        return (expectedMsg.MsgId, false);
+                        return (expectedMsg.GetMsgId(), false);
                     }
                     
                     // Validate by comparing packed message bytes
@@ -559,7 +600,7 @@ namespace StructFrameTests
                     if (decodedPayload.Length != expectedData.Length)
                     {
                         Console.WriteLine($"    Size mismatch: expected {expectedData.Length}, got {decodedPayload.Length}");
-                        return (expectedMsg.MsgId, false);
+                        return (expectedMsg.GetMsgId(), false);
                     }
                     
                     for (int j = 0; j < expectedData.Length; j++)
@@ -567,11 +608,11 @@ namespace StructFrameTests
                         if (decodedPayload[j] != expectedData[j])
                         {
                             Console.WriteLine($"    Byte {j} mismatch: expected {expectedData[j]:X2}, got {decodedPayload[j]:X2}");
-                            return (expectedMsg.MsgId, false);
+                            return (expectedMsg.GetMsgId(), false);
                         }
                     }
                     
-                    return (expectedMsg.MsgId, true);
+                    return (expectedMsg.GetMsgId(), true);
                 },
                 usePkgId: true);
         }

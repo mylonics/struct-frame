@@ -166,9 +166,9 @@ namespace StructFrame
         /// <summary>
         /// Create a BufferReader for the specified profile name
         /// </summary>
-        public static BufferReader CreateReader(string profileName, Func<int, int?> getMsgLength = null)
+        public static BufferReader CreateReader(string profileName, Func<int, MessageInfo?> getMessageInfo = null)
         {
-            return new BufferReader(GetByName(profileName), getMsgLength);
+            return new BufferReader(GetByName(profileName), getMessageInfo);
         }
 
         /// <summary>
@@ -182,9 +182,9 @@ namespace StructFrame
         /// <summary>
         /// Create a BufferParser for the specified profile name
         /// </summary>
-        public static BufferParser CreateParser(string profileName, Func<int, int?> getMsgLength = null)
+        public static BufferParser CreateParser(string profileName, Func<int, MessageInfo?> getMessageInfo = null)
         {
-            return new BufferParser(GetByName(profileName), getMsgLength);
+            return new BufferParser(GetByName(profileName), getMessageInfo);
         }
     }
 
@@ -201,11 +201,15 @@ namespace StructFrame
         }
 
         /// <summary>
-        /// Encode a frame into a buffer
+        /// Encode a message struct or interface.
+        /// Magic numbers are automatically extracted from the message.
         /// </summary>
-        public int Encode(byte[] buffer, int offset, byte seq, byte sysId, byte compId,
-                         ushort msgId, byte[] payload, int payloadOffset, int payloadSize)
+        public int Encode(byte[] buffer, int offset, IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
+            byte[] payload = message.Pack();
+            var (magic1, magic2) = message.GetMagicNumbers();
+            ushort msgId = message.GetMsgId();
+            int payloadSize = payload.Length;
             int totalSize = _config.Overhead + payloadSize;
 
             // Check buffer capacity and max payload (skip max payload check for minimal profiles without length field)
@@ -271,7 +275,7 @@ namespace StructFrame
             // Write payload
             if (payloadSize > 0 && payload != null)
             {
-                Array.Copy(payload, payloadOffset, buffer, idx, payloadSize);
+                Array.Copy(payload, 0, buffer, idx, payloadSize);
                 idx += payloadSize;
             }
 
@@ -279,35 +283,12 @@ namespace StructFrame
             if (_config.HasCrc)
             {
                 int crcLen = idx - crcStart;
-                var ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen);
+                var ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen, magic1, magic2);
                 buffer[idx++] = ck.Byte1;
                 buffer[idx++] = ck.Byte2;
             }
 
             return idx - offset;
-        }
-
-        /// <summary>
-        /// Encode a frame (simple overload without addressing)
-        /// </summary>
-        public int Encode(byte[] buffer, int offset, ushort msgId, byte[] payload)
-        {
-            return Encode(buffer, offset, 0, 0, 0, msgId, payload, 0, payload?.Length ?? 0);
-        }
-
-        /// <summary>
-        /// Encode a frame and return a new byte array
-        /// </summary>
-        public byte[] Encode(ushort msgId, byte[] payload)
-        {
-            int payloadLen = payload?.Length ?? 0;
-            byte[] buffer = new byte[_config.Overhead + payloadLen];
-            int written = Encode(buffer, 0, msgId, payload);
-            if (written != buffer.Length)
-            {
-                Array.Resize(ref buffer, written);
-            }
-            return buffer;
         }
     }
 
@@ -317,12 +298,12 @@ namespace StructFrame
     public class BufferParser
     {
         private readonly ProfileConfig _config;
-        private readonly Func<int, int?> _getMsgLength;
+        private readonly Func<int, MessageInfo?> _getMessageInfo;
 
-        public BufferParser(ProfileConfig config, Func<int, int?> getMsgLength = null)
+        public BufferParser(ProfileConfig config, Func<int, MessageInfo?> getMessageInfo = null)
         {
             _config = config;
-            _getMsgLength = getMsgLength;
+            _getMessageInfo = getMessageInfo;
         }
 
         /// <summary>
@@ -409,7 +390,17 @@ namespace StructFrame
             if (_config.HasCrc)
             {
                 int crcLen = totalSize - (crcStart - offset) - _config.FooterSize;
-                var ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen);
+                byte magic1 = 0, magic2 = 0;
+                if (_getMessageInfo != null)
+                {
+                    var info = _getMessageInfo(msgId);
+                    if (info.HasValue)
+                    {
+                        magic1 = info.Value.Magic1;
+                        magic2 = info.Value.Magic2;
+                    }
+                }
+                var ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen, magic1, magic2);
                 if (ck.Byte1 != buffer[offset + totalSize - 2] || ck.Byte2 != buffer[offset + totalSize - 1])
                 {
                     return FrameMsgInfo.Invalid;
@@ -453,24 +444,24 @@ namespace StructFrame
             byte msgId = buffer[idx];
 
             // Get message length from callback
-            if (_getMsgLength == null)
+            if (_getMessageInfo == null)
             {
                 return FrameMsgInfo.Invalid;
             }
 
-            int? msgLen = _getMsgLength(msgId);
-            if (!msgLen.HasValue)
+            var msgInfo = _getMessageInfo(msgId);
+            if (!msgInfo.HasValue)
             {
                 return FrameMsgInfo.Invalid;
             }
 
-            int totalSize = _config.HeaderSize + msgLen.Value;
+            int totalSize = _config.HeaderSize + msgInfo.Value.Size;
             if (length < totalSize)
             {
                 return FrameMsgInfo.Invalid;
             }
 
-            return new FrameMsgInfo(true, msgId, msgLen.Value, totalSize, buffer, offset + _config.HeaderSize);
+            return new FrameMsgInfo(true, msgId, msgInfo.Value.Size, totalSize, buffer, offset + _config.HeaderSize);
         }
     }
 
@@ -485,10 +476,10 @@ namespace StructFrame
         private int _offset;
         private int _size;
 
-        public BufferReader(ProfileConfig config, Func<int, int?> getMsgLength = null)
+        public BufferReader(ProfileConfig config, Func<int, MessageInfo?> getMessageInfo = null)
         {
             _config = config;
-            _parser = new BufferParser(config, getMsgLength);
+            _parser = new BufferParser(config, getMessageInfo);
         }
 
         /// <summary>
@@ -589,38 +580,22 @@ namespace StructFrame
         }
 
         /// <summary>
-        /// Write a message to the buffer
+        /// Write a message implementing IStructFrameMessage to the buffer.
+        /// Magic numbers for checksum are automatically extracted from the message.
         /// </summary>
-        public int Write(ushort msgId, byte[] payload)
-        {
-            return Write(0, 0, 0, msgId, payload, 0, payload?.Length ?? 0);
-        }
-
-        /// <summary>
-        /// Write a message with sequence and addressing
-        /// </summary>
-        public int Write(byte seq, byte sysId, byte compId, ushort msgId, byte[] payload, int payloadOffset, int payloadSize)
+        public int Write(IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
             if (_buffer == null)
             {
                 return 0;
             }
 
-            int written = _encoder.Encode(_buffer, _offset, seq, sysId, compId, msgId, payload, payloadOffset, payloadSize);
+            int written = _encoder.Encode(_buffer, _offset, message, seq, sysId, compId);
             if (written > 0)
             {
                 _offset += written;
             }
             return written;
-        }
-
-        /// <summary>
-        /// Write a struct message to the buffer
-        /// </summary>
-        public int Write<T>(T message) where T : struct, IStructFrameMessage
-        {
-            byte[] payload = message.Pack();
-            return Write(message.GetMsgId(), payload);
         }
 
         /// <summary>
@@ -672,7 +647,7 @@ namespace StructFrame
 
         private readonly ProfileConfig _config;
         private readonly BufferParser _parser;
-        private readonly Func<int, int?> _getMsgLength;
+        private readonly Func<int, MessageInfo?> _getMessageInfo;
         private readonly int _bufferSize;
 
         // Internal buffer for partial messages
@@ -686,12 +661,12 @@ namespace StructFrame
         private int _currentOffset;
         private int _currentSize;
 
-        public AccumulatingReader(ProfileConfig config, int bufferSize = 1024, Func<int, int?> getMsgLength = null)
+        public AccumulatingReader(ProfileConfig config, int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null)
         {
             _config = config;
             _bufferSize = bufferSize;
-            _getMsgLength = getMsgLength;
-            _parser = new BufferParser(config, getMsgLength);
+            _getMessageInfo = getMessageInfo;
+            _parser = new BufferParser(config, getMessageInfo);
             _internalBuffer = new byte[bufferSize];
             Reset();
         }
@@ -930,10 +905,10 @@ namespace StructFrame
                 if (!_config.HasLength && !_config.HasCrc)
                 {
                     byte msgId = _internalBuffer[_config.HeaderSize - 1];
-                    int? msgLen = _getMsgLength?.Invoke(msgId);
-                    if (msgLen.HasValue)
+                    var msgInfo = _getMessageInfo?.Invoke(msgId);
+                    if (msgInfo.HasValue)
                     {
-                        _expectedFrameSize = _config.HeaderSize + msgLen.Value;
+                        _expectedFrameSize = _config.HeaderSize + msgInfo.Value.Size;
 
                         if (_expectedFrameSize > _bufferSize)
                         {
@@ -942,7 +917,7 @@ namespace StructFrame
                             return FrameMsgInfo.Invalid;
                         }
 
-                        if (msgLen.Value == 0)
+                        if (msgInfo.Value.Size == 0)
                         {
                             var result = new FrameMsgInfo(true, msgId, 0, _expectedFrameSize, _internalBuffer, _config.HeaderSize);
                             _state = State.LookingForStart1;
@@ -1021,10 +996,10 @@ namespace StructFrame
 
         private FrameMsgInfo HandleMinimalMsgId(byte msgId)
         {
-            int? msgLen = _getMsgLength?.Invoke(msgId);
-            if (msgLen.HasValue)
+            var msgInfo = _getMessageInfo?.Invoke(msgId);
+            if (msgInfo.HasValue)
             {
-                _expectedFrameSize = _config.HeaderSize + msgLen.Value;
+                _expectedFrameSize = _config.HeaderSize + msgInfo.Value.Size;
 
                 if (_expectedFrameSize > _bufferSize)
                 {
@@ -1033,7 +1008,7 @@ namespace StructFrame
                     return FrameMsgInfo.Invalid;
                 }
 
-                if (msgLen.Value == 0)
+                if (msgInfo.Value.Size == 0)
                 {
                     var result = new FrameMsgInfo(true, msgId, 0, _expectedFrameSize, _internalBuffer, _config.HeaderSize);
                     _state = State.LookingForStart1;
@@ -1119,7 +1094,7 @@ namespace StructFrame
     /// </summary>
     public class BufferParser<TProfile> : BufferParser where TProfile : struct, IProfileProvider
     {
-        public BufferParser(Func<int, int?> getMsgLength = null) : base(TProfile.Profile, getMsgLength) { }
+        public BufferParser(Func<int, MessageInfo?> getMessageInfo = null) : base(TProfile.Profile, getMessageInfo) { }
     }
 
     /// <summary>
@@ -1127,7 +1102,7 @@ namespace StructFrame
     /// </summary>
     public class BufferReader<TProfile> : BufferReader where TProfile : struct, IProfileProvider
     {
-        public BufferReader(Func<int, int?> getMsgLength = null) : base(TProfile.Profile, getMsgLength) { }
+        public BufferReader(Func<int, MessageInfo?> getMessageInfo = null) : base(TProfile.Profile, getMessageInfo) { }
     }
 
     /// <summary>
@@ -1143,8 +1118,8 @@ namespace StructFrame
     /// </summary>
     public class AccumulatingReader<TProfile> : AccumulatingReader where TProfile : struct, IProfileProvider
     {
-        public AccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) 
-            : base(TProfile.Profile, bufferSize, getMsgLength) { }
+        public AccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) 
+            : base(TProfile.Profile, bufferSize, getMessageInfo) { }
     }
 
     // ============================================================================
@@ -1159,18 +1134,18 @@ namespace StructFrame
     public class ProfileNetworkEncoder : FrameEncoder<NetworkProfile> { }
 
     // BufferParser aliases
-    public class ProfileStandardParser : BufferParser<StandardProfile> { public ProfileStandardParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
-    public class ProfileSensorParser : BufferParser<SensorProfile> { public ProfileSensorParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
-    public class ProfileIPCParser : BufferParser<IPCProfile> { public ProfileIPCParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
-    public class ProfileBulkParser : BufferParser<BulkProfile> { public ProfileBulkParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
-    public class ProfileNetworkParser : BufferParser<NetworkProfile> { public ProfileNetworkParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileStandardParser : BufferParser<StandardProfile> { public ProfileStandardParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileSensorParser : BufferParser<SensorProfile> { public ProfileSensorParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileIPCParser : BufferParser<IPCProfile> { public ProfileIPCParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileBulkParser : BufferParser<BulkProfile> { public ProfileBulkParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileNetworkParser : BufferParser<NetworkProfile> { public ProfileNetworkParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
 
     // BufferReader aliases
-    public class ProfileStandardReader : BufferReader<StandardProfile> { public ProfileStandardReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
-    public class ProfileSensorReader : BufferReader<SensorProfile> { public ProfileSensorReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
-    public class ProfileIPCReader : BufferReader<IPCProfile> { public ProfileIPCReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
-    public class ProfileBulkReader : BufferReader<BulkProfile> { public ProfileBulkReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
-    public class ProfileNetworkReader : BufferReader<NetworkProfile> { public ProfileNetworkReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileStandardReader : BufferReader<StandardProfile> { public ProfileStandardReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileSensorReader : BufferReader<SensorProfile> { public ProfileSensorReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileIPCReader : BufferReader<IPCProfile> { public ProfileIPCReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileBulkReader : BufferReader<BulkProfile> { public ProfileBulkReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileNetworkReader : BufferReader<NetworkProfile> { public ProfileNetworkReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
 
     // BufferWriter aliases
     public class ProfileStandardWriter : BufferWriter<StandardProfile> { }
@@ -1180,9 +1155,9 @@ namespace StructFrame
     public class ProfileNetworkWriter : BufferWriter<NetworkProfile> { }
 
     // AccumulatingReader aliases
-    public class ProfileStandardAccumulatingReader : AccumulatingReader<StandardProfile> { public ProfileStandardAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
-    public class ProfileSensorAccumulatingReader : AccumulatingReader<SensorProfile> { public ProfileSensorAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
-    public class ProfileIPCAccumulatingReader : AccumulatingReader<IPCProfile> { public ProfileIPCAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
-    public class ProfileBulkAccumulatingReader : AccumulatingReader<BulkProfile> { public ProfileBulkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
-    public class ProfileNetworkAccumulatingReader : AccumulatingReader<NetworkProfile> { public ProfileNetworkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileStandardAccumulatingReader : AccumulatingReader<StandardProfile> { public ProfileStandardAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileSensorAccumulatingReader : AccumulatingReader<SensorProfile> { public ProfileSensorAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileIPCAccumulatingReader : AccumulatingReader<IPCProfile> { public ProfileIPCAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileBulkAccumulatingReader : AccumulatingReader<BulkProfile> { public ProfileBulkAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileNetworkAccumulatingReader : AccumulatingReader<NetworkProfile> { public ProfileNetworkAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
 }

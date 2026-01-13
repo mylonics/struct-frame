@@ -16,7 +16,7 @@ Each test entry point (.py file) must provide a TestConfig with:
 - get_msg_id_order(): list of msg_ids in encode/decode order
 - create_encoder(): factory function returning an Encoder object
 - create_validator(): factory function returning a Validator object
-- get_message_length(msg_id): function for minimal profiles (optional)
+- get_message_info(msg_id): unified function returning MessageInfo (size, magic1, magic2)
 - supports_format(format): check if format is supported
 """
 
@@ -156,25 +156,23 @@ def decode_messages(config, format_name: str, buffer: bytes) -> Tuple[bool, int]
         buffer[chunk1_size + chunk2_size:]
     ]
     
-    # Get message length function for minimal profiles
-    get_msg_len = config.get_message_length
+    # Get unified message info function
+    get_msg_info = config.get_message_info
     
-    # Reader classes for each format (with minimal profile flag)
-    # Format: (reader_class_factory, needs_get_msg_length)
+    # Reader classes for each format
     reader_info = {
-        'profile_standard': (lambda: ProfileStandardAccumulatingReader(config.BUFFER_SIZE), False),
-        'profile_sensor': (lambda: ProfileSensorAccumulatingReader(get_msg_len, config.BUFFER_SIZE), True),
-        'profile_ipc': (lambda: ProfileIPCAccumulatingReader(get_msg_len, config.BUFFER_SIZE), True),
-        'profile_bulk': (lambda: ProfileBulkAccumulatingReader(config.BUFFER_SIZE), False),
-        'profile_network': (lambda: ProfileNetworkAccumulatingReader(config.BUFFER_SIZE), False),
+        'profile_standard': lambda: ProfileStandardAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'profile_sensor': lambda: ProfileSensorAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'profile_ipc': lambda: ProfileIPCAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'profile_bulk': lambda: ProfileBulkAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'profile_network': lambda: ProfileNetworkAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
     }
     
-    factory_info = reader_info.get(format_name)
-    if not factory_info:
+    factory = reader_info.get(format_name)
+    if not factory:
         print(f"  Unknown frame format: {format_name}")
         return False, 0
     
-    factory, _ = factory_info
     reader = factory()
     
     # Process chunks

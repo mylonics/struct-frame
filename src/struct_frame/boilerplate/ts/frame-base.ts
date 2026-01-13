@@ -1,7 +1,8 @@
 // Struct-frame boilerplate: frame parser base utilities
 
 // Fletcher-16 checksum calculation
-export function fletcherChecksum(buffer: Uint8Array | number[], start: number = 0, end?: number): [number, number] {
+export function fletcherChecksum(buffer: Uint8Array | number[], start: number = 0, end?: number, 
+                                 init1: number = 0, init2: number = 0): [number, number] {
     if (end === undefined) {
         end = buffer.length;
     }
@@ -13,6 +14,12 @@ export function fletcherChecksum(buffer: Uint8Array | number[], start: number = 
         byte1 = (byte1 + buffer[i]) % 256;
         byte2 = (byte2 + byte1) % 256;
     }
+
+    // Add magic numbers at the end
+    byte1 = (byte1 + init1) % 256;
+    byte2 = (byte2 + byte1) % 256;
+    byte1 = (byte1 + init2) % 256;
+    byte2 = (byte2 + byte1) % 256;
 
     return [byte1, byte2];
 }

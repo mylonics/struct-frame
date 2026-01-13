@@ -507,6 +507,12 @@ class MessagePyGen():
         if msg.id != None:
             result += '    msg_id = %s\n' % msg.id
             result += '    MSG_ID = %s  # C++ compatible alias\n' % msg.id
+        
+        # Add magic numbers for checksum
+        if msg.id is not None and msg.magic_bytes:
+            result += f'    MAGIC1 = {msg.magic_bytes[0]}  # Checksum magic number (based on field types and positions)\n'
+            result += f'    MAGIC2 = {msg.magic_bytes[1]}  # Checksum magic number (based on field types and positions)\n'
+        
         result += '\n'
 
         # Generate __init__ method
@@ -675,7 +681,26 @@ class FilePyGen():
                 yield f'    return msg_class.msg_size if msg_class else 0\n\n'
                 
                 yield f'# Alias for minimal frame parsing compatibility\n'
-                yield f'get_msg_length = get_message_size\n'
+                yield f'get_msg_length = get_message_size\n\n'
+                
+                # Add unified get_message_info function
+                yield f'def get_message_info(msg_id: int):\n'
+                yield f'    """\n'
+                yield f'    Get unified message info (size and magic numbers) for a 16-bit message ID.\n'
+                yield f'    \n'
+                yield f'    Args:\n'
+                yield f'        msg_id: 16-bit message ID (pkg_id << 8 | local_msg_id)\n'
+                yield f'    \n'
+                yield f'    Returns:\n'
+                yield f'        MessageInfo(size, magic1, magic2) or None if message not found\n'
+                yield f'    """\n'
+                yield f'    from frame_profiles import MessageInfo\n'
+                yield f'    msg_class = get_message_class(msg_id)\n'
+                yield f'    if not msg_class:\n'
+                yield f'        return None\n'
+                yield f'    magic1 = getattr(msg_class, "MAGIC1", 0)\n'
+                yield f'    magic2 = getattr(msg_class, "MAGIC2", 0)\n'
+                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2)\n'
             else:
                 # Flat namespace mode: 8-bit message ID
                 yield '%s_definitions = {\n' % package.name
@@ -693,4 +718,23 @@ class FilePyGen():
                 yield f'def get_msg_length(msg_id: int) -> int:\n'
                 yield f'    """Get message size from message ID (for minimal frame parsing)"""\n'
                 yield f'    msg_class = get_message_class(msg_id)\n'
-                yield f'    return msg_class.msg_size if msg_class else 0\n'
+                yield f'    return msg_class.msg_size if msg_class else 0\n\n'
+                
+                # Add unified get_message_info function
+                yield f'def get_message_info(msg_id: int):\n'
+                yield f'    """\n'
+                yield f'    Get unified message info (size and magic numbers) for a message ID.\n'
+                yield f'    \n'
+                yield f'    Args:\n'
+                yield f'        msg_id: Message ID\n'
+                yield f'    \n'
+                yield f'    Returns:\n'
+                yield f'        MessageInfo(size, magic1, magic2) or None if message not found\n'
+                yield f'    """\n'
+                yield f'    from frame_profiles import MessageInfo\n'
+                yield f'    msg_class = get_message_class(msg_id)\n'
+                yield f'    if not msg_class:\n'
+                yield f'        return None\n'
+                yield f'    magic1 = getattr(msg_class, "MAGIC1", 0)\n'
+                yield f'    magic2 = getattr(msg_class, "MAGIC2", 0)\n'
+                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2)\n'

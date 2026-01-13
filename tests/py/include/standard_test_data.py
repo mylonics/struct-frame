@@ -25,7 +25,7 @@ from struct_frame.generated.serialization_test import (
     SerializationTestComprehensiveArrayMessage,
     SerializationTestSensor,
     SerializationTestStatus,
-    get_msg_length as parser_get_message_length,
+    get_message_info,
 )
 
 
@@ -183,15 +183,15 @@ class Encoder:
         if msg_id == SerializationTestSerializationTestMessage.MSG_ID:
             msg = self._serial_msgs[self.serial_idx]
             self.serial_idx += 1
-            return writer.write_msg(msg)
+            return writer.write(msg)
         elif msg_id == SerializationTestBasicTypesMessage.MSG_ID:
             msg = self._basic_msgs[self.basic_idx]
             self.basic_idx += 1
-            return writer.write_msg(msg)
+            return writer.write(msg)
         elif msg_id == SerializationTestUnionTestMessage.MSG_ID:
             msg = self._union_msgs[self.union_idx]
             self.union_idx += 1
-            return writer.write_msg(msg)
+            return writer.write(msg)
         return 0
 
 
@@ -282,8 +282,9 @@ class Config:
         return Validator()
     
     @staticmethod
-    def get_message_length(msg_id: int) -> Optional[int]:
-        return parser_get_message_length(msg_id)
+    def get_message_info(msg_id: int):
+        """Get unified message info (size, magic1, magic2)"""
+        return get_message_info(msg_id)
     
     @staticmethod
     def supports_format(format_name: str) -> bool:

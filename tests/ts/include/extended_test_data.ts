@@ -10,6 +10,7 @@
  */
 
 import { TestConfig } from './test_codec';
+import { MessageInfo } from '../../generated/ts/frame-profiles';
 import {
   ExtendedTestExtendedIdMessage1,
   ExtendedTestExtendedIdMessage2,
@@ -23,6 +24,7 @@ import {
   ExtendedTestExtendedIdMessage10,
   ExtendedTestLargePayloadMessage1,
   ExtendedTestLargePayloadMessage2,
+  get_message_info,
 } from '../../generated/ts/extended_test.structframe';
 
 /** Message count */
@@ -241,6 +243,6 @@ export const extTestConfig: TestConfig = {
   encodeMessage,
   validateMessage,
   resetState,
-  getMessageLength: (_msgId: number) => undefined,
+  getMessageInfo: get_message_info,
   supportsFormat,
 };

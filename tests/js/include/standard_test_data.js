@@ -8,7 +8,7 @@ const {
   SerializationTestBasicTypesMessage,
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
-  get_message_length,
+  get_message_info,
 } = require('../../generated/js/serialization_test.structframe');
 
 /** Message count */
@@ -286,7 +286,7 @@ const stdTestConfig = {
   encodeMessage,
   validateMessage,
   resetState,
-  getMessageLength: get_message_length,
+  getMessageInfo: (msgId) => get_message_info(msgId),
   supportsFormat,
 };
 

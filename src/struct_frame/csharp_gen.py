@@ -379,6 +379,12 @@ class MessageCSharpGen():
                 result += '        public const ushort MsgId = %d;\n' % combined_msg_id
             else:
                 result += '        public const ushort MsgId = %d;\n' % msg.id
+        
+        # Add magic numbers for checksum
+        if msg.id is not None and msg.magic_bytes:
+            result += f'        public const byte Magic1 = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
+            result += f'        public const byte Magic2 = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
+        
         result += '\n'
 
         # Generate field declarations
@@ -492,6 +498,14 @@ class MessageCSharpGen():
         result += '        /// Get the message size (IStructFrameMessage)\n'
         result += '        /// </summary>\n'
         result += '        public int GetSize() => MaxSize;\n'
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Get the magic numbers for checksum (IStructFrameMessage)\n'
+        result += '        /// </summary>\n'
+        if msg.id is not None and msg.magic_bytes:
+            result += f'        public (byte Magic1, byte Magic2) GetMagicNumbers() => (Magic1, Magic2);\n'
+        else:
+            result += '        public (byte Magic1, byte Magic2) GetMagicNumbers() => (0, 0);\n'
 
         # Generate equality members if requested
         if equality:
@@ -687,23 +701,27 @@ class FileCSharpGen():
         if package.messages:
             yield '    public static class MessageDefinitions\n'
             yield '    {\n'
+            yield '        /// <summary>\n'
+            yield '        /// Get message info (size and magic numbers) for a given message ID.\n'
+            yield '        /// </summary>\n'
+            yield '        /// <param name="msgId">The message ID</param>\n'
+            yield '        /// <returns>MessageInfo if found, null otherwise</returns>\n'
             
             if package.package_id is not None:
-                yield '        public static bool GetMessageLength(ushort msgId, out int size)\n'
+                yield '        public static MessageInfo? GetMessageInfo(int msgId)\n'
                 yield '        {\n'
                 yield '            byte pkgId = (byte)((msgId >> 8) & 0xFF);\n'
                 yield '            byte localMsgId = (byte)(msgId & 0xFF);\n'
                 yield '            \n'
                 yield f'            if (pkgId != PackageInfo.PackageId)\n'
                 yield '            {\n'
-                yield '                size = 0;\n'
-                yield '                return false;\n'
+                yield '                return null;\n'
                 yield '            }\n'
                 yield '            \n'
                 yield '            switch (localMsgId)\n'
                 yield '            {\n'
             else:
-                yield '        public static bool GetMessageLength(int msgId, out int size)\n'
+                yield '        public static MessageInfo? GetMessageInfo(int msgId)\n'
                 yield '        {\n'
                 yield '            switch (msgId)\n'
                 yield '            {\n'
@@ -711,11 +729,16 @@ class FileCSharpGen():
             for key, msg in package.sortedMessages().items():
                 if msg.id:
                     structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                    magic1 = '0'
+                    magic2 = '0'
+                    if msg.magic_bytes:
+                        magic1 = f'{structName}.Magic1'
+                        magic2 = f'{structName}.Magic2'
                     if package.package_id is not None:
-                        yield '                case %d: size = %s.MaxSize; return true;\n' % (msg.id, structName)
+                        yield '                case %d: return new MessageInfo(%s.MaxSize, %s, %s);\n' % (msg.id, structName, magic1, magic2)
                     else:
-                        yield '                case %s.MsgId: size = %s.MaxSize; return true;\n' % (structName, structName)
-            yield '                default: size = 0; return false;\n'
+                        yield '                case %s.MsgId: return new MessageInfo(%s.MaxSize, %s, %s);\n' % (structName, structName, magic1, magic2)
+            yield '                default: return null;\n'
             yield '            }\n'
             yield '        }\n'
             yield '    }\n'

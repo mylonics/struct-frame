@@ -54,7 +54,32 @@ export interface EncodeOptions {
     sysId?: number;
     compId?: number;
     pkgId?: number;
+    magic1?: number;
+    magic2?: number;
 }
+
+// =============================================================================
+// Message Info Interface - Unified lookup for parsing
+// =============================================================================
+
+/**
+ * Message info returned by the getMessageInfo callback.
+ * Contains all information needed to parse a message by ID.
+ */
+export interface MessageInfo {
+    /** Message size in bytes */
+    size: number;
+    /** Magic number 1 (added at end of CRC checksum calculation) */
+    magic1: number;
+    /** Magic number 2 (added at end of CRC checksum calculation) */
+    magic2: number;
+}
+
+/**
+ * Callback type for looking up message info by ID.
+ * Returns MessageInfo if the message ID is known, undefined otherwise.
+ */
+export type GetMessageInfo = (msgId: number) => MessageInfo | undefined;
 
 // =============================================================================
 // Profile Helper Functions
@@ -170,14 +195,24 @@ export const ProfileNetworkConfig: FrameProfileConfig = createProfileConfig(
 // =============================================================================
 
 /**
- * Generic encode function for frames with CRC.
+ * Encode a message object.
+ * Automatically extracts msgId, payload, and magic numbers from the message.
  */
-export function encodeFrameWithCrc(
+export function encodeMessage(
     config: FrameProfileConfig,
-    msgId: number,
-    payload: Uint8Array,
+    msg: MessageBase,
     options: EncodeOptions = {}
 ): Uint8Array {
+    const ctor = msg.constructor as typeof MessageBase & { _msgid?: number; _magic1?: number; _magic2?: number };
+    const msgId = ctor._msgid;
+    
+    if (msgId === undefined) {
+        throw new Error('Message struct must have _msgid static property');
+    }
+    
+    const payload = new Uint8Array(msg._buffer);
+    const magic1 = ctor._magic1 ?? 0;
+    const magic2 = ctor._magic2 ?? 0;
     const { seq = 0, sysId = 0, compId = 0 } = options;
     
     // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id
@@ -244,7 +279,7 @@ export function encodeFrameWithCrc(
 
     // Calculate and write CRC
     const crcLen = idx - crcStart;
-    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen);
+    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
     buffer[idx++] = ck[0];
     buffer[idx++] = ck[1];
 
@@ -252,41 +287,15 @@ export function encodeFrameWithCrc(
 }
 
 /**
- * Generic encode function for minimal frames (no length, no CRC).
- */
-export function encodeFrameMinimal(
-    config: FrameProfileConfig,
-    msgId: number,
-    payload: Uint8Array
-): Uint8Array {
-    const headerSize = profileHeaderSize(config);
-    const totalSize = headerSize + payload.length;
-    const buffer = new Uint8Array(totalSize);
-    let idx = 0;
-
-    // Write start bytes
-    if (config.header.numStartBytes >= 1) {
-        buffer[idx++] = config.startByte1;
-    }
-    if (config.header.numStartBytes >= 2) {
-        buffer[idx++] = config.startByte2;
-    }
-
-    // Write message ID
-    buffer[idx++] = msgId & 0xFF;
-
-    // Write payload
-    buffer.set(payload, idx);
-
-    return buffer;
-}
-
-/**
  * Generic parse function for frames with CRC.
+ * @param config Profile configuration
+ * @param buffer Buffer containing frame data
+ * @param getMessageInfo Optional callback to get message info (size and magic numbers)
  */
 export function parseFrameWithCrc(
     config: FrameProfileConfig,
-    buffer: Uint8Array
+    buffer: Uint8Array,
+    getMessageInfo?: GetMessageInfo
 ): FrameMsgInfo {
     const result = createFrameMsgInfo();
     const length = buffer.length;
@@ -344,7 +353,18 @@ export function parseFrameWithCrc(
 
     // Verify CRC
     const crcLen = totalSize - crcStart - footerSize;
-    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen);
+    
+    // Get magic numbers for this message type
+    let magic1 = 0, magic2 = 0;
+    if (getMessageInfo) {
+        const info = getMessageInfo(msgId);
+        if (info) {
+            magic1 = info.magic1;
+            magic2 = info.magic2;
+        }
+    }
+    
+    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
     if (ck[0] !== buffer[totalSize - 2] || ck[1] !== buffer[totalSize - 1]) {
         return result;
     }
@@ -359,12 +379,15 @@ export function parseFrameWithCrc(
 }
 
 /**
- * Generic parse function for minimal frames (requires get_msg_length callback).
+ * Generic parse function for minimal frames (requires getMessageInfo callback for size).
+ * @param config Profile configuration
+ * @param buffer Buffer containing frame data
+ * @param getMessageInfo Callback to get message info (size is required, magic numbers ignored for minimal frames)
  */
 export function parseFrameMinimal(
     config: FrameProfileConfig,
     buffer: Uint8Array,
-    getMsgLength: (msgId: number) => number | undefined
+    getMessageInfo: GetMessageInfo
 ): FrameMsgInfo {
     const result = createFrameMsgInfo();
     const headerSize = profileHeaderSize(config);
@@ -391,10 +414,11 @@ export function parseFrameMinimal(
     const msgId = buffer[idx];
 
     // Get message length from callback
-    const msgLen = getMsgLength(msgId);
-    if (msgLen === undefined || msgLen === null) {
+    const info = getMessageInfo(msgId);
+    if (!info) {
         return result;
     }
+    const msgLen = info.size;
 
     const totalSize = headerSize + msgLen;
     if (buffer.length < totalSize) {
@@ -418,33 +442,30 @@ export function parseFrameMinimal(
  * BufferReader - Iterate through a buffer parsing multiple frames.
  *
  * Usage:
- *   const reader = new BufferReader(ProfileStandardConfig, buffer);
+ *   const reader = new BufferReader(ProfileStandardConfig, buffer, getMessageInfo);
  *   let result = reader.next();
  *   while (result.valid) {
  *       // Process result.msg_id, result.msg_data, result.msg_len
  *       result = reader.next();
  *   }
- *
- * For minimal profiles that need getMsgLength:
- *   const reader = new BufferReader(ProfileSensorConfig, buffer, getMsgLength);
  */
 export class BufferReader {
     private config: FrameProfileConfig;
     private buffer: Uint8Array;
     private size: number;
     private _offset: number;
-    private getMsgLength?: (msgId: number) => number | undefined;
+    private getMessageInfo?: GetMessageInfo;
 
     constructor(
         config: FrameProfileConfig,
         buffer: Uint8Array,
-        getMsgLength?: (msgId: number) => number | undefined
+        getMessageInfo?: GetMessageInfo
     ) {
         this.config = config;
         this.buffer = buffer;
         this.size = buffer.length;
         this._offset = 0;
-        this.getMsgLength = getMsgLength;
+        this.getMessageInfo = getMessageInfo;
     }
 
     /**
@@ -460,14 +481,14 @@ export class BufferReader {
         let result: FrameMsgInfo;
 
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            result = parseFrameWithCrc(this.config, remaining);
+            result = parseFrameWithCrc(this.config, remaining, this.getMessageInfo);
         } else {
-            if (!this.getMsgLength) {
-                // No more valid data to parse without length callback
+            if (!this.getMessageInfo) {
+                // No more valid data to parse without message info callback
                 this._offset = this.size;
                 return createFrameMsgInfo();
             }
-            result = parseFrameMinimal(this.config, remaining, this.getMsgLength);
+            result = parseFrameMinimal(this.config, remaining, this.getMessageInfo);
         }
 
         if (result.valid) {
@@ -536,24 +557,12 @@ export class BufferWriter {
     /**
      * Write a message to the buffer.
      * The message must be a MessageBase instance (generated struct class).
+     * Magic numbers for checksum are automatically extracted from the message class
+     * if _magic1/_magic2 static properties are present.
      * Returns the number of bytes written, or 0 on failure.
      */
     write(msg: MessageBase, options: EncodeOptions = {}): number {
-        const ctor = msg.constructor as typeof MessageBase & { _msgid?: number };
-        const msgId = ctor._msgid;
-        const payload = new Uint8Array(msg._buffer);
-
-        if (msgId === undefined) {
-            throw new Error('Message struct must have _msgid static property');
-        }
-
-        let encoded: Uint8Array;
-
-        if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            encoded = encodeFrameWithCrc(this.config, msgId, payload, options);
-        } else {
-            encoded = encodeFrameMinimal(this.config, msgId, payload);
-        }
+        const encoded = encodeMessage(this.config, msg, options);
 
         const written = encoded.length;
         if (this._offset + written > this.capacity) {
@@ -608,7 +617,7 @@ export enum AccumulatingReaderState {
  * - Stream mode: pushByte() for byte-by-byte processing (e.g., UART)
  *
  * Buffer mode usage:
- *   const reader = new AccumulatingReader(ProfileStandardConfig);
+ *   const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
  *   reader.addData(chunk1);
  *   let result = reader.next();
  *   while (result.valid) {
@@ -617,7 +626,7 @@ export enum AccumulatingReaderState {
  *   }
  *
  * Stream mode usage:
- *   const reader = new AccumulatingReader(ProfileStandardConfig);
+ *   const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
  *   while (receiving) {
  *       const byte = readByte();
  *       const result = reader.pushByte(byte);
@@ -625,13 +634,10 @@ export enum AccumulatingReaderState {
  *           // Process complete message
  *       }
  *   }
- *
- * For minimal profiles:
- *   const reader = new AccumulatingReader(ProfileSensorConfig, getMsgLength);
  */
 export class AccumulatingReader {
     private config: FrameProfileConfig;
-    private getMsgLength?: (msgId: number) => number | undefined;
+    private getMessageInfo?: GetMessageInfo;
     private bufferSize: number;
 
     // Internal buffer for partial messages
@@ -647,11 +653,11 @@ export class AccumulatingReader {
 
     constructor(
         config: FrameProfileConfig,
-        getMsgLength?: (msgId: number) => number | undefined,
+        getMessageInfo?: GetMessageInfo,
         bufferSize: number = 1024
     ) {
         this.config = config;
-        this.getMsgLength = getMsgLength;
+        this.getMessageInfo = getMessageInfo;
         this.bufferSize = bufferSize;
 
         this.internalBuffer = new Uint8Array(bufferSize);
@@ -822,9 +828,10 @@ export class AccumulatingReader {
         if (this.internalDataLen >= headerSize) {
             if (!this.config.payload.hasLength && !this.config.payload.hasCrc) {
                 const msgId = this.internalBuffer[headerSize - 1];
-                if (this.getMsgLength) {
-                    const msgLen = this.getMsgLength(msgId);
-                    if (msgLen !== undefined) {
+                if (this.getMessageInfo) {
+                    const info = this.getMessageInfo(msgId);
+                    if (info !== undefined) {
+                        const msgLen = info.size;
                         this.expectedFrameSize = headerSize + msgLen;
 
                         if (this.expectedFrameSize > this.bufferSize) {
@@ -905,9 +912,10 @@ export class AccumulatingReader {
     }
 
     private handleMinimalMsgId(msgId: number): FrameMsgInfo {
-        if (this.getMsgLength) {
-            const msgLen = this.getMsgLength(msgId);
-            if (msgLen !== undefined) {
+        if (this.getMessageInfo) {
+            const info = this.getMessageInfo(msgId);
+            if (info !== undefined) {
+                const msgLen = info.size;
                 const headerSize = profileHeaderSize(this.config);
                 this.expectedFrameSize = headerSize + msgLen;
 
@@ -954,12 +962,12 @@ export class AccumulatingReader {
 
     private parseBuffer(buffer: Uint8Array): FrameMsgInfo {
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            return parseFrameWithCrc(this.config, buffer);
+            return parseFrameWithCrc(this.config, buffer, this.getMessageInfo);
         } else {
-            if (!this.getMsgLength) {
+            if (!this.getMessageInfo) {
                 return createFrameMsgInfo();
             }
-            return parseFrameMinimal(this.config, buffer, this.getMsgLength);
+            return parseFrameMinimal(this.config, buffer, this.getMessageInfo);
         }
     }
 
@@ -1008,8 +1016,8 @@ export class AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileStandardReader extends BufferReader {
-    constructor(buffer: Uint8Array) {
-        super(ProfileStandardConfig, buffer);
+    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
+        super(ProfileStandardConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1020,8 +1028,8 @@ export class ProfileStandardWriter extends BufferWriter {
 }
 
 export class ProfileStandardAccumulatingReader extends AccumulatingReader {
-    constructor(bufferSize: number = 1024) {
-        super(ProfileStandardConfig, undefined, bufferSize);
+    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileStandardConfig, getMessageInfo, bufferSize);
     }
 }
 
@@ -1030,8 +1038,8 @@ export class ProfileStandardAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileSensorReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMsgLength: (msgId: number) => number | undefined) {
-        super(ProfileSensorConfig, buffer, getMsgLength);
+    constructor(buffer: Uint8Array, getMessageInfo: GetMessageInfo) {
+        super(ProfileSensorConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1042,8 +1050,8 @@ export class ProfileSensorWriter extends BufferWriter {
 }
 
 export class ProfileSensorAccumulatingReader extends AccumulatingReader {
-    constructor(getMsgLength: (msgId: number) => number | undefined, bufferSize: number = 1024) {
-        super(ProfileSensorConfig, getMsgLength, bufferSize);
+    constructor(getMessageInfo: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileSensorConfig, getMessageInfo, bufferSize);
     }
 }
 
@@ -1052,8 +1060,8 @@ export class ProfileSensorAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileIPCReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMsgLength: (msgId: number) => number | undefined) {
-        super(ProfileIPCConfig, buffer, getMsgLength);
+    constructor(buffer: Uint8Array, getMessageInfo: GetMessageInfo) {
+        super(ProfileIPCConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1064,8 +1072,8 @@ export class ProfileIPCWriter extends BufferWriter {
 }
 
 export class ProfileIPCAccumulatingReader extends AccumulatingReader {
-    constructor(getMsgLength: (msgId: number) => number | undefined, bufferSize: number = 1024) {
-        super(ProfileIPCConfig, getMsgLength, bufferSize);
+    constructor(getMessageInfo: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileIPCConfig, getMessageInfo, bufferSize);
     }
 }
 
@@ -1074,8 +1082,8 @@ export class ProfileIPCAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileBulkReader extends BufferReader {
-    constructor(buffer: Uint8Array) {
-        super(ProfileBulkConfig, buffer);
+    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
+        super(ProfileBulkConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1086,8 +1094,8 @@ export class ProfileBulkWriter extends BufferWriter {
 }
 
 export class ProfileBulkAccumulatingReader extends AccumulatingReader {
-    constructor(bufferSize: number = 1024) {
-        super(ProfileBulkConfig, undefined, bufferSize);
+    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileBulkConfig, getMessageInfo, bufferSize);
     }
 }
 
@@ -1096,8 +1104,8 @@ export class ProfileBulkAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileNetworkReader extends BufferReader {
-    constructor(buffer: Uint8Array) {
-        super(ProfileNetworkConfig, buffer);
+    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
+        super(ProfileNetworkConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1108,7 +1116,7 @@ export class ProfileNetworkWriter extends BufferWriter {
 }
 
 export class ProfileNetworkAccumulatingReader extends AccumulatingReader {
-    constructor(bufferSize: number = 1024) {
-        super(ProfileNetworkConfig, undefined, bufferSize);
+    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileNetworkConfig, getMessageInfo, bufferSize);
     }
 }

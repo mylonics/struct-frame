@@ -11,12 +11,13 @@
  */
 
 import { TestConfig } from './test_codec';
+import { MessageInfo } from '../../generated/ts/frame-profiles';
 import {
   SerializationTestSerializationTestMessage,
   SerializationTestBasicTypesMessage,
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
-  get_message_length,
+  get_message_info,
 } from '../../generated/ts/serialization_test.structframe';
 
 /** Message count */
@@ -294,6 +295,6 @@ export const stdTestConfig: TestConfig = {
   encodeMessage,
   validateMessage,
   resetState,
-  getMessageLength: get_message_length,
+  getMessageInfo: get_message_info,
   supportsFormat,
 };

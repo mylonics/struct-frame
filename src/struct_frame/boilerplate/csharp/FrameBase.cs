@@ -7,6 +7,23 @@ using System.Runtime.InteropServices;
 namespace StructFrame
 {
     /// <summary>
+    /// Message info structure - unified type for size and magic numbers lookup
+    /// </summary>
+    public struct MessageInfo
+    {
+        public int Size;
+        public byte Magic1;
+        public byte Magic2;
+
+        public MessageInfo(int size, byte magic1 = 0, byte magic2 = 0)
+        {
+            Size = size;
+            Magic1 = magic1;
+            Magic2 = magic2;
+        }
+    }
+
+    /// <summary>
     /// Checksum result structure
     /// </summary>
     public struct FrameChecksum
@@ -69,7 +86,7 @@ namespace StructFrame
         /// <summary>
         /// Fletcher-16 checksum calculation
         /// </summary>
-        public static FrameChecksum FletcherChecksum(byte[] data, int offset, int length)
+        public static FrameChecksum FletcherChecksum(byte[] data, int offset, int length, byte magic1 = 0, byte magic2 = 0)
         {
             byte ck1 = 0;
             byte ck2 = 0;
@@ -78,6 +95,11 @@ namespace StructFrame
                 ck1 = (byte)(ck1 + data[offset + i]);
                 ck2 = (byte)(ck2 + ck1);
             }
+            // Add magic numbers at the end
+            ck1 = (byte)(ck1 + magic1);
+            ck2 = (byte)(ck2 + ck1);
+            ck1 = (byte)(ck1 + magic2);
+            ck2 = (byte)(ck2 + ck1);
             return new FrameChecksum(ck1, ck2);
         }
 
@@ -86,13 +108,13 @@ namespace StructFrame
         /// </summary>
         public static FrameChecksum FletcherChecksum(byte[] data)
         {
-            return FletcherChecksum(data, 0, data.Length);
+            return FletcherChecksum(data, 0, data.Length, 0, 0);
         }
 
         /// <summary>
         /// Fletcher-16 checksum calculation on a span
         /// </summary>
-        public static FrameChecksum FletcherChecksum(ReadOnlySpan<byte> data)
+        public static FrameChecksum FletcherChecksum(ReadOnlySpan<byte> data, byte magic1 = 0, byte magic2 = 0)
         {
             byte ck1 = 0;
             byte ck2 = 0;
@@ -101,6 +123,11 @@ namespace StructFrame
                 ck1 = (byte)(ck1 + data[i]);
                 ck2 = (byte)(ck2 + ck1);
             }
+            // Add magic numbers at the end
+            ck1 = (byte)(ck1 + magic1);
+            ck2 = (byte)(ck2 + ck1);
+            ck1 = (byte)(ck1 + magic2);
+            ck2 = (byte)(ck2 + ck1);
             return new FrameChecksum(ck1, ck2);
         }
     }
@@ -195,6 +222,11 @@ namespace StructFrame
         /// Pack the message into a byte array
         /// </summary>
         byte[] Pack();
+
+        /// <summary>
+        /// Get the magic numbers for checksum calculation (based on field types and positions)
+        /// </summary>
+        (byte Magic1, byte Magic2) GetMagicNumbers();
     }
 
     /// <summary>
