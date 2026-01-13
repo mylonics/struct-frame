@@ -24,7 +24,7 @@ def test_variable_message_constants():
     assert hasattr(VariableMessagesVariableDataMessage, 'MIN_SIZE'), "Variable message should have MIN_SIZE"
     assert hasattr(VariableMessagesVariableDataMessage, 'IS_VARIABLE'), "Variable message should have IS_VARIABLE"
     assert VariableMessagesVariableDataMessage.IS_VARIABLE == True
-    assert VariableMessagesVariableDataMessage.MIN_SIZE == 7  # 4 + 1 + 2 (message_id + count + checksum)
+    assert VariableMessagesVariableDataMessage.MIN_SIZE == 7  # 4 (message_id) + 1 (data count) + 2 (checksum)
     
     # FixedDataMessage should NOT have MIN_SIZE or IS_VARIABLE
     assert not hasattr(VariableMessagesFixedDataMessage, 'MIN_SIZE'), "Fixed message should not have MIN_SIZE"

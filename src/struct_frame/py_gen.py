@@ -791,9 +791,9 @@ class MessagePyGen():
                     result += f'        offset += 1\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
                     result += f'            fields["{f.name}"].append(msg)\n'
-                    result += f'            offset += {type_name}.msg_size\n'
+                    result += f'            offset += {type_name}.MAX_SIZE\n'
             elif f.fieldType == "string" and f.max_size is not None:
                 # Variable string
                 result += f'        # {f.name}: variable string\n'
@@ -831,9 +831,9 @@ class MessagePyGen():
                     result += f'        # {f.name}: fixed nested message array\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range({f.size_option}):\n'
-                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
                     result += f'            fields["{f.name}"].append(msg)\n'
-                    result += f'            offset += {type_name}.msg_size\n'
+                    result += f'            offset += {type_name}.MAX_SIZE\n'
             elif f.fieldType in py_struct_format:
                 fmt = py_struct_format[f.fieldType]
                 size = struct_format_sizes[fmt]
@@ -848,8 +848,8 @@ class MessagePyGen():
                 # Nested message
                 type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
                 result += f'        # {f.name}: nested message\n'
-                result += f'        fields["{f.name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
-                result += f'        offset += {type_name}.msg_size\n'
+                result += f'        fields["{f.name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
+                result += f'        offset += {type_name}.MAX_SIZE\n'
         
         result += '        return cls(**fields)\n'
         
