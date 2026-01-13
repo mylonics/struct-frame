@@ -414,7 +414,7 @@ class FileTsGen():
         for ext_package, type_names in sorted(external_types.items()):
             # Convert package name to PascalCase for TypeScript conventions
             ext_package_pascal = pascalCase(ext_package)
-            imports = ', '.join('%s_%s' % (ext_package_pascal, t) for t in sorted(type_names))
+            imports = ', '.join('%s%s' % (ext_package_pascal, t) for t in sorted(type_names))
             yield "import { %s } from './%s.structframe';\n" % (imports, ext_package)
         
         yield "\n"

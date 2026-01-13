@@ -380,7 +380,7 @@ class FileJsGen():
             # Convert package name to PascalCase for JavaScript conventions
             ext_package_pascal = pascalCase(ext_package)
             for t in sorted(type_names):
-                type_var = '%s_%s' % (ext_package_pascal, t)
+                type_var = '%s%s' % (ext_package_pascal, t)
                 yield "const { %s } = require('./%s.structframe');\n" % (type_var, ext_package)
         
         if external_types:
