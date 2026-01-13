@@ -54,6 +54,8 @@ export interface EncodeOptions {
     sysId?: number;
     compId?: number;
     pkgId?: number;
+    magic1?: number;
+    magic2?: number;
 }
 
 // =============================================================================
@@ -178,7 +180,7 @@ export function encodeFrameWithCrc(
     payload: Uint8Array,
     options: EncodeOptions = {}
 ): Uint8Array {
-    const { seq = 0, sysId = 0, compId = 0 } = options;
+    const { seq = 0, sysId = 0, compId = 0, magic1 = 0, magic2 = 0 } = options;
     
     // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id
     // unless pkgId is explicitly provided in options
@@ -244,7 +246,7 @@ export function encodeFrameWithCrc(
 
     // Calculate and write CRC
     const crcLen = idx - crcStart;
-    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen);
+    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
     buffer[idx++] = ck[0];
     buffer[idx++] = ck[1];
 
@@ -286,7 +288,8 @@ export function encodeFrameMinimal(
  */
 export function parseFrameWithCrc(
     config: FrameProfileConfig,
-    buffer: Uint8Array
+    buffer: Uint8Array,
+    getMagicNumbers?: (msgId: number) => [number, number]
 ): FrameMsgInfo {
     const result = createFrameMsgInfo();
     const length = buffer.length;
@@ -344,7 +347,14 @@ export function parseFrameWithCrc(
 
     // Verify CRC
     const crcLen = totalSize - crcStart - footerSize;
-    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen);
+    
+    // Get magic numbers for this message type
+    let magic1 = 0, magic2 = 0;
+    if (getMagicNumbers) {
+        [magic1, magic2] = getMagicNumbers(msgId);
+    }
+    
+    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
     if (ck[0] !== buffer[totalSize - 2] || ck[1] !== buffer[totalSize - 1]) {
         return result;
     }

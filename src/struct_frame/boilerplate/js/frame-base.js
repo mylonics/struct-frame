@@ -2,13 +2,13 @@
 
 
 // Fletcher-16 checksum calculation
-function fletcherChecksum(buffer, start = 0, end = undefined) {
+function fletcherChecksum(buffer, start = 0, end = undefined, init1 = 0, init2 = 0) {
     if (end === undefined) {
         end = buffer.length;
     }
 
-    let byte1 = 0;
-    let byte2 = 0;
+    let byte1 = init1;
+    let byte2 = init2;
 
     for (let i = start; i < end; i++) {
         byte1 = (byte1 + buffer[i]) % 256;
