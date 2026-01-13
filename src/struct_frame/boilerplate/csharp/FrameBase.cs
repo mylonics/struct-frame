@@ -69,10 +69,10 @@ namespace StructFrame
         /// <summary>
         /// Fletcher-16 checksum calculation
         /// </summary>
-        public static FrameChecksum FletcherChecksum(byte[] data, int offset, int length)
+        public static FrameChecksum FletcherChecksum(byte[] data, int offset, int length, byte init1 = 0, byte init2 = 0)
         {
-            byte ck1 = 0;
-            byte ck2 = 0;
+            byte ck1 = init1;
+            byte ck2 = init2;
             for (int i = 0; i < length; i++)
             {
                 ck1 = (byte)(ck1 + data[offset + i]);
@@ -86,16 +86,16 @@ namespace StructFrame
         /// </summary>
         public static FrameChecksum FletcherChecksum(byte[] data)
         {
-            return FletcherChecksum(data, 0, data.Length);
+            return FletcherChecksum(data, 0, data.Length, 0, 0);
         }
 
         /// <summary>
         /// Fletcher-16 checksum calculation on a span
         /// </summary>
-        public static FrameChecksum FletcherChecksum(ReadOnlySpan<byte> data)
+        public static FrameChecksum FletcherChecksum(ReadOnlySpan<byte> data, byte init1 = 0, byte init2 = 0)
         {
-            byte ck1 = 0;
-            byte ck2 = 0;
+            byte ck1 = init1;
+            byte ck2 = init2;
             for (int i = 0; i < data.Length; i++)
             {
                 ck1 = (byte)(ck1 + data[i]);

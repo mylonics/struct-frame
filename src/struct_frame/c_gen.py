@@ -293,6 +293,11 @@ class MessageCGen():
             else:
                 # No package ID, use plain message ID
                 result += '#define %s_MSG_ID %d\n' % (defineName, msg.id)
+        
+        # Add magic numbers for checksum
+        if msg.id is not None and msg.magic_bytes:
+            result += f'#define {defineName}_MAGIC1 {msg.magic_bytes[0]} /* Checksum magic (based on field types and positions) */\n'
+            result += f'#define {defineName}_MAGIC2 {msg.magic_bytes[1]} /* Checksum magic (based on field types and positions) */\n'
 
         # Generate equality function if requested
         if equality:
@@ -414,6 +419,38 @@ class FileCGen():
                         # No package ID, compare against full message ID constant
                         yield '        case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
 
+            yield '        default: break;\n'
+            yield '    }\n'
+            yield '    return false;\n'
+            yield '}\n\n'
+            
+            # Generate get_magic_numbers function
+            if package.package_id is not None:
+                yield 'static inline bool get_magic_numbers(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
+                yield '    /* Extract package ID and message ID from 16-bit message ID */\n'
+                yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
+                yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
+                yield '    \n'
+                pkg_name_upper = CamelToSnakeCase(package.name).upper()
+                yield f'    /* Check if this is our package */\n'
+                yield f'    if (pkg_id != {pkg_name_upper}_PACKAGE_ID) {{\n'
+                yield f'        return false;\n'
+                yield f'    }}\n'
+                yield '    \n'
+                yield '    switch (local_msg_id) {\n'
+            else:
+                yield 'static inline bool get_magic_numbers(size_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
+                yield '    switch (msg_id) {\n'
+            
+            for key, msg in package.sortedMessages().items():
+                name = '%s_%s' % (CamelToSnakeCase(
+                    msg.package).upper(), CamelToSnakeCase(msg.name).upper())
+                if msg.id and msg.magic_bytes:
+                    if package.package_id is not None:
+                        yield '        case %d: *magic1 = %s_MAGIC1; *magic2 = %s_MAGIC2; return true;\n' % (msg.id, name, name)
+                    else:
+                        yield '        case %s_MSG_ID: *magic1 = %s_MAGIC1; *magic2 = %s_MAGIC2; return true;\n' % (name, name, name)
+            
             yield '        default: break;\n'
             yield '    }\n'
             yield '    return false;\n'
