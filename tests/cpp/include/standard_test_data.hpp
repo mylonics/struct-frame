@@ -292,7 +292,7 @@ struct Config {
 
   static const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() { return TestMessagesData::get_msg_id_order(); }
 
-  static std::optional<FrameParsers::MessageInfo> get_message_info(uint16_t msg_id) {
+  static FrameParsers::MessageInfo get_message_info(uint16_t msg_id) {
     return FrameParsers::get_message_info(msg_id);
   }
 

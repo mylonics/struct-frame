@@ -478,20 +478,20 @@ class FileCppGen():
             # Generate unified get_message_info function
             if use_namespace:
                 # When using package ID, message ID is 16-bit
-                yield 'inline std::optional<MessageInfo> get_message_info(uint16_t msg_id) {\n'
+                yield 'inline MessageInfo get_message_info(uint16_t msg_id) {\n'
                 yield '    // Extract package ID and message ID from 16-bit message ID\n'
                 yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
                 yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
                 yield '    \n'
                 yield f'    // Check if this is our package\n'
                 yield f'    if (pkg_id != PACKAGE_ID) {{\n'
-                yield f'        return std::nullopt;\n'
+                yield f'        return MessageInfo{{}};\n'
                 yield f'    }}\n'
                 yield '    \n'
                 yield '    switch (local_msg_id) {\n'
             else:
                 # Flat namespace mode: 8-bit message ID
-                yield 'inline std::optional<MessageInfo> get_message_info(uint16_t msg_id) {\n'
+                yield 'inline MessageInfo get_message_info(uint16_t msg_id) {\n'
                 yield '    switch (msg_id) {\n'
             
             for key, msg in package.sortedMessages().items():
@@ -512,7 +512,7 @@ class FileCppGen():
 
             yield '        default: break;\n'
             yield '    }\n'
-            yield '    return std::nullopt;\n'
+            yield '    return MessageInfo{};\n'
             yield '}\n\n'
             
             yield '}  // namespace FrameParsers\n'

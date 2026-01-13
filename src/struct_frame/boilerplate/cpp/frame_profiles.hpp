@@ -275,11 +275,21 @@ class BufferParserWithCrc {
 
 /**
  * Generic frame parser for minimal frames (requires get_message_info callback)
+ * @tparam GetMessageInfoFn Callable type that takes uint16_t and returns MessageInfo
  */
 template <typename Config>
 class BufferParserMinimal {
  public:
-  static FrameMsgInfo parse(const uint8_t* buffer, size_t length, GetMessageInfo get_message_info) {
+  /**
+   * Parse a minimal frame using a callable to get message info.
+   * @tparam GetMessageInfoFn Callable type (function pointer, lambda, or functor) with signature MessageInfo(uint16_t)
+   * @param buffer Pointer to data buffer
+   * @param length Size of buffer
+   * @param get_message_info Callable that returns MessageInfo for a given message ID
+   * @return FrameMsgInfo with valid=true if successful
+   */
+  template <typename GetMessageInfoFn>
+  static FrameMsgInfo parse(const uint8_t* buffer, size_t length, GetMessageInfoFn get_message_info) {
     if (length < Config::header_size) {
       return FrameMsgInfo();
     }
@@ -302,14 +312,11 @@ class BufferParserMinimal {
     uint8_t msg_id = buffer[idx];
 
     // Get message info from callback
-    if (!get_message_info) {
-      return FrameMsgInfo();
-    }
     auto info = get_message_info(msg_id);
     if (!info) {
       return FrameMsgInfo();
     }
-    size_t msg_len = info->size;
+    size_t msg_len = info.size;
 
     size_t total_size = Config::header_size + msg_len;
     if (length < total_size) {
@@ -362,15 +369,21 @@ using ProfileNetworkConfig =
  *   }
  *
  * For minimal profiles that need get_message_info:
- *   BufferReader<ProfileSensorConfig> reader(buffer, size, get_message_info);
+ *   BufferReader<ProfileSensorConfig, decltype(&get_msg_info)> reader(buffer, size, get_msg_info);
+ *   // Or with lambda:
+ *   auto getter = [](uint16_t id) { return get_message_info(id); };
+ *   BufferReader<ProfileSensorConfig, decltype(getter)> reader(buffer, size, getter);
+ *
+ * @tparam Config Frame profile configuration
+ * @tparam GetMessageInfoFn Callable type for minimal profiles (default: nullptr_t for non-minimal)
  */
-template <typename Config>
+template <typename Config, typename GetMessageInfoFn = std::nullptr_t>
 class BufferReader {
  public:
   BufferReader(const uint8_t* buffer, size_t size)
-      : buffer_(buffer), size_(size), offset_(0), get_message_info_(nullptr) {}
+      : buffer_(buffer), size_(size), offset_(0), get_message_info_{} {}
 
-  BufferReader(const uint8_t* buffer, size_t size, GetMessageInfo get_message_info)
+  BufferReader(const uint8_t* buffer, size_t size, GetMessageInfoFn get_message_info)
       : buffer_(buffer), size_(size), offset_(0), get_message_info_(get_message_info) {}
 
   /**
@@ -386,7 +399,7 @@ class BufferReader {
     if constexpr (Config::has_length || Config::has_crc) {
       result = BufferParserWithCrc<Config>::parse(buffer_ + offset_, size_ - offset_);
     } else {
-      result = BufferParserMinimal<Config>::parse(buffer_ + offset_, size_ - offset_, get_message_info_);
+      result = BufferParserMinimal<Config>::template parse(buffer_ + offset_, size_ - offset_, get_message_info_);
     }
 
     if (result.valid && result.frame_size > 0) {
@@ -420,7 +433,7 @@ class BufferReader {
   const uint8_t* buffer_;
   size_t size_;
   size_t offset_;
-  GetMessageInfo get_message_info_;
+  GetMessageInfoFn get_message_info_;
 };
 
 /**
@@ -530,6 +543,7 @@ using ProfileNetworkWriter = BufferWriter<ProfileNetworkConfig>;
  * Template parameters:
  *   Config - The frame profile configuration (e.g., ProfileStandardConfig)
  *   BufferSize - Size of internal buffer for partial messages (default: 1024)
+ *   GetMessageInfoFn - Callable type for minimal profiles (default: nullptr_t for non-minimal)
  *
  * Buffer mode usage:
  *   AccumulatingReader<ProfileStandardConfig> reader;
@@ -548,9 +562,10 @@ using ProfileNetworkWriter = BufferWriter<ProfileNetworkConfig>;
  *   }
  *
  * For minimal profiles:
- *   AccumulatingReader<ProfileSensorConfig> reader(get_message_length);
+ *   auto getter = [](uint16_t id) { return get_message_info(id); };
+ *   AccumulatingReader<ProfileSensorConfig, 1024, decltype(getter)> reader(getter);
  */
-template <typename Config, size_t BufferSize = 1024>
+template <typename Config, size_t BufferSize = 1024, typename GetMessageInfoFn = std::nullptr_t>
 class AccumulatingReader {
  public:
   /**
@@ -575,12 +590,12 @@ class AccumulatingReader {
         current_buffer_(nullptr),
         current_size_(0),
         current_offset_(0),
-        get_message_info_(nullptr) {}
+        get_message_info_{} {}
 
   /**
    * Construct an AccumulatingReader with message info callback (for minimal profiles).
    */
-  explicit AccumulatingReader(GetMessageInfo get_message_info)
+  explicit AccumulatingReader(GetMessageInfoFn get_message_info)
       : internal_data_len_(0),
         expected_frame_size_(0),
         state_(State::Idle),
@@ -980,7 +995,7 @@ class AccumulatingReader {
     if constexpr (Config::has_length || Config::has_crc) {
       return BufferParserWithCrc<Config>::parse(buffer, size);
     } else {
-      return BufferParserMinimal<Config>::parse(buffer, size, get_message_info_);
+      return BufferParserMinimal<Config>::template parse(buffer, size, get_message_info_);
     }
   }
 
@@ -998,8 +1013,32 @@ class AccumulatingReader {
   size_t current_size_;            // Size of current external buffer
   size_t current_offset_;          // Current position in external buffer
 
-  GetMessageInfo get_message_info_;
+  GetMessageInfoFn get_message_info_;
 };
+
+/**
+ * Factory function to create AccumulatingReader with proper template deduction
+ * for minimal profiles that require a get_message_info callable.
+ *
+ * Usage:
+ *   auto reader = make_accumulating_reader<ProfileSensorConfig>(get_message_info);
+ */
+template <typename Config, size_t BufferSize = 1024, typename GetMessageInfoFn>
+auto make_accumulating_reader(GetMessageInfoFn get_message_info) {
+  return AccumulatingReader<Config, BufferSize, GetMessageInfoFn>(get_message_info);
+}
+
+/**
+ * Factory function to create BufferReader with proper template deduction
+ * for minimal profiles that require a get_message_info callable.
+ *
+ * Usage:
+ *   auto reader = make_buffer_reader<ProfileSensorConfig>(buffer, size, get_message_info);
+ */
+template <typename Config, typename GetMessageInfoFn>
+auto make_buffer_reader(const uint8_t* buffer, size_t size, GetMessageInfoFn get_message_info) {
+  return BufferReader<Config, GetMessageInfoFn>(buffer, size, get_message_info);
+}
 
 /* Convenience type aliases for AccumulatingReader with standard profiles (default 1024 byte buffer) */
 using ProfileStandardAccumulatingReader = AccumulatingReader<ProfileStandardConfig>;

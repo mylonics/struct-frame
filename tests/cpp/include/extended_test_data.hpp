@@ -443,7 +443,7 @@ struct Config {
     return ExtendedTestMessages::get_msg_id_order();
   }
 
-  static std::optional<FrameParsers::MessageInfo> get_message_info(uint16_t msg_id) {
+  static FrameParsers::MessageInfo get_message_info(uint16_t msg_id) {
     return FrameParsers::get_message_info(msg_id);
   }
 
