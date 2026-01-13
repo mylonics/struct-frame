@@ -513,6 +513,11 @@ class MessagePyGen():
             result += f'    MAGIC1 = {msg.magic_bytes[0]}  # Checksum magic number (based on field types and positions)\n'
             result += f'    MAGIC2 = {msg.magic_bytes[1]}  # Checksum magic number (based on field types and positions)\n'
         
+        # Add variable message constants
+        if msg.variable:
+            result += f'    MIN_SIZE = {msg.min_size}  # Minimum size when all variable fields are empty\n'
+            result += f'    IS_VARIABLE = True  # This message uses variable-length encoding\n'
+        
         result += '\n'
 
         # Generate __init__ method
@@ -620,6 +625,234 @@ class MessagePyGen():
         if equality:
             result += MessagePyGen.generate_eq_method(msg, structName)
 
+        # Generate variable message methods if this is a variable message
+        if msg.variable:
+            result += MessagePyGen.generate_variable_methods(msg)
+
+        return result
+    
+    @staticmethod
+    def generate_variable_methods(msg):
+        """Generate pack_size, pack_variable, and unpack_variable methods for variable messages."""
+        result = ''
+        
+        # Generate pack_size method
+        result += '\n    def pack_size(self) -> int:\n'
+        result += '        """Calculate the packed size using variable-length encoding."""\n'
+        result += '        size = 0\n'
+        
+        for key, f in msg.fields.items():
+            if f.is_array and f.max_size is not None:
+                # Variable array
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if f.fieldType == "string":
+                    element_size = f.element_size if f.element_size else 1
+                else:
+                    element_size = type_sizes.get(f.fieldType, (f.size - 1) // f.max_size)
+                result += f'        size += 1 + (min(len(self.{f.name}), {f.max_size}) * {element_size})  # {f.name}\n'
+            elif f.fieldType == "string" and f.max_size is not None:
+                # Variable string
+                result += f'        size += 1 + min(len(self.{f.name}), {f.max_size})  # {f.name}\n'
+            else:
+                result += f'        size += {f.size}  # {f.name}\n'
+        
+        result += '        return size\n'
+        
+        # Generate pack_variable method
+        result += '\n    def pack_variable(self) -> bytes:\n'
+        result += '        """Pack message using variable-length encoding (only packs used bytes)."""\n'
+        result += '        data = b""\n'
+        
+        for key, f in msg.fields.items():
+            if f.is_array and f.max_size is not None:
+                # Variable array
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if f.fieldType == "string":
+                    element_size = f.element_size if f.element_size else 1
+                    result += f'        # {f.name}: variable string array\n'
+                    result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
+                    result += f'        data += struct.pack("<B", count)\n'
+                    result += f'        for i in range(count):\n'
+                    result += f'            data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
+                elif f.isEnum:
+                    result += f'        # {f.name}: variable enum array\n'
+                    result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
+                    result += f'        data += struct.pack("<B", count)\n'
+                    result += f'        for i in range(count):\n'
+                    result += f'            data += struct.pack("<B", int(self.{f.name}[i]))\n'
+                elif f.fieldType in type_sizes:
+                    element_size = type_sizes[f.fieldType]
+                    fmt = py_struct_format.get(f.fieldType, 'B')
+                    result += f'        # {f.name}: variable {f.fieldType} array\n'
+                    result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
+                    result += f'        data += struct.pack("<B", count)\n'
+                    result += f'        for i in range(count):\n'
+                    result += f'            data += struct.pack("<{fmt}", self.{f.name}[i])\n'
+                else:
+                    # Nested message array
+                    result += f'        # {f.name}: variable nested message array\n'
+                    result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
+                    result += f'        data += struct.pack("<B", count)\n'
+                    result += f'        for i in range(count):\n'
+                    result += f'            data += self.{f.name}[i].pack()\n'
+            elif f.fieldType == "string" and f.max_size is not None:
+                # Variable string
+                result += f'        # {f.name}: variable string\n'
+                result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
+                result += f'        data += struct.pack("<B", len(str_data))\n'
+                result += f'        data += str_data\n'
+            elif f.fieldType == "string" and f.size_option is not None:
+                # Fixed string
+                result += f'        # {f.name}: fixed string\n'
+                result += f'        data += struct.pack("<{f.size_option}s", self.{f.name}[:{f.size_option}])\n'
+            elif f.is_array and f.size_option is not None:
+                # Fixed array (pack as usual)
+                if f.isEnum:
+                    result += f'        # {f.name}: fixed enum array\n'
+                    result += f'        for i in range({f.size_option}):\n'
+                    result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
+                    result += f'            data += struct.pack("<B", int(val))\n'
+                elif f.fieldType in py_struct_format:
+                    fmt = py_struct_format[f.fieldType]
+                    result += f'        # {f.name}: fixed {f.fieldType} array\n'
+                    result += f'        for i in range({f.size_option}):\n'
+                    result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
+                    result += f'            data += struct.pack("<{fmt}", val)\n'
+                else:
+                    # Nested message fixed array
+                    type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                    result += f'        # {f.name}: fixed nested message array\n'
+                    result += f'        for i in range({f.size_option}):\n'
+                    result += f'            if i < len(self.{f.name}):\n'
+                    result += f'                data += self.{f.name}[i].pack()\n'
+                    result += f'            else:\n'
+                    result += f'                data += {type_name}().pack()\n'
+            elif f.fieldType in py_struct_format:
+                fmt = py_struct_format[f.fieldType]
+                result += f'        # {f.name}: {f.fieldType}\n'
+                result += f'        data += struct.pack("<{fmt}", self.{f.name})\n'
+            elif f.isEnum:
+                result += f'        # {f.name}: enum\n'
+                result += f'        data += struct.pack("<B", int(self.{f.name}))\n'
+            else:
+                # Nested message
+                result += f'        # {f.name}: nested message\n'
+                result += f'        data += self.{f.name}.pack()\n'
+        
+        result += '        return data\n'
+        
+        # Generate unpack_variable class method
+        result += '\n    @classmethod\n'
+        result += '    def unpack_variable(cls, data: bytes):\n'
+        result += '        """Unpack message using variable-length encoding."""\n'
+        result += '        offset = 0\n'
+        result += '        fields = {}\n'
+        
+        for key, f in msg.fields.items():
+            if f.is_array and f.max_size is not None:
+                # Variable array
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if f.fieldType == "string":
+                    element_size = f.element_size if f.element_size else 1
+                    result += f'        # {f.name}: variable string array\n'
+                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
+                    result += f'        offset += 1\n'
+                    result += f'        fields["{f.name}"] = []\n'
+                    result += f'        for i in range(min(count, {f.max_size})):\n'
+                    result += f'            s = struct.unpack_from("<{element_size}s", data, offset)[0]\n'
+                    result += f'            fields["{f.name}"].append(s)\n'
+                    result += f'            offset += {element_size}\n'
+                elif f.isEnum:
+                    result += f'        # {f.name}: variable enum array\n'
+                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
+                    result += f'        offset += 1\n'
+                    result += f'        fields["{f.name}"] = []\n'
+                    result += f'        for i in range(min(count, {f.max_size})):\n'
+                    result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
+                    result += f'            offset += 1\n'
+                    result += f'            fields["{f.name}"].append(val)\n'
+                elif f.fieldType in type_sizes:
+                    element_size = type_sizes[f.fieldType]
+                    fmt = py_struct_format.get(f.fieldType, 'B')
+                    result += f'        # {f.name}: variable {f.fieldType} array\n'
+                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
+                    result += f'        offset += 1\n'
+                    result += f'        fields["{f.name}"] = []\n'
+                    result += f'        for i in range(min(count, {f.max_size})):\n'
+                    result += f'            val = struct.unpack_from("<{fmt}", data, offset)[0]\n'
+                    result += f'            offset += {element_size}\n'
+                    result += f'            fields["{f.name}"].append(val)\n'
+                else:
+                    # Nested message array
+                    type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                    element_size = (f.size - 1) // f.max_size
+                    result += f'        # {f.name}: variable nested message array\n'
+                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
+                    result += f'        offset += 1\n'
+                    result += f'        fields["{f.name}"] = []\n'
+                    result += f'        for i in range(min(count, {f.max_size})):\n'
+                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'            fields["{f.name}"].append(msg)\n'
+                    result += f'            offset += {type_name}.msg_size\n'
+            elif f.fieldType == "string" and f.max_size is not None:
+                # Variable string
+                result += f'        # {f.name}: variable string\n'
+                result += f'        str_len = struct.unpack_from("<B", data, offset)[0]\n'
+                result += f'        offset += 1\n'
+                result += f'        str_len = min(str_len, {f.max_size})\n'
+                result += f'        fields["{f.name}"] = data[offset:offset+str_len]\n'
+                result += f'        offset += str_len\n'
+            elif f.fieldType == "string" and f.size_option is not None:
+                # Fixed string
+                result += f'        # {f.name}: fixed string\n'
+                result += f'        fields["{f.name}"] = struct.unpack_from("<{f.size_option}s", data, offset)[0]\n'
+                result += f'        offset += {f.size_option}\n'
+            elif f.is_array and f.size_option is not None:
+                # Fixed array
+                if f.isEnum:
+                    result += f'        # {f.name}: fixed enum array\n'
+                    result += f'        fields["{f.name}"] = []\n'
+                    result += f'        for i in range({f.size_option}):\n'
+                    result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
+                    result += f'            offset += 1\n'
+                    result += f'            fields["{f.name}"].append(val)\n'
+                elif f.fieldType in py_struct_format:
+                    fmt = py_struct_format[f.fieldType]
+                    size = struct_format_sizes[fmt]
+                    result += f'        # {f.name}: fixed {f.fieldType} array\n'
+                    result += f'        fields["{f.name}"] = []\n'
+                    result += f'        for i in range({f.size_option}):\n'
+                    result += f'            val = struct.unpack_from("<{fmt}", data, offset)[0]\n'
+                    result += f'            offset += {size}\n'
+                    result += f'            fields["{f.name}"].append(val)\n'
+                else:
+                    # Nested message fixed array
+                    type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                    result += f'        # {f.name}: fixed nested message array\n'
+                    result += f'        fields["{f.name}"] = []\n'
+                    result += f'        for i in range({f.size_option}):\n'
+                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'            fields["{f.name}"].append(msg)\n'
+                    result += f'            offset += {type_name}.msg_size\n'
+            elif f.fieldType in py_struct_format:
+                fmt = py_struct_format[f.fieldType]
+                size = struct_format_sizes[fmt]
+                result += f'        # {f.name}: {f.fieldType}\n'
+                result += f'        fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]\n'
+                result += f'        offset += {size}\n'
+            elif f.isEnum:
+                result += f'        # {f.name}: enum\n'
+                result += f'        fields["{f.name}"] = struct.unpack_from("<B", data, offset)[0]\n'
+                result += f'        offset += 1\n'
+            else:
+                # Nested message
+                type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                result += f'        # {f.name}: nested message\n'
+                result += f'        fields["{f.name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                result += f'        offset += {type_name}.msg_size\n'
+        
+        result += '        return cls(**fields)\n'
+        
         return result
 
 

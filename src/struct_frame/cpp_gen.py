@@ -339,9 +339,123 @@ class MessageCppGen():
             result += f'    static constexpr uint8_t MAGIC1 = {msg.magic_bytes[0]};\n'
             result += f'    static constexpr uint8_t MAGIC2 = {msg.magic_bytes[1]};\n'
         
+        # Add variable message constants and methods
+        if msg.variable:
+            result += MessageCppGen._generate_variable_methods(msg, structName)
+        
         result += '};\n'
 
         return result + '\n'
+    
+    @staticmethod
+    def _generate_variable_methods(msg, structName):
+        """Generate variable-length encoding methods for C++ structs."""
+        result = ''
+        
+        # Add MIN_SIZE and IS_VARIABLE constants
+        result += f'\n    // Variable-length message constants\n'
+        result += f'    static constexpr size_t MIN_SIZE = {msg.min_size};\n'
+        result += f'    static constexpr bool IS_VARIABLE = true;\n'
+        
+        # Generate pack_size method
+        result += f'\n    /**\n'
+        result += f'     * Calculate the packed size using variable-length encoding.\n'
+        result += f'     * @return The size in bytes when packed (between MIN_SIZE and MAX_SIZE)\n'
+        result += f'     */\n'
+        result += f'    size_t pack_size() const {{\n'
+        result += f'        size_t size = 0;\n'
+        
+        for key, field in msg.fields.items():
+            var_name = field.name
+            if field.is_array and field.max_size is not None:
+                # Variable array
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if field.fieldType == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
+                result += f'        size += 1 + ({var_name}.count * {element_size});  // {var_name}\n'
+            elif field.fieldType == "string" and field.max_size is not None:
+                # Variable string
+                result += f'        size += 1 + {var_name}.length;  // {var_name}\n'
+            else:
+                result += f'        size += {field.size};  // {var_name}\n'
+        
+        result += f'        return size;\n'
+        result += f'    }}\n'
+        
+        # Generate pack_variable method
+        result += f'\n    /**\n'
+        result += f'     * Pack message using variable-length encoding.\n'
+        result += f'     * @param buffer Output buffer (must be at least pack_size() bytes)\n'
+        result += f'     * @return Number of bytes written\n'
+        result += f'     */\n'
+        result += f'    size_t pack_variable(uint8_t* buffer) const {{\n'
+        result += f'        size_t offset = 0;\n'
+        
+        for key, field in msg.fields.items():
+            var_name = field.name
+            if field.is_array and field.max_size is not None:
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if field.fieldType == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
+                result += f'        buffer[offset++] = {var_name}.count;\n'
+                result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.count * {element_size});\n'
+                result += f'        offset += {var_name}.count * {element_size};\n'
+            elif field.fieldType == "string" and field.max_size is not None:
+                result += f'        buffer[offset++] = {var_name}.length;\n'
+                result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.length);\n'
+                result += f'        offset += {var_name}.length;\n'
+            else:
+                result += f'        std::memcpy(buffer + offset, &{var_name}, {field.size});\n'
+                result += f'        offset += {field.size};\n'
+        
+        result += f'        return offset;\n'
+        result += f'    }}\n'
+        
+        # Generate unpack_variable static method
+        result += f'\n    /**\n'
+        result += f'     * Unpack message using variable-length encoding.\n'
+        result += f'     * @param buffer Input buffer\n'
+        result += f'     * @param buffer_size Size of input buffer\n'
+        result += f'     * @return Number of bytes read, or 0 if buffer too small\n'
+        result += f'     */\n'
+        result += f'    size_t unpack_variable(const uint8_t* buffer, size_t buffer_size) {{\n'
+        result += f'        size_t offset = 0;\n'
+        result += f'        std::memset(this, 0, sizeof(*this));\n'
+        
+        for key, field in msg.fields.items():
+            var_name = field.name
+            if field.is_array and field.max_size is not None:
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if field.fieldType == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
+                result += f'        if (offset >= buffer_size) return 0;\n'
+                result += f'        {var_name}.count = buffer[offset++];\n'
+                result += f'        if ({var_name}.count > {field.max_size}) {var_name}.count = {field.max_size};\n'
+                result += f'        if (offset + {var_name}.count * {element_size} > buffer_size) return 0;\n'
+                result += f'        std::memcpy({var_name}.data, buffer + offset, {var_name}.count * {element_size});\n'
+                result += f'        offset += {var_name}.count * {element_size};\n'
+            elif field.fieldType == "string" and field.max_size is not None:
+                result += f'        if (offset >= buffer_size) return 0;\n'
+                result += f'        {var_name}.length = buffer[offset++];\n'
+                result += f'        if ({var_name}.length > {field.max_size}) {var_name}.length = {field.max_size};\n'
+                result += f'        if (offset + {var_name}.length > buffer_size) return 0;\n'
+                result += f'        std::memcpy({var_name}.data, buffer + offset, {var_name}.length);\n'
+                result += f'        offset += {var_name}.length;\n'
+            else:
+                result += f'        if (offset + {field.size} > buffer_size) return 0;\n'
+                result += f'        std::memcpy(&{var_name}, buffer + offset, {field.size});\n'
+                result += f'        offset += {field.size};\n'
+        
+        result += f'        return offset;\n'
+        result += f'    }}\n'
+        
+        return result
 
 
 class FileCppGen():

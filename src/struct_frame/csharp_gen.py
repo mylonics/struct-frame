@@ -385,6 +385,11 @@ class MessageCSharpGen():
             result += f'        public const byte Magic1 = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
             result += f'        public const byte Magic2 = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
         
+        # Add variable message constants
+        if msg.variable:
+            result += f'        public const int MinSize = {msg.min_size}; // Minimum size when all variable fields are empty\n'
+            result += f'        public const bool IsVariable = true; // This message uses variable-length encoding\n'
+        
         result += '\n'
 
         # Generate field declarations
@@ -507,6 +512,10 @@ class MessageCSharpGen():
         else:
             result += '        public (byte Magic1, byte Magic2) GetMagicNumbers() => (0, 0);\n'
 
+        # Generate variable message methods if this is a variable message
+        if msg.variable:
+            result += MessageCSharpGen._generate_variable_methods(msg, structName)
+
         # Generate equality members if requested
         if equality:
             result += MessageCSharpGen._generate_equality_members(msg, structName)
@@ -514,6 +523,195 @@ class MessageCSharpGen():
         result += '    }\n'
 
         return result + '\n'
+    
+    @staticmethod
+    def _generate_variable_methods(msg, structName):
+        """Generate PackSize, PackVariable, and UnpackVariable methods for variable messages."""
+        result = '\n'
+        
+        # Generate PackSize method
+        result += '        /// <summary>\n'
+        result += '        /// Calculate the packed size using variable-length encoding\n'
+        result += '        /// </summary>\n'
+        result += '        public int PackSize()\n'
+        result += '        {\n'
+        result += '            int size = 0;\n'
+        
+        for key, f in msg.fields.items():
+            var_name = pascalCase(f.name)
+            if f.is_array and f.max_size is not None:
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if f.fieldType == "string":
+                    element_size = f.element_size if f.element_size else 1
+                else:
+                    element_size = type_sizes.get(f.fieldType, (f.size - 1) // f.max_size)
+                result += f'            size += 1 + ({var_name}Count * {element_size}); // {f.name}\n'
+            elif f.fieldType == "string" and f.max_size is not None:
+                result += f'            size += 1 + {var_name}Length; // {f.name}\n'
+            else:
+                result += f'            size += {f.size}; // {f.name}\n'
+        
+        result += '            return size;\n'
+        result += '        }\n'
+        
+        # Generate PackVariable method
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Pack message using variable-length encoding (only packs used bytes)\n'
+        result += '        /// </summary>\n'
+        result += '        public byte[] PackVariable()\n'
+        result += '        {\n'
+        result += '            int size = PackSize();\n'
+        result += '            byte[] buffer = new byte[size];\n'
+        result += '            int offset = 0;\n'
+        
+        for key, f in msg.fields.items():
+            var_name = pascalCase(f.name)
+            type_name = f.fieldType
+            if f.is_array and f.max_size is not None:
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if type_name == "string":
+                    element_size = f.element_size if f.element_size else 1
+                else:
+                    element_size = type_sizes.get(type_name, (f.size - 1) // f.max_size)
+                result += f'            // {f.name}: variable array\n'
+                result += f'            buffer[offset++] = {var_name}Count;\n'
+                if type_name in type_sizes:
+                    result += f'            if ({var_name}Data != null)\n'
+                    result += f'                Buffer.BlockCopy({var_name}Data, 0, buffer, offset, {var_name}Count * {element_size});\n'
+                    result += f'            offset += {var_name}Count * {element_size};\n'
+                elif f.isEnum:
+                    result += f'            if ({var_name}Data != null)\n'
+                    result += f'                Array.Copy({var_name}Data, 0, buffer, offset, {var_name}Count);\n'
+                    result += f'            offset += {var_name}Count;\n'
+                else:
+                    result += f'            if ({var_name}Data != null)\n'
+                    result += f'                for (int i = 0; i < {var_name}Count; i++)\n'
+                    result += f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Pack(); Array.Copy(bytes, 0, buffer, offset + i * {element_size}, bytes.Length); }}\n'
+                    result += f'            offset += {var_name}Count * {element_size};\n'
+            elif type_name == "string" and f.max_size is not None:
+                result += f'            // {f.name}: variable string\n'
+                result += f'            buffer[offset++] = {var_name}Length;\n'
+                result += f'            if ({var_name}Data != null)\n'
+                result += f'                Array.Copy({var_name}Data, 0, buffer, offset, {var_name}Length);\n'
+                result += f'            offset += {var_name}Length;\n'
+            else:
+                # Fixed field - generate pack code inline
+                if type_name in csharp_type_sizes:
+                    size = csharp_type_sizes[type_name]
+                    if type_name == "uint8":
+                        result += f'            buffer[offset++] = {var_name};\n'
+                    elif type_name == "int8":
+                        result += f'            buffer[offset++] = (byte){var_name};\n'
+                    elif type_name == "uint16":
+                        result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), {var_name}); offset += 2;\n'
+                    elif type_name == "int16":
+                        result += f'            BinaryPrimitives.WriteInt16LittleEndian(buffer.AsSpan(offset, 2), {var_name}); offset += 2;\n'
+                    elif type_name == "uint32":
+                        result += f'            BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(offset, 4), {var_name}); offset += 4;\n'
+                    elif type_name == "int32":
+                        result += f'            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan(offset, 4), {var_name}); offset += 4;\n'
+                    elif type_name == "uint64":
+                        result += f'            BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(offset, 8), {var_name}); offset += 8;\n'
+                    elif type_name == "int64":
+                        result += f'            BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan(offset, 8), {var_name}); offset += 8;\n'
+                    elif type_name == "float":
+                        result += f'            BinaryPrimitives.WriteSingleLittleEndian(buffer.AsSpan(offset, 4), {var_name}); offset += 4;\n'
+                    elif type_name == "double":
+                        result += f'            BinaryPrimitives.WriteDoubleLittleEndian(buffer.AsSpan(offset, 8), {var_name}); offset += 8;\n'
+                    elif type_name == "bool":
+                        result += f'            buffer[offset++] = (byte)({var_name} ? 1 : 0);\n'
+                elif f.isEnum:
+                    result += f'            buffer[offset++] = (byte){var_name};\n'
+                else:
+                    # Nested struct
+                    result += f'            if ({var_name} != null) {{ var nestedBytes = {var_name}.Pack(); Array.Copy(nestedBytes, 0, buffer, offset, nestedBytes.Length); }}\n'
+                    result += f'            offset += {f.size};\n'
+        
+        result += '            return buffer;\n'
+        result += '        }\n'
+        
+        # Generate UnpackVariable static method
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Unpack message from variable-length encoded buffer\n'
+        result += '        /// </summary>\n'
+        result += f'        public static {structName} UnpackVariable(byte[] data, int startOffset = 0)\n'
+        result += '        {\n'
+        result += f'            var msg = new {structName}();\n'
+        result += '            int offset = startOffset;\n'
+        
+        for key, f in msg.fields.items():
+            var_name = pascalCase(f.name)
+            type_name = f.fieldType
+            if f.is_array and f.max_size is not None:
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if type_name == "string":
+                    element_size = f.element_size if f.element_size else 1
+                else:
+                    element_size = type_sizes.get(type_name, (f.size - 1) // f.max_size)
+                result += f'            // {f.name}: variable array\n'
+                result += f'            msg.{var_name}Count = Math.Min(data[offset++], (byte){f.max_size});\n'
+                if type_name in type_sizes:
+                    base_type = csharp_types.get(type_name, type_name)
+                    result += f'            msg.{var_name}Data = new {base_type}[{f.max_size}];\n'
+                    result += f'            Buffer.BlockCopy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Count * {element_size});\n'
+                    result += f'            offset += msg.{var_name}Count * {element_size};\n'
+                elif f.isEnum:
+                    result += f'            msg.{var_name}Data = new byte[{f.max_size}];\n'
+                    result += f'            Array.Copy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Count);\n'
+                    result += f'            offset += msg.{var_name}Count;\n'
+                else:
+                    type_pkg = f.type_package if f.type_package else f.package
+                    nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
+                    result += f'            msg.{var_name}Data = new {nested_type}[{f.max_size}];\n'
+                    result += f'            for (int i = 0; i < msg.{var_name}Count; i++)\n'
+                    result += f'                msg.{var_name}Data[i] = {nested_type}.Unpack(data, offset + i * {element_size});\n'
+                    result += f'            offset += msg.{var_name}Count * {element_size};\n'
+            elif type_name == "string" and f.max_size is not None:
+                result += f'            // {f.name}: variable string\n'
+                result += f'            msg.{var_name}Length = Math.Min(data[offset++], (byte){f.max_size});\n'
+                result += f'            msg.{var_name}Data = new byte[{f.max_size}];\n'
+                result += f'            Array.Copy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Length);\n'
+                result += f'            offset += msg.{var_name}Length;\n'
+            else:
+                # Fixed field
+                if type_name in csharp_type_sizes:
+                    if type_name == "uint8":
+                        result += f'            msg.{var_name} = data[offset++];\n'
+                    elif type_name == "int8":
+                        result += f'            msg.{var_name} = (sbyte)data[offset++];\n'
+                    elif type_name == "uint16":
+                        result += f'            msg.{var_name} = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset, 2)); offset += 2;\n'
+                    elif type_name == "int16":
+                        result += f'            msg.{var_name} = BinaryPrimitives.ReadInt16LittleEndian(data.AsSpan(offset, 2)); offset += 2;\n'
+                    elif type_name == "uint32":
+                        result += f'            msg.{var_name} = BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(offset, 4)); offset += 4;\n'
+                    elif type_name == "int32":
+                        result += f'            msg.{var_name} = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(offset, 4)); offset += 4;\n'
+                    elif type_name == "uint64":
+                        result += f'            msg.{var_name} = BinaryPrimitives.ReadUInt64LittleEndian(data.AsSpan(offset, 8)); offset += 8;\n'
+                    elif type_name == "int64":
+                        result += f'            msg.{var_name} = BinaryPrimitives.ReadInt64LittleEndian(data.AsSpan(offset, 8)); offset += 8;\n'
+                    elif type_name == "float":
+                        result += f'            msg.{var_name} = BinaryPrimitives.ReadSingleLittleEndian(data.AsSpan(offset, 4)); offset += 4;\n'
+                    elif type_name == "double":
+                        result += f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(offset, 8)); offset += 8;\n'
+                    elif type_name == "bool":
+                        result += f'            msg.{var_name} = data[offset++] != 0;\n'
+                elif f.isEnum:
+                    type_pkg = f.type_package if f.type_package else f.package
+                    enum_type = '%s%s' % (pascalCase(type_pkg), type_name)
+                    result += f'            msg.{var_name} = ({enum_type})data[offset++];\n'
+                else:
+                    type_pkg = f.type_package if f.type_package else f.package
+                    nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
+                    result += f'            msg.{var_name} = {nested_type}.Unpack(data, offset); offset += {nested_type}.MaxSize;\n'
+        
+        result += '            return msg;\n'
+        result += '        }\n'
+        
+        return result
     
     @staticmethod
     def _generate_equality_members(msg, structName):
