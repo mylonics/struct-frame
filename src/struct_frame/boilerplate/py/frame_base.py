@@ -25,7 +25,8 @@ class FrameChecksum:
         return (self.byte1, self.byte2)
 
 
-def fletcher_checksum(data: Union[bytes, List[int]], start: int = 0, end: Optional[int] = None) -> FrameChecksum:
+def fletcher_checksum(data: Union[bytes, List[int]], start: int = 0, end: Optional[int] = None, 
+                      init1: int = 0, init2: int = 0) -> FrameChecksum:
     """
     Calculate Fletcher-16 checksum over the given data.
     
@@ -33,6 +34,8 @@ def fletcher_checksum(data: Union[bytes, List[int]], start: int = 0, end: Option
         data: Buffer to checksum
         start: Start index (inclusive)
         end: End index (exclusive), defaults to len(data)
+        init1: Initial value for byte1 (magic number)
+        init2: Initial value for byte2 (magic number)
     
     Returns:
         FrameChecksum with byte1 and byte2
@@ -40,8 +43,8 @@ def fletcher_checksum(data: Union[bytes, List[int]], start: int = 0, end: Option
     if end is None:
         end = len(data)
     
-    byte1 = 0
-    byte2 = 0
+    byte1 = init1
+    byte2 = init2
     for i in range(start, end):
         byte1 = (byte1 + data[i]) & 0xFF
         byte2 = (byte2 + byte1) & 0xFF

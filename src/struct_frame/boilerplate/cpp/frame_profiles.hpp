@@ -148,7 +148,12 @@ class FrameEncoderWithCrc {
     // Calculate and write CRC
     if constexpr (Config::has_crc) {
       size_t crc_len = idx - crc_start;
-      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len);
+      
+      // Get magic numbers for this message type
+      uint8_t magic1 = 0, magic2 = 0;
+      get_magic_numbers(msg_id, &magic1, &magic2);
+      
+      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, magic1, magic2);
       buffer[idx++] = ck.byte1;
       buffer[idx++] = ck.byte2;
     }
@@ -253,7 +258,12 @@ class BufferParserWithCrc {
     // Verify CRC
     if constexpr (Config::has_crc) {
       size_t crc_len = total_size - crc_start - Config::footer_size;
-      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len);
+      
+      // Get magic numbers for this message type
+      uint8_t magic1 = 0, magic2 = 0;
+      get_magic_numbers(msg_id, &magic1, &magic2);
+      
+      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, magic1, magic2);
       if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
         return FrameMsgInfo();
       }

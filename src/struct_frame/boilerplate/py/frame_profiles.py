@@ -221,7 +221,9 @@ def _frame_format_encode_with_crc(
     payload: bytes,
     seq: int = 0,
     sys_id: int = 0,
-    comp_id: int = 0
+    comp_id: int = 0,
+    magic1: int = 0,
+    magic2: int = 0
 ) -> bytes:
     """
     Generic encode function for frames with CRC.
@@ -234,6 +236,8 @@ def _frame_format_encode_with_crc(
         seq: Sequence number (for profiles with sequence)
         sys_id: System ID (for profiles with routing)
         comp_id: Component ID (for profiles with routing)
+        magic1: Magic number for checksum initialization (byte 1)
+        magic2: Magic number for checksum initialization (byte 2)
     
     Returns:
         Encoded frame as bytes
@@ -285,7 +289,7 @@ def _frame_format_encode_with_crc(
     
     # Calculate and write CRC
     if config.has_crc:
-        crc = fletcher_checksum(output, crc_start)
+        crc = fletcher_checksum(output, crc_start, init1=magic1, init2=magic2)
         output.append(crc.byte1)
         output.append(crc.byte2)
     
@@ -327,7 +331,8 @@ def _frame_format_encode_minimal(
 
 def _frame_format_parse_with_crc(
     config: ProfileConfig,
-    buffer: bytes
+    buffer: bytes,
+    get_magic_numbers_func = None
 ) -> FrameMsgInfo:
     """
     Generic parse function for frames with CRC.
@@ -335,6 +340,7 @@ def _frame_format_parse_with_crc(
     Args:
         config: Profile configuration
         buffer: Buffer containing the complete frame
+        get_magic_numbers_func: Optional function to get magic numbers for a message ID: (msg_id) -> (magic1, magic2)
     
     Returns:
         FrameMsgInfo with valid=True if frame is valid
@@ -406,7 +412,13 @@ def _frame_format_parse_with_crc(
     # Verify CRC
     if config.has_crc:
         crc_len = total_size - crc_start - config.footer_size
-        calc_crc = fletcher_checksum(buffer, crc_start, crc_start + crc_len)
+        
+        # Get magic numbers for this message type
+        magic1, magic2 = 0, 0
+        if get_magic_numbers_func:
+            magic1, magic2 = get_magic_numbers_func(msg_id)
+        
+        calc_crc = fletcher_checksum(buffer, crc_start, crc_start + crc_len, init1=magic1, init2=magic2)
         recv_crc = FrameChecksum(buffer[total_size - 2], buffer[total_size - 1])
         if calc_crc.byte1 != recv_crc.byte1 or calc_crc.byte2 != recv_crc.byte2:
             return result

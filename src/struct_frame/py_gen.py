@@ -507,6 +507,12 @@ class MessagePyGen():
         if msg.id != None:
             result += '    msg_id = %s\n' % msg.id
             result += '    MSG_ID = %s  # C++ compatible alias\n' % msg.id
+        
+        # Add magic numbers for checksum
+        if msg.id is not None and msg.magic_bytes:
+            result += f'    MAGIC1 = {msg.magic_bytes[0]}  # Checksum magic number (based on field types and positions)\n'
+            result += f'    MAGIC2 = {msg.magic_bytes[1]}  # Checksum magic number (based on field types and positions)\n'
+        
         result += '\n'
 
         # Generate __init__ method
@@ -675,7 +681,15 @@ class FilePyGen():
                 yield f'    return msg_class.msg_size if msg_class else 0\n\n'
                 
                 yield f'# Alias for minimal frame parsing compatibility\n'
-                yield f'get_msg_length = get_message_size\n'
+                yield f'get_msg_length = get_message_size\n\n'
+                
+                # Add get_magic_numbers function
+                yield f'def get_magic_numbers(msg_id: int):\n'
+                yield f'    """Get magic numbers for checksum from 16-bit message ID"""\n'
+                yield f'    msg_class = get_message_class(msg_id)\n'
+                yield f'    if msg_class and hasattr(msg_class, "MAGIC1") and hasattr(msg_class, "MAGIC2"):\n'
+                yield f'        return (msg_class.MAGIC1, msg_class.MAGIC2)\n'
+                yield f'    return (0, 0)\n'
             else:
                 # Flat namespace mode: 8-bit message ID
                 yield '%s_definitions = {\n' % package.name
@@ -693,4 +707,12 @@ class FilePyGen():
                 yield f'def get_msg_length(msg_id: int) -> int:\n'
                 yield f'    """Get message size from message ID (for minimal frame parsing)"""\n'
                 yield f'    msg_class = get_message_class(msg_id)\n'
-                yield f'    return msg_class.msg_size if msg_class else 0\n'
+                yield f'    return msg_class.msg_size if msg_class else 0\n\n'
+                
+                # Add get_magic_numbers function
+                yield f'def get_magic_numbers(msg_id: int):\n'
+                yield f'    """Get magic numbers for checksum from message ID"""\n'
+                yield f'    msg_class = get_message_class(msg_id)\n'
+                yield f'    if msg_class and hasattr(msg_class, "MAGIC1") and hasattr(msg_class, "MAGIC2"):\n'
+                yield f'        return (msg_class.MAGIC1, msg_class.MAGIC2)\n'
+                yield f'    return (0, 0)\n'

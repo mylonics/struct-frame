@@ -35,6 +35,77 @@ default_types = {
     "string": {"size": 4}  # Variable length, estimated size for length prefix
 }
 
+# Type codes for magic number calculation
+type_codes = {
+    "uint8": 1,
+    "int8": 2,
+    "uint16": 3,
+    "int16": 4,
+    "uint32": 5,
+    "int32": 6,
+    "bool": 7,
+    "float": 8,
+    "double": 9,
+    "int64": 10,
+    "uint64": 11,
+    "string": 12
+}
+
+
+def calculate_magic_numbers(message):
+    """
+    Calculate two magic number bytes for a message based on field types and positions.
+    This ensures the checksum starts with non-zero values unique to each message structure.
+    
+    The magic numbers are calculated using a Fletcher-like algorithm over:
+    - Field type codes (not field names)
+    - Field positions
+    - Field sizes
+    
+    Returns: tuple (byte1, byte2)
+    """
+    magic1 = 0
+    magic2 = 0
+    
+    position = 0
+    for field_name, field in message.fields.items():
+        # Get type code
+        if field.fieldType in type_codes:
+            type_code = type_codes[field.fieldType]
+        else:
+            # For custom types (enums, nested messages), use a hash of the type name
+            # This ensures different custom types get different codes
+            type_code = sum(ord(c) for c in field.fieldType) % 256
+        
+        # Incorporate type code, position, and size into magic numbers
+        # Use Fletcher-like algorithm but ensure non-zero result
+        magic1 = (magic1 + type_code + position + 1) & 0xFF
+        magic2 = (magic2 + magic1) & 0xFF
+        
+        position += 1
+    
+    # Handle oneofs
+    for oneof_name, oneof in message.oneofs.items():
+        for field_name, field in oneof.fields.items():
+            if field.fieldType in type_codes:
+                type_code = type_codes[field.fieldType]
+            else:
+                type_code = sum(ord(c) for c in field.fieldType) % 256
+            
+            magic1 = (magic1 + type_code + position + 1) & 0xFF
+            magic2 = (magic2 + magic1) & 0xFF
+            
+            position += 1
+    
+    # Ensure magic numbers are non-zero
+    # If they are zero, use a default non-zero value
+    if magic1 == 0:
+        magic1 = 0x5A  # Default non-zero magic byte
+    if magic2 == 0:
+        magic2 = 0xA5  # Default non-zero magic byte
+    
+    return (magic1, magic2)
+
 
 class Enum:
     def __init__(self, package, comments):
@@ -381,6 +452,7 @@ class Message:
         self.comments = comments
         self.package = package
         self.isEnum = False
+        self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
 
     def parse(self, msg):
         self.name = msg.name
@@ -477,6 +549,10 @@ class Message:
                 return False
 
         self.validated = True
+        
+        # Calculate magic numbers for this message
+        self.magic_bytes = calculate_magic_numbers(self)
+        
         return True
 
     def __str__(self):
