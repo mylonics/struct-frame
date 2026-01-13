@@ -93,7 +93,8 @@ static inline size_t profile_encode_with_crc(
     uint8_t* buffer, size_t buffer_size,
     uint8_t seq, uint8_t sys_id, uint8_t comp_id,
     uint8_t pkg_id, uint8_t msg_id,
-    const uint8_t* payload_data, size_t payload_size) {
+    const uint8_t* payload_data, size_t payload_size,
+    uint8_t magic1, uint8_t magic2) {
     
     uint8_t header_size = profile_header_size(config);
     uint8_t footer_size = profile_footer_size(config);
@@ -158,7 +159,7 @@ static inline size_t profile_encode_with_crc(
     /* Calculate and write CRC */
     if (config->payload.has_crc) {
         size_t crc_len = idx - crc_start;
-        frame_checksum_t ck = frame_fletcher_checksum(buffer + crc_start, crc_len);
+        frame_checksum_t ck = frame_fletcher_checksum_with_init(buffer + crc_start, crc_len, magic1, magic2);
         buffer[idx++] = ck.byte1;
         buffer[idx++] = ck.byte2;
     }
@@ -214,7 +215,8 @@ static inline size_t profile_encode_minimal(
  */
 static inline frame_msg_info_t profile_parse_with_crc(
     const profile_config_t* config,
-    const uint8_t* buffer, size_t length) {
+    const uint8_t* buffer, size_t length,
+    bool (*get_magic_numbers_func)(uint16_t, uint8_t*, uint8_t*)) {
     
     frame_msg_info_t result = {false, 0, 0, NULL};
     uint8_t header_size = profile_header_size(config);
@@ -273,7 +275,14 @@ static inline frame_msg_info_t profile_parse_with_crc(
     /* Verify CRC */
     if (config->payload.has_crc) {
         size_t crc_len = total_size - crc_start - footer_size;
-        frame_checksum_t ck = frame_fletcher_checksum(buffer + crc_start, crc_len);
+        
+        /* Get magic numbers for this message type */
+        uint8_t magic1 = 0, magic2 = 0;
+        if (get_magic_numbers_func) {
+            get_magic_numbers_func(msg_id, &magic1, &magic2);
+        }
+        
+        frame_checksum_t ck = frame_fletcher_checksum_with_init(buffer + crc_start, crc_len, magic1, magic2);
         if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
             return result;
         }
