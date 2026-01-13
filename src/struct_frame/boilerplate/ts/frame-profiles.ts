@@ -444,17 +444,20 @@ export class BufferReader {
     private size: number;
     private _offset: number;
     private getMsgLength?: (msgId: number) => number | undefined;
+    private getMagicNumbers?: (msgId: number) => [number, number];
 
     constructor(
         config: FrameProfileConfig,
         buffer: Uint8Array,
-        getMsgLength?: (msgId: number) => number | undefined
+        getMsgLength?: (msgId: number) => number | undefined,
+        getMagicNumbers?: (msgId: number) => [number, number]
     ) {
         this.config = config;
         this.buffer = buffer;
         this.size = buffer.length;
         this._offset = 0;
         this.getMsgLength = getMsgLength;
+        this.getMagicNumbers = getMagicNumbers;
     }
 
     /**
@@ -470,7 +473,7 @@ export class BufferReader {
         let result: FrameMsgInfo;
 
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            result = parseFrameWithCrc(this.config, remaining);
+            result = parseFrameWithCrc(this.config, remaining, this.getMagicNumbers);
         } else {
             if (!this.getMsgLength) {
                 // No more valid data to parse without length callback
@@ -546,10 +549,12 @@ export class BufferWriter {
     /**
      * Write a message to the buffer.
      * The message must be a MessageBase instance (generated struct class).
+     * Magic numbers for checksum are automatically extracted from the message class
+     * if _magic1/_magic2 static properties are present.
      * Returns the number of bytes written, or 0 on failure.
      */
     write(msg: MessageBase, options: EncodeOptions = {}): number {
-        const ctor = msg.constructor as typeof MessageBase & { _msgid?: number };
+        const ctor = msg.constructor as typeof MessageBase & { _msgid?: number; _magic1?: number; _magic2?: number };
         const msgId = ctor._msgid;
         const payload = new Uint8Array(msg._buffer);
 
@@ -557,10 +562,14 @@ export class BufferWriter {
             throw new Error('Message struct must have _msgid static property');
         }
 
+        // Get magic numbers from message class (for CRC initialization)
+        const magic1 = ctor._magic1 ?? 0;
+        const magic2 = ctor._magic2 ?? 0;
+
         let encoded: Uint8Array;
 
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            encoded = encodeFrameWithCrc(this.config, msgId, payload, options);
+            encoded = encodeFrameWithCrc(this.config, msgId, payload, { ...options, magic1, magic2 });
         } else {
             encoded = encodeFrameMinimal(this.config, msgId, payload);
         }
@@ -642,6 +651,7 @@ export enum AccumulatingReaderState {
 export class AccumulatingReader {
     private config: FrameProfileConfig;
     private getMsgLength?: (msgId: number) => number | undefined;
+    private getMagicNumbers?: (msgId: number) => [number, number];
     private bufferSize: number;
 
     // Internal buffer for partial messages
@@ -658,10 +668,12 @@ export class AccumulatingReader {
     constructor(
         config: FrameProfileConfig,
         getMsgLength?: (msgId: number) => number | undefined,
+        getMagicNumbers?: (msgId: number) => [number, number],
         bufferSize: number = 1024
     ) {
         this.config = config;
         this.getMsgLength = getMsgLength;
+        this.getMagicNumbers = getMagicNumbers;
         this.bufferSize = bufferSize;
 
         this.internalBuffer = new Uint8Array(bufferSize);
@@ -964,7 +976,7 @@ export class AccumulatingReader {
 
     private parseBuffer(buffer: Uint8Array): FrameMsgInfo {
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            return parseFrameWithCrc(this.config, buffer);
+            return parseFrameWithCrc(this.config, buffer, this.getMagicNumbers);
         } else {
             if (!this.getMsgLength) {
                 return createFrameMsgInfo();
@@ -1018,8 +1030,8 @@ export class AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileStandardReader extends BufferReader {
-    constructor(buffer: Uint8Array) {
-        super(ProfileStandardConfig, buffer);
+    constructor(buffer: Uint8Array, getMagicNumbers?: (msgId: number) => [number, number]) {
+        super(ProfileStandardConfig, buffer, undefined, getMagicNumbers);
     }
 }
 
@@ -1030,8 +1042,8 @@ export class ProfileStandardWriter extends BufferWriter {
 }
 
 export class ProfileStandardAccumulatingReader extends AccumulatingReader {
-    constructor(bufferSize: number = 1024) {
-        super(ProfileStandardConfig, undefined, bufferSize);
+    constructor(getMagicNumbers?: (msgId: number) => [number, number], bufferSize: number = 1024) {
+        super(ProfileStandardConfig, undefined, getMagicNumbers, bufferSize);
     }
 }
 
@@ -1053,7 +1065,7 @@ export class ProfileSensorWriter extends BufferWriter {
 
 export class ProfileSensorAccumulatingReader extends AccumulatingReader {
     constructor(getMsgLength: (msgId: number) => number | undefined, bufferSize: number = 1024) {
-        super(ProfileSensorConfig, getMsgLength, bufferSize);
+        super(ProfileSensorConfig, getMsgLength, undefined, bufferSize);
     }
 }
 
@@ -1075,7 +1087,7 @@ export class ProfileIPCWriter extends BufferWriter {
 
 export class ProfileIPCAccumulatingReader extends AccumulatingReader {
     constructor(getMsgLength: (msgId: number) => number | undefined, bufferSize: number = 1024) {
-        super(ProfileIPCConfig, getMsgLength, bufferSize);
+        super(ProfileIPCConfig, getMsgLength, undefined, bufferSize);
     }
 }
 
@@ -1084,8 +1096,8 @@ export class ProfileIPCAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileBulkReader extends BufferReader {
-    constructor(buffer: Uint8Array) {
-        super(ProfileBulkConfig, buffer);
+    constructor(buffer: Uint8Array, getMagicNumbers?: (msgId: number) => [number, number]) {
+        super(ProfileBulkConfig, buffer, undefined, getMagicNumbers);
     }
 }
 
@@ -1096,8 +1108,8 @@ export class ProfileBulkWriter extends BufferWriter {
 }
 
 export class ProfileBulkAccumulatingReader extends AccumulatingReader {
-    constructor(bufferSize: number = 1024) {
-        super(ProfileBulkConfig, undefined, bufferSize);
+    constructor(getMagicNumbers?: (msgId: number) => [number, number], bufferSize: number = 1024) {
+        super(ProfileBulkConfig, undefined, getMagicNumbers, bufferSize);
     }
 }
 
@@ -1106,8 +1118,8 @@ export class ProfileBulkAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileNetworkReader extends BufferReader {
-    constructor(buffer: Uint8Array) {
-        super(ProfileNetworkConfig, buffer);
+    constructor(buffer: Uint8Array, getMagicNumbers?: (msgId: number) => [number, number]) {
+        super(ProfileNetworkConfig, buffer, undefined, getMagicNumbers);
     }
 }
 
@@ -1118,7 +1130,7 @@ export class ProfileNetworkWriter extends BufferWriter {
 }
 
 export class ProfileNetworkAccumulatingReader extends AccumulatingReader {
-    constructor(bufferSize: number = 1024) {
-        super(ProfileNetworkConfig, undefined, bufferSize);
+    constructor(getMagicNumbers?: (msgId: number) => [number, number], bufferSize: number = 1024) {
+        super(ProfileNetworkConfig, undefined, getMagicNumbers, bufferSize);
     }
 }

@@ -16,6 +16,7 @@ const {
   ExtendedTestExtendedIdMessage10,
   ExtendedTestLargePayloadMessage1,
   ExtendedTestLargePayloadMessage2,
+  get_magic_numbers,
 } = require('../../generated/js/extended_test.structframe');
 
 /** Message count */
@@ -235,6 +236,7 @@ const extTestConfig = {
   validateMessage,
   resetState,
   getMessageLength: (_msgId) => undefined,
+  getMagicNumbers: get_magic_numbers,
   supportsFormat,
 };
 

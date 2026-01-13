@@ -14,6 +14,7 @@ using System.Linq;
 using System.Text;
 using StructFrame;
 using StructFrame.SerializationTest;
+using ExtendedMessageDefinitions = StructFrame.ExtendedTest.MessageDefinitions;
 
 // Type aliases to match expected names
 using SerializationTestMessage = StructFrame.SerializationTest.SerializationTestSerializationTestMessage;
@@ -285,6 +286,17 @@ namespace StructFrameTests
             throw new InvalidOperationException("Unknown message type");
         }
 
+        private static (byte magic1, byte magic2) GetMessageMagicNumbers(object msg)
+        {
+            if (msg is SerializationTestMessage)
+                return (SerializationTestMessage.Magic1, SerializationTestMessage.Magic2);
+            else if (msg is BasicTypesMessage)
+                return (BasicTypesMessage.Magic1, BasicTypesMessage.Magic2);
+            else if (msg is UnionTestMessage)
+                return (UnionTestMessage.Magic1, UnionTestMessage.Magic2);
+            throw new InvalidOperationException("Unknown message type");
+        }
+
         // ============================================================================
         // Generic encoding/decoding (unified logic)
         // ============================================================================
@@ -295,20 +307,20 @@ namespace StructFrameTests
         /// <param name="formatName">Frame format profile name</param>
         /// <param name="messageCount">Total number of messages to encode</param>
         /// <param name="bufferSize">Buffer size for encoded data</param>
-        /// <param name="getMessageData">Delegate to get (msgData, msgId) for each index</param>
+        /// <param name="getMessageData">Delegate to get (msgData, msgId, magic1, magic2) for each index</param>
         public static byte[] EncodeMessages(
             string formatName,
             int messageCount,
             int bufferSize,
-            Func<int, (byte[] msgData, int msgId)> getMessageData)
+            Func<int, (byte[] msgData, int msgId, byte magic1, byte magic2)> getMessageData)
         {
             var writer = Profiles.CreateWriter(formatName);
             writer.SetBuffer(new byte[bufferSize]);
 
             for (int i = 0; i < messageCount; i++)
             {
-                var (msgData, msgId) = getMessageData(i);
-                int bytesWritten = writer.Write((ushort)msgId, msgData);
+                var (msgData, msgId, magic1, magic2) = getMessageData(i);
+                int bytesWritten = writer.Write((ushort)msgId, msgData, magic1, magic2);
                 if (bytesWritten == 0)
                     throw new Exception($"Failed to encode message {i}");
             }
@@ -324,6 +336,7 @@ namespace StructFrameTests
         /// <param name="expectedCount">Expected number of messages</param>
         /// <param name="getMsgLength">Delegate to get message length from ID</param>
         /// <param name="validateMessage">Delegate to validate message at index, returns (expectedMsgId, isValid)</param>
+        /// <param name="getMagicNumbers">Delegate to get magic numbers for CRC profiles</param>
         /// <param name="usePkgId">Whether to combine pkg_id with msg_id</param>
         public static (bool success, int messageCount) DecodeMessages(
             string formatName,
@@ -331,9 +344,10 @@ namespace StructFrameTests
             int expectedCount,
             Func<int, int?> getMsgLength,
             Func<int, FrameMsgInfo, (int expectedMsgId, bool isValid)> validateMessage,
-            bool usePkgId = false)
+            bool usePkgId = false,
+            Func<int, (byte, byte)> getMagicNumbers = null)
         {
-            var reader = Profiles.CreateReader(formatName, getMsgLength);
+            var reader = Profiles.CreateReader(formatName, getMsgLength, getMagicNumbers);
             reader.SetBuffer(data);
             int messageCount = 0;
 
@@ -401,7 +415,8 @@ namespace StructFrameTests
                 else
                     throw new Exception($"Unknown message type: {mixedMsg.Type}");
 
-                return (EncodeMessage(msg), GetMessageId(msg));
+                var (magic1, magic2) = GetMessageMagicNumbers(msg);
+                return (EncodeMessage(msg), GetMessageId(msg), magic1, magic2);
             });
         }
 
@@ -412,7 +427,8 @@ namespace StructFrameTests
                 var (msg, _) = ExtendedTestData.GetExtendedTestMessage(i);
                 if (msg == null)
                     throw new Exception($"Failed to get extended message {i}");
-                return (msg.Pack(), msg.MsgId);
+                var (magic1, magic2) = GetExtendedMagicNumbers(msg.MsgId);
+                return (msg.Pack(), msg.MsgId, magic1, magic2);
             });
         }
 
@@ -425,6 +441,20 @@ namespace StructFrameTests
             if (MessageDefinitions.GetMessageLength(msgId, out int size))
                 return size;
             return null;
+        }
+
+        private static (byte, byte) GetStandardMagicNumbers(int msgId)
+        {
+            if (MessageDefinitions.GetMagicNumbers(msgId, out byte magic1, out byte magic2))
+                return (magic1, magic2);
+            return (0, 0);
+        }
+
+        private static (byte, byte) GetExtendedMagicNumbers(int msgId)
+        {
+            if (ExtendedMessageDefinitions.GetMagicNumbers(msgId, out byte magic1, out byte magic2))
+                return (magic1, magic2);
+            return (0, 0);
         }
 
         private static bool ValidateSerializationTestMessage(SerializationTestMessage msg, Dictionary<string, object> expected)
@@ -531,7 +561,8 @@ namespace StructFrameTests
 
                     return (expectedMsgId, isValid);
                 },
-                usePkgId: false);
+                usePkgId: false,
+                getMagicNumbers: GetStandardMagicNumbers);
         }
 
         public static (bool success, int messageCount) DecodeExtendedMessages(string formatName, byte[] data)
@@ -573,7 +604,8 @@ namespace StructFrameTests
                     
                     return (expectedMsg.MsgId, true);
                 },
-                usePkgId: true);
+                usePkgId: true,
+                getMagicNumbers: GetExtendedMagicNumbers);
         }
 
         // ============================================================================

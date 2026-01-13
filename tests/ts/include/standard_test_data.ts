@@ -17,6 +17,7 @@ import {
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
   get_message_length,
+  get_magic_numbers,
 } from '../../generated/ts/serialization_test.structframe';
 
 /** Message count */
@@ -295,5 +296,6 @@ export const stdTestConfig: TestConfig = {
   validateMessage,
   resetState,
   getMessageLength: get_message_length,
+  getMagicNumbers: get_magic_numbers,
   supportsFormat,
 };

@@ -676,10 +676,14 @@ class BufferReader:
     
     For minimal profiles that need get_msg_length:
         reader = BufferReader(PROFILE_SENSOR_CONFIG, buffer, get_msg_length)
+    
+    For profiles with CRC that need magic numbers:
+        reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer, get_magic_numbers=get_magic_numbers)
     """
     
     def __init__(self, config: ProfileConfig, buffer: bytes, 
-                 get_msg_length: Callable[[int], Optional[int]] = None):
+                 get_msg_length: Callable[[int], Optional[int]] = None,
+                 get_magic_numbers: Callable[[int], tuple] = None):
         """
         Initialize buffer reader.
         
@@ -687,12 +691,14 @@ class BufferReader:
             config: Profile configuration
             buffer: Buffer containing one or more frames
             get_msg_length: Callback to get message length (required for minimal frames)
+            get_magic_numbers: Callback to get magic numbers for a message ID: (msg_id) -> (magic1, magic2)
         """
         self._config = config
         self._buffer = buffer
         self._size = len(buffer)
         self._offset = 0
         self._get_msg_length = get_msg_length
+        self._get_magic_numbers = get_magic_numbers
     
     def next(self) -> FrameMsgInfo:
         """
@@ -707,7 +713,7 @@ class BufferReader:
         remaining = self._buffer[self._offset:]
         
         if self._config.has_crc or self._config.has_length:
-            result = _frame_format_parse_with_crc(self._config, remaining)
+            result = _frame_format_parse_with_crc(self._config, remaining, self._get_magic_numbers)
         else:
             if self._get_msg_length is None:
                 self._offset = self._size
@@ -774,7 +780,7 @@ class BufferWriter:
         self._offset = 0
     
     def write(self, msg_id: int, payload: bytes, seq: int = 0, 
-              sys_id: int = 0, comp_id: int = 0) -> int:
+              sys_id: int = 0, comp_id: int = 0, magic1: int = 0, magic2: int = 0) -> int:
         """
         Write a message to the buffer.
         
@@ -784,13 +790,16 @@ class BufferWriter:
             seq: Sequence number (for profiles with sequence)
             sys_id: System ID (for profiles with routing)
             comp_id: Component ID (for profiles with routing)
+            magic1: Magic number for checksum initialization (byte 1)
+            magic2: Magic number for checksum initialization (byte 2)
         
         Returns:
             Number of bytes written, or 0 on failure.
         """
         if self._config.has_crc or self._config.has_length:
             encoded = _frame_format_encode_with_crc(
-                self._config, msg_id, payload, seq=seq, sys_id=sys_id, comp_id=comp_id
+                self._config, msg_id, payload, seq=seq, sys_id=sys_id, comp_id=comp_id,
+                magic1=magic1, magic2=magic2
             )
         else:
             encoded = _frame_format_encode_minimal(self._config, msg_id, payload)
@@ -808,6 +817,8 @@ class BufferWriter:
         Write a message object to the buffer (C++ compatible API).
         
         The message object must have MSG_ID (or msg_id) and data() (or pack()) methods.
+        Magic numbers for checksum are automatically extracted from the message class
+        if MAGIC1/MAGIC2 class attributes are present.
         
         Args:
             msg: Message object with MSG_ID/msg_id and data()/pack() attributes
@@ -831,7 +842,13 @@ class BufferWriter:
         else:
             raise ValueError("Message object must have data() or pack() method")
         
-        return self.write(msg_id, payload, seq=seq, sys_id=sys_id, comp_id=comp_id)
+        # Get magic numbers from message class (for CRC initialization)
+        msg_class = type(msg)
+        magic1 = getattr(msg_class, 'MAGIC1', 0)
+        magic2 = getattr(msg_class, 'MAGIC2', 0)
+        
+        return self.write(msg_id, payload, seq=seq, sys_id=sys_id, comp_id=comp_id,
+                          magic1=magic1, magic2=magic2)
     
     def reset(self):
         """Reset the writer to the beginning of the buffer."""
@@ -892,10 +909,14 @@ class AccumulatingReader:
     
     For minimal profiles:
         reader = AccumulatingReader(PROFILE_SENSOR_CONFIG, get_msg_length=get_message_length)
+    
+    For profiles with CRC that need magic numbers:
+        reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_magic_numbers=get_magic_numbers)
     """
     
     def __init__(self, config: ProfileConfig, 
                  get_msg_length: Callable[[int], Optional[int]] = None,
+                 get_magic_numbers: Callable[[int], tuple] = None,
                  buffer_size: int = 1024):
         """
         Initialize accumulating reader.
@@ -903,10 +924,12 @@ class AccumulatingReader:
         Args:
             config: Profile configuration
             get_msg_length: Callback to get message length (required for minimal profiles)
+            get_magic_numbers: Callback to get magic numbers for a message ID: (msg_id) -> (magic1, magic2)
             buffer_size: Size of internal buffer for partial messages (default: 1024)
         """
         self._config = config
         self._get_msg_length = get_msg_length
+        self._get_magic_numbers = get_magic_numbers
         self._buffer_size = buffer_size
         
         # Internal buffer for partial messages
@@ -1218,7 +1241,7 @@ class AccumulatingReader:
     def _parse_buffer(self, buffer: bytes) -> FrameMsgInfo:
         """Parse a buffer using the appropriate parser"""
         if self._config.has_crc or self._config.has_length:
-            return _frame_format_parse_with_crc(self._config, buffer)
+            return _frame_format_parse_with_crc(self._config, buffer, self._get_magic_numbers)
         else:
             if self._get_msg_length is None:
                 return FrameMsgInfo()
@@ -1264,8 +1287,8 @@ class AccumulatingReader:
 # Profile Standard: Basic + Default
 class ProfileStandardReader(BufferReader):
     """BufferReader for Profile Standard"""
-    def __init__(self, buffer: bytes):
-        super().__init__(PROFILE_STANDARD_CONFIG, buffer)
+    def __init__(self, buffer: bytes, get_magic_numbers: Callable[[int], tuple] = None):
+        super().__init__(PROFILE_STANDARD_CONFIG, buffer, get_magic_numbers=get_magic_numbers)
 
 class ProfileStandardWriter(BufferWriter):
     """BufferWriter for Profile Standard"""
@@ -1274,8 +1297,8 @@ class ProfileStandardWriter(BufferWriter):
 
 class ProfileStandardAccumulatingReader(AccumulatingReader):
     """AccumulatingReader for Profile Standard"""
-    def __init__(self, buffer_size: int = 1024):
-        super().__init__(PROFILE_STANDARD_CONFIG, buffer_size=buffer_size)
+    def __init__(self, buffer_size: int = 1024, get_magic_numbers: Callable[[int], tuple] = None):
+        super().__init__(PROFILE_STANDARD_CONFIG, get_magic_numbers=get_magic_numbers, buffer_size=buffer_size)
 
 # Profile Sensor: Tiny + Minimal
 class ProfileSensorReader(BufferReader):
@@ -1312,8 +1335,8 @@ class ProfileIPCAccumulatingReader(AccumulatingReader):
 # Profile Bulk: Basic + Extended
 class ProfileBulkReader(BufferReader):
     """BufferReader for Profile Bulk"""
-    def __init__(self, buffer: bytes):
-        super().__init__(PROFILE_BULK_CONFIG, buffer)
+    def __init__(self, buffer: bytes, get_magic_numbers: Callable[[int], tuple] = None):
+        super().__init__(PROFILE_BULK_CONFIG, buffer, get_magic_numbers=get_magic_numbers)
 
 class ProfileBulkWriter(BufferWriter):
     """BufferWriter for Profile Bulk"""
@@ -1322,14 +1345,14 @@ class ProfileBulkWriter(BufferWriter):
 
 class ProfileBulkAccumulatingReader(AccumulatingReader):
     """AccumulatingReader for Profile Bulk"""
-    def __init__(self, buffer_size: int = 1024):
-        super().__init__(PROFILE_BULK_CONFIG, buffer_size=buffer_size)
+    def __init__(self, buffer_size: int = 1024, get_magic_numbers: Callable[[int], tuple] = None):
+        super().__init__(PROFILE_BULK_CONFIG, get_magic_numbers=get_magic_numbers, buffer_size=buffer_size)
 
 # Profile Network: Basic + ExtendedMultiSystemStream
 class ProfileNetworkReader(BufferReader):
     """BufferReader for Profile Network"""
-    def __init__(self, buffer: bytes):
-        super().__init__(PROFILE_NETWORK_CONFIG, buffer)
+    def __init__(self, buffer: bytes, get_magic_numbers: Callable[[int], tuple] = None):
+        super().__init__(PROFILE_NETWORK_CONFIG, buffer, get_magic_numbers=get_magic_numbers)
 
 class ProfileNetworkWriter(BufferWriter):
     """BufferWriter for Profile Network"""
@@ -1338,8 +1361,8 @@ class ProfileNetworkWriter(BufferWriter):
 
 class ProfileNetworkAccumulatingReader(AccumulatingReader):
     """AccumulatingReader for Profile Network"""
-    def __init__(self, buffer_size: int = 1024):
-        super().__init__(PROFILE_NETWORK_CONFIG, buffer_size=buffer_size)
+    def __init__(self, buffer_size: int = 1024, get_magic_numbers: Callable[[int], tuple] = None):
+        super().__init__(PROFILE_NETWORK_CONFIG, get_magic_numbers=get_magic_numbers, buffer_size=buffer_size)
 
 
 # =============================================================================

@@ -159,14 +159,17 @@ def decode_messages(config, format_name: str, buffer: bytes) -> Tuple[bool, int]
     # Get message length function for minimal profiles
     get_msg_len = config.get_message_length
     
+    # Get magic numbers function for CRC profiles
+    get_magic_nums = getattr(config, 'get_magic_numbers', None)
+    
     # Reader classes for each format (with minimal profile flag)
     # Format: (reader_class_factory, needs_get_msg_length)
     reader_info = {
-        'profile_standard': (lambda: ProfileStandardAccumulatingReader(config.BUFFER_SIZE), False),
+        'profile_standard': (lambda: ProfileStandardAccumulatingReader(config.BUFFER_SIZE, get_magic_numbers=get_magic_nums), False),
         'profile_sensor': (lambda: ProfileSensorAccumulatingReader(get_msg_len, config.BUFFER_SIZE), True),
         'profile_ipc': (lambda: ProfileIPCAccumulatingReader(get_msg_len, config.BUFFER_SIZE), True),
-        'profile_bulk': (lambda: ProfileBulkAccumulatingReader(config.BUFFER_SIZE), False),
-        'profile_network': (lambda: ProfileNetworkAccumulatingReader(config.BUFFER_SIZE), False),
+        'profile_bulk': (lambda: ProfileBulkAccumulatingReader(config.BUFFER_SIZE, get_magic_numbers=get_magic_nums), False),
+        'profile_network': (lambda: ProfileNetworkAccumulatingReader(config.BUFFER_SIZE, get_magic_numbers=get_magic_nums), False),
     }
     
     factory_info = reader_info.get(format_name)

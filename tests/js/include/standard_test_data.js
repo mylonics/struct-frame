@@ -9,6 +9,7 @@ const {
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
   get_message_length,
+  get_magic_numbers,
 } = require('../../generated/js/serialization_test.structframe');
 
 /** Message count */
@@ -287,6 +288,7 @@ const stdTestConfig = {
   validateMessage,
   resetState,
   getMessageLength: get_message_length,
+  getMagicNumbers: get_magic_numbers,
   supportsFormat,
 };
 

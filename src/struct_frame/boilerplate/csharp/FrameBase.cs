@@ -195,6 +195,11 @@ namespace StructFrame
         /// Pack the message into a byte array
         /// </summary>
         byte[] Pack();
+
+        /// <summary>
+        /// Get the magic numbers for checksum calculation (based on field types and positions)
+        /// </summary>
+        (byte Magic1, byte Magic2) GetMagicNumbers();
     }
 
     /// <summary>

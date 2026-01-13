@@ -388,12 +388,13 @@ function parseFrameMinimal(config, buffer, getMsgLength) {
  *   const reader = new BufferReader(ProfileSensorConfig, buffer, getMsgLength);
  */
 class BufferReader {
-  constructor(config, buffer, getMsgLength = undefined) {
+  constructor(config, buffer, getMsgLength = undefined, getMagicNumbers = undefined) {
     this.config = config;
     this.buffer = buffer;
     this.size = buffer.length;
     this._offset = 0;
     this.getMsgLength = getMsgLength;
+    this.getMagicNumbers = getMagicNumbers;
   }
 
   /**
@@ -409,7 +410,7 @@ class BufferReader {
     let result;
 
     if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-      result = parseFrameWithCrc(this.config, remaining);
+      result = parseFrameWithCrc(this.config, remaining, this.getMagicNumbers);
     } else {
       if (!this.getMsgLength) {
         // No more valid data to parse without length callback
@@ -480,22 +481,29 @@ class BufferWriter {
   /**
    * Write a message to the buffer.
    * The message must be a MessageBase instance (generated struct class).
+   * Magic numbers for checksum are automatically extracted from the message class
+   * if _magic1/_magic2 static properties are present.
    * @param {MessageBase} msg - The message to write
    * @param {Object} options - Optional encode options
    * Returns the number of bytes written, or 0 on failure.
    */
   write(msg, options = {}) {
-    const msgId = msg.constructor._msgid;
+    const ctor = msg.constructor;
+    const msgId = ctor._msgid;
     const payload = new Uint8Array(msg._buffer);
 
     if (msgId === undefined) {
       throw new Error('Message struct must have _msgid static property');
     }
 
+    // Get magic numbers from message class (for CRC initialization)
+    const magic1 = ctor._magic1 ?? 0;
+    const magic2 = ctor._magic2 ?? 0;
+
     let encoded;
 
     if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-      encoded = encodeFrameWithCrc(this.config, msgId, payload, options);
+      encoded = encodeFrameWithCrc(this.config, msgId, payload, { ...options, magic1, magic2 });
     } else {
       encoded = encodeFrameMinimal(this.config, msgId, payload);
     }
@@ -575,9 +583,10 @@ const AccumulatingReaderState = {
  *   const reader = new AccumulatingReader(ProfileSensorConfig, getMsgLength);
  */
 class AccumulatingReader {
-  constructor(config, getMsgLength = undefined, bufferSize = 1024) {
+  constructor(config, getMsgLength = undefined, getMagicNumbers = undefined, bufferSize = 1024) {
     this.config = config;
     this.getMsgLength = getMsgLength;
+    this.getMagicNumbers = getMagicNumbers;
     this.bufferSize = bufferSize;
 
     // Internal buffer for partial messages
@@ -882,7 +891,7 @@ class AccumulatingReader {
 
   _parseBuffer(buffer) {
     if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-      return parseFrameWithCrc(this.config, buffer);
+      return parseFrameWithCrc(this.config, buffer, this.getMagicNumbers);
     } else {
       if (!this.getMsgLength) {
         return createFrameMsgInfo();
@@ -936,8 +945,8 @@ class AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 class ProfileStandardReader extends BufferReader {
-  constructor(buffer) {
-    super(ProfileStandardConfig, buffer);
+  constructor(buffer, getMagicNumbers = undefined) {
+    super(ProfileStandardConfig, buffer, undefined, getMagicNumbers);
   }
 }
 
@@ -948,8 +957,8 @@ class ProfileStandardWriter extends BufferWriter {
 }
 
 class ProfileStandardAccumulatingReader extends AccumulatingReader {
-  constructor(bufferSize = 1024) {
-    super(ProfileStandardConfig, undefined, bufferSize);
+  constructor(getMagicNumbers = undefined, bufferSize = 1024) {
+    super(ProfileStandardConfig, undefined, getMagicNumbers, bufferSize);
   }
 }
 
@@ -1002,8 +1011,8 @@ class ProfileIPCAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 class ProfileBulkReader extends BufferReader {
-  constructor(buffer) {
-    super(ProfileBulkConfig, buffer);
+  constructor(buffer, getMagicNumbers = undefined) {
+    super(ProfileBulkConfig, buffer, undefined, getMagicNumbers);
   }
 }
 
@@ -1014,8 +1023,8 @@ class ProfileBulkWriter extends BufferWriter {
 }
 
 class ProfileBulkAccumulatingReader extends AccumulatingReader {
-  constructor(bufferSize = 1024) {
-    super(ProfileBulkConfig, undefined, bufferSize);
+  constructor(getMagicNumbers = undefined, bufferSize = 1024) {
+    super(ProfileBulkConfig, undefined, getMagicNumbers, bufferSize);
   }
 }
 
@@ -1024,8 +1033,8 @@ class ProfileBulkAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 class ProfileNetworkReader extends BufferReader {
-  constructor(buffer) {
-    super(ProfileNetworkConfig, buffer);
+  constructor(buffer, getMagicNumbers = undefined) {
+    super(ProfileNetworkConfig, buffer, undefined, getMagicNumbers);
   }
 }
 
@@ -1036,8 +1045,8 @@ class ProfileNetworkWriter extends BufferWriter {
 }
 
 class ProfileNetworkAccumulatingReader extends AccumulatingReader {
-  constructor(bufferSize = 1024) {
-    super(ProfileNetworkConfig, undefined, bufferSize);
+  constructor(getMagicNumbers = undefined, bufferSize = 1024) {
+    super(ProfileNetworkConfig, undefined, getMagicNumbers, bufferSize);
   }
 }
 

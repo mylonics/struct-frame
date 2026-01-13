@@ -439,7 +439,7 @@ class FileCGen():
                 yield '    \n'
                 yield '    switch (local_msg_id) {\n'
             else:
-                yield 'static inline bool get_magic_numbers(size_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
+                yield 'static inline bool get_magic_numbers(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
                 yield '    switch (msg_id) {\n'
             
             for key, msg in package.sortedMessages().items():

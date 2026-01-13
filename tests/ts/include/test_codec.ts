@@ -57,6 +57,9 @@ export interface TestConfig {
   /** Get message length for minimal profiles (can return undefined) */
   getMessageLength(msgId: number): number | undefined;
 
+  /** Get magic numbers for CRC profiles */
+  getMagicNumbers(msgId: number): [number, number];
+
   /** Check if format is supported */
   supportsFormat(format: string): boolean;
 }
@@ -90,13 +93,13 @@ function getWriter(format: string, capacity: number): any {
 }
 
 /** Get reader for a profile format */
-function getReader(format: string, getMsgLength: (msgId: number) => number | undefined): any {
+function getReader(format: string, getMsgLength: (msgId: number) => number | undefined, getMagicNumbers: (msgId: number) => [number, number]): any {
   const readers: { [key: string]: () => any } = {
-    'profile_standard': () => new ProfileStandardAccumulatingReader(),
+    'profile_standard': () => new ProfileStandardAccumulatingReader(getMagicNumbers),
     'profile_sensor': () => new ProfileSensorAccumulatingReader(getMsgLength),
     'profile_ipc': () => new ProfileIPCAccumulatingReader(getMsgLength),
-    'profile_bulk': () => new ProfileBulkAccumulatingReader(),
-    'profile_network': () => new ProfileNetworkAccumulatingReader(),
+    'profile_bulk': () => new ProfileBulkAccumulatingReader(getMagicNumbers),
+    'profile_network': () => new ProfileNetworkAccumulatingReader(getMagicNumbers),
   };
 
   const creator = readers[format];
@@ -151,7 +154,7 @@ export function decodeMessages(config: TestConfig, format: string, data: Buffer)
   const chunk2 = data.slice(chunk1Size, chunk1Size + chunk2Size);
   const chunk3 = data.slice(chunk1Size + chunk2Size);
 
-  const reader = getReader(format, config.getMessageLength.bind(config));
+  const reader = getReader(format, config.getMessageLength.bind(config), config.getMagicNumbers.bind(config));
   if (!reader) {
     console.log(`  Unknown frame format: ${format}`);
     return 0;

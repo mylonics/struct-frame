@@ -498,6 +498,14 @@ class MessageCSharpGen():
         result += '        /// Get the message size (IStructFrameMessage)\n'
         result += '        /// </summary>\n'
         result += '        public int GetSize() => MaxSize;\n'
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Get the magic numbers for checksum (IStructFrameMessage)\n'
+        result += '        /// </summary>\n'
+        if msg.id is not None and msg.magic_bytes:
+            result += f'        public (byte Magic1, byte Magic2) GetMagicNumbers() => (Magic1, Magic2);\n'
+        else:
+            result += '        public (byte Magic1, byte Magic2) GetMagicNumbers() => (0, 0);\n'
 
         # Generate equality members if requested
         if equality:

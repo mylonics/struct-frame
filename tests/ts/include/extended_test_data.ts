@@ -23,6 +23,7 @@ import {
   ExtendedTestExtendedIdMessage10,
   ExtendedTestLargePayloadMessage1,
   ExtendedTestLargePayloadMessage2,
+  get_magic_numbers,
 } from '../../generated/ts/extended_test.structframe';
 
 /** Message count */
@@ -242,5 +243,6 @@ export const extTestConfig: TestConfig = {
   validateMessage,
   resetState,
   getMessageLength: (_msgId: number) => undefined,
+  getMagicNumbers: get_magic_numbers,
   supportsFormat,
 };

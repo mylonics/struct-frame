@@ -55,6 +55,9 @@ typedef struct test_config {
   /* Get message length for minimal profiles (can be NULL) */
   bool (*get_message_length)(size_t msg_id, size_t* len);
 
+  /* Get magic numbers for CRC profiles (can be NULL) */
+  bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2);
+
   /* Check if format is supported */
   bool (*supports_format)(const char* format);
 } test_config_t;
@@ -191,7 +194,7 @@ static inline bool decode_messages(const test_config_t* config, const char* form
   }
 
   accumulating_reader_t reader;
-  accumulating_reader_init(&reader, profile_config, internal_buffer, config->buffer_size, config->get_message_length);
+  accumulating_reader_init(&reader, profile_config, internal_buffer, config->buffer_size, config->get_message_length, config->get_magic_numbers);
 
   const uint8_t* chunks[] = {chunk1, chunk2, chunk3};
   size_t sizes[] = {chunk1_size, chunk2_size, chunk3_size};

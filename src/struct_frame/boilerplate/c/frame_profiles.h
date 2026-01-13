@@ -430,6 +430,7 @@ typedef struct buffer_reader {
     size_t size;
     size_t offset;
     bool (*get_msg_length)(size_t msg_id, size_t* len);
+    bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2);
 } buffer_reader_t;
 
 static inline void buffer_reader_init(
@@ -437,13 +438,15 @@ static inline void buffer_reader_init(
     const profile_config_t* config,
     const uint8_t* buffer,
     size_t size,
-    bool (*get_msg_length)(size_t msg_id, size_t* len))
+    bool (*get_msg_length)(size_t msg_id, size_t* len),
+    bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2))
 {
     reader->config = config;
     reader->buffer = buffer;
     reader->size = size;
     reader->offset = 0;
     reader->get_msg_length = get_msg_length;
+    reader->get_magic_numbers = get_magic_numbers;
 }
 
 static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
@@ -458,7 +461,7 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
     size_t remaining_size = reader->size - reader->offset;
     
     if (reader->config->payload.has_crc || reader->config->payload.has_length) {
-        result = profile_parse_with_crc(reader->config, remaining, remaining_size, NULL);
+        result = profile_parse_with_crc(reader->config, remaining, remaining_size, reader->get_magic_numbers);
     } else {
         if (reader->get_msg_length == NULL) {
             reader->offset = reader->size;
@@ -517,7 +520,9 @@ static inline size_t buffer_writer_write(
     uint8_t seq,
     uint8_t sys_id,
     uint8_t comp_id,
-    uint8_t pkg_id)
+    uint8_t pkg_id,
+    uint8_t magic1,
+    uint8_t magic2)
 {
     size_t remaining = writer->capacity - writer->offset;
     size_t written;
@@ -528,7 +533,7 @@ static inline size_t buffer_writer_write(
             writer->buffer + writer->offset,
             remaining,
             seq, sys_id, comp_id, pkg_id, msg_id,
-            payload, payload_size, 0, 0);
+            payload, payload_size, magic1, magic2);
     } else {
         written = profile_encode_minimal(
             writer->config,
@@ -567,6 +572,7 @@ typedef enum accumulating_reader_state {
 typedef struct accumulating_reader {
     const profile_config_t* config;
     bool (*get_msg_length)(size_t msg_id, size_t* len);
+    bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2);
     
     uint8_t* internal_buffer;
     size_t buffer_size;
@@ -584,10 +590,12 @@ static inline void accumulating_reader_init(
     const profile_config_t* config,
     uint8_t* internal_buffer,
     size_t buffer_size,
-    bool (*get_msg_length)(size_t msg_id, size_t* len))
+    bool (*get_msg_length)(size_t msg_id, size_t* len),
+    bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2))
 {
     reader->config = config;
     reader->get_msg_length = get_msg_length;
+    reader->get_magic_numbers = get_magic_numbers;
     reader->internal_buffer = internal_buffer;
     reader->buffer_size = buffer_size;
     reader->internal_data_len = 0;
@@ -878,7 +886,7 @@ static inline frame_msg_info_t _acc_parse_buffer(
     size_t size)
 {
     if (reader->config->payload.has_crc || reader->config->payload.has_length) {
-        return profile_parse_with_crc(reader->config, buffer, size, NULL);
+        return profile_parse_with_crc(reader->config, buffer, size, reader->get_magic_numbers);
     } else {
         return profile_parse_minimal(reader->config, buffer, size, reader->get_msg_length);
     }

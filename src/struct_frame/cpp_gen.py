@@ -333,13 +333,13 @@ class MessageCppGen():
             result += '    }\n'
             result += f'    bool operator!=(const {structName}& other) const {{ return !(*this == other); }}\n'
         
-        result += '};\n'
-        
-        # Add magic number constants for this message (for checksum initialization)
+        # Add magic number constants inside the class (for checksum initialization)
         if has_msg_id and msg.magic_bytes:
-            result += f'\n// Magic numbers for {structName} checksum (based on field types and positions)\n'
-            result += f'constexpr uint8_t {defineName}_MAGIC1 = {msg.magic_bytes[0]};\n'
-            result += f'constexpr uint8_t {defineName}_MAGIC2 = {msg.magic_bytes[1]};\n'
+            result += f'\n    // Magic numbers for checksum (based on field types and positions)\n'
+            result += f'    static constexpr uint8_t MAGIC1 = {msg.magic_bytes[0]};\n'
+            result += f'    static constexpr uint8_t MAGIC2 = {msg.magic_bytes[1]};\n'
+        
+        result += '};\n'
 
         return result + '\n'
 
@@ -463,12 +463,12 @@ class FileCppGen():
                 if msg.id is not None and msg.magic_bytes:
                     if use_namespace:
                         # When using package ID, compare against local message ID
-                        yield '        case %d: *magic1 = %s_MAGIC1; *magic2 = %s_MAGIC2; return true;\n' % (
-                            msg.id, defineName, defineName)
+                        yield '        case %d: *magic1 = %s::MAGIC1; *magic2 = %s::MAGIC2; return true;\n' % (
+                            msg.id, structName, structName)
                     else:
                         # No package ID, compare against MSG_ID from MessageBase
-                        yield '        case %s::MSG_ID: *magic1 = %s_MAGIC1; *magic2 = %s_MAGIC2; return true;\n' % (
-                            structName, defineName, defineName)
+                        yield '        case %s::MSG_ID: *magic1 = %s::MAGIC1; *magic2 = %s::MAGIC2; return true;\n' % (
+                            structName, structName, structName)
 
             yield '        default: break;\n'
             yield '    }\n'
