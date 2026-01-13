@@ -7,7 +7,7 @@ This module generates TypeScript code for struct serialization using
 ES6 module syntax (import/export).
 """
 
-from struct_frame import version, NamingStyleC
+from struct_frame import version, NamingStyleC, pascalCase
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -43,8 +43,8 @@ class EnumTsGen():
             for c in leading_comment:
                 result = '%s\n' % c
 
-        result += 'export enum %s%s' % (packageName,
-                                        StyleC.enum_name(field.name))
+        # Use PascalCase for both package and enum name (TypeScript convention)
+        result += 'export enum %s%s' % (packageName, field.name)
 
         result += ' {\n'
 
@@ -412,8 +412,9 @@ class FileTsGen():
         
         # Generate import statements for cross-package types
         for ext_package, type_names in sorted(external_types.items()):
-            # Use the type name directly (as it appears in msg.name) - don't convert case
-            imports = ', '.join('%s_%s' % (ext_package, t) for t in sorted(type_names))
+            # Convert package name to PascalCase for TypeScript conventions
+            ext_package_pascal = pascalCase(ext_package)
+            imports = ', '.join('%s_%s' % (ext_package_pascal, t) for t in sorted(type_names))
             yield "import { %s } from './%s.sf';\n" % (imports, ext_package)
         
         yield "\n"
@@ -425,20 +426,23 @@ class FileTsGen():
 
         # include additional header files here if available in the future
 
+        # Convert package name to PascalCase for TypeScript naming conventions
+        package_name_pascal = pascalCase(package.name)
+        
         if package.enums:
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
-                yield EnumTsGen.generate(enum, package.name) + '\n\n'
+                yield EnumTsGen.generate(enum, package_name_pascal) + '\n\n'
 
         if package.messages:
             if use_class_based:
                 yield '/* Message class definitions */\n'
                 for key, msg in package.sortedMessages().items():
-                    yield MessageTsClassGen.generate(msg, package.name, package, packages or {}, equality) + '\n'
+                    yield MessageTsClassGen.generate(msg, package_name_pascal, package, packages or {}, equality) + '\n'
             else:
                 yield '/* Struct definitions */\n'
                 for key, msg in package.sortedMessages().items():
-                    yield MessageTsGen.generate(msg, package.name, package) + '\n'
+                    yield MessageTsGen.generate(msg, package_name_pascal, package) + '\n'
             yield '\n'
 
         if package.messages:
@@ -465,7 +469,7 @@ class FileTsGen():
                     yield '    switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
-                    package_msg_name = '%s_%s' % (package.name, msg.name)
+                    package_msg_name = '%s_%s' % (package_name_pascal, msg.name)
                     yield '        case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
 
                 yield '        default: break;\n'
