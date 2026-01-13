@@ -26,7 +26,7 @@ const {
   payloadHeaderSize,
   payloadFooterSize,
 } = require('./payload-types');
-const { fletcher_checksum, createFrameMsgInfo } = require('./frame-base');
+const { fletcherChecksum, createFrameMsgInfo } = require('./frame-base');
 
 // =============================================================================
 // Profile Helper Functions
@@ -207,7 +207,7 @@ function encodeFrameWithCrc(config, msgId, payload, options = {}) {
 
   // Calculate and write CRC
   const crcLen = idx - crcStart;
-  const ck = fletcher_checksum(buffer, crcStart, crcStart + crcLen);
+  const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen);
   buffer[idx++] = ck[0];
   buffer[idx++] = ck[1];
 
@@ -300,7 +300,7 @@ function parseFrameWithCrc(config, buffer) {
 
   // Verify CRC
   const crcLen = totalSize - crcStart - footerSize;
-  const ck = fletcher_checksum(buffer, crcStart, crcStart + crcLen);
+  const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen);
   if (ck[0] !== buffer[totalSize - 2] || ck[1] !== buffer[totalSize - 1]) {
     return result;
   }

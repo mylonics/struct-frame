@@ -12,10 +12,10 @@
 
 import { TestConfig } from './test_codec';
 import {
-  SerializationTest_SerializationTestMessage,
-  SerializationTest_BasicTypesMessage,
-  SerializationTest_UnionTestMessage,
-  SerializationTest_ComprehensiveArrayMessage,
+  SerializationTestSerializationTestMessage,
+  SerializationTestBasicTypesMessage,
+  SerializationTestUnionTestMessage,
+  SerializationTestComprehensiveArrayMessage,
   get_message_length,
 } from '../../generated/ts/serialization_test.structframe';
 
@@ -29,23 +29,23 @@ let unionIdx = 0;
 
 /** Message ID order array */
 const MSG_ID_ORDER: number[] = [
-  SerializationTest_SerializationTestMessage._msgid!,  // 0: SerializationTest[0]
-  SerializationTest_SerializationTestMessage._msgid!,  // 1: SerializationTest[1]
-  SerializationTest_SerializationTestMessage._msgid!,  // 2: SerializationTest[2]
-  SerializationTest_SerializationTestMessage._msgid!,  // 3: SerializationTest[3]
-  SerializationTest_SerializationTestMessage._msgid!,  // 4: SerializationTest[4]
-  SerializationTest_BasicTypesMessage._msgid!,         // 5: BasicTypes[0]
-  SerializationTest_BasicTypesMessage._msgid!,         // 6: BasicTypes[1]
-  SerializationTest_BasicTypesMessage._msgid!,         // 7: BasicTypes[2]
-  SerializationTest_UnionTestMessage._msgid!,          // 8: UnionTest[0]
-  SerializationTest_UnionTestMessage._msgid!,          // 9: UnionTest[1]
-  SerializationTest_BasicTypesMessage._msgid!,         // 10: BasicTypes[3]
+  SerializationTestSerializationTestMessage._msgid!,  // 0: SerializationTest[0]
+  SerializationTestSerializationTestMessage._msgid!,  // 1: SerializationTest[1]
+  SerializationTestSerializationTestMessage._msgid!,  // 2: SerializationTest[2]
+  SerializationTestSerializationTestMessage._msgid!,  // 3: SerializationTest[3]
+  SerializationTestSerializationTestMessage._msgid!,  // 4: SerializationTest[4]
+  SerializationTestBasicTypesMessage._msgid!,         // 5: BasicTypes[0]
+  SerializationTestBasicTypesMessage._msgid!,         // 6: BasicTypes[1]
+  SerializationTestBasicTypesMessage._msgid!,         // 7: BasicTypes[2]
+  SerializationTestUnionTestMessage._msgid!,          // 8: UnionTest[0]
+  SerializationTestUnionTestMessage._msgid!,          // 9: UnionTest[1]
+  SerializationTestBasicTypesMessage._msgid!,         // 10: BasicTypes[3]
 ];
 
 /** SerializationTestMessage array (5 messages) */
-function getSerializationTestMessages(): SerializationTest_SerializationTestMessage[] {
+function getSerializationTestMessages(): SerializationTestSerializationTestMessage[] {
   return [
-    new SerializationTest_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 0xDEADBEEF,
       test_string_length: 'Cross-platform test!'.length,
       test_string_data: 'Cross-platform test!',
@@ -54,7 +54,7 @@ function getSerializationTestMessages(): SerializationTest_SerializationTestMess
       test_array_count: 3,
       test_array_data: [100, 200, 300],
     }),
-    new SerializationTest_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 0,
       test_string_length: 0,
       test_string_data: '',
@@ -63,7 +63,7 @@ function getSerializationTestMessages(): SerializationTest_SerializationTestMess
       test_array_count: 0,
       test_array_data: [],
     }),
-    new SerializationTest_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 0xFFFFFFFF,
       test_string_length: 'Maximum length test string for coverage!'.length,
       test_string_data: 'Maximum length test string for coverage!',
@@ -72,7 +72,7 @@ function getSerializationTestMessages(): SerializationTest_SerializationTestMess
       test_array_count: 5,
       test_array_data: [2147483647, -2147483648, 0, 1, -1],
     }),
-    new SerializationTest_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 0xAAAAAAAA,
       test_string_length: 'Negative test'.length,
       test_string_data: 'Negative test',
@@ -81,7 +81,7 @@ function getSerializationTestMessages(): SerializationTest_SerializationTestMess
       test_array_count: 4,
       test_array_data: [-100, -200, -300, -400],
     }),
-    new SerializationTest_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 1234567890,
       test_string_length: 'Special: !@#$%^&*()'.length,
       test_string_data: 'Special: !@#$%^&*()',
@@ -94,9 +94,9 @@ function getSerializationTestMessages(): SerializationTest_SerializationTestMess
 }
 
 /** BasicTypesMessage array (4 messages) */
-function getBasicTypesMessages(): SerializationTest_BasicTypesMessage[] {
+function getBasicTypesMessages(): SerializationTestBasicTypesMessage[] {
   return [
-    new SerializationTest_BasicTypesMessage({
+    new SerializationTestBasicTypesMessage({
       small_int: 42,
       medium_int: 1000,
       regular_int: 123456,
@@ -112,7 +112,7 @@ function getBasicTypesMessages(): SerializationTest_BasicTypesMessage[] {
       description_length: 'Basic test values'.length,
       description_data: 'Basic test values',
     }),
-    new SerializationTest_BasicTypesMessage({
+    new SerializationTestBasicTypesMessage({
       small_int: 0,
       medium_int: 0,
       regular_int: 0,
@@ -128,7 +128,7 @@ function getBasicTypesMessages(): SerializationTest_BasicTypesMessage[] {
       description_length: 0,
       description_data: '',
     }),
-    new SerializationTest_BasicTypesMessage({
+    new SerializationTestBasicTypesMessage({
       small_int: -128,
       medium_int: -32768,
       regular_int: -2147483648,
@@ -144,7 +144,7 @@ function getBasicTypesMessages(): SerializationTest_BasicTypesMessage[] {
       description_length: 'Negative and max values'.length,
       description_data: 'Negative and max values',
     }),
-    new SerializationTest_BasicTypesMessage({
+    new SerializationTestBasicTypesMessage({
       small_int: -128,
       medium_int: -32768,
       regular_int: -2147483648,
@@ -164,11 +164,11 @@ function getBasicTypesMessages(): SerializationTest_BasicTypesMessage[] {
 }
 
 /** Create UnionTestMessage with array payload */
-function createUnionWithArray(): SerializationTest_UnionTestMessage {
-  const msg = new SerializationTest_UnionTestMessage();
-  msg.payload_discriminator = SerializationTest_ComprehensiveArrayMessage._msgid!;
+function createUnionWithArray(): SerializationTestUnionTestMessage {
+  const msg = new SerializationTestUnionTestMessage();
+  msg.payload_discriminator = SerializationTestComprehensiveArrayMessage._msgid!;
 
-  const innerMsg = new SerializationTest_ComprehensiveArrayMessage({
+  const innerMsg = new SerializationTestComprehensiveArrayMessage({
     fixed_ints: [10, 20, 30],
     fixed_floats: [1.5, 2.5],
     fixed_bools: [1, 0, 1, 0],  // Use 1/0 for bool array
@@ -191,17 +191,17 @@ function createUnionWithArray(): SerializationTest_UnionTestMessage {
   });
 
   // Copy inner buffer to payload area (offset 2 for discriminator)
-  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTest_ComprehensiveArrayMessage._size);
+  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestComprehensiveArrayMessage._size);
 
   return msg;
 }
 
 /** Create UnionTestMessage with test payload */
-function createUnionWithTest(): SerializationTest_UnionTestMessage {
-  const msg = new SerializationTest_UnionTestMessage();
-  msg.payload_discriminator = SerializationTest_SerializationTestMessage._msgid!;
+function createUnionWithTest(): SerializationTestUnionTestMessage {
+  const msg = new SerializationTestUnionTestMessage();
+  msg.payload_discriminator = SerializationTestSerializationTestMessage._msgid!;
 
-  const innerMsg = new SerializationTest_SerializationTestMessage({
+  const innerMsg = new SerializationTestSerializationTestMessage({
     magic_number: 0x12345678,
     test_string_length: 'Union test message'.length,
     test_string_data: 'Union test message',
@@ -212,13 +212,13 @@ function createUnionWithTest(): SerializationTest_UnionTestMessage {
   });
 
   // Copy inner buffer to payload area (offset 2 for discriminator)
-  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTest_SerializationTestMessage._size);
+  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestSerializationTestMessage._size);
 
   return msg;
 }
 
 /** UnionTestMessage array (2 messages) */
-function getUnionTestMessages(): SerializationTest_UnionTestMessage[] {
+function getUnionTestMessages(): SerializationTestUnionTestMessage[] {
   return [
     createUnionWithArray(),
     createUnionWithTest(),
@@ -236,13 +236,13 @@ function resetState(): void {
 function encodeMessage(writer: any, index: number): number {
   const msgId = MSG_ID_ORDER[index];
 
-  if (msgId === SerializationTest_SerializationTestMessage._msgid) {
+  if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const msg = getSerializationTestMessages()[serialIdx++];
     return writer.write(msg);
-  } else if (msgId === SerializationTest_BasicTypesMessage._msgid) {
+  } else if (msgId === SerializationTestBasicTypesMessage._msgid) {
     const msg = getBasicTypesMessages()[basicIdx++];
     return writer.write(msg);
-  } else if (msgId === SerializationTest_UnionTestMessage._msgid) {
+  } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const msg = getUnionTestMessages()[unionIdx++];
     return writer.write(msg);
   }
@@ -252,22 +252,22 @@ function encodeMessage(writer: any, index: number): number {
 
 /** Validate decoded message using equals() method */
 function validateMessage(msgId: number, data: Buffer, _index: number): boolean {
-  if (msgId === SerializationTest_SerializationTestMessage._msgid) {
+  if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
-    if (data.length !== SerializationTest_SerializationTestMessage._size) return false;
-    const decoded = new SerializationTest_SerializationTestMessage();
+    if (data.length !== SerializationTestSerializationTestMessage._size) return false;
+    const decoded = new SerializationTestSerializationTestMessage();
     data.copy(decoded._buffer);
     return decoded.equals(expected);
-  } else if (msgId === SerializationTest_BasicTypesMessage._msgid) {
+  } else if (msgId === SerializationTestBasicTypesMessage._msgid) {
     const expected = getBasicTypesMessages()[basicIdx++];
-    if (data.length !== SerializationTest_BasicTypesMessage._size) return false;
-    const decoded = new SerializationTest_BasicTypesMessage();
+    if (data.length !== SerializationTestBasicTypesMessage._size) return false;
+    const decoded = new SerializationTestBasicTypesMessage();
     data.copy(decoded._buffer);
     return decoded.equals(expected);
-  } else if (msgId === SerializationTest_UnionTestMessage._msgid) {
+  } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const expected = getUnionTestMessages()[unionIdx++];
-    if (data.length !== SerializationTest_UnionTestMessage._size) return false;
-    const decoded = new SerializationTest_UnionTestMessage();
+    if (data.length !== SerializationTestUnionTestMessage._size) return false;
+    const decoded = new SerializationTestUnionTestMessage();
     data.copy(decoded._buffer);
     return decoded.equals(expected);
   }

@@ -4,15 +4,15 @@
 const {
   FrameMsgInfo,
   createFrameMsgInfo,
-  fletcher_checksum,
+  fletcherChecksum,
   FrameParserConfig,
   GenericFrameParser,
   GenericParserState,
   createFrameParserClass,
-  validate_payload_with_crc,
-  validate_payload_minimal,
-  encode_payload_with_crc,
-  encode_payload_minimal,
+  validatePayloadWithCrc,
+  validatePayloadMinimal,
+  encodePayloadWithCrc,
+  encodePayloadMinimal,
 } = require('./frame-base');
 
 // Frame headers - Start byte patterns and header types
@@ -96,15 +96,15 @@ module.exports = {
   // Base utilities
   FrameMsgInfo,
   createFrameMsgInfo,
-  fletcher_checksum,
+  fletcherChecksum,
   FrameParserConfig,
   GenericFrameParser,
   GenericParserState,
   createFrameParserClass,
-  validate_payload_with_crc,
-  validate_payload_minimal,
-  encode_payload_with_crc,
-  encode_payload_minimal,
+  validatePayloadWithCrc,
+  validatePayloadMinimal,
+  encodePayloadWithCrc,
+  encodePayloadMinimal,
   // Frame headers
   HeaderType,
   BASIC_START_BYTE,
