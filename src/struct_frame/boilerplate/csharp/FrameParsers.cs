@@ -5,13 +5,13 @@
 // Include this file to get access to all frame parsing functionality.
 
 // Base utilities
-// See: frame_base.cs
+// See: FrameBase.cs
 
 // Frame headers - Start byte patterns and header configurations
-// See: frame_headers.cs
+// See: FrameHeaders.cs
 
 // Payload types - Message structure configurations
-// See: payload_types.cs
+// See: PayloadTypes.cs
 
 // Frame profiles - Pre-defined Header + Payload combinations
 // See: FrameProfiles.cs
