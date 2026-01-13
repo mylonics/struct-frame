@@ -307,7 +307,7 @@ static inline int run_decode(const test_config_t* config, const char* format, co
 
   size_t message_count = 0;
   if (!decode_messages(config, format, buffer, size, &message_count)) {
-    printf("[DECODE] FAILED: Decoding error\n");
+    printf("[DECODE] FAILED: %zu messages validated before error\n", message_count);
     print_hex(buffer, size);
     free(buffer);
     return 1;

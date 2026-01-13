@@ -242,20 +242,26 @@ function encodeMessage(writer, index) {
   return 0;
 }
 
-/** Validate decoded message */
+/** Validate decoded message using equals() method */
 function validateMessage(msgId, data, _index) {
   if (msgId === serialization_test_SerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
     if (data.length !== serialization_test_SerializationTestMessage._size) return false;
-    return data.equals(expected._buffer);
+    const decoded = new serialization_test_SerializationTestMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
   } else if (msgId === serialization_test_BasicTypesMessage._msgid) {
     const expected = getBasicTypesMessages()[basicIdx++];
     if (data.length !== serialization_test_BasicTypesMessage._size) return false;
-    return data.equals(expected._buffer);
+    const decoded = new serialization_test_BasicTypesMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
   } else if (msgId === serialization_test_UnionTestMessage._msgid) {
     const expected = getUnionTestMessages()[unionIdx++];
     if (data.length !== serialization_test_UnionTestMessage._size) return false;
-    return data.equals(expected._buffer);
+    const decoded = new serialization_test_UnionTestMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
   }
 
   return false;

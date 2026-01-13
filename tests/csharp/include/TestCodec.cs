@@ -470,6 +470,30 @@ namespace StructFrameTests
                 && ValidateField(msg.Flag, (bool)expected["flag"], "flag");
         }
 
+        private static bool ValidateUnionTestMessage(byte[] decodedPayload, Dictionary<string, object> expected)
+        {
+            // Create expected message and compare packed bytes
+            var expectedMsg = CreateUnionTestMessage(expected);
+            var expectedBytes = expectedMsg.Pack();
+            
+            if (decodedPayload.Length != expectedBytes.Length)
+            {
+                Console.WriteLine($"  UnionTest size mismatch: expected {expectedBytes.Length}, got {decodedPayload.Length}");
+                return false;
+            }
+            
+            for (int i = 0; i < expectedBytes.Length; i++)
+            {
+                if (decodedPayload[i] != expectedBytes[i])
+                {
+                    Console.WriteLine($"  UnionTest byte {i} mismatch: expected {expectedBytes[i]:X2}, got {decodedPayload[i]:X2}");
+                    return false;
+                }
+            }
+            
+            return true;
+        }
+
         public static (bool success, int messageCount) DecodeStandardMessages(string formatName, byte[] data)
         {
             return DecodeMessages(
@@ -498,8 +522,7 @@ namespace StructFrameTests
                     else if (expected.Type == MessageType.UnionTest)
                     {
                         expectedMsgId = UnionTestMessage.MsgId;
-                        var _ = UnionTestMessage.Unpack(ExtractPayload(result));
-                        // Just verify it decoded without error
+                        isValid = ValidateUnionTestMessage(ExtractPayload(result), expected.Data);
                     }
                     else
                     {
@@ -521,7 +544,33 @@ namespace StructFrameTests
                 (i, result) =>
                 {
                     var (expectedMsg, _) = ExtendedTestData.GetExtendedTestMessage(i);
-                    // Extended messages: just check ID matches
+                    if (expectedMsg == null) return (0, false);
+                    
+                    // Extract the actual payload from the result
+                    var decodedPayload = ExtractPayload(result);
+                    if (decodedPayload == null)
+                    {
+                        Console.WriteLine($"    Failed to extract payload for message {i}");
+                        return (expectedMsg.MsgId, false);
+                    }
+                    
+                    // Validate by comparing packed message bytes
+                    var expectedData = expectedMsg.Pack();
+                    if (decodedPayload.Length != expectedData.Length)
+                    {
+                        Console.WriteLine($"    Size mismatch: expected {expectedData.Length}, got {decodedPayload.Length}");
+                        return (expectedMsg.MsgId, false);
+                    }
+                    
+                    for (int j = 0; j < expectedData.Length; j++)
+                    {
+                        if (decodedPayload[j] != expectedData[j])
+                        {
+                            Console.WriteLine($"    Byte {j} mismatch: expected {expectedData[j]:X2}, got {decodedPayload[j]:X2}");
+                            return (expectedMsg.MsgId, false);
+                        }
+                    }
+                    
                     return (expectedMsg.MsgId, true);
                 },
                 usePkgId: true);
@@ -601,7 +650,7 @@ namespace StructFrameTests
 
             if (!result.success)
             {
-                Console.WriteLine("[DECODE] FAILED: Validation error");
+                Console.WriteLine($"[DECODE] FAILED: {result.messageCount} messages validated before error");
                 PrintHex(data);
                 return 1;
             }

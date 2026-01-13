@@ -284,11 +284,10 @@ class Encoder:
 # ============================================================================
 
 class Validator:
-    """Validator that returns expected message data by msg_id lookup."""
+    """Validator that returns expected message data and validates using __eq__."""
     
-    def get_expected(self, msg_id: int) -> Tuple[Optional[bytes], Optional[int]]:
-        """Get expected message data for validation. Returns (data, size)."""
-        msg_getters = {
+    def __init__(self):
+        self._msg_getters = {
             ExtendedTestExtendedIdMessage1.MSG_ID: get_message_ext_1,
             ExtendedTestExtendedIdMessage2.MSG_ID: get_message_ext_2,
             ExtendedTestExtendedIdMessage3.MSG_ID: get_message_ext_3,
@@ -302,13 +301,39 @@ class Validator:
             ExtendedTestLargePayloadMessage1.MSG_ID: get_message_large_1,
             ExtendedTestLargePayloadMessage2.MSG_ID: get_message_large_2,
         }
-        
-        getter = msg_getters.get(msg_id)
+        self._msg_classes = {
+            ExtendedTestExtendedIdMessage1.MSG_ID: ExtendedTestExtendedIdMessage1,
+            ExtendedTestExtendedIdMessage2.MSG_ID: ExtendedTestExtendedIdMessage2,
+            ExtendedTestExtendedIdMessage3.MSG_ID: ExtendedTestExtendedIdMessage3,
+            ExtendedTestExtendedIdMessage4.MSG_ID: ExtendedTestExtendedIdMessage4,
+            ExtendedTestExtendedIdMessage5.MSG_ID: ExtendedTestExtendedIdMessage5,
+            ExtendedTestExtendedIdMessage6.MSG_ID: ExtendedTestExtendedIdMessage6,
+            ExtendedTestExtendedIdMessage7.MSG_ID: ExtendedTestExtendedIdMessage7,
+            ExtendedTestExtendedIdMessage8.MSG_ID: ExtendedTestExtendedIdMessage8,
+            ExtendedTestExtendedIdMessage9.MSG_ID: ExtendedTestExtendedIdMessage9,
+            ExtendedTestExtendedIdMessage10.MSG_ID: ExtendedTestExtendedIdMessage10,
+            ExtendedTestLargePayloadMessage1.MSG_ID: ExtendedTestLargePayloadMessage1,
+            ExtendedTestLargePayloadMessage2.MSG_ID: ExtendedTestLargePayloadMessage2,
+        }
+    
+    def get_expected(self, msg_id: int) -> Tuple[Optional[bytes], Optional[int]]:
+        """Get expected message data for validation. Returns (data, size)."""
+        getter = self._msg_getters.get(msg_id)
         if getter:
             msg = getter()
             data = msg.data()
             return data, len(data)
         return None, None
+
+    def validate_with_equals(self, msg_id: int, decoded_data: bytes) -> bool:
+        """Validate decoded message using __eq__ operator."""
+        getter = self._msg_getters.get(msg_id)
+        msg_class = self._msg_classes.get(msg_id)
+        if getter and msg_class:
+            expected = getter()
+            decoded = msg_class.create_unpack(decoded_data)
+            return decoded == expected
+        return False
 
 
 # ============================================================================

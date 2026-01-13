@@ -250,6 +250,30 @@ struct Validator {
     }
     return false;
   }
+
+  /** Validate decoded message using operator== (for equality testing) */
+  bool validate_with_equals(uint16_t msg_id, const uint8_t* decoded_data, size_t decoded_size) {
+    if (msg_id == SerializationTestSerializationTestMessage::MSG_ID) {
+      const auto& expected = get_serialization_test_messages()[serial_idx++];
+      if (decoded_size != expected.size()) return false;
+      SerializationTestSerializationTestMessage decoded;
+      std::memcpy(&decoded, decoded_data, decoded_size);
+      return decoded == expected;
+    } else if (msg_id == SerializationTestBasicTypesMessage::MSG_ID) {
+      const auto& expected = get_basic_types_messages()[basic_idx++];
+      if (decoded_size != expected.size()) return false;
+      SerializationTestBasicTypesMessage decoded;
+      std::memcpy(&decoded, decoded_data, decoded_size);
+      return decoded == expected;
+    } else if (msg_id == SerializationTestUnionTestMessage::MSG_ID) {
+      const auto& expected = get_union_test_messages()[union_idx++];
+      if (decoded_size != expected.size()) return false;
+      SerializationTestUnionTestMessage decoded;
+      std::memcpy(&decoded, decoded_data, decoded_size);
+      return decoded == expected;
+    }
+    return false;
+  }
 };
 
 // ============================================================================

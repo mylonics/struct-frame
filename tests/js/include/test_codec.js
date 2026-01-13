@@ -224,6 +224,12 @@ function runDecode(config, format, inputFile) {
     return 1;
   }
 
+  if (messageCount < config.messageCount) {
+    console.log(`[DECODE] FAILED: ${messageCount} messages validated before error`);
+    printHex(data);
+    return 1;
+  }
+
   console.log(`[DECODE] SUCCESS: ${messageCount} messages validated correctly`);
   return 0;
 }

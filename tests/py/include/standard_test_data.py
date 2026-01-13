@@ -200,7 +200,7 @@ class Encoder:
 # ============================================================================
 
 class Validator:
-    """Validator that tracks indices and returns expected message data."""
+    """Validator that tracks indices and validates using __eq__ operator."""
     
     def __init__(self):
         self.serial_idx = 0
@@ -229,6 +229,25 @@ class Validator:
             data = msg.data()
             return data, len(data)
         return None, None
+
+    def validate_with_equals(self, msg_id: int, decoded_data: bytes) -> bool:
+        """Validate decoded message using __eq__ operator."""
+        if msg_id == SerializationTestSerializationTestMessage.MSG_ID:
+            expected = self._serial_msgs[self.serial_idx]
+            self.serial_idx += 1
+            decoded = SerializationTestSerializationTestMessage.create_unpack(decoded_data)
+            return decoded == expected
+        elif msg_id == SerializationTestBasicTypesMessage.MSG_ID:
+            expected = self._basic_msgs[self.basic_idx]
+            self.basic_idx += 1
+            decoded = SerializationTestBasicTypesMessage.create_unpack(decoded_data)
+            return decoded == expected
+        elif msg_id == SerializationTestUnionTestMessage.MSG_ID:
+            expected = self._union_msgs[self.union_idx]
+            self.union_idx += 1
+            decoded = SerializationTestUnionTestMessage.create_unpack(decoded_data)
+            return decoded == expected
+        return False
 
 
 # ============================================================================

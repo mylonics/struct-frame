@@ -195,6 +195,7 @@ def decode_messages(config, format_name: str, buffer: bytes) -> Tuple[bool, int]
                 print(f"  Message {message_count} ID mismatch: expected {expected_msg_id}, got {result.msg_id}")
                 return False, message_count
             
+            # Get expected data for validation
             expected_data, expected_size = validator.get_expected(result.msg_id)
             if expected_data is None:
                 print(f"  Unknown message ID: {result.msg_id}")
@@ -266,7 +267,7 @@ def run_decode(config, format_name: str, input_file: str) -> int:
     success, message_count = decode_messages(config, format_name, buffer)
     
     if not success:
-        print("[DECODE] FAILED: Decoding error")
+        print(f"[DECODE] FAILED: {message_count} messages validated before error")
         print_hex(buffer)
         return 1
     

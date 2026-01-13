@@ -524,8 +524,8 @@ class TestRunner:
             
             print(f"  Processing: {proto_file}...")
             
-            # Build command
-            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path)]
+            # Build command - always include --equality flag for test generation
+            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality"]
             for lang in active:
                 gen_dir = self.project_root / lang.gen_output_dir
                 gen_dir.mkdir(parents=True, exist_ok=True)
@@ -993,8 +993,8 @@ class TestRunner:
             dll_path = build_dir / "StructFrameTests.dll"
             if not dll_path.exists():
                 return False, "", "DLL not found - was compilation successful?"
-            runner_arg = f"--runner {runner_name}" if runner_name != "test_standard" else ""
-            cmd = f'dotnet "{dll_path}" {mode} {profile_name} "{output_file}" {runner_arg}'
+            runner_arg = f"--runner {runner_name} " if runner_name != "test_standard" else ""
+            cmd = f'dotnet "{dll_path}" {runner_arg}{mode} {profile_name} "{output_file}"'
             return self.run_cmd(cmd, cwd=build_dir)
         
         # TypeScript: compiled to JS
@@ -1026,8 +1026,15 @@ class TestRunner:
         """Extract message count from decoder output."""
         if not stdout:
             return 0
+        # First try SUCCESS pattern (full success)
         match = re.search(r'SUCCESS:\s+(\d+)\s+messages?\s+validated', stdout)
-        return int(match.group(1)) if match else 0
+        if match:
+            return int(match.group(1))
+        # Then try FAILED pattern (partial success)
+        match = re.search(r'FAILED:\s+(\d+)\s+messages?\s+validated', stdout)
+        if match:
+            return int(match.group(1))
+        return 0
     
     # =========================================================================
     # Phase 7: Standalone Tests

@@ -627,6 +627,8 @@ parser.add_argument('--sdk', action='store_true',
                     help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
 parser.add_argument('--sdk_embedded', action='store_true',
                     help='Include embedded SDK (serial transport only, no ASIO dependencies)')
+parser.add_argument('--equality', action='store_true',
+                    help='Generate equality comparison operators/methods for messages')
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -859,57 +861,57 @@ def printPackages():
         print(value)
 
 
-def generateCFileStrings(path):
+def generateCFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".sf.h")
-        data = ''.join(FileCGen.generate(value))
+        data = ''.join(FileCGen.generate(value, equality=equality))
         out[name] = data
 
     return out
 
 
-def generateTsFileStrings(path):
+def generateTsFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".sf.ts")
-        data = ''.join(FileTsGen.generate(value, use_class_based=True, packages=packages))
+        data = ''.join(FileTsGen.generate(value, use_class_based=True, packages=packages, equality=equality))
         out[name] = data
     return out
 
 
-def generateJsFileStrings(path):
+def generateJsFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".sf.js")
-        data = ''.join(FileJsGen.generate(value, use_class_based=True, packages=packages))
+        data = ''.join(FileJsGen.generate(value, use_class_based=True, packages=packages, equality=equality))
         out[name] = data
     return out
 
 
-def generatePyFileStrings(path):
+def generatePyFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + "_sf.py")
-        data = ''.join(FilePyGen.generate(value))
+        data = ''.join(FilePyGen.generate(value, equality=equality))
         out[name] = data
     return out
 
 
-def generateCppFileStrings(path):
+def generateCppFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".sf.hpp")
-        data = ''.join(FileCppGen.generate(value))
+        data = ''.join(FileCppGen.generate(value, equality=equality))
         out[name] = data
     return out
 
 
-def generateCSharpFileStrings(path, include_sdk_interface=False):
+def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".sf.cs")
-        data = ''.join(FileCSharpGen.generate(value))
+        data = ''.join(FileCSharpGen.generate(value, equality=equality))
         out[name] = data
         
         # Generate SDK interface if requested
@@ -962,23 +964,24 @@ def main():
     # Normal mode: generate files
     files = {}
     if (args.build_c):
-        files.update(generateCFileStrings(args.c_path[0]))
+        files.update(generateCFileStrings(args.c_path[0], equality=args.equality))
 
     if (args.build_ts):
-        files.update(generateTsFileStrings(args.ts_path[0]))
+        files.update(generateTsFileStrings(args.ts_path[0], equality=args.equality))
 
     if (args.build_js):
-        files.update(generateJsFileStrings(args.js_path[0]))
+        files.update(generateJsFileStrings(args.js_path[0], equality=args.equality))
 
     if (args.build_py):
-        files.update(generatePyFileStrings(args.py_path[0]))
+        files.update(generatePyFileStrings(args.py_path[0], equality=args.equality))
 
     if (args.build_cpp):
-        files.update(generateCppFileStrings(args.cpp_path[0]))
+        files.update(generateCppFileStrings(args.cpp_path[0], equality=args.equality))
 
     if (args.build_csharp):
         files.update(generateCSharpFileStrings(args.csharp_path[0], 
-                                               include_sdk_interface=(args.sdk or args.sdk_embedded)))
+                                               include_sdk_interface=(args.sdk or args.sdk_embedded),
+                                               equality=args.equality))
 
     if (args.build_gql):
         for key, value in packages.items():

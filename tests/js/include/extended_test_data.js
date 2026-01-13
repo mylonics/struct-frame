@@ -174,6 +174,25 @@ function getMessage(msgId) {
   }
 }
 
+/** Message class lookup by msg_id */
+function getMessageClass(msgId) {
+  switch (msgId) {
+    case extended_test_ExtendedIdMessage1._msgid: return extended_test_ExtendedIdMessage1;
+    case extended_test_ExtendedIdMessage2._msgid: return extended_test_ExtendedIdMessage2;
+    case extended_test_ExtendedIdMessage3._msgid: return extended_test_ExtendedIdMessage3;
+    case extended_test_ExtendedIdMessage4._msgid: return extended_test_ExtendedIdMessage4;
+    case extended_test_ExtendedIdMessage5._msgid: return extended_test_ExtendedIdMessage5;
+    case extended_test_ExtendedIdMessage6._msgid: return extended_test_ExtendedIdMessage6;
+    case extended_test_ExtendedIdMessage7._msgid: return extended_test_ExtendedIdMessage7;
+    case extended_test_ExtendedIdMessage8._msgid: return extended_test_ExtendedIdMessage8;
+    case extended_test_ExtendedIdMessage9._msgid: return extended_test_ExtendedIdMessage9;
+    case extended_test_ExtendedIdMessage10._msgid: return extended_test_ExtendedIdMessage10;
+    case extended_test_LargePayloadMessage1._msgid: return extended_test_LargePayloadMessage1;
+    case extended_test_LargePayloadMessage2._msgid: return extended_test_LargePayloadMessage2;
+    default: return null;
+  }
+}
+
 /** Reset state - not needed for extended tests (stateless) */
 function resetState() {
   // No state to reset - each message type has exactly one instance
@@ -187,14 +206,17 @@ function encodeMessage(writer, index) {
   return writer.write(msg);
 }
 
-/** Validate decoded message */
+/** Validate decoded message using equals() method */
 function validateMessage(msgId, data, _index) {
   const expected = getMessage(msgId);
-  if (!expected) return false;
+  const MsgClass = getMessageClass(msgId);
+  if (!expected || !MsgClass) return false;
 
-  if (data.length !== expected.constructor._size) return false;
+  if (data.length !== MsgClass._size) return false;
 
-  return data.equals(expected._buffer);
+  const decoded = new MsgClass();
+  data.copy(decoded._buffer);
+  return decoded.equals(expected);
 }
 
 /** Check if format is supported - extended tests only use bulk and network */

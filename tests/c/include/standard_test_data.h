@@ -263,7 +263,7 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
 }
 
 /* ============================================================================
- * Validator - validates decoded messages against expected data
+ * Validator - validates decoded messages against expected data using _equals()
  * ============================================================================ */
 
 static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, size_t size, size_t* index) {
@@ -272,15 +272,18 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
   if (msg_id == SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestSerializationTestMessage* expected = &get_serialization_test_messages()[std_serial_idx++];
     if (size != sizeof(*expected)) return false;
-    return memcmp(data, expected, size) == 0;
+    const SerializationTestSerializationTestMessage* decoded = (const SerializationTestSerializationTestMessage*)data;
+    return SerializationTestSerializationTestMessage_equals(decoded, expected);
   } else if (msg_id == SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID) {
     const SerializationTestBasicTypesMessage* expected = &get_basic_types_messages()[std_basic_idx++];
     if (size != sizeof(*expected)) return false;
-    return memcmp(data, expected, size) == 0;
+    const SerializationTestBasicTypesMessage* decoded = (const SerializationTestBasicTypesMessage*)data;
+    return SerializationTestBasicTypesMessage_equals(decoded, expected);
   } else if (msg_id == SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestUnionTestMessage* expected = &get_union_test_messages()[std_union_idx++];
     if (size != sizeof(*expected)) return false;
-    return memcmp(data, expected, size) == 0;
+    const SerializationTestUnionTestMessage* decoded = (const SerializationTestUnionTestMessage*)data;
+    return SerializationTestUnionTestMessage_equals(decoded, expected);
   }
 
   return false;

@@ -357,7 +357,7 @@ class FieldCSharpGen():
 
 class MessageCSharpGen():
     @staticmethod
-    def generate(msg, package=None):
+    def generate(msg, package=None, equality=False):
         leading_comment = msg.comments
 
         result = ''
@@ -493,18 +493,155 @@ class MessageCSharpGen():
         result += '        /// </summary>\n'
         result += '        public int GetSize() => MaxSize;\n'
 
+        # Generate equality members if requested
+        if equality:
+            result += MessageCSharpGen._generate_equality_members(msg, structName)
+
         result += '    }\n'
 
         return result + '\n'
+    
+    @staticmethod
+    def _generate_equality_members(msg, structName):
+        """Generate Equals, GetHashCode, and equality operators."""
+        result = '\n'
+        
+        # Generate Equals method
+        result += '        /// <summary>\n'
+        result += '        /// Compare this message with another for equality\n'
+        result += '        /// </summary>\n'
+        result += f'        public bool Equals({structName}? other)\n'
+        result += '        {\n'
+        result += '            if (other is null) return false;\n'
+        result += '            if (ReferenceEquals(this, other)) return true;\n'
+        
+        comparisons = []
+        for key, f in msg.fields.items():
+            field_name = pascalCase(f.name)
+            
+            # Handle arrays
+            if f.is_array:
+                if f.size_option is not None:
+                    # Fixed array - use SequenceEqual
+                    comparisons.append(f'{field_name}.SequenceEqual(other.{field_name})')
+                elif f.max_size is not None:
+                    # Variable array - compare count and data
+                    comparisons.append(f'{field_name}Count == other.{field_name}Count')
+                    comparisons.append(f'{field_name}Data.SequenceEqual(other.{field_name}Data)')
+            
+            # Handle strings
+            elif f.fieldType == "string":
+                if f.size_option is not None:
+                    # Fixed string - use SequenceEqual
+                    comparisons.append(f'{field_name}.SequenceEqual(other.{field_name})')
+                elif f.max_size is not None:
+                    # Variable string - compare length and data
+                    comparisons.append(f'{field_name}Length == other.{field_name}Length')
+                    comparisons.append(f'{field_name}Data.SequenceEqual(other.{field_name}Data)')
+            
+            # Handle enums (value types)
+            elif f.isEnum:
+                comparisons.append(f'{field_name} == other.{field_name}')
+            
+            # Handle nested messages
+            elif f.fieldType not in csharp_types:
+                comparisons.append(f'({field_name}?.Equals(other.{field_name}) ?? other.{field_name} is null)')
+            
+            # Handle primitives
+            else:
+                comparisons.append(f'{field_name} == other.{field_name}')
+        
+        # Add oneof fields
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                comparisons.append(f'{pascalCase(oneof_name)}Discriminator == other.{pascalCase(oneof_name)}Discriminator')
+            for field_name, field in oneof.fields.items():
+                field_var = pascalCase(field_name)
+                comparisons.append(f'({field_var}?.Equals(other.{field_var}) ?? other.{field_var} is null)')
+        
+        if comparisons:
+            result += '            return ' + ' &&\n                   '.join(comparisons) + ';\n'
+        else:
+            result += '            return true;\n'
+        
+        result += '        }\n\n'
+        
+        # Generate override Equals(object)
+        result += '        /// <summary>\n'
+        result += '        /// Compare this message with an object for equality\n'
+        result += '        /// </summary>\n'
+        result += '        public override bool Equals(object? obj)\n'
+        result += '        {\n'
+        result += f'            return obj is {structName} other && Equals(other);\n'
+        result += '        }\n\n'
+        
+        # Generate GetHashCode
+        result += '        /// <summary>\n'
+        result += '        /// Get hash code for this message\n'
+        result += '        /// </summary>\n'
+        result += '        public override int GetHashCode()\n'
+        result += '        {\n'
+        result += '            var hash = new HashCode();\n'
+        for key, f in msg.fields.items():
+            field_name = pascalCase(f.name)
+            if f.is_array:
+                if f.size_option is not None:
+                    # Fixed array
+                    result += f'            foreach (var b in {field_name}) hash.Add(b);\n'
+                elif f.max_size is not None:
+                    # Variable array
+                    result += f'            hash.Add({field_name}Count);\n'
+                    result += f'            foreach (var b in {field_name}Data) hash.Add(b);\n'
+            elif f.fieldType == "string":
+                if f.size_option is not None:
+                    # Fixed string
+                    result += f'            foreach (var b in {field_name}) hash.Add(b);\n'
+                elif f.max_size is not None:
+                    # Variable string
+                    result += f'            hash.Add({field_name}Length);\n'
+                    result += f'            foreach (var b in {field_name}Data) hash.Add(b);\n'
+            else:
+                result += f'            hash.Add({field_name});\n'
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                result += f'            hash.Add({pascalCase(oneof_name)}Discriminator);\n'
+            for field_name, field in oneof.fields.items():
+                result += f'            hash.Add({pascalCase(field_name)});\n'
+        result += '            return hash.ToHashCode();\n'
+        result += '        }\n\n'
+        
+        # Generate equality operators
+        result += '        /// <summary>\n'
+        result += '        /// Equality operator\n'
+        result += '        /// </summary>\n'
+        result += f'        public static bool operator ==({structName}? left, {structName}? right)\n'
+        result += '        {\n'
+        result += '            if (left is null) return right is null;\n'
+        result += '            return left.Equals(right);\n'
+        result += '        }\n\n'
+        
+        result += '        /// <summary>\n'
+        result += '        /// Inequality operator\n'
+        result += '        /// </summary>\n'
+        result += f'        public static bool operator !=({structName}? left, {structName}? right)\n'
+        result += '        {\n'
+        result += '            return !(left == right);\n'
+        result += '        }\n'
+        
+        return result
 
 
 class FileCSharpGen():
     @staticmethod
-    def generate(package):
+    def generate(package, equality=False):
         yield '// Automatically generated struct frame code for C#\n'
         yield '// Generated by %s at %s.\n\n' % (version, time.asctime())
 
         yield 'using System;\n'
+        
+        # Add LINQ for SequenceEqual when equality is enabled
+        if equality:
+            yield 'using System.Linq;\n'
         yield 'using System.Buffers.Binary;\n'
         yield 'using System.Runtime.InteropServices;\n'
         yield 'using StructFrame;\n'
@@ -543,7 +680,7 @@ class FileCSharpGen():
         if package.messages:
             yield '    // Message definitions\n'
             for key, msg in package.sortedMessages().items():
-                yield MessageCSharpGen.generate(msg, package)
+                yield MessageCSharpGen.generate(msg, package, equality)
             yield '\n'
 
         # Generate helper class with message definitions
