@@ -6,7 +6,7 @@ A clean, consolidated test runner that:
 1. Cleans all generated/copied/built files
 2. Generates code using struct-frame library
 3. Compiles/builds all languages
-4. Runs basic tests (fundamental message types)
+4. Runs standard tests (basic message types)
 5. Runs extended tests (message IDs > 255)
 6. Reports test results with encode/decode matrices
 
@@ -136,7 +136,7 @@ PROTO_FILES = [
 
 # Frame format profiles to test
 PROFILES = [
-    ("profile_basic", "ProfileBasic"),
+    ("profile_standard", "ProfileStandard"),
     ("profile_sensor", "ProfileSensor"),
     ("profile_ipc", "ProfileIPC"),
     ("profile_bulk", "ProfileBulk"),
@@ -241,9 +241,9 @@ class TestRunner:
         self.results = {
             "generation": {},
             "compilation": {},
-            "basic_encode": {},
-            "basic_validate": {},
-            "basic_decode": {},
+            "standard_encode": {},
+            "standard_validate": {},
+            "standard_decode": {},
             "extended_encode": {},
             "extended_validate": {},
             "extended_decode": {},
@@ -621,10 +621,10 @@ class TestRunner:
         
         build_dir.mkdir(parents=True, exist_ok=True)
         
-        # C/C++: compile test_basic and test_extended executables
+        # C/C++: compile test_standard and test_extended executables
         if lang.id in ("c", "cpp"):
             success = True
-            for runner in ["test_basic", "test_extended"]:
+            for runner in ["test_standard", "test_extended"]:
                 source = test_dir / f"{runner}{lang.source_ext}"
                 if not source.exists():
                     continue
@@ -993,7 +993,7 @@ class TestRunner:
             dll_path = build_dir / "StructFrameTests.dll"
             if not dll_path.exists():
                 return False, "", "DLL not found - was compilation successful?"
-            runner_arg = f"--runner {runner_name} " if runner_name != "test_basic" else ""
+            runner_arg = f"--runner {runner_name} " if runner_name != "test_standard" else ""
             cmd = f'dotnet "{dll_path}" {runner_arg}{mode} {profile_name} "{output_file}"'
             return self.run_cmd(cmd, cwd=build_dir)
         
@@ -1076,12 +1076,12 @@ class TestRunner:
         comp_passed = sum(1 for v in self.results["compilation"].values() if v)
         
         # Standard tests
-        basic_encode_total = len(self.results["basic_encode"])
-        basic_encode_passed = sum(1 for v in self.results["basic_encode"].values() if v)
-        basic_validate_total = len(self.results.get("basic_validate", {}))
-        basic_validate_passed = sum(1 for v in self.results.get("basic_validate", {}).values() if v)
-        basic_decode_total = len(self.results["basic_decode"])
-        basic_decode_passed = sum(1 for v in self.results["basic_decode"].values() if v)
+        std_encode_total = len(self.results["standard_encode"])
+        std_encode_passed = sum(1 for v in self.results["standard_encode"].values() if v)
+        std_validate_total = len(self.results.get("standard_validate", {}))
+        std_validate_passed = sum(1 for v in self.results.get("standard_validate", {}).values() if v)
+        std_decode_total = len(self.results["standard_decode"])
+        std_decode_passed = sum(1 for v in self.results["standard_decode"].values() if v)
         
         # Extended tests
         ext_encode_total = len(self.results["extended_encode"])
@@ -1102,18 +1102,18 @@ class TestRunner:
         # Print breakdown
         print(f"\n  Code Generation:    {colorize_count(gen_passed, gen_total)}")
         print(f"  Compilation:        {colorize_count(comp_passed, comp_total)}")
-        print(f"  Basic Encode:    {colorize_count(basic_encode_passed, basic_encode_total)}")
-        print(f"  Basic Validate:  {colorize_count(basic_validate_passed, basic_validate_total)}")
-        print(f"  Basic Decode:    {colorize_count(basic_decode_passed, basic_decode_total)}")
+        print(f"  Standard Encode:    {colorize_count(std_encode_passed, std_encode_total)}")
+        print(f"  Standard Validate:  {colorize_count(std_validate_passed, std_validate_total)}")
+        print(f"  Standard Decode:    {colorize_count(std_decode_passed, std_decode_total)}")
         print(f"  Extended Encode:    {colorize_count(ext_encode_passed, ext_encode_total)}")
         print(f"  Extended Validate:  {colorize_count(ext_validate_passed, ext_validate_total)}")
         print(f"  Extended Decode:    {colorize_count(ext_decode_passed, ext_decode_total)}")
         
         total = (gen_total + comp_total + 
-                 basic_encode_total + basic_validate_total + basic_decode_total + 
+                 std_encode_total + std_validate_total + std_decode_total + 
                  ext_encode_total + ext_validate_total + ext_decode_total)
         passed = (gen_passed + comp_passed + 
-                  basic_encode_passed + basic_validate_passed + basic_decode_passed + 
+                  std_encode_passed + std_validate_passed + std_decode_passed + 
                   ext_encode_passed + ext_validate_passed + ext_decode_passed)
         
         print(f"\n  Total: {colorize_count(passed, total)} tests passed")
@@ -1155,7 +1155,7 @@ class TestRunner:
             check_tools_only: Only check tool availability.
             compile_only: Stop after compilation.
             skip_clean: Skip the clean phase.
-            profile_filter: Only test specific profiles (e.g., ['ProfileBasic']).
+            profile_filter: Only test specific profiles (e.g., ['ProfileStandard']).
             parallel_compile: Use parallel compilation (default True).
         """
         print(Colors.bold("Starting struct-frame Test Suite"))
@@ -1224,8 +1224,8 @@ class TestRunner:
             
             # Phase 5: Standard tests
             if profiles_to_test:
-                with self.timed_phase("Basic Tests"):
-                    self.run_tests("standard", profiles_to_test, STANDARD_MESSAGE_COUNT, "test_basic")
+                with self.timed_phase("Standard Tests"):
+                    self.run_tests("standard", profiles_to_test, STANDARD_MESSAGE_COUNT, "test_standard")
             
             # Phase 6: Extended tests
             if extended_profiles_to_test:
@@ -1264,7 +1264,7 @@ def main():
 Examples:
   python run_tests.py                      # Run all tests
   python run_tests.py --no-clean           # Skip cleaning (faster iteration)
-  python run_tests.py --profile ProfileBasic  # Test only ProfileBasic
+  python run_tests.py --profile ProfileStandard  # Test only ProfileStandard
   python run_tests.py --only-compile       # Stop after compilation
   python run_tests.py --skip-lang ts       # Skip TypeScript tests
   python run_tests.py --no-color           # Disable colored output

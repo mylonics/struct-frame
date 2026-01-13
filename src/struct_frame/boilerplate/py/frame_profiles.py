@@ -2,7 +2,7 @@
 Frame Profiles - Pre-defined Header + Payload combinations
 
 This module provides ready-to-use encode/parse functions for frame format profiles:
-- ProfileStandard: Basic + Default (General serial/UART)
+- ProfileBasic: Basic + Default (General serial/UART)
 - ProfileSensor: Tiny + Minimal (Low-bandwidth sensors)
 - ProfileIPC: None + Minimal (Trusted inter-process communication)
 - ProfileBulk: Basic + Extended (Large data transfers with package namespacing)
@@ -172,10 +172,10 @@ class ProfileConfig:
 
 # Profile Standard: Basic + Default
 # Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-PROFILE_STANDARD_CONFIG = ProfileConfig(
+PROFILE_BASIC_CONFIG = ProfileConfig(
     header=HEADER_BASIC_CONFIG,
     payload=PAYLOAD_DEFAULT_CONFIG,
-    name="ProfileStandard"
+    name="ProfileBasic"
 )
 
 # Profile Sensor: Tiny + Minimal
@@ -488,14 +488,14 @@ def _frame_format_parse_minimal(
 # Profile-Specific Convenience Functions
 # =============================================================================
 
-def encode_profile_standard(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_basic(msg_id: int, payload: bytes) -> bytes:
     """Encode using Profile Standard (Basic + Default)"""
-    return _frame_format_encode_with_crc(PROFILE_STANDARD_CONFIG, msg_id, payload)
+    return _frame_format_encode_with_crc(PROFILE_BASIC_CONFIG, msg_id, payload)
 
 
-def parse_profile_standard_buffer(buffer: bytes) -> FrameMsgInfo:
+def parse_profile_basic_buffer(buffer: bytes) -> FrameMsgInfo:
     """Parse Profile Standard frame from buffer"""
-    return _frame_format_parse_with_crc(PROFILE_STANDARD_CONFIG, buffer)
+    return _frame_format_parse_with_crc(PROFILE_BASIC_CONFIG, buffer)
 
 
 def encode_profile_sensor(msg_id: int, payload: bytes) -> bytes:
@@ -655,7 +655,7 @@ class BufferReader:
     BufferReader - Iterate through a buffer parsing multiple frames.
     
     Usage:
-        reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer)
+        reader = BufferReader(PROFILE_BASIC_CONFIG, buffer)
         while True:
             result = reader.next()
             if not result.valid:
@@ -737,7 +737,7 @@ class BufferWriter:
     BufferWriter - Encode multiple frames into a buffer with automatic offset tracking.
     
     Usage:
-        writer = BufferWriter(PROFILE_STANDARD_CONFIG, 1024)
+        writer = BufferWriter(PROFILE_BASIC_CONFIG, 1024)
         writer.write(0x01, msg1_payload)
         writer.write(0x02, msg2_payload)
         encoded_data = writer.data()
@@ -862,7 +862,7 @@ class AccumulatingReader:
     - Stream mode: push_byte() for byte-by-byte processing (e.g., UART)
     
     Buffer mode usage:
-        reader = AccumulatingReader(PROFILE_STANDARD_CONFIG)
+        reader = AccumulatingReader(PROFILE_BASIC_CONFIG)
         reader.add_data(chunk1)
         while True:
             result = reader.next()
@@ -871,7 +871,7 @@ class AccumulatingReader:
             # Process complete messages
     
     Stream mode usage:
-        reader = AccumulatingReader(PROFILE_STANDARD_CONFIG)
+        reader = AccumulatingReader(PROFILE_BASIC_CONFIG)
         while receiving:
             byte = read_byte()
             result = reader.push_byte(byte)
@@ -1250,20 +1250,20 @@ class AccumulatingReader:
 # =============================================================================
 
 # Profile Standard: Basic + Default
-class ProfileStandardReader(BufferReader):
+class ProfileBasicReader(BufferReader):
     """BufferReader for Profile Standard"""
     def __init__(self, buffer: bytes):
-        super().__init__(PROFILE_STANDARD_CONFIG, buffer)
+        super().__init__(PROFILE_BASIC_CONFIG, buffer)
 
-class ProfileStandardWriter(BufferWriter):
+class ProfileBasicWriter(BufferWriter):
     """BufferWriter for Profile Standard"""
     def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_STANDARD_CONFIG, capacity)
+        super().__init__(PROFILE_BASIC_CONFIG, capacity)
 
-class ProfileStandardAccumulatingReader(AccumulatingReader):
+class ProfileBasicAccumulatingReader(AccumulatingReader):
     """AccumulatingReader for Profile Standard"""
     def __init__(self, buffer_size: int = 1024):
-        super().__init__(PROFILE_STANDARD_CONFIG, buffer_size=buffer_size)
+        super().__init__(PROFILE_BASIC_CONFIG, buffer_size=buffer_size)
 
 # Profile Sensor: Tiny + Minimal
 class ProfileSensorReader(BufferReader):

@@ -385,11 +385,11 @@ namespace StructFrameTests
         // Encoding functions (using generic implementation)
         // ============================================================================
 
-        public static byte[] EncodeStandardMessages(string formatName)
+        public static byte[] EncodeBasicMessages(string formatName)
         {
-            return EncodeMessages(formatName, StandardTestData.MESSAGE_COUNT, 4096, i =>
+            return EncodeMessages(formatName, BasicTestData.MESSAGE_COUNT, 4096, i =>
             {
-                var mixedMsg = StandardTestData.GetTestMessage(i);
+                var mixedMsg = BasicTestData.GetTestMessage(i);
                 object msg;
 
                 if (mixedMsg.Type == MessageType.SerializationTest)
@@ -420,7 +420,7 @@ namespace StructFrameTests
         // Decoding functions (using generic implementation)
         // ============================================================================
 
-        private static int? GetStandardMessageLength(int msgId)
+        private static int? GetBasicMessageLength(int msgId)
         {
             if (MessageDefinitions.GetMessageLength(msgId, out int size))
                 return size;
@@ -494,16 +494,16 @@ namespace StructFrameTests
             return true;
         }
 
-        public static (bool success, int messageCount) DecodeStandardMessages(string formatName, byte[] data)
+        public static (bool success, int messageCount) DecodeBasicMessages(string formatName, byte[] data)
         {
             return DecodeMessages(
                 formatName,
                 data,
-                StandardTestData.MESSAGE_COUNT,
-                GetStandardMessageLength,
+                BasicTestData.MESSAGE_COUNT,
+                GetBasicMessageLength,
                 (i, result) =>
                 {
-                    var expected = StandardTestData.GetTestMessage(i);
+                    var expected = BasicTestData.GetTestMessage(i);
                     int expectedMsgId;
                     bool isValid = true;
 

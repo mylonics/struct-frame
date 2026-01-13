@@ -169,7 +169,7 @@ The TypeScript/JavaScript SDK provides high-performance parsing classes that mat
 
 | Profile | Header | Payload | Use Case |
 |---------|--------|---------|----------|
-| `ProfileStandard` | Basic | Default | General serial/UART communication |
+| `ProfileBasic` | Basic | Default | General serial/UART communication |
 | `ProfileSensor` | Tiny | Minimal | Low-bandwidth sensors, radio links |
 | `ProfileIPC` | None | Minimal | Trusted inter-process communication |
 | `ProfileBulk` | Basic | Extended | Firmware/file transfers |
@@ -181,12 +181,12 @@ The TypeScript/JavaScript SDK provides high-performance parsing classes that mat
 
 ```typescript
 import {
-  createProfileStandardReader,
+  createProfileBasicReader,
   createProfileSensorReader,
 } from './frame_profiles';
 
-// Parse a buffer containing multiple ProfileStandard frames
-const reader = createProfileStandardReader(bufferData);
+// Parse a buffer containing multiple ProfileBasic frames
+const reader = createProfileBasicReader(bufferData);
 while (reader.hasMore()) {
     const result = reader.next();
     if (!result.valid) break;
@@ -218,12 +218,12 @@ while (reader.hasMore()) {
 
 ```typescript
 import {
-  createProfileStandardWriter,
+  createProfileBasicWriter,
   createProfileNetworkWriter,
 } from './frame_profiles';
 
 // Create writer with capacity
-const writer = createProfileStandardWriter(4096);
+const writer = createProfileBasicWriter(4096);
 
 // Write multiple messages
 writer.write(1, msg1Data);
@@ -249,9 +249,9 @@ writer.write(1, data, { seq: 1, sysId: 10, compId: 1 });
 **Buffer Mode** - Processing chunks of data:
 
 ```typescript
-import { createProfileStandardAccumulatingReader } from './frame_profiles';
+import { createProfileBasicAccumulatingReader } from './frame_profiles';
 
-const reader = createProfileStandardAccumulatingReader();
+const reader = createProfileBasicAccumulatingReader();
 
 // Process incoming chunks (e.g., from network or file)
 reader.addData(chunk1);
@@ -297,21 +297,21 @@ All profiles have factory functions for creating readers and writers:
 ```typescript
 import {
     // BufferReader factories
-    createProfileStandardReader,
+    createProfileBasicReader,
     createProfileSensorReader,
     createProfileIPCReader,
     createProfileBulkReader,
     createProfileNetworkReader,
     
     // BufferWriter factories
-    createProfileStandardWriter,
+    createProfileBasicWriter,
     createProfileSensorWriter,
     createProfileIPCWriter,
     createProfileBulkWriter,
     createProfileNetworkWriter,
     
     // AccumulatingReader factories
-    createProfileStandardAccumulatingReader,
+    createProfileBasicAccumulatingReader,
     createProfileSensorAccumulatingReader,
     createProfileIPCAccumulatingReader,
     createProfileBulkAccumulatingReader,

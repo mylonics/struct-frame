@@ -24,7 +24,7 @@ Instead of choosing individual frame features, **use these intent-based profiles
     from struct_frame.frame_formats import Profile, get_profile
     
     # Get a standard profile
-    standard = get_profile(Profile.STANDARD)
+    standard = get_profile(Profile.BASIC)
     print(f"Overhead: {standard.total_overhead} bytes")  # 6 bytes
     
     # Or create a custom profile
@@ -159,12 +159,12 @@ Each language provides ready-to-use encode and parse functions for all 5 standar
 // Encode using Profile Standard
 uint8_t buffer[256];
 uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
-size_t len = encode_profile_standard(buffer, sizeof(buffer), 
+size_t len = encode_profile_basic(buffer, sizeof(buffer), 
                                      42,           // msg_id
                                      payload, 4);  // payload, size
 
 // Parse Profile Standard
-frame_msg_info_t info = parse_profile_standard_buffer(buffer, len);
+frame_msg_info_t info = parse_profile_basic_buffer(buffer, len);
 if (info.valid) {
     printf("Received msg_id=%d, len=%zu\n", info.msg_id, info.msg_len);
 }
@@ -194,10 +194,10 @@ using namespace FrameParsers;
 // Encode using Profile Standard
 uint8_t buffer[256];
 uint8_t payload[] = {0x01, 0x02, 0x03, 0x04};
-size_t len = encode_profile_standard(buffer, sizeof(buffer), 42, payload, 4);
+size_t len = encode_profile_basic(buffer, sizeof(buffer), 42, payload, 4);
 
 // Parse Profile Standard
-FrameMsgInfo info = parse_profile_standard_buffer(buffer, len);
+FrameMsgInfo info = parse_profile_basic_buffer(buffer, len);
 if (info.valid) {
     std::cout << "Received msg_id=" << (int)info.msg_id << std::endl;
 }
@@ -212,7 +212,7 @@ size_t len2 = FrameEncoderWithCrc<MyConfig>::encode(buffer, sizeof(buffer),
 
 ```python
 from struct_frame.boilerplate.py import (
-    encode_profile_standard, parse_profile_standard_buffer,
+    encode_profile_basic, parse_profile_basic_buffer,
     encode_profile_bulk, parse_profile_bulk_buffer,
     encode_profile_network, parse_profile_network_buffer,
     # For custom configurations
@@ -221,10 +221,10 @@ from struct_frame.boilerplate.py import (
 
 # Encode using Profile Standard
 payload = bytes([0x01, 0x02, 0x03, 0x04])
-frame = encode_profile_standard(msg_id=42, payload=payload)
+frame = encode_profile_basic(msg_id=42, payload=payload)
 
 # Parse Profile Standard
-result = parse_profile_standard_buffer(frame)
+result = parse_profile_basic_buffer(frame)
 if result.valid:
     print(f"Received msg_id={result.msg_id}, len={result.msg_len}")
 

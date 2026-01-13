@@ -25,7 +25,7 @@ namespace StructFrameTests
         public Dictionary<string, object> Data { get; set; }
     }
 
-    public static class StandardTestData
+    public static class BasicTestData
     {
         // ============================================================================
         // Message count and order

@@ -182,7 +182,7 @@ The C# SDK provides high-performance parsing classes that match the C++ gold sta
 
 | Profile | Header | Payload | Use Case |
 |---------|--------|---------|----------|
-| `ProfileStandard` | Basic | Default | General serial/UART communication |
+| `ProfileBasic` | Basic | Default | General serial/UART communication |
 | `ProfileSensor` | Tiny | Minimal | Low-bandwidth sensors, radio links |
 | `ProfileIPC` | None | Minimal | Trusted inter-process communication |
 | `ProfileBulk` | Basic | Extended | Firmware/file transfers |
@@ -195,8 +195,8 @@ The C# SDK provides high-performance parsing classes that match the C++ gold sta
 ```csharp
 using StructFrame;
 
-// Parse a buffer containing multiple ProfileStandard frames
-var reader = FrameProfiles.CreateProfileStandardReader(bufferData);
+// Parse a buffer containing multiple ProfileBasic frames
+var reader = FrameProfiles.CreateProfileBasicReader(bufferData);
 while (reader.HasMore())
 {
     var result = reader.Next();
@@ -241,7 +241,7 @@ int? GetMessageLength(int msgId)
 using StructFrame;
 
 // Create writer with capacity
-var writer = FrameProfiles.CreateProfileStandardWriter(4096);
+var writer = FrameProfiles.CreateProfileBasicWriter(4096);
 
 // Write multiple messages
 writer.Write(1, msg1Data);
@@ -269,7 +269,7 @@ writer.Write(1, data, seq: 1, sysId: 10, compId: 1);
 ```csharp
 using StructFrame;
 
-var reader = FrameProfiles.CreateProfileStandardAccumulatingReader();
+var reader = FrameProfiles.CreateProfileBasicAccumulatingReader();
 
 // Process incoming chunks (e.g., from network or file)
 reader.AddData(chunk1);
@@ -321,21 +321,21 @@ All profiles have factory methods for creating readers and writers:
 using StructFrame;
 
 // BufferReader factories
-var reader = FrameProfiles.CreateProfileStandardReader(buffer);
+var reader = FrameProfiles.CreateProfileBasicReader(buffer);
 var reader = FrameProfiles.CreateProfileSensorReader(buffer, getMsgLength);
 var reader = FrameProfiles.CreateProfileIPCReader(buffer, getMsgLength);
 var reader = FrameProfiles.CreateProfileBulkReader(buffer);
 var reader = FrameProfiles.CreateProfileNetworkReader(buffer);
 
 // BufferWriter factories
-var writer = FrameProfiles.CreateProfileStandardWriter(capacity);
+var writer = FrameProfiles.CreateProfileBasicWriter(capacity);
 var writer = FrameProfiles.CreateProfileSensorWriter(capacity);
 var writer = FrameProfiles.CreateProfileIPCWriter(capacity);
 var writer = FrameProfiles.CreateProfileBulkWriter(capacity);
 var writer = FrameProfiles.CreateProfileNetworkWriter(capacity);
 
 // AccumulatingReader factories
-var reader = FrameProfiles.CreateProfileStandardAccumulatingReader();
+var reader = FrameProfiles.CreateProfileBasicAccumulatingReader();
 var reader = FrameProfiles.CreateProfileSensorAccumulatingReader(getMsgLength);
 var reader = FrameProfiles.CreateProfileIPCAccumulatingReader(getMsgLength);
 var reader = FrameProfiles.CreateProfileBulkAccumulatingReader();

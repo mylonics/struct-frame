@@ -59,7 +59,7 @@ const {
   profileFooterSize,
   profileOverhead,
   // Profile configurations
-  ProfileStandardConfig,
+  ProfileBasicConfig,
   ProfileSensorConfig,
   ProfileIPCConfig,
   ProfileBulkConfig,
@@ -75,9 +75,9 @@ const {
   AccumulatingReader,
   AccumulatingReaderState,
   // Profile-specific subclasses
-  ProfileStandardReader,
-  ProfileStandardWriter,
-  ProfileStandardAccumulatingReader,
+  ProfileBasicReader,
+  ProfileBasicWriter,
+  ProfileBasicAccumulatingReader,
   ProfileSensorReader,
   ProfileSensorWriter,
   ProfileSensorAccumulatingReader,
@@ -141,7 +141,7 @@ module.exports = {
   profileFooterSize,
   profileOverhead,
   // Profile configurations
-  ProfileStandardConfig,
+  ProfileBasicConfig,
   ProfileSensorConfig,
   ProfileIPCConfig,
   ProfileBulkConfig,
@@ -157,9 +157,9 @@ module.exports = {
   AccumulatingReader,
   AccumulatingReaderState,
   // Profile-specific subclasses
-  ProfileStandardReader,
-  ProfileStandardWriter,
-  ProfileStandardAccumulatingReader,
+  ProfileBasicReader,
+  ProfileBasicWriter,
+  ProfileBasicAccumulatingReader,
   ProfileSensorReader,
   ProfileSensorWriter,
   ProfileSensorAccumulatingReader,

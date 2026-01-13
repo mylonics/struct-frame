@@ -140,7 +140,7 @@ using namespace FrameParsers;
 
 // Create parser with internal buffer (using profile alias)
 uint8_t buffer[512];
-ProfileStandard parser(buffer, sizeof(buffer));  // Profile.STANDARD
+ProfileBasic parser(buffer, sizeof(buffer));  // Profile.BASIC
 
 // Parse incoming bytes one at a time
 void onSerialByte(uint8_t byte) {
@@ -170,7 +170,7 @@ using namespace FrameParsers;
 
 // Create parser (using profile alias)
 uint8_t internal_buffer[512];
-ProfileStandard parser(internal_buffer, sizeof(internal_buffer));  // Profile.STANDARD
+ProfileBasic parser(internal_buffer, sizeof(internal_buffer));  // Profile.BASIC
 
 // Parse from DMA buffer or ring buffer
 void processBuffer(const uint8_t* data, size_t length) {
@@ -204,7 +204,7 @@ The buffer API works great with ring buffers from UART/SPI peripherals:
 ```cpp
 class RingBufferParser {
 private:
-    ProfileStandard parser_;  // Profile.STANDARD
+    ProfileBasic parser_;  // Profile.BASIC
     uint8_t internal_buffer_[512];
     
 public:
@@ -256,13 +256,13 @@ All parsers are profile-specific (optimized for a single frame format):
 
 ```cpp
 // Profile aliases for convenience
-using ProfileStandard = BasicDefaultParser;  // General Serial/UART
+using ProfileBasic = BasicDefaultParser;  // General Serial/UART
 using ProfileSensor = TinyMinimalParser;     // Low-Bandwidth/Radio
 using ProfileBulk = BasicExtendedParser;     // Firmware/File Transfer
 using ProfileNetwork = BasicExtendedMultiSystemStreamParser;  // Multi-Node Mesh
 
 // Use the profile that matches your application
-ProfileStandard parser(buffer, sizeof(buffer));
+ProfileBasic parser(buffer, sizeof(buffer));
 ```
 
 For more details on parsers and performance, see the [Parser Feature Matrix](parser-feature-matrix.md).

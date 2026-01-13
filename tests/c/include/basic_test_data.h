@@ -24,15 +24,15 @@
  * Message count and order
  * ============================================================================ */
 
-#define STD_MESSAGE_COUNT 11
+#define BASIC_MESSAGE_COUNT 11
 
 /* Index tracking for encoding/validation */
-static size_t std_serial_idx = 0;
-static size_t std_basic_idx = 0;
-static size_t std_union_idx = 0;
+static size_t basic_serial_idx = 0;
+static size_t basic_basic_idx = 0;
+static size_t basic_union_idx = 0;
 
 /* Message ID order array */
-static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
+static const uint16_t basic_msg_id_order[BASIC_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, /* 0: SerializationTest[0] */
     SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, /* 1: SerializationTest[1] */
     SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID, /* 2: SerializationTest[2] */
@@ -46,7 +46,7 @@ static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,        /* 10: BasicTypes[3] */
 };
 
-static inline const uint16_t* std_get_msg_id_order(void) { return std_msg_id_order; }
+static inline const uint16_t* basic_get_msg_id_order(void) { return basic_msg_id_order; }
 
 /* ============================================================================
  * Helper functions to create messages
@@ -235,27 +235,27 @@ static inline const SerializationTestUnionTestMessage* get_union_test_messages(v
  * Reset state for new encode/decode run
  * ============================================================================ */
 
-static inline void std_reset_state(void) {
-  std_serial_idx = 0;
-  std_basic_idx = 0;
-  std_union_idx = 0;
+static inline void basic_reset_state(void) {
+  basic_serial_idx = 0;
+  basic_basic_idx = 0;
+  basic_union_idx = 0;
 }
 
 /* ============================================================================
  * Encoder - writes messages in order using index tracking
  * ============================================================================ */
 
-static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
-  uint16_t msg_id = std_msg_id_order[index];
+static inline size_t basic_encode_message(buffer_writer_t* writer, size_t index) {
+  uint16_t msg_id = basic_msg_id_order[index];
 
   if (msg_id == SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID) {
-    const SerializationTestSerializationTestMessage* msg = &get_serialization_test_messages()[std_serial_idx++];
+    const SerializationTestSerializationTestMessage* msg = &get_serialization_test_messages()[basic_serial_idx++];
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0);
   } else if (msg_id == SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID) {
-    const SerializationTestBasicTypesMessage* msg = &get_basic_types_messages()[std_basic_idx++];
+    const SerializationTestBasicTypesMessage* msg = &get_basic_types_messages()[basic_basic_idx++];
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0);
   } else if (msg_id == SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID) {
-    const SerializationTestUnionTestMessage* msg = &get_union_test_messages()[std_union_idx++];
+    const SerializationTestUnionTestMessage* msg = &get_union_test_messages()[basic_union_idx++];
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0);
   }
 
@@ -266,21 +266,21 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
  * Validator - validates decoded messages against expected data using _equals()
  * ============================================================================ */
 
-static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, size_t size, size_t* index) {
+static inline bool basic_validate_message(uint16_t msg_id, const uint8_t* data, size_t size, size_t* index) {
   (void)index; /* Not used for standard tests - index tracking via static vars */
 
   if (msg_id == SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID) {
-    const SerializationTestSerializationTestMessage* expected = &get_serialization_test_messages()[std_serial_idx++];
+    const SerializationTestSerializationTestMessage* expected = &get_serialization_test_messages()[basic_serial_idx++];
     if (size != sizeof(*expected)) return false;
     const SerializationTestSerializationTestMessage* decoded = (const SerializationTestSerializationTestMessage*)data;
     return SerializationTestSerializationTestMessage_equals(decoded, expected);
   } else if (msg_id == SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID) {
-    const SerializationTestBasicTypesMessage* expected = &get_basic_types_messages()[std_basic_idx++];
+    const SerializationTestBasicTypesMessage* expected = &get_basic_types_messages()[basic_basic_idx++];
     if (size != sizeof(*expected)) return false;
     const SerializationTestBasicTypesMessage* decoded = (const SerializationTestBasicTypesMessage*)data;
     return SerializationTestBasicTypesMessage_equals(decoded, expected);
   } else if (msg_id == SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID) {
-    const SerializationTestUnionTestMessage* expected = &get_union_test_messages()[std_union_idx++];
+    const SerializationTestUnionTestMessage* expected = &get_union_test_messages()[basic_union_idx++];
     if (size != sizeof(*expected)) return false;
     const SerializationTestUnionTestMessage* decoded = (const SerializationTestUnionTestMessage*)data;
     return SerializationTestUnionTestMessage_equals(decoded, expected);
@@ -293,7 +293,7 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
  * Supports format check
  * ============================================================================ */
 
-static inline bool std_supports_format(const char* format) {
+static inline bool basic_supports_format(const char* format) {
   return strcmp(format, "profile_standard") == 0 || strcmp(format, "profile_sensor") == 0 ||
          strcmp(format, "profile_ipc") == 0 || strcmp(format, "profile_bulk") == 0 ||
          strcmp(format, "profile_network") == 0;
@@ -303,15 +303,15 @@ static inline bool std_supports_format(const char* format) {
  * Test configuration
  * ============================================================================ */
 
-static const test_config_t std_test_config = {
-    .message_count = STD_MESSAGE_COUNT,
+static const test_config_t basic_test_config = {
+    .message_count = BASIC_MESSAGE_COUNT,
     .buffer_size = 4096,
     .formats_help = "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network",
     .test_name = "C",
-    .get_msg_id_order = std_get_msg_id_order,
-    .encode_message = std_encode_message,
-    .validate_message = std_validate_message,
-    .reset_state = std_reset_state,
+    .get_msg_id_order = basic_get_msg_id_order,
+    .encode_message = basic_encode_message,
+    .validate_message = basic_validate_message,
+    .reset_state = basic_reset_state,
     .get_message_length = get_message_length,
-    .supports_format = std_supports_format,
+    .supports_format = basic_supports_format,
 };

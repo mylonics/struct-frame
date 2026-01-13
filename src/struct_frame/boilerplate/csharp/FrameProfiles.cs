@@ -2,7 +2,7 @@
 // This file mirrors the C++ FrameProfiles.hpp structure
 //
 // Standard Profiles:
-// - ProfileStandard: Basic + Default (General serial/UART)
+// - ProfileBasic: Basic + Default (General serial/UART)
 // - ProfileSensor: Tiny + Minimal (Low-bandwidth sensors)
 // - ProfileIPC: None + Minimal (Trusted inter-process communication)
 // - ProfileBulk: Basic + Extended (Large data transfers with package namespacing)
@@ -90,11 +90,11 @@ namespace StructFrame
     public static class Profiles
     {
         /// <summary>
-        /// ProfileStandard: Basic + Default
+        /// ProfileBasic: Basic + Default
         /// Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
         /// </summary>
         public static readonly ProfileConfig Standard = new ProfileConfig(
-            "ProfileStandard",
+            "ProfileBasic",
             HeaderConfigs.Basic,
             PayloadConfigs.Default
         );
@@ -146,7 +146,7 @@ namespace StructFrame
         {
             return name.ToLowerInvariant() switch
             {
-                "profile_standard" or "profilestandard" or "standard" => Standard,
+                "profile_basic" or "profilestandard" or "standard" => Standard,
                 "profile_sensor" or "profilesensor" or "sensor" => Sensor,
                 "profile_ipc" or "profileipc" or "ipc" => IPC,
                 "profile_bulk" or "profilebulk" or "bulk" => Bulk,
@@ -1152,35 +1152,35 @@ namespace StructFrame
     // ============================================================================
 
     // FrameEncoder aliases
-    public class ProfileStandardEncoder : FrameEncoder<StandardProfile> { }
+    public class ProfileBasicEncoder : FrameEncoder<StandardProfile> { }
     public class ProfileSensorEncoder : FrameEncoder<SensorProfile> { }
     public class ProfileIPCEncoder : FrameEncoder<IPCProfile> { }
     public class ProfileBulkEncoder : FrameEncoder<BulkProfile> { }
     public class ProfileNetworkEncoder : FrameEncoder<NetworkProfile> { }
 
     // BufferParser aliases
-    public class ProfileStandardParser : BufferParser<StandardProfile> { public ProfileStandardParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileBasicParser : BufferParser<StandardProfile> { public ProfileBasicParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
     public class ProfileSensorParser : BufferParser<SensorProfile> { public ProfileSensorParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
     public class ProfileIPCParser : BufferParser<IPCProfile> { public ProfileIPCParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
     public class ProfileBulkParser : BufferParser<BulkProfile> { public ProfileBulkParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
     public class ProfileNetworkParser : BufferParser<NetworkProfile> { public ProfileNetworkParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
 
     // BufferReader aliases
-    public class ProfileStandardReader : BufferReader<StandardProfile> { public ProfileStandardReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileBasicReader : BufferReader<StandardProfile> { public ProfileBasicReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
     public class ProfileSensorReader : BufferReader<SensorProfile> { public ProfileSensorReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
     public class ProfileIPCReader : BufferReader<IPCProfile> { public ProfileIPCReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
     public class ProfileBulkReader : BufferReader<BulkProfile> { public ProfileBulkReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
     public class ProfileNetworkReader : BufferReader<NetworkProfile> { public ProfileNetworkReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
 
     // BufferWriter aliases
-    public class ProfileStandardWriter : BufferWriter<StandardProfile> { }
+    public class ProfileBasicWriter : BufferWriter<StandardProfile> { }
     public class ProfileSensorWriter : BufferWriter<SensorProfile> { }
     public class ProfileIPCWriter : BufferWriter<IPCProfile> { }
     public class ProfileBulkWriter : BufferWriter<BulkProfile> { }
     public class ProfileNetworkWriter : BufferWriter<NetworkProfile> { }
 
     // AccumulatingReader aliases
-    public class ProfileStandardAccumulatingReader : AccumulatingReader<StandardProfile> { public ProfileStandardAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileBasicAccumulatingReader : AccumulatingReader<StandardProfile> { public ProfileBasicAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
     public class ProfileSensorAccumulatingReader : AccumulatingReader<SensorProfile> { public ProfileSensorAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
     public class ProfileIPCAccumulatingReader : AccumulatingReader<IPCProfile> { public ProfileIPCAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
     public class ProfileBulkAccumulatingReader : AccumulatingReader<BulkProfile> { public ProfileBulkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }

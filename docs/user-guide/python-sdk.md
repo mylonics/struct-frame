@@ -131,7 +131,7 @@ The Python SDK provides high-performance parsing classes that match the C++ gold
 
 | Profile | Header | Payload | Use Case |
 |---------|--------|---------|----------|
-| `ProfileStandard` | Basic | Default | General serial/UART communication |
+| `ProfileBasic` | Basic | Default | General serial/UART communication |
 | `ProfileSensor` | Tiny | Minimal | Low-bandwidth sensors, radio links |
 | `ProfileIPC` | None | Minimal | Trusted inter-process communication |
 | `ProfileBulk` | Basic | Extended | Firmware/file transfers |
@@ -143,12 +143,12 @@ The Python SDK provides high-performance parsing classes that match the C++ gold
 
 ```python
 from frame_profiles import (
-    create_profile_standard_reader,
+    create_profile_basic_reader,
     create_profile_sensor_reader,
 )
 
-# Parse a buffer containing multiple ProfileStandard frames
-reader = create_profile_standard_reader(buffer_data)
+# Parse a buffer containing multiple ProfileBasic frames
+reader = create_profile_basic_reader(buffer_data)
 while reader.has_more():
     result = reader.next()
     if not result.valid:
@@ -178,12 +178,12 @@ while reader.has_more():
 
 ```python
 from frame_profiles import (
-    create_profile_standard_writer,
+    create_profile_basic_writer,
     create_profile_network_writer,
 )
 
 # Create writer with capacity
-writer = create_profile_standard_writer(capacity=4096)
+writer = create_profile_basic_writer(capacity=4096)
 
 # Write multiple messages
 writer.write(msg_id=1, payload=msg1_data)
@@ -209,9 +209,9 @@ writer.write(msg_id=1, payload=data, seq=1, sys_id=10, comp_id=1)
 **Buffer Mode** - Processing chunks of data:
 
 ```python
-from frame_profiles import create_profile_standard_accumulating_reader
+from frame_profiles import create_profile_basic_accumulating_reader
 
-reader = create_profile_standard_accumulating_reader()
+reader = create_profile_basic_accumulating_reader()
 
 # Process incoming chunks (e.g., from network or file)
 reader.add_data(chunk1)
@@ -256,21 +256,21 @@ All profiles have factory functions for creating readers and writers:
 ```python
 from frame_profiles import (
     # BufferReader factories
-    create_profile_standard_reader,
+    create_profile_basic_reader,
     create_profile_sensor_reader,
     create_profile_ipc_reader,
     create_profile_bulk_reader,
     create_profile_network_reader,
     
     # BufferWriter factories
-    create_profile_standard_writer,
+    create_profile_basic_writer,
     create_profile_sensor_writer,
     create_profile_ipc_writer,
     create_profile_bulk_writer,
     create_profile_network_writer,
     
     # AccumulatingReader factories
-    create_profile_standard_accumulating_reader,
+    create_profile_basic_accumulating_reader,
     create_profile_sensor_accumulating_reader,
     create_profile_ipc_accumulating_reader,
     create_profile_bulk_accumulating_reader,

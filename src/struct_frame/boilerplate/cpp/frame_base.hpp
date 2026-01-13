@@ -57,7 +57,7 @@ struct FrameMsgInfo {
  *
  *   // Encode directly without passing msg_id/size:
  *   MyMessage msg{.field1 = 42, .field2 = 3.14f};
- *   encode_profile_standard(buffer, sizeof(buffer), msg);
+ *   encode_profile_basic(buffer, sizeof(buffer), msg);
  */
 template <typename Derived, uint16_t MsgId, size_t MaxSize>
 struct MessageBase {

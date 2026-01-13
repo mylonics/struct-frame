@@ -277,7 +277,7 @@ function supportsFormat(format) {
 }
 
 /** Standard test configuration */
-const stdTestConfig = {
+const basicTestConfig = {
   messageCount: MESSAGE_COUNT,
   bufferSize: 4096,
   formatsHelp: 'profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network',
@@ -290,4 +290,4 @@ const stdTestConfig = {
   supportsFormat,
 };
 
-module.exports = { stdTestConfig };
+module.exports = { basicTestConfig };

@@ -399,7 +399,7 @@ For most use cases, use one of the 5 standard profiles:
 
 ```python
 # For general serial/UART:
-ProfileStandard  # Basic header + Default payload
+ProfileBasic  # Basic header + Default payload
 
 # For low-bandwidth sensors:
 ProfileSensor    # Tiny header + Minimal payload
@@ -425,18 +425,18 @@ If you need a new header or payload type that doesn't exist, please submit a PR 
 
     ```python
     from frame_profiles import (
-        ProfileStandardConfig,
+        ProfileBasicConfig,
         BufferWriter,
         BufferReader
     )
     
     # Encode a message
-    writer = BufferWriter(ProfileStandardConfig, 1024)
+    writer = BufferWriter(ProfileBasicConfig, 1024)
     writer.write(my_message)
     encoded = writer.data()
     
     # Decode messages
-    reader = BufferReader(ProfileStandardConfig, encoded)
+    reader = BufferReader(ProfileBasicConfig, encoded)
     for result in reader:
         if result.valid:
             print(f"Message ID: {result.msg_id}")
@@ -446,18 +446,18 @@ If you need a new header or payload type that doesn't exist, please submit a PR 
 
     ```typescript
     import {
-        ProfileStandardConfig,
+        ProfileBasicConfig,
         BufferWriter,
         BufferReader
     } from './frame_profiles';
     
     // Encode a message
-    const writer = new BufferWriter(ProfileStandardConfig, 1024);
+    const writer = new BufferWriter(ProfileBasicConfig, 1024);
     writer.write(myMessage);
     const encoded = writer.data();
     
     // Decode messages
-    const reader = new BufferReader(ProfileStandardConfig, encoded);
+    const reader = new BufferReader(ProfileBasicConfig, encoded);
     for (const result of reader) {
         if (result.valid) {
             console.log(`Message ID: ${result.msg_id}`);
@@ -472,11 +472,11 @@ If you need a new header or payload type that doesn't exist, please submit a PR 
     
     // Encode a message
     uint8_t buffer[1024];
-    StructFrame::BufferWriter<StructFrame::ProfileStandardConfig> writer(buffer, sizeof(buffer));
+    StructFrame::BufferWriter<StructFrame::ProfileBasicConfig> writer(buffer, sizeof(buffer));
     writer.write(msg_id, &msg, sizeof(msg));
     
     // Decode messages
-    StructFrame::BufferReader<StructFrame::ProfileStandardConfig> reader(buffer, writer.size());
+    StructFrame::BufferReader<StructFrame::ProfileBasicConfig> reader(buffer, writer.size());
     while (auto result = reader.next()) {
         // Process result->msg_id, result->msg_data
     }

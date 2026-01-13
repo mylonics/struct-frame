@@ -2,7 +2,7 @@
  * Frame Profiles - Pre-defined Header + Payload combinations for TypeScript
  *
  * This module provides ready-to-use encode/parse functions for the 5 standard profiles:
- * - ProfileStandard: Basic + Default (General serial/UART)
+ * - ProfileBasic: Basic + Default (General serial/UART)
  * - ProfileSensor: Tiny + Minimal (Low-bandwidth sensors)
  * - ProfileIPC: None + Minimal (Trusted inter-process communication)
  * - ProfileBulk: Basic + Extended (Large data transfers with package namespacing)
@@ -115,8 +115,8 @@ function createProfileConfig(
  * Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
  * 6 bytes overhead, 255 bytes max payload
  */
-export const ProfileStandardConfig: FrameProfileConfig = createProfileConfig(
-    'ProfileStandard',
+export const ProfileBasicConfig: FrameProfileConfig = createProfileConfig(
+    'ProfileBasic',
     HEADER_BASIC_CONFIG,
     PAYLOAD_DEFAULT_CONFIG
 );
@@ -418,7 +418,7 @@ export function parseFrameMinimal(
  * BufferReader - Iterate through a buffer parsing multiple frames.
  *
  * Usage:
- *   const reader = new BufferReader(ProfileStandardConfig, buffer);
+ *   const reader = new BufferReader(ProfileBasicConfig, buffer);
  *   let result = reader.next();
  *   while (result.valid) {
  *       // Process result.msg_id, result.msg_data, result.msg_len
@@ -510,7 +510,7 @@ export class BufferReader {
  * BufferWriter - Encode multiple frames into a buffer with automatic offset tracking.
  *
  * Usage:
- *   const writer = new BufferWriter(ProfileStandardConfig, 1024);
+ *   const writer = new BufferWriter(ProfileBasicConfig, 1024);
  *   writer.write(msg1);  // msg1 is a struct instance with _msgid and _buffer
  *   writer.write(msg2);
  *   const encodedData = writer.data();
@@ -608,7 +608,7 @@ export enum AccumulatingReaderState {
  * - Stream mode: pushByte() for byte-by-byte processing (e.g., UART)
  *
  * Buffer mode usage:
- *   const reader = new AccumulatingReader(ProfileStandardConfig);
+ *   const reader = new AccumulatingReader(ProfileBasicConfig);
  *   reader.addData(chunk1);
  *   let result = reader.next();
  *   while (result.valid) {
@@ -617,7 +617,7 @@ export enum AccumulatingReaderState {
  *   }
  *
  * Stream mode usage:
- *   const reader = new AccumulatingReader(ProfileStandardConfig);
+ *   const reader = new AccumulatingReader(ProfileBasicConfig);
  *   while (receiving) {
  *       const byte = readByte();
  *       const result = reader.pushByte(byte);
@@ -1004,24 +1004,24 @@ export class AccumulatingReader {
 // =============================================================================
 
 // -----------------------------------------------------------------------------
-// ProfileStandard subclasses
+// ProfileBasic subclasses
 // -----------------------------------------------------------------------------
 
-export class ProfileStandardReader extends BufferReader {
+export class ProfileBasicReader extends BufferReader {
     constructor(buffer: Uint8Array) {
-        super(ProfileStandardConfig, buffer);
+        super(ProfileBasicConfig, buffer);
     }
 }
 
-export class ProfileStandardWriter extends BufferWriter {
+export class ProfileBasicWriter extends BufferWriter {
     constructor(capacity: number = 1024) {
-        super(ProfileStandardConfig, capacity);
+        super(ProfileBasicConfig, capacity);
     }
 }
 
-export class ProfileStandardAccumulatingReader extends AccumulatingReader {
+export class ProfileBasicAccumulatingReader extends AccumulatingReader {
     constructor(bufferSize: number = 1024) {
-        super(ProfileStandardConfig, undefined, bufferSize);
+        super(ProfileBasicConfig, undefined, bufferSize);
     }
 }
 

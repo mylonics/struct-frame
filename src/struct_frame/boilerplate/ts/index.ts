@@ -67,7 +67,7 @@ export {
     profileFooterSize,
     profileOverhead,
     // Profile configurations
-    ProfileStandardConfig,
+    ProfileBasicConfig,
     ProfileSensorConfig,
     ProfileIPCConfig,
     ProfileBulkConfig,
@@ -83,9 +83,9 @@ export {
     AccumulatingReader,
     AccumulatingReaderState,
     // Profile-specific subclasses
-    ProfileStandardReader,
-    ProfileStandardWriter,
-    ProfileStandardAccumulatingReader,
+    ProfileBasicReader,
+    ProfileBasicWriter,
+    ProfileBasicAccumulatingReader,
     ProfileSensorReader,
     ProfileSensorWriter,
     ProfileSensorAccumulatingReader,

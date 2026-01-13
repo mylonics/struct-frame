@@ -294,4 +294,4 @@ class Config:
 
 
 # Export config instance for convenience
-std_test_config = Config
+basic_test_config = Config

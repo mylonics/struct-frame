@@ -62,7 +62,7 @@ When a package has a package ID OR any message ID is >= 256, the generator autom
 
 **Blocked frame formats:**
 - `Minimal`, `Default`, `SysComp`, `Seq`, `MultiSystemStream`
-- Profiles: `ProfileStandard`, `ProfileSensor`, `ProfileIPC`
+- Profiles: `ProfileBasic`, `ProfileSensor`, `ProfileIPC`
 
 **Allowed profiles:**
 - `ProfileBulk` (uses Extended)

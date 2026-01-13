@@ -4,7 +4,7 @@
  * It uses C++ templates for maximum code reuse with zero runtime overhead.
  *
  * Standard Profiles:
- * - ProfileStandard: Basic + Default (General serial/UART)
+ * - ProfileBasic: Basic + Default (General serial/UART)
  * - ProfileSensor: Tiny + Minimal (Low-bandwidth sensors)
  * - ProfileIPC: None + Minimal (Trusted inter-process communication)
  * - ProfileBulk: Basic + Extended (Large data transfers with package namespacing)
@@ -314,7 +314,7 @@ class BufferParserMinimal {
 
 // Profile Standard: Basic + Default
 // Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-using ProfileStandardConfig = ProfileConfig<FrameHeaders::HEADER_BASIC_CONFIG, PayloadTypes::PAYLOAD_DEFAULT_CONFIG>;
+using ProfileBasicConfig = ProfileConfig<FrameHeaders::HEADER_BASIC_CONFIG, PayloadTypes::PAYLOAD_DEFAULT_CONFIG>;
 
 // Profile Sensor: Tiny + Minimal
 // Frame: [0x70] [MSG_ID] [PAYLOAD]
@@ -343,7 +343,7 @@ using ProfileNetworkConfig =
  * BufferReader - Iterate through a buffer parsing multiple frames.
  *
  * Usage:
- *   BufferReader<ProfileStandardConfig> reader(buffer, size);
+ *   BufferReader<ProfileBasicConfig> reader(buffer, size);
  *   while (auto result = reader.next()) {
  *     // Process result.msg_id, result.msg_data, result.msg_len
  *   }
@@ -414,7 +414,7 @@ class BufferReader {
  * BufferWriter - Encode multiple frames into a buffer with automatic offset tracking.
  *
  * Usage:
- *   BufferWriter<ProfileStandardConfig> writer(buffer, sizeof(buffer));
+ *   BufferWriter<ProfileBasicConfig> writer(buffer, sizeof(buffer));
  *   writer.write(msg1);
  *   writer.write(msg2);
  *   size_t total = writer.size();  // Total bytes written
@@ -496,8 +496,8 @@ class BufferWriter {
 };
 
 /* Convenience type aliases for BufferReader/Writer with standard profiles */
-using ProfileStandardReader = BufferReader<ProfileStandardConfig>;
-using ProfileStandardWriter = BufferWriter<ProfileStandardConfig>;
+using ProfileBasicReader = BufferReader<ProfileBasicConfig>;
+using ProfileBasicWriter = BufferWriter<ProfileBasicConfig>;
 using ProfileSensorReader = BufferReader<ProfileSensorConfig>;
 using ProfileSensorWriter = BufferWriter<ProfileSensorConfig>;
 using ProfileIPCReader = BufferReader<ProfileIPCConfig>;
@@ -515,18 +515,18 @@ using ProfileNetworkWriter = BufferWriter<ProfileNetworkConfig>;
  * - Stream mode: push_byte() for byte-by-byte processing (e.g., UART)
  *
  * Template parameters:
- *   Config - The frame profile configuration (e.g., ProfileStandardConfig)
+ *   Config - The frame profile configuration (e.g., ProfileBasicConfig)
  *   BufferSize - Size of internal buffer for partial messages (default: 1024)
  *
  * Buffer mode usage:
- *   AccumulatingReader<ProfileStandardConfig> reader;
+ *   AccumulatingReader<ProfileBasicConfig> reader;
  *   reader.add_data(chunk1, chunk1_size);
  *   while (auto result = reader.next()) {
  *     // Process complete messages
  *   }
  *
  * Stream mode usage:
- *   AccumulatingReader<ProfileStandardConfig> reader;
+ *   AccumulatingReader<ProfileBasicConfig> reader;
  *   while (receiving) {
  *     uint8_t byte = read_byte();
  *     if (auto result = reader.push_byte(byte)) {
@@ -975,7 +975,7 @@ class AccumulatingReader {
 };
 
 /* Convenience type aliases for AccumulatingReader with standard profiles (default 1024 byte buffer) */
-using ProfileStandardAccumulatingReader = AccumulatingReader<ProfileStandardConfig>;
+using ProfileBasicAccumulatingReader = AccumulatingReader<ProfileBasicConfig>;
 using ProfileSensorAccumulatingReader = AccumulatingReader<ProfileSensorConfig>;
 using ProfileIPCAccumulatingReader = AccumulatingReader<ProfileIPCConfig>;
 using ProfileBulkAccumulatingReader = AccumulatingReader<ProfileBulkConfig>;

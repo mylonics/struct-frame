@@ -51,7 +51,7 @@ static inline uint8_t profile_overhead(const profile_config_t* config) {
  *===========================================================================*/
 
 /* Profile Standard: Basic + Default */
-static const profile_config_t PROFILE_STANDARD_CONFIG = {
+static const profile_config_t PROFILE_BASIC_CONFIG = {
     .header = HEADER_BASIC_CONFIG,
     .payload = PAYLOAD_DEFAULT_CONFIG
 };
@@ -344,15 +344,15 @@ static inline frame_msg_info_t profile_parse_minimal(
  *===========================================================================*/
 
 /* Profile Standard (Basic + Default) */
-static inline size_t encode_profile_standard(uint8_t* buffer, size_t buffer_size,
+static inline size_t encode_profile_basic(uint8_t* buffer, size_t buffer_size,
                                              uint8_t msg_id,
                                              const uint8_t* payload, size_t payload_size) {
-    return profile_encode_with_crc(&PROFILE_STANDARD_CONFIG, buffer, buffer_size,
+    return profile_encode_with_crc(&PROFILE_BASIC_CONFIG, buffer, buffer_size,
                                    0, 0, 0, 0, msg_id, payload, payload_size);
 }
 
-static inline frame_msg_info_t parse_profile_standard_buffer(const uint8_t* buffer, size_t length) {
-    return profile_parse_with_crc(&PROFILE_STANDARD_CONFIG, buffer, length);
+static inline frame_msg_info_t parse_profile_basic_buffer(const uint8_t* buffer, size_t length) {
+    return profile_parse_with_crc(&PROFILE_BASIC_CONFIG, buffer, length);
 }
 
 /* Profile Sensor (Tiny + Minimal) */

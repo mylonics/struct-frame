@@ -15,7 +15,7 @@ struct-frame supports multiple parser types and framing strategies optimized for
 
 | Language   | Profile-Specific Parsers | Polyglot Parser | Buffer Parsing | Zero-Copy Support | Notes |
 |------------|--------------------------|-----------------|----------------|-------------------|-------|
-| **C**      | ✅ Yes                   | ❌ No           | ⚠️ Byte-by-byte | ✅ Yes           | Profile parsers via `profile_standard_t`, `profile_sensor_t`, etc. |
+| **C**      | ✅ Yes                   | ❌ No           | ⚠️ Byte-by-byte | ✅ Yes           | Profile parsers via `profile_basic_t`, `profile_sensor_t`, etc. |
 | **C++**    | ✅ Yes                   | ❌ No           | ✅ Yes          | ✅ Yes           | Buffer API: `parse_buffer()`, returns pointer into original buffer |
 | **Python** | ✅ Yes                   | ✅ Yes          | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers available, polyglot parser is default |
 | **TypeScript** | ✅ Yes               | ❌ No           | ⚠️ Byte-by-byte | ⚠️ Partial      | Profile parsers via generated classes |
@@ -53,12 +53,12 @@ All languages support parsers for these standard profiles:
 #include "frame_parsers.h"
 
 // Profile-specific parser (using STANDARD profile)
-profile_standard_t parser;
+profile_basic_t parser;
 uint8_t buffer[256];
-profile_standard_init(&parser, buffer, sizeof(buffer), NULL);
+profile_basic_init(&parser, buffer, sizeof(buffer), NULL);
 
 // Parse byte-by-byte
-frame_msg_info_t result = profile_standard_parse_byte(&parser, byte);
+frame_msg_info_t result = profile_basic_parse_byte(&parser, byte);
 if (result.valid) {
     // Process message: result.msg_id, result.msg_data, result.msg_len
 }
@@ -73,7 +73,7 @@ using namespace FrameParsers;
 
 // Profile-specific parser (using STANDARD profile)
 uint8_t buffer[256];
-ProfileStandard parser(buffer, sizeof(buffer));
+ProfileBasic parser(buffer, sizeof(buffer));
 
 // Option 1: Byte-by-byte parsing
 FrameMsgInfo result = parser.parse_byte(byte);
@@ -89,7 +89,7 @@ if (result.valid) {
 }
 
 // Profile aliases for convenience
-using ProfileStandard = BasicDefaultParser;  // Profile.STANDARD
+using ProfileBasic = BasicDefaultParser;  // Profile.BASIC
 using ProfileSensor = TinyMinimalParser;     // Profile.SENSOR
 using ProfileBulk = BasicExtendedParser;     // Profile.BULK
 using ProfileNetwork = BasicExtendedMultiSystemStreamParser;  // Profile.NETWORK
@@ -114,10 +114,10 @@ if result['valid']:
 #### TypeScript
 
 ```typescript
-import { createProfileStandardAccumulatingReader } from './frame_profiles';
+import { createProfileBasicAccumulatingReader } from './frame_profiles';
 
-// Create an accumulating reader for ProfileStandard
-const reader = createProfileStandardAccumulatingReader();
+// Create an accumulating reader for ProfileBasic
+const reader = createProfileBasicAccumulatingReader();
 
 // Parse byte-by-byte (streaming mode)
 const result = reader.pushByte(byte);
