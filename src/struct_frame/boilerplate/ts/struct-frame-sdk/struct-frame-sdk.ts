@@ -2,7 +2,7 @@
 // High-level interface for sending and receiving framed messages
 
 import { ITransport } from './transport';
-import { FrameMsgInfo } from '../frame_base';
+import { FrameMsgInfo } from '../frame-base';
 
 /**
  * Message handler callback type

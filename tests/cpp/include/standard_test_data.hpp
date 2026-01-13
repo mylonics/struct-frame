@@ -18,7 +18,7 @@
 #include <cstring>
 #include <string>
 
-#include "../../generated/cpp/serialization_test.sf.hpp"
+#include "../../generated/cpp/serialization_test.structframe.hpp"
 
 namespace TestMessagesData {
 

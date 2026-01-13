@@ -18,7 +18,7 @@ import {
     HEADER_TINY_CONFIG,
     HEADER_BASIC_CONFIG,
     PAYLOAD_TYPE_BASE,
-} from './frame_headers';
+} from './frame-headers';
 import {
     PayloadConfig,
     PAYLOAD_MINIMAL_CONFIG,
@@ -27,9 +27,9 @@ import {
     PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG,
     payloadHeaderSize,
     payloadFooterSize,
-} from './payload_types';
-import { fletcher_checksum, createFrameMsgInfo, FrameMsgInfo } from './frame_base';
-import { MessageBase } from './struct_base';
+} from './payload-types';
+import { fletcher_checksum, createFrameMsgInfo, FrameMsgInfo } from './frame-base';
+import { MessageBase } from './struct-base';
 
 // =============================================================================
 // Profile Configuration Interface

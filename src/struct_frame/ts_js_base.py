@@ -7,7 +7,7 @@ This module provides common functionality used by both ts_gen.py and js_gen.py
 to reduce code duplication and ensure consistent behavior.
 """
 
-from struct_frame import NamingStyleC
+from struct_frame import NamingStyleC, pascalCase
 
 StyleC = NamingStyleC()
 
@@ -597,6 +597,8 @@ def _find_message_type(type_name, package, packages):
 
 
 def _get_nested_type_name(field, package):
-    """Get the fully qualified nested type name."""
+    """Get the fully qualified nested type name with PascalCase package name."""
     type_package = getattr(field, 'type_package', None) or package.name
-    return f"{type_package}_{field.fieldType}"
+    # Convert package name to PascalCase for TypeScript/JavaScript conventions
+    type_package_pascal = pascalCase(type_package)
+    return f"{type_package_pascal}_{field.fieldType}"

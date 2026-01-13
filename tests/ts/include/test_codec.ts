@@ -33,7 +33,7 @@ import {
   ProfileBulkWriter,
   ProfileNetworkAccumulatingReader,
   ProfileNetworkWriter,
-} from '../../generated/ts/frame_profiles';
+} from '../../generated/ts/frame-profiles';
 
 /** Test configuration interface */
 export interface TestConfig {

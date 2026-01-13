@@ -13,7 +13,7 @@ const {
   validate_payload_minimal,
   encode_payload_with_crc,
   encode_payload_minimal,
-} = require('./frame_base');
+} = require('./frame-base');
 
 // Frame headers - Start byte patterns and header types
 const {
@@ -31,7 +31,7 @@ const {
   HEADER_UBX_CONFIG,
   HEADER_MAVLINK_V1_CONFIG,
   HEADER_MAVLINK_V2_CONFIG,
-} = require('./frame_headers');
+} = require('./frame-headers');
 
 // Payload types - Message structure definitions
 const {
@@ -50,7 +50,7 @@ const {
   PAYLOAD_SEQ_CONFIG,
   PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG,
   PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG,
-} = require('./payload_types');
+} = require('./payload-types');
 
 // Frame profiles - Pre-defined Header + Payload combinations
 const {
@@ -90,7 +90,7 @@ const {
   ProfileNetworkReader,
   ProfileNetworkWriter,
   ProfileNetworkAccumulatingReader,
-} = require('./frame_profiles');
+} = require('./frame-profiles');
 
 module.exports = {
   // Base utilities

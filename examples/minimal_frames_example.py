@@ -24,7 +24,7 @@ sys.path.insert(0, generated_path)
 
 from parser import Parser, HeaderType, PayloadType
 # Import the AUTO-GENERATED get_msg_length function from your messages
-from serialization_test_sf import get_msg_length, serialization_test_definitions
+from struct_frame.generated.serialization_test import get_msg_length, serialization_test_definitions
 
 # The get_msg_length function is automatically generated and knows the size
 # of each message based on your .proto definitions. No manual configuration needed!

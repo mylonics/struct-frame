@@ -8,7 +8,7 @@ It reuses the shared TypeScript/JavaScript base module for common logic
 but outputs JavaScript syntax (CommonJS) instead of TypeScript.
 """
 
-from struct_frame import version, NamingStyleC
+from struct_frame import version, NamingStyleC, pascalCase
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -41,7 +41,8 @@ class EnumJsGen():
             for c in leading_comment:
                 result = '%s\n' % c
 
-        enum_name = '%s%s' % (packageName, StyleC.enum_name(field.name))
+        # Use PascalCase for both package and enum name (JavaScript convention)
+        enum_name = '%s%s' % (packageName, field.name)
         result += 'const %s = Object.freeze({' % enum_name
 
         result += '\n'
@@ -358,9 +359,9 @@ class FileJsGen():
         # Only import MessageBase/Struct if there are messages
         if package.messages:
             if use_class_based:
-                yield "const { MessageBase } = require('./struct_base');\n"
+                yield "const { MessageBase } = require('./struct-base');\n"
             else:
-                yield "const { Struct } = require('./struct_base');\n"
+                yield "const { Struct } = require('./struct-base');\n"
         
         # Collect cross-package type dependencies
         external_types = {}  # {package_name: set of type names}
@@ -376,9 +377,11 @@ class FileJsGen():
         
         # Generate require statements for cross-package types
         for ext_package, type_names in sorted(external_types.items()):
+            # Convert package name to PascalCase for JavaScript conventions
+            ext_package_pascal = pascalCase(ext_package)
             for t in sorted(type_names):
-                type_var = '%s_%s' % (ext_package, t)
-                yield "const { %s } = require('./%s.sf');\n" % (type_var, ext_package)
+                type_var = '%s_%s' % (ext_package_pascal, t)
+                yield "const { %s } = require('./%s.structframe');\n" % (type_var, ext_package)
         
         if external_types:
             yield "\n"
@@ -391,20 +394,23 @@ class FileJsGen():
 
         # include additional header files here if available in the future
 
+        # Convert package name to PascalCase for JavaScript naming conventions
+        package_name_pascal = pascalCase(package.name)
+        
         if package.enums:
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
-                yield EnumJsGen.generate(enum, package.name) + '\n\n'
+                yield EnumJsGen.generate(enum, package_name_pascal) + '\n\n'
 
         if package.messages:
             if use_class_based:
                 yield '/* Message class definitions */\n'
                 for key, msg in package.sortedMessages().items():
-                    yield MessageJsClassGen.generate(msg, package.name, package, packages or {}, equality) + '\n'
+                    yield MessageJsClassGen.generate(msg, package_name_pascal, package, packages or {}, equality) + '\n'
             else:
                 yield '/* Struct definitions */\n'
                 for key, msg in package.sortedMessages().items():
-                    yield MessageJsGen.generate(msg, package.name, package) + '\n'
+                    yield MessageJsGen.generate(msg, package_name_pascal, package) + '\n'
             yield '\n'
 
         if package.messages:
@@ -431,7 +437,7 @@ class FileJsGen():
                     yield '  switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
-                    package_msg_name = '%s_%s' % (package.name, msg.name)
+                    package_msg_name = '%s_%s' % (package_name_pascal, msg.name)
                     yield '    case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
 
                 yield '    default: break;\n'

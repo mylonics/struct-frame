@@ -17,7 +17,7 @@ const {
   HEADER_TINY_CONFIG,
   HEADER_BASIC_CONFIG,
   PAYLOAD_TYPE_BASE,
-} = require('./frame_headers');
+} = require('./frame-headers');
 const {
   PAYLOAD_MINIMAL_CONFIG,
   PAYLOAD_DEFAULT_CONFIG,
@@ -25,8 +25,8 @@ const {
   PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG,
   payloadHeaderSize,
   payloadFooterSize,
-} = require('./payload_types');
-const { fletcher_checksum, createFrameMsgInfo } = require('./frame_base');
+} = require('./payload-types');
+const { fletcher_checksum, createFrameMsgInfo } = require('./frame-base');
 
 // =============================================================================
 // Profile Helper Functions
