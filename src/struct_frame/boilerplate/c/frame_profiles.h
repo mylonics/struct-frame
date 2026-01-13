@@ -357,11 +357,11 @@ static inline size_t encode_profile_standard(uint8_t* buffer, size_t buffer_size
                                              uint8_t msg_id,
                                              const uint8_t* payload, size_t payload_size) {
     return profile_encode_with_crc(&PROFILE_STANDARD_CONFIG, buffer, buffer_size,
-                                   0, 0, 0, 0, msg_id, payload, payload_size);
+                                   0, 0, 0, 0, msg_id, payload, payload_size, 0, 0);
 }
 
 static inline frame_msg_info_t parse_profile_standard_buffer(const uint8_t* buffer, size_t length) {
-    return profile_parse_with_crc(&PROFILE_STANDARD_CONFIG, buffer, length);
+    return profile_parse_with_crc(&PROFILE_STANDARD_CONFIG, buffer, length, NULL);
 }
 
 /* Profile Sensor (Tiny + Minimal) */
@@ -397,11 +397,11 @@ static inline size_t encode_profile_bulk(uint8_t* buffer, size_t buffer_size,
     uint8_t pkg_id = (uint8_t)((msg_id >> 8) & 0xFF);
     uint8_t low_msg_id = (uint8_t)(msg_id & 0xFF);
     return profile_encode_with_crc(&PROFILE_BULK_CONFIG, buffer, buffer_size,
-                                   0, 0, 0, pkg_id, low_msg_id, payload, payload_size);
+                                   0, 0, 0, pkg_id, low_msg_id, payload, payload_size, 0, 0);
 }
 
 static inline frame_msg_info_t parse_profile_bulk_buffer(const uint8_t* buffer, size_t length) {
-    return profile_parse_with_crc(&PROFILE_BULK_CONFIG, buffer, length);
+    return profile_parse_with_crc(&PROFILE_BULK_CONFIG, buffer, length, NULL);
 }
 
 /* Profile Network (Basic + ExtendedMultiSystemStream) */
@@ -413,11 +413,11 @@ static inline size_t encode_profile_network(uint8_t* buffer, size_t buffer_size,
     uint8_t low_msg_id = (uint8_t)(msg_id & 0xFF);
     return profile_encode_with_crc(&PROFILE_NETWORK_CONFIG, buffer, buffer_size,
                                    sequence, system_id, component_id, pkg_id, low_msg_id,
-                                   payload, payload_size);
+                                   payload, payload_size, 0, 0);
 }
 
 static inline frame_msg_info_t parse_profile_network_buffer(const uint8_t* buffer, size_t length) {
-    return profile_parse_with_crc(&PROFILE_NETWORK_CONFIG, buffer, length);
+    return profile_parse_with_crc(&PROFILE_NETWORK_CONFIG, buffer, length, NULL);
 }
 
 /*===========================================================================
@@ -458,7 +458,7 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
     size_t remaining_size = reader->size - reader->offset;
     
     if (reader->config->payload.has_crc || reader->config->payload.has_length) {
-        result = profile_parse_with_crc(reader->config, remaining, remaining_size);
+        result = profile_parse_with_crc(reader->config, remaining, remaining_size, NULL);
     } else {
         if (reader->get_msg_length == NULL) {
             reader->offset = reader->size;
@@ -528,7 +528,7 @@ static inline size_t buffer_writer_write(
             writer->buffer + writer->offset,
             remaining,
             seq, sys_id, comp_id, pkg_id, msg_id,
-            payload, payload_size);
+            payload, payload_size, 0, 0);
     } else {
         written = profile_encode_minimal(
             writer->config,
@@ -878,7 +878,7 @@ static inline frame_msg_info_t _acc_parse_buffer(
     size_t size)
 {
     if (reader->config->payload.has_crc || reader->config->payload.has_length) {
-        return profile_parse_with_crc(reader->config, buffer, size);
+        return profile_parse_with_crc(reader->config, buffer, size, NULL);
     } else {
         return profile_parse_minimal(reader->config, buffer, size, reader->get_msg_length);
     }

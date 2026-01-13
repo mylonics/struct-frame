@@ -16,6 +16,10 @@ typedef struct frame_checksum {
   uint8_t byte2;
 } frame_checksum_t;
 
+/* Forward declaration */
+static inline frame_checksum_t frame_fletcher_checksum_with_init(const uint8_t* data, size_t length, 
+                                                                   uint8_t init1, uint8_t init2);
+
 /**
  * Calculate Fletcher-16 checksum over the given data
  */
