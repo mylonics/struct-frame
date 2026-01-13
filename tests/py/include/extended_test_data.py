@@ -275,7 +275,7 @@ class Encoder:
         
         getter = msg_getters.get(msg_id)
         if getter:
-            return writer.write_msg(getter())
+            return writer.write(getter())
         return 0
 
 

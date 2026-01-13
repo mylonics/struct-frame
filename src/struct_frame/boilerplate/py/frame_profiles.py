@@ -236,33 +236,72 @@ PROFILE_NETWORK_CONFIG = ProfileConfig(
 # Generic Frame Encoder/Parser Functions
 # =============================================================================
 
-def _frame_format_encode_with_crc(
+def encode_message(
     config: ProfileConfig,
-    msg_id: int,
-    payload: bytes,
+    msg,
     seq: int = 0,
     sys_id: int = 0,
-    comp_id: int = 0,
-    magic1: int = 0,
-    magic2: int = 0
+    comp_id: int = 0
+) -> bytes:
+    """
+    Encode a message object.
+    
+    Automatically extracts msg_id, payload, and magic numbers from the message object.
+    
+    Args:
+        config: Profile configuration
+        msg: Message object with MSG_ID/msg_id, data()/pack() methods, and MAGIC1/MAGIC2 attributes
+        seq: Sequence number (for profiles with sequence)
+        sys_id: System ID (for profiles with routing)
+        comp_id: Component ID (for profiles with routing)
+    
+    Returns:
+        Encoded frame as bytes
+    """
+    if config.has_crc or config.has_length:
+        return _frame_format_encode_with_crc(config, msg, seq, sys_id, comp_id)
+    else:
+        return _frame_format_encode_minimal(config, msg)
+
+
+def _frame_format_encode_with_crc(
+    config: ProfileConfig,
+    msg,
+    seq: int = 0,
+    sys_id: int = 0,
+    comp_id: int = 0
 ) -> bytes:
     """
     Generic encode function for frames with CRC.
     
     Args:
         config: Profile configuration
-        msg_id: Message ID. When config.has_pkg_id is True, this should be a 16-bit value
-                with package ID in upper 8 bits and message ID in lower 8 bits: (pkg_id << 8) | msg_id
-        payload: Message payload bytes
+        msg: Message object with MSG_ID/msg_id, data()/pack() methods, and MAGIC1/MAGIC2 attributes
         seq: Sequence number (for profiles with sequence)
         sys_id: System ID (for profiles with routing)
         comp_id: Component ID (for profiles with routing)
-        magic1: Magic number for checksum initialization (byte 1)
-        magic2: Magic number for checksum initialization (byte 2)
     
     Returns:
         Encoded frame as bytes
     """
+    # Get message ID
+    msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
+    if msg_id is None:
+        raise ValueError("Message object must have MSG_ID or msg_id attribute")
+    
+    # Get payload
+    if hasattr(msg, 'data') and callable(msg.data):
+        payload = msg.data()
+    elif hasattr(msg, 'pack') and callable(msg.pack):
+        payload = msg.pack()
+    else:
+        raise ValueError("Message object must have data() or pack() method")
+    
+    # Get magic numbers
+    msg_class = type(msg)
+    magic1 = getattr(msg_class, 'MAGIC1', 0)
+    magic2 = getattr(msg_class, 'MAGIC2', 0)
+    
     payload_size = len(payload)
     
     if config.max_payload is not None and payload_size > config.max_payload:
@@ -319,20 +358,31 @@ def _frame_format_encode_with_crc(
 
 def _frame_format_encode_minimal(
     config: ProfileConfig,
-    msg_id: int,
-    payload: bytes
+    msg
 ) -> bytes:
     """
     Generic encode function for minimal frames (no length, no CRC).
     
     Args:
         config: Profile configuration
-        msg_id: Message ID (0-255)
-        payload: Message payload bytes
+        msg: Message object with MSG_ID/msg_id and data()/pack() methods
     
     Returns:
         Encoded frame as bytes
     """
+    # Get message ID
+    msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
+    if msg_id is None:
+        raise ValueError("Message object must have MSG_ID or msg_id attribute")
+    
+    # Get payload
+    if hasattr(msg, 'data') and callable(msg.data):
+        payload = msg.data()
+    elif hasattr(msg, 'pack') and callable(msg.pack):
+        payload = msg.pack()
+    else:
+        raise ValueError("Message object must have data() or pack() method")
+    
     output = []
     
     # Write start bytes (use computed values for dynamic payload type encoding)
@@ -524,9 +574,9 @@ def _frame_format_parse_minimal(
 # Profile-Specific Convenience Functions
 # =============================================================================
 
-def encode_profile_standard(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_standard(msg) -> bytes:
     """Encode using Profile Standard (Basic + Default)"""
-    return _frame_format_encode_with_crc(PROFILE_STANDARD_CONFIG, msg_id, payload)
+    return _frame_format_encode_with_crc(PROFILE_STANDARD_CONFIG, msg)
 
 
 def parse_profile_standard_buffer(buffer: bytes) -> FrameMsgInfo:
@@ -534,9 +584,9 @@ def parse_profile_standard_buffer(buffer: bytes) -> FrameMsgInfo:
     return _frame_format_parse_with_crc(PROFILE_STANDARD_CONFIG, buffer)
 
 
-def encode_profile_sensor(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_sensor(msg) -> bytes:
     """Encode using Profile Sensor (Tiny + Minimal)"""
-    return _frame_format_encode_minimal(PROFILE_SENSOR_CONFIG, msg_id, payload)
+    return _frame_format_encode_minimal(PROFILE_SENSOR_CONFIG, msg)
 
 
 def parse_profile_sensor_buffer(buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]) -> FrameMsgInfo:
@@ -544,9 +594,9 @@ def parse_profile_sensor_buffer(buffer: bytes, get_message_info: Callable[[int],
     return _frame_format_parse_minimal(PROFILE_SENSOR_CONFIG, buffer, get_message_info)
 
 
-def encode_profile_ipc(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_ipc(msg) -> bytes:
     """Encode using Profile IPC (None + Minimal)"""
-    return _frame_format_encode_minimal(PROFILE_IPC_CONFIG, msg_id, payload)
+    return _frame_format_encode_minimal(PROFILE_IPC_CONFIG, msg)
 
 
 def parse_profile_ipc_buffer(buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]) -> FrameMsgInfo:
@@ -554,17 +604,16 @@ def parse_profile_ipc_buffer(buffer: bytes, get_message_info: Callable[[int], Op
     return _frame_format_parse_minimal(PROFILE_IPC_CONFIG, buffer, get_message_info)
 
 
-def encode_profile_bulk(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_bulk(msg) -> bytes:
     """Encode using Profile Bulk (Basic + Extended)
     
     Args:
-        msg_id: 16-bit message ID with package ID in upper 8 bits: (pkg_id << 8) | msg_id
-        payload: Message payload bytes
+        msg: Message object (msg_id should be 16-bit with package ID in upper 8 bits: (pkg_id << 8) | msg_id)
     
     Returns:
         Encoded frame as bytes
     """
-    return _frame_format_encode_with_crc(PROFILE_BULK_CONFIG, msg_id, payload)
+    return _frame_format_encode_with_crc(PROFILE_BULK_CONFIG, msg)
 
 
 def parse_profile_bulk_buffer(buffer: bytes) -> FrameMsgInfo:
@@ -573,8 +622,7 @@ def parse_profile_bulk_buffer(buffer: bytes) -> FrameMsgInfo:
 
 
 def encode_profile_network(
-    msg_id: int,
-    payload: bytes,
+    msg,
     seq: int = 0,
     sys_id: int = 0,
     comp_id: int = 0
@@ -582,8 +630,7 @@ def encode_profile_network(
     """Encode using Profile Network (Basic + ExtendedMultiSystemStream)
     
     Args:
-        msg_id: 16-bit message ID with package ID in upper 8 bits: (pkg_id << 8) | msg_id
-        payload: Message payload bytes
+        msg: Message object (msg_id should be 16-bit with package ID in upper 8 bits: (pkg_id << 8) | msg_id)
         seq: Sequence number
         sys_id: System ID
         comp_id: Component ID
@@ -592,7 +639,7 @@ def encode_profile_network(
         Encoded frame as bytes
     """
     return _frame_format_encode_with_crc(
-        PROFILE_NETWORK_CONFIG, msg_id, payload,
+        PROFILE_NETWORK_CONFIG, msg,
         seq=seq, sys_id=sys_id, comp_id=comp_id
     )
 
@@ -608,8 +655,7 @@ def parse_profile_network_buffer(buffer: bytes) -> FrameMsgInfo:
 
 def encode_frame(
     config: ProfileConfig,
-    msg_id: int,
-    payload: bytes,
+    msg,
     seq: int = 0,
     sys_id: int = 0,
     comp_id: int = 0
@@ -619,8 +665,7 @@ def encode_frame(
     
     Args:
         config: Profile configuration
-        msg_id: Message ID (16-bit with pkg_id for extended profiles)
-        payload: Message payload bytes
+        msg: Message object with MSG_ID/msg_id, data()/pack() methods, and MAGIC1/MAGIC2 attributes
         seq: Sequence number (for profiles with sequence)
         sys_id: System ID (for profiles with routing)
         comp_id: Component ID (for profiles with routing)
@@ -628,13 +673,13 @@ def encode_frame(
     Returns:
         Encoded frame as bytes
     """
-    if config.has_crc:
+    if config.has_crc or config.has_length:
         return _frame_format_encode_with_crc(
-            config, msg_id, payload,
+            config, msg,
             seq=seq, sys_id=sys_id, comp_id=comp_id
         )
     else:
-        return _frame_format_encode_minimal(config, msg_id, payload)
+        return _frame_format_encode_minimal(config, msg)
 
 
 def parse_frame_buffer(
@@ -800,42 +845,9 @@ class BufferWriter:
         self._buffer = bytearray(capacity)
         self._offset = 0
     
-    def write(self, msg_id: int, payload: bytes, seq: int = 0, 
-              sys_id: int = 0, comp_id: int = 0, magic1: int = 0, magic2: int = 0) -> int:
+    def write(self, msg, seq: int = 0, sys_id: int = 0, comp_id: int = 0) -> int:
         """
-        Write a message to the buffer.
-        
-        Args:
-            msg_id: Message ID (or 16-bit with pkg_id for extended profiles)
-            payload: Message payload bytes
-            seq: Sequence number (for profiles with sequence)
-            sys_id: System ID (for profiles with routing)
-            comp_id: Component ID (for profiles with routing)
-            magic1: Magic number for checksum initialization (byte 1)
-            magic2: Magic number for checksum initialization (byte 2)
-        
-        Returns:
-            Number of bytes written, or 0 on failure.
-        """
-        if self._config.has_crc or self._config.has_length:
-            encoded = _frame_format_encode_with_crc(
-                self._config, msg_id, payload, seq=seq, sys_id=sys_id, comp_id=comp_id,
-                magic1=magic1, magic2=magic2
-            )
-        else:
-            encoded = _frame_format_encode_minimal(self._config, msg_id, payload)
-        
-        written = len(encoded)
-        if self._offset + written > self._capacity:
-            return 0
-        
-        self._buffer[self._offset:self._offset + written] = encoded
-        self._offset += written
-        return written
-    
-    def write_msg(self, msg, seq: int = 0, sys_id: int = 0, comp_id: int = 0) -> int:
-        """
-        Write a message object to the buffer (C++ compatible API).
+        Write a message object to the buffer.
         
         The message object must have MSG_ID (or msg_id) and data() (or pack()) methods.
         Magic numbers for checksum are automatically extracted from the message class
@@ -850,26 +862,15 @@ class BufferWriter:
         Returns:
             Number of bytes written, or 0 on failure.
         """
-        # Get message ID (try C++ style first, then Python style)
-        msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
-        if msg_id is None:
-            raise ValueError("Message object must have MSG_ID or msg_id attribute")
+        encoded = encode_message(self._config, msg, seq=seq, sys_id=sys_id, comp_id=comp_id)
         
-        # Get message data (try C++ style first, then Python style)
-        if hasattr(msg, 'data') and callable(msg.data):
-            payload = msg.data()
-        elif hasattr(msg, 'pack') and callable(msg.pack):
-            payload = msg.pack()
-        else:
-            raise ValueError("Message object must have data() or pack() method")
+        written = len(encoded)
+        if self._offset + written > self._capacity:
+            return 0
         
-        # Get magic numbers from message class (for CRC initialization)
-        msg_class = type(msg)
-        magic1 = getattr(msg_class, 'MAGIC1', 0)
-        magic2 = getattr(msg_class, 'MAGIC2', 0)
-        
-        return self.write(msg_id, payload, seq=seq, sys_id=sys_id, comp_id=comp_id,
-                          magic1=magic1, magic2=magic2)
+        self._buffer[self._offset:self._offset + written] = encoded
+        self._offset += written
+        return written
     
     def reset(self):
         """Reset the writer to the beginning of the buffer."""

@@ -29,22 +29,6 @@ namespace StructFrameTests
     /// <summary>
     /// Wrapper for extended test messages that provides a common interface
     /// </summary>
-    public class ExtendedTestMessage
-    {
-        public int MsgId { get; }
-        public int MaxSize { get; }
-        private readonly Func<byte[]> _packFunc;
-
-        public ExtendedTestMessage(int msgId, int maxSize, Func<byte[]> packFunc)
-        {
-            MsgId = msgId;
-            MaxSize = maxSize;
-            _packFunc = packFunc;
-        }
-
-        public byte[] Pack() => _packFunc();
-    }
-
     public static class ExtendedTestData
     {
         // ============================================================================
@@ -95,7 +79,7 @@ namespace StructFrameTests
             return bytes;
         }
 
-        public static (ExtendedTestMessage message, string typeName) GetExtendedTestMessage(int index)
+        public static (IStructFrameMessage message, string typeName) GetExtendedTestMessage(int index)
         {
             switch (index)
             {
@@ -109,7 +93,7 @@ namespace StructFrameTests
                         Value = 3.14159f,
                         Enabled = true
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage1.MsgId, ExtendedIdMessage1.MaxSize, msg.Pack), "ExtendedIdMessage1");
+                    return (msg, "ExtendedIdMessage1");
                 }
 
                 // Message 1: ExtendedIdMessage2 (matches C++ create_ext_id_2)
@@ -123,7 +107,7 @@ namespace StructFrameTests
                         DescriptionLength = 26,
                         DescriptionData = CreateLabelBytes("Extended ID test message 2", 64)
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage2.MsgId, ExtendedIdMessage2.MaxSize, msg.Pack), "ExtendedIdMessage2");
+                    return (msg, "ExtendedIdMessage2");
                 }
 
                 // Message 2: ExtendedIdMessage3 (matches C++ create_ext_id_3)
@@ -136,7 +120,7 @@ namespace StructFrameTests
                         Humidity = 85,
                         Location = CreateLabelBytes("Sensor Room A", 16)
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage3.MsgId, ExtendedIdMessage3.MaxSize, msg.Pack), "ExtendedIdMessage3");
+                    return (msg, "ExtendedIdMessage3");
                 }
 
                 // Message 3: ExtendedIdMessage4 (matches C++ create_ext_id_4)
@@ -150,7 +134,7 @@ namespace StructFrameTests
                         EventDataLength = 38,
                         EventDataData = CreateLabelBytes("Event payload with extended message ID", 128)
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage4.MsgId, ExtendedIdMessage4.MaxSize, msg.Pack), "ExtendedIdMessage4");
+                    return (msg, "ExtendedIdMessage4");
                 }
 
                 // Message 4: ExtendedIdMessage5 (matches C++ create_ext_id_5)
@@ -163,7 +147,7 @@ namespace StructFrameTests
                         ZPosition = 50.125f,
                         FrameNumber = 1000000
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage5.MsgId, ExtendedIdMessage5.MaxSize, msg.Pack), "ExtendedIdMessage5");
+                    return (msg, "ExtendedIdMessage5");
                 }
 
                 // Message 5: ExtendedIdMessage6 (matches C++ create_ext_id_6)
@@ -177,7 +161,7 @@ namespace StructFrameTests
                         Acknowledged = false,
                         CommandName = CreateLabelBytes("CALIBRATE_SENSOR", 24)
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage6.MsgId, ExtendedIdMessage6.MaxSize, msg.Pack), "ExtendedIdMessage6");
+                    return (msg, "ExtendedIdMessage6");
                 }
 
                 // Message 6: ExtendedIdMessage7 (matches C++ create_ext_id_7)
@@ -190,7 +174,7 @@ namespace StructFrameTests
                         Minimum = -999.99f,
                         Maximum = 999.99f
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage7.MsgId, ExtendedIdMessage7.MaxSize, msg.Pack), "ExtendedIdMessage7");
+                    return (msg, "ExtendedIdMessage7");
                 }
 
                 // Message 7: ExtendedIdMessage8 (matches C++ create_ext_id_8)
@@ -203,7 +187,7 @@ namespace StructFrameTests
                         Duration = 86400000,
                         Tag = CreateLabelBytes("TEST123", 8)
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage8.MsgId, ExtendedIdMessage8.MaxSize, msg.Pack), "ExtendedIdMessage8");
+                    return (msg, "ExtendedIdMessage8");
                 }
 
                 // Message 8: ExtendedIdMessage9 (matches C++ create_ext_id_9)
@@ -215,7 +199,7 @@ namespace StructFrameTests
                         BigUnsigned = 18446744073709551615,
                         PrecisionValue = 1.7976931348623157e+308
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage9.MsgId, ExtendedIdMessage9.MaxSize, msg.Pack), "ExtendedIdMessage9");
+                    return (msg, "ExtendedIdMessage9");
                 }
 
                 // Message 9: ExtendedIdMessage10 (matches C++ create_ext_id_10)
@@ -227,7 +211,7 @@ namespace StructFrameTests
                         ShortText = CreateLabelBytes("Boundary Test", 16),
                         Flag = true
                     };
-                    return (new ExtendedTestMessage(ExtendedIdMessage10.MsgId, ExtendedIdMessage10.MaxSize, msg.Pack), "ExtendedIdMessage10");
+                    return (msg, "ExtendedIdMessage10");
                 }
 
                 // Message 10: LargePayloadMessage1 (matches C++ create_large_1)
@@ -245,7 +229,7 @@ namespace StructFrameTests
                         Timestamp = 1704067200000000,
                         DeviceName = CreateLabelBytes("Large Sensor Array Device", 32)
                     };
-                    return (new ExtendedTestMessage(LargePayloadMessage1.MsgId, LargePayloadMessage1.MaxSize, msg.Pack), "LargePayloadMessage1");
+                    return (msg, "LargePayloadMessage1");
                 }
 
                 // Message 11: LargePayloadMessage2 (matches C++ create_large_2)
@@ -264,7 +248,7 @@ namespace StructFrameTests
                     {
                         LargeData = largeData
                     };
-                    return (new ExtendedTestMessage(LargePayloadMessage2.MsgId, LargePayloadMessage2.MaxSize, msg.Pack), "LargePayloadMessage2");
+                    return (msg, "LargePayloadMessage2");
                 }
 
                 default:

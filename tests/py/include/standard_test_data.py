@@ -183,15 +183,15 @@ class Encoder:
         if msg_id == SerializationTestSerializationTestMessage.MSG_ID:
             msg = self._serial_msgs[self.serial_idx]
             self.serial_idx += 1
-            return writer.write_msg(msg)
+            return writer.write(msg)
         elif msg_id == SerializationTestBasicTypesMessage.MSG_ID:
             msg = self._basic_msgs[self.basic_idx]
             self.basic_idx += 1
-            return writer.write_msg(msg)
+            return writer.write(msg)
         elif msg_id == SerializationTestUnionTestMessage.MSG_ID:
             msg = self._union_msgs[self.union_idx]
             self.union_idx += 1
-            return writer.write_msg(msg)
+            return writer.write(msg)
         return 0
 
 

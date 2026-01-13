@@ -92,11 +92,15 @@ struct ProfileConfig {
 template <typename Config>
 class FrameEncoderWithCrc {
  public:
-  static size_t encode(uint8_t* buffer, size_t buffer_size, uint8_t seq, uint8_t sys_id, uint8_t comp_id,
-                       uint16_t msg_id, const uint8_t* payload, size_t payload_size) {
-    size_t total_size = Config::overhead + payload_size;
+  /**
+   * Encode a message object.
+   * Message must be derived from MessageBase and have MSG_ID, MAX_SIZE, MAGIC1, MAGIC2.
+   */
+  template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
+  static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg, uint8_t seq = 0, uint8_t sys_id = 0, uint8_t comp_id = 0) {
+    size_t total_size = Config::overhead + T::MAX_SIZE;
 
-    if (buffer_size < total_size || payload_size > Config::max_payload) {
+    if (buffer_size < total_size || T::MAX_SIZE > Config::max_payload) {
       return 0;
     }
 
@@ -126,34 +130,27 @@ class FrameEncoderWithCrc {
     // Write length field
     if constexpr (Config::has_length) {
       if constexpr (Config::length_bytes == 1) {
-        buffer[idx++] = static_cast<uint8_t>(payload_size & 0xFF);
+        buffer[idx++] = static_cast<uint8_t>(T::MAX_SIZE & 0xFF);
       } else {
-        buffer[idx++] = static_cast<uint8_t>(payload_size & 0xFF);
-        buffer[idx++] = static_cast<uint8_t>((payload_size >> 8) & 0xFF);
+        buffer[idx++] = static_cast<uint8_t>(T::MAX_SIZE & 0xFF);
+        buffer[idx++] = static_cast<uint8_t>((T::MAX_SIZE >> 8) & 0xFF);
       }
     }
 
     // Write message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id)
     if constexpr (Config::has_pkg_id) {
-      buffer[idx++] = static_cast<uint8_t>((msg_id >> 8) & 0xFF);  // pkg_id (high byte)
+      buffer[idx++] = static_cast<uint8_t>((T::MSG_ID >> 8) & 0xFF);  // pkg_id (high byte)
     }
-    buffer[idx++] = static_cast<uint8_t>(msg_id & 0xFF);  // msg_id (low byte)
+    buffer[idx++] = static_cast<uint8_t>(T::MSG_ID & 0xFF);  // msg_id (low byte)
 
     // Write payload
-    if (payload_size > 0 && payload != nullptr) {
-      std::memcpy(buffer + idx, payload, payload_size);
-      idx += payload_size;
-    }
+    std::memcpy(buffer + idx, msg.data(), T::MAX_SIZE);
+    idx += T::MAX_SIZE;
 
     // Calculate and write CRC
     if constexpr (Config::has_crc) {
       size_t crc_len = idx - crc_start;
-      
-      // Get magic numbers for this message type
-      uint8_t magic1 = 0, magic2 = 0;
-      get_magic_numbers(msg_id, &magic1, &magic2);
-      
-      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, magic1, magic2);
+      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, T::MAGIC1, T::MAGIC2);
       buffer[idx++] = ck.byte1;
       buffer[idx++] = ck.byte2;
     }
@@ -168,9 +165,13 @@ class FrameEncoderWithCrc {
 template <typename Config>
 class FrameEncoderMinimal {
  public:
-  static size_t encode(uint8_t* buffer, size_t buffer_size, uint8_t msg_id, const uint8_t* payload,
-                       size_t payload_size) {
-    size_t total_size = Config::overhead + payload_size;
+  /**
+   * Encode a message object.
+   * Message must be derived from MessageBase and have MSG_ID, MAX_SIZE.
+   */
+  template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE>, T>>>
+  static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
+    size_t total_size = Config::overhead + T::MAX_SIZE;
 
     if (buffer_size < total_size) {
       return 0;
@@ -187,13 +188,11 @@ class FrameEncoderMinimal {
     }
 
     // Write message ID
-    buffer[idx++] = msg_id;
+    buffer[idx++] = static_cast<uint8_t>(T::MSG_ID);
 
     // Write payload
-    if (payload_size > 0 && payload != nullptr) {
-      std::memcpy(buffer + idx, payload, payload_size);
-      idx += payload_size;
-    }
+    std::memcpy(buffer + idx, msg.data(), T::MAX_SIZE);
+    idx += T::MAX_SIZE;
 
     return idx;
   }
@@ -462,16 +461,14 @@ class BufferWriter {
   size_t write(const T& msg) {
     if constexpr (Config::has_length || Config::has_crc) {
       // Profiles with CRC use the full encoder signature
-      size_t written = FrameEncoderWithCrc<Config>::encode(buffer_ + offset_, capacity_ - offset_, 0, 0, 0, T::MSG_ID,
-                                                           msg.data(), T::MAX_SIZE);
+      size_t written = FrameEncoderWithCrc<Config>::encode(buffer_ + offset_, capacity_ - offset_, msg);
       if (written > 0) {
         offset_ += written;
       }
       return written;
     } else {
       // Minimal profiles use the simple encoder
-      size_t written = FrameEncoderMinimal<Config>::encode(buffer_ + offset_, capacity_ - offset_,
-                                                           static_cast<uint8_t>(T::MSG_ID), msg.data(), T::MAX_SIZE);
+      size_t written = FrameEncoderMinimal<Config>::encode(buffer_ + offset_, capacity_ - offset_, msg);
       if (written > 0) {
         offset_ += written;
       }
@@ -486,8 +483,7 @@ class BufferWriter {
   size_t write(const T& msg, uint8_t seq, uint8_t sys_id = 0, uint8_t comp_id = 0) {
     static_assert(Config::has_seq || Config::has_sys_id || Config::has_comp_id,
                   "This profile does not support sequence/addressing fields");
-    size_t written = FrameEncoderWithCrc<Config>::encode(buffer_ + offset_, capacity_ - offset_, seq, sys_id, comp_id,
-                                                         T::MSG_ID, msg.data(), T::MAX_SIZE);
+    size_t written = FrameEncoderWithCrc<Config>::encode(buffer_ + offset_, capacity_ - offset_, msg, seq, sys_id, comp_id);
     if (written > 0) {
       offset_ += written;
     }

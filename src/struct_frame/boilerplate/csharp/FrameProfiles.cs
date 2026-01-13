@@ -201,12 +201,15 @@ namespace StructFrame
         }
 
         /// <summary>
-        /// Encode a frame into a buffer
+        /// Encode a message struct or interface.
+        /// Magic numbers are automatically extracted from the message.
         /// </summary>
-        public int Encode(byte[] buffer, int offset, byte seq, byte sysId, byte compId,
-                         ushort msgId, byte[] payload, int payloadOffset, int payloadSize,
-                         byte magic1 = 0, byte magic2 = 0)
+        public int Encode(byte[] buffer, int offset, IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
+            byte[] payload = message.Pack();
+            var (magic1, magic2) = message.GetMagicNumbers();
+            ushort msgId = message.GetMsgId();
+            int payloadSize = payload.Length;
             int totalSize = _config.Overhead + payloadSize;
 
             // Check buffer capacity and max payload (skip max payload check for minimal profiles without length field)
@@ -272,7 +275,7 @@ namespace StructFrame
             // Write payload
             if (payloadSize > 0 && payload != null)
             {
-                Array.Copy(payload, payloadOffset, buffer, idx, payloadSize);
+                Array.Copy(payload, 0, buffer, idx, payloadSize);
                 idx += payloadSize;
             }
 
@@ -286,29 +289,6 @@ namespace StructFrame
             }
 
             return idx - offset;
-        }
-
-        /// <summary>
-        /// Encode a frame (simple overload without addressing)
-        /// </summary>
-        public int Encode(byte[] buffer, int offset, ushort msgId, byte[] payload, byte magic1 = 0, byte magic2 = 0)
-        {
-            return Encode(buffer, offset, 0, 0, 0, msgId, payload, 0, payload?.Length ?? 0, magic1, magic2);
-        }
-
-        /// <summary>
-        /// Encode a frame and return a new byte array
-        /// </summary>
-        public byte[] Encode(ushort msgId, byte[] payload, byte magic1 = 0, byte magic2 = 0)
-        {
-            int payloadLen = payload?.Length ?? 0;
-            byte[] buffer = new byte[_config.Overhead + payloadLen];
-            int written = Encode(buffer, 0, msgId, payload, magic1, magic2);
-            if (written != buffer.Length)
-            {
-                Array.Resize(ref buffer, written);
-            }
-            return buffer;
         }
     }
 
@@ -600,40 +580,22 @@ namespace StructFrame
         }
 
         /// <summary>
-        /// Write a message to the buffer
+        /// Write a message implementing IStructFrameMessage to the buffer.
+        /// Magic numbers for checksum are automatically extracted from the message.
         /// </summary>
-        public int Write(ushort msgId, byte[] payload, byte magic1 = 0, byte magic2 = 0)
-        {
-            return Write(0, 0, 0, msgId, payload, 0, payload?.Length ?? 0, magic1, magic2);
-        }
-
-        /// <summary>
-        /// Write a message with sequence and addressing
-        /// </summary>
-        public int Write(byte seq, byte sysId, byte compId, ushort msgId, byte[] payload, int payloadOffset, int payloadSize, byte magic1 = 0, byte magic2 = 0)
+        public int Write(IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
             if (_buffer == null)
             {
                 return 0;
             }
 
-            int written = _encoder.Encode(_buffer, _offset, seq, sysId, compId, msgId, payload, payloadOffset, payloadSize, magic1, magic2);
+            int written = _encoder.Encode(_buffer, _offset, message, seq, sysId, compId);
             if (written > 0)
             {
                 _offset += written;
             }
             return written;
-        }
-
-        /// <summary>
-        /// Write a struct message to the buffer.
-        /// Magic numbers for checksum are automatically extracted from the message.
-        /// </summary>
-        public int Write<T>(T message) where T : struct, IStructFrameMessage
-        {
-            byte[] payload = message.Pack();
-            var (magic1, magic2) = message.GetMagicNumbers();
-            return Write(message.GetMsgId(), payload, magic1, magic2);
         }
 
         /// <summary>

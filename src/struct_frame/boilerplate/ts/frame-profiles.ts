@@ -195,15 +195,25 @@ export const ProfileNetworkConfig: FrameProfileConfig = createProfileConfig(
 // =============================================================================
 
 /**
- * Generic encode function for frames with CRC.
+ * Encode a message object.
+ * Automatically extracts msgId, payload, and magic numbers from the message.
  */
-export function encodeFrameWithCrc(
+export function encodeMessage(
     config: FrameProfileConfig,
-    msgId: number,
-    payload: Uint8Array,
+    msg: MessageBase,
     options: EncodeOptions = {}
 ): Uint8Array {
-    const { seq = 0, sysId = 0, compId = 0, magic1 = 0, magic2 = 0 } = options;
+    const ctor = msg.constructor as typeof MessageBase & { _msgid?: number; _magic1?: number; _magic2?: number };
+    const msgId = ctor._msgid;
+    
+    if (msgId === undefined) {
+        throw new Error('Message struct must have _msgid static property');
+    }
+    
+    const payload = new Uint8Array(msg._buffer);
+    const magic1 = ctor._magic1 ?? 0;
+    const magic2 = ctor._magic2 ?? 0;
+    const { seq = 0, sysId = 0, compId = 0 } = options;
     
     // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id
     // unless pkgId is explicitly provided in options
@@ -272,36 +282,6 @@ export function encodeFrameWithCrc(
     const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
     buffer[idx++] = ck[0];
     buffer[idx++] = ck[1];
-
-    return buffer;
-}
-
-/**
- * Generic encode function for minimal frames (no length, no CRC).
- */
-export function encodeFrameMinimal(
-    config: FrameProfileConfig,
-    msgId: number,
-    payload: Uint8Array
-): Uint8Array {
-    const headerSize = profileHeaderSize(config);
-    const totalSize = headerSize + payload.length;
-    const buffer = new Uint8Array(totalSize);
-    let idx = 0;
-
-    // Write start bytes
-    if (config.header.numStartBytes >= 1) {
-        buffer[idx++] = config.startByte1;
-    }
-    if (config.header.numStartBytes >= 2) {
-        buffer[idx++] = config.startByte2;
-    }
-
-    // Write message ID
-    buffer[idx++] = msgId & 0xFF;
-
-    // Write payload
-    buffer.set(payload, idx);
 
     return buffer;
 }
@@ -582,25 +562,7 @@ export class BufferWriter {
      * Returns the number of bytes written, or 0 on failure.
      */
     write(msg: MessageBase, options: EncodeOptions = {}): number {
-        const ctor = msg.constructor as typeof MessageBase & { _msgid?: number; _magic1?: number; _magic2?: number };
-        const msgId = ctor._msgid;
-        const payload = new Uint8Array(msg._buffer);
-
-        if (msgId === undefined) {
-            throw new Error('Message struct must have _msgid static property');
-        }
-
-        // Get magic numbers from message class (for CRC initialization)
-        const magic1 = ctor._magic1 ?? 0;
-        const magic2 = ctor._magic2 ?? 0;
-
-        let encoded: Uint8Array;
-
-        if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            encoded = encodeFrameWithCrc(this.config, msgId, payload, { ...options, magic1, magic2 });
-        } else {
-            encoded = encodeFrameMinimal(this.config, msgId, payload);
-        }
+        const encoded = encodeMessage(this.config, msg, options);
 
         const written = encoded.length;
         if (this._offset + written > this.capacity) {

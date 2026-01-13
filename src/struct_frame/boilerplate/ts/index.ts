@@ -73,8 +73,7 @@ export {
     ProfileBulkConfig,
     ProfileNetworkConfig,
     // Generic encode/parse functions
-    encodeFrameWithCrc,
-    encodeFrameMinimal,
+    encodeMessage,
     parseFrameWithCrc,
     parseFrameMinimal,
     // BufferReader/BufferWriter/AccumulatingReader base classes
