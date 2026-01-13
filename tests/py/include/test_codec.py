@@ -60,14 +60,14 @@ def encode_messages(config, format_name: str, buffer: bytearray) -> Tuple[bool, 
     
     Args:
         config: Config object with message data (must have MESSAGE_COUNT, get_msg_id_order, create_encoder)
-        format_name: Frame format name (e.g., 'profile_standard')
+        format_name: Frame format name (e.g., 'profile_basic')
         buffer: Buffer to encode into
         
     Returns:
         (success, encoded_size) tuple
     """
     from frame_profiles import (
-        ProfileStandardWriter,
+        ProfileBasicWriter,
         ProfileSensorWriter,
         ProfileIPCWriter,
         ProfileBulkWriter,
@@ -83,7 +83,7 @@ def encode_messages(config, format_name: str, buffer: bytearray) -> Tuple[bool, 
     
     # Writer classes for each format
     writer_classes = {
-        'profile_standard': ProfileStandardWriter,
+        'profile_basic': ProfileBasicWriter,
         'profile_sensor': ProfileSensorWriter,
         'profile_ipc': ProfileIPCWriter,
         'profile_bulk': ProfileBulkWriter,
@@ -122,14 +122,14 @@ def decode_messages(config, format_name: str, buffer: bytes) -> Tuple[bool, int]
     
     Args:
         config: Config object with message data (must have MESSAGE_COUNT, get_msg_id_order, create_validator)
-        format_name: Frame format name (e.g., 'profile_standard')
+        format_name: Frame format name (e.g., 'profile_basic')
         buffer: Buffer containing encoded data
         
     Returns:
         (success, message_count) tuple
     """
     from frame_profiles import (
-        ProfileStandardAccumulatingReader,
+        ProfileBasicAccumulatingReader,
         ProfileSensorAccumulatingReader,
         ProfileIPCAccumulatingReader,
         ProfileBulkAccumulatingReader,
@@ -162,7 +162,7 @@ def decode_messages(config, format_name: str, buffer: bytes) -> Tuple[bool, int]
     # Reader classes for each format (with minimal profile flag)
     # Format: (reader_class_factory, needs_get_msg_length)
     reader_info = {
-        'profile_standard': (lambda: ProfileStandardAccumulatingReader(config.BUFFER_SIZE), False),
+        'profile_basic': (lambda: ProfileBasicAccumulatingReader(config.BUFFER_SIZE), False),
         'profile_sensor': (lambda: ProfileSensorAccumulatingReader(get_msg_len, config.BUFFER_SIZE), True),
         'profile_ipc': (lambda: ProfileIPCAccumulatingReader(get_msg_len, config.BUFFER_SIZE), True),
         'profile_bulk': (lambda: ProfileBulkAccumulatingReader(config.BUFFER_SIZE), False),

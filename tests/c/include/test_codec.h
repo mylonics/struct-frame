@@ -106,8 +106,8 @@ static inline bool encode_messages(const test_config_t* config, const char* form
   /* Get the appropriate profile config */
   const profile_config_t* profile_config = NULL;
 
-  if (strcmp(format, "profile_standard") == 0) {
-    profile_config = &PROFILE_STANDARD_CONFIG;
+  if (strcmp(format, "profile_basic") == 0) {
+    profile_config = &PROFILE_BASIC_CONFIG;
   } else if (strcmp(format, "profile_sensor") == 0) {
     profile_config = &PROFILE_SENSOR_CONFIG;
   } else if (strcmp(format, "profile_ipc") == 0) {
@@ -168,8 +168,8 @@ static inline bool decode_messages(const test_config_t* config, const char* form
   /* Get the appropriate profile config */
   const profile_config_t* profile_config = NULL;
 
-  if (strcmp(format, "profile_standard") == 0) {
-    profile_config = &PROFILE_STANDARD_CONFIG;
+  if (strcmp(format, "profile_basic") == 0) {
+    profile_config = &PROFILE_BASIC_CONFIG;
   } else if (strcmp(format, "profile_sensor") == 0) {
     profile_config = &PROFILE_SENSOR_CONFIG;
   } else if (strcmp(format, "profile_ipc") == 0) {

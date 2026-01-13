@@ -92,8 +92,8 @@ bool encode_messages(const std::string& format, uint8_t* buffer, size_t buffer_s
     return true;
   };
 
-  if (format == "profile_standard") {
-    ProfileStandardWriter writer(buffer, buffer_size);
+  if (format == "profile_basic") {
+    ProfileBasicWriter writer(buffer, buffer_size);
     return encode_all(writer);
   } else if (format == "profile_sensor") {
     ProfileSensorWriter writer(buffer, buffer_size);
@@ -192,8 +192,8 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
     return true;
   };
 
-  if (format == "profile_standard") {
-    AccumulatingReader<ProfileStandardConfig> reader;
+  if (format == "profile_basic") {
+    AccumulatingReader<ProfileBasicConfig> reader;
     return decode_all(reader);
   } else if (format == "profile_sensor") {
     AccumulatingReader<ProfileSensorConfig> reader(Config::get_message_length);

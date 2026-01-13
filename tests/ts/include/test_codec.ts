@@ -23,8 +23,8 @@
 
 import * as fs from 'fs';
 import {
-  ProfileStandardAccumulatingReader,
-  ProfileStandardWriter,
+  ProfileBasicAccumulatingReader,
+  ProfileBasicWriter,
   ProfileSensorAccumulatingReader,
   ProfileSensorWriter,
   ProfileIPCAccumulatingReader,
@@ -78,7 +78,7 @@ export function printUsage(programName: string, formatsHelp: string): void {
 /** Get writer for a profile format */
 function getWriter(format: string, capacity: number): any {
   const writers: { [key: string]: () => any } = {
-    'profile_standard': () => new ProfileStandardWriter(capacity),
+    'profile_basic': () => new ProfileBasicWriter(capacity),
     'profile_sensor': () => new ProfileSensorWriter(capacity),
     'profile_ipc': () => new ProfileIPCWriter(capacity),
     'profile_bulk': () => new ProfileBulkWriter(capacity),
@@ -92,7 +92,7 @@ function getWriter(format: string, capacity: number): any {
 /** Get reader for a profile format */
 function getReader(format: string, getMsgLength: (msgId: number) => number | undefined): any {
   const readers: { [key: string]: () => any } = {
-    'profile_standard': () => new ProfileStandardAccumulatingReader(),
+    'profile_basic': () => new ProfileBasicAccumulatingReader(),
     'profile_sensor': () => new ProfileSensorAccumulatingReader(getMsgLength),
     'profile_ipc': () => new ProfileIPCAccumulatingReader(getMsgLength),
     'profile_bulk': () => new ProfileBulkAccumulatingReader(),

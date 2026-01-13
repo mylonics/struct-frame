@@ -284,7 +284,7 @@ struct Config {
   static constexpr size_t MESSAGE_COUNT = TestMessagesData::MESSAGE_COUNT;
   static constexpr size_t BUFFER_SIZE = 4096;
   static constexpr const char* FORMATS_HELP =
-      "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network";
+      "profile_basic, profile_sensor, profile_ipc, profile_bulk, profile_network";
   static constexpr const char* TEST_NAME = "C++";
 
   using Encoder = TestMessagesData::Encoder;
@@ -295,7 +295,7 @@ struct Config {
   static bool get_message_length(size_t msg_id, size_t* size) { return FrameParsers::get_message_length(msg_id, size); }
 
   static bool supports_format(const std::string& format) {
-    return format == "profile_standard" || format == "profile_sensor" || format == "profile_ipc" ||
+    return format == "profile_basic" || format == "profile_sensor" || format == "profile_ipc" ||
            format == "profile_bulk" || format == "profile_network";
   }
 };

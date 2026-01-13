@@ -269,7 +269,7 @@ function validateMessage(msgId, data, _index) {
 
 /** Check if format is supported */
 function supportsFormat(format) {
-  return format === 'profile_standard' ||
+  return format === 'profile_basic' ||
     format === 'profile_sensor' ||
     format === 'profile_ipc' ||
     format === 'profile_bulk' ||
@@ -280,7 +280,7 @@ function supportsFormat(format) {
 const basicTestConfig = {
   messageCount: MESSAGE_COUNT,
   bufferSize: 4096,
-  formatsHelp: 'profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network',
+  formatsHelp: 'profile_basic, profile_sensor, profile_ipc, profile_bulk, profile_network',
   testName: 'JavaScript',
   getMsgIdOrder: () => MSG_ID_ORDER,
   encodeMessage,

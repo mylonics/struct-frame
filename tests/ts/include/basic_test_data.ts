@@ -277,7 +277,7 @@ function validateMessage(msgId: number, data: Buffer, _index: number): boolean {
 
 /** Check if format is supported */
 function supportsFormat(format: string): boolean {
-  return format === 'profile_standard' ||
+  return format === 'profile_basic' ||
     format === 'profile_sensor' ||
     format === 'profile_ipc' ||
     format === 'profile_bulk' ||
@@ -288,7 +288,7 @@ function supportsFormat(format: string): boolean {
 export const basicTestConfig: TestConfig = {
   messageCount: MESSAGE_COUNT,
   bufferSize: 4096,
-  formatsHelp: 'profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network',
+  formatsHelp: 'profile_basic, profile_sensor, profile_ipc, profile_bulk, profile_network',
   testName: 'TypeScript',
   getMsgIdOrder: () => MSG_ID_ORDER,
   encodeMessage,

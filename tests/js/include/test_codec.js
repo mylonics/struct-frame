@@ -10,8 +10,8 @@
 
 const fs = require('fs');
 const {
-  ProfileStandardAccumulatingReader,
-  ProfileStandardWriter,
+  ProfileBasicAccumulatingReader,
+  ProfileBasicWriter,
   ProfileSensorAccumulatingReader,
   ProfileSensorWriter,
   ProfileIPCAccumulatingReader,
@@ -39,7 +39,7 @@ function printUsage(programName, formatsHelp) {
 /** Get writer for a profile format */
 function getWriter(format, capacity) {
   const writers = {
-    'profile_standard': () => new ProfileStandardWriter(capacity),
+    'profile_basic': () => new ProfileBasicWriter(capacity),
     'profile_sensor': () => new ProfileSensorWriter(capacity),
     'profile_ipc': () => new ProfileIPCWriter(capacity),
     'profile_bulk': () => new ProfileBulkWriter(capacity),
@@ -53,7 +53,7 @@ function getWriter(format, capacity) {
 /** Get reader for a profile format */
 function getReader(format, getMsgLength) {
   const readers = {
-    'profile_standard': () => new ProfileStandardAccumulatingReader(),
+    'profile_basic': () => new ProfileBasicAccumulatingReader(),
     'profile_sensor': () => new ProfileSensorAccumulatingReader(getMsgLength),
     'profile_ipc': () => new ProfileIPCAccumulatingReader(getMsgLength),
     'profile_bulk': () => new ProfileBulkAccumulatingReader(),

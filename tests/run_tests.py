@@ -150,7 +150,7 @@ EXTENDED_PROFILES = [
 ]
 
 # Expected message counts
-STANDARD_MESSAGE_COUNT = 11
+BASIC_MESSAGE_COUNT = 11
 EXTENDED_MESSAGE_COUNT = 12
 
 
@@ -1225,7 +1225,7 @@ class TestRunner:
             # Phase 5: Standard tests
             if profiles_to_test:
                 with self.timed_phase("Basic Tests"):
-                    self.run_tests("standard", profiles_to_test, STANDARD_MESSAGE_COUNT, "test_basic")
+                    self.run_tests("basic", profiles_to_test, BASIC_MESSAGE_COUNT, "test_basic")
             
             # Phase 6: Extended tests
             if extended_profiles_to_test:

@@ -294,7 +294,7 @@ static inline bool basic_validate_message(uint16_t msg_id, const uint8_t* data, 
  * ============================================================================ */
 
 static inline bool basic_supports_format(const char* format) {
-  return strcmp(format, "profile_standard") == 0 || strcmp(format, "profile_sensor") == 0 ||
+  return strcmp(format, "profile_basic") == 0 || strcmp(format, "profile_sensor") == 0 ||
          strcmp(format, "profile_ipc") == 0 || strcmp(format, "profile_bulk") == 0 ||
          strcmp(format, "profile_network") == 0;
 }
@@ -306,7 +306,7 @@ static inline bool basic_supports_format(const char* format) {
 static const test_config_t basic_test_config = {
     .message_count = BASIC_MESSAGE_COUNT,
     .buffer_size = 4096,
-    .formats_help = "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network",
+    .formats_help = "profile_basic, profile_sensor, profile_ipc, profile_bulk, profile_network",
     .test_name = "C",
     .get_msg_id_order = basic_get_msg_id_order,
     .encode_message = basic_encode_message,
