@@ -1,30 +1,5 @@
 // Struct-frame boilerplate: frame parser base utilities
 
-// Frame format type enumeration
-const FrameFormatType = {
-    TINY_MINIMAL: 0,
-    TINY_DEFAULT: 1,
-    TINY_EXTENDED_MSG_IDS: 2,
-    TINY_EXTENDED_LENGTH: 3,
-    TINY_EXTENDED: 4,
-    TINY_SYS_COMP: 5,
-    TINY_SEQ: 6,
-    TINY_MULTI_SYSTEM_STREAM: 7,
-    TINY_EXTENDED_MULTI_SYSTEM_STREAM: 8,
-    BASIC_MINIMAL: 9,
-    BASIC_DEFAULT: 10,
-    BASIC_EXTENDED_MSG_IDS: 11,
-    BASIC_EXTENDED_LENGTH: 12,
-    BASIC_EXTENDED: 13,
-    BASIC_SYS_COMP: 14,
-    BASIC_SEQ: 15,
-    BASIC_MULTI_SYSTEM_STREAM: 16,
-    BASIC_EXTENDED_MULTI_SYSTEM_STREAM: 17,
-    UBX_FRAME: 18,
-    MAVLINK_V1_FRAME: 19,
-    MAVLINK_V2_FRAME: 20,
-    FRAME_FORMAT_CONFIG: 21,
-};
 
 // Fletcher-16 checksum calculation
 function fletcher_checksum(buffer, start = 0, end = undefined) {
@@ -287,19 +262,19 @@ class GenericFrameParser {
      */
     static encode(config, msg_id, msg) {
         const output = [];
-        
+
         // Add start bytes
         for (const startByte of config.startBytes) {
             output.push(startByte);
         }
-        
+
         // Use appropriate payload encoding
         if (config.hasCrc) {
             encode_payload_with_crc(output, msg_id, msg, config.lengthBytes, config.startBytes.length);
         } else {
             encode_payload_minimal(output, msg_id, msg);
         }
-        
+
         return new Uint8Array(output);
     }
 
@@ -308,18 +283,18 @@ class GenericFrameParser {
      */
     static validate_packet(config, buffer) {
         const overhead = config.headerSize + config.footerSize;
-        
+
         if (buffer.length < overhead) {
             return createFrameMsgInfo();
         }
-        
+
         // Check start bytes
         for (let i = 0; i < config.startBytes.length; i++) {
             if (buffer[i] !== config.startBytes[i]) {
                 return createFrameMsgInfo();
             }
         }
-        
+
         // Validate payload
         if (config.hasCrc) {
             return validate_payload_with_crc(buffer, config.headerSize, config.lengthBytes, config.startBytes.length);
@@ -348,7 +323,7 @@ function createFrameParserClass(config) {
             return GenericFrameParser.validate_packet(config, buffer);
         }
     }
-    
+
     // Add static properties from config
     ConfiguredFrameParser.START_BYTES = config.startBytes;
     ConfiguredFrameParser.HEADER_SIZE = config.headerSize;
@@ -358,12 +333,11 @@ function createFrameParserClass(config) {
     ConfiguredFrameParser.LENGTH_BYTES = config.lengthBytes;
     ConfiguredFrameParser.HAS_CRC = config.hasCrc;
     ConfiguredFrameParser.CONFIG = config;
-    
+
     return ConfiguredFrameParser;
 }
 
 module.exports = {
-    FrameFormatType,
     fletcher_checksum,
     createFrameMsgInfo,
     validate_payload_with_crc,

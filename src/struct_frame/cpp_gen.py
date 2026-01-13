@@ -181,7 +181,73 @@ class OneOfCppGen():
 
 class MessageCppGen():
     @staticmethod
-    def generate(msg, use_namespace=False, package=None):
+    def _generate_field_comparison(field, use_namespace=False):
+        """Generate comparison code for a single field."""
+        var_name = field.name
+        type_name = field.fieldType
+        
+        # Handle arrays
+        if field.is_array:
+            if field.fieldType == "string":
+                if field.size_option is not None:
+                    # Fixed string array: compare each string with strncmp
+                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+                elif field.max_size is not None:
+                    # Variable string array: compare count and data
+                    return f'({var_name}.count == other.{var_name}.count && std::memcmp({var_name}.data, other.{var_name}.data, sizeof({var_name}.data)) == 0)'
+                else:
+                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+            else:
+                # Non-string arrays
+                if field.size_option is not None:
+                    # Fixed array: compare with memcmp
+                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+                elif field.max_size is not None:
+                    # Variable array: compare count and data
+                    return f'({var_name}.count == other.{var_name}.count && std::memcmp({var_name}.data, other.{var_name}.data, sizeof({var_name}.data)) == 0)'
+                else:
+                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+        
+        # Handle regular strings
+        elif field.fieldType == "string":
+            if field.size_option is not None:
+                # Fixed string: compare with strncmp
+                return f'(std::strncmp({var_name}, other.{var_name}, {field.size_option}) == 0)'
+            elif field.max_size is not None:
+                # Variable string: compare length and data
+                return f'({var_name}.length == other.{var_name}.length && std::strncmp({var_name}.data, other.{var_name}.data, {field.max_size}) == 0)'
+            else:
+                return f'(std::strcmp({var_name}, other.{var_name}) == 0)'
+        
+        # Handle enums - compare with ==
+        elif field.isEnum:
+            return f'({var_name} == other.{var_name})'
+        
+        # Handle nested messages (compare as byte memory since they're packed)
+        elif type_name not in cpp_types:
+            # Nested struct - compare with memcmp for packed structs
+            return f'(std::memcmp(&{var_name}, &other.{var_name}, sizeof({var_name})) == 0)'
+        
+        # Handle regular fields (primitives)
+        else:
+            return f'({var_name} == other.{var_name})'
+    
+    @staticmethod
+    def _generate_oneof_comparison(oneof):
+        """Generate comparison code for a oneof (union)."""
+        comparisons = []
+        
+        # If auto-discriminator is enabled, compare discriminator first
+        if oneof.auto_discriminator:
+            comparisons.append(f'({oneof.name}_discriminator == other.{oneof.name}_discriminator)')
+        
+        # Compare the union as raw bytes (since we don't know which variant is active)
+        comparisons.append(f'(std::memcmp(&{oneof.name}, &other.{oneof.name}, sizeof({oneof.name})) == 0)')
+        
+        return ' && '.join(comparisons)
+    
+    @staticmethod
+    def generate(msg, use_namespace=False, package=None, equality=False):
         leading_comment = msg.comments
 
         result = ''
@@ -240,20 +306,51 @@ class MessageCppGen():
             result += '\n'.join([OneOfCppGen.generate(o, use_namespace, package)
                                 for key, o in msg.oneofs.items()])
         
-        result += '\n};\n'
+        # Generate equality operator if requested
+        if equality:
+            result += '\n\n'
+            result += f'    bool operator==(const {structName}& other) const {{\n'
+            
+            comparisons = []
+            
+            # Handle empty structs
+            if not msg.fields and not msg.oneofs:
+                comparisons.append('(dummy_field == other.dummy_field)')
+            else:
+                # Generate field comparisons
+                for key, field in msg.fields.items():
+                    comparisons.append(MessageCppGen._generate_field_comparison(field, use_namespace))
+                
+                # Generate oneof comparisons
+                for key, oneof in msg.oneofs.items():
+                    comparisons.append(MessageCppGen._generate_oneof_comparison(oneof))
+            
+            if comparisons:
+                result += '        return ' + ' &&\n               '.join(comparisons) + ';\n'
+            else:
+                result += '        return true;\n'
+            
+            result += '    }\n'
+            result += f'    bool operator!=(const {structName}& other) const {{ return !(*this == other); }}\n'
+        
+        result += '};\n'
 
         return result + '\n'
 
 
 class FileCppGen():
     @staticmethod
-    def generate(package):
+    def generate(package, equality=False):
         yield '/* Automatically generated struct frame header for C++ */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
 
         yield '#pragma once\n'
         yield '#include <cstdint>\n'
         yield '#include <cstddef>\n'
+        
+        # Include cstring for string comparison if equality is enabled
+        if equality:
+            yield '#include <cstring>\n'
         
         # Check if any message has an ID (needs MessageBase from frame_base.hpp)
         has_msg_with_id = any(msg.id is not None for msg in package.messages.values()) if package.messages else False
@@ -286,7 +383,7 @@ class FileCppGen():
             # Need to sort messages to make sure dependencies are properly met
 
             for key, msg in package.sortedMessages().items():
-                yield MessageCppGen.generate(msg, use_namespace, package) + '\n'
+                yield MessageCppGen.generate(msg, use_namespace, package, equality) + '\n'
             yield '#pragma pack(pop)\n\n'
 
         # Generate get_message_length function

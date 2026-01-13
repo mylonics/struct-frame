@@ -332,6 +332,98 @@ struct Validator {
         return false;
     }
   }
+
+  /** Validate decoded message using operator== (for equality testing) */
+  bool validate_with_equals(uint16_t msg_id, const uint8_t* decoded_data, size_t decoded_size) {
+    switch (msg_id) {
+      case ExtendedTestExtendedIdMessage1::MSG_ID: {
+        const auto& expected = get_message_ext_1();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage1 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage2::MSG_ID: {
+        const auto& expected = get_message_ext_2();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage2 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage3::MSG_ID: {
+        const auto& expected = get_message_ext_3();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage3 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage4::MSG_ID: {
+        const auto& expected = get_message_ext_4();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage4 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage5::MSG_ID: {
+        const auto& expected = get_message_ext_5();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage5 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage6::MSG_ID: {
+        const auto& expected = get_message_ext_6();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage6 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage7::MSG_ID: {
+        const auto& expected = get_message_ext_7();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage7 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage8::MSG_ID: {
+        const auto& expected = get_message_ext_8();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage8 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage9::MSG_ID: {
+        const auto& expected = get_message_ext_9();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage9 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestExtendedIdMessage10::MSG_ID: {
+        const auto& expected = get_message_ext_10();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedIdMessage10 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestLargePayloadMessage1::MSG_ID: {
+        const auto& expected = get_message_large_1();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestLargePayloadMessage1 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      case ExtendedTestLargePayloadMessage2::MSG_ID: {
+        const auto& expected = get_message_large_2();
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestLargePayloadMessage2 decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
+      default:
+        return false;
+    }
+  }
 };
 
 // ============================================================================

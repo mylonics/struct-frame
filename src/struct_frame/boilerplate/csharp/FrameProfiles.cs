@@ -1,423 +1,379 @@
-// Frame Profiles - Pre-defined Header + Payload combinations
-// 
-// This file provides ready-to-use encode/parse functions for the 5 standard profiles:
+// Frame Profiles - Pre-defined Header + Payload combinations (C#)
+// This file mirrors the C++ FrameProfiles.hpp structure
+//
+// Standard Profiles:
 // - ProfileStandard: Basic + Default (General serial/UART)
 // - ProfileSensor: Tiny + Minimal (Low-bandwidth sensors)
 // - ProfileIPC: None + Minimal (Trusted inter-process communication)
 // - ProfileBulk: Basic + Extended (Large data transfers with package namespacing)
 // - ProfileNetwork: Basic + ExtendedMultiSystemStream (Multi-system networked communication)
 //
-// This file builds on the existing FrameHeaders and PayloadTypes boilerplate code,
-// providing maximum code reuse through a generic FrameProfileConfig class.
+// Each profile provides:
+// - ProfileConfig: configuration parameters
+// - Encoder: encode messages into a buffer
+// - BufferParser: parse/validate a complete frame in a buffer
+// - BufferReader: iterate through multiple frames in a buffer
+// - BufferWriter: encode multiple frames with automatic offset tracking
+// - AccumulatingReader: unified parser supporting both buffer chunks and byte-by-byte streaming
 
 using System;
-using System.Collections.Generic;
+using StructFrame.FrameHeaders;
+using StructFrame.PayloadTypes;
 
 namespace StructFrame
 {
     /// <summary>
-    /// Generic frame format configuration - combines header type with payload type.
-    /// This allows creating any header+payload combination by specifying the configuration parameters.
+    /// Profile configuration - combines a HeaderConfig with a PayloadConfig
     /// </summary>
-    public class FrameProfileConfig
+    public class ProfileConfig
     {
-        public string Name { get; set; }
-        public int NumStartBytes { get; set; }
-        public byte StartByte1 { get; set; }
-        public byte StartByte2 { get; set; }
-        public int HeaderSize { get; set; }
-        public int FooterSize { get; set; }
-        public bool HasLength { get; set; }
-        public int LengthBytes { get; set; }
-        public bool HasCrc { get; set; }
-        public bool HasPkgId { get; set; }
-        public bool HasSeq { get; set; }
-        public bool HasSysId { get; set; }
-        public bool HasCompId { get; set; }
+        public string Name { get; }
+        public HeaderConfig Header { get; }
+        public PayloadConfig Payload { get; }
 
+        // Computed properties
+        public byte NumStartBytes => Header.NumStartBytes;
+        public bool HasLength => Payload.HasLength;
+        public byte LengthBytes => Payload.LengthBytes;
+        public bool HasCrc => Payload.HasCrc;
+        public bool HasPkgId => Payload.HasPkgId;
+        public bool HasSeq => Payload.HasSeq;
+        public bool HasSysId => Payload.HasSysId;
+        public bool HasCompId => Payload.HasCompId;
+
+        public int HeaderSize => Header.NumStartBytes + Payload.HeaderSize;
+        public int FooterSize => Payload.FooterSize;
         public int Overhead => HeaderSize + FooterSize;
-        public int MaxPayload => HasLength ? (LengthBytes == 2 ? 65535 : 255) : 0;
+        public int MaxPayload => Payload.MaxPayload;
+
+        public ProfileConfig(string name, HeaderConfig header, PayloadConfig payload)
+        {
+            Name = name;
+            Header = header;
+            Payload = payload;
+        }
+
+        /// <summary>
+        /// Compute start byte 1 (may be dynamic for payload type encoding)
+        /// </summary>
+        public byte ComputedStartByte1
+        {
+            get
+            {
+                if (Header.EncodesPayloadType && Header.NumStartBytes == 1)
+                {
+                    return (byte)(HeaderConstants.PayloadTypeBase + (byte)Payload.PayloadType);
+                }
+                return Header.StartByte1;
+            }
+        }
+
+        /// <summary>
+        /// Compute start byte 2 (may be dynamic for payload type encoding)
+        /// </summary>
+        public byte ComputedStartByte2
+        {
+            get
+            {
+                if (Header.EncodesPayloadType && Header.NumStartBytes == 2)
+                {
+                    return (byte)(HeaderConstants.PayloadTypeBase + (byte)Payload.PayloadType);
+                }
+                return Header.StartByte2;
+            }
+        }
     }
 
     /// <summary>
-    /// Frame profile encoder and parser using generic configuration
+    /// Pre-defined profile configurations
     /// </summary>
-    public class FrameProfileParser
+    public static class Profiles
     {
-        private readonly FrameProfileConfig _config;
-        private readonly Func<int, int?> _getMsgLength;
-        
         /// <summary>
-        /// Get the frame configuration for this parser
+        /// ProfileStandard: Basic + Default
+        /// Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
         /// </summary>
-        public FrameProfileConfig Config => _config;
-        
-        // Parser state
-        private enum State
-        {
-            LookingForStart1,
-            LookingForStart2,
-            ParsingHeader,
-            ParsingPayload,
-            ParsingFooter
-        }
-        
-        private State _state;
-        private List<byte> _buffer;
-        private int _headerFieldIndex;
-        private int _payloadBytesRemaining;
-        private int _footerBytesRemaining;
-        
-        // Parsed fields
-        private int _msgId;
-        private int _msgLen;
-        private int _pkgId;
-        private int _seq;
-        private int _sysId;
-        private int _compId;
+        public static readonly ProfileConfig Standard = new ProfileConfig(
+            "ProfileStandard",
+            HeaderConfigs.Basic,
+            PayloadConfigs.Default
+        );
 
-        public FrameProfileParser(FrameProfileConfig config, Func<int, int?> getMsgLength = null)
+        /// <summary>
+        /// ProfileSensor: Tiny + Minimal
+        /// Frame: [0x70] [MSG_ID] [PAYLOAD]
+        /// </summary>
+        public static readonly ProfileConfig Sensor = new ProfileConfig(
+            "ProfileSensor",
+            HeaderConfigs.Tiny,
+            PayloadConfigs.Minimal
+        );
+
+        /// <summary>
+        /// ProfileIPC: None + Minimal
+        /// Frame: [MSG_ID] [PAYLOAD]
+        /// </summary>
+        public static readonly ProfileConfig IPC = new ProfileConfig(
+            "ProfileIPC",
+            HeaderConfigs.None,
+            PayloadConfigs.Minimal
+        );
+
+        /// <summary>
+        /// ProfileBulk: Basic + Extended
+        /// Frame: [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+        /// </summary>
+        public static readonly ProfileConfig Bulk = new ProfileConfig(
+            "ProfileBulk",
+            HeaderConfigs.Basic,
+            PayloadConfigs.Extended
+        );
+
+        /// <summary>
+        /// ProfileNetwork: Basic + ExtendedMultiSystemStream
+        /// Frame: [0x90] [0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+        /// </summary>
+        public static readonly ProfileConfig Network = new ProfileConfig(
+            "ProfileNetwork",
+            HeaderConfigs.Basic,
+            PayloadConfigs.ExtendedMultiSystemStream
+        );
+
+        /// <summary>
+        /// Get a profile by name
+        /// </summary>
+        public static ProfileConfig GetByName(string name)
+        {
+            return name.ToLowerInvariant() switch
+            {
+                "profile_standard" or "profilestandard" or "standard" => Standard,
+                "profile_sensor" or "profilesensor" or "sensor" => Sensor,
+                "profile_ipc" or "profileipc" or "ipc" => IPC,
+                "profile_bulk" or "profilebulk" or "bulk" => Bulk,
+                "profile_network" or "profilenetwork" or "network" => Network,
+                _ => throw new ArgumentException($"Unknown profile: {name}")
+            };
+        }
+
+        /// <summary>
+        /// Create a BufferWriter for the specified profile name
+        /// </summary>
+        public static BufferWriter CreateWriter(string profileName)
+        {
+            return new BufferWriter(GetByName(profileName));
+        }
+
+        /// <summary>
+        /// Create a BufferReader for the specified profile name
+        /// </summary>
+        public static BufferReader CreateReader(string profileName, Func<int, int?> getMsgLength = null)
+        {
+            return new BufferReader(GetByName(profileName), getMsgLength);
+        }
+
+        /// <summary>
+        /// Create a FrameEncoder for the specified profile name
+        /// </summary>
+        public static FrameEncoder CreateEncoder(string profileName)
+        {
+            return new FrameEncoder(GetByName(profileName));
+        }
+
+        /// <summary>
+        /// Create a BufferParser for the specified profile name
+        /// </summary>
+        public static BufferParser CreateParser(string profileName, Func<int, int?> getMsgLength = null)
+        {
+            return new BufferParser(GetByName(profileName), getMsgLength);
+        }
+    }
+
+    /// <summary>
+    /// Generic frame encoder for frames with CRC
+    /// </summary>
+    public class FrameEncoder
+    {
+        private readonly ProfileConfig _config;
+
+        public FrameEncoder(ProfileConfig config)
         {
             _config = config;
-            _getMsgLength = getMsgLength;
-            _buffer = new List<byte>();
-            Reset();
-        }
-
-        public void Reset()
-        {
-            _state = _config.NumStartBytes > 0 ? State.LookingForStart1 : State.ParsingHeader;
-            _buffer.Clear();
-            _headerFieldIndex = 0;
-            _payloadBytesRemaining = 0;
-            _footerBytesRemaining = 0;
-            _msgId = 0;
-            _msgLen = 0;
-            _pkgId = 0;
-            _seq = 0;
-            _sysId = 0;
-            _compId = 0;
         }
 
         /// <summary>
-        /// Parse a single byte
+        /// Encode a frame into a buffer
         /// </summary>
-        public FrameParseResult ParseByte(byte b)
+        public int Encode(byte[] buffer, int offset, byte seq, byte sysId, byte compId,
+                         ushort msgId, byte[] payload, int payloadOffset, int payloadSize)
         {
-            switch (_state)
+            int totalSize = _config.Overhead + payloadSize;
+
+            // Check buffer capacity and max payload (skip max payload check for minimal profiles without length field)
+            if (buffer.Length - offset < totalSize)
             {
-                case State.LookingForStart1:
-                    return HandleLookingForStart1(b);
-                case State.LookingForStart2:
-                    return HandleLookingForStart2(b);
-                case State.ParsingHeader:
-                    return HandleParsingHeader(b);
-                case State.ParsingPayload:
-                    return HandleParsingPayload(b);
-                case State.ParsingFooter:
-                    return HandleParsingFooter(b);
-                default:
-                    return new FrameParseResult();
-            }
-        }
-
-        private FrameParseResult HandleLookingForStart1(byte b)
-        {
-            if (b == _config.StartByte1)
-            {
-                _buffer.Clear();
-                _buffer.Add(b);
-                if (_config.NumStartBytes >= 2)
-                {
-                    _state = State.LookingForStart2;
-                }
-                else
-                {
-                    _state = State.ParsingHeader;
-                    _headerFieldIndex = 0;
-                }
-            }
-            return new FrameParseResult();
-        }
-
-        private FrameParseResult HandleLookingForStart2(byte b)
-        {
-            if (b == _config.StartByte2)
-            {
-                _buffer.Add(b);
-                _state = State.ParsingHeader;
-                _headerFieldIndex = 0;
-            }
-            else if (b == _config.StartByte1)
-            {
-                _buffer.Clear();
-                _buffer.Add(b);
-            }
-            else
-            {
-                Reset();
-            }
-            return new FrameParseResult();
-        }
-
-        private FrameParseResult HandleParsingHeader(byte b)
-        {
-            _buffer.Add(b);
-            
-            // Build field order based on config
-            var fields = new List<string>();
-            if (_config.HasSeq) fields.Add("seq");
-            if (_config.HasSysId) fields.Add("sys_id");
-            if (_config.HasCompId) fields.Add("comp_id");
-            if (_config.HasLength)
-            {
-                if (_config.LengthBytes == 2)
-                {
-                    fields.Add("len_lo");
-                    fields.Add("len_hi");
-                }
-                else
-                {
-                    fields.Add("len");
-                }
-            }
-            if (_config.HasPkgId) fields.Add("pkg_id");
-            fields.Add("msg_id");
-
-            if (_headerFieldIndex < fields.Count)
-            {
-                string field = fields[_headerFieldIndex];
-                switch (field)
-                {
-                    case "seq": _seq = b; break;
-                    case "sys_id": _sysId = b; break;
-                    case "comp_id": _compId = b; break;
-                    case "len": _msgLen = b; break;
-                    case "len_lo": _msgLen = b; break;
-                    case "len_hi": _msgLen |= (b << 8); break;
-                    case "pkg_id": _pkgId = b; break;
-                    case "msg_id": _msgId = b; break;
-                }
-                _headerFieldIndex++;
-            }
-
-            // Check if header is complete
-            if (_headerFieldIndex >= fields.Count)
-            {
-                // Determine payload length
-                if (_config.HasLength)
-                {
-                    _payloadBytesRemaining = _msgLen;
-                }
-                else if (_getMsgLength != null)
-                {
-                    var len = _getMsgLength(_msgId);
-                    if (len.HasValue)
-                    {
-                        _payloadBytesRemaining = len.Value;
-                    }
-                    else
-                    {
-                        Reset();
-                        return new FrameParseResult();
-                    }
-                }
-                else
-                {
-                    Reset();
-                    return new FrameParseResult();
-                }
-
-                _footerBytesRemaining = _config.FooterSize;
-                _state = _payloadBytesRemaining > 0 ? State.ParsingPayload : 
-                         _footerBytesRemaining > 0 ? State.ParsingFooter : State.LookingForStart1;
-                
-                if (_payloadBytesRemaining == 0 && _footerBytesRemaining == 0)
-                {
-                    return CompleteMessage();
-                }
-            }
-
-            return new FrameParseResult();
-        }
-
-        private FrameParseResult HandleParsingPayload(byte b)
-        {
-            _buffer.Add(b);
-            _payloadBytesRemaining--;
-
-            if (_payloadBytesRemaining <= 0)
-            {
-                if (_footerBytesRemaining > 0)
-                {
-                    _state = State.ParsingFooter;
-                }
-                else
-                {
-                    return CompleteMessage();
-                }
-            }
-            return new FrameParseResult();
-        }
-
-        private FrameParseResult HandleParsingFooter(byte b)
-        {
-            _buffer.Add(b);
-            _footerBytesRemaining--;
-
-            if (_footerBytesRemaining <= 0)
-            {
-                return CompleteMessage();
-            }
-            return new FrameParseResult();
-        }
-
-        private FrameParseResult CompleteMessage()
-        {
-            var result = new FrameParseResult();
-
-            // Validate CRC if present
-            if (_config.HasCrc)
-            {
-                int crcStart = _config.NumStartBytes;
-                int crcEnd = _buffer.Count - _config.FooterSize;
-                var ck = FletcherChecksum(_buffer.ToArray(), crcStart, crcEnd);
-                
-                if (ck.Item1 != _buffer[_buffer.Count - 2] || ck.Item2 != _buffer[_buffer.Count - 1])
-                {
-                    Reset();
-                    return result;
-                }
-            }
-
-            // Extract message data
-            int dataStart = _config.HeaderSize;
-            int dataEnd = _buffer.Count - _config.FooterSize;
-            int dataLen = dataEnd - dataStart;
-            
-            result.Valid = true;
-            result.MsgId = _msgId;
-            result.MsgSize = dataLen;
-            result.MsgData = new byte[dataLen];
-            for (int i = 0; i < dataLen; i++)
-            {
-                result.MsgData[i] = _buffer[dataStart + i];
-            }
-
-            Reset();
-            return result;
-        }
-
-        /// <summary>
-        /// Encode a message using this profile
-        /// </summary>
-        public byte[] Encode(int msgId, byte[] payload, int seq = 0, int sysId = 0, int compId = 0, int pkgId = -1)
-        {
-            // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id
-            // unless pkgId is explicitly provided (not -1)
-            int pkgIdValue;
-            int msgIdValue;
-            if (_config.HasPkgId && pkgId == -1)
-            {
-                pkgIdValue = (msgId >> 8) & 0xFF;  // high byte
-                msgIdValue = msgId & 0xFF;          // low byte
-            }
-            else
-            {
-                pkgIdValue = pkgId == -1 ? 0 : pkgId;
-                msgIdValue = msgId;
+                return 0;
             }
             
-            var output = new List<byte>();
-            int payloadSize = payload?.Length ?? 0;
-
-            // Start bytes
-            if (_config.NumStartBytes >= 1)
-                output.Add(_config.StartByte1);
-            if (_config.NumStartBytes >= 2)
-                output.Add(_config.StartByte2);
-
-            int crcStart = output.Count;
-
-            // Optional fields before length
-            if (_config.HasSeq)
-                output.Add((byte)(seq & 0xFF));
-            if (_config.HasSysId)
-                output.Add((byte)(sysId & 0xFF));
-            if (_config.HasCompId)
-                output.Add((byte)(compId & 0xFF));
-
-            // Length field
-            if (_config.HasLength)
+            if (_config.HasLength && payloadSize > _config.MaxPayload)
             {
-                if (_config.LengthBytes == 1)
-                {
-                    output.Add((byte)(payloadSize & 0xFF));
-                }
-                else
-                {
-                    output.Add((byte)(payloadSize & 0xFF));
-                    output.Add((byte)((payloadSize >> 8) & 0xFF));
-                }
+                return 0;
             }
 
-            // Package ID
-            if (_config.HasPkgId)
-                output.Add((byte)(pkgIdValue & 0xFF));
+            int idx = offset;
 
-            // Message ID
-            output.Add((byte)(msgIdValue & 0xFF));
-
-            // Payload
-            if (payload != null && payloadSize > 0)
-            {
-                output.AddRange(payload);
-            }
-
-            // CRC
-            if (_config.HasCrc)
-            {
-                var ck = FletcherChecksum(output.ToArray(), crcStart, output.Count);
-                output.Add(ck.Item1);
-                output.Add(ck.Item2);
-            }
-
-            return output.ToArray();
-        }
-
-        /// <summary>
-        /// Validate a complete frame in a buffer
-        /// </summary>
-        public FrameParseResult ValidateBuffer(byte[] buffer)
-        {
-            var result = new FrameParseResult();
-            int length = buffer?.Length ?? 0;
-
-            if (length < _config.Overhead)
-                return result;
-
-            int idx = 0;
-
-            // Verify start bytes
+            // Write start bytes
             if (_config.NumStartBytes >= 1)
             {
-                if (buffer[idx++] != _config.StartByte1)
-                    return result;
+                buffer[idx++] = _config.ComputedStartByte1;
             }
             if (_config.NumStartBytes >= 2)
             {
-                if (buffer[idx++] != _config.StartByte2)
-                    return result;
+                buffer[idx++] = _config.ComputedStartByte2;
             }
 
             int crcStart = idx;
 
-            // Skip optional fields before length
-            if (_config.HasSeq) idx++;
-            if (_config.HasSysId) idx++;
-            if (_config.HasCompId) idx++;
+            // Write optional fields before length
+            if (_config.HasSeq)
+            {
+                buffer[idx++] = seq;
+            }
+            if (_config.HasSysId)
+            {
+                buffer[idx++] = sysId;
+            }
+            if (_config.HasCompId)
+            {
+                buffer[idx++] = compId;
+            }
 
-            // Read length
+            // Write length field
+            if (_config.HasLength)
+            {
+                if (_config.LengthBytes == 1)
+                {
+                    buffer[idx++] = (byte)(payloadSize & 0xFF);
+                }
+                else
+                {
+                    buffer[idx++] = (byte)(payloadSize & 0xFF);
+                    buffer[idx++] = (byte)((payloadSize >> 8) & 0xFF);
+                }
+            }
+
+            // Write message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id)
+            if (_config.HasPkgId)
+            {
+                buffer[idx++] = (byte)((msgId >> 8) & 0xFF);  // pkg_id (high byte)
+            }
+            buffer[idx++] = (byte)(msgId & 0xFF);  // msg_id (low byte)
+
+            // Write payload
+            if (payloadSize > 0 && payload != null)
+            {
+                Array.Copy(payload, payloadOffset, buffer, idx, payloadSize);
+                idx += payloadSize;
+            }
+
+            // Calculate and write CRC
+            if (_config.HasCrc)
+            {
+                int crcLen = idx - crcStart;
+                var ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen);
+                buffer[idx++] = ck.Byte1;
+                buffer[idx++] = ck.Byte2;
+            }
+
+            return idx - offset;
+        }
+
+        /// <summary>
+        /// Encode a frame (simple overload without addressing)
+        /// </summary>
+        public int Encode(byte[] buffer, int offset, ushort msgId, byte[] payload)
+        {
+            return Encode(buffer, offset, 0, 0, 0, msgId, payload, 0, payload?.Length ?? 0);
+        }
+
+        /// <summary>
+        /// Encode a frame and return a new byte array
+        /// </summary>
+        public byte[] Encode(ushort msgId, byte[] payload)
+        {
+            int payloadLen = payload?.Length ?? 0;
+            byte[] buffer = new byte[_config.Overhead + payloadLen];
+            int written = Encode(buffer, 0, msgId, payload);
+            if (written != buffer.Length)
+            {
+                Array.Resize(ref buffer, written);
+            }
+            return buffer;
+        }
+    }
+
+    /// <summary>
+    /// Generic buffer parser for frames
+    /// </summary>
+    public class BufferParser
+    {
+        private readonly ProfileConfig _config;
+        private readonly Func<int, int?> _getMsgLength;
+
+        public BufferParser(ProfileConfig config, Func<int, int?> getMsgLength = null)
+        {
+            _config = config;
+            _getMsgLength = getMsgLength;
+        }
+
+        /// <summary>
+        /// Parse a frame from a buffer
+        /// </summary>
+        public FrameMsgInfo Parse(byte[] buffer, int offset, int length)
+        {
+            if (_config.HasLength || _config.HasCrc)
+            {
+                return ParseWithCrc(buffer, offset, length);
+            }
+            else
+            {
+                return ParseMinimal(buffer, offset, length);
+            }
+        }
+
+        private FrameMsgInfo ParseWithCrc(byte[] buffer, int offset, int length)
+        {
+            if (length < _config.Overhead)
+            {
+                return FrameMsgInfo.Invalid;
+            }
+
+            int idx = offset;
+
+            // Verify start bytes
+            if (_config.NumStartBytes >= 1)
+            {
+                if (buffer[idx++] != _config.ComputedStartByte1)
+                {
+                    return FrameMsgInfo.Invalid;
+                }
+            }
+            if (_config.NumStartBytes >= 2)
+            {
+                if (buffer[idx++] != _config.ComputedStartByte2)
+                {
+                    return FrameMsgInfo.Invalid;
+                }
+            }
+
+            int crcStart = idx;
+
+            // Read optional fields before length
+            byte seq = 0, sysId = 0, compId = 0;
+            if (_config.HasSeq) seq = buffer[idx++];
+            if (_config.HasSysId) sysId = buffer[idx++];
+            if (_config.HasCompId) compId = buffer[idx++];
+
+            // Read length field
             int msgLen = 0;
             if (_config.HasLength)
             {
@@ -431,218 +387,264 @@ namespace StructFrame
                     idx += 2;
                 }
             }
-            else if (_getMsgLength != null)
-            {
-                // For minimal profiles, read msg_id first to get length
-                int msgIdPeek = buffer[idx];
-                var lenResult = _getMsgLength(msgIdPeek);
-                if (!lenResult.HasValue)
-                    return result;
-                msgLen = lenResult.Value;
-            }
 
-            // Read message ID (16-bit: high byte is pkg_id when HasPkgId, low byte is msg_id)
-            int msgId = 0;
+            // Read message ID
+            ushort msgId = 0;
+            byte pkgId = 0;
             if (_config.HasPkgId)
             {
-                msgId = buffer[idx++] << 8;  // pkg_id (high byte)
+                pkgId = buffer[idx++];
+                msgId = (ushort)(pkgId << 8);
             }
-            msgId |= buffer[idx++];  // msg_id (low byte)
+            msgId |= buffer[idx++];
 
             // Verify total size
             int totalSize = _config.Overhead + msgLen;
             if (length < totalSize)
-                return result;
+            {
+                return FrameMsgInfo.Invalid;
+            }
 
             // Verify CRC
             if (_config.HasCrc)
             {
-                int crcLen = totalSize - crcStart - _config.FooterSize;
-                var ck = FletcherChecksum(buffer, crcStart, crcStart + crcLen);
-                if (ck.Item1 != buffer[totalSize - 2] || ck.Item2 != buffer[totalSize - 1])
-                    return result;
+                int crcLen = totalSize - (crcStart - offset) - _config.FooterSize;
+                var ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen);
+                if (ck.Byte1 != buffer[offset + totalSize - 2] || ck.Byte2 != buffer[offset + totalSize - 1])
+                {
+                    return FrameMsgInfo.Invalid;
+                }
             }
 
-            // Extract message data
-            int dataStart = _config.HeaderSize;
-            result.Valid = true;
-            result.MsgId = msgId;
-            result.MsgSize = msgLen;
-            result.MsgData = new byte[msgLen];
-            Array.Copy(buffer, dataStart, result.MsgData, 0, msgLen);
-
+            var result = new FrameMsgInfo(true, msgId, msgLen, totalSize, buffer, offset + _config.HeaderSize);
+            result.Seq = seq;
+            result.SysId = sysId;
+            result.CompId = compId;
+            result.PkgId = pkgId;
             return result;
         }
 
-        private static (byte, byte) FletcherChecksum(byte[] buffer, int start, int end)
+        private FrameMsgInfo ParseMinimal(byte[] buffer, int offset, int length)
         {
-            byte byte1 = 0;
-            byte byte2 = 0;
-            for (int i = start; i < end; i++)
+            if (length < _config.HeaderSize)
             {
-                byte1 = (byte)((byte1 + buffer[i]) % 256);
-                byte2 = (byte)((byte2 + byte1) % 256);
+                return FrameMsgInfo.Invalid;
             }
-            return (byte1, byte2);
+
+            int idx = offset;
+
+            // Verify start bytes
+            if (_config.NumStartBytes >= 1)
+            {
+                if (buffer[idx++] != _config.ComputedStartByte1)
+                {
+                    return FrameMsgInfo.Invalid;
+                }
+            }
+            if (_config.NumStartBytes >= 2)
+            {
+                if (buffer[idx++] != _config.ComputedStartByte2)
+                {
+                    return FrameMsgInfo.Invalid;
+                }
+            }
+
+            // Read message ID
+            byte msgId = buffer[idx];
+
+            // Get message length from callback
+            if (_getMsgLength == null)
+            {
+                return FrameMsgInfo.Invalid;
+            }
+
+            int? msgLen = _getMsgLength(msgId);
+            if (!msgLen.HasValue)
+            {
+                return FrameMsgInfo.Invalid;
+            }
+
+            int totalSize = _config.HeaderSize + msgLen.Value;
+            if (length < totalSize)
+            {
+                return FrameMsgInfo.Invalid;
+            }
+
+            return new FrameMsgInfo(true, msgId, msgLen.Value, totalSize, buffer, offset + _config.HeaderSize);
         }
     }
 
     /// <summary>
-    /// BufferReader - Iterate through a buffer parsing multiple frames.
-    /// 
-    /// Usage:
-    ///   var reader = new BufferReader(FrameProfiles.Standard, buffer);
-    ///   while (true) {
-    ///       var result = reader.Next();
-    ///       if (!result.Valid) break;
-    ///       // Process result.MsgId, result.MsgData, result.MsgSize
-    ///   }
-    /// 
-    /// For minimal profiles that need getMsgLength:
-    ///   var reader = new BufferReader(FrameProfiles.Sensor, buffer, getMsgLength);
+    /// BufferReader - Iterate through a buffer parsing multiple frames
     /// </summary>
     public class BufferReader
     {
-        private readonly FrameProfileConfig _config;
-        private readonly byte[] _buffer;
-        private readonly int _size;
+        private readonly ProfileConfig _config;
+        private readonly BufferParser _parser;
+        private byte[] _buffer;
         private int _offset;
-        private readonly Func<int, int?> _getMsgLength;
+        private int _size;
 
-        public BufferReader(FrameProfileConfig config, byte[] buffer, Func<int, int?> getMsgLength = null)
+        public BufferReader(ProfileConfig config, Func<int, int?> getMsgLength = null)
         {
             _config = config;
-            _buffer = buffer;
-            _size = buffer?.Length ?? 0;
-            _offset = 0;
-            _getMsgLength = getMsgLength;
+            _parser = new BufferParser(config, getMsgLength);
         }
 
         /// <summary>
-        /// Parse the next frame in the buffer.
-        /// Returns FrameParseResult with Valid=true if successful, Valid=false if no more frames.
+        /// Set the buffer to read from
         /// </summary>
-        public FrameParseResult Next()
+        public void SetBuffer(byte[] buffer, int offset, int size)
         {
-            if (_offset >= _size)
-                return new FrameParseResult();
+            _buffer = buffer;
+            _offset = offset;
+            _size = size;
+        }
 
-            // For minimal profiles, check if getMsgLength callback is provided
-            if (!_config.HasCrc && !_config.HasLength && _getMsgLength == null)
+        /// <summary>
+        /// Set the buffer to read from (convenience overload)
+        /// </summary>
+        public void SetBuffer(byte[] buffer)
+        {
+            SetBuffer(buffer, 0, buffer.Length);
+        }
+
+        /// <summary>
+        /// Parse the next frame in the buffer
+        /// </summary>
+        public FrameMsgInfo Next()
+        {
+            if (_buffer == null || _offset >= _size)
             {
-                _offset = _size;
-                return new FrameParseResult();
+                return FrameMsgInfo.Invalid;
             }
 
-            int remaining = _size - _offset;
-            byte[] remainingBuffer = new byte[remaining];
-            Array.Copy(_buffer, _offset, remainingBuffer, 0, remaining);
+            var result = _parser.Parse(_buffer, _offset, _size - _offset);
 
-            var parser = new FrameProfileParser(_config, _getMsgLength);
-            var result = parser.ValidateBuffer(remainingBuffer);
-
-            if (result.Valid)
+            if (result.Valid && result.FrameSize > 0)
             {
-                int frameSize = _config.Overhead + result.MsgSize;
-                _offset += frameSize;
-            }
-            else
-            {
-                // No more valid frames - stop parsing
-                _offset = _size;
+                _offset += result.FrameSize;
             }
 
             return result;
         }
 
         /// <summary>
-        /// Reset the reader to the beginning of the buffer.
+        /// Reset the reader to the beginning of the buffer
         /// </summary>
-        public void Reset() => _offset = 0;
+        public void Reset()
+        {
+            _offset = 0;
+        }
 
         /// <summary>
-        /// Get the current offset in the buffer.
+        /// Get the current offset in the buffer
         /// </summary>
         public int Offset => _offset;
 
         /// <summary>
-        /// Get the remaining bytes in the buffer.
+        /// Get the remaining bytes in the buffer
         /// </summary>
-        public int Remaining => Math.Max(0, _size - _offset);
+        public int Remaining => _size > _offset ? _size - _offset : 0;
 
         /// <summary>
-        /// Check if there are more bytes to parse.
+        /// Check if there are more bytes to parse
         /// </summary>
         public bool HasMore => _offset < _size;
     }
 
     /// <summary>
-    /// BufferWriter - Encode multiple frames into a buffer with automatic offset tracking.
-    /// 
-    /// Usage:
-    ///   var writer = new BufferWriter(FrameProfiles.Standard, 1024);
-    ///   writer.Write(0x01, msg1Payload);
-    ///   writer.Write(0x02, msg2Payload);
-    ///   byte[] encodedData = writer.Data();
-    ///   int totalBytes = writer.Size;
-    /// 
-    /// For profiles with extra header fields:
-    ///   var writer = new BufferWriter(FrameProfiles.Network, 1024);
-    ///   writer.Write(0x01, payload, seq: 1, sysId: 1, compId: 1);
+    /// BufferWriter - Encode multiple frames into a buffer with automatic offset tracking
     /// </summary>
     public class BufferWriter
     {
-        private readonly FrameProfileConfig _config;
-        private readonly int _capacity;
-        private readonly byte[] _buffer;
+        private readonly ProfileConfig _config;
+        private readonly FrameEncoder _encoder;
+        private byte[] _buffer;
         private int _offset;
-        private readonly FrameProfileParser _encoder;
+        private int _capacity;
 
-        public BufferWriter(FrameProfileConfig config, int capacity)
+        public BufferWriter(ProfileConfig config)
         {
             _config = config;
-            _capacity = capacity;
-            _buffer = new byte[capacity];
-            _offset = 0;
-            _encoder = new FrameProfileParser(config);
+            _encoder = new FrameEncoder(config);
         }
 
         /// <summary>
-        /// Write a message to the buffer.
-        /// Returns the number of bytes written, or 0 on failure.
+        /// Set the buffer to write to
         /// </summary>
-        public int Write(int msgId, byte[] payload, int seq = 0, int sysId = 0, int compId = 0, int pkgId = -1)
+        public void SetBuffer(byte[] buffer, int offset, int capacity)
         {
-            byte[] encoded = _encoder.Encode(msgId, payload, seq, sysId, compId, pkgId);
-            int written = encoded.Length;
+            _buffer = buffer;
+            _offset = offset;
+            _capacity = capacity;
+        }
 
-            if (_offset + written > _capacity)
+        /// <summary>
+        /// Set the buffer to write to (convenience overload)
+        /// </summary>
+        public void SetBuffer(byte[] buffer)
+        {
+            SetBuffer(buffer, 0, buffer.Length);
+        }
+
+        /// <summary>
+        /// Write a message to the buffer
+        /// </summary>
+        public int Write(ushort msgId, byte[] payload)
+        {
+            return Write(0, 0, 0, msgId, payload, 0, payload?.Length ?? 0);
+        }
+
+        /// <summary>
+        /// Write a message with sequence and addressing
+        /// </summary>
+        public int Write(byte seq, byte sysId, byte compId, ushort msgId, byte[] payload, int payloadOffset, int payloadSize)
+        {
+            if (_buffer == null)
+            {
                 return 0;
+            }
 
-            Array.Copy(encoded, 0, _buffer, _offset, written);
-            _offset += written;
+            int written = _encoder.Encode(_buffer, _offset, seq, sysId, compId, msgId, payload, payloadOffset, payloadSize);
+            if (written > 0)
+            {
+                _offset += written;
+            }
             return written;
         }
 
         /// <summary>
-        /// Reset the writer to the beginning of the buffer.
+        /// Write a struct message to the buffer
         /// </summary>
-        public void Reset() => _offset = 0;
+        public int Write<T>(T message) where T : struct, IStructFrameMessage
+        {
+            byte[] payload = message.Pack();
+            return Write(message.GetMsgId(), payload);
+        }
 
         /// <summary>
-        /// Get the total number of bytes written.
+        /// Reset the writer to the beginning of the buffer
+        /// </summary>
+        public void Reset()
+        {
+            _offset = 0;
+        }
+
+        /// <summary>
+        /// Get the total number of bytes written
         /// </summary>
         public int Size => _offset;
 
         /// <summary>
-        /// Get the remaining capacity in the buffer.
+        /// Get the remaining capacity in the buffer
         /// </summary>
-        public int Remaining => Math.Max(0, _capacity - _offset);
+        public int Remaining => _capacity > _offset ? _capacity - _offset : 0;
 
         /// <summary>
-        /// Get the written data as a new byte array.
+        /// Get the buffer data as a new array
         /// </summary>
-        public byte[] Data()
+        public byte[] GetData()
         {
             byte[] result = new byte[_offset];
             Array.Copy(_buffer, 0, result, 0, _offset);
@@ -651,163 +653,176 @@ namespace StructFrame
     }
 
     /// <summary>
-    /// Parser state for AccumulatingReader
-    /// </summary>
-    public enum AccumulatingReaderState
-    {
-        Idle = 0,
-        LookingForStart1 = 1,
-        LookingForStart2 = 2,
-        CollectingHeader = 3,
-        CollectingPayload = 4,
-        BufferMode = 5
-    }
-
-    /// <summary>
-    /// AccumulatingReader - Unified parser for buffer and byte-by-byte streaming input.
-    /// 
-    /// Handles partial messages across buffer boundaries and supports both:
-    /// - Buffer mode: AddData() for processing chunks of data
-    /// - Stream mode: PushByte() for byte-by-byte processing (e.g., UART)
-    /// 
-    /// Buffer mode usage:
-    ///   var reader = new AccumulatingReader(FrameProfiles.Standard);
-    ///   reader.AddData(chunk1);
-    ///   while (true) {
-    ///       var result = reader.Next();
-    ///       if (!result.Valid) break;
-    ///       // Process complete messages
-    ///   }
-    /// 
-    /// Stream mode usage:
-    ///   var reader = new AccumulatingReader(FrameProfiles.Standard);
-    ///   while (receiving) {
-    ///       byte b = ReadByte();
-    ///       var result = reader.PushByte(b);
-    ///       if (result.Valid) {
-    ///           // Process complete message
-    ///       }
-    ///   }
-    /// 
-    /// For minimal profiles:
-    ///   var reader = new AccumulatingReader(FrameProfiles.Sensor, getMsgLength);
+    /// AccumulatingReader - Unified parser for buffer and byte-by-byte streaming input
     /// </summary>
     public class AccumulatingReader
     {
-        private readonly FrameProfileConfig _config;
+        /// <summary>
+        /// Parser state for streaming mode
+        /// </summary>
+        public enum State
+        {
+            Idle = 0,
+            LookingForStart1,
+            LookingForStart2,
+            CollectingHeader,
+            CollectingPayload,
+            BufferMode
+        }
+
+        private readonly ProfileConfig _config;
+        private readonly BufferParser _parser;
         private readonly Func<int, int?> _getMsgLength;
         private readonly int _bufferSize;
 
         // Internal buffer for partial messages
-        private readonly byte[] _internalBuffer;
+        private byte[] _internalBuffer;
         private int _internalDataLen;
         private int _expectedFrameSize;
-        private AccumulatingReaderState _state;
+        private State _state;
 
         // Buffer mode state
         private byte[] _currentBuffer;
-        private int _currentSize;
         private int _currentOffset;
+        private int _currentSize;
 
-        public AccumulatingReader(FrameProfileConfig config, Func<int, int?> getMsgLength = null, int bufferSize = 1024)
+        public AccumulatingReader(ProfileConfig config, int bufferSize = 1024, Func<int, int?> getMsgLength = null)
         {
             _config = config;
-            _getMsgLength = getMsgLength;
             _bufferSize = bufferSize;
-
+            _getMsgLength = getMsgLength;
+            _parser = new BufferParser(config, getMsgLength);
             _internalBuffer = new byte[bufferSize];
+            Reset();
+        }
+
+        /// <summary>
+        /// Reset the reader, clearing any partial message data
+        /// </summary>
+        public void Reset()
+        {
             _internalDataLen = 0;
             _expectedFrameSize = 0;
-            _state = AccumulatingReaderState.Idle;
-
+            _state = State.Idle;
             _currentBuffer = null;
-            _currentSize = 0;
             _currentOffset = 0;
+            _currentSize = 0;
         }
+
+        /// <summary>
+        /// Get current parser state
+        /// </summary>
+        public State CurrentState => _state;
+
+        /// <summary>
+        /// Check if there's a partial message waiting for more data
+        /// </summary>
+        public bool HasPartial => _internalDataLen > 0;
+
+        /// <summary>
+        /// Get the size of the partial message data
+        /// </summary>
+        public int PartialSize => _internalDataLen;
 
         // =========================================================================
         // Buffer Mode API
         // =========================================================================
 
         /// <summary>
-        /// Add a new buffer of data to process.
+        /// Add a new buffer of data to process
         /// </summary>
-        public void AddData(byte[] buffer)
+        public void AddData(byte[] buffer, int offset, int size)
         {
             _currentBuffer = buffer;
-            _currentSize = buffer?.Length ?? 0;
-            _currentOffset = 0;
-            _state = AccumulatingReaderState.BufferMode;
+            _currentOffset = offset;
+            _currentSize = size;
+            _state = State.BufferMode;
 
             // If we have partial data in internal buffer, try to complete it
-            if (_internalDataLen > 0 && buffer != null)
+            if (_internalDataLen > 0)
             {
                 int spaceAvailable = _bufferSize - _internalDataLen;
-                int bytesToCopy = Math.Min(buffer.Length, spaceAvailable);
-                Array.Copy(buffer, 0, _internalBuffer, _internalDataLen, bytesToCopy);
+                int bytesToCopy = Math.Min(size, spaceAvailable);
+
+                Array.Copy(buffer, offset, _internalBuffer, _internalDataLen, bytesToCopy);
                 _internalDataLen += bytesToCopy;
             }
         }
 
         /// <summary>
-        /// Parse the next frame (buffer mode).
+        /// Add a new buffer of data to process (convenience overload)
         /// </summary>
-        public FrameParseResult Next()
+        public void AddData(byte[] buffer)
         {
-            if (_state != AccumulatingReaderState.BufferMode)
-                return new FrameParseResult();
+            AddData(buffer, 0, buffer.Length);
+        }
+
+        /// <summary>
+        /// Parse the next frame (buffer mode)
+        /// </summary>
+        public FrameMsgInfo Next()
+        {
+            if (_state != State.BufferMode)
+            {
+                return FrameMsgInfo.Invalid;
+            }
 
             // First, try to complete a partial message from the internal buffer
             if (_internalDataLen > 0 && _currentOffset == 0)
             {
-                byte[] internalBytes = new byte[_internalDataLen];
-                Array.Copy(_internalBuffer, 0, internalBytes, 0, _internalDataLen);
-                var result = ParseBuffer(internalBytes);
+                var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
 
                 if (result.Valid)
                 {
-                    int frameSize = _config.Overhead + result.MsgSize;
                     int partialLen = _internalDataLen > _currentSize ? _internalDataLen - _currentSize : 0;
-                    int bytesFromCurrent = frameSize > partialLen ? frameSize - partialLen : 0;
+                    int bytesFromCurrent = result.FrameSize > partialLen ? result.FrameSize - partialLen : 0;
                     _currentOffset = bytesFromCurrent;
-
                     _internalDataLen = 0;
                     _expectedFrameSize = 0;
-
                     return result;
                 }
                 else
                 {
-                    return new FrameParseResult();
+                    return FrameMsgInfo.Invalid;
                 }
             }
 
             // Parse from current buffer
             if (_currentBuffer == null || _currentOffset >= _currentSize)
-                return new FrameParseResult();
-
-            int remaining = _currentSize - _currentOffset;
-            byte[] remainingBuffer = new byte[remaining];
-            Array.Copy(_currentBuffer, _currentOffset, remainingBuffer, 0, remaining);
-            var parseResult = ParseBuffer(remainingBuffer);
-
-            if (parseResult.Valid)
             {
-                int frameSize = _config.Overhead + parseResult.MsgSize;
-                _currentOffset += frameSize;
+                return FrameMsgInfo.Invalid;
+            }
+
+            var parseResult = _parser.Parse(_currentBuffer, _currentOffset, _currentSize - _currentOffset);
+
+            if (parseResult.Valid && parseResult.FrameSize > 0)
+            {
+                _currentOffset += parseResult.FrameSize;
                 return parseResult;
             }
 
             // Parse failed - might be partial message at end of buffer
-            int remainingLen = _currentSize - _currentOffset;
-            if (remainingLen > 0 && remainingLen < _bufferSize)
+            int remaining = _currentSize - _currentOffset;
+            if (remaining > 0 && remaining < _bufferSize)
             {
-                Array.Copy(_currentBuffer, _currentOffset, _internalBuffer, 0, remainingLen);
-                _internalDataLen = remainingLen;
+                Array.Copy(_currentBuffer, _currentOffset, _internalBuffer, 0, remaining);
+                _internalDataLen = remaining;
                 _currentOffset = _currentSize;
             }
 
-            return new FrameParseResult();
+            return FrameMsgInfo.Invalid;
+        }
+
+        /// <summary>
+        /// Check if there might be more data to parse (buffer mode only)
+        /// </summary>
+        public bool HasMore
+        {
+            get
+            {
+                if (_state != State.BufferMode) return false;
+                return (_internalDataLen > 0) || (_currentBuffer != null && _currentOffset < _currentSize);
+            }
         }
 
         // =========================================================================
@@ -815,38 +830,38 @@ namespace StructFrame
         // =========================================================================
 
         /// <summary>
-        /// Push a single byte for parsing (stream mode).
+        /// Push a single byte for parsing (stream mode)
         /// </summary>
-        public FrameParseResult PushByte(byte b)
+        public FrameMsgInfo PushByte(byte b)
         {
-            // Initialize state on first byte if idle
-            if (_state == AccumulatingReaderState.Idle || _state == AccumulatingReaderState.BufferMode)
+            if (_state == State.Idle || _state == State.BufferMode)
             {
-                _state = AccumulatingReaderState.LookingForStart1;
+                _state = State.LookingForStart1;
                 _internalDataLen = 0;
                 _expectedFrameSize = 0;
             }
 
             switch (_state)
             {
-                case AccumulatingReaderState.LookingForStart1:
+                case State.LookingForStart1:
                     return HandleLookingForStart1(b);
-                case AccumulatingReaderState.LookingForStart2:
+                case State.LookingForStart2:
                     return HandleLookingForStart2(b);
-                case AccumulatingReaderState.CollectingHeader:
+                case State.CollectingHeader:
                     return HandleCollectingHeader(b);
-                case AccumulatingReaderState.CollectingPayload:
+                case State.CollectingPayload:
                     return HandleCollectingPayload(b);
                 default:
-                    _state = AccumulatingReaderState.LookingForStart1;
-                    return new FrameParseResult();
+                    _state = State.LookingForStart1;
+                    return FrameMsgInfo.Invalid;
             }
         }
 
-        private FrameParseResult HandleLookingForStart1(byte b)
+        private FrameMsgInfo HandleLookingForStart1(byte b)
         {
             if (_config.NumStartBytes == 0)
             {
+                // No start bytes - this byte is the beginning of the frame
                 _internalBuffer[0] = b;
                 _internalDataLen = 1;
 
@@ -856,56 +871,56 @@ namespace StructFrame
                 }
                 else
                 {
-                    _state = AccumulatingReaderState.CollectingHeader;
+                    _state = State.CollectingHeader;
                 }
             }
             else
             {
-                if (b == _config.StartByte1)
+                if (b == _config.ComputedStartByte1)
                 {
                     _internalBuffer[0] = b;
                     _internalDataLen = 1;
 
                     if (_config.NumStartBytes == 1)
                     {
-                        _state = AccumulatingReaderState.CollectingHeader;
+                        _state = State.CollectingHeader;
                     }
                     else
                     {
-                        _state = AccumulatingReaderState.LookingForStart2;
+                        _state = State.LookingForStart2;
                     }
                 }
             }
-            return new FrameParseResult();
+            return FrameMsgInfo.Invalid;
         }
 
-        private FrameParseResult HandleLookingForStart2(byte b)
+        private FrameMsgInfo HandleLookingForStart2(byte b)
         {
-            if (b == _config.StartByte2)
+            if (b == _config.ComputedStartByte2)
             {
                 _internalBuffer[_internalDataLen++] = b;
-                _state = AccumulatingReaderState.CollectingHeader;
+                _state = State.CollectingHeader;
             }
-            else if (b == _config.StartByte1)
+            else if (b == _config.ComputedStartByte1)
             {
                 _internalBuffer[0] = b;
                 _internalDataLen = 1;
             }
             else
             {
-                _state = AccumulatingReaderState.LookingForStart1;
+                _state = State.LookingForStart1;
                 _internalDataLen = 0;
             }
-            return new FrameParseResult();
+            return FrameMsgInfo.Invalid;
         }
 
-        private FrameParseResult HandleCollectingHeader(byte b)
+        private FrameMsgInfo HandleCollectingHeader(byte b)
         {
             if (_internalDataLen >= _bufferSize)
             {
-                _state = AccumulatingReaderState.LookingForStart1;
+                _state = State.LookingForStart1;
                 _internalDataLen = 0;
-                return new FrameParseResult();
+                return FrameMsgInfo.Invalid;
             }
 
             _internalBuffer[_internalDataLen++] = b;
@@ -914,47 +929,33 @@ namespace StructFrame
             {
                 if (!_config.HasLength && !_config.HasCrc)
                 {
-                    int msgId = _internalBuffer[_config.HeaderSize - 1];
-                    if (_getMsgLength != null)
+                    byte msgId = _internalBuffer[_config.HeaderSize - 1];
+                    int? msgLen = _getMsgLength?.Invoke(msgId);
+                    if (msgLen.HasValue)
                     {
-                        int? msgLen = _getMsgLength(msgId);
-                        if (msgLen.HasValue)
+                        _expectedFrameSize = _config.HeaderSize + msgLen.Value;
+
+                        if (_expectedFrameSize > _bufferSize)
                         {
-                            _expectedFrameSize = _config.HeaderSize + msgLen.Value;
-
-                            if (_expectedFrameSize > _bufferSize)
-                            {
-                                _state = AccumulatingReaderState.LookingForStart1;
-                                _internalDataLen = 0;
-                                return new FrameParseResult();
-                            }
-
-                            if (msgLen.Value == 0)
-                            {
-                                var result = new FrameParseResult
-                                {
-                                    Valid = true,
-                                    MsgId = msgId,
-                                    MsgSize = 0,
-                                    MsgData = new byte[0]
-                                };
-                                _state = AccumulatingReaderState.LookingForStart1;
-                                _internalDataLen = 0;
-                                _expectedFrameSize = 0;
-                                return result;
-                            }
-
-                            _state = AccumulatingReaderState.CollectingPayload;
-                        }
-                        else
-                        {
-                            _state = AccumulatingReaderState.LookingForStart1;
+                            _state = State.LookingForStart1;
                             _internalDataLen = 0;
+                            return FrameMsgInfo.Invalid;
                         }
+
+                        if (msgLen.Value == 0)
+                        {
+                            var result = new FrameMsgInfo(true, msgId, 0, _expectedFrameSize, _internalBuffer, _config.HeaderSize);
+                            _state = State.LookingForStart1;
+                            _internalDataLen = 0;
+                            _expectedFrameSize = 0;
+                            return result;
+                        }
+
+                        _state = State.CollectingPayload;
                     }
                     else
                     {
-                        _state = AccumulatingReaderState.LookingForStart1;
+                        _state = State.LookingForStart1;
                         _internalDataLen = 0;
                     }
                 }
@@ -982,9 +983,9 @@ namespace StructFrame
 
                     if (_expectedFrameSize > _bufferSize)
                     {
-                        _state = AccumulatingReaderState.LookingForStart1;
+                        _state = State.LookingForStart1;
                         _internalDataLen = 0;
-                        return new FrameParseResult();
+                        return FrameMsgInfo.Invalid;
                     }
 
                     if (_internalDataLen >= _expectedFrameSize)
@@ -992,20 +993,20 @@ namespace StructFrame
                         return ValidateAndReturn();
                     }
 
-                    _state = AccumulatingReaderState.CollectingPayload;
+                    _state = State.CollectingPayload;
                 }
             }
 
-            return new FrameParseResult();
+            return FrameMsgInfo.Invalid;
         }
 
-        private FrameParseResult HandleCollectingPayload(byte b)
+        private FrameMsgInfo HandleCollectingPayload(byte b)
         {
             if (_internalDataLen >= _bufferSize)
             {
-                _state = AccumulatingReaderState.LookingForStart1;
+                _state = State.LookingForStart1;
                 _internalDataLen = 0;
-                return new FrameParseResult();
+                return FrameMsgInfo.Invalid;
             }
 
             _internalBuffer[_internalDataLen++] = b;
@@ -1015,387 +1016,173 @@ namespace StructFrame
                 return ValidateAndReturn();
             }
 
-            return new FrameParseResult();
+            return FrameMsgInfo.Invalid;
         }
 
-        private FrameParseResult HandleMinimalMsgId(byte msgId)
+        private FrameMsgInfo HandleMinimalMsgId(byte msgId)
         {
-            if (_getMsgLength != null)
+            int? msgLen = _getMsgLength?.Invoke(msgId);
+            if (msgLen.HasValue)
             {
-                int? msgLen = _getMsgLength(msgId);
-                if (msgLen.HasValue)
+                _expectedFrameSize = _config.HeaderSize + msgLen.Value;
+
+                if (_expectedFrameSize > _bufferSize)
                 {
-                    _expectedFrameSize = _config.HeaderSize + msgLen.Value;
-
-                    if (_expectedFrameSize > _bufferSize)
-                    {
-                        _state = AccumulatingReaderState.LookingForStart1;
-                        _internalDataLen = 0;
-                        return new FrameParseResult();
-                    }
-
-                    if (msgLen.Value == 0)
-                    {
-                        var result = new FrameParseResult
-                        {
-                            Valid = true,
-                            MsgId = msgId,
-                            MsgSize = 0,
-                            MsgData = new byte[0]
-                        };
-                        _state = AccumulatingReaderState.LookingForStart1;
-                        _internalDataLen = 0;
-                        _expectedFrameSize = 0;
-                        return result;
-                    }
-
-                    _state = AccumulatingReaderState.CollectingPayload;
-                }
-                else
-                {
-                    _state = AccumulatingReaderState.LookingForStart1;
+                    _state = State.LookingForStart1;
                     _internalDataLen = 0;
+                    return FrameMsgInfo.Invalid;
                 }
+
+                if (msgLen.Value == 0)
+                {
+                    var result = new FrameMsgInfo(true, msgId, 0, _expectedFrameSize, _internalBuffer, _config.HeaderSize);
+                    _state = State.LookingForStart1;
+                    _internalDataLen = 0;
+                    _expectedFrameSize = 0;
+                    return result;
+                }
+
+                _state = State.CollectingPayload;
             }
             else
             {
-                _state = AccumulatingReaderState.LookingForStart1;
+                _state = State.LookingForStart1;
                 _internalDataLen = 0;
             }
-            return new FrameParseResult();
+            return FrameMsgInfo.Invalid;
         }
 
-        private FrameParseResult ValidateAndReturn()
+        private FrameMsgInfo ValidateAndReturn()
         {
-            byte[] internalBytes = new byte[_internalDataLen];
-            Array.Copy(_internalBuffer, 0, internalBytes, 0, _internalDataLen);
-            var result = ParseBuffer(internalBytes);
+            var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
 
-            _state = AccumulatingReaderState.LookingForStart1;
+            _state = State.LookingForStart1;
             _internalDataLen = 0;
             _expectedFrameSize = 0;
 
             return result;
         }
+    }
 
-        private FrameParseResult ParseBuffer(byte[] buffer)
-        {
-            var parser = new FrameProfileParser(_config, _getMsgLength);
-            return parser.ValidateBuffer(buffer);
-        }
+    // ============================================================================
+    // Profile Providers - Compile-time profile selection using generics
+    // ============================================================================
 
-        // =========================================================================
-        // Common API
-        // =========================================================================
+    /// <summary>
+    /// Interface for profile providers - enables compile-time profile selection
+    /// </summary>
+    public interface IProfileProvider
+    {
+        static abstract ProfileConfig Profile { get; }
+    }
 
-        /// <summary>
-        /// Check if there might be more data to parse (buffer mode only).
-        /// </summary>
-        public bool HasMore
-        {
-            get
-            {
-                if (_state != AccumulatingReaderState.BufferMode) return false;
-                return (_internalDataLen > 0) || (_currentBuffer != null && _currentOffset < _currentSize);
-            }
-        }
+    public struct StandardProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.Standard;
+    }
 
-        /// <summary>
-        /// Check if there's a partial message waiting for more data.
-        /// </summary>
-        public bool HasPartial => _internalDataLen > 0;
+    public struct SensorProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.Sensor;
+    }
 
-        /// <summary>
-        /// Get the size of the partial message data (0 if none).
-        /// </summary>
-        public int PartialSize => _internalDataLen;
+    public struct IPCProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.IPC;
+    }
 
-        /// <summary>
-        /// Get current parser state (for debugging).
-        /// </summary>
-        public AccumulatingReaderState State => _state;
+    public struct BulkProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.Bulk;
+    }
 
-        /// <summary>
-        /// Reset the reader, clearing any partial message data.
-        /// </summary>
-        public void Reset()
-        {
-            _internalDataLen = 0;
-            _expectedFrameSize = 0;
-            _state = AccumulatingReaderState.Idle;
-            _currentBuffer = null;
-            _currentSize = 0;
-            _currentOffset = 0;
-        }
+    public struct NetworkProfile : IProfileProvider
+    {
+        public static ProfileConfig Profile => Profiles.Network;
+    }
+
+    // ============================================================================
+    // Generic Profile-Based Classes
+    // ============================================================================
+
+    /// <summary>
+    /// Generic frame encoder with compile-time profile selection
+    /// Usage: var encoder = new FrameEncoder&lt;StandardProfile&gt;();
+    /// </summary>
+    public class FrameEncoder<TProfile> : FrameEncoder where TProfile : struct, IProfileProvider
+    {
+        public FrameEncoder() : base(TProfile.Profile) { }
     }
 
     /// <summary>
-    /// Pre-defined profile configurations
+    /// Generic buffer parser with compile-time profile selection
     /// </summary>
-    public static class FrameProfiles
+    public class BufferParser<TProfile> : BufferParser where TProfile : struct, IProfileProvider
     {
-        // Constants from FrameHeaders
-        public const byte BASIC_START_BYTE = 0x90;
-        public const byte PAYLOAD_TYPE_BASE = 0x70;
-
-        /// <summary>
-        /// Profile Standard: Basic + Default
-        /// Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-        /// </summary>
-        public static readonly FrameProfileConfig Standard = new FrameProfileConfig
-        {
-            Name = "ProfileStandard",
-            NumStartBytes = 2,
-            StartByte1 = BASIC_START_BYTE,
-            StartByte2 = PAYLOAD_TYPE_BASE + 1, // DEFAULT = 1
-            HeaderSize = 4,
-            FooterSize = 2,
-            HasLength = true,
-            LengthBytes = 1,
-            HasCrc = true,
-            HasPkgId = false,
-            HasSeq = false,
-            HasSysId = false,
-            HasCompId = false
-        };
-
-        /// <summary>
-        /// Profile Sensor: Tiny + Minimal
-        /// Frame: [0x70] [MSG_ID] [PAYLOAD]
-        /// </summary>
-        public static readonly FrameProfileConfig Sensor = new FrameProfileConfig
-        {
-            Name = "ProfileSensor",
-            NumStartBytes = 1,
-            StartByte1 = PAYLOAD_TYPE_BASE + 0, // MINIMAL = 0
-            StartByte2 = 0,
-            HeaderSize = 2,
-            FooterSize = 0,
-            HasLength = false,
-            LengthBytes = 0,
-            HasCrc = false,
-            HasPkgId = false,
-            HasSeq = false,
-            HasSysId = false,
-            HasCompId = false
-        };
-
-        /// <summary>
-        /// Profile IPC: None + Minimal
-        /// Frame: [MSG_ID] [PAYLOAD]
-        /// </summary>
-        public static readonly FrameProfileConfig IPC = new FrameProfileConfig
-        {
-            Name = "ProfileIPC",
-            NumStartBytes = 0,
-            StartByte1 = 0,
-            StartByte2 = 0,
-            HeaderSize = 1,
-            FooterSize = 0,
-            HasLength = false,
-            LengthBytes = 0,
-            HasCrc = false,
-            HasPkgId = false,
-            HasSeq = false,
-            HasSysId = false,
-            HasCompId = false
-        };
-
-        /// <summary>
-        /// Profile Bulk: Basic + Extended
-        /// Frame: [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-        /// </summary>
-        public static readonly FrameProfileConfig Bulk = new FrameProfileConfig
-        {
-            Name = "ProfileBulk",
-            NumStartBytes = 2,
-            StartByte1 = BASIC_START_BYTE,
-            StartByte2 = PAYLOAD_TYPE_BASE + 4, // EXTENDED = 4
-            HeaderSize = 6,
-            FooterSize = 2,
-            HasLength = true,
-            LengthBytes = 2,
-            HasCrc = true,
-            HasPkgId = true,
-            HasSeq = false,
-            HasSysId = false,
-            HasCompId = false
-        };
-
-        /// <summary>
-        /// Profile Network: Basic + ExtendedMultiSystemStream
-        /// Frame: [0x90] [0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-        /// </summary>
-        public static readonly FrameProfileConfig Network = new FrameProfileConfig
-        {
-            Name = "ProfileNetwork",
-            NumStartBytes = 2,
-            StartByte1 = BASIC_START_BYTE,
-            StartByte2 = PAYLOAD_TYPE_BASE + 8, // EXTENDED_MULTI_SYSTEM_STREAM = 8
-            HeaderSize = 9,
-            FooterSize = 2,
-            HasLength = true,
-            LengthBytes = 2,
-            HasCrc = true,
-            HasPkgId = true,
-            HasSeq = true,
-            HasSysId = true,
-            HasCompId = true
-        };
-
-        /// <summary>
-        /// Create a parser for Profile Standard
-        /// </summary>
-        public static FrameProfileParser CreateStandardParser() => new FrameProfileParser(Standard);
-
-        /// <summary>
-        /// Create a parser for Profile Sensor (requires get_msg_length callback)
-        /// </summary>
-        public static FrameProfileParser CreateSensorParser(Func<int, int?> getMsgLength) => 
-            new FrameProfileParser(Sensor, getMsgLength);
-
-        /// <summary>
-        /// Create a parser for Profile IPC (requires get_msg_length callback)
-        /// </summary>
-        public static FrameProfileParser CreateIPCParser(Func<int, int?> getMsgLength) => 
-            new FrameProfileParser(IPC, getMsgLength);
-
-        /// <summary>
-        /// Create a parser for Profile Bulk
-        /// </summary>
-        public static FrameProfileParser CreateBulkParser() => new FrameProfileParser(Bulk);
-
-        /// <summary>
-        /// Create a parser for Profile Network
-        /// </summary>
-        public static FrameProfileParser CreateNetworkParser() => new FrameProfileParser(Network);
-
-        // =========================================================================
-        // Convenience factory functions for BufferReader/BufferWriter/AccumulatingReader
-        // =========================================================================
-
-        /// <summary>
-        /// Create a BufferReader for Profile Standard
-        /// </summary>
-        public static BufferReader CreateStandardReader(byte[] buffer) => new BufferReader(Standard, buffer);
-
-        /// <summary>
-        /// Create a BufferWriter for Profile Standard
-        /// </summary>
-        public static BufferWriter CreateStandardWriter(int capacity = 1024) => new BufferWriter(Standard, capacity);
-
-        /// <summary>
-        /// Create an AccumulatingReader for Profile Standard
-        /// </summary>
-        public static AccumulatingReader CreateStandardAccumulatingReader(int bufferSize = 1024) => 
-            new AccumulatingReader(Standard, null, bufferSize);
-
-        /// <summary>
-        /// Create a BufferReader for Profile Sensor
-        /// </summary>
-        public static BufferReader CreateSensorReader(byte[] buffer, Func<int, int?> getMsgLength) => 
-            new BufferReader(Sensor, buffer, getMsgLength);
-
-        /// <summary>
-        /// Create a BufferWriter for Profile Sensor
-        /// </summary>
-        public static BufferWriter CreateSensorWriter(int capacity = 1024) => new BufferWriter(Sensor, capacity);
-
-        /// <summary>
-        /// Create an AccumulatingReader for Profile Sensor
-        /// </summary>
-        public static AccumulatingReader CreateSensorAccumulatingReader(Func<int, int?> getMsgLength, int bufferSize = 1024) => 
-            new AccumulatingReader(Sensor, getMsgLength, bufferSize);
-
-        /// <summary>
-        /// Create a BufferReader for Profile IPC
-        /// </summary>
-        public static BufferReader CreateIPCReader(byte[] buffer, Func<int, int?> getMsgLength) => 
-            new BufferReader(IPC, buffer, getMsgLength);
-
-        /// <summary>
-        /// Create a BufferWriter for Profile IPC
-        /// </summary>
-        public static BufferWriter CreateIPCWriter(int capacity = 1024) => new BufferWriter(IPC, capacity);
-
-        /// <summary>
-        /// Create an AccumulatingReader for Profile IPC
-        /// </summary>
-        public static AccumulatingReader CreateIPCAccumulatingReader(Func<int, int?> getMsgLength, int bufferSize = 1024) => 
-            new AccumulatingReader(IPC, getMsgLength, bufferSize);
-
-        /// <summary>
-        /// Create a BufferReader for Profile Bulk
-        /// </summary>
-        public static BufferReader CreateBulkReader(byte[] buffer) => new BufferReader(Bulk, buffer);
-
-        /// <summary>
-        /// Create a BufferWriter for Profile Bulk
-        /// </summary>
-        public static BufferWriter CreateBulkWriter(int capacity = 1024) => new BufferWriter(Bulk, capacity);
-
-        /// <summary>
-        /// Create an AccumulatingReader for Profile Bulk
-        /// </summary>
-        public static AccumulatingReader CreateBulkAccumulatingReader(int bufferSize = 1024) => 
-            new AccumulatingReader(Bulk, null, bufferSize);
-
-        /// <summary>
-        /// Create a BufferReader for Profile Network
-        /// </summary>
-        public static BufferReader CreateNetworkReader(byte[] buffer) => new BufferReader(Network, buffer);
-
-        /// <summary>
-        /// Create a BufferWriter for Profile Network
-        /// </summary>
-        public static BufferWriter CreateNetworkWriter(int capacity = 1024) => new BufferWriter(Network, capacity);
-
-        /// <summary>
-        /// Create an AccumulatingReader for Profile Network
-        /// </summary>
-        public static AccumulatingReader CreateNetworkAccumulatingReader(int bufferSize = 1024) => 
-            new AccumulatingReader(Network, null, bufferSize);
-
-        /// <summary>
-        /// Create a custom profile configuration
-        /// </summary>
-        public static FrameProfileConfig CreateCustomConfig(
-            string name,
-            int numStartBytes,
-            byte startByte1,
-            byte startByte2,
-            bool hasLength,
-            int lengthBytes,
-            bool hasCrc,
-            bool hasPkgId = false,
-            bool hasSeq = false,
-            bool hasSysId = false,
-            bool hasCompId = false)
-        {
-            // Calculate header size
-            int headerSize = numStartBytes + 1; // start bytes + msg_id
-            if (hasSeq) headerSize++;
-            if (hasSysId) headerSize++;
-            if (hasCompId) headerSize++;
-            if (hasLength) headerSize += lengthBytes;
-            if (hasPkgId) headerSize++;
-
-            return new FrameProfileConfig
-            {
-                Name = name,
-                NumStartBytes = numStartBytes,
-                StartByte1 = startByte1,
-                StartByte2 = startByte2,
-                HeaderSize = headerSize,
-                FooterSize = hasCrc ? 2 : 0,
-                HasLength = hasLength,
-                LengthBytes = lengthBytes,
-                HasCrc = hasCrc,
-                HasPkgId = hasPkgId,
-                HasSeq = hasSeq,
-                HasSysId = hasSysId,
-                HasCompId = hasCompId
-            };
-        }
+        public BufferParser(Func<int, int?> getMsgLength = null) : base(TProfile.Profile, getMsgLength) { }
     }
+
+    /// <summary>
+    /// Generic buffer reader with compile-time profile selection
+    /// </summary>
+    public class BufferReader<TProfile> : BufferReader where TProfile : struct, IProfileProvider
+    {
+        public BufferReader(Func<int, int?> getMsgLength = null) : base(TProfile.Profile, getMsgLength) { }
+    }
+
+    /// <summary>
+    /// Generic buffer writer with compile-time profile selection
+    /// </summary>
+    public class BufferWriter<TProfile> : BufferWriter where TProfile : struct, IProfileProvider
+    {
+        public BufferWriter() : base(TProfile.Profile) { }
+    }
+
+    /// <summary>
+    /// Generic accumulating reader with compile-time profile selection
+    /// </summary>
+    public class AccumulatingReader<TProfile> : AccumulatingReader where TProfile : struct, IProfileProvider
+    {
+        public AccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) 
+            : base(TProfile.Profile, bufferSize, getMsgLength) { }
+    }
+
+    // ============================================================================
+    // Type Aliases for Backwards Compatibility (optional - can be removed)
+    // ============================================================================
+
+    // FrameEncoder aliases
+    public class ProfileStandardEncoder : FrameEncoder<StandardProfile> { }
+    public class ProfileSensorEncoder : FrameEncoder<SensorProfile> { }
+    public class ProfileIPCEncoder : FrameEncoder<IPCProfile> { }
+    public class ProfileBulkEncoder : FrameEncoder<BulkProfile> { }
+    public class ProfileNetworkEncoder : FrameEncoder<NetworkProfile> { }
+
+    // BufferParser aliases
+    public class ProfileStandardParser : BufferParser<StandardProfile> { public ProfileStandardParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileSensorParser : BufferParser<SensorProfile> { public ProfileSensorParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileIPCParser : BufferParser<IPCProfile> { public ProfileIPCParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileBulkParser : BufferParser<BulkProfile> { public ProfileBulkParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileNetworkParser : BufferParser<NetworkProfile> { public ProfileNetworkParser(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+
+    // BufferReader aliases
+    public class ProfileStandardReader : BufferReader<StandardProfile> { public ProfileStandardReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileSensorReader : BufferReader<SensorProfile> { public ProfileSensorReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileIPCReader : BufferReader<IPCProfile> { public ProfileIPCReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileBulkReader : BufferReader<BulkProfile> { public ProfileBulkReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+    public class ProfileNetworkReader : BufferReader<NetworkProfile> { public ProfileNetworkReader(Func<int, int?> getMsgLength = null) : base(getMsgLength) { } }
+
+    // BufferWriter aliases
+    public class ProfileStandardWriter : BufferWriter<StandardProfile> { }
+    public class ProfileSensorWriter : BufferWriter<SensorProfile> { }
+    public class ProfileIPCWriter : BufferWriter<IPCProfile> { }
+    public class ProfileBulkWriter : BufferWriter<BulkProfile> { }
+    public class ProfileNetworkWriter : BufferWriter<NetworkProfile> { }
+
+    // AccumulatingReader aliases
+    public class ProfileStandardAccumulatingReader : AccumulatingReader<StandardProfile> { public ProfileStandardAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileSensorAccumulatingReader : AccumulatingReader<SensorProfile> { public ProfileSensorAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileIPCAccumulatingReader : AccumulatingReader<IPCProfile> { public ProfileIPCAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileBulkAccumulatingReader : AccumulatingReader<BulkProfile> { public ProfileBulkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
+    public class ProfileNetworkAccumulatingReader : AccumulatingReader<NetworkProfile> { public ProfileNetworkAccumulatingReader(int bufferSize = 1024, Func<int, int?> getMsgLength = null) : base(bufferSize, getMsgLength) { } }
 }

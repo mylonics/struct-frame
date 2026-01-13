@@ -1,210 +1,61 @@
-// Test runner entry point for C#
-//
-// Usage:
-//     dotnet run -- encode <frame_format> <output_file> [--runner test_runner_extended]
-//     dotnet run -- decode <frame_format> <input_file> [--runner test_runner_extended]
-//
-// Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
+/**
+ * Unified test runner for C# struct-frame tests.
+ *
+ * Routes to the appropriate test suite based on the executable name or first argument.
+ * This allows a single compiled executable to handle both standard and extended tests.
+ */
 
 using System;
 using System.IO;
+using System.Reflection;
 
-namespace StructFrameTests
+class TestRunner
 {
-    class TestRunner
+    static int Main(string[] args)
     {
-        static void PrintUsage()
+        // Determine which test suite to run based on:
+        // 1. --runner argument (e.g., "--runner test_extended")
+        // 2. Executable name (e.g., "test_standard.exe" or "test_extended.exe")
+        // 3. Default to test_standard
+
+        string testSuite = "test_standard";
+        string[] filteredArgs = args;
+
+        // Check for --runner argument
+        for (int i = 0; i < args.Length - 1; i++)
         {
-            Console.WriteLine("Usage:");
-            Console.WriteLine("  dotnet run -- encode <frame_format> <output_file> [--runner test_runner_extended]");
-            Console.WriteLine("  dotnet run -- decode <frame_format> <input_file> [--runner test_runner_extended]");
-            Console.WriteLine();
-            Console.WriteLine("Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network");
-        }
-
-        static void PrintHex(byte[] data)
-        {
-            int displayLen = Math.Min(data.Length, 64);
-            string hex = BitConverter.ToString(data, 0, displayLen).Replace("-", "").ToLower();
-            string suffix = data.Length > 64 ? "..." : "";
-            Console.WriteLine($"  Hex ({data.Length} bytes): {hex}{suffix}");
-        }
-
-        static int RunEncode(string formatName, string outputFile)
-        {
-            Console.WriteLine($"[ENCODE] Format: {formatName}");
-
-            byte[] encodedData;
-            try
+            if (args[i] == "--runner")
             {
-                encodedData = TestCodecHelpers.EncodeTestMessage(formatName);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[ENCODE] FAILED: Encoding error - {e.Message}");
-                return 1;
-            }
-
-            try
-            {
-                File.WriteAllBytes(outputFile, encodedData);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[ENCODE] FAILED: Cannot create output file: {outputFile} - {e.Message}");
-                return 1;
-            }
-
-            Console.WriteLine($"[ENCODE] SUCCESS: Wrote {encodedData.Length} bytes to {outputFile}");
-            return 0;
-        }
-
-        static int RunDecode(string formatName, string inputFile)
-        {
-            Console.WriteLine($"[DECODE] Format: {formatName}, File: {inputFile}");
-
-            byte[] data;
-            try
-            {
-                data = File.ReadAllBytes(inputFile);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[DECODE] FAILED: Cannot open input file: {inputFile} - {e.Message}");
-                return 1;
-            }
-
-            if (data.Length == 0)
-            {
-                Console.WriteLine("[DECODE] FAILED: Empty file");
-                return 1;
-            }
-
-            int messageCount = TestCodecHelpers.DecodeTestMessages(formatName, data);
-            if (messageCount == 0)
-            {
-                Console.WriteLine("[DECODE] FAILED: No messages decoded");
-                PrintHex(data);
-                return 1;
-            }
-
-            Console.WriteLine($"[DECODE] SUCCESS: {messageCount} messages validated correctly");
-            return 0;
-        }
-
-        static int RunEncodeExtended(string formatName, string outputFile)
-        {
-            Console.WriteLine($"[ENCODE] Format: {formatName} (Extended)");
-
-            byte[] encodedData;
-            try
-            {
-                encodedData = ExtendedTestCodec.EncodeExtendedMessages(formatName);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[ENCODE] FAILED: Encoding error - {e.Message}");
-                return 1;
-            }
-
-            try
-            {
-                File.WriteAllBytes(outputFile, encodedData);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[ENCODE] FAILED: Cannot create output file: {outputFile} - {e.Message}");
-                return 1;
-            }
-
-            Console.WriteLine($"[ENCODE] SUCCESS: Wrote {encodedData.Length} bytes to {outputFile}");
-            return 0;
-        }
-
-        static int RunDecodeExtended(string formatName, string inputFile)
-        {
-            Console.WriteLine($"[DECODE] Format: {formatName}, File: {inputFile} (Extended)");
-
-            byte[] data;
-            try
-            {
-                data = File.ReadAllBytes(inputFile);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"[DECODE] FAILED: Cannot open input file: {inputFile} - {e.Message}");
-                return 1;
-            }
-
-            if (data.Length == 0)
-            {
-                Console.WriteLine("[DECODE] FAILED: Empty file");
-                return 1;
-            }
-
-            int messageCount = ExtendedTestCodec.DecodeExtendedMessages(formatName, data);
-            if (messageCount == 0)
-            {
-                Console.WriteLine("[DECODE] FAILED: No messages decoded");
-                PrintHex(data);
-                return 1;
-            }
-
-            Console.WriteLine($"[DECODE] SUCCESS: {messageCount} messages validated correctly");
-            return 0;
-        }
-
-        static int Main(string[] args)
-        {
-            if (args.Length < 3)
-            {
-                PrintUsage();
-                return 1;
-            }
-
-            string mode = args[0].ToLower();
-            string formatName = args[1];
-            string filePath = args[2];
-
-            // Check for --runner argument
-            bool useExtended = false;
-            for (int i = 3; i < args.Length - 1; i++)
-            {
-                if (args[i] == "--runner" && args[i + 1] == "test_extended")
+                testSuite = args[i + 1];
+                // Remove --runner and its value from args
+                filteredArgs = new string[args.Length - 2];
+                Array.Copy(args, 0, filteredArgs, 0, i);
+                if (i + 2 < args.Length)
                 {
-                    useExtended = true;
-                    break;
+                    Array.Copy(args, i + 2, filteredArgs, i, args.Length - i - 2);
                 }
+                break;
             }
+        }
 
-            if (useExtended)
+        // If not specified via --runner, check the executable name
+        if (testSuite == "test_standard" && filteredArgs.Length == args.Length)
+        {
+            string exeName = Path.GetFileNameWithoutExtension(Assembly.GetExecutingAssembly().Location);
+            if (exeName.Contains("test_extended") || exeName.Contains("extended"))
             {
-                switch (mode)
-                {
-                    case "encode":
-                        return RunEncodeExtended(formatName, filePath);
-                    case "decode":
-                        return RunDecodeExtended(formatName, filePath);
-                    default:
-                        Console.WriteLine($"Unknown mode: {mode}");
-                        PrintUsage();
-                        return 1;
-                }
+                testSuite = "test_extended";
             }
-            else
-            {
-                switch (mode)
-                {
-                    case "encode":
-                        return RunEncode(formatName, filePath);
-                    case "decode":
-                        return RunDecode(formatName, filePath);
-                    default:
-                        Console.WriteLine($"Unknown mode: {mode}");
-                        PrintUsage();
-                        return 1;
-                }
-            }
+        }
+
+        // Route to the appropriate test suite
+        if (testSuite == "test_extended")
+        {
+            return TestExtended.Main(filteredArgs);
+        }
+        else
+        {
+            return TestStandard.Main(filteredArgs);
         }
     }
 }

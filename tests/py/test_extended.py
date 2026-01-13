@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Test runner entry point for Python - Extended message ID and payload tests.
+Test entry point for extended message ID and payload tests (Python).
 
 Usage:
-    test_runner_extended.py encode <frame_format> <output_file>
-    test_runner_extended.py decode <frame_format> <input_file>
+    test_runner_extended encode <frame_format> <output_file>
+    test_runner_extended decode <frame_format> <input_file>
 
 Frame formats (extended profiles only): profile_bulk, profile_network
 """
@@ -12,108 +12,12 @@ Frame formats (extended profiles only): profile_bulk, profile_network
 import sys
 import os
 
-# Add the generated code directory to the path
-script_dir = os.path.dirname(os.path.abspath(__file__))
-gen_dir = os.path.join(script_dir, '..', 'generated', 'py')
-if gen_dir not in sys.path:
-    sys.path.insert(0, gen_dir)
+# Add include directory to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'include'))
 
-
-def print_usage():
-    print("Usage:")
-    print("  test_runner_extended.py encode <frame_format> <output_file>")
-    print("  test_runner_extended.py decode <frame_format> <input_file>")
-    print("\nFrame formats (extended profiles): profile_bulk, profile_network")
-
-
-def print_hex(data):
-    hex_str = data.hex() if len(data) <= 64 else data[:64].hex() + "..."
-    print(f"  Hex ({len(data)} bytes): {hex_str}")
-
-
-def run_encode(format_name, output_file):
-    from test_codec_extended import encode_extended_messages
-
-    print(f"[ENCODE] Format: {format_name}")
-
-    try:
-        encoded_data = encode_extended_messages(format_name)
-    except Exception as e:
-        print(f"[ENCODE] FAILED: Encoding error - {e}")
-        import traceback
-        traceback.print_exc()
-        return 1
-
-    try:
-        with open(output_file, 'wb') as f:
-            f.write(encoded_data)
-    except Exception as e:
-        print(f"[ENCODE] FAILED: Cannot create output file: {output_file} - {e}")
-        return 1
-
-    print(f"[ENCODE] SUCCESS: Wrote {len(encoded_data)} bytes to {output_file}")
-    return 0
-
-
-def run_decode(format_name, input_file):
-    from test_codec_extended import decode_extended_messages
-
-    print(f"[DECODE] Format: {format_name}, File: {input_file}")
-
-    try:
-        with open(input_file, 'rb') as f:
-            data = f.read()
-    except Exception as e:
-        print(f"[DECODE] FAILED: Cannot open input file: {input_file} - {e}")
-        return 1
-
-    if len(data) == 0:
-        print("[DECODE] FAILED: Empty file")
-        return 1
-
-    try:
-        success, message_count = decode_extended_messages(format_name, data)
-    except Exception as e:
-        print(f"[DECODE] FAILED: Decoding error - {e}")
-        print_hex(data)
-        import traceback
-        traceback.print_exc()
-        return 1
-
-    if not success:
-        print("[DECODE] FAILED: Validation error")
-        print_hex(data)
-        return 1
-
-    print(f"[DECODE] SUCCESS: {message_count} messages validated correctly")
-    return 0
-
-
-def main():
-    if len(sys.argv) != 4:
-        print_usage()
-        return 1
-
-    mode = sys.argv[1]
-    format_name = sys.argv[2]
-    file_path = sys.argv[3]
-
-    print(f"\n[TEST START] Python Extended {format_name} {mode}")
-
-    if mode == "encode":
-        result = run_encode(format_name, file_path)
-    elif mode == "decode":
-        result = run_decode(format_name, file_path)
-    else:
-        print(f"Unknown mode: {mode}")
-        print_usage()
-        result = 1
-
-    status = "PASS" if result == 0 else "FAIL"
-    print(f"[TEST END] Python Extended {format_name} {mode}: {status}\n")
-
-    return result
-
+from test_codec import run_test_main
+from extended_test_data import Config
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_test_main(Config))
+

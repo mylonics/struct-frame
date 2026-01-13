@@ -374,7 +374,7 @@ static inline size_t ext_encode_message(buffer_writer_t* writer, size_t index) {
 }
 
 /* ============================================================================
- * Validator - validates decoded messages against expected data
+ * Validator - validates decoded messages against expected data using _equals()
  * ============================================================================ */
 
 static inline bool ext_validate_message(uint16_t msg_id, const uint8_t* data, size_t size, size_t* index) {
@@ -383,51 +383,75 @@ static inline bool ext_validate_message(uint16_t msg_id, const uint8_t* data, si
   switch (msg_id) {
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MSG_ID: {
       const ExtendedTestExtendedIdMessage1* expected = get_message_ext_1();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage1* decoded = (const ExtendedTestExtendedIdMessage1*)data;
+      return ExtendedTestExtendedIdMessage1_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MSG_ID: {
       const ExtendedTestExtendedIdMessage2* expected = get_message_ext_2();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage2* decoded = (const ExtendedTestExtendedIdMessage2*)data;
+      return ExtendedTestExtendedIdMessage2_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MSG_ID: {
       const ExtendedTestExtendedIdMessage3* expected = get_message_ext_3();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage3* decoded = (const ExtendedTestExtendedIdMessage3*)data;
+      return ExtendedTestExtendedIdMessage3_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MSG_ID: {
       const ExtendedTestExtendedIdMessage4* expected = get_message_ext_4();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage4* decoded = (const ExtendedTestExtendedIdMessage4*)data;
+      return ExtendedTestExtendedIdMessage4_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MSG_ID: {
       const ExtendedTestExtendedIdMessage5* expected = get_message_ext_5();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage5* decoded = (const ExtendedTestExtendedIdMessage5*)data;
+      return ExtendedTestExtendedIdMessage5_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MSG_ID: {
       const ExtendedTestExtendedIdMessage6* expected = get_message_ext_6();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage6* decoded = (const ExtendedTestExtendedIdMessage6*)data;
+      return ExtendedTestExtendedIdMessage6_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MSG_ID: {
       const ExtendedTestExtendedIdMessage7* expected = get_message_ext_7();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage7* decoded = (const ExtendedTestExtendedIdMessage7*)data;
+      return ExtendedTestExtendedIdMessage7_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MSG_ID: {
       const ExtendedTestExtendedIdMessage8* expected = get_message_ext_8();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage8* decoded = (const ExtendedTestExtendedIdMessage8*)data;
+      return ExtendedTestExtendedIdMessage8_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MSG_ID: {
       const ExtendedTestExtendedIdMessage9* expected = get_message_ext_9();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage9* decoded = (const ExtendedTestExtendedIdMessage9*)data;
+      return ExtendedTestExtendedIdMessage9_equals(decoded, expected);
     }
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MSG_ID: {
       const ExtendedTestExtendedIdMessage10* expected = get_message_ext_10();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedIdMessage10* decoded = (const ExtendedTestExtendedIdMessage10*)data;
+      return ExtendedTestExtendedIdMessage10_equals(decoded, expected);
     }
     case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MSG_ID: {
       const ExtendedTestLargePayloadMessage1* expected = get_message_large_1();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestLargePayloadMessage1* decoded = (const ExtendedTestLargePayloadMessage1*)data;
+      return ExtendedTestLargePayloadMessage1_equals(decoded, expected);
     }
     case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MSG_ID: {
       const ExtendedTestLargePayloadMessage2* expected = get_message_large_2();
-      return size == sizeof(*expected) && memcmp(data, expected, size) == 0;
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestLargePayloadMessage2* decoded = (const ExtendedTestLargePayloadMessage2*)data;
+      return ExtendedTestLargePayloadMessage2_equals(decoded, expected);
     }
     default:
       return false;
