@@ -187,7 +187,7 @@ namespace StructFrameTests
                     }
                 },
 
-                // 8: UnionTestMessage - with_array_payload
+                // 8: UnionTestMessage - with_array_payload (matches C++ create_union_with_array)
                 new MixedMessage
                 {
                     Type = MessageType.UnionTest,
@@ -197,46 +197,30 @@ namespace StructFrameTests
                         ["array_payload"] = new Dictionary<string, object>
                         {
                             ["fixed_ints"] = new List<int> { 10, 20, 30 },
-                            ["fixed_floats"] = new List<float> { 1.1f, 2.2f },
+                            ["fixed_floats"] = new List<float> { 1.5f, 2.5f },
                             ["fixed_bools"] = new List<bool> { true, false, true, false },
-                            ["bounded_uints"] = new List<ushort> { 100, 200, 300 },
-                            ["bounded_doubles"] = new List<double> { 3.14, 2.71, 1.41 },
-                            ["fixed_strings"] = new List<string> { "str1", "str2" },
-                            ["bounded_strings"] = new List<string> { "bounded1", "bounded2" },
-                            ["fixed_statuses"] = new List<byte> { 1, 2 },
-                            ["bounded_statuses"] = new List<byte> { 10, 20, 30 },
+                            ["bounded_uints"] = new List<ushort> { 100, 200 },
+                            ["bounded_doubles"] = new List<double> { 3.14159 },
+                            ["fixed_strings"] = new List<string> { "Hello", "World" },
+                            ["bounded_strings"] = new List<string> { "Test" },
+                            ["fixed_statuses"] = new List<byte> { 1, 2 },  // ACTIVE=1, ERROR=2
+                            ["bounded_statuses"] = new List<byte> { 0 },   // INACTIVE=0
                             ["fixed_sensors"] = new List<Dictionary<string, object>>
                             {
                                 new Dictionary<string, object>
                                 {
                                     ["id"] = (ushort)1,
-                                    ["value"] = 1.1f,
-                                    ["status"] = (byte)1,
-                                    ["name"] = "sensor1"
+                                    ["value"] = 25.5f,
+                                    ["status"] = (byte)1,  // ACTIVE
+                                    ["name"] = "TempSensor"
                                 }
                             },
-                            ["bounded_sensors"] = new List<Dictionary<string, object>>
-                            {
-                                new Dictionary<string, object>
-                                {
-                                    ["id"] = (ushort)2,
-                                    ["value"] = 2.2f,
-                                    ["status"] = (byte)2,
-                                    ["name"] = "sensor2"
-                                },
-                                new Dictionary<string, object>
-                                {
-                                    ["id"] = (ushort)3,
-                                    ["value"] = 3.3f,
-                                    ["status"] = (byte)3,
-                                    ["name"] = "sensor3"
-                                }
-                            }
+                            ["bounded_sensors"] = new List<Dictionary<string, object>>()  // count=0
                         }
                     }
                 },
 
-                // 9: UnionTestMessage - with_test_payload
+                // 9: UnionTestMessage - with_test_payload (matches C++ create_union_with_test)
                 new MixedMessage
                 {
                     Type = MessageType.UnionTest,
@@ -245,11 +229,11 @@ namespace StructFrameTests
                         ["payload_type"] = 2,
                         ["test_payload"] = new Dictionary<string, object>
                         {
-                            ["magic_number"] = 0xCAFEBABEu,
-                            ["test_string"] = "Union payload",
-                            ["test_float"] = 42.42f,
-                            ["test_bool"] = false,
-                            ["test_array"] = new List<int> { 7, 8, 9 }
+                            ["magic_number"] = 0x12345678u,
+                            ["test_string"] = "Union test message",
+                            ["test_float"] = 99.99f,
+                            ["test_bool"] = true,
+                            ["test_array"] = new List<int> { 1, 2, 3, 4, 5 }
                         }
                     }
                 },

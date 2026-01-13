@@ -385,7 +385,7 @@ class MessageCSharpGen():
         for key, f in msg.fields.items():
             result += FieldCSharpGen.generate_field_declaration(f)
 
-        # Generate oneofs (simplified - just declarations)
+        # Generate oneofs - declarations for discriminator and union members
         for key, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 result += f'        public ushort {pascalCase(oneof.name)}Discriminator;\n'
@@ -409,6 +409,29 @@ class MessageCSharpGen():
                 result += line + '\n'
             offset += f.size
 
+        # Generate oneof packing code
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                result += f'            // Oneof {oneof_name} discriminator\n'
+                result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({offset}), {pascalCase(oneof_name)}Discriminator);\n'
+                offset += 2
+            
+            result += f'            // Oneof {oneof_name} payload (union size: {oneof.size})\n'
+            first = True
+            for field_name, field in oneof.fields.items():
+                type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
+                field_var = pascalCase(field_name)
+                if first:
+                    result += f'            if ({field_var} != null)\n'
+                    first = False
+                else:
+                    result += f'            else if ({field_var} != null)\n'
+                result += '            {\n'
+                result += f'                var unionBytes = {field_var}.Pack();\n'
+                result += f'                Array.Copy(unionBytes, 0, buffer, {offset}, Math.Min(unionBytes.Length, {oneof.size}));\n'
+                result += '            }\n'
+            offset += oneof.size
+
         result += '            return buffer;\n'
         result += '        }\n'
 
@@ -427,6 +450,30 @@ class MessageCSharpGen():
             for line in unpack_lines:
                 result += line + '\n'
             offset += f.size
+
+        # Generate oneof unpacking code
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                result += f'            // Oneof {oneof_name} discriminator\n'
+                result += f'            msg.{pascalCase(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset + {offset}));\n'
+                result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
+                offset += 2
+            
+            result += f'            // Oneof {oneof_name} payload (union size: {oneof.size})\n'
+            if oneof.auto_discriminator:
+                first = True
+                for field_name, field in oneof.fields.items():
+                    type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
+                    field_var = pascalCase(field_name)
+                    if first:
+                        result += f'            if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
+                        first = False
+                    else:
+                        result += f'            else if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
+                    result += '            {\n'
+                    result += f'                msg.{field_var} = {type_name}.Unpack(data, offset + {offset});\n'
+                    result += '            }\n'
+            offset += oneof.size
 
         result += '            return msg;\n'
         result += '        }\n'

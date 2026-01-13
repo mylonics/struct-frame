@@ -99,7 +99,7 @@ namespace StructFrameTests
         {
             switch (index)
             {
-                // Message 0: ExtendedIdMessage1
+                // Message 0: ExtendedIdMessage1 (matches C++ create_ext_id_1)
                 case 0:
                 {
                     var msg = new ExtendedIdMessage1
@@ -112,7 +112,7 @@ namespace StructFrameTests
                     return (new ExtendedTestMessage(ExtendedIdMessage1.MsgId, ExtendedIdMessage1.MaxSize, msg.Pack), "ExtendedIdMessage1");
                 }
 
-                // Message 1: ExtendedIdMessage2
+                // Message 1: ExtendedIdMessage2 (matches C++ create_ext_id_2)
                 case 1:
                 {
                     var msg = new ExtendedIdMessage2
@@ -126,7 +126,7 @@ namespace StructFrameTests
                     return (new ExtendedTestMessage(ExtendedIdMessage2.MsgId, ExtendedIdMessage2.MaxSize, msg.Pack), "ExtendedIdMessage2");
                 }
 
-                // Message 2: ExtendedIdMessage3
+                // Message 2: ExtendedIdMessage3 (matches C++ create_ext_id_3)
                 case 2:
                 {
                     var msg = new ExtendedIdMessage3
@@ -139,7 +139,7 @@ namespace StructFrameTests
                     return (new ExtendedTestMessage(ExtendedIdMessage3.MsgId, ExtendedIdMessage3.MaxSize, msg.Pack), "ExtendedIdMessage3");
                 }
 
-                // Message 3: ExtendedIdMessage4
+                // Message 3: ExtendedIdMessage4 (matches C++ create_ext_id_4)
                 case 3:
                 {
                     var msg = new ExtendedIdMessage4
@@ -153,108 +153,112 @@ namespace StructFrameTests
                     return (new ExtendedTestMessage(ExtendedIdMessage4.MsgId, ExtendedIdMessage4.MaxSize, msg.Pack), "ExtendedIdMessage4");
                 }
 
-                // Message 4: ExtendedIdMessage5
+                // Message 4: ExtendedIdMessage5 (matches C++ create_ext_id_5)
                 case 4:
                 {
                     var msg = new ExtendedIdMessage5
                     {
-                        XPosition = 1.0f,
-                        YPosition = 2.0f,
-                        ZPosition = 3.0f,
-                        FrameNumber = 255
+                        XPosition = 100.5f,
+                        YPosition = -200.25f,
+                        ZPosition = 50.125f,
+                        FrameNumber = 1000000
                     };
                     return (new ExtendedTestMessage(ExtendedIdMessage5.MsgId, ExtendedIdMessage5.MaxSize, msg.Pack), "ExtendedIdMessage5");
                 }
 
-                // Message 5: ExtendedIdMessage6
+                // Message 5: ExtendedIdMessage6 (matches C++ create_ext_id_6)
                 case 5:
                 {
                     var msg = new ExtendedIdMessage6
                     {
-                        CommandId = 12345,
-                        Parameter1 = 100,
-                        Parameter2 = 200,
-                        Acknowledged = true,
-                        CommandName = CreateLabelBytes("Command parameters ext 6", 24)
+                        CommandId = -12345,
+                        Parameter1 = 1000,
+                        Parameter2 = 2000,
+                        Acknowledged = false,
+                        CommandName = CreateLabelBytes("CALIBRATE_SENSOR", 24)
                     };
                     return (new ExtendedTestMessage(ExtendedIdMessage6.MsgId, ExtendedIdMessage6.MaxSize, msg.Pack), "ExtendedIdMessage6");
                 }
 
-                // Message 6: ExtendedIdMessage7
+                // Message 6: ExtendedIdMessage7 (matches C++ create_ext_id_7)
                 case 6:
                 {
                     var msg = new ExtendedIdMessage7
                     {
-                        Counter = 0xFFFFFFFF,
-                        Average = 3.14159265,
-                        Minimum = 1.0f,
-                        Maximum = 100.0f
+                        Counter = 4294967295,
+                        Average = 123.456789,
+                        Minimum = -999.99f,
+                        Maximum = 999.99f
                     };
                     return (new ExtendedTestMessage(ExtendedIdMessage7.MsgId, ExtendedIdMessage7.MaxSize, msg.Pack), "ExtendedIdMessage7");
                 }
 
-                // Message 7: ExtendedIdMessage8
+                // Message 7: ExtendedIdMessage8 (matches C++ create_ext_id_8)
                 case 7:
                 {
                     var msg = new ExtendedIdMessage8
                     {
-                        Level = 8,
-                        Offset = 888,
-                        Duration = 8888,
-                        Tag = CreateLabelBytes("Tag8----", 8)
+                        Level = 255,
+                        Offset = -32768,
+                        Duration = 86400000,
+                        Tag = CreateLabelBytes("TEST123", 8)
                     };
                     return (new ExtendedTestMessage(ExtendedIdMessage8.MsgId, ExtendedIdMessage8.MaxSize, msg.Pack), "ExtendedIdMessage8");
                 }
 
-                // Message 8: ExtendedIdMessage9
+                // Message 8: ExtendedIdMessage9 (matches C++ create_ext_id_9)
                 case 8:
                 {
                     var msg = new ExtendedIdMessage9
                     {
-                        BigNumber = 9876543210,
-                        BigUnsigned = 9876543210,
-                        PrecisionValue = 9.87654321
+                        BigNumber = -9223372036854775807,
+                        BigUnsigned = 18446744073709551615,
+                        PrecisionValue = 1.7976931348623157e+308
                     };
                     return (new ExtendedTestMessage(ExtendedIdMessage9.MsgId, ExtendedIdMessage9.MaxSize, msg.Pack), "ExtendedIdMessage9");
                 }
 
-                // Message 9: ExtendedIdMessage10
+                // Message 9: ExtendedIdMessage10 (matches C++ create_ext_id_10)
                 case 9:
                 {
                     var msg = new ExtendedIdMessage10
                     {
-                        SmallValue = 1000,
-                        ShortText = CreateLabelBytes("Log message 10--", 16),
+                        SmallValue = 256,
+                        ShortText = CreateLabelBytes("Boundary Test", 16),
                         Flag = true
                     };
                     return (new ExtendedTestMessage(ExtendedIdMessage10.MsgId, ExtendedIdMessage10.MaxSize, msg.Pack), "ExtendedIdMessage10");
                 }
 
-                // Message 10: LargePayloadMessage1 - payload > 255 bytes
+                // Message 10: LargePayloadMessage1 (matches C++ create_large_1)
                 case 10:
                 {
                     var sensorReadings = new float[64];
                     for (int i = 0; i < 64; i++)
                     {
-                        sensorReadings[i] = (float)i;
+                        sensorReadings[i] = (float)(i + 1);
                     }
                     var msg = new LargePayloadMessage1
                     {
                         SensorReadings = sensorReadings,
                         ReadingCount = 64,
-                        Timestamp = 1704067200000,
-                        DeviceName = CreateLabelBytes("Large Payload Device 1", 32)
+                        Timestamp = 1704067200000000,
+                        DeviceName = CreateLabelBytes("Large Sensor Array Device", 32)
                     };
                     return (new ExtendedTestMessage(LargePayloadMessage1.MsgId, LargePayloadMessage1.MaxSize, msg.Pack), "LargePayloadMessage1");
                 }
 
-                // Message 11: LargePayloadMessage2 - payload > 255 bytes
+                // Message 11: LargePayloadMessage2 (matches C++ create_large_2)
                 case 11:
                 {
                     var largeData = new byte[280];
-                    for (int i = 0; i < 280; i++)
+                    for (int i = 0; i < 256; i++)
                     {
-                        largeData[i] = (byte)'Y';
+                        largeData[i] = (byte)i;
+                    }
+                    for (int i = 256; i < 280; i++)
+                    {
+                        largeData[i] = (byte)(i - 256);
                     }
                     var msg = new LargePayloadMessage2
                     {

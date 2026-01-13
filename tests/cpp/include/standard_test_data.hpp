@@ -266,18 +266,13 @@ struct Config {
   using Encoder = TestMessagesData::Encoder;
   using Validator = TestMessagesData::Validator;
 
-  static const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
-    return TestMessagesData::get_msg_id_order();
-  }
+  static const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() { return TestMessagesData::get_msg_id_order(); }
 
-  static bool get_message_length(size_t msg_id, size_t* size) {
-    return FrameParsers::get_message_length(msg_id, size);
-  }
+  static bool get_message_length(size_t msg_id, size_t* size) { return FrameParsers::get_message_length(msg_id, size); }
 
   static bool supports_format(const std::string& format) {
-    return format == "profile_standard" || format == "profile_sensor" ||
-           format == "profile_ipc" || format == "profile_bulk" ||
-           format == "profile_network";
+    return format == "profile_standard" || format == "profile_sensor" || format == "profile_ipc" ||
+           format == "profile_bulk" || format == "profile_network";
   }
 };
 

@@ -21,9 +21,106 @@ import shutil
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+
+# =============================================================================
+# Color Output Utilities
+# =============================================================================
+
+class Colors:
+    """ANSI color codes for terminal output."""
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    
+    _enabled = True
+    
+    @classmethod
+    def disable(cls):
+        """Disable colored output."""
+        cls._enabled = False
+    
+    @classmethod
+    def enable(cls):
+        """Enable colored output."""
+        cls._enabled = True
+    
+    @classmethod
+    def _c(cls, color: str, text: str) -> str:
+        """Apply color if enabled."""
+        if cls._enabled:
+            return f"{color}{text}{cls.RESET}"
+        return text
+    
+    @classmethod
+    def red(cls, text: str) -> str:
+        return cls._c(cls.RED, text)
+    
+    @classmethod
+    def green(cls, text: str) -> str:
+        return cls._c(cls.GREEN, text)
+    
+    @classmethod
+    def yellow(cls, text: str) -> str:
+        return cls._c(cls.YELLOW, text)
+    
+    @classmethod
+    def blue(cls, text: str) -> str:
+        return cls._c(cls.BLUE, text)
+    
+    @classmethod
+    def cyan(cls, text: str) -> str:
+        return cls._c(cls.CYAN, text)
+    
+    @classmethod
+    def bold(cls, text: str) -> str:
+        return cls._c(cls.BOLD, text)
+    
+    @classmethod
+    def pass_text(cls) -> str:
+        return cls.green("PASS")
+    
+    @classmethod
+    def fail_text(cls) -> str:
+        return cls.red("FAIL")
+    
+    @classmethod
+    def ok_tag(cls) -> str:
+        return cls.green("[OK]")
+    
+    @classmethod
+    def fail_tag(cls) -> str:
+        return cls.red("[FAIL]")
+    
+    @classmethod
+    def warn_tag(cls) -> str:
+        return cls.yellow("[WARN]")
+
+
+def _init_colors():
+    """Initialize color support based on terminal capabilities."""
+    if sys.platform == "win32":
+        # Enable ANSI on Windows
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+        except Exception:
+            Colors.disable()
+    
+    # Disable colors if not a TTY or NO_COLOR is set
+    if not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
+        Colors.disable()
+
+_init_colors()
 
 
 # =============================================================================
@@ -94,6 +191,28 @@ class Language:
 
 
 # =============================================================================
+# Timing Utilities
+# =============================================================================
+
+class TimedPhase:
+    """Context manager for timing test phases."""
+    
+    def __init__(self, runner: 'TestRunner', phase_name: str):
+        self.runner = runner
+        self.phase_name = phase_name
+        self.start_time: float = 0
+    
+    def __enter__(self):
+        self.start_time = time.time()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        elapsed = time.time() - self.start_time
+        self.runner.phase_times[self.phase_name] = elapsed
+        return False
+
+
+# =============================================================================
 # Test Runner
 # =============================================================================
 
@@ -109,13 +228,24 @@ class TestRunner:
         self.languages = self._init_languages()
         self.skipped_languages: List[str] = []
         
+        # Tool availability cache (populated during check_tools)
+        self._tool_cache: Optional[Dict[str, Dict[str, Any]]] = None
+        
+        # Timing tracking for phases
+        self.phase_times: Dict[str, float] = {}
+        
+        # Failure details for summary
+        self.failures: List[Dict[str, Any]] = []
+        
         # Results tracking
         self.results = {
             "generation": {},
             "compilation": {},
             "standard_encode": {},
+            "standard_validate": {},
             "standard_decode": {},
             "extended_encode": {},
+            "extended_validate": {},
             "extended_decode": {},
         }
     
@@ -197,6 +327,21 @@ class TestRunner:
     # =========================================================================
     # Utility Methods
     # =========================================================================
+    
+    def timed_phase(self, phase_name: str) -> 'TimedPhase':
+        """Create a context manager for timing a phase."""
+        return TimedPhase(self, phase_name)
+    
+    def add_failure(self, phase: str, language: str, profile: Optional[str], 
+                    reason: str, details: Optional[str] = None):
+        """Record a test failure for summary."""
+        self.failures.append({
+            "phase": phase,
+            "language": language,
+            "profile": profile,
+            "reason": reason,
+            "details": details,
+        })
     
     def run_cmd(self, cmd: str, cwd: Optional[Path] = None, 
                 env: Optional[Dict[str, str]] = None, 
@@ -285,8 +430,16 @@ class TestRunner:
     # Phase 2: Tool Availability Check
     # =========================================================================
     
-    def check_tools(self) -> Dict[str, Dict[str, Any]]:
-        """Check tool availability for all languages."""
+    def check_tools(self, use_cache: bool = True) -> Dict[str, Dict[str, Any]]:
+        """Check tool availability for all languages.
+        
+        Args:
+            use_cache: If True, return cached results if available.
+        """
+        # Return cached results if available
+        if use_cache and self._tool_cache is not None:
+            return self._tool_cache
+        
         self.print_section("TOOL AVAILABILITY CHECK")
         
         results = {}
@@ -325,7 +478,7 @@ class TestRunner:
         
         # Print results
         for lang_id, info in results.items():
-            status = "[OK]" if info["available"] else "[FAIL]"
+            status = Colors.ok_tag() if info["available"] else Colors.fail_tag()
             print(f"\n  {status} {info['name']}")
             
             if info.get("generation_only"):
@@ -334,17 +487,20 @@ class TestRunner:
             
             if info.get("compiler"):
                 c = info["compiler"]
-                cs = "[OK]" if c["available"] else "[FAIL]"
+                cs = Colors.ok_tag() if c["available"] else Colors.fail_tag()
                 ver = f" ({c['version']})" if c["version"] else ""
                 print(f"      Compiler:    {cs} {c['name']}{ver}")
             
             if info.get("interpreter"):
                 i = info["interpreter"]
-                ist = "[OK]" if i["available"] else "[FAIL]"
+                ist = Colors.ok_tag() if i["available"] else Colors.fail_tag()
                 ver = f" ({i['version']})" if i["version"] else ""
                 print(f"      Interpreter: {ist} {i['name']}{ver}")
         
         print()
+        
+        # Cache the results
+        self._tool_cache = results
         return results
     
     # =========================================================================
@@ -376,19 +532,20 @@ class TestRunner:
                 cmd_parts.extend([lang.gen_flag, "--" + lang.gen_flag.lstrip("-").replace("build_", "") + "_path", str(gen_dir)])
             
             env = {"PYTHONPATH": str(self.project_root / "src")}
-            success, _, _ = self.run_cmd(" ".join(cmd_parts), env=env)
+            success, _, stderr = self.run_cmd(" ".join(cmd_parts), env=env)
             
             if success:
                 for lang in active:
                     self.results["generation"][lang.id] = True
             else:
-                print(f"  [ERROR] Code generation failed for {proto_file}")
+                print(f"  {Colors.fail_tag()} Code generation failed for {proto_file}")
+                self.add_failure("generation", "all", None, f"Proto file: {proto_file}", stderr)
                 all_success = False
         
         # Print results
         print()
         for lang in active:
-            status = "PASS" if self.results["generation"].get(lang.id, False) else "FAIL"
+            status = Colors.pass_text() if self.results["generation"].get(lang.id, False) else Colors.fail_text()
             print(f"  {lang.name:>10}: {status}")
         
         return all_success
@@ -397,8 +554,12 @@ class TestRunner:
     # Phase 4: Compilation
     # =========================================================================
     
-    def compile_all(self) -> bool:
-        """Compile code for all languages that need it."""
+    def compile_all(self, parallel: bool = True) -> bool:
+        """Compile code for all languages that need it.
+        
+        Args:
+            parallel: If True, compile languages in parallel using ThreadPoolExecutor.
+        """
         self.print_section("COMPILATION (all test files)")
         
         compilable = [l for l in self.get_active_languages() if l.compiler]
@@ -407,21 +568,48 @@ class TestRunner:
             return True
         
         lang_names = [l.name for l in compilable]
-        print(f"  Compiling: {', '.join(lang_names)}")
+        mode = "parallel" if parallel and len(compilable) > 1 else "sequential"
+        print(f"  Compiling ({mode}): {', '.join(lang_names)}")
         
         all_success = True
-        for lang in compilable:
-            print(f"  Building {lang.name}...")
-            success = self._compile_language(lang)
-            self.results["compilation"][lang.id] = success
-            if not success:
-                all_success = False
         
-        # Print results
-        print()
-        for lang in compilable:
-            status = "PASS" if self.results["compilation"].get(lang.id, False) else "FAIL"
-            print(f"  {lang.name:>10}: {status}")
+        if parallel and len(compilable) > 1:
+            # Parallel compilation
+            with ThreadPoolExecutor(max_workers=len(compilable)) as executor:
+                futures = {
+                    executor.submit(self._compile_language, lang): lang 
+                    for lang in compilable
+                }
+                for future in as_completed(futures):
+                    lang = futures[future]
+                    try:
+                        success = future.result()
+                        self.results["compilation"][lang.id] = success
+                        status = Colors.pass_text() if success else Colors.fail_text()
+                        print(f"  {lang.name:>10}: {status}")
+                        if not success:
+                            all_success = False
+                            self.add_failure("compilation", lang.name, None, "Compilation failed")
+                    except Exception as e:
+                        self.results["compilation"][lang.id] = False
+                        print(f"  {lang.name:>10}: {Colors.fail_text()} ({e})")
+                        self.add_failure("compilation", lang.name, None, str(e))
+                        all_success = False
+        else:
+            # Sequential compilation
+            for lang in compilable:
+                print(f"  Building {lang.name}...")
+                success = self._compile_language(lang)
+                self.results["compilation"][lang.id] = success
+                if not success:
+                    all_success = False
+                    self.add_failure("compilation", lang.name, None, "Compilation failed")
+            
+            # Print results
+            print()
+            for lang in compilable:
+                status = Colors.pass_text() if self.results["compilation"].get(lang.id, False) else Colors.fail_text()
+                print(f"  {lang.name:>10}: {status}")
         
         return all_success
     
@@ -488,72 +676,207 @@ class TestRunner:
         print(f"  Test runner: {runner_name}")
         
         encode_key = f"{test_name}_encode"
+        validate_key = f"{test_name}_validate"
         decode_key = f"{test_name}_decode"
         
         # Initialize results structure: {profile: {lang: result}}
         encode_results = {p[1]: {} for p in profiles}
+        validate_results = {p[1]: {} for p in profiles}
         decode_results = {p[1]: {} for p in profiles}
         
         # For decode, use C++ as the base language for encoded data
         base_lang = self.languages.get("cpp") or self.languages.get("c")
+        cpp_lang = self.languages.get("cpp")
         
-        # Print matrix header
         col_width = 12
-        print(f"\n{'Profile':<20}" + "".join(l.name.center(col_width) for l in testable))
-        print("-" * (20 + col_width * len(testable)))
         
-        # Run tests profile-by-profile, showing results as we go
+        # Helper to print matrix header
+        def print_matrix_header(phase_name: str):
+            print(f"\n  {Colors.bold(phase_name)}")
+            print(f"  {'Profile':<18}" + "".join(l.name.center(col_width) for l in testable))
+            print("  " + "-" * (18 + col_width * len(testable)))
+        
+        # Helper to colorize and center a cell
+        def format_cell(success: bool, text: str) -> str:
+            # Center the text first, then apply color
+            centered = text.center(col_width)
+            return Colors.green(centered) if success else Colors.red(centered)
+        
+        # =================================================================
+        # PHASE 1: ENCODE
+        # =================================================================
+        print(f"\n  Phase 1: Encoding {len(profiles) * len(testable)} combinations...")
+        encode_start = time.time()
+        
+        encode_tasks = [
+            (profile_name, display_name, lang)
+            for profile_name, display_name in profiles
+            for lang in testable
+        ]
+        
+        with ThreadPoolExecutor(max_workers=min(len(encode_tasks), 12)) as executor:
+            encode_futures = {
+                executor.submit(self._run_encode, lang, profile_name, runner_name): (display_name, lang)
+                for profile_name, display_name, lang in encode_tasks
+            }
+            for future in as_completed(encode_futures):
+                display_name, lang = encode_futures[future]
+                try:
+                    result = future.result()
+                    encode_results[display_name][lang.name] = result
+                    self.results[encode_key][f"{lang.id}_{display_name}"] = result["success"]
+                    if not result["success"]:
+                        self.add_failure(f"{test_name}_encode", lang.name, display_name, "Encode failed")
+                except Exception as e:
+                    encode_results[display_name][lang.name] = {"success": False, "error": str(e)}
+                    self.results[encode_key][f"{lang.id}_{display_name}"] = False
+                    self.add_failure(f"{test_name}_encode", lang.name, display_name, str(e))
+        
+        encode_time = time.time() - encode_start
+        
+        # Display Phase 1 results
+        print_matrix_header(f"Phase 1: Encode ({encode_time:.2f}s)")
         for profile_name, display_name in profiles:
-            row = f"{display_name:<20}"
-            
-            # Run encode for all languages for this profile
-            for lang in testable:
-                result = self._run_encode(lang, profile_name, runner_name)
-                encode_results[display_name][lang.name] = result
-                self.results[encode_key][f"{lang.id}_{display_name}"] = result["success"]
-            
-            # Run decode for all languages for this profile
-            for lang in testable:
-                result = self._run_decode(lang, profile_name, runner_name, base_lang, expected_count)
-                decode_results[display_name][lang.name] = result
-                self.results[decode_key][f"{lang.id}_{display_name}"] = result["success"]
-            
-            # Print row with encode/decode results combined
+            row = f"  {display_name:<18}"
             for lang in testable:
                 enc = encode_results[display_name][lang.name]
-                dec = decode_results[display_name][lang.name]
-                
-                if enc["success"] and dec["success"]:
-                    cell = f"OK({dec['count']})"
-                elif enc["success"] and not dec["success"]:
-                    if dec.get("count", 0) > 0:
-                        cell = f"DEC({dec['count']})"
-                    else:
-                        cell = "DEC"
-                elif not enc["success"]:
-                    cell = "ENC"
-                else:
-                    cell = "FAIL"
-                row += cell.center(col_width)
-            
+                cell = "OK" if enc["success"] else "FAIL"
+                row += format_cell(enc["success"], cell)
             print(row)
         
-        # Calculate success rate
+        # =================================================================
+        # PHASE 2: VALIDATE (binary compare + C++ decode)
+        # =================================================================
+        print(f"\n  Phase 2: Validating encoded files...")
+        validate_start = time.time()
+        
+        validate_tasks = []
+        for profile_name, display_name in profiles:
+            cpp_file = self._get_output_file(cpp_lang, profile_name, runner_name)
+            for lang in testable:
+                if lang.id == "cpp":
+                    validate_results[display_name][lang.name] = {
+                        "success": True, "binary_match": True, "cpp_decode": True, "reason": "Reference"
+                    }
+                    self.results[validate_key][f"{lang.id}_{display_name}"] = True
+                else:
+                    lang_file = self._get_output_file(lang, profile_name, runner_name)
+                    validate_tasks.append((profile_name, display_name, lang, lang_file, cpp_file))
+        
+        if validate_tasks:
+            with ThreadPoolExecutor(max_workers=min(len(validate_tasks), 12)) as executor:
+                validate_futures = {
+                    executor.submit(
+                        self._validate_encoded_file, 
+                        lang_file, cpp_file, cpp_lang, profile_name, runner_name, expected_count
+                    ): (display_name, lang)
+                    for profile_name, display_name, lang, lang_file, cpp_file in validate_tasks
+                }
+                for future in as_completed(validate_futures):
+                    display_name, lang = validate_futures[future]
+                    try:
+                        result = future.result()
+                        validate_results[display_name][lang.name] = result
+                        self.results[validate_key][f"{lang.id}_{display_name}"] = result["success"]
+                        if not result["success"]:
+                            reason = []
+                            if not result.get("binary_match"):
+                                reason.append("binary mismatch")
+                            if not result.get("cpp_decode"):
+                                reason.append("C++ decode failed")
+                            self.add_failure(f"{test_name}_validate", lang.name, display_name, ", ".join(reason))
+                    except Exception as e:
+                        validate_results[display_name][lang.name] = {
+                            "success": False, "binary_match": False, "cpp_decode": False, "error": str(e)
+                        }
+                        self.results[validate_key][f"{lang.id}_{display_name}"] = False
+                        self.add_failure(f"{test_name}_validate", lang.name, display_name, str(e))
+        
+        validate_time = time.time() - validate_start
+        
+        # Display Phase 2 results
+        print_matrix_header(f"Phase 2: Validate ({validate_time:.2f}s)")
+        for profile_name, display_name in profiles:
+            row = f"  {display_name:<18}"
+            for lang in testable:
+                val = validate_results[display_name][lang.name]
+                if val["success"]:
+                    cell = "OK"
+                elif not val.get("binary_match"):
+                    cell = "BIN"
+                else:
+                    cell = "VAL"
+                row += format_cell(val["success"], cell)
+            print(row)
+        
+        # =================================================================
+        # PHASE 3: DECODE
+        # =================================================================
+        print(f"\n  Phase 3: Decoding {len(profiles) * len(testable)} combinations...")
+        decode_start = time.time()
+        
+        decode_tasks = [
+            (profile_name, display_name, lang)
+            for profile_name, display_name in profiles
+            for lang in testable
+        ]
+        
+        with ThreadPoolExecutor(max_workers=min(len(decode_tasks), 12)) as executor:
+            decode_futures = {
+                executor.submit(self._run_decode, lang, profile_name, runner_name, base_lang, expected_count): (display_name, lang)
+                for profile_name, display_name, lang in decode_tasks
+            }
+            for future in as_completed(decode_futures):
+                display_name, lang = decode_futures[future]
+                try:
+                    result = future.result()
+                    decode_results[display_name][lang.name] = result
+                    self.results[decode_key][f"{lang.id}_{display_name}"] = result["success"]
+                    if not result["success"]:
+                        self.add_failure(f"{test_name}_decode", lang.name, display_name, 
+                                        f"Decode failed (got {result.get('count', 0)}/{expected_count})")
+                except Exception as e:
+                    decode_results[display_name][lang.name] = {"success": False, "count": 0, "error": str(e)}
+                    self.results[decode_key][f"{lang.id}_{display_name}"] = False
+                    self.add_failure(f"{test_name}_decode", lang.name, display_name, str(e))
+        
+        decode_time = time.time() - decode_start
+        
+        # Display Phase 3 results
+        print_matrix_header(f"Phase 3: Decode ({decode_time:.2f}s)")
+        for profile_name, display_name in profiles:
+            row = f"  {display_name:<18}"
+            for lang in testable:
+                dec = decode_results[display_name][lang.name]
+                if dec["success"]:
+                    cell = f"OK({dec['count']})"
+                elif dec.get("count", 0) > 0:
+                    cell = f"FAIL({dec['count']})"
+                else:
+                    cell = "FAIL"
+                row += format_cell(dec["success"], cell)
+            print(row)
+        
+        # =================================================================
+        # SUMMARY
+        # =================================================================
         total = 0
         passed = 0
         for display_name in [p[1] for p in profiles]:
             for lang in testable:
-                # Encode
                 if encode_results[display_name][lang.name]["success"]:
                     passed += 1
                 total += 1
-                # Decode
+                if validate_results[display_name][lang.name]["success"]:
+                    passed += 1
+                total += 1
                 if decode_results[display_name][lang.name]["success"]:
                     passed += 1
                 total += 1
         
-        print(f"\nLegend: OK(N)=encode+decode pass, ENC=encode fail, DEC=decode fail")
-        print(f"Success rate: {passed}/{total} ({100*passed/total:.1f}%)\n")
+        success_str = Colors.green(f"{passed}/{total}") if passed == total else Colors.red(f"{passed}/{total}")
+        print(f"\n  Legend: OK=pass, FAIL=fail, BIN=binary mismatch, VAL=C++ decode fail")
+        print(f"  Total: {success_str} ({100*passed/total:.1f}%)\n")
         return passed == total
     
     def _run_encode(self, lang: Language, profile_name: str, runner_name: str) -> Dict[str, Any]:
@@ -563,6 +886,46 @@ class TestRunner:
         
         success, stdout, _ = self._run_test_runner(lang, "encode", profile_name, output_file, runner_name)
         return {"success": success, "file": output_file if success else None}
+    
+    def _validate_encoded_file(self, lang_file: Path, cpp_file: Path, 
+                                cpp_lang: Language, profile_name: str, 
+                                runner_name: str, expected_count: int) -> Dict[str, Any]:
+        """Validate an encoded file by comparing to C++ reference and decoding with C++."""
+        result = {"success": True, "binary_match": False, "cpp_decode": False}
+        
+        # Check if both files exist
+        if not lang_file.exists():
+            return {"success": False, "binary_match": False, "cpp_decode": False, "reason": "Lang file missing"}
+        if not cpp_file.exists():
+            return {"success": False, "binary_match": False, "cpp_decode": False, "reason": "C++ file missing"}
+        
+        # Binary comparison
+        try:
+            with open(lang_file, 'rb') as f1, open(cpp_file, 'rb') as f2:
+                lang_data = f1.read()
+                cpp_data = f2.read()
+                result["binary_match"] = (lang_data == cpp_data)
+        except Exception as e:
+            result["binary_match"] = False
+            result["reason"] = f"Binary compare error: {e}"
+        
+        # Run C++ decoder on the language's encoded file
+        work_dir = self._get_test_work_dir(cpp_lang)
+        runner = work_dir / f"{runner_name}{cpp_lang.exe_ext}"
+        
+        if runner.exists():
+            cmd = f'"{runner}" decode {profile_name} "{lang_file}"'
+            success, stdout, _ = self.run_cmd(cmd, cwd=work_dir)
+            count = self._extract_message_count(stdout)
+            result["cpp_decode"] = success and count >= expected_count
+            result["cpp_decode_count"] = count
+        else:
+            result["cpp_decode"] = False
+            result["reason"] = "C++ runner not found"
+        
+        # Overall success requires both binary match AND C++ decode success
+        result["success"] = result["binary_match"] and result["cpp_decode"]
+        return result
     
     def _run_decode(self, lang: Language, profile_name: str, runner_name: str, 
                     base_lang: Language, expected_count: int) -> Dict[str, Any]:
@@ -624,13 +987,15 @@ class TestRunner:
             cmd = f'"{runner}" {mode} {profile_name} "{output_file}"'
             return self.run_cmd(cmd, cwd=work_dir)
         
-        # C#: dotnet run
+        # C#: run compiled DLL directly (not dotnet run, which causes race conditions)
         if lang.id == "csharp":
-            test_dir = self.project_root / lang.test_dir
-            csproj = test_dir / "StructFrameTests.csproj"
+            build_dir = self.project_root / lang.build_dir
+            dll_path = build_dir / "StructFrameTests.dll"
+            if not dll_path.exists():
+                return False, "", "DLL not found - was compilation successful?"
             runner_arg = f"--runner {runner_name}" if runner_name != "test_standard" else ""
-            cmd = f'dotnet run --project "{csproj}" --verbosity quiet -- {mode} {profile_name} "{output_file}" {runner_arg}'
-            return self.run_cmd(cmd, cwd=test_dir)
+            cmd = f'dotnet "{dll_path}" {mode} {profile_name} "{output_file}" {runner_arg}'
+            return self.run_cmd(cmd, cwd=build_dir)
         
         # TypeScript: compiled to JS
         if lang.script_dir:
@@ -706,59 +1071,120 @@ class TestRunner:
         # Standard tests
         std_encode_total = len(self.results["standard_encode"])
         std_encode_passed = sum(1 for v in self.results["standard_encode"].values() if v)
+        std_validate_total = len(self.results.get("standard_validate", {}))
+        std_validate_passed = sum(1 for v in self.results.get("standard_validate", {}).values() if v)
         std_decode_total = len(self.results["standard_decode"])
         std_decode_passed = sum(1 for v in self.results["standard_decode"].values() if v)
         
         # Extended tests
         ext_encode_total = len(self.results["extended_encode"])
         ext_encode_passed = sum(1 for v in self.results["extended_encode"].values() if v)
+        ext_validate_total = len(self.results.get("extended_validate", {}))
+        ext_validate_passed = sum(1 for v in self.results.get("extended_validate", {}).values() if v)
         ext_decode_total = len(self.results["extended_decode"])
         ext_decode_passed = sum(1 for v in self.results["extended_decode"].values() if v)
         
+        # Helper to colorize counts
+        def colorize_count(passed: int, total: int) -> str:
+            if total == 0:
+                return "-"
+            if passed == total:
+                return Colors.green(f"{passed}/{total}")
+            return Colors.red(f"{passed}/{total}")
+        
         # Print breakdown
-        print(f"\n  Code Generation:    {gen_passed}/{gen_total}")
-        print(f"  Compilation:        {comp_passed}/{comp_total}")
-        print(f"  Standard Encode:    {std_encode_passed}/{std_encode_total}")
-        print(f"  Standard Decode:    {std_decode_passed}/{std_decode_total}")
-        print(f"  Extended Encode:    {ext_encode_passed}/{ext_encode_total}")
-        print(f"  Extended Decode:    {ext_decode_passed}/{ext_decode_total}")
+        print(f"\n  Code Generation:    {colorize_count(gen_passed, gen_total)}")
+        print(f"  Compilation:        {colorize_count(comp_passed, comp_total)}")
+        print(f"  Standard Encode:    {colorize_count(std_encode_passed, std_encode_total)}")
+        print(f"  Standard Validate:  {colorize_count(std_validate_passed, std_validate_total)}")
+        print(f"  Standard Decode:    {colorize_count(std_decode_passed, std_decode_total)}")
+        print(f"  Extended Encode:    {colorize_count(ext_encode_passed, ext_encode_total)}")
+        print(f"  Extended Validate:  {colorize_count(ext_validate_passed, ext_validate_total)}")
+        print(f"  Extended Decode:    {colorize_count(ext_decode_passed, ext_decode_total)}")
         
-        total = gen_total + comp_total + std_encode_total + std_decode_total + ext_encode_total + ext_decode_total
-        passed = gen_passed + comp_passed + std_encode_passed + std_decode_passed + ext_encode_passed + ext_decode_passed
+        total = (gen_total + comp_total + 
+                 std_encode_total + std_validate_total + std_decode_total + 
+                 ext_encode_total + ext_validate_total + ext_decode_total)
+        passed = (gen_passed + comp_passed + 
+                  std_encode_passed + std_validate_passed + std_decode_passed + 
+                  ext_encode_passed + ext_validate_passed + ext_decode_passed)
         
-        print(f"\n  Total: {passed}/{total} tests passed")
+        print(f"\n  Total: {colorize_count(passed, total)} tests passed")
+        
+        # Print phase timings if available
+        if self.phase_times:
+            print(f"\n  {Colors.bold('Phase Timings:')}")
+            for phase, elapsed in self.phase_times.items():
+                print(f"    {phase:<20}: {elapsed:.2f}s")
+        
+        # Print failure summary if any
+        if self.failures:
+            print(f"\n  {Colors.bold(Colors.red('Failures:'))}")
+            for failure in self.failures[:10]:  # Limit to 10 failures
+                profile_str = f" [{failure['profile']}]" if failure['profile'] else ""
+                print(f"    - {failure['phase']}: {failure['language']}{profile_str} - {failure['reason']}")
+            if len(self.failures) > 10:
+                print(f"    ... and {len(self.failures) - 10} more failures")
         
         if passed == total and total > 0:
-            print("  SUCCESS: All tests passed")
+            print(f"\n  {Colors.green(Colors.bold('SUCCESS: All tests passed'))}")
             return True
         else:
-            print(f"  FAILURE: {total - passed} test(s) failed")
+            print(f"\n  {Colors.red(Colors.bold(f'FAILURE: {total - passed} test(s) failed'))}")
             return False
     
     # =========================================================================
     # Main Entry Point
     # =========================================================================
     
-    def run(self, generate_only: bool = False, check_tools_only: bool = False) -> bool:
-        """Run the complete test suite."""
-        print("Starting struct-frame Test Suite")
+    def run(self, generate_only: bool = False, check_tools_only: bool = False,
+            compile_only: bool = False, skip_clean: bool = False,
+            profile_filter: Optional[List[str]] = None,
+            parallel_compile: bool = True) -> bool:
+        """Run the complete test suite.
+        
+        Args:
+            generate_only: Stop after code generation.
+            check_tools_only: Only check tool availability.
+            compile_only: Stop after compilation.
+            skip_clean: Skip the clean phase.
+            profile_filter: Only test specific profiles (e.g., ['ProfileStandard']).
+            parallel_compile: Use parallel compilation (default True).
+        """
+        print(Colors.bold("Starting struct-frame Test Suite"))
         print(f"Project root: {self.project_root}")
         
         start_time = time.time()
         
+        # Filter profiles if requested
+        profiles_to_test = PROFILES
+        extended_profiles_to_test = EXTENDED_PROFILES
+        if profile_filter:
+            profiles_to_test = [(p, d) for p, d in PROFILES if d in profile_filter]
+            extended_profiles_to_test = [(p, d) for p, d in EXTENDED_PROFILES if d in profile_filter]
+            if profiles_to_test or extended_profiles_to_test:
+                print(f"Profile filter: {', '.join(profile_filter)}")
+            else:
+                print(f"{Colors.warn_tag()} No matching profiles found for filter: {profile_filter}")
+        
         try:
             # Phase 1: Clean
-            self.clean()
+            if not skip_clean:
+                with self.timed_phase("Clean"):
+                    self.clean()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Cleaning (--no-clean)")
             
             # Phase 2: Check tools
-            tool_results = self.check_tools()
+            with self.timed_phase("Tool Check"):
+                tool_results = self.check_tools()
             available = [lid for lid, info in tool_results.items() if info["available"]]
             
             if check_tools_only:
                 return all(info["available"] for info in tool_results.values())
             
             if not available:
-                print("[ERROR] No languages have all required tools available")
+                print(f"{Colors.fail_tag()} No languages have all required tools available")
                 return False
             
             # Filter to available languages
@@ -768,25 +1194,40 @@ class TestRunner:
             print(f"Testing languages: {', '.join(l.name for l in testable)}")
             
             # Phase 3: Generate code
-            if not self.generate_code():
-                print("[ERROR] Code generation failed - aborting")
-                return False
+            with self.timed_phase("Code Generation"):
+                if not self.generate_code():
+                    print(f"{Colors.fail_tag()} Code generation failed - aborting")
+                    return False
             
             if generate_only:
-                print("[OK] Code generation completed successfully")
+                print(f"{Colors.ok_tag()} Code generation completed successfully")
                 return True
             
             # Phase 4: Compile
-            self.compile_all()
+            with self.timed_phase("Compilation"):
+                self.compile_all(parallel=parallel_compile)
+            
+            if compile_only:
+                success = all(self.results["compilation"].values())
+                if success:
+                    print(f"{Colors.ok_tag()} Compilation completed successfully")
+                else:
+                    print(f"{Colors.fail_tag()} Compilation failed")
+                return success
             
             # Phase 5: Standard tests
-            self.run_tests("standard", PROFILES, STANDARD_MESSAGE_COUNT, "test_standard")
+            if profiles_to_test:
+                with self.timed_phase("Standard Tests"):
+                    self.run_tests("standard", profiles_to_test, STANDARD_MESSAGE_COUNT, "test_standard")
             
             # Phase 6: Extended tests
-            self.run_tests("extended", EXTENDED_PROFILES, EXTENDED_MESSAGE_COUNT, "test_extended")
+            if extended_profiles_to_test:
+                with self.timed_phase("Extended Tests"):
+                    self.run_tests("extended", extended_profiles_to_test, EXTENDED_MESSAGE_COUNT, "test_extended")
             
             # Phase 7: Standalone tests
-            self.run_standalone_tests()
+            with self.timed_phase("Standalone Tests"):
+                self.run_standalone_tests()
             
             # Summary
             success = self.print_summary()
@@ -795,10 +1236,10 @@ class TestRunner:
             return success
             
         except KeyboardInterrupt:
-            print("\n[WARN] Test run interrupted by user")
+            print(f"\n{Colors.warn_tag()} Test run interrupted by user")
             return False
         except Exception as e:
-            print(f"\n[ERROR] Test run failed: {e}")
+            print(f"\n{Colors.fail_tag()} Test run failed: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -809,23 +1250,64 @@ class TestRunner:
 # =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description="Run struct-frame tests")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-    parser.add_argument("--quiet", "-q", action="store_true", help="Suppress failure output")
+    parser = argparse.ArgumentParser(
+        description="Run struct-frame tests",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python run_tests.py                      # Run all tests
+  python run_tests.py --no-clean           # Skip cleaning (faster iteration)
+  python run_tests.py --profile ProfileStandard  # Test only ProfileStandard
+  python run_tests.py --only-compile       # Stop after compilation
+  python run_tests.py --skip-lang ts       # Skip TypeScript tests
+  python run_tests.py --no-color           # Disable colored output
+"""
+    )
+    
+    parser.add_argument("--verbose", "-v", action="store_true", 
+                        help="Verbose output (show stdout/stderr)")
+    parser.add_argument("--quiet", "-q", action="store_true", 
+                        help="Suppress failure output")
     parser.add_argument("--skip-lang", action="append", dest="skip_languages", 
-                        help="Skip a language (can be repeated)")
-    parser.add_argument("--only-generate", action="store_true", help="Only generate code")
-    parser.add_argument("--check-tools", action="store_true", help="Only check tool availability")
+                        metavar="LANG", help="Skip a language (can be repeated). Note: 'c' cannot be skipped as it's the base encoder.")
+    parser.add_argument("--only-generate", action="store_true", 
+                        help="Only generate code, don't compile or test")
+    parser.add_argument("--only-compile", action="store_true", 
+                        help="Stop after compilation, don't run tests")
+    parser.add_argument("--check-tools", action="store_true", 
+                        help="Only check tool availability")
+    parser.add_argument("--no-clean", action="store_true", 
+                        help="Skip cleaning generated files (faster iteration)")
+    parser.add_argument("--profile", action="append", dest="profiles", 
+                        metavar="NAME", help="Only test specific profile(s)")
+    parser.add_argument("--no-parallel", action="store_true", 
+                        help="Disable parallel compilation")
+    parser.add_argument("--no-color", action="store_true", 
+                        help="Disable colored output")
     
     args = parser.parse_args()
     
+    # Handle color settings
+    if args.no_color:
+        Colors.disable()
+    
+    # Validate skip_languages - 'c' cannot be skipped as it's the base encoder
+    skip_languages = args.skip_languages or []
+    if "c" in skip_languages:
+        print(f"{Colors.warn_tag()} Cannot skip 'c' - it is required as the base encoder for decode tests")
+        skip_languages = [lang for lang in skip_languages if lang != "c"]
+    
     runner = TestRunner(verbose=args.verbose, quiet=args.quiet)
-    if args.skip_languages:
-        runner.skipped_languages = args.skip_languages
+    if skip_languages:
+        runner.skipped_languages = skip_languages
     
     success = runner.run(
         generate_only=args.only_generate,
-        check_tools_only=args.check_tools
+        check_tools_only=args.check_tools,
+        compile_only=args.only_compile,
+        skip_clean=args.no_clean,
+        profile_filter=args.profiles,
+        parallel_compile=not args.no_parallel
     )
     
     return 0 if success else 1

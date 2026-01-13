@@ -19,6 +19,9 @@ using StructFrame.SerializationTest;
 using SerializationTestMessage = StructFrame.SerializationTest.SerializationTestSerializationTestMessage;
 using BasicTypesMessage = StructFrame.SerializationTest.SerializationTestBasicTypesMessage;
 using UnionTestMessage = StructFrame.SerializationTest.SerializationTestUnionTestMessage;
+using ComprehensiveArrayMessage = StructFrame.SerializationTest.SerializationTestComprehensiveArrayMessage;
+using Sensor = StructFrame.SerializationTest.SerializationTestSensor;
+using SerializationTestStatus = StructFrame.SerializationTest.SerializationTestStatus;
 
 namespace StructFrameTests
 {
@@ -149,8 +152,115 @@ namespace StructFrameTests
         private static UnionTestMessage CreateUnionTestMessage(Dictionary<string, object> data)
         {
             var msg = new UnionTestMessage();
-            // Union messages are complex - simplified for now
+            int payloadType = (int)data["payload_type"];
+            
+            if (payloadType == 1 && data.ContainsKey("array_payload"))
+            {
+                // Create union with array_payload (matches C++ create_union_with_array)
+                var arrayData = (Dictionary<string, object>)data["array_payload"];
+                msg.PayloadDiscriminator = ComprehensiveArrayMessage.MsgId;
+                msg.ArrayPayload = CreateComprehensiveArrayMessage(arrayData);
+            }
+            else if (payloadType == 2 && data.ContainsKey("test_payload"))
+            {
+                // Create union with test_payload (matches C++ create_union_with_test)
+                var testData = (Dictionary<string, object>)data["test_payload"];
+                msg.PayloadDiscriminator = SerializationTestMessage.MsgId;
+                msg.TestPayload = CreateSerializationTestMessage(testData);
+            }
+            
             return msg;
+        }
+
+        private static ComprehensiveArrayMessage CreateComprehensiveArrayMessage(Dictionary<string, object> data)
+        {
+            var msg = new ComprehensiveArrayMessage();
+            
+            // Fixed arrays of primitives
+            var fixedInts = (List<int>)data["fixed_ints"];
+            msg.FixedInts = fixedInts.ToArray();
+            
+            var fixedFloats = (List<float>)data["fixed_floats"];
+            msg.FixedFloats = fixedFloats.ToArray();
+            
+            var fixedBools = (List<bool>)data["fixed_bools"];
+            msg.FixedBools = fixedBools.ToArray();
+            
+            // Bounded arrays of primitives
+            var boundedUints = (List<ushort>)data["bounded_uints"];
+            msg.BoundedUintsCount = (byte)boundedUints.Count;
+            msg.BoundedUintsData = new ushort[3];
+            for (int i = 0; i < boundedUints.Count && i < 3; i++)
+                msg.BoundedUintsData[i] = boundedUints[i];
+            
+            var boundedDoubles = (List<double>)data["bounded_doubles"];
+            msg.BoundedDoublesCount = (byte)boundedDoubles.Count;
+            msg.BoundedDoublesData = new double[2];
+            for (int i = 0; i < boundedDoubles.Count && i < 2; i++)
+                msg.BoundedDoublesData[i] = boundedDoubles[i];
+            
+            // Fixed string arrays (2 strings, each max 8 chars)
+            var fixedStrings = (List<string>)data["fixed_strings"];
+            msg.FixedStrings = new byte[16];
+            for (int i = 0; i < Math.Min(fixedStrings.Count, 2); i++)
+            {
+                var strBytes = Encoding.UTF8.GetBytes(fixedStrings[i]);
+                Array.Copy(strBytes, 0, msg.FixedStrings, i * 8, Math.Min(strBytes.Length, 8));
+            }
+            
+            // Bounded string arrays (up to 2 strings, each max 12 chars)
+            var boundedStrings = (List<string>)data["bounded_strings"];
+            msg.BoundedStringsCount = (byte)boundedStrings.Count;
+            msg.BoundedStringsData = new byte[24];
+            for (int i = 0; i < Math.Min(boundedStrings.Count, 2); i++)
+            {
+                var strBytes = Encoding.UTF8.GetBytes(boundedStrings[i]);
+                Array.Copy(strBytes, 0, msg.BoundedStringsData, i * 12, Math.Min(strBytes.Length, 12));
+            }
+            
+            // Enum arrays
+            var fixedStatuses = (List<byte>)data["fixed_statuses"];
+            msg.FixedStatuses = fixedStatuses.ToArray();
+            
+            var boundedStatuses = (List<byte>)data["bounded_statuses"];
+            msg.BoundedStatusesCount = (byte)boundedStatuses.Count;
+            msg.BoundedStatusesData = new byte[2];
+            for (int i = 0; i < Math.Min(boundedStatuses.Count, 2); i++)
+                msg.BoundedStatusesData[i] = boundedStatuses[i];
+            
+            // Fixed sensors (1 element)
+            var fixedSensors = (List<Dictionary<string, object>>)data["fixed_sensors"];
+            msg.FixedSensors = new Sensor[1];
+            for (int i = 0; i < Math.Min(fixedSensors.Count, 1); i++)
+            {
+                msg.FixedSensors[i] = CreateSensor(fixedSensors[i]);
+            }
+            
+            // Bounded sensors (up to 1 element)
+            var boundedSensors = (List<Dictionary<string, object>>)data["bounded_sensors"];
+            msg.BoundedSensorsCount = (byte)boundedSensors.Count;
+            msg.BoundedSensorsData = new Sensor[1];
+            for (int i = 0; i < Math.Min(boundedSensors.Count, 1); i++)
+            {
+                msg.BoundedSensorsData[i] = CreateSensor(boundedSensors[i]);
+            }
+            
+            return msg;
+        }
+
+        private static Sensor CreateSensor(Dictionary<string, object> data)
+        {
+            var sensor = new Sensor();
+            sensor.Id = (byte)(ushort)data["id"];
+            sensor.Value = (float)data["value"];
+            sensor.Status = (SerializationTestStatus)(byte)data["status"];
+            
+            string name = (string)data["name"];
+            var nameBytes = Encoding.UTF8.GetBytes(name);
+            sensor.Name = new byte[16];
+            Array.Copy(nameBytes, sensor.Name, Math.Min(nameBytes.Length, 16));
+            
+            return sensor;
         }
 
         private static byte[] EncodeMessage(object msg)
