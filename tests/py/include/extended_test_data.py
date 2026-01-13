@@ -18,7 +18,7 @@ from typing import List, Tuple, Optional
 # Add generated directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
 
-from extended_test_structframe import (
+from struct_frame.generated.extended_test import (
     ExtendedTestExtendedIdMessage1,
     ExtendedTestExtendedIdMessage2,
     ExtendedTestExtendedIdMessage3,
