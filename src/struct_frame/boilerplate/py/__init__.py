@@ -47,7 +47,7 @@ from .payload_types import (
     PAYLOAD_CONFIGS,
 )
 
-# Frame profiles - Pre-defined Header + Payload combinations (like FrameProfiles.hpp)
+# Frame profiles - Pre-defined Header + Payload combinations (like frame_profiles.hpp)
 from .frame_profiles import (
     # Profile configuration class
     ProfileConfig,

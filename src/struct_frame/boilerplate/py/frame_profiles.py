@@ -16,7 +16,7 @@ Each profile provides:
 - AccumulatingReader: unified parser supporting both buffer chunks and byte-by-byte streaming
 
 This module composes HeaderConfig + PayloadConfig for maximum code reuse,
-matching the C++ FrameProfiles.hpp pattern.
+matching the C++ frame_profiles.hpp pattern.
 """
 
 from dataclasses import dataclass
