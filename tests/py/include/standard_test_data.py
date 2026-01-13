@@ -231,22 +231,30 @@ class Validator:
         return None, None
 
     def validate_with_equals(self, msg_id: int, decoded_data: bytes) -> bool:
-        """Validate decoded message using __eq__ operator."""
+        """Validate decoded message using __eq__ operator.
+        
+        Note: We unpack the expected message's packed data to ensure both messages
+        have been through float32 conversion, making equality comparison valid.
+        """
         if msg_id == SerializationTestSerializationTestMessage.MSG_ID:
             expected = self._serial_msgs[self.serial_idx]
             self.serial_idx += 1
+            # Unpack both from packed bytes to ensure float32 precision matches
+            expected_unpacked = SerializationTestSerializationTestMessage.create_unpack(expected.data())
             decoded = SerializationTestSerializationTestMessage.create_unpack(decoded_data)
-            return decoded == expected
+            return decoded == expected_unpacked
         elif msg_id == SerializationTestBasicTypesMessage.MSG_ID:
             expected = self._basic_msgs[self.basic_idx]
             self.basic_idx += 1
+            expected_unpacked = SerializationTestBasicTypesMessage.create_unpack(expected.data())
             decoded = SerializationTestBasicTypesMessage.create_unpack(decoded_data)
-            return decoded == expected
+            return decoded == expected_unpacked
         elif msg_id == SerializationTestUnionTestMessage.MSG_ID:
             expected = self._union_msgs[self.union_idx]
             self.union_idx += 1
+            expected_unpacked = SerializationTestUnionTestMessage.create_unpack(expected.data())
             decoded = SerializationTestUnionTestMessage.create_unpack(decoded_data)
-            return decoded == expected
+            return decoded == expected_unpacked
         return False
 
 

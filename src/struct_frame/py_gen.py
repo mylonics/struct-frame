@@ -530,13 +530,20 @@ class MessagePyGen():
         for key, f in msg.fields.items():
             # Initialize with defaults
             if f.is_array:
-                result += f'        self.{f.name} = {f.name} if {f.name} is not None else []\n'
+                # For float32 arrays, truncate each element to 32-bit precision
+                if f.fieldType == "float":
+                    result += f'        self.{f.name} = [_truncate_float32(v) for v in {f.name}] if {f.name} is not None else []\n'
+                else:
+                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else []\n'
             elif f.fieldType == "string":
                 result += f'        self.{f.name} = {f.name} if {f.name} is not None else b""\n'
             elif f.fieldType in py_type_hints:
                 if f.fieldType == "bool":
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else False\n'
-                elif "float" in f.fieldType or "double" in f.fieldType:
+                elif f.fieldType == "float":
+                    # Truncate float32 to 32-bit precision
+                    result += f'        self.{f.name} = _truncate_float32({f.name}) if {f.name} is not None else 0.0\n'
+                elif f.fieldType == "double":
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else 0.0\n'
                 else:
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else 0\n'
@@ -618,6 +625,12 @@ class FilePyGen():
 
         yield 'import struct\n'
         yield 'from enum import Enum\n'
+        yield 'from typing import List\n'
+        yield '\n'
+        yield '# Helper function to truncate float64 to float32 precision\n'
+        yield 'def _truncate_float32(val: float) -> float:\n'
+        yield '    """Truncate a Python float (float64) to float32 precision"""\n'
+        yield '    return struct.unpack("<f", struct.pack("<f", val))[0]\n'
         yield 'from typing import List, Optional\n\n'
 
         # Add package ID constant if present

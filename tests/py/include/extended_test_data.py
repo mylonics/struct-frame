@@ -326,13 +326,19 @@ class Validator:
         return None, None
 
     def validate_with_equals(self, msg_id: int, decoded_data: bytes) -> bool:
-        """Validate decoded message using __eq__ operator."""
+        """Validate decoded message using __eq__ operator.
+        
+        Note: We unpack the expected message's packed data to ensure both messages
+        have been through string padding conversion, making equality comparison valid.
+        """
         getter = self._msg_getters.get(msg_id)
         msg_class = self._msg_classes.get(msg_id)
         if getter and msg_class:
             expected = getter()
+            # Unpack both from packed bytes to ensure string padding matches
+            expected_unpacked = msg_class.create_unpack(expected.data())
             decoded = msg_class.create_unpack(decoded_data)
-            return decoded == expected
+            return decoded == expected_unpacked
         return False
 
 

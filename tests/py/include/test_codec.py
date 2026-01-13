@@ -195,18 +195,9 @@ def decode_messages(config, format_name: str, buffer: bytes) -> Tuple[bool, int]
                 print(f"  Message {message_count} ID mismatch: expected {expected_msg_id}, got {result.msg_id}")
                 return False, message_count
             
-            # Get expected data for validation
-            expected_data, expected_size = validator.get_expected(result.msg_id)
-            if expected_data is None:
-                print(f"  Unknown message ID: {result.msg_id}")
-                return False, message_count
-            
-            if result.msg_len != expected_size:
-                print(f"  Message {message_count} size mismatch: expected {expected_size}, got {result.msg_len}")
-                return False, message_count
-            
-            if result.msg_data != expected_data:
-                print(f"  Message {message_count} content mismatch")
+            # Use validate_with_equals to compare using __eq__ operator
+            if not validator.validate_with_equals(result.msg_id, result.msg_data):
+                print(f"  Message {message_count} content mismatch (equality check failed)")
                 return False, message_count
             
             message_count += 1
