@@ -25,8 +25,7 @@ from struct_frame.generated.serialization_test import (
     SerializationTestComprehensiveArrayMessage,
     SerializationTestSensor,
     SerializationTestStatus,
-    get_msg_length as parser_get_message_length,
-    get_magic_numbers as parser_get_magic_numbers,
+    get_message_info,
 )
 
 
@@ -283,12 +282,9 @@ class Config:
         return Validator()
     
     @staticmethod
-    def get_message_length(msg_id: int) -> Optional[int]:
-        return parser_get_message_length(msg_id)
-    
-    @staticmethod
-    def get_magic_numbers(msg_id: int) -> Tuple[int, int]:
-        return parser_get_magic_numbers(msg_id)
+    def get_message_info(msg_id: int):
+        """Get unified message info (size, magic1, magic2)"""
+        return get_message_info(msg_id)
     
     @staticmethod
     def supports_format(format_name: str) -> bool:

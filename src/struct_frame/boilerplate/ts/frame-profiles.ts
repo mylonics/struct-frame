@@ -59,6 +59,29 @@ export interface EncodeOptions {
 }
 
 // =============================================================================
+// Message Info Interface - Unified lookup for parsing
+// =============================================================================
+
+/**
+ * Message info returned by the getMessageInfo callback.
+ * Contains all information needed to parse a message by ID.
+ */
+export interface MessageInfo {
+    /** Message size in bytes */
+    size: number;
+    /** Magic number 1 for CRC checksum initialization */
+    magic1: number;
+    /** Magic number 2 for CRC checksum initialization */
+    magic2: number;
+}
+
+/**
+ * Callback type for looking up message info by ID.
+ * Returns MessageInfo if the message ID is known, undefined otherwise.
+ */
+export type GetMessageInfo = (msgId: number) => MessageInfo | undefined;
+
+// =============================================================================
 // Profile Helper Functions
 // =============================================================================
 
@@ -285,11 +308,14 @@ export function encodeFrameMinimal(
 
 /**
  * Generic parse function for frames with CRC.
+ * @param config Profile configuration
+ * @param buffer Buffer containing frame data
+ * @param getMessageInfo Optional callback to get message info (size and magic numbers)
  */
 export function parseFrameWithCrc(
     config: FrameProfileConfig,
     buffer: Uint8Array,
-    getMagicNumbers?: (msgId: number) => [number, number]
+    getMessageInfo?: GetMessageInfo
 ): FrameMsgInfo {
     const result = createFrameMsgInfo();
     const length = buffer.length;
@@ -350,8 +376,12 @@ export function parseFrameWithCrc(
     
     // Get magic numbers for this message type
     let magic1 = 0, magic2 = 0;
-    if (getMagicNumbers) {
-        [magic1, magic2] = getMagicNumbers(msgId);
+    if (getMessageInfo) {
+        const info = getMessageInfo(msgId);
+        if (info) {
+            magic1 = info.magic1;
+            magic2 = info.magic2;
+        }
     }
     
     const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
@@ -369,12 +399,15 @@ export function parseFrameWithCrc(
 }
 
 /**
- * Generic parse function for minimal frames (requires get_msg_length callback).
+ * Generic parse function for minimal frames (requires getMessageInfo callback for size).
+ * @param config Profile configuration
+ * @param buffer Buffer containing frame data
+ * @param getMessageInfo Callback to get message info (size is required, magic numbers ignored for minimal frames)
  */
 export function parseFrameMinimal(
     config: FrameProfileConfig,
     buffer: Uint8Array,
-    getMsgLength: (msgId: number) => number | undefined
+    getMessageInfo: GetMessageInfo
 ): FrameMsgInfo {
     const result = createFrameMsgInfo();
     const headerSize = profileHeaderSize(config);
@@ -401,10 +434,11 @@ export function parseFrameMinimal(
     const msgId = buffer[idx];
 
     // Get message length from callback
-    const msgLen = getMsgLength(msgId);
-    if (msgLen === undefined || msgLen === null) {
+    const info = getMessageInfo(msgId);
+    if (!info) {
         return result;
     }
+    const msgLen = info.size;
 
     const totalSize = headerSize + msgLen;
     if (buffer.length < totalSize) {
@@ -428,36 +462,30 @@ export function parseFrameMinimal(
  * BufferReader - Iterate through a buffer parsing multiple frames.
  *
  * Usage:
- *   const reader = new BufferReader(ProfileStandardConfig, buffer);
+ *   const reader = new BufferReader(ProfileStandardConfig, buffer, getMessageInfo);
  *   let result = reader.next();
  *   while (result.valid) {
  *       // Process result.msg_id, result.msg_data, result.msg_len
  *       result = reader.next();
  *   }
- *
- * For minimal profiles that need getMsgLength:
- *   const reader = new BufferReader(ProfileSensorConfig, buffer, getMsgLength);
  */
 export class BufferReader {
     private config: FrameProfileConfig;
     private buffer: Uint8Array;
     private size: number;
     private _offset: number;
-    private getMsgLength?: (msgId: number) => number | undefined;
-    private getMagicNumbers?: (msgId: number) => [number, number];
+    private getMessageInfo?: GetMessageInfo;
 
     constructor(
         config: FrameProfileConfig,
         buffer: Uint8Array,
-        getMsgLength?: (msgId: number) => number | undefined,
-        getMagicNumbers?: (msgId: number) => [number, number]
+        getMessageInfo?: GetMessageInfo
     ) {
         this.config = config;
         this.buffer = buffer;
         this.size = buffer.length;
         this._offset = 0;
-        this.getMsgLength = getMsgLength;
-        this.getMagicNumbers = getMagicNumbers;
+        this.getMessageInfo = getMessageInfo;
     }
 
     /**
@@ -473,14 +501,14 @@ export class BufferReader {
         let result: FrameMsgInfo;
 
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            result = parseFrameWithCrc(this.config, remaining, this.getMagicNumbers);
+            result = parseFrameWithCrc(this.config, remaining, this.getMessageInfo);
         } else {
-            if (!this.getMsgLength) {
-                // No more valid data to parse without length callback
+            if (!this.getMessageInfo) {
+                // No more valid data to parse without message info callback
                 this._offset = this.size;
                 return createFrameMsgInfo();
             }
-            result = parseFrameMinimal(this.config, remaining, this.getMsgLength);
+            result = parseFrameMinimal(this.config, remaining, this.getMessageInfo);
         }
 
         if (result.valid) {
@@ -627,7 +655,7 @@ export enum AccumulatingReaderState {
  * - Stream mode: pushByte() for byte-by-byte processing (e.g., UART)
  *
  * Buffer mode usage:
- *   const reader = new AccumulatingReader(ProfileStandardConfig);
+ *   const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
  *   reader.addData(chunk1);
  *   let result = reader.next();
  *   while (result.valid) {
@@ -636,7 +664,7 @@ export enum AccumulatingReaderState {
  *   }
  *
  * Stream mode usage:
- *   const reader = new AccumulatingReader(ProfileStandardConfig);
+ *   const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
  *   while (receiving) {
  *       const byte = readByte();
  *       const result = reader.pushByte(byte);
@@ -644,14 +672,10 @@ export enum AccumulatingReaderState {
  *           // Process complete message
  *       }
  *   }
- *
- * For minimal profiles:
- *   const reader = new AccumulatingReader(ProfileSensorConfig, getMsgLength);
  */
 export class AccumulatingReader {
     private config: FrameProfileConfig;
-    private getMsgLength?: (msgId: number) => number | undefined;
-    private getMagicNumbers?: (msgId: number) => [number, number];
+    private getMessageInfo?: GetMessageInfo;
     private bufferSize: number;
 
     // Internal buffer for partial messages
@@ -667,13 +691,11 @@ export class AccumulatingReader {
 
     constructor(
         config: FrameProfileConfig,
-        getMsgLength?: (msgId: number) => number | undefined,
-        getMagicNumbers?: (msgId: number) => [number, number],
+        getMessageInfo?: GetMessageInfo,
         bufferSize: number = 1024
     ) {
         this.config = config;
-        this.getMsgLength = getMsgLength;
-        this.getMagicNumbers = getMagicNumbers;
+        this.getMessageInfo = getMessageInfo;
         this.bufferSize = bufferSize;
 
         this.internalBuffer = new Uint8Array(bufferSize);
@@ -844,9 +866,10 @@ export class AccumulatingReader {
         if (this.internalDataLen >= headerSize) {
             if (!this.config.payload.hasLength && !this.config.payload.hasCrc) {
                 const msgId = this.internalBuffer[headerSize - 1];
-                if (this.getMsgLength) {
-                    const msgLen = this.getMsgLength(msgId);
-                    if (msgLen !== undefined) {
+                if (this.getMessageInfo) {
+                    const info = this.getMessageInfo(msgId);
+                    if (info !== undefined) {
+                        const msgLen = info.size;
                         this.expectedFrameSize = headerSize + msgLen;
 
                         if (this.expectedFrameSize > this.bufferSize) {
@@ -927,9 +950,10 @@ export class AccumulatingReader {
     }
 
     private handleMinimalMsgId(msgId: number): FrameMsgInfo {
-        if (this.getMsgLength) {
-            const msgLen = this.getMsgLength(msgId);
-            if (msgLen !== undefined) {
+        if (this.getMessageInfo) {
+            const info = this.getMessageInfo(msgId);
+            if (info !== undefined) {
+                const msgLen = info.size;
                 const headerSize = profileHeaderSize(this.config);
                 this.expectedFrameSize = headerSize + msgLen;
 
@@ -976,12 +1000,12 @@ export class AccumulatingReader {
 
     private parseBuffer(buffer: Uint8Array): FrameMsgInfo {
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
-            return parseFrameWithCrc(this.config, buffer, this.getMagicNumbers);
+            return parseFrameWithCrc(this.config, buffer, this.getMessageInfo);
         } else {
-            if (!this.getMsgLength) {
+            if (!this.getMessageInfo) {
                 return createFrameMsgInfo();
             }
-            return parseFrameMinimal(this.config, buffer, this.getMsgLength);
+            return parseFrameMinimal(this.config, buffer, this.getMessageInfo);
         }
     }
 
@@ -1030,8 +1054,8 @@ export class AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileStandardReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMagicNumbers?: (msgId: number) => [number, number]) {
-        super(ProfileStandardConfig, buffer, undefined, getMagicNumbers);
+    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
+        super(ProfileStandardConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1042,8 +1066,8 @@ export class ProfileStandardWriter extends BufferWriter {
 }
 
 export class ProfileStandardAccumulatingReader extends AccumulatingReader {
-    constructor(getMagicNumbers?: (msgId: number) => [number, number], bufferSize: number = 1024) {
-        super(ProfileStandardConfig, undefined, getMagicNumbers, bufferSize);
+    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileStandardConfig, getMessageInfo, bufferSize);
     }
 }
 
@@ -1052,8 +1076,8 @@ export class ProfileStandardAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileSensorReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMsgLength: (msgId: number) => number | undefined) {
-        super(ProfileSensorConfig, buffer, getMsgLength);
+    constructor(buffer: Uint8Array, getMessageInfo: GetMessageInfo) {
+        super(ProfileSensorConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1064,8 +1088,8 @@ export class ProfileSensorWriter extends BufferWriter {
 }
 
 export class ProfileSensorAccumulatingReader extends AccumulatingReader {
-    constructor(getMsgLength: (msgId: number) => number | undefined, bufferSize: number = 1024) {
-        super(ProfileSensorConfig, getMsgLength, undefined, bufferSize);
+    constructor(getMessageInfo: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileSensorConfig, getMessageInfo, bufferSize);
     }
 }
 
@@ -1074,8 +1098,8 @@ export class ProfileSensorAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileIPCReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMsgLength: (msgId: number) => number | undefined) {
-        super(ProfileIPCConfig, buffer, getMsgLength);
+    constructor(buffer: Uint8Array, getMessageInfo: GetMessageInfo) {
+        super(ProfileIPCConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1086,8 +1110,8 @@ export class ProfileIPCWriter extends BufferWriter {
 }
 
 export class ProfileIPCAccumulatingReader extends AccumulatingReader {
-    constructor(getMsgLength: (msgId: number) => number | undefined, bufferSize: number = 1024) {
-        super(ProfileIPCConfig, getMsgLength, undefined, bufferSize);
+    constructor(getMessageInfo: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileIPCConfig, getMessageInfo, bufferSize);
     }
 }
 
@@ -1096,8 +1120,8 @@ export class ProfileIPCAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileBulkReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMagicNumbers?: (msgId: number) => [number, number]) {
-        super(ProfileBulkConfig, buffer, undefined, getMagicNumbers);
+    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
+        super(ProfileBulkConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1108,8 +1132,8 @@ export class ProfileBulkWriter extends BufferWriter {
 }
 
 export class ProfileBulkAccumulatingReader extends AccumulatingReader {
-    constructor(getMagicNumbers?: (msgId: number) => [number, number], bufferSize: number = 1024) {
-        super(ProfileBulkConfig, undefined, getMagicNumbers, bufferSize);
+    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileBulkConfig, getMessageInfo, bufferSize);
     }
 }
 
@@ -1118,8 +1142,8 @@ export class ProfileBulkAccumulatingReader extends AccumulatingReader {
 // -----------------------------------------------------------------------------
 
 export class ProfileNetworkReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMagicNumbers?: (msgId: number) => [number, number]) {
-        super(ProfileNetworkConfig, buffer, undefined, getMagicNumbers);
+    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
+        super(ProfileNetworkConfig, buffer, getMessageInfo);
     }
 }
 
@@ -1130,7 +1154,7 @@ export class ProfileNetworkWriter extends BufferWriter {
 }
 
 export class ProfileNetworkAccumulatingReader extends AccumulatingReader {
-    constructor(getMagicNumbers?: (msgId: number) => [number, number], bufferSize: number = 1024) {
-        super(ProfileNetworkConfig, undefined, getMagicNumbers, bufferSize);
+    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
+        super(ProfileNetworkConfig, getMessageInfo, bufferSize);
     }
 }

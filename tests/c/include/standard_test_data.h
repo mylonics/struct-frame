@@ -315,7 +315,6 @@ static const test_config_t std_test_config = {
     .encode_message = std_encode_message,
     .validate_message = std_validate_message,
     .reset_state = std_reset_state,
-    .get_message_length = get_message_length,
-    .get_magic_numbers = get_magic_numbers,
+    .get_message_info = get_message_info,
     .supports_format = std_supports_format,
 };

@@ -456,66 +456,43 @@ class FileTsGen():
             yield '\n'
 
         if package.messages:
-            # Only generate get_message_length if there are messages with IDs
+            # Only generate get_message_info if there are messages with IDs
             messages_with_id = [
                 msg for key, msg in package.sortedMessages().items() if msg.id]
             if messages_with_id:
+                # Import MessageInfo type
+                yield 'import { MessageInfo } from \'./frame-profiles\';\n\n'
+                
                 if package.package_id is not None:
                     # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
-                    yield 'export function get_message_length(msg_id: number) {\n'
+                    yield 'export function get_message_info(msg_id: number): MessageInfo | undefined {\n'
                     yield '    // Extract package ID and message ID from 16-bit message ID\n'
                     yield '    const pkg_id = (msg_id >> 8) & 0xFF;\n'
                     yield '    const local_msg_id = msg_id & 0xFF;\n'
                     yield '    \n'
                     yield '    // Check if this is our package\n'
                     yield '    if (pkg_id !== PACKAGE_ID) {\n'
-                    yield '        return 0;\n'
+                    yield '        return undefined;\n'
                     yield '    }\n'
                     yield '    \n'
                     yield '    switch (local_msg_id) {\n'
                 else:
                     # Flat namespace mode: 8-bit message ID
-                    yield 'export function get_message_length(msg_id: number) {\n'
+                    yield 'export function get_message_info(msg_id: number): MessageInfo | undefined {\n'
                     yield '    switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
                     package_msg_name = '%s%s' % (package_name_pascal, msg.name)
-                    yield '        case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
+                    magic1 = msg.magic_bytes[0] if msg.magic_bytes else 0
+                    magic2 = msg.magic_bytes[1] if msg.magic_bytes else 0
+                    if use_class_based:
+                        yield '        case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2 };\n' % (
+                            package_msg_name, package_msg_name, package_msg_name, package_msg_name)
+                    else:
+                        yield '        case %s._msgid: return { size: %s._size, magic1: %d, magic2: %d };\n' % (
+                            package_msg_name, package_msg_name, magic1, magic2)
 
-                yield '        default: break;\n'
+                yield '        default: return undefined;\n'
                 yield '    }\n'
-                yield '    return 0;\n'
-                yield '}\n\n'
-                
-                # Generate get_magic_numbers function
-                if package.package_id is not None:
-                    yield 'export function get_magic_numbers(msg_id: number): [number, number] {\n'
-                    yield '    // Extract package ID and message ID from 16-bit message ID\n'
-                    yield '    const pkg_id = (msg_id >> 8) & 0xFF;\n'
-                    yield '    const local_msg_id = msg_id & 0xFF;\n'
-                    yield '    \n'
-                    yield '    // Check if this is our package\n'
-                    yield '    if (pkg_id !== PACKAGE_ID) {\n'
-                    yield '        return [0, 0];\n'
-                    yield '    }\n'
-                    yield '    \n'
-                    yield '    switch (local_msg_id) {\n'
-                else:
-                    yield 'export function get_magic_numbers(msg_id: number): [number, number] {\n'
-                    yield '    switch (msg_id) {\n'
-                
-                for msg in messages_with_id:
-                    if msg.magic_bytes:
-                        package_msg_name = '%s%s' % (package_name_pascal, msg.name)
-                        if use_class_based:
-                            yield '        case %s._msgid: return [%s._magic1, %s._magic2];\n' % (
-                                package_msg_name, package_msg_name, package_msg_name)
-                        else:
-                            yield '        case %s._msgid: return [%d, %d];\n' % (
-                                package_msg_name, msg.magic_bytes[0], msg.magic_bytes[1])
-                
-                yield '        default: break;\n'
-                yield '    }\n'
-                yield '    return [0, 0];\n'
                 yield '}\n'
             yield '\n'

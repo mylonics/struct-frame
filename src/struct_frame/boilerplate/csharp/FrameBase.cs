@@ -7,6 +7,23 @@ using System.Runtime.InteropServices;
 namespace StructFrame
 {
     /// <summary>
+    /// Message info structure - unified type for size and magic numbers lookup
+    /// </summary>
+    public struct MessageInfo
+    {
+        public int Size;
+        public byte Magic1;
+        public byte Magic2;
+
+        public MessageInfo(int size, byte magic1 = 0, byte magic2 = 0)
+        {
+            Size = size;
+            Magic1 = magic1;
+            Magic2 = magic2;
+        }
+    }
+
+    /// <summary>
     /// Checksum result structure
     /// </summary>
     public struct FrameChecksum

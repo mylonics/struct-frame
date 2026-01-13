@@ -701,23 +701,27 @@ class FileCSharpGen():
         if package.messages:
             yield '    public static class MessageDefinitions\n'
             yield '    {\n'
+            yield '        /// <summary>\n'
+            yield '        /// Get message info (size and magic numbers) for a given message ID.\n'
+            yield '        /// </summary>\n'
+            yield '        /// <param name="msgId">The message ID</param>\n'
+            yield '        /// <returns>MessageInfo if found, null otherwise</returns>\n'
             
             if package.package_id is not None:
-                yield '        public static bool GetMessageLength(ushort msgId, out int size)\n'
+                yield '        public static MessageInfo? GetMessageInfo(int msgId)\n'
                 yield '        {\n'
                 yield '            byte pkgId = (byte)((msgId >> 8) & 0xFF);\n'
                 yield '            byte localMsgId = (byte)(msgId & 0xFF);\n'
                 yield '            \n'
                 yield f'            if (pkgId != PackageInfo.PackageId)\n'
                 yield '            {\n'
-                yield '                size = 0;\n'
-                yield '                return false;\n'
+                yield '                return null;\n'
                 yield '            }\n'
                 yield '            \n'
                 yield '            switch (localMsgId)\n'
                 yield '            {\n'
             else:
-                yield '        public static bool GetMessageLength(int msgId, out int size)\n'
+                yield '        public static MessageInfo? GetMessageInfo(int msgId)\n'
                 yield '        {\n'
                 yield '            switch (msgId)\n'
                 yield '            {\n'
@@ -725,45 +729,16 @@ class FileCSharpGen():
             for key, msg in package.sortedMessages().items():
                 if msg.id:
                     structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                    magic1 = '0'
+                    magic2 = '0'
+                    if msg.magic_bytes:
+                        magic1 = f'{structName}.Magic1'
+                        magic2 = f'{structName}.Magic2'
                     if package.package_id is not None:
-                        yield '                case %d: size = %s.MaxSize; return true;\n' % (msg.id, structName)
+                        yield '                case %d: return new MessageInfo(%s.MaxSize, %s, %s);\n' % (msg.id, structName, magic1, magic2)
                     else:
-                        yield '                case %s.MsgId: size = %s.MaxSize; return true;\n' % (structName, structName)
-            yield '                default: size = 0; return false;\n'
-            yield '            }\n'
-            yield '        }\n\n'
-            
-            # Generate GetMagicNumbers function
-            if package.package_id is not None:
-                yield '        public static bool GetMagicNumbers(ushort msgId, out byte magic1, out byte magic2)\n'
-                yield '        {\n'
-                yield '            byte pkgId = (byte)((msgId >> 8) & 0xFF);\n'
-                yield '            byte localMsgId = (byte)(msgId & 0xFF);\n'
-                yield '            \n'
-                yield f'            if (pkgId != PackageInfo.PackageId)\n'
-                yield '            {\n'
-                yield '                magic1 = 0;\n'
-                yield '                magic2 = 0;\n'
-                yield '                return false;\n'
-                yield '            }\n'
-                yield '            \n'
-                yield '            switch (localMsgId)\n'
-                yield '            {\n'
-            else:
-                yield '        public static bool GetMagicNumbers(int msgId, out byte magic1, out byte magic2)\n'
-                yield '        {\n'
-                yield '            switch (msgId)\n'
-                yield '            {\n'
-            
-            for key, msg in package.sortedMessages().items():
-                if msg.id and msg.magic_bytes:
-                    structName = '%s%s' % (pascalCase(msg.package), msg.name)
-                    if package.package_id is not None:
-                        yield '                case %d: magic1 = %s.Magic1; magic2 = %s.Magic2; return true;\n' % (msg.id, structName, structName)
-                    else:
-                        yield '                case %s.MsgId: magic1 = %s.Magic1; magic2 = %s.Magic2; return true;\n' % (structName, structName, structName)
-            
-            yield '                default: magic1 = 0; magic2 = 0; return false;\n'
+                        yield '                case %s.MsgId: return new MessageInfo(%s.MaxSize, %s, %s);\n' % (structName, structName, magic1, magic2)
+            yield '                default: return null;\n'
             yield '            }\n'
             yield '        }\n'
             yield '    }\n'

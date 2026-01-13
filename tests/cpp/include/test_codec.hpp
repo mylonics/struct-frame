@@ -15,7 +15,7 @@
  * - get_msg_id_order(): array of msg_ids in encode/decode order
  * - Encoder: struct with write_message(writer, msg_id) method
  * - Validator: struct with get_expected(msg_id, data, size) method
- * - get_message_length(): function for minimal profiles (optional)
+ * - get_message_info(): function for minimal profiles (optional)
  * - supports_format(): function to check if format is supported
  */
 
@@ -196,10 +196,10 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
     AccumulatingReader<ProfileStandardConfig> reader;
     return decode_all(reader);
   } else if (format == "profile_sensor") {
-    AccumulatingReader<ProfileSensorConfig> reader(Config::get_message_length);
+    AccumulatingReader<ProfileSensorConfig> reader(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_ipc") {
-    AccumulatingReader<ProfileIPCConfig> reader(Config::get_message_length);
+    AccumulatingReader<ProfileIPCConfig> reader(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_bulk") {
     AccumulatingReader<ProfileBulkConfig> reader;

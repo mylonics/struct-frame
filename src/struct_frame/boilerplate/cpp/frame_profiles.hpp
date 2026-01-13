@@ -274,13 +274,12 @@ class BufferParserWithCrc {
 };
 
 /**
- * Generic frame parser for minimal frames (requires get_msg_length callback)
+ * Generic frame parser for minimal frames (requires get_message_info callback)
  */
 template <typename Config>
 class BufferParserMinimal {
  public:
-  static FrameMsgInfo parse(const uint8_t* buffer, size_t length,
-                            std::function<bool(uint8_t, size_t*)> get_msg_length) {
+  static FrameMsgInfo parse(const uint8_t* buffer, size_t length, GetMessageInfo get_message_info) {
     if (length < Config::header_size) {
       return FrameMsgInfo();
     }
@@ -302,11 +301,15 @@ class BufferParserMinimal {
     // Read message ID
     uint8_t msg_id = buffer[idx];
 
-    // Get message length from callback
-    size_t msg_len = 0;
-    if (!get_msg_length || !get_msg_length(msg_id, &msg_len)) {
+    // Get message info from callback
+    if (!get_message_info) {
       return FrameMsgInfo();
     }
+    auto info = get_message_info(msg_id);
+    if (!info) {
+      return FrameMsgInfo();
+    }
+    size_t msg_len = info->size;
 
     size_t total_size = Config::header_size + msg_len;
     if (length < total_size) {
@@ -358,17 +361,17 @@ using ProfileNetworkConfig =
  *     // Process result.msg_id, result.msg_data, result.msg_len
  *   }
  *
- * For minimal profiles that need get_msg_length:
- *   BufferReader<ProfileSensorConfig> reader(buffer, size, get_message_length);
+ * For minimal profiles that need get_message_info:
+ *   BufferReader<ProfileSensorConfig> reader(buffer, size, get_message_info);
  */
 template <typename Config>
 class BufferReader {
  public:
   BufferReader(const uint8_t* buffer, size_t size)
-      : buffer_(buffer), size_(size), offset_(0), get_msg_length_(nullptr) {}
+      : buffer_(buffer), size_(size), offset_(0), get_message_info_(nullptr) {}
 
-  BufferReader(const uint8_t* buffer, size_t size, std::function<bool(uint8_t, size_t*)> get_msg_length)
-      : buffer_(buffer), size_(size), offset_(0), get_msg_length_(get_msg_length) {}
+  BufferReader(const uint8_t* buffer, size_t size, GetMessageInfo get_message_info)
+      : buffer_(buffer), size_(size), offset_(0), get_message_info_(get_message_info) {}
 
   /**
    * Parse the next frame in the buffer.
@@ -383,7 +386,7 @@ class BufferReader {
     if constexpr (Config::has_length || Config::has_crc) {
       result = BufferParserWithCrc<Config>::parse(buffer_ + offset_, size_ - offset_);
     } else {
-      result = BufferParserMinimal<Config>::parse(buffer_ + offset_, size_ - offset_, get_msg_length_);
+      result = BufferParserMinimal<Config>::parse(buffer_ + offset_, size_ - offset_, get_message_info_);
     }
 
     if (result.valid && result.frame_size > 0) {
@@ -417,7 +420,7 @@ class BufferReader {
   const uint8_t* buffer_;
   size_t size_;
   size_t offset_;
-  std::function<bool(uint8_t, size_t*)> get_msg_length_;
+  GetMessageInfo get_message_info_;
 };
 
 /**
@@ -572,19 +575,19 @@ class AccumulatingReader {
         current_buffer_(nullptr),
         current_size_(0),
         current_offset_(0),
-        get_msg_length_(nullptr) {}
+        get_message_info_(nullptr) {}
 
   /**
-   * Construct an AccumulatingReader with message length callback (for minimal profiles).
+   * Construct an AccumulatingReader with message info callback (for minimal profiles).
    */
-  explicit AccumulatingReader(std::function<bool(uint8_t, size_t*)> get_msg_length)
+  explicit AccumulatingReader(GetMessageInfo get_message_info)
       : internal_data_len_(0),
         expected_frame_size_(0),
         state_(State::Idle),
         current_buffer_(nullptr),
         current_size_(0),
         current_offset_(0),
-        get_msg_length_(get_msg_length) {}
+        get_message_info_(get_message_info) {}
 
   // Default copy/move operations are fine with fixed array
   AccumulatingReader(const AccumulatingReader&) = default;
@@ -833,27 +836,34 @@ class AccumulatingReader {
       if constexpr (!Config::has_length && !Config::has_crc) {
         // msg_id is at header_size - 1 position
         uint8_t msg_id = internal_buffer_[Config::header_size - 1];
-        size_t msg_len = 0;
-        if (get_msg_length_ && get_msg_length_(msg_id, &msg_len)) {
-          expected_frame_size_ = Config::header_size + msg_len;
+        if (get_message_info_) {
+          auto info = get_message_info_(msg_id);
+          if (info) {
+            size_t msg_len = info->size;
+            expected_frame_size_ = Config::header_size + msg_len;
 
-          if (expected_frame_size_ > BufferSize) {
-            // Too large - reset
+            if (expected_frame_size_ > BufferSize) {
+              // Too large - reset
+              state_ = State::LookingForStart1;
+              internal_data_len_ = 0;
+              return FrameMsgInfo();
+            }
+
+            if (msg_len == 0) {
+              // Zero-length message - complete!
+              FrameMsgInfo result(true, msg_id, 0, expected_frame_size_, internal_buffer_ + Config::header_size);
+              state_ = State::LookingForStart1;
+              internal_data_len_ = 0;
+              expected_frame_size_ = 0;
+              return result;
+            }
+
+            state_ = State::CollectingPayload;
+          } else {
+            // Unknown message ID - reset
             state_ = State::LookingForStart1;
             internal_data_len_ = 0;
-            return FrameMsgInfo();
           }
-
-          if (msg_len == 0) {
-            // Zero-length message - complete!
-            FrameMsgInfo result(true, msg_id, 0, expected_frame_size_, internal_buffer_ + Config::header_size);
-            state_ = State::LookingForStart1;
-            internal_data_len_ = 0;
-            expected_frame_size_ = 0;
-            return result;
-          }
-
-          state_ = State::CollectingPayload;
         } else {
           // Unknown message ID - reset
           state_ = State::LookingForStart1;
@@ -916,26 +926,33 @@ class AccumulatingReader {
   }
 
   FrameMsgInfo handle_minimal_msg_id(uint8_t msg_id) {
-    size_t msg_len = 0;
-    if (get_msg_length_ && get_msg_length_(msg_id, &msg_len)) {
-      expected_frame_size_ = Config::header_size + msg_len;
+    if (get_message_info_) {
+      auto info = get_message_info_(msg_id);
+      if (info) {
+        size_t msg_len = info->size;
+        expected_frame_size_ = Config::header_size + msg_len;
 
-      if (expected_frame_size_ > BufferSize) {
+        if (expected_frame_size_ > BufferSize) {
+          state_ = State::LookingForStart1;
+          internal_data_len_ = 0;
+          return FrameMsgInfo();
+        }
+
+        if (msg_len == 0) {
+          // Zero-length message - complete!
+          FrameMsgInfo result(true, msg_id, 0, expected_frame_size_, internal_buffer_ + Config::header_size);
+          state_ = State::LookingForStart1;
+          internal_data_len_ = 0;
+          expected_frame_size_ = 0;
+          return result;
+        }
+
+        state_ = State::CollectingPayload;
+      } else {
+        // Unknown msg_id - stay looking for valid start
         state_ = State::LookingForStart1;
         internal_data_len_ = 0;
-        return FrameMsgInfo();
       }
-
-      if (msg_len == 0) {
-        // Zero-length message - complete!
-        FrameMsgInfo result(true, msg_id, 0, expected_frame_size_, internal_buffer_ + Config::header_size);
-        state_ = State::LookingForStart1;
-        internal_data_len_ = 0;
-        expected_frame_size_ = 0;
-        return result;
-      }
-
-      state_ = State::CollectingPayload;
     } else {
       // Unknown msg_id - stay looking for valid start
       state_ = State::LookingForStart1;
@@ -963,7 +980,7 @@ class AccumulatingReader {
     if constexpr (Config::has_length || Config::has_crc) {
       return BufferParserWithCrc<Config>::parse(buffer, size);
     } else {
-      return BufferParserMinimal<Config>::parse(buffer, size, get_msg_length_);
+      return BufferParserMinimal<Config>::parse(buffer, size, get_message_info_);
     }
   }
 
@@ -981,7 +998,7 @@ class AccumulatingReader {
   size_t current_size_;            // Size of current external buffer
   size_t current_offset_;          // Current position in external buffer
 
-  std::function<bool(uint8_t, size_t*)> get_msg_length_;
+  GetMessageInfo get_message_info_;
 };
 
 /* Convenience type aliases for AccumulatingReader with standard profiles (default 1024 byte buffer) */

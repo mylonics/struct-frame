@@ -216,7 +216,7 @@ static inline size_t profile_encode_minimal(
 static inline frame_msg_info_t profile_parse_with_crc(
     const profile_config_t* config,
     const uint8_t* buffer, size_t length,
-    bool (*get_magic_numbers_func)(uint16_t, uint8_t*, uint8_t*)) {
+    bool (*get_message_info_func)(uint16_t, message_info_t*)) {
     
     frame_msg_info_t result = {false, 0, 0, NULL};
     uint8_t header_size = profile_header_size(config);
@@ -278,8 +278,12 @@ static inline frame_msg_info_t profile_parse_with_crc(
         
         /* Get magic numbers for this message type */
         uint8_t magic1 = 0, magic2 = 0;
-        if (get_magic_numbers_func) {
-            get_magic_numbers_func(msg_id, &magic1, &magic2);
+        if (get_message_info_func) {
+            message_info_t info;
+            if (get_message_info_func(msg_id, &info)) {
+                magic1 = info.magic1;
+                magic2 = info.magic2;
+            }
         }
         
         frame_checksum_t ck = frame_fletcher_checksum_with_init(buffer + crc_start, crc_len, magic1, magic2);
@@ -297,12 +301,12 @@ static inline frame_msg_info_t profile_parse_with_crc(
 }
 
 /**
- * Generic parse function for minimal frames (requires get_msg_length callback)
+ * Generic parse function for minimal frames (requires get_message_info callback)
  */
 static inline frame_msg_info_t profile_parse_minimal(
     const profile_config_t* config,
     const uint8_t* buffer, size_t length,
-    bool (*get_msg_length)(size_t msg_id, size_t* len)) {
+    bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
     
     frame_msg_info_t result = {false, 0, 0, NULL};
     uint8_t header_size = profile_header_size(config);
@@ -331,9 +335,11 @@ static inline frame_msg_info_t profile_parse_minimal(
     
     /* Get message length from callback */
     size_t msg_len = 0;
-    if (!get_msg_length || !get_msg_length(msg_id, &msg_len)) {
+    message_info_t info;
+    if (!get_message_info || !get_message_info(msg_id, &info)) {
         return result;
     }
+    msg_len = info.size;
     
     size_t total_size = header_size + msg_len;
     if (length < total_size) {
@@ -373,8 +379,8 @@ static inline size_t encode_profile_sensor(uint8_t* buffer, size_t buffer_size,
 }
 
 static inline frame_msg_info_t parse_profile_sensor_buffer(const uint8_t* buffer, size_t length,
-                                                           bool (*get_msg_length)(size_t msg_id, size_t* len)) {
-    return profile_parse_minimal(&PROFILE_SENSOR_CONFIG, buffer, length, get_msg_length);
+                                                           bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
+    return profile_parse_minimal(&PROFILE_SENSOR_CONFIG, buffer, length, get_message_info);
 }
 
 /* Profile IPC (None + Minimal) */
@@ -386,8 +392,8 @@ static inline size_t encode_profile_ipc(uint8_t* buffer, size_t buffer_size,
 }
 
 static inline frame_msg_info_t parse_profile_ipc_buffer(const uint8_t* buffer, size_t length,
-                                                        bool (*get_msg_length)(size_t msg_id, size_t* len)) {
-    return profile_parse_minimal(&PROFILE_IPC_CONFIG, buffer, length, get_msg_length);
+                                                        bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
+    return profile_parse_minimal(&PROFILE_IPC_CONFIG, buffer, length, get_message_info);
 }
 
 /* Profile Bulk (Basic + Extended) */
@@ -429,8 +435,7 @@ typedef struct buffer_reader {
     const uint8_t* buffer;
     size_t size;
     size_t offset;
-    bool (*get_msg_length)(size_t msg_id, size_t* len);
-    bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2);
+    bool (*get_message_info)(uint16_t msg_id, message_info_t* info);
 } buffer_reader_t;
 
 static inline void buffer_reader_init(
@@ -438,15 +443,13 @@ static inline void buffer_reader_init(
     const profile_config_t* config,
     const uint8_t* buffer,
     size_t size,
-    bool (*get_msg_length)(size_t msg_id, size_t* len),
-    bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2))
+    bool (*get_message_info)(uint16_t msg_id, message_info_t* info))
 {
     reader->config = config;
     reader->buffer = buffer;
     reader->size = size;
     reader->offset = 0;
-    reader->get_msg_length = get_msg_length;
-    reader->get_magic_numbers = get_magic_numbers;
+    reader->get_message_info = get_message_info;
 }
 
 static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
@@ -461,13 +464,13 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
     size_t remaining_size = reader->size - reader->offset;
     
     if (reader->config->payload.has_crc || reader->config->payload.has_length) {
-        result = profile_parse_with_crc(reader->config, remaining, remaining_size, reader->get_magic_numbers);
+        result = profile_parse_with_crc(reader->config, remaining, remaining_size, reader->get_message_info);
     } else {
-        if (reader->get_msg_length == NULL) {
+        if (reader->get_message_info == NULL) {
             reader->offset = reader->size;
             return result;
         }
-        result = profile_parse_minimal(reader->config, remaining, remaining_size, reader->get_msg_length);
+        result = profile_parse_minimal(reader->config, remaining, remaining_size, reader->get_message_info);
     }
     
     if (result.valid) {
@@ -571,8 +574,7 @@ typedef enum accumulating_reader_state {
 
 typedef struct accumulating_reader {
     const profile_config_t* config;
-    bool (*get_msg_length)(size_t msg_id, size_t* len);
-    bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2);
+    bool (*get_message_info)(uint16_t msg_id, message_info_t* info);
     
     uint8_t* internal_buffer;
     size_t buffer_size;
@@ -590,12 +592,10 @@ static inline void accumulating_reader_init(
     const profile_config_t* config,
     uint8_t* internal_buffer,
     size_t buffer_size,
-    bool (*get_msg_length)(size_t msg_id, size_t* len),
-    bool (*get_magic_numbers)(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2))
+    bool (*get_message_info)(uint16_t msg_id, message_info_t* info))
 {
     reader->config = config;
-    reader->get_msg_length = get_msg_length;
-    reader->get_magic_numbers = get_magic_numbers;
+    reader->get_message_info = get_message_info;
     reader->internal_buffer = internal_buffer;
     reader->buffer_size = buffer_size;
     reader->internal_data_len = 0;
@@ -712,9 +712,10 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                 reader->internal_data_len = 1;
                 
                 if (!reader->config->payload.has_length && !reader->config->payload.has_crc) {
-                    if (reader->get_msg_length) {
-                        size_t msg_len = 0;
-                        if (reader->get_msg_length(byte, &msg_len)) {
+                    if (reader->get_message_info) {
+                        message_info_t info;
+                        if (reader->get_message_info(byte, &info)) {
+                            size_t msg_len = info.size;
                             reader->expected_frame_size = header_size + msg_len;
                             
                             if (reader->expected_frame_size > reader->buffer_size) {
@@ -785,9 +786,10 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             if (reader->internal_data_len >= header_size) {
                 if (!reader->config->payload.has_length && !reader->config->payload.has_crc) {
                     uint8_t msg_id = reader->internal_buffer[header_size - 1];
-                    if (reader->get_msg_length) {
-                        size_t msg_len = 0;
-                        if (reader->get_msg_length(msg_id, &msg_len)) {
+                    if (reader->get_message_info) {
+                        message_info_t info;
+                        if (reader->get_message_info(msg_id, &info)) {
+                            size_t msg_len = info.size;
                             reader->expected_frame_size = header_size + msg_len;
                             
                             if (reader->expected_frame_size > reader->buffer_size) {
@@ -886,9 +888,9 @@ static inline frame_msg_info_t _acc_parse_buffer(
     size_t size)
 {
     if (reader->config->payload.has_crc || reader->config->payload.has_length) {
-        return profile_parse_with_crc(reader->config, buffer, size, reader->get_magic_numbers);
+        return profile_parse_with_crc(reader->config, buffer, size, reader->get_message_info);
     } else {
-        return profile_parse_minimal(reader->config, buffer, size, reader->get_msg_length);
+        return profile_parse_minimal(reader->config, buffer, size, reader->get_message_info);
     }
 }
 

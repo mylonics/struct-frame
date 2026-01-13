@@ -420,64 +420,48 @@ class FileJsGen():
             yield '\n'
 
         if package.messages:
-            # Only generate get_message_length if there are messages with IDs
+            # Only generate get_message_info if there are messages with IDs
             messages_with_id = [
                 msg for key, msg in package.sortedMessages().items() if msg.id]
             if messages_with_id:
+                # Generate unified get_message_info function
+                # Returns { size, magic1, magic2 } for a given message ID
                 if package.package_id is not None:
                     # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
-                    yield 'function get_message_length(msg_id) {\n'
+                    yield '/**\n'
+                    yield ' * Get message info (size and magic numbers) for a message ID.\n'
+                    yield ' * @param {number} msg_id - 16-bit message ID (pkg_id << 8 | local_msg_id)\n'
+                    yield ' * @returns {{size: number, magic1: number, magic2: number}|undefined}\n'
+                    yield ' */\n'
+                    yield 'function get_message_info(msg_id) {\n'
                     yield '  // Extract package ID and message ID from 16-bit message ID\n'
                     yield '  const pkg_id = (msg_id >> 8) & 0xFF;\n'
                     yield '  const local_msg_id = msg_id & 0xFF;\n'
                     yield '  \n'
                     yield '  // Check if this is our package\n'
                     yield '  if (pkg_id !== PACKAGE_ID) {\n'
-                    yield '    return 0;\n'
+                    yield '    return undefined;\n'
                     yield '  }\n'
                     yield '  \n'
                     yield '  switch (local_msg_id) {\n'
                 else:
                     # Flat namespace mode: 8-bit message ID
-                    yield 'function get_message_length(msg_id) {\n'
+                    yield '/**\n'
+                    yield ' * Get message info (size and magic numbers) for a message ID.\n'
+                    yield ' * @param {number} msg_id - Message ID\n'
+                    yield ' * @returns {{size: number, magic1: number, magic2: number}|undefined}\n'
+                    yield ' */\n'
+                    yield 'function get_message_info(msg_id) {\n'
                     yield '  switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
                     package_msg_name = '%s%s' % (package_name_pascal, msg.name)
-                    yield '    case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
+                    yield '    case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2 };\n' % (
+                        package_msg_name, package_msg_name, package_msg_name, package_msg_name)
 
                 yield '    default: break;\n'
                 yield '  }\n'
-                yield '  return 0;\n'
+                yield '  return undefined;\n'
                 yield '}\n'
-                yield 'module.exports.get_message_length = get_message_length;\n\n'
-                
-                # Generate get_magic_numbers function
-                if package.package_id is not None:
-                    yield 'function get_magic_numbers(msg_id) {\n'
-                    yield '  // Extract package ID and message ID from 16-bit message ID\n'
-                    yield '  const pkg_id = (msg_id >> 8) & 0xFF;\n'
-                    yield '  const local_msg_id = msg_id & 0xFF;\n'
-                    yield '  \n'
-                    yield '  // Check if this is our package\n'
-                    yield '  if (pkg_id !== PACKAGE_ID) {\n'
-                    yield '    return [0, 0];\n'
-                    yield '  }\n'
-                    yield '  \n'
-                    yield '  switch (local_msg_id) {\n'
-                else:
-                    yield 'function get_magic_numbers(msg_id) {\n'
-                    yield '  switch (msg_id) {\n'
-                
-                for msg in messages_with_id:
-                    if msg.magic_bytes:
-                        package_msg_name = '%s%s' % (package_name_pascal, msg.name)
-                        yield '    case %s._msgid: return [%s._magic1, %s._magic2];\n' % (
-                            package_msg_name, package_msg_name, package_msg_name)
-                
-                yield '    default: break;\n'
-                yield '  }\n'
-                yield '  return [0, 0];\n'
-                yield '}\n'
-                yield 'module.exports.get_magic_numbers = get_magic_numbers;\n'
+                yield 'module.exports.get_message_info = get_message_info;\n'
             yield '\n'

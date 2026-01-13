@@ -59,27 +59,27 @@ namespace StructFrameTests
         }
 
         // ============================================================================
-        // Message length lookup (for IPC profile without length field)
+        // Message info lookup (unified size and magic numbers)
         // ============================================================================
 
-        public static int GetMessageLength(int msgId)
+        public static MessageInfo? GetMessageInfo(int msgId)
         {
             // Combined message ID (pkg_id << 8 | msg_id)
             switch (msgId)
             {
-                case ExtendedIdMessage1.MsgId: return ExtendedIdMessage1.MaxSize;
-                case ExtendedIdMessage2.MsgId: return ExtendedIdMessage2.MaxSize;
-                case ExtendedIdMessage3.MsgId: return ExtendedIdMessage3.MaxSize;
-                case ExtendedIdMessage4.MsgId: return ExtendedIdMessage4.MaxSize;
-                case ExtendedIdMessage5.MsgId: return ExtendedIdMessage5.MaxSize;
-                case ExtendedIdMessage6.MsgId: return ExtendedIdMessage6.MaxSize;
-                case ExtendedIdMessage7.MsgId: return ExtendedIdMessage7.MaxSize;
-                case ExtendedIdMessage8.MsgId: return ExtendedIdMessage8.MaxSize;
-                case ExtendedIdMessage9.MsgId: return ExtendedIdMessage9.MaxSize;
-                case ExtendedIdMessage10.MsgId: return ExtendedIdMessage10.MaxSize;
-                case LargePayloadMessage1.MsgId: return LargePayloadMessage1.MaxSize;
-                case LargePayloadMessage2.MsgId: return LargePayloadMessage2.MaxSize;
-                default: return 0;
+                case ExtendedIdMessage1.MsgId: return new MessageInfo(ExtendedIdMessage1.MaxSize, ExtendedIdMessage1.Magic1, ExtendedIdMessage1.Magic2);
+                case ExtendedIdMessage2.MsgId: return new MessageInfo(ExtendedIdMessage2.MaxSize, ExtendedIdMessage2.Magic1, ExtendedIdMessage2.Magic2);
+                case ExtendedIdMessage3.MsgId: return new MessageInfo(ExtendedIdMessage3.MaxSize, ExtendedIdMessage3.Magic1, ExtendedIdMessage3.Magic2);
+                case ExtendedIdMessage4.MsgId: return new MessageInfo(ExtendedIdMessage4.MaxSize, ExtendedIdMessage4.Magic1, ExtendedIdMessage4.Magic2);
+                case ExtendedIdMessage5.MsgId: return new MessageInfo(ExtendedIdMessage5.MaxSize, ExtendedIdMessage5.Magic1, ExtendedIdMessage5.Magic2);
+                case ExtendedIdMessage6.MsgId: return new MessageInfo(ExtendedIdMessage6.MaxSize, ExtendedIdMessage6.Magic1, ExtendedIdMessage6.Magic2);
+                case ExtendedIdMessage7.MsgId: return new MessageInfo(ExtendedIdMessage7.MaxSize, ExtendedIdMessage7.Magic1, ExtendedIdMessage7.Magic2);
+                case ExtendedIdMessage8.MsgId: return new MessageInfo(ExtendedIdMessage8.MaxSize, ExtendedIdMessage8.Magic1, ExtendedIdMessage8.Magic2);
+                case ExtendedIdMessage9.MsgId: return new MessageInfo(ExtendedIdMessage9.MaxSize, ExtendedIdMessage9.Magic1, ExtendedIdMessage9.Magic2);
+                case ExtendedIdMessage10.MsgId: return new MessageInfo(ExtendedIdMessage10.MaxSize, ExtendedIdMessage10.Magic1, ExtendedIdMessage10.Magic2);
+                case LargePayloadMessage1.MsgId: return new MessageInfo(LargePayloadMessage1.MaxSize, LargePayloadMessage1.Magic1, LargePayloadMessage1.Magic2);
+                case LargePayloadMessage2.MsgId: return new MessageInfo(LargePayloadMessage2.MaxSize, LargePayloadMessage2.Magic1, LargePayloadMessage2.Magic2);
+                default: return null;
             }
         }
 

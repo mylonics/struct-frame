@@ -432,7 +432,7 @@ class FileCppGen():
             yield '    return false;\n'
             yield '}\n\n'
             
-            # Generate get_magic_numbers function
+            # Generate get_magic_numbers function (legacy support)
             if use_namespace:
                 # When using package ID, message ID is 16-bit
                 yield 'inline bool get_magic_numbers(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
@@ -473,6 +473,46 @@ class FileCppGen():
             yield '        default: break;\n'
             yield '    }\n'
             yield '    return false;\n'
+            yield '}\n\n'
+            
+            # Generate unified get_message_info function
+            if use_namespace:
+                # When using package ID, message ID is 16-bit
+                yield 'inline std::optional<MessageInfo> get_message_info(uint16_t msg_id) {\n'
+                yield '    // Extract package ID and message ID from 16-bit message ID\n'
+                yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
+                yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
+                yield '    \n'
+                yield f'    // Check if this is our package\n'
+                yield f'    if (pkg_id != PACKAGE_ID) {{\n'
+                yield f'        return std::nullopt;\n'
+                yield f'    }}\n'
+                yield '    \n'
+                yield '    switch (local_msg_id) {\n'
+            else:
+                # Flat namespace mode: 8-bit message ID
+                yield 'inline std::optional<MessageInfo> get_message_info(uint16_t msg_id) {\n'
+                yield '    switch (msg_id) {\n'
+            
+            for key, msg in package.sortedMessages().items():
+                if use_namespace:
+                    structName = msg.name
+                else:
+                    structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                    
+                if msg.id is not None:
+                    if use_namespace:
+                        # When using package ID, compare against local message ID
+                        yield '        case %d: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2};\n' % (
+                            msg.id, structName, structName, structName)
+                    else:
+                        # No package ID, compare against MSG_ID from MessageBase
+                        yield '        case %s::MSG_ID: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2};\n' % (
+                            structName, structName, structName, structName)
+
+            yield '        default: break;\n'
+            yield '    }\n'
+            yield '    return std::nullopt;\n'
             yield '}\n\n'
             
             yield '}  // namespace FrameParsers\n'

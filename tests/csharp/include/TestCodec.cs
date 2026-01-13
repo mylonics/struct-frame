@@ -334,20 +334,18 @@ namespace StructFrameTests
         /// <param name="formatName">Frame format profile name</param>
         /// <param name="data">Encoded data buffer</param>
         /// <param name="expectedCount">Expected number of messages</param>
-        /// <param name="getMsgLength">Delegate to get message length from ID</param>
+        /// <param name="getMessageInfo">Delegate to get message info from ID</param>
         /// <param name="validateMessage">Delegate to validate message at index, returns (expectedMsgId, isValid)</param>
-        /// <param name="getMagicNumbers">Delegate to get magic numbers for CRC profiles</param>
         /// <param name="usePkgId">Whether to combine pkg_id with msg_id</param>
         public static (bool success, int messageCount) DecodeMessages(
             string formatName,
             byte[] data,
             int expectedCount,
-            Func<int, int?> getMsgLength,
+            Func<int, MessageInfo?> getMessageInfo,
             Func<int, FrameMsgInfo, (int expectedMsgId, bool isValid)> validateMessage,
-            bool usePkgId = false,
-            Func<int, (byte, byte)> getMagicNumbers = null)
+            bool usePkgId = false)
         {
-            var reader = Profiles.CreateReader(formatName, getMsgLength, getMagicNumbers);
+            var reader = Profiles.CreateReader(formatName, getMessageInfo);
             reader.SetBuffer(data);
             int messageCount = 0;
 
@@ -427,8 +425,10 @@ namespace StructFrameTests
                 var (msg, _) = ExtendedTestData.GetExtendedTestMessage(i);
                 if (msg == null)
                     throw new Exception($"Failed to get extended message {i}");
-                var (magic1, magic2) = GetExtendedMagicNumbers(msg.MsgId);
-                return (msg.Pack(), msg.MsgId, magic1, magic2);
+                var info = ExtendedTestData.GetMessageInfo(msg.MsgId);
+                if (info == null)
+                    throw new Exception($"Failed to get message info for {msg.MsgId}");
+                return (msg.Pack(), msg.MsgId, info.Value.Magic1, info.Value.Magic2);
             });
         }
 
@@ -436,25 +436,14 @@ namespace StructFrameTests
         // Decoding functions (using generic implementation)
         // ============================================================================
 
-        private static int? GetStandardMessageLength(int msgId)
+        private static MessageInfo? GetStandardMessageInfo(int msgId)
         {
-            if (MessageDefinitions.GetMessageLength(msgId, out int size))
-                return size;
-            return null;
+            return MessageDefinitions.GetMessageInfo(msgId);
         }
 
-        private static (byte, byte) GetStandardMagicNumbers(int msgId)
+        private static MessageInfo? GetExtendedMessageInfo(int msgId)
         {
-            if (MessageDefinitions.GetMagicNumbers(msgId, out byte magic1, out byte magic2))
-                return (magic1, magic2);
-            return (0, 0);
-        }
-
-        private static (byte, byte) GetExtendedMagicNumbers(int msgId)
-        {
-            if (ExtendedMessageDefinitions.GetMagicNumbers(msgId, out byte magic1, out byte magic2))
-                return (magic1, magic2);
-            return (0, 0);
+            return ExtendedTestData.GetMessageInfo(msgId);
         }
 
         private static bool ValidateSerializationTestMessage(SerializationTestMessage msg, Dictionary<string, object> expected)
@@ -530,7 +519,7 @@ namespace StructFrameTests
                 formatName,
                 data,
                 StandardTestData.MESSAGE_COUNT,
-                GetStandardMessageLength,
+                GetStandardMessageInfo,
                 (i, result) =>
                 {
                     var expected = StandardTestData.GetTestMessage(i);
@@ -561,8 +550,7 @@ namespace StructFrameTests
 
                     return (expectedMsgId, isValid);
                 },
-                usePkgId: false,
-                getMagicNumbers: GetStandardMagicNumbers);
+                usePkgId: false);
         }
 
         public static (bool success, int messageCount) DecodeExtendedMessages(string formatName, byte[] data)
@@ -571,7 +559,7 @@ namespace StructFrameTests
                 formatName,
                 data,
                 ExtendedTestData.MESSAGE_COUNT,
-                msgId => (int?)ExtendedTestData.GetMessageLength(msgId),
+                GetExtendedMessageInfo,
                 (i, result) =>
                 {
                     var (expectedMsg, _) = ExtendedTestData.GetExtendedTestMessage(i);
@@ -604,8 +592,7 @@ namespace StructFrameTests
                     
                     return (expectedMsg.MsgId, true);
                 },
-                usePkgId: true,
-                getMagicNumbers: GetExtendedMagicNumbers);
+                usePkgId: true);
         }
 
         // ============================================================================

@@ -6,8 +6,19 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <optional>
 
 namespace FrameParsers {
+
+// Message info structure for unified callback
+struct MessageInfo {
+  size_t size;
+  uint8_t magic1;
+  uint8_t magic2;
+};
+
+// Unified callback type for getting message info
+using GetMessageInfo = std::function<std::optional<MessageInfo>(uint16_t)>;
 
 // Checksum result
 struct FrameChecksum {

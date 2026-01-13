@@ -348,6 +348,7 @@ class FileCGen():
         yield '#pragma pack(1)\n'
         yield '#include <stdbool.h>\n'
         yield '#include <stdint.h>\n'
+        yield '#include "frame_base.h"  // For message_info_t\n'
         yield '#include <stddef.h>\n'
         
         # Include string.h for equality comparisons
@@ -391,7 +392,13 @@ class FileCGen():
         if package.messages:
             if package.package_id is not None:
                 # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
-                yield 'static inline bool get_message_length(uint16_t msg_id, size_t* size) {\n'
+                yield '/**\n'
+                yield ' * Get message info (size and magic numbers) for a given message ID.\n'
+                yield ' * @param msg_id The 16-bit message ID (pkg_id << 8 | msg_id)\n'
+                yield ' * @param info Pointer to message_info_t struct to fill\n'
+                yield ' * @return true if message ID is known, false otherwise\n'
+                yield ' */\n'
+                yield 'static inline bool get_message_info(uint16_t msg_id, message_info_t* info) {\n'
                 yield '    /* Extract package ID and message ID from 16-bit message ID */\n'
                 yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
                 yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
@@ -405,7 +412,13 @@ class FileCGen():
                 yield '    switch (local_msg_id) {\n'
             else:
                 # Flat namespace mode: 8-bit message ID
-                yield 'static inline bool get_message_length(size_t msg_id, size_t* size) {\n'
+                yield '/**\n'
+                yield ' * Get message info (size and magic numbers) for a given message ID.\n'
+                yield ' * @param msg_id The message ID\n'
+                yield ' * @param info Pointer to message_info_t struct to fill\n'
+                yield ' * @return true if message ID is known, false otherwise\n'
+                yield ' */\n'
+                yield 'static inline bool get_message_info(uint16_t msg_id, message_info_t* info) {\n'
                 yield '    switch (msg_id) {\n'
             
             for key, msg in package.sortedMessages().items():
@@ -414,43 +427,23 @@ class FileCGen():
                 if msg.id:
                     if package.package_id is not None:
                         # When using package ID, compare against local message ID
-                        yield '        case %d: *size = %s_MAX_SIZE; return true;\n' % (msg.id, name)
+                        yield '        case %d:\n' % msg.id
                     else:
                         # No package ID, compare against full message ID constant
-                        yield '        case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
+                        yield '        case %s_MSG_ID:\n' % name
+                    
+                    # Get magic bytes values
+                    magic1 = '0'
+                    magic2 = '0'
+                    if msg.magic_bytes:
+                        magic1 = f'{name}_MAGIC1'
+                        magic2 = f'{name}_MAGIC2'
+                    
+                    yield f'            info->size = {name}_MAX_SIZE;\n'
+                    yield f'            info->magic1 = {magic1};\n'
+                    yield f'            info->magic2 = {magic2};\n'
+                    yield '            return true;\n'
 
-            yield '        default: break;\n'
-            yield '    }\n'
-            yield '    return false;\n'
-            yield '}\n\n'
-            
-            # Generate get_magic_numbers function
-            if package.package_id is not None:
-                yield 'static inline bool get_magic_numbers(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
-                yield '    /* Extract package ID and message ID from 16-bit message ID */\n'
-                yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
-                yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
-                yield '    \n'
-                pkg_name_upper = CamelToSnakeCase(package.name).upper()
-                yield f'    /* Check if this is our package */\n'
-                yield f'    if (pkg_id != {pkg_name_upper}_PACKAGE_ID) {{\n'
-                yield f'        return false;\n'
-                yield f'    }}\n'
-                yield '    \n'
-                yield '    switch (local_msg_id) {\n'
-            else:
-                yield 'static inline bool get_magic_numbers(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
-                yield '    switch (msg_id) {\n'
-            
-            for key, msg in package.sortedMessages().items():
-                name = '%s_%s' % (CamelToSnakeCase(
-                    msg.package).upper(), CamelToSnakeCase(msg.name).upper())
-                if msg.id and msg.magic_bytes:
-                    if package.package_id is not None:
-                        yield '        case %d: *magic1 = %s_MAGIC1; *magic2 = %s_MAGIC2; return true;\n' % (msg.id, name, name)
-                    else:
-                        yield '        case %s_MSG_ID: *magic1 = %s_MAGIC1; *magic2 = %s_MAGIC2; return true;\n' % (name, name, name)
-            
             yield '        default: break;\n'
             yield '    }\n'
             yield '    return false;\n'

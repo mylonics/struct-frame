@@ -443,8 +443,8 @@ struct Config {
     return ExtendedTestMessages::get_msg_id_order();
   }
 
-  static bool get_message_length(size_t msg_id, size_t* size) {
-    return FrameParsers::get_message_length(msg_id, size);
+  static std::optional<FrameParsers::MessageInfo> get_message_info(uint16_t msg_id) {
+    return FrameParsers::get_message_info(msg_id);
   }
 
   static bool supports_format(const std::string& format) {

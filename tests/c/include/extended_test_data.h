@@ -479,55 +479,6 @@ static inline bool ext_supports_format(const char* format) {
 }
 
 /* ============================================================================
- * Get message length wrapper for extended messages
- * ============================================================================ */
-
-/* Note: We need to rename the generated function to avoid conflicts */
-static inline bool ext_get_message_length(size_t msg_id, size_t* size) {
-  switch (msg_id) {
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MSG_ID:
-      *size = EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MSG_ID:
-      *size = EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MAX_SIZE;
-      return true;
-    case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MSG_ID:
-      *size = EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAX_SIZE;
-      return true;
-    default:
-      break;
-  }
-  return false;
-}
-
-/* ============================================================================
  * Test configuration
  * ============================================================================ */
 
@@ -540,7 +491,6 @@ static const test_config_t ext_test_config = {
     .encode_message = ext_encode_message,
     .validate_message = ext_validate_message,
     .reset_state = ext_reset_state,
-    .get_message_length = ext_get_message_length,
-    .get_magic_numbers = get_magic_numbers,
+    .get_message_info = get_message_info,
     .supports_format = ext_supports_format,
 };

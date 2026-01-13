@@ -36,6 +36,13 @@ static inline frame_checksum_t frame_fletcher_checksum(const uint8_t* data, size
   return frame_fletcher_checksum_with_init(data, length, 0, 0);
 }
 
+/* Message info - unified type for size and magic numbers lookup */
+typedef struct message_info {
+  size_t size;
+  uint8_t magic1;
+  uint8_t magic2;
+} message_info_t;
+
 /* Parse result */
 typedef struct frame_msg_info {
   bool valid;
