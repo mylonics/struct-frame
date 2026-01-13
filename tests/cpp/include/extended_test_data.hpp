@@ -17,7 +17,7 @@
 #include <cstring>
 #include <string>
 
-#include "../../generated/cpp/extended_test.sf.hpp"
+#include "../../generated/cpp/extended_test.structframe.hpp"
 
 namespace ExtendedTestMessages {
 

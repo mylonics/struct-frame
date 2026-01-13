@@ -381,7 +381,7 @@ class FileJsGen():
             ext_package_pascal = pascalCase(ext_package)
             for t in sorted(type_names):
                 type_var = '%s_%s' % (ext_package_pascal, t)
-                yield "const { %s } = require('./%s.sf');\n" % (type_var, ext_package)
+                yield "const { %s } = require('./%s.structframe');\n" % (type_var, ext_package)
         
         if external_types:
             yield "\n"

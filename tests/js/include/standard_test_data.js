@@ -9,7 +9,7 @@ const {
   SerializationTest_UnionTestMessage,
   SerializationTest_ComprehensiveArrayMessage,
   get_message_length,
-} = require('../../generated/js/serialization_test.sf');
+} = require('../../generated/js/serialization_test.structframe');
 
 /** Message count */
 const MESSAGE_COUNT = 11;

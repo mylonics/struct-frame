@@ -23,7 +23,7 @@ import {
   ExtendedTest_ExtendedIdMessage10,
   ExtendedTest_LargePayloadMessage1,
   ExtendedTest_LargePayloadMessage2,
-} from '../../generated/ts/extended_test.sf';
+} from '../../generated/ts/extended_test.structframe';
 
 /** Message count */
 const MESSAGE_COUNT = 12;

@@ -16,7 +16,7 @@ const {
   ExtendedTest_ExtendedIdMessage10,
   ExtendedTest_LargePayloadMessage1,
   ExtendedTest_LargePayloadMessage2,
-} = require('../../generated/js/extended_test.sf');
+} = require('../../generated/js/extended_test.structframe');
 
 /** Message count */
 const MESSAGE_COUNT = 12;

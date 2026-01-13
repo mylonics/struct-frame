@@ -18,7 +18,7 @@ from typing import List, Tuple, Optional
 # Add generated directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
 
-from serialization_test_sf import (
+from serialization_test_structframe import (
     SerializationTestSerializationTestMessage,
     SerializationTestBasicTypesMessage,
     SerializationTestUnionTestMessage,

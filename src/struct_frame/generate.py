@@ -864,7 +864,7 @@ def printPackages():
 def generateCFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.h")
+        name = os.path.join(path, value.name + ".structframe.h")
         data = ''.join(FileCGen.generate(value, equality=equality))
         out[name] = data
 
@@ -874,7 +874,7 @@ def generateCFileStrings(path, equality=False):
 def generateTsFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.ts")
+        name = os.path.join(path, value.name + ".structframe.ts")
         data = ''.join(FileTsGen.generate(value, use_class_based=True, packages=packages, equality=equality))
         out[name] = data
     return out
@@ -883,7 +883,7 @@ def generateTsFileStrings(path, equality=False):
 def generateJsFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.js")
+        name = os.path.join(path, value.name + ".structframe.js")
         data = ''.join(FileJsGen.generate(value, use_class_based=True, packages=packages, equality=equality))
         out[name] = data
     return out
@@ -892,7 +892,7 @@ def generateJsFileStrings(path, equality=False):
 def generatePyFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + "_sf.py")
+        name = os.path.join(path, value.name + "_structframe.py")
         data = ''.join(FilePyGen.generate(value, equality=equality))
         out[name] = data
     return out
@@ -901,7 +901,7 @@ def generatePyFileStrings(path, equality=False):
 def generateCppFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.hpp")
+        name = os.path.join(path, value.name + ".structframe.hpp")
         data = ''.join(FileCppGen.generate(value, equality=equality))
         out[name] = data
     return out
@@ -910,7 +910,7 @@ def generateCppFileStrings(path, equality=False):
 def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.cs")
+        name = os.path.join(path, value.name + ".structframe.cs")
         data = ''.join(FileCSharpGen.generate(value, equality=equality))
         out[name] = data
         

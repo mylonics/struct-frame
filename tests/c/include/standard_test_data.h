@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../generated/c/serialization_test.sf.h"
+#include "../../generated/c/serialization_test.structframe.h"
 #include "test_codec.h"
 
 /* ============================================================================

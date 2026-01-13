@@ -17,7 +17,7 @@ import {
   SerializationTest_UnionTestMessage,
   SerializationTest_ComprehensiveArrayMessage,
   get_message_length,
-} from '../../generated/ts/serialization_test.sf';
+} from '../../generated/ts/serialization_test.structframe';
 
 /** Message count */
 const MESSAGE_COUNT = 11;

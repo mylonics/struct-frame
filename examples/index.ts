@@ -1,4 +1,4 @@
-import * as mv from '../generated/ts/myl_vehicle.sf';
+import * as mv from '../generated/ts/myl_vehicle.structframe';
 import { parse_char, parse_buffer } from '../generated/ts/struct_frame_parser';
 import { struct_frame_buffer, buffer_parser_result_t, } from '../generated/ts/struct_frame_types';
 import { type ExtractType } from '../generated/ts/struct_base';

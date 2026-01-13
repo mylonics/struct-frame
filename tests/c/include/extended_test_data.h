@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../generated/c/extended_test.sf.h"
+#include "../../generated/c/extended_test.structframe.h"
 #include "test_codec.h"
 
 /* ============================================================================
