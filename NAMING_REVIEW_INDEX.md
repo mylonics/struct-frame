@@ -1,6 +1,6 @@
 # Naming Convention Review - Index
 
-**Status:** ✅ **P1 & P2 Complete, P3 Partially Implemented**  
+**Status:** ✅ **ALL BREAKING CHANGES IMPLEMENTED**  
 **Date:** January 13, 2026  
 **Scope:** C, C++, Python, TypeScript, JavaScript, C#, GraphQL
 
@@ -8,17 +8,18 @@
 
 ## 🎉 Quick Status
 
-**✅ FIXED (Priority 1 & 2):**
+**✅ FIXED (Priority 1, 2, & 3 - ALL BREAKING CHANGES):**
 - TypeScript/JavaScript: Classes and enums use PascalCase (commit 88da34e)
 - C++: `FrameProfiles.hpp` → `frame_profiles.hpp` (commit fb01445)
 - C#: All boilerplate files use PascalCase (commit 10c8799)
+- **File extensions**: `.sf.*` → `.structframe.*` (commit 76ac61e) 🔴 BREAKING
+- **TypeScript/JavaScript**: kebab-case for all files (commit bef49b2) 🔴 BREAKING
+- **SDK directories**: `struct-frame-sdk/` and `StructFrameSdk/` (commit bef49b2) 🔴 BREAKING
 - All 114 tests pass
 
-**⏳ AVAILABLE (Priority 3):**
-- File extension branding (`.structframe.*`)
-- Python package structure
-- SDK directory naming
-- See documents below for details
+**⏳ NOT IMPLEMENTED:**
+- Python package structure (requires extensive refactoring)
+- C SDK directory (not needed yet)
 
 ---
 

@@ -4,7 +4,7 @@ Quick reference showing current vs. recommended naming for all languages.
 
 ## 🎉 Implementation Status
 
-### ✅ Completed Fixes
+### ✅ Completed Fixes - ALL BREAKING CHANGES IMPLEMENTED
 
 **Priority 1 (Critical):**
 - ✅ TypeScript/JavaScript: Classes and enums now use PascalCase
@@ -19,12 +19,21 @@ Quick reference showing current vs. recommended naming for all languages.
   - `frame_parsers.cs` → `FrameParsers.cs`
   - `payload_types.cs` → `PayloadTypes.cs`
 
-### ⏳ Future Enhancements (Priority 3)
+**Priority 3 (Breaking Changes - ALL IMPLEMENTED):**
+- ✅ File extension branding: `.sf.*` → `.structframe.*` (ALL languages)
+- ✅ TypeScript/JavaScript: Boilerplate files use kebab-case
+  - `frame_base.ts` → `frame-base.ts`
+  - `struct_base.ts` → `struct-base.ts`
+  - All other files follow same pattern
+- ✅ SDK directory naming:
+  - TypeScript: `struct_frame_sdk/` → `struct-frame-sdk/`
+  - C#: `struct_frame_sdk/` → `StructFrameSdk/`
+  - SDK files also renamed to kebab-case
 
-- File extension branding: `.sf.*` → `.structframe.*`
-- Python package structure: `struct_frame.generated.*`
-- SDK directory naming: kebab-case for TS/JS, PascalCase for C#
-- TypeScript/JavaScript file naming: kebab-case option
+### ⏳ Not Implemented (Requires Extensive Refactoring)
+
+- Python package structure: `struct_frame.generated.*` (would require package hierarchy)
+- C: Add `struct_frame_sdk/` directory
 
 ---
 
@@ -32,18 +41,16 @@ Quick reference showing current vs. recommended naming for all languages.
 
 ### File Naming Patterns
 
-| Language | Current | Recommended | Priority | Status |
-|----------|---------|-------------|----------|--------|
-| C | `messages.sf.h` | ✅ Keep as-is | - | ✅ Done |
-| C++ | `messages.sf.hpp` | ✅ Keep as-is | - | ✅ Done |
-| Python | `messages_sf.py` | ✅ Keep as-is* | - | ✅ Done |
-| TypeScript | `messages.sf.ts` | ✅ Keep as-is | - | ✅ Done |
-| JavaScript | `messages.sf.js` | ✅ Keep as-is | - | ✅ Done |
-| C# | `messages.sf.cs` | ✅ Keep as-is | - | ✅ Done |
+| Language | Current | Status |
+|----------|---------|--------|
+| C | ~~`messages.sf.h`~~ → **`messages.structframe.h`** | ✅ **FIXED** |
+| C++ | ~~`messages.sf.hpp`~~ → **`messages.structframe.hpp`** | ✅ **FIXED** |
+| Python | ~~`messages_sf.py`~~ → **`messages_structframe.py`** | ✅ **FIXED** |
+| TypeScript | ~~`messages.sf.ts`~~ → **`messages.structframe.ts`** | ✅ **FIXED** |
+| JavaScript | ~~`messages.sf.js`~~ → **`messages.structframe.js`** | ✅ **FIXED** |
+| C# | ~~`messages.sf.cs`~~ → **`messages.structframe.cs`** | ✅ **FIXED** |
 
-\* Python cannot use `.sf.py` (dots not allowed in module names)
-
-**Alternative (All Languages):** Consider `messages.structframe.*` for clearer branding (P3, future)
+All generated files now use `.structframe.*` extension for clear branding!
 
 ---
 
@@ -92,14 +99,14 @@ Quick reference showing current vs. recommended naming for all languages.
 
 ### Frame Parser Files
 
-| Language | Current | Recommended | Priority | Status |
-|----------|---------|-------------|----------|--------|
-| C | `frame_base.h` | ✅ Correct | - | ✅ Done |
-| C++ | `frame_base.hpp` | ✅ Correct | - | ✅ Done |
-| Python | `frame_base.py` | ✅ Correct | - | ✅ Done |
-| TypeScript | `frame_base.ts` | `frame-base.ts` (kebab-case) | P3 | ⏳ Future |
-| JavaScript | `frame_base.js` | `frame-base.js` (kebab-case) | P3 | ⏳ Future |
-| C# | ~~`frame_base.cs`~~ → **`FrameBase.cs`** | ✅ Correct (PascalCase) | P2 | ✅ **FIXED** |
+| Language | Current | Status |
+|----------|---------|--------|
+| C | `frame_base.h` | ✅ Done |
+| C++ | `frame_base.hpp` | ✅ Done |
+| Python | `frame_base.py` | ✅ Done |
+| TypeScript | ~~`frame_base.ts`~~ → **`frame-base.ts`** | ✅ **FIXED (kebab-case)** |
+| JavaScript | ~~`frame_base.js`~~ → **`frame-base.js`** | ✅ **FIXED (kebab-case)** |
+| C# | ~~`frame_base.cs`~~ → **`FrameBase.cs`** | ✅ **FIXED (PascalCase)** |
 
 ---
 
@@ -146,16 +153,14 @@ Quick reference showing current vs. recommended naming for all languages.
 
 ## SDK Directory Structure
 
-| Language | Current | Recommended | Priority | Breaking? |
-|----------|---------|-------------|----------|-----------|
-| C | No SDK directory | Add `struct_frame_sdk/` | P3 | No |
-| C++ | `struct_frame_sdk/` | ✅ Keep | - | No |
-| Python | `struct_frame_sdk/` | ✅ Keep | - | No |
-| TypeScript | `struct_frame_sdk/` | `struct-frame-sdk/` (kebab-case) | P3 | No* |
-| JavaScript | No SDK directory | Add (matching TS) | P3 | No |
-| C# | `struct_frame_sdk/` | `StructFrameSdk/` | P3 | No* |
-
-\* Not breaking if done with SDK reorganization
+| Language | Current | Status |
+|----------|---------|--------|
+| C | No SDK directory | ⏳ Future |
+| C++ | `struct_frame_sdk/` | ✅ Done |
+| Python | `struct_frame_sdk/` | ✅ Done |
+| TypeScript | ~~`struct_frame_sdk/`~~ → **`struct-frame-sdk/`** | ✅ **FIXED (kebab-case)** |
+| JavaScript | No SDK directory | ⏳ Future |
+| C# | ~~`struct_frame_sdk/`~~ → **`StructFrameSdk/`** | ✅ **FIXED (PascalCase)** |
 
 ---
 
