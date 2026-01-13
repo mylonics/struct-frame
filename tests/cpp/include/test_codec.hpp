@@ -15,7 +15,7 @@
  * - get_msg_id_order(): array of msg_ids in encode/decode order
  * - Encoder: struct with write_message(writer, msg_id) method
  * - Validator: struct with get_expected(msg_id, data, size) method
- * - get_message_length(): function for minimal profiles (optional)
+ * - get_message_info(): function for minimal profiles (optional)
  * - supports_format(): function to check if format is supported
  */
 
@@ -158,22 +158,9 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
       return false;
     }
 
-    const uint8_t* expected_data = nullptr;
-    size_t expected_size = 0;
-
-    if (!validator.get_expected(result.msg_id, expected_data, expected_size)) {
-      std::cout << "  Unknown message ID: " << result.msg_id << "\n";
-      return false;
-    }
-
-    if (result.msg_len != expected_size) {
-      std::cout << "  Message " << message_count << " size mismatch: expected " << expected_size << ", got "
-                << result.msg_len << "\n";
-      return false;
-    }
-
-    if (std::memcmp(result.msg_data, expected_data, expected_size) != 0) {
-      std::cout << "  Message " << message_count << " content mismatch\n";
+    // Use operator== for validation via validate_with_equals
+    if (!validator.validate_with_equals(result.msg_id, result.msg_data, result.msg_len)) {
+      std::cout << "  Message " << message_count << " content mismatch (equality check failed)\n";
       return false;
     }
 
@@ -209,10 +196,10 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
     AccumulatingReader<ProfileStandardConfig> reader;
     return decode_all(reader);
   } else if (format == "profile_sensor") {
-    AccumulatingReader<ProfileSensorConfig> reader(Config::get_message_length);
+    auto reader = make_accumulating_reader<ProfileSensorConfig>(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_ipc") {
-    AccumulatingReader<ProfileIPCConfig> reader(Config::get_message_length);
+    auto reader = make_accumulating_reader<ProfileIPCConfig>(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_bulk") {
     AccumulatingReader<ProfileBulkConfig> reader;
@@ -278,7 +265,7 @@ int run_decode(const std::string& format, const std::string& input_file) {
 
   size_t message_count = 0;
   if (!decode_messages<Config>(format, buffer.data(), size, message_count)) {
-    std::cout << "[DECODE] FAILED: Decoding error\n";
+    std::cout << "[DECODE] FAILED: " << message_count << " messages validated before error\n";
     print_hex(buffer.data(), size);
     return 1;
   }

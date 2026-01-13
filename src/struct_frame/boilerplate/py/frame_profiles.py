@@ -1,77 +1,272 @@
 """
 Frame Profiles - Pre-defined Header + Payload combinations
 
-This module provides ready-to-use encode/parse functions for the 5 standard profiles:
-- Profile.STANDARD: Basic + Default (General serial/UART)
-- Profile.SENSOR: Tiny + Minimal (Low-bandwidth sensors)
-- Profile.IPC: None + Minimal (Trusted inter-process communication)
-- Profile.BULK: Basic + Extended (Large data transfers with package namespacing)
-- Profile.NETWORK: Basic + ExtendedMultiSystemStream (Multi-system networked communication)
+This module provides ready-to-use encode/parse functions for frame format profiles:
+- ProfileStandard: Basic + Default (General serial/UART)
+- ProfileSensor: Tiny + Minimal (Low-bandwidth sensors)
+- ProfileIPC: None + Minimal (Trusted inter-process communication)
+- ProfileBulk: Basic + Extended (Large data transfers with package namespacing)
+- ProfileNetwork: Basic + ExtendedMultiSystemStream (Multi-system networked communication)
 
-This module builds on the existing frame_headers and payload_types boilerplate code,
-providing maximum code reuse through a generic FrameFormatConfig class.
+Each profile provides:
+- Encoder: encode messages into a buffer
+- BufferParser: parse/validate a complete frame in a buffer
+- BufferReader: iterate through multiple frames in a buffer
+- BufferWriter: encode multiple frames with automatic offset tracking
+- AccumulatingReader: unified parser supporting both buffer chunks and byte-by-byte streaming
+
+This module composes HeaderConfig + PayloadConfig for maximum code reuse,
+matching the C++ frame_profiles.hpp pattern.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Callable, Tuple, List
+from typing import Optional, Callable, List, NamedTuple
 from enum import Enum
 
 try:
-    from .frame_headers.base import (
-        HeaderType, BASIC_START_BYTE, PAYLOAD_TYPE_BASE
+    from .frame_headers import (
+        HeaderType, HeaderConfig,
+        BASIC_START_BYTE, PAYLOAD_TYPE_BASE,
+        HEADER_NONE_CONFIG, HEADER_TINY_CONFIG, HEADER_BASIC_CONFIG
     )
-    from .payload_types.base import PayloadType
-    from .utils import fletcher_checksum, FrameMsgInfo
+    from .payload_types import (
+        PayloadType, PayloadConfig,
+        PAYLOAD_MINIMAL_CONFIG, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
+        PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG
+    )
+    from .frame_base import fletcher_checksum, FrameMsgInfo, FrameChecksum, ParserState
 except ImportError:
-    from frame_headers.base import (
-        HeaderType, BASIC_START_BYTE, PAYLOAD_TYPE_BASE
+    from frame_headers import (
+        HeaderType, HeaderConfig,
+        BASIC_START_BYTE, PAYLOAD_TYPE_BASE,
+        HEADER_NONE_CONFIG, HEADER_TINY_CONFIG, HEADER_BASIC_CONFIG
     )
-    from payload_types.base import PayloadType
-    from utils import fletcher_checksum, FrameMsgInfo
+    from payload_types import (
+        PayloadType, PayloadConfig,
+        PAYLOAD_MINIMAL_CONFIG, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
+        PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG
+    )
+    from frame_base import fletcher_checksum, FrameMsgInfo, FrameChecksum, ParserState
 
+
+# =============================================================================
+# MessageInfo - Unified message information type
+# =============================================================================
+
+class MessageInfo(NamedTuple):
+    """
+    Unified message information for parsing.
+    
+    This type combines message size and magic numbers into a single lookup result,
+    simplifying the parser API by requiring only one callback instead of two.
+    
+    Attributes:
+        size: Message payload size in bytes
+        magic1: First magic number for CRC calculation
+        magic2: Second magic number for CRC calculation
+    """
+    size: int
+    magic1: int = 0
+    magic2: int = 0
+
+
+# =============================================================================
+# Profile Configuration - Composed from Header + Payload configs
+# =============================================================================
 
 @dataclass
-class FrameFormatConfig:
+class ProfileConfig:
     """
-    Generic frame format configuration - combines header type with payload type.
+    Profile configuration - combines a HeaderConfig with a PayloadConfig.
     
-    This class allows creating any header+payload combination by specifying
-    the configuration parameters. The standard profiles are pre-defined instances
-    of this configuration.
+    This mirrors the C++ ProfileConfig template, providing composed configurations
+    for maximum code reuse.
+    
+    Usage:
+        config = ProfileConfig(HEADER_BASIC_CONFIG, PAYLOAD_DEFAULT_CONFIG)
     """
-    name: str
-    header_type: HeaderType
-    payload_type: PayloadType
-    num_start_bytes: int
-    start_byte1: int
-    start_byte2: int
-    header_size: int        # Total header size (start bytes + payload header fields)
-    footer_size: int        # Footer size (CRC bytes)
-    has_length: bool
-    length_bytes: int       # 1 or 2
-    has_crc: bool
-    has_pkg_id: bool
-    has_seq: bool
-    has_sys_id: bool
-    has_comp_id: bool
-
+    header: HeaderConfig
+    payload: PayloadConfig
+    name: str = ""
+    
+    def __post_init__(self):
+        """Generate name if not provided"""
+        if not self.name:
+            self.name = f"{self.header.name}{self.payload.name}"
+    
+    # Header properties
+    @property
+    def num_start_bytes(self) -> int:
+        return self.header.num_start_bytes
+    
+    @property
+    def header_type(self) -> HeaderType:
+        return self.header.header_type
+    
+    # Payload properties
+    @property
+    def payload_type(self) -> PayloadType:
+        return self.payload.payload_type
+    
+    @property
+    def has_length(self) -> bool:
+        return self.payload.has_length
+    
+    @property
+    def length_bytes(self) -> int:
+        return self.payload.length_bytes
+    
+    @property
+    def has_crc(self) -> bool:
+        return self.payload.has_crc
+    
+    @property
+    def has_pkg_id(self) -> bool:
+        return self.payload.has_package_id
+    
+    @property
+    def has_seq(self) -> bool:
+        return self.payload.has_sequence
+    
+    @property
+    def has_sys_id(self) -> bool:
+        return self.payload.has_system_id
+    
+    @property
+    def has_comp_id(self) -> bool:
+        return self.payload.has_component_id
+    
+    # Combined sizes
+    @property
+    def header_size(self) -> int:
+        """Total header size (start bytes + payload header fields)"""
+        return self.header.num_start_bytes + self.payload.header_size
+    
+    @property
+    def footer_size(self) -> int:
+        """Footer size (CRC bytes)"""
+        return self.payload.footer_size
+    
     @property
     def overhead(self) -> int:
         """Total overhead (header + footer)"""
         return self.header_size + self.footer_size
-
+    
     @property
     def max_payload(self) -> Optional[int]:
         """Maximum payload size, or None if no length field"""
         if not self.has_length:
             return None
         return 65535 if self.length_bytes == 2 else 255
+    
+    def computed_start_byte1(self) -> int:
+        """
+        Compute start byte1 dynamically for headers that encode payload type.
+        For Tiny header: 0x70 + payload_type
+        """
+        if self.header.encodes_payload_type and self.header.num_start_bytes == 1:
+            return PAYLOAD_TYPE_BASE + self.payload.payload_type.value
+        return self.header.start_bytes[0] if self.header.start_bytes else 0
+    
+    def computed_start_byte2(self) -> int:
+        """
+        Compute start byte2 dynamically for headers that encode payload type.
+        For Basic header: start_byte1 is fixed (0x90), start_byte2 = 0x70 + payload_type
+        """
+        if self.header.encodes_payload_type and self.header.num_start_bytes == 2:
+            return PAYLOAD_TYPE_BASE + self.payload.payload_type.value
+        return self.header.start_bytes[1] if len(self.header.start_bytes) > 1 else 0
+    
+    # Convenience properties for backwards compatibility
+    @property
+    def start_byte1(self) -> int:
+        return self.computed_start_byte1()
+    
+    @property
+    def start_byte2(self) -> int:
+        return self.computed_start_byte2()
+
+
+# =============================================================================
+# Standard Profile Configurations
+# =============================================================================
+
+# Profile Standard: Basic + Default
+# Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+PROFILE_STANDARD_CONFIG = ProfileConfig(
+    header=HEADER_BASIC_CONFIG,
+    payload=PAYLOAD_DEFAULT_CONFIG,
+    name="ProfileStandard"
+)
+
+# Profile Sensor: Tiny + Minimal
+# Frame: [0x70] [MSG_ID] [PAYLOAD]
+PROFILE_SENSOR_CONFIG = ProfileConfig(
+    header=HEADER_TINY_CONFIG,
+    payload=PAYLOAD_MINIMAL_CONFIG,
+    name="ProfileSensor"
+)
+
+# Profile IPC: None + Minimal
+# Frame: [MSG_ID] [PAYLOAD]
+PROFILE_IPC_CONFIG = ProfileConfig(
+    header=HEADER_NONE_CONFIG,
+    payload=PAYLOAD_MINIMAL_CONFIG,
+    name="ProfileIPC"
+)
+
+# Profile Bulk: Basic + Extended
+# Frame: [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+PROFILE_BULK_CONFIG = ProfileConfig(
+    header=HEADER_BASIC_CONFIG,
+    payload=PAYLOAD_EXTENDED_CONFIG,
+    name="ProfileBulk"
+)
+
+# Profile Network: Basic + ExtendedMultiSystemStream
+# Frame: [0x90] [0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+PROFILE_NETWORK_CONFIG = ProfileConfig(
+    header=HEADER_BASIC_CONFIG,
+    payload=PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG,
+    name="ProfileNetwork"
+)
+
+
+# =============================================================================
+# Generic Frame Encoder/Parser Functions
+# =============================================================================
+
+def encode_message(
+    config: ProfileConfig,
+    msg,
+    seq: int = 0,
+    sys_id: int = 0,
+    comp_id: int = 0
+) -> bytes:
+    """
+    Encode a message object.
+    
+    Automatically extracts msg_id, payload, and magic numbers from the message object.
+    
+    Args:
+        config: Profile configuration
+        msg: Message object with MSG_ID/msg_id, data()/pack() methods, and MAGIC1/MAGIC2 attributes
+        seq: Sequence number (for profiles with sequence)
+        sys_id: System ID (for profiles with routing)
+        comp_id: Component ID (for profiles with routing)
+    
+    Returns:
+        Encoded frame as bytes
+    """
+    if config.has_crc or config.has_length:
+        return _frame_format_encode_with_crc(config, msg, seq, sys_id, comp_id)
+    else:
+        return _frame_format_encode_minimal(config, msg)
 
 
 def _frame_format_encode_with_crc(
-    config: FrameFormatConfig,
-    msg_id: int,
-    payload: bytes,
+    config: ProfileConfig,
+    msg,
     seq: int = 0,
     sys_id: int = 0,
     comp_id: int = 0
@@ -80,10 +275,8 @@ def _frame_format_encode_with_crc(
     Generic encode function for frames with CRC.
     
     Args:
-        config: Frame format configuration
-        msg_id: Message ID. When config.has_pkg_id is True, this should be a 16-bit value
-                with package ID in upper 8 bits and message ID in lower 8 bits: (pkg_id << 8) | msg_id
-        payload: Message payload bytes
+        config: Profile configuration
+        msg: Message object with MSG_ID/msg_id, data()/pack() methods, and MAGIC1/MAGIC2 attributes
         seq: Sequence number (for profiles with sequence)
         sys_id: System ID (for profiles with routing)
         comp_id: Component ID (for profiles with routing)
@@ -91,6 +284,24 @@ def _frame_format_encode_with_crc(
     Returns:
         Encoded frame as bytes
     """
+    # Get message ID
+    msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
+    if msg_id is None:
+        raise ValueError("Message object must have MSG_ID or msg_id attribute")
+    
+    # Get payload
+    if hasattr(msg, 'data') and callable(msg.data):
+        payload = msg.data()
+    elif hasattr(msg, 'pack') and callable(msg.pack):
+        payload = msg.pack()
+    else:
+        raise ValueError("Message object must have data() or pack() method")
+    
+    # Get magic numbers
+    msg_class = type(msg)
+    magic1 = getattr(msg_class, 'MAGIC1', 0)
+    magic2 = getattr(msg_class, 'MAGIC2', 0)
+    
     payload_size = len(payload)
     
     if config.max_payload is not None and payload_size > config.max_payload:
@@ -98,11 +309,11 @@ def _frame_format_encode_with_crc(
     
     output = []
     
-    # Write start bytes
+    # Write start bytes (use computed values for dynamic payload type encoding)
     if config.num_start_bytes >= 1:
-        output.append(config.start_byte1)
+        output.append(config.computed_start_byte1())
     if config.num_start_bytes >= 2:
-        output.append(config.start_byte2)
+        output.append(config.computed_start_byte2())
     
     crc_start = len(output)  # CRC calculation starts after start bytes
     
@@ -138,36 +349,47 @@ def _frame_format_encode_with_crc(
     
     # Calculate and write CRC
     if config.has_crc:
-        crc = fletcher_checksum(output, crc_start)
-        output.append(crc[0])
-        output.append(crc[1])
+        crc = fletcher_checksum(output, crc_start, init1=magic1, init2=magic2)
+        output.append(crc.byte1)
+        output.append(crc.byte2)
     
     return bytes(output)
 
 
 def _frame_format_encode_minimal(
-    config: FrameFormatConfig,
-    msg_id: int,
-    payload: bytes
+    config: ProfileConfig,
+    msg
 ) -> bytes:
     """
     Generic encode function for minimal frames (no length, no CRC).
     
     Args:
-        config: Frame format configuration
-        msg_id: Message ID (0-255)
-        payload: Message payload bytes
+        config: Profile configuration
+        msg: Message object with MSG_ID/msg_id and data()/pack() methods
     
     Returns:
         Encoded frame as bytes
     """
+    # Get message ID
+    msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
+    if msg_id is None:
+        raise ValueError("Message object must have MSG_ID or msg_id attribute")
+    
+    # Get payload
+    if hasattr(msg, 'data') and callable(msg.data):
+        payload = msg.data()
+    elif hasattr(msg, 'pack') and callable(msg.pack):
+        payload = msg.pack()
+    else:
+        raise ValueError("Message object must have data() or pack() method")
+    
     output = []
     
-    # Write start bytes
+    # Write start bytes (use computed values for dynamic payload type encoding)
     if config.num_start_bytes >= 1:
-        output.append(config.start_byte1)
+        output.append(config.computed_start_byte1())
     if config.num_start_bytes >= 2:
-        output.append(config.start_byte2)
+        output.append(config.computed_start_byte2())
     
     # Write message ID
     output.append(msg_id & 0xFF)
@@ -179,15 +401,17 @@ def _frame_format_encode_minimal(
 
 
 def _frame_format_parse_with_crc(
-    config: FrameFormatConfig,
-    buffer: bytes
+    config: ProfileConfig,
+    buffer: bytes,
+    get_message_info: Callable[[int], Optional[MessageInfo]] = None
 ) -> FrameMsgInfo:
     """
     Generic parse function for frames with CRC.
     
     Args:
-        config: Frame format configuration
+        config: Profile configuration
         buffer: Buffer containing the complete frame
+        get_message_info: Optional function to get message info (size, magic1, magic2) for a message ID
     
     Returns:
         FrameMsgInfo with valid=True if frame is valid
@@ -202,11 +426,11 @@ def _frame_format_parse_with_crc(
     
     # Verify start bytes
     if config.num_start_bytes >= 1:
-        if buffer[idx] != config.start_byte1:
+        if buffer[idx] != config.computed_start_byte1():
             return result
         idx += 1
     if config.num_start_bytes >= 2:
-        if buffer[idx] != config.start_byte2:
+        if buffer[idx] != config.computed_start_byte2():
             return result
         idx += 1
     
@@ -236,15 +460,20 @@ def _frame_format_parse_with_crc(
             msg_len = buffer[idx] | (buffer[idx + 1] << 8)
             idx += 2
     
-    # Read package ID
+    # Read package ID and message ID
     pkg_id = 0
     if config.has_pkg_id:
+        # Read package ID and message ID as separate bytes
         pkg_id = buffer[idx]
         idx += 1
-    
-    # Read message ID
-    msg_id = buffer[idx]
-    idx += 1
+        local_msg_id = buffer[idx]
+        idx += 1
+        # Combine into 16-bit msg_id (pkg_id << 8 | msg_id)
+        msg_id = (pkg_id << 8) | local_msg_id
+    else:
+        # Read message ID only
+        msg_id = buffer[idx]
+        idx += 1
     
     # Verify total size
     total_size = config.overhead + msg_len
@@ -254,19 +483,26 @@ def _frame_format_parse_with_crc(
     # Verify CRC
     if config.has_crc:
         crc_len = total_size - crc_start - config.footer_size
-        calc_crc = fletcher_checksum(buffer, crc_start, crc_start + crc_len)
-        recv_crc = (buffer[total_size - 2], buffer[total_size - 1])
-        if calc_crc != recv_crc:
+        
+        # Get magic numbers for this message type
+        magic1, magic2 = 0, 0
+        if get_message_info:
+            msg_info = get_message_info(msg_id)
+            if msg_info:
+                magic1, magic2 = msg_info.magic1, msg_info.magic2
+        
+        calc_crc = fletcher_checksum(buffer, crc_start, crc_start + crc_len, init1=magic1, init2=magic2)
+        recv_crc = FrameChecksum(buffer[total_size - 2], buffer[total_size - 1])
+        if calc_crc.byte1 != recv_crc.byte1 or calc_crc.byte2 != recv_crc.byte2:
             return result
     
     # Extract message data
     msg_data = bytes(buffer[config.header_size:config.header_size + msg_len])
     
     result.valid = True
-    result.header_type = config.header_type
-    result.payload_type = config.payload_type
     result.msg_id = msg_id
     result.msg_len = msg_len
+    result.frame_size = total_size
     result.msg_data = msg_data
     result.package_id = pkg_id
     result.sequence = seq
@@ -277,17 +513,17 @@ def _frame_format_parse_with_crc(
 
 
 def _frame_format_parse_minimal(
-    config: FrameFormatConfig,
+    config: ProfileConfig,
     buffer: bytes,
-    get_msg_length: Callable[[int], int]
+    get_message_info: Callable[[int], Optional[MessageInfo]]
 ) -> FrameMsgInfo:
     """
-    Generic parse function for minimal frames (requires get_msg_length callback).
+    Generic parse function for minimal frames (requires get_message_info callback for size).
     
     Args:
-        config: Frame format configuration
+        config: Profile configuration
         buffer: Buffer containing the complete frame
-        get_msg_length: Callback to get expected message length from msg_id
+        get_message_info: Callback to get message info (size field used) for a msg_id
     
     Returns:
         FrameMsgInfo with valid=True if frame is valid
@@ -301,21 +537,22 @@ def _frame_format_parse_minimal(
     
     # Verify start bytes
     if config.num_start_bytes >= 1:
-        if buffer[idx] != config.start_byte1:
+        if buffer[idx] != config.computed_start_byte1():
             return result
         idx += 1
     if config.num_start_bytes >= 2:
-        if buffer[idx] != config.start_byte2:
+        if buffer[idx] != config.computed_start_byte2():
             return result
         idx += 1
     
     # Read message ID
     msg_id = buffer[idx]
     
-    # Get message length from callback
-    msg_len = get_msg_length(msg_id)
-    if msg_len is None:
+    # Get message info from callback
+    msg_info = get_message_info(msg_id)
+    if msg_info is None:
         return result
+    msg_len = msg_info.size
     
     total_size = config.header_size + msg_len
     if len(buffer) < total_size:
@@ -325,127 +562,21 @@ def _frame_format_parse_minimal(
     msg_data = bytes(buffer[config.header_size:config.header_size + msg_len])
     
     result.valid = True
-    result.header_type = config.header_type
-    result.payload_type = config.payload_type
     result.msg_id = msg_id
     result.msg_len = msg_len
+    result.frame_size = total_size
     result.msg_data = msg_data
     
     return result
 
 
 # =============================================================================
-# Profile Configurations
-# =============================================================================
-
-# Profile Standard: Basic + Default
-# Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-PROFILE_STANDARD_CONFIG = FrameFormatConfig(
-    name="ProfileStandard",
-    header_type=HeaderType.BASIC,
-    payload_type=PayloadType.DEFAULT,
-    num_start_bytes=2,
-    start_byte1=BASIC_START_BYTE,
-    start_byte2=PAYLOAD_TYPE_BASE + PayloadType.DEFAULT.value,
-    header_size=4,   # start1 + start2 + len + msg_id
-    footer_size=2,   # CRC
-    has_length=True,
-    length_bytes=1,
-    has_crc=True,
-    has_pkg_id=False,
-    has_seq=False,
-    has_sys_id=False,
-    has_comp_id=False
-)
-
-# Profile Sensor: Tiny + Minimal
-# Frame: [0x70] [MSG_ID] [PAYLOAD]
-PROFILE_SENSOR_CONFIG = FrameFormatConfig(
-    name="ProfileSensor",
-    header_type=HeaderType.TINY,
-    payload_type=PayloadType.MINIMAL,
-    num_start_bytes=1,
-    start_byte1=PAYLOAD_TYPE_BASE + PayloadType.MINIMAL.value,
-    start_byte2=0,
-    header_size=2,   # start + msg_id
-    footer_size=0,
-    has_length=False,
-    length_bytes=0,
-    has_crc=False,
-    has_pkg_id=False,
-    has_seq=False,
-    has_sys_id=False,
-    has_comp_id=False
-)
-
-# Profile IPC: None + Minimal
-# Frame: [MSG_ID] [PAYLOAD]
-PROFILE_IPC_CONFIG = FrameFormatConfig(
-    name="ProfileIPC",
-    header_type=HeaderType.NONE,
-    payload_type=PayloadType.MINIMAL,
-    num_start_bytes=0,
-    start_byte1=0,
-    start_byte2=0,
-    header_size=1,   # msg_id only
-    footer_size=0,
-    has_length=False,
-    length_bytes=0,
-    has_crc=False,
-    has_pkg_id=False,
-    has_seq=False,
-    has_sys_id=False,
-    has_comp_id=False
-)
-
-# Profile Bulk: Basic + Extended
-# Frame: [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-PROFILE_BULK_CONFIG = FrameFormatConfig(
-    name="ProfileBulk",
-    header_type=HeaderType.BASIC,
-    payload_type=PayloadType.EXTENDED,
-    num_start_bytes=2,
-    start_byte1=BASIC_START_BYTE,
-    start_byte2=PAYLOAD_TYPE_BASE + PayloadType.EXTENDED.value,
-    header_size=6,   # start1 + start2 + len16 + pkg_id + msg_id
-    footer_size=2,   # CRC
-    has_length=True,
-    length_bytes=2,
-    has_crc=True,
-    has_pkg_id=True,
-    has_seq=False,
-    has_sys_id=False,
-    has_comp_id=False
-)
-
-# Profile Network: Basic + ExtendedMultiSystemStream
-# Frame: [0x90] [0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-PROFILE_NETWORK_CONFIG = FrameFormatConfig(
-    name="ProfileNetwork",
-    header_type=HeaderType.BASIC,
-    payload_type=PayloadType.EXTENDED_MULTI_SYSTEM_STREAM,
-    num_start_bytes=2,
-    start_byte1=BASIC_START_BYTE,
-    start_byte2=PAYLOAD_TYPE_BASE + PayloadType.EXTENDED_MULTI_SYSTEM_STREAM.value,
-    header_size=9,   # start1 + start2 + seq + sys + comp + len16 + pkg_id + msg_id
-    footer_size=2,   # CRC
-    has_length=True,
-    length_bytes=2,
-    has_crc=True,
-    has_pkg_id=True,
-    has_seq=True,
-    has_sys_id=True,
-    has_comp_id=True
-)
-
-
-# =============================================================================
 # Profile-Specific Convenience Functions
 # =============================================================================
 
-def encode_profile_standard(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_standard(msg) -> bytes:
     """Encode using Profile Standard (Basic + Default)"""
-    return _frame_format_encode_with_crc(PROFILE_STANDARD_CONFIG, msg_id, payload)
+    return _frame_format_encode_with_crc(PROFILE_STANDARD_CONFIG, msg)
 
 
 def parse_profile_standard_buffer(buffer: bytes) -> FrameMsgInfo:
@@ -453,37 +584,36 @@ def parse_profile_standard_buffer(buffer: bytes) -> FrameMsgInfo:
     return _frame_format_parse_with_crc(PROFILE_STANDARD_CONFIG, buffer)
 
 
-def encode_profile_sensor(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_sensor(msg) -> bytes:
     """Encode using Profile Sensor (Tiny + Minimal)"""
-    return _frame_format_encode_minimal(PROFILE_SENSOR_CONFIG, msg_id, payload)
+    return _frame_format_encode_minimal(PROFILE_SENSOR_CONFIG, msg)
 
 
-def parse_profile_sensor_buffer(buffer: bytes, get_msg_length: Callable[[int], int]) -> FrameMsgInfo:
-    """Parse Profile Sensor frame from buffer (requires get_msg_length callback)"""
-    return _frame_format_parse_minimal(PROFILE_SENSOR_CONFIG, buffer, get_msg_length)
+def parse_profile_sensor_buffer(buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]) -> FrameMsgInfo:
+    """Parse Profile Sensor frame from buffer (requires get_message_info callback)"""
+    return _frame_format_parse_minimal(PROFILE_SENSOR_CONFIG, buffer, get_message_info)
 
 
-def encode_profile_ipc(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_ipc(msg) -> bytes:
     """Encode using Profile IPC (None + Minimal)"""
-    return _frame_format_encode_minimal(PROFILE_IPC_CONFIG, msg_id, payload)
+    return _frame_format_encode_minimal(PROFILE_IPC_CONFIG, msg)
 
 
-def parse_profile_ipc_buffer(buffer: bytes, get_msg_length: Callable[[int], int]) -> FrameMsgInfo:
-    """Parse Profile IPC frame from buffer (requires get_msg_length callback)"""
-    return _frame_format_parse_minimal(PROFILE_IPC_CONFIG, buffer, get_msg_length)
+def parse_profile_ipc_buffer(buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]) -> FrameMsgInfo:
+    """Parse Profile IPC frame from buffer (requires get_message_info callback)"""
+    return _frame_format_parse_minimal(PROFILE_IPC_CONFIG, buffer, get_message_info)
 
 
-def encode_profile_bulk(msg_id: int, payload: bytes) -> bytes:
+def encode_profile_bulk(msg) -> bytes:
     """Encode using Profile Bulk (Basic + Extended)
     
     Args:
-        msg_id: 16-bit message ID with package ID in upper 8 bits: (pkg_id << 8) | msg_id
-        payload: Message payload bytes
+        msg: Message object (msg_id should be 16-bit with package ID in upper 8 bits: (pkg_id << 8) | msg_id)
     
     Returns:
         Encoded frame as bytes
     """
-    return _frame_format_encode_with_crc(PROFILE_BULK_CONFIG, msg_id, payload)
+    return _frame_format_encode_with_crc(PROFILE_BULK_CONFIG, msg)
 
 
 def parse_profile_bulk_buffer(buffer: bytes) -> FrameMsgInfo:
@@ -492,8 +622,7 @@ def parse_profile_bulk_buffer(buffer: bytes) -> FrameMsgInfo:
 
 
 def encode_profile_network(
-    msg_id: int,
-    payload: bytes,
+    msg,
     seq: int = 0,
     sys_id: int = 0,
     comp_id: int = 0
@@ -501,8 +630,7 @@ def encode_profile_network(
     """Encode using Profile Network (Basic + ExtendedMultiSystemStream)
     
     Args:
-        msg_id: 16-bit message ID with package ID in upper 8 bits: (pkg_id << 8) | msg_id
-        payload: Message payload bytes
+        msg: Message object (msg_id should be 16-bit with package ID in upper 8 bits: (pkg_id << 8) | msg_id)
         seq: Sequence number
         sys_id: System ID
         comp_id: Component ID
@@ -511,7 +639,7 @@ def encode_profile_network(
         Encoded frame as bytes
     """
     return _frame_format_encode_with_crc(
-        PROFILE_NETWORK_CONFIG, msg_id, payload,
+        PROFILE_NETWORK_CONFIG, msg,
         seq=seq, sys_id=sys_id, comp_id=comp_id
     )
 
@@ -526,141 +654,77 @@ def parse_profile_network_buffer(buffer: bytes) -> FrameMsgInfo:
 # =============================================================================
 
 def encode_frame(
-    config: FrameFormatConfig,
-    msg_id: int,
-    payload: bytes,
+    config: ProfileConfig,
+    msg,
     seq: int = 0,
     sys_id: int = 0,
-    comp_id: int = 0,
-    pkg_id: int = 0
+    comp_id: int = 0
 ) -> bytes:
     """
-    Generic encode function that works with any FrameFormatConfig.
+    Generic encode function that works with any ProfileConfig.
     
     Args:
-        config: Frame format configuration
-        msg_id: Message ID (0-255)
-        payload: Message payload bytes
+        config: Profile configuration
+        msg: Message object with MSG_ID/msg_id, data()/pack() methods, and MAGIC1/MAGIC2 attributes
         seq: Sequence number (for profiles with sequence)
         sys_id: System ID (for profiles with routing)
         comp_id: Component ID (for profiles with routing)
-        pkg_id: Package ID (for profiles with package namespacing)
     
     Returns:
         Encoded frame as bytes
     """
-    if config.has_crc:
+    if config.has_crc or config.has_length:
         return _frame_format_encode_with_crc(
-            config, msg_id, payload,
-            seq=seq, sys_id=sys_id, comp_id=comp_id, pkg_id=pkg_id
+            config, msg,
+            seq=seq, sys_id=sys_id, comp_id=comp_id
         )
     else:
-        return _frame_format_encode_minimal(config, msg_id, payload)
+        return _frame_format_encode_minimal(config, msg)
 
 
 def parse_frame_buffer(
-    config: FrameFormatConfig,
+    config: ProfileConfig,
     buffer: bytes,
-    get_msg_length: Callable[[int], int] = None
+    get_message_info: Callable[[int], Optional[MessageInfo]] = None
 ) -> FrameMsgInfo:
     """
-    Generic parse function that works with any FrameFormatConfig.
+    Generic parse function that works with any ProfileConfig.
     
     Args:
-        config: Frame format configuration
+        config: Profile configuration
         buffer: Buffer containing the complete frame
-        get_msg_length: Callback to get expected message length (required for minimal frames)
+        get_message_info: Callback to get message info (required for minimal frames, optional for CRC frames)
     
     Returns:
         FrameMsgInfo with valid=True if frame is valid
     """
-    if config.has_crc:
-        return _frame_format_parse_with_crc(config, buffer)
+    if config.has_crc or config.has_length:
+        return _frame_format_parse_with_crc(config, buffer, get_message_info)
     else:
-        if get_msg_length is None:
-            raise ValueError("get_msg_length callback required for minimal frames")
-        return _frame_format_parse_minimal(config, buffer, get_msg_length)
+        if get_message_info is None:
+            raise ValueError("get_message_info callback required for minimal frames")
+        return _frame_format_parse_minimal(config, buffer, get_message_info)
 
 
 def create_custom_config(
-    name: str,
-    header_type: HeaderType,
-    payload_type: PayloadType,
-    has_length: bool = True,
-    length_bytes: int = 1,
-    has_crc: bool = True,
-    has_pkg_id: bool = False,
-    has_seq: bool = False,
-    has_sys_id: bool = False,
-    has_comp_id: bool = False
-) -> FrameFormatConfig:
+    header: HeaderConfig,
+    payload: PayloadConfig,
+    name: str = ""
+) -> ProfileConfig:
     """
-    Create a custom frame format configuration.
+    Create a custom profile configuration from header and payload configs.
     
     This allows creating any header+payload combination for specialized use cases.
     
     Args:
-        name: Name for the custom configuration
-        header_type: Header type (NONE, TINY, or BASIC)
-        payload_type: Payload type (used for start byte calculation)
-        has_length: Whether the frame includes a length field
-        length_bytes: Number of bytes for length field (1 or 2)
-        has_crc: Whether the frame includes CRC
-        has_pkg_id: Whether the frame includes package ID
-        has_seq: Whether the frame includes sequence number
-        has_sys_id: Whether the frame includes system ID
-        has_comp_id: Whether the frame includes component ID
+        header: Header configuration
+        payload: Payload configuration
+        name: Optional name for the configuration
     
     Returns:
-        FrameFormatConfig instance
+        ProfileConfig instance
     """
-    # Calculate start bytes based on header type
-    if header_type == HeaderType.NONE:
-        num_start_bytes = 0
-        start_byte1 = 0
-        start_byte2 = 0
-    elif header_type == HeaderType.TINY:
-        num_start_bytes = 1
-        start_byte1 = PAYLOAD_TYPE_BASE + payload_type.value
-        start_byte2 = 0
-    else:  # BASIC
-        num_start_bytes = 2
-        start_byte1 = BASIC_START_BYTE
-        start_byte2 = PAYLOAD_TYPE_BASE + payload_type.value
-    
-    # Calculate header size
-    header_size = num_start_bytes + 1  # start bytes + msg_id
-    if has_seq:
-        header_size += 1
-    if has_sys_id:
-        header_size += 1
-    if has_comp_id:
-        header_size += 1
-    if has_length:
-        header_size += length_bytes
-    if has_pkg_id:
-        header_size += 1
-    
-    # Calculate footer size
-    footer_size = 2 if has_crc else 0
-    
-    return FrameFormatConfig(
-        name=name,
-        header_type=header_type,
-        payload_type=payload_type,
-        num_start_bytes=num_start_bytes,
-        start_byte1=start_byte1,
-        start_byte2=start_byte2,
-        header_size=header_size,
-        footer_size=footer_size,
-        has_length=has_length,
-        length_bytes=length_bytes,
-        has_crc=has_crc,
-        has_pkg_id=has_pkg_id,
-        has_seq=has_seq,
-        has_sys_id=has_sys_id,
-        has_comp_id=has_comp_id
-    )
+    return ProfileConfig(header=header, payload=payload, name=name)
 
 
 # =============================================================================
@@ -679,25 +743,28 @@ class BufferReader:
                 break
             # Process result.msg_id, result.msg_data, result.msg_len
     
-    For minimal profiles that need get_msg_length:
-        reader = BufferReader(PROFILE_SENSOR_CONFIG, buffer, get_msg_length)
+    For minimal profiles that need get_message_info:
+        reader = BufferReader(PROFILE_SENSOR_CONFIG, buffer, get_message_info)
+    
+    For profiles with CRC that need magic numbers:
+        reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer, get_message_info=get_message_info)
     """
     
-    def __init__(self, config: FrameFormatConfig, buffer: bytes, 
-                 get_msg_length: Callable[[int], Optional[int]] = None):
+    def __init__(self, config: ProfileConfig, buffer: bytes, 
+                 get_message_info: Callable[[int], Optional[MessageInfo]] = None):
         """
         Initialize buffer reader.
         
         Args:
-            config: Frame format configuration
+            config: Profile configuration
             buffer: Buffer containing one or more frames
-            get_msg_length: Callback to get message length (required for minimal frames)
+            get_message_info: Callback to get message info (size, magic1, magic2) for a message ID
         """
         self._config = config
         self._buffer = buffer
         self._size = len(buffer)
         self._offset = 0
-        self._get_msg_length = get_msg_length
+        self._get_message_info = get_message_info
     
     def next(self) -> FrameMsgInfo:
         """
@@ -712,19 +779,16 @@ class BufferReader:
         remaining = self._buffer[self._offset:]
         
         if self._config.has_crc or self._config.has_length:
-            result = _frame_format_parse_with_crc(self._config, remaining)
+            result = _frame_format_parse_with_crc(self._config, remaining, self._get_message_info)
         else:
-            if self._get_msg_length is None:
-                # No more valid data to parse without length callback
+            if self._get_message_info is None:
                 self._offset = self._size
                 return FrameMsgInfo()
-            result = _frame_format_parse_minimal(self._config, remaining, self._get_msg_length)
+            result = _frame_format_parse_minimal(self._config, remaining, self._get_message_info)
         
-        if result.valid:
-            frame_size = self._config.overhead + result.msg_len
-            self._offset += frame_size
+        if result.valid and result.frame_size > 0:
+            self._offset += result.frame_size
         else:
-            # No more valid frames - stop parsing
             self._offset = self._size
         
         return result
@@ -768,12 +832,12 @@ class BufferWriter:
         writer.write(0x01, payload, seq=1, sys_id=1, comp_id=1)
     """
     
-    def __init__(self, config: FrameFormatConfig, capacity: int):
+    def __init__(self, config: ProfileConfig, capacity: int):
         """
         Initialize buffer writer.
         
         Args:
-            config: Frame format configuration
+            config: Profile configuration
             capacity: Maximum buffer capacity in bytes
         """
         self._config = config
@@ -781,14 +845,16 @@ class BufferWriter:
         self._buffer = bytearray(capacity)
         self._offset = 0
     
-    def write(self, msg_id: int, payload: bytes, seq: int = 0, 
-              sys_id: int = 0, comp_id: int = 0) -> int:
+    def write(self, msg, seq: int = 0, sys_id: int = 0, comp_id: int = 0) -> int:
         """
-        Write a message to the buffer.
+        Write a message object to the buffer.
+        
+        The message object must have MSG_ID (or msg_id) and data() (or pack()) methods.
+        Magic numbers for checksum are automatically extracted from the message class
+        if MAGIC1/MAGIC2 class attributes are present.
         
         Args:
-            msg_id: Message ID (or 16-bit with pkg_id for extended profiles)
-            payload: Message payload bytes
+            msg: Message object with MSG_ID/msg_id and data()/pack() attributes
             seq: Sequence number (for profiles with sequence)
             sys_id: System ID (for profiles with routing)
             comp_id: Component ID (for profiles with routing)
@@ -796,12 +862,7 @@ class BufferWriter:
         Returns:
             Number of bytes written, or 0 on failure.
         """
-        if self._config.has_crc or self._config.has_length:
-            encoded = _frame_format_encode_with_crc(
-                self._config, msg_id, payload, seq=seq, sys_id=sys_id, comp_id=comp_id
-            )
-        else:
-            encoded = _frame_format_encode_minimal(self._config, msg_id, payload)
+        encoded = encode_message(self._config, msg, seq=seq, sys_id=sys_id, comp_id=comp_id)
         
         written = len(encoded)
         if self._offset + written > self._capacity:
@@ -869,22 +930,25 @@ class AccumulatingReader:
                 # Process complete message
     
     For minimal profiles:
-        reader = AccumulatingReader(PROFILE_SENSOR_CONFIG, get_msg_length=get_message_length)
+        reader = AccumulatingReader(PROFILE_SENSOR_CONFIG, get_message_info=get_message_info)
+    
+    For profiles with CRC that need magic numbers:
+        reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
     """
     
-    def __init__(self, config: FrameFormatConfig, 
-                 get_msg_length: Callable[[int], Optional[int]] = None,
+    def __init__(self, config: ProfileConfig, 
+                 get_message_info: Callable[[int], Optional[MessageInfo]] = None,
                  buffer_size: int = 1024):
         """
         Initialize accumulating reader.
         
         Args:
-            config: Frame format configuration
-            get_msg_length: Callback to get message length (required for minimal profiles)
+            config: Profile configuration
+            get_message_info: Callback to get message info (size, magic1, magic2) for a message ID
             buffer_size: Size of internal buffer for partial messages (default: 1024)
         """
         self._config = config
-        self._get_msg_length = get_msg_length
+        self._get_message_info = get_message_info
         self._buffer_size = buffer_size
         
         # Internal buffer for partial messages
@@ -942,7 +1006,7 @@ class AccumulatingReader:
             result = self._parse_buffer(internal_bytes)
             
             if result.valid:
-                frame_size = self._config.overhead + result.msg_len
+                frame_size = result.frame_size
                 # Calculate how many bytes from current buffer were consumed
                 partial_len = self._internal_data_len - self._current_size if self._internal_data_len > self._current_size else 0
                 bytes_from_current = frame_size - partial_len if frame_size > partial_len else 0
@@ -965,8 +1029,7 @@ class AccumulatingReader:
         result = self._parse_buffer(remaining)
         
         if result.valid:
-            frame_size = self._config.overhead + result.msg_len
-            self._current_offset += frame_size
+            self._current_offset += result.frame_size
             return result
         
         # Parse failed - might be partial message at end of buffer
@@ -1021,7 +1084,7 @@ class AccumulatingReader:
             else:
                 self._state = AccumulatingReaderState.COLLECTING_HEADER
         else:
-            if byte == self._config.start_byte1:
+            if byte == self._config.computed_start_byte1():
                 self._internal_buffer[0] = byte
                 self._internal_data_len = 1
                 
@@ -1034,11 +1097,11 @@ class AccumulatingReader:
     
     def _handle_looking_for_start2(self, byte: int) -> FrameMsgInfo:
         """Handle LOOKING_FOR_START2 state"""
-        if byte == self._config.start_byte2:
+        if byte == self._config.computed_start_byte2():
             self._internal_buffer[self._internal_data_len] = byte
             self._internal_data_len += 1
             self._state = AccumulatingReaderState.COLLECTING_HEADER
-        elif byte == self._config.start_byte1:
+        elif byte == self._config.computed_start_byte1():
             # Might be start of new frame - restart
             self._internal_buffer[0] = byte
             self._internal_data_len = 1
@@ -1065,9 +1128,10 @@ class AccumulatingReader:
             if not self._config.has_length and not self._config.has_crc:
                 # For minimal profiles, we need the callback to determine length
                 msg_id = self._internal_buffer[self._config.header_size - 1]
-                if self._get_msg_length:
-                    msg_len = self._get_msg_length(msg_id)
-                    if msg_len is not None:
+                if self._get_message_info:
+                    msg_info = self._get_message_info(msg_id)
+                    if msg_info is not None:
+                        msg_len = msg_info.size
                         self._expected_frame_size = self._config.header_size + msg_len
                         
                         if self._expected_frame_size > self._buffer_size:
@@ -1081,6 +1145,7 @@ class AccumulatingReader:
                                 valid=True,
                                 msg_id=msg_id,
                                 msg_len=0,
+                                frame_size=self._config.header_size,
                                 msg_data=b''
                             )
                             self._state = AccumulatingReaderState.LOOKING_FOR_START1
@@ -1147,9 +1212,10 @@ class AccumulatingReader:
     
     def _handle_minimal_msg_id(self, msg_id: int) -> FrameMsgInfo:
         """Handle minimal profile msg_id"""
-        if self._get_msg_length:
-            msg_len = self._get_msg_length(msg_id)
-            if msg_len is not None:
+        if self._get_message_info:
+            msg_info = self._get_message_info(msg_id)
+            if msg_info is not None:
+                msg_len = msg_info.size
                 self._expected_frame_size = self._config.header_size + msg_len
                 
                 if self._expected_frame_size > self._buffer_size:
@@ -1163,6 +1229,7 @@ class AccumulatingReader:
                         valid=True,
                         msg_id=msg_id,
                         msg_len=0,
+                        frame_size=self._config.header_size,
                         msg_data=b''
                     )
                     self._state = AccumulatingReaderState.LOOKING_FOR_START1
@@ -1195,11 +1262,11 @@ class AccumulatingReader:
     def _parse_buffer(self, buffer: bytes) -> FrameMsgInfo:
         """Parse a buffer using the appropriate parser"""
         if self._config.has_crc or self._config.has_length:
-            return _frame_format_parse_with_crc(self._config, buffer)
+            return _frame_format_parse_with_crc(self._config, buffer, self._get_message_info)
         else:
-            if self._get_msg_length is None:
+            if self._get_message_info is None:
                 return FrameMsgInfo()
-            return _frame_format_parse_minimal(self._config, buffer, self._get_msg_length)
+            return _frame_format_parse_minimal(self._config, buffer, self._get_message_info)
     
     # =========================================================================
     # Common API
@@ -1235,65 +1302,93 @@ class AccumulatingReader:
 
 
 # =============================================================================
-# Convenience Type Aliases for standard profiles
+# Profile-Specific Classes (Direct Instantiation)
 # =============================================================================
 
-def create_profile_standard_reader(buffer: bytes) -> BufferReader:
-    """Create a BufferReader for Profile Standard"""
-    return BufferReader(PROFILE_STANDARD_CONFIG, buffer)
+# Profile Standard: Basic + Default
+class ProfileStandardReader(BufferReader):
+    """BufferReader for Profile Standard"""
+    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
+        super().__init__(PROFILE_STANDARD_CONFIG, buffer, get_message_info)
 
-def create_profile_standard_writer(capacity: int = 1024) -> BufferWriter:
-    """Create a BufferWriter for Profile Standard"""
-    return BufferWriter(PROFILE_STANDARD_CONFIG, capacity)
+class ProfileStandardWriter(BufferWriter):
+    """BufferWriter for Profile Standard"""
+    def __init__(self, capacity: int = 1024):
+        super().__init__(PROFILE_STANDARD_CONFIG, capacity)
 
-def create_profile_standard_accumulating_reader(buffer_size: int = 1024) -> AccumulatingReader:
-    """Create an AccumulatingReader for Profile Standard"""
-    return AccumulatingReader(PROFILE_STANDARD_CONFIG, buffer_size=buffer_size)
+class ProfileStandardAccumulatingReader(AccumulatingReader):
+    """AccumulatingReader for Profile Standard"""
+    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
+        super().__init__(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
 
-def create_profile_sensor_reader(buffer: bytes, get_msg_length: Callable[[int], Optional[int]]) -> BufferReader:
-    """Create a BufferReader for Profile Sensor"""
-    return BufferReader(PROFILE_SENSOR_CONFIG, buffer, get_msg_length)
+# Profile Sensor: Tiny + Minimal
+class ProfileSensorReader(BufferReader):
+    """BufferReader for Profile Sensor"""
+    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]):
+        super().__init__(PROFILE_SENSOR_CONFIG, buffer, get_message_info)
 
-def create_profile_sensor_writer(capacity: int = 1024) -> BufferWriter:
-    """Create a BufferWriter for Profile Sensor"""
-    return BufferWriter(PROFILE_SENSOR_CONFIG, capacity)
+class ProfileSensorWriter(BufferWriter):
+    """BufferWriter for Profile Sensor"""
+    def __init__(self, capacity: int = 1024):
+        super().__init__(PROFILE_SENSOR_CONFIG, capacity)
 
-def create_profile_sensor_accumulating_reader(get_msg_length: Callable[[int], Optional[int]], buffer_size: int = 1024) -> AccumulatingReader:
-    """Create an AccumulatingReader for Profile Sensor"""
-    return AccumulatingReader(PROFILE_SENSOR_CONFIG, get_msg_length=get_msg_length, buffer_size=buffer_size)
+class ProfileSensorAccumulatingReader(AccumulatingReader):
+    """AccumulatingReader for Profile Sensor"""
+    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]], buffer_size: int = 1024):
+        super().__init__(PROFILE_SENSOR_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
 
-def create_profile_ipc_reader(buffer: bytes, get_msg_length: Callable[[int], Optional[int]]) -> BufferReader:
-    """Create a BufferReader for Profile IPC"""
-    return BufferReader(PROFILE_IPC_CONFIG, buffer, get_msg_length)
+# Profile IPC: None + Minimal
+class ProfileIPCReader(BufferReader):
+    """BufferReader for Profile IPC"""
+    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]):
+        super().__init__(PROFILE_IPC_CONFIG, buffer, get_message_info)
 
-def create_profile_ipc_writer(capacity: int = 1024) -> BufferWriter:
-    """Create a BufferWriter for Profile IPC"""
-    return BufferWriter(PROFILE_IPC_CONFIG, capacity)
+class ProfileIPCWriter(BufferWriter):
+    """BufferWriter for Profile IPC"""
+    def __init__(self, capacity: int = 1024):
+        super().__init__(PROFILE_IPC_CONFIG, capacity)
 
-def create_profile_ipc_accumulating_reader(get_msg_length: Callable[[int], Optional[int]], buffer_size: int = 1024) -> AccumulatingReader:
-    """Create an AccumulatingReader for Profile IPC"""
-    return AccumulatingReader(PROFILE_IPC_CONFIG, get_msg_length=get_msg_length, buffer_size=buffer_size)
+class ProfileIPCAccumulatingReader(AccumulatingReader):
+    """AccumulatingReader for Profile IPC"""
+    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]], buffer_size: int = 1024):
+        super().__init__(PROFILE_IPC_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
 
-def create_profile_bulk_reader(buffer: bytes) -> BufferReader:
-    """Create a BufferReader for Profile Bulk"""
-    return BufferReader(PROFILE_BULK_CONFIG, buffer)
+# Profile Bulk: Basic + Extended
+class ProfileBulkReader(BufferReader):
+    """BufferReader for Profile Bulk"""
+    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
+        super().__init__(PROFILE_BULK_CONFIG, buffer, get_message_info)
 
-def create_profile_bulk_writer(capacity: int = 1024) -> BufferWriter:
-    """Create a BufferWriter for Profile Bulk"""
-    return BufferWriter(PROFILE_BULK_CONFIG, capacity)
+class ProfileBulkWriter(BufferWriter):
+    """BufferWriter for Profile Bulk"""
+    def __init__(self, capacity: int = 1024):
+        super().__init__(PROFILE_BULK_CONFIG, capacity)
 
-def create_profile_bulk_accumulating_reader(buffer_size: int = 1024) -> AccumulatingReader:
-    """Create an AccumulatingReader for Profile Bulk"""
-    return AccumulatingReader(PROFILE_BULK_CONFIG, buffer_size=buffer_size)
+class ProfileBulkAccumulatingReader(AccumulatingReader):
+    """AccumulatingReader for Profile Bulk"""
+    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
+        super().__init__(PROFILE_BULK_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
 
-def create_profile_network_reader(buffer: bytes) -> BufferReader:
-    """Create a BufferReader for Profile Network"""
-    return BufferReader(PROFILE_NETWORK_CONFIG, buffer)
+# Profile Network: Basic + ExtendedMultiSystemStream
+class ProfileNetworkReader(BufferReader):
+    """BufferReader for Profile Network"""
+    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
+        super().__init__(PROFILE_NETWORK_CONFIG, buffer, get_message_info)
 
-def create_profile_network_writer(capacity: int = 1024) -> BufferWriter:
-    """Create a BufferWriter for Profile Network"""
-    return BufferWriter(PROFILE_NETWORK_CONFIG, capacity)
+class ProfileNetworkWriter(BufferWriter):
+    """BufferWriter for Profile Network"""
+    def __init__(self, capacity: int = 1024):
+        super().__init__(PROFILE_NETWORK_CONFIG, capacity)
 
-def create_profile_network_accumulating_reader(buffer_size: int = 1024) -> AccumulatingReader:
-    """Create an AccumulatingReader for Profile Network"""
-    return AccumulatingReader(PROFILE_NETWORK_CONFIG, buffer_size=buffer_size)
+class ProfileNetworkAccumulatingReader(AccumulatingReader):
+    """AccumulatingReader for Profile Network"""
+    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
+        super().__init__(PROFILE_NETWORK_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
+
+
+# =============================================================================
+# Backwards Compatibility - FrameFormatConfig alias
+# =============================================================================
+
+# Alias for backwards compatibility
+FrameFormatConfig = ProfileConfig

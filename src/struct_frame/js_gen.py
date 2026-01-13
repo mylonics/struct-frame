@@ -8,7 +8,7 @@ It reuses the shared TypeScript/JavaScript base module for common logic
 but outputs JavaScript syntax (CommonJS) instead of TypeScript.
 """
 
-from struct_frame import version, NamingStyleC
+from struct_frame import version, NamingStyleC, pascalCase
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -41,7 +41,8 @@ class EnumJsGen():
             for c in leading_comment:
                 result = '%s\n' % c
 
-        enum_name = '%s%s' % (packageName, StyleC.enum_name(field.name))
+        # Use PascalCase for both package and enum name (JavaScript convention)
+        enum_name = '%s%s' % (packageName, field.name)
         result += 'const %s = Object.freeze({' % enum_name
 
         result += '\n'
@@ -98,7 +99,7 @@ class MessageJsGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s_%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (packageName, msg.name)
 
         result += "const %s = new Struct('%s')" % (
             package_msg_name, package_msg_name)
@@ -150,7 +151,7 @@ class MessageJsClassGen():
     """Generate JavaScript message classes that extend MessageBase."""
     
     @staticmethod
-    def generate(msg, packageName, package, packages):
+    def generate(msg, packageName, package, packages, equality=False):
         """Generate a class-based message definition."""
         leading_comment = msg.comments
         result = ''
@@ -158,7 +159,7 @@ class MessageJsClassGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s_%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (packageName, msg.name)
         
         # Calculate field layout with offsets
         fields = calculate_field_layout(msg, package, packages)
@@ -171,6 +172,12 @@ class MessageJsClassGen():
         result += f'  static _size = {total_size};\n'
         if msg.id:
             result += f'  static _msgid = {msg.id};\n'
+        
+        # Add magic numbers for checksum
+        if msg.id is not None and msg.magic_bytes:
+            result += f'  static _magic1 = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
+            result += f'  static _magic2 = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
+        
         result += '\n'
         
         # Generate constructor that supports init object
@@ -189,6 +196,10 @@ class MessageJsClassGen():
         for field_info in fields:
             result += MessageJsClassGen._generate_field_accessors(field_info, package_msg_name, packages)
         
+        # Generate equals method if requested
+        if equality:
+            result += MessageJsClassGen.generate_equals_method(msg, package_msg_name, fields)
+        
         # Static getSize method
         result += f'  static getSize() {{\n'
         result += f'    return {total_size};\n'
@@ -198,6 +209,41 @@ class MessageJsClassGen():
         result += f'module.exports.{package_msg_name} = {package_msg_name};\n'
         return result + '\n'
     
+    @staticmethod
+    def generate_equals_method(msg, package_msg_name, fields):
+        """Generate equals() method for equality comparison."""
+        result = f'\n  /**\n'
+        result += f'   * Compare this message with another for equality.\n'
+        result += f'   * @param {{{package_msg_name}}} other - The other message to compare with\n'
+        result += f'   * @returns {{boolean}} - True if the messages are equal\n'
+        result += f'   */\n'
+        result += f'  equals(other) {{\n'
+        result += f'    if (!(other instanceof {package_msg_name})) {{\n'
+        result += f'      return false;\n'
+        result += f'    }}\n'
+        
+        if not fields:
+            result += f'    return true;\n'
+        else:
+            comparisons = []
+            for field_info in fields:
+                name = field_info.name
+                if field_info.is_array:
+                    # Arrays need element-by-element comparison or JSON comparison
+                    comparisons.append(f'JSON.stringify(this.{name}) === JSON.stringify(other.{name})')
+                elif field_info.field_type == 'string':
+                    comparisons.append(f'this.{name} === other.{name}')
+                elif field_info.is_nested:
+                    # Nested messages need recursive comparison
+                    comparisons.append(f'JSON.stringify(this.{name}) === JSON.stringify(other.{name})')
+                else:
+                    # Primitive types
+                    comparisons.append(f'this.{name} === other.{name}')
+            
+            result += f'    return ' + ' &&\n           '.join(comparisons) + ';\n'
+        
+        result += f'  }}\n'
+        return result
     @staticmethod
     def _generate_field_accessors(field_info, class_name, packages):
         """Generate getter and setter for a single field."""
@@ -311,7 +357,7 @@ class MessageJsClassGen():
 
 class FileJsGen():
     @staticmethod
-    def generate(package, use_class_based=False, packages=None):
+    def generate(package, use_class_based=False, packages=None, equality=False):
         yield '/* Automatically generated struct frame header */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
         yield '"use strict";\n\n'
@@ -319,9 +365,9 @@ class FileJsGen():
         # Only import MessageBase/Struct if there are messages
         if package.messages:
             if use_class_based:
-                yield "const { MessageBase } = require('./struct_base');\n"
+                yield "const { MessageBase } = require('./struct-base');\n"
             else:
-                yield "const { Struct } = require('./struct_base');\n"
+                yield "const { Struct } = require('./struct-base');\n"
         
         # Collect cross-package type dependencies
         external_types = {}  # {package_name: set of type names}
@@ -337,9 +383,11 @@ class FileJsGen():
         
         # Generate require statements for cross-package types
         for ext_package, type_names in sorted(external_types.items()):
+            # Convert package name to PascalCase for JavaScript conventions
+            ext_package_pascal = pascalCase(ext_package)
             for t in sorted(type_names):
-                type_var = '%s_%s' % (ext_package, t)
-                yield "const { %s } = require('./%s.sf');\n" % (type_var, ext_package)
+                type_var = '%s%s' % (ext_package_pascal, t)
+                yield "const { %s } = require('./%s.structframe');\n" % (type_var, ext_package)
         
         if external_types:
             yield "\n"
@@ -352,52 +400,68 @@ class FileJsGen():
 
         # include additional header files here if available in the future
 
+        # Convert package name to PascalCase for JavaScript naming conventions
+        package_name_pascal = pascalCase(package.name)
+        
         if package.enums:
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
-                yield EnumJsGen.generate(enum, package.name) + '\n\n'
+                yield EnumJsGen.generate(enum, package_name_pascal) + '\n\n'
 
         if package.messages:
             if use_class_based:
                 yield '/* Message class definitions */\n'
                 for key, msg in package.sortedMessages().items():
-                    yield MessageJsClassGen.generate(msg, package.name, package, packages or {}) + '\n'
+                    yield MessageJsClassGen.generate(msg, package_name_pascal, package, packages or {}, equality) + '\n'
             else:
                 yield '/* Struct definitions */\n'
                 for key, msg in package.sortedMessages().items():
-                    yield MessageJsGen.generate(msg, package.name, package) + '\n'
+                    yield MessageJsGen.generate(msg, package_name_pascal, package) + '\n'
             yield '\n'
 
         if package.messages:
-            # Only generate get_message_length if there are messages with IDs
+            # Only generate get_message_info if there are messages with IDs
             messages_with_id = [
                 msg for key, msg in package.sortedMessages().items() if msg.id]
             if messages_with_id:
+                # Generate unified get_message_info function
+                # Returns { size, magic1, magic2 } for a given message ID
                 if package.package_id is not None:
                     # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
-                    yield 'function get_message_length(msg_id) {\n'
+                    yield '/**\n'
+                    yield ' * Get message info (size and magic numbers) for a message ID.\n'
+                    yield ' * @param {number} msg_id - 16-bit message ID (pkg_id << 8 | local_msg_id)\n'
+                    yield ' * @returns {{size: number, magic1: number, magic2: number}|undefined}\n'
+                    yield ' */\n'
+                    yield 'function get_message_info(msg_id) {\n'
                     yield '  // Extract package ID and message ID from 16-bit message ID\n'
                     yield '  const pkg_id = (msg_id >> 8) & 0xFF;\n'
                     yield '  const local_msg_id = msg_id & 0xFF;\n'
                     yield '  \n'
                     yield '  // Check if this is our package\n'
                     yield '  if (pkg_id !== PACKAGE_ID) {\n'
-                    yield '    return 0;\n'
+                    yield '    return undefined;\n'
                     yield '  }\n'
                     yield '  \n'
                     yield '  switch (local_msg_id) {\n'
                 else:
                     # Flat namespace mode: 8-bit message ID
-                    yield 'function get_message_length(msg_id) {\n'
+                    yield '/**\n'
+                    yield ' * Get message info (size and magic numbers) for a message ID.\n'
+                    yield ' * @param {number} msg_id - Message ID\n'
+                    yield ' * @returns {{size: number, magic1: number, magic2: number}|undefined}\n'
+                    yield ' */\n'
+                    yield 'function get_message_info(msg_id) {\n'
                     yield '  switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
-                    package_msg_name = '%s_%s' % (package.name, msg.name)
-                    yield '    case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
+                    package_msg_name = '%s%s' % (package_name_pascal, msg.name)
+                    yield '    case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2 };\n' % (
+                        package_msg_name, package_msg_name, package_msg_name, package_msg_name)
 
                 yield '    default: break;\n'
                 yield '  }\n'
-                yield '  return 0;\n'
+                yield '  return undefined;\n'
                 yield '}\n'
-                yield 'module.exports.get_message_length = get_message_length;\n'
+                yield 'module.exports.get_message_info = get_message_info;\n'
             yield '\n'

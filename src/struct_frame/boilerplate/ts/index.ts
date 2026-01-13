@@ -1,28 +1,27 @@
 // Struct-frame boilerplate: frame parser package
 
 // Struct base class for message types
-export { MessageBase } from './struct_base';
-export type { MessageConstructor } from './struct_base';
+export { MessageBase } from './struct-base';
+export type { MessageConstructor } from './struct-base';
 
 // Base utilities and generic parser infrastructure
-export type { FrameMsgInfo, FrameParserConfig } from './frame_base';
+export type { FrameMsgInfo, FrameParserConfig } from './frame-base';
 export {
-    FrameFormatType,
     createFrameMsgInfo,
-    fletcher_checksum,
+    fletcherChecksum,
     // Generic parser class (use createFrameParserClass for type-safe wrappers)
     GenericFrameParser,
     GenericParserState,
     createFrameParserClass,
     // Shared payload parsing functions
-    validate_payload_with_crc,
-    validate_payload_minimal,
-    encode_payload_with_crc,
-    encode_payload_minimal,
-} from './frame_base';
+    validatePayloadWithCrc,
+    validatePayloadMinimal,
+    encodePayloadWithCrc,
+    encodePayloadMinimal,
+} from './frame-base';
 
 // Frame headers - Start byte patterns and header types
-export type { HeaderConfig } from './frame_headers';
+export type { HeaderConfig } from './frame-headers';
 export {
     HeaderType,
     BASIC_START_BYTE,
@@ -38,10 +37,10 @@ export {
     HEADER_UBX_CONFIG,
     HEADER_MAVLINK_V1_CONFIG,
     HEADER_MAVLINK_V2_CONFIG,
-} from './frame_headers';
+} from './frame-headers';
 
 // Payload types - Message structure definitions
-export type { PayloadConfig } from './payload_types';
+export type { PayloadConfig } from './payload-types';
 export {
     PayloadType,
     MAX_PAYLOAD_TYPE_VALUE,
@@ -58,10 +57,10 @@ export {
     PAYLOAD_SEQ_CONFIG,
     PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG,
     PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG,
-} from './payload_types';
+} from './payload-types';
 
 // Frame profiles - Pre-defined Header + Payload combinations
-export type { FrameProfileConfig, EncodeOptions } from './frame_profiles';
+export type { FrameProfileConfig, EncodeOptions } from './frame-profiles';
 export {
     // Profile helper functions
     profileHeaderSize,
@@ -74,8 +73,7 @@ export {
     ProfileBulkConfig,
     ProfileNetworkConfig,
     // Generic encode/parse functions
-    encodeFrameWithCrc,
-    encodeFrameMinimal,
+    encodeMessage,
     parseFrameWithCrc,
     parseFrameMinimal,
     // BufferReader/BufferWriter/AccumulatingReader base classes
@@ -99,5 +97,5 @@ export {
     ProfileNetworkReader,
     ProfileNetworkWriter,
     ProfileNetworkAccumulatingReader,
-} from './frame_profiles';
+} from './frame-profiles';
 

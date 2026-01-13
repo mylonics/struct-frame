@@ -12,4 +12,4 @@
 #include "payload_types.hpp"
 
 /* Frame profiles - Pre-defined Header + Payload combinations */
-#include "FrameProfiles.hpp"
+#include "frame_profiles.hpp"

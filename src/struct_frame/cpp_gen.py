@@ -181,7 +181,73 @@ class OneOfCppGen():
 
 class MessageCppGen():
     @staticmethod
-    def generate(msg, use_namespace=False, package=None):
+    def _generate_field_comparison(field, use_namespace=False):
+        """Generate comparison code for a single field."""
+        var_name = field.name
+        type_name = field.fieldType
+        
+        # Handle arrays
+        if field.is_array:
+            if field.fieldType == "string":
+                if field.size_option is not None:
+                    # Fixed string array: compare each string with strncmp
+                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+                elif field.max_size is not None:
+                    # Variable string array: compare count and data
+                    return f'({var_name}.count == other.{var_name}.count && std::memcmp({var_name}.data, other.{var_name}.data, sizeof({var_name}.data)) == 0)'
+                else:
+                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+            else:
+                # Non-string arrays
+                if field.size_option is not None:
+                    # Fixed array: compare with memcmp
+                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+                elif field.max_size is not None:
+                    # Variable array: compare count and data
+                    return f'({var_name}.count == other.{var_name}.count && std::memcmp({var_name}.data, other.{var_name}.data, sizeof({var_name}.data)) == 0)'
+                else:
+                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+        
+        # Handle regular strings
+        elif field.fieldType == "string":
+            if field.size_option is not None:
+                # Fixed string: compare with strncmp
+                return f'(std::strncmp({var_name}, other.{var_name}, {field.size_option}) == 0)'
+            elif field.max_size is not None:
+                # Variable string: compare length and data
+                return f'({var_name}.length == other.{var_name}.length && std::strncmp({var_name}.data, other.{var_name}.data, {field.max_size}) == 0)'
+            else:
+                return f'(std::strcmp({var_name}, other.{var_name}) == 0)'
+        
+        # Handle enums - compare with ==
+        elif field.isEnum:
+            return f'({var_name} == other.{var_name})'
+        
+        # Handle nested messages (compare as byte memory since they're packed)
+        elif type_name not in cpp_types:
+            # Nested struct - compare with memcmp for packed structs
+            return f'(std::memcmp(&{var_name}, &other.{var_name}, sizeof({var_name})) == 0)'
+        
+        # Handle regular fields (primitives)
+        else:
+            return f'({var_name} == other.{var_name})'
+    
+    @staticmethod
+    def _generate_oneof_comparison(oneof):
+        """Generate comparison code for a oneof (union)."""
+        comparisons = []
+        
+        # If auto-discriminator is enabled, compare discriminator first
+        if oneof.auto_discriminator:
+            comparisons.append(f'({oneof.name}_discriminator == other.{oneof.name}_discriminator)')
+        
+        # Compare the union as raw bytes (since we don't know which variant is active)
+        comparisons.append(f'(std::memcmp(&{oneof.name}, &other.{oneof.name}, sizeof({oneof.name})) == 0)')
+        
+        return ' && '.join(comparisons)
+    
+    @staticmethod
+    def generate(msg, use_namespace=False, package=None, equality=False):
         leading_comment = msg.comments
 
         result = ''
@@ -240,20 +306,57 @@ class MessageCppGen():
             result += '\n'.join([OneOfCppGen.generate(o, use_namespace, package)
                                 for key, o in msg.oneofs.items()])
         
-        result += '\n};\n'
+        # Generate equality operator if requested
+        if equality:
+            result += '\n\n'
+            result += f'    bool operator==(const {structName}& other) const {{\n'
+            
+            comparisons = []
+            
+            # Handle empty structs
+            if not msg.fields and not msg.oneofs:
+                comparisons.append('(dummy_field == other.dummy_field)')
+            else:
+                # Generate field comparisons
+                for key, field in msg.fields.items():
+                    comparisons.append(MessageCppGen._generate_field_comparison(field, use_namespace))
+                
+                # Generate oneof comparisons
+                for key, oneof in msg.oneofs.items():
+                    comparisons.append(MessageCppGen._generate_oneof_comparison(oneof))
+            
+            if comparisons:
+                result += '        return ' + ' &&\n               '.join(comparisons) + ';\n'
+            else:
+                result += '        return true;\n'
+            
+            result += '    }\n'
+            result += f'    bool operator!=(const {structName}& other) const {{ return !(*this == other); }}\n'
+        
+        # Add magic number constants inside the class (for checksum initialization)
+        if has_msg_id and msg.magic_bytes:
+            result += f'\n    // Magic numbers for checksum (based on field types and positions)\n'
+            result += f'    static constexpr uint8_t MAGIC1 = {msg.magic_bytes[0]};\n'
+            result += f'    static constexpr uint8_t MAGIC2 = {msg.magic_bytes[1]};\n'
+        
+        result += '};\n'
 
         return result + '\n'
 
 
 class FileCppGen():
     @staticmethod
-    def generate(package):
+    def generate(package, equality=False):
         yield '/* Automatically generated struct frame header for C++ */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
 
         yield '#pragma once\n'
         yield '#include <cstdint>\n'
         yield '#include <cstddef>\n'
+        
+        # Include cstring for string comparison if equality is enabled
+        if equality:
+            yield '#include <cstring>\n'
         
         # Check if any message has an ID (needs MessageBase from frame_base.hpp)
         has_msg_with_id = any(msg.id is not None for msg in package.messages.values()) if package.messages else False
@@ -286,7 +389,7 @@ class FileCppGen():
             # Need to sort messages to make sure dependencies are properly met
 
             for key, msg in package.sortedMessages().items():
-                yield MessageCppGen.generate(msg, use_namespace, package) + '\n'
+                yield MessageCppGen.generate(msg, use_namespace, package, equality) + '\n'
             yield '#pragma pack(pop)\n\n'
 
         # Generate get_message_length function
@@ -328,6 +431,90 @@ class FileCppGen():
             yield '    }\n'
             yield '    return false;\n'
             yield '}\n\n'
+            
+            # Generate get_magic_numbers function (legacy support)
+            if use_namespace:
+                # When using package ID, message ID is 16-bit
+                yield 'inline bool get_magic_numbers(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
+                yield '    // Extract package ID and message ID from 16-bit message ID\n'
+                yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
+                yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
+                yield '    \n'
+                yield f'    // Check if this is our package\n'
+                yield f'    if (pkg_id != PACKAGE_ID) {{\n'
+                yield f'        return false;\n'
+                yield f'    }}\n'
+                yield '    \n'
+                yield '    switch (local_msg_id) {\n'
+            else:
+                # Flat namespace mode: 8-bit message ID
+                yield 'inline bool get_magic_numbers(size_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
+                yield '    switch (msg_id) {\n'
+            
+            for key, msg in package.sortedMessages().items():
+                if use_namespace:
+                    structName = msg.name
+                    defineName = CamelToSnakeCase(msg.name).upper()
+                else:
+                    structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                    defineName = '%s_%s' % (CamelToSnakeCase(
+                        msg.package).upper(), CamelToSnakeCase(msg.name).upper())
+                    
+                if msg.id is not None and msg.magic_bytes:
+                    if use_namespace:
+                        # When using package ID, compare against local message ID
+                        yield '        case %d: *magic1 = %s::MAGIC1; *magic2 = %s::MAGIC2; return true;\n' % (
+                            msg.id, structName, structName)
+                    else:
+                        # No package ID, compare against MSG_ID from MessageBase
+                        yield '        case %s::MSG_ID: *magic1 = %s::MAGIC1; *magic2 = %s::MAGIC2; return true;\n' % (
+                            structName, structName, structName)
+
+            yield '        default: break;\n'
+            yield '    }\n'
+            yield '    return false;\n'
+            yield '}\n\n'
+            
+            # Generate unified get_message_info function
+            if use_namespace:
+                # When using package ID, message ID is 16-bit
+                yield 'inline MessageInfo get_message_info(uint16_t msg_id) {\n'
+                yield '    // Extract package ID and message ID from 16-bit message ID\n'
+                yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
+                yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
+                yield '    \n'
+                yield f'    // Check if this is our package\n'
+                yield f'    if (pkg_id != PACKAGE_ID) {{\n'
+                yield f'        return MessageInfo{{}};\n'
+                yield f'    }}\n'
+                yield '    \n'
+                yield '    switch (local_msg_id) {\n'
+            else:
+                # Flat namespace mode: 8-bit message ID
+                yield 'inline MessageInfo get_message_info(uint16_t msg_id) {\n'
+                yield '    switch (msg_id) {\n'
+            
+            for key, msg in package.sortedMessages().items():
+                if use_namespace:
+                    structName = msg.name
+                else:
+                    structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                    
+                if msg.id is not None:
+                    if use_namespace:
+                        # When using package ID, compare against local message ID
+                        yield '        case %d: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2};\n' % (
+                            msg.id, structName, structName, structName)
+                    else:
+                        # No package ID, compare against MSG_ID from MessageBase
+                        yield '        case %s::MSG_ID: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2};\n' % (
+                            structName, structName, structName, structName)
+
+            yield '        default: break;\n'
+            yield '    }\n'
+            yield '    return MessageInfo{};\n'
+            yield '}\n\n'
+            
             yield '}  // namespace FrameParsers\n'
             
         if use_namespace:

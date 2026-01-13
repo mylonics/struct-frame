@@ -17,7 +17,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../generated/c/serialization_test.sf.h"
+#include "../../generated/c/serialization_test.structframe.h"
 #include "test_codec.h"
 
 /* ============================================================================
@@ -250,20 +250,23 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
 
   if (msg_id == SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestSerializationTestMessage* msg = &get_serialization_test_messages()[std_serial_idx++];
-    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0);
+    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
+                               SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAGIC2);
   } else if (msg_id == SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID) {
     const SerializationTestBasicTypesMessage* msg = &get_basic_types_messages()[std_basic_idx++];
-    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0);
+    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
+                               SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
   } else if (msg_id == SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestUnionTestMessage* msg = &get_union_test_messages()[std_union_idx++];
-    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0);
+    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
+                               SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC2);
   }
 
   return 0;
 }
 
 /* ============================================================================
- * Validator - validates decoded messages against expected data
+ * Validator - validates decoded messages against expected data using _equals()
  * ============================================================================ */
 
 static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, size_t size, size_t* index) {
@@ -272,15 +275,18 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
   if (msg_id == SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestSerializationTestMessage* expected = &get_serialization_test_messages()[std_serial_idx++];
     if (size != sizeof(*expected)) return false;
-    return memcmp(data, expected, size) == 0;
+    const SerializationTestSerializationTestMessage* decoded = (const SerializationTestSerializationTestMessage*)data;
+    return SerializationTestSerializationTestMessage_equals(decoded, expected);
   } else if (msg_id == SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID) {
     const SerializationTestBasicTypesMessage* expected = &get_basic_types_messages()[std_basic_idx++];
     if (size != sizeof(*expected)) return false;
-    return memcmp(data, expected, size) == 0;
+    const SerializationTestBasicTypesMessage* decoded = (const SerializationTestBasicTypesMessage*)data;
+    return SerializationTestBasicTypesMessage_equals(decoded, expected);
   } else if (msg_id == SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestUnionTestMessage* expected = &get_union_test_messages()[std_union_idx++];
     if (size != sizeof(*expected)) return false;
-    return memcmp(data, expected, size) == 0;
+    const SerializationTestUnionTestMessage* decoded = (const SerializationTestUnionTestMessage*)data;
+    return SerializationTestUnionTestMessage_equals(decoded, expected);
   }
 
   return false;
@@ -309,6 +315,6 @@ static const test_config_t std_test_config = {
     .encode_message = std_encode_message,
     .validate_message = std_validate_message,
     .reset_state = std_reset_state,
-    .get_message_length = get_message_length,
+    .get_message_info = get_message_info,
     .supports_format = std_supports_format,
 };

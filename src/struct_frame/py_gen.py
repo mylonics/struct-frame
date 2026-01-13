@@ -171,6 +171,38 @@ class MessagePyGen():
         return base_fmt
     
     @staticmethod
+    def generate_eq_method(msg, structName):
+        """Generate the __eq__ method for equality comparison"""
+        result = '\n    def __eq__(self, other) -> bool:\n'
+        result += '        """Compare two messages for equality"""\n'
+        result += f'        if not isinstance(other, {structName}):\n'
+        result += '            return False\n'
+        
+        comparisons = []
+        
+        # Generate field comparisons
+        for key, f in msg.fields.items():
+            comparisons.append(f'self.{f.name} == other.{f.name}')
+        
+        # Generate oneof comparisons
+        for oneof_name, oneof in msg.oneofs.items():
+            comparisons.append(f'self.{oneof_name} == other.{oneof_name}')
+            comparisons.append(f'self.{oneof_name}_which == other.{oneof_name}_which')
+            if oneof.auto_discriminator:
+                comparisons.append(f'self.{oneof_name}_discriminator == other.{oneof_name}_discriminator')
+        
+        if comparisons:
+            result += '        return (' + ' and\n                '.join(comparisons) + ')\n'
+        else:
+            result += '        return True\n'
+        
+        result += '\n    def __ne__(self, other) -> bool:\n'
+        result += '        """Compare two messages for inequality"""\n'
+        result += '        return not self.__eq__(other)\n'
+        
+        return result
+    
+    @staticmethod
     def generate_pack_method(msg):
         """Generate the pack() method"""
         result = '\n    def pack(self) -> bytes:\n'
@@ -276,11 +308,11 @@ class MessagePyGen():
         for oneof_name, oneof in msg.oneofs.items():
             # Auto-discriminator if needed
             if oneof.auto_discriminator:
-                result += f'        # Oneof {oneof_name} auto-discriminator\n'
+                result += f'        # Oneof {oneof_name} auto-discriminator (uint16)\n'
                 result += f'        if self.{oneof_name}_which is not None:\n'
-                result += f'            data += struct.pack("<B", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
+                result += f'            data += struct.pack("<H", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
                 result += f'        else:\n'
-                result += f'            data += struct.pack("<B", 0)\n'
+                result += f'            data += struct.pack("<H", 0)\n'
             
             # Pack the union field (whichever is active)
             result += f'        # Oneof {oneof_name} payload\n'
@@ -426,9 +458,9 @@ class MessagePyGen():
         for oneof_name, oneof in msg.oneofs.items():
             # Auto-discriminator if needed
             if oneof.auto_discriminator:
-                result += f'        # Oneof {oneof_name} auto-discriminator\n'
-                result += f'        discriminator = struct.unpack_from("<B", data, offset)[0]\n'
-                result += f'        offset += 1\n'
+                result += f'        # Oneof {oneof_name} auto-discriminator (uint16)\n'
+                result += f'        discriminator = struct.unpack_from("<H", data, offset)[0]\n'
+                result += f'        offset += 2\n'
                 result += f'        fields["{oneof_name}_discriminator"] = discriminator\n'
             
             # Unpack the union payload
@@ -451,7 +483,15 @@ class MessagePyGen():
         return result
     
     @staticmethod
-    def generate(msg):
+    def generate_data_method(msg):
+        """Generate the data() method that returns packed bytes (C++ compatible API)"""
+        result = '\n    def data(self) -> bytes:\n'
+        result += '        """Return packed message bytes (C++ MessageBase compatible API)"""\n'
+        result += '        return self.pack()\n'
+        return result
+    
+    @staticmethod
+    def generate(msg, equality=False):
         leading_comment = msg.comments
 
         result = ''
@@ -461,9 +501,18 @@ class MessagePyGen():
 
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
         result += 'class %s:\n' % structName
+        # Add both old and new naming for compatibility
         result += '    msg_size = %s\n' % msg.size
+        result += '    MAX_SIZE = %s  # C++ compatible alias\n' % msg.size
         if msg.id != None:
             result += '    msg_id = %s\n' % msg.id
+            result += '    MSG_ID = %s  # C++ compatible alias\n' % msg.id
+        
+        # Add magic numbers for checksum
+        if msg.id is not None and msg.magic_bytes:
+            result += f'    MAGIC1 = {msg.magic_bytes[0]}  # Checksum magic number (based on field types and positions)\n'
+            result += f'    MAGIC2 = {msg.magic_bytes[1]}  # Checksum magic number (based on field types and positions)\n'
+        
         result += '\n'
 
         # Generate __init__ method
@@ -487,13 +536,20 @@ class MessagePyGen():
         for key, f in msg.fields.items():
             # Initialize with defaults
             if f.is_array:
-                result += f'        self.{f.name} = {f.name} if {f.name} is not None else []\n'
+                # For float32 arrays, truncate each element to 32-bit precision
+                if f.fieldType == "float":
+                    result += f'        self.{f.name} = [_truncate_float32(v) for v in {f.name}] if {f.name} is not None else []\n'
+                else:
+                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else []\n'
             elif f.fieldType == "string":
                 result += f'        self.{f.name} = {f.name} if {f.name} is not None else b""\n'
             elif f.fieldType in py_type_hints:
                 if f.fieldType == "bool":
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else False\n'
-                elif "float" in f.fieldType or "double" in f.fieldType:
+                elif f.fieldType == "float":
+                    # Truncate float32 to 32-bit precision
+                    result += f'        self.{f.name} = _truncate_float32({f.name}) if {f.name} is not None else 0.0\n'
+                elif f.fieldType == "double":
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else 0.0\n'
                 else:
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else 0\n'
@@ -516,6 +572,9 @@ class MessagePyGen():
 
         # Generate unpack method
         result += MessagePyGen.generate_unpack_method(msg)
+
+        # Generate data() method (C++ compatible API)
+        result += MessagePyGen.generate_data_method(msg)
 
         # Generate __str__ method
         result += '\n    def __str__(self):\n'
@@ -557,17 +616,27 @@ class MessagePyGen():
         result += f'            out["msg_id"] = "{msg.id}"\n'
         result += '        return out\n'
 
+        # Generate __eq__ method if requested
+        if equality:
+            result += MessagePyGen.generate_eq_method(msg, structName)
+
         return result
 
 
 class FilePyGen():
     @staticmethod
-    def generate(package):
+    def generate(package, equality=False):
         yield '# Automatically generated struct frame header \n'
         yield '# Generated by %s at %s. \n\n' % (version, time.asctime())
 
         yield 'import struct\n'
         yield 'from enum import Enum\n'
+        yield 'from typing import List\n'
+        yield '\n'
+        yield '# Helper function to truncate float64 to float32 precision\n'
+        yield 'def _truncate_float32(val: float) -> float:\n'
+        yield '    """Truncate a Python float (float64) to float32 precision"""\n'
+        yield '    return struct.unpack("<f", struct.pack("<f", val))[0]\n'
         yield 'from typing import List, Optional\n\n'
 
         # Add package ID constant if present
@@ -584,7 +653,7 @@ class FilePyGen():
             yield '# Message definitions \n'
             # Need to sort messages to make sure dependencies are properly met
             for key, msg in package.sortedMessages().items():
-                yield MessagePyGen.generate(msg) + '\n'
+                yield MessagePyGen.generate(msg, equality) + '\n'
             yield '\n'
 
         if package.messages:
@@ -612,7 +681,26 @@ class FilePyGen():
                 yield f'    return msg_class.msg_size if msg_class else 0\n\n'
                 
                 yield f'# Alias for minimal frame parsing compatibility\n'
-                yield f'get_msg_length = get_message_size\n'
+                yield f'get_msg_length = get_message_size\n\n'
+                
+                # Add unified get_message_info function
+                yield f'def get_message_info(msg_id: int):\n'
+                yield f'    """\n'
+                yield f'    Get unified message info (size and magic numbers) for a 16-bit message ID.\n'
+                yield f'    \n'
+                yield f'    Args:\n'
+                yield f'        msg_id: 16-bit message ID (pkg_id << 8 | local_msg_id)\n'
+                yield f'    \n'
+                yield f'    Returns:\n'
+                yield f'        MessageInfo(size, magic1, magic2) or None if message not found\n'
+                yield f'    """\n'
+                yield f'    from frame_profiles import MessageInfo\n'
+                yield f'    msg_class = get_message_class(msg_id)\n'
+                yield f'    if not msg_class:\n'
+                yield f'        return None\n'
+                yield f'    magic1 = getattr(msg_class, "MAGIC1", 0)\n'
+                yield f'    magic2 = getattr(msg_class, "MAGIC2", 0)\n'
+                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2)\n'
             else:
                 # Flat namespace mode: 8-bit message ID
                 yield '%s_definitions = {\n' % package.name
@@ -630,4 +718,23 @@ class FilePyGen():
                 yield f'def get_msg_length(msg_id: int) -> int:\n'
                 yield f'    """Get message size from message ID (for minimal frame parsing)"""\n'
                 yield f'    msg_class = get_message_class(msg_id)\n'
-                yield f'    return msg_class.msg_size if msg_class else 0\n'
+                yield f'    return msg_class.msg_size if msg_class else 0\n\n'
+                
+                # Add unified get_message_info function
+                yield f'def get_message_info(msg_id: int):\n'
+                yield f'    """\n'
+                yield f'    Get unified message info (size and magic numbers) for a message ID.\n'
+                yield f'    \n'
+                yield f'    Args:\n'
+                yield f'        msg_id: Message ID\n'
+                yield f'    \n'
+                yield f'    Returns:\n'
+                yield f'        MessageInfo(size, magic1, magic2) or None if message not found\n'
+                yield f'    """\n'
+                yield f'    from frame_profiles import MessageInfo\n'
+                yield f'    msg_class = get_message_class(msg_id)\n'
+                yield f'    if not msg_class:\n'
+                yield f'        return None\n'
+                yield f'    magic1 = getattr(msg_class, "MAGIC1", 0)\n'
+                yield f'    magic2 = getattr(msg_class, "MAGIC2", 0)\n'
+                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2)\n'

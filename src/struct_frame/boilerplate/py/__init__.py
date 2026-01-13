@@ -1,34 +1,57 @@
 # Frame parser boilerplate package
 # Uses header + payload architecture for composable frame formats.
+# Mirrors the C++ boilerplate structure.
 
-# Parser - handles multiple frame types in same stream
-from .parser import (
-    # Enums
-    HeaderType,
-    PayloadType,
-    ParserState,
-    # Classes
-    PayloadConfig,
+# Frame base - Core utilities (like frame_base.hpp)
+from .frame_base import (
+    FrameChecksum,
     FrameMsgInfo,
-    Parser,
-    # Constants
+    ParserState,
+    fletcher_checksum,
+)
+
+# Frame headers - Start byte patterns (like frame_headers.hpp)
+from .frame_headers import (
+    HeaderType,
+    HeaderConfig,
     BASIC_START_BYTE,
     PAYLOAD_TYPE_BASE,
-    MAX_PAYLOAD_TYPE,
     UBX_SYNC1,
     UBX_SYNC2,
     MAVLINK_V1_STX,
     MAVLINK_V2_STX,
-    # Payload configurations
-    PAYLOAD_CONFIGS,
-    # Utilities
-    fletcher_checksum,
+    MAX_PAYLOAD_TYPE,
+    HEADER_NONE_CONFIG,
+    HEADER_TINY_CONFIG,
+    HEADER_BASIC_CONFIG,
+    HEADER_UBX_CONFIG,
+    HEADER_MAVLINK_V1_CONFIG,
+    HEADER_MAVLINK_V2_CONFIG,
+    HEADER_CONFIGS,
 )
 
-# Frame Profiles - pre-defined header+payload combinations
+# Payload types - Message structure configurations (like payload_types.hpp)
+from .payload_types import (
+    PayloadType,
+    PayloadConfig,
+    MAX_PAYLOAD_TYPE_VALUE,
+    PAYLOAD_MINIMAL_CONFIG,
+    PAYLOAD_DEFAULT_CONFIG,
+    PAYLOAD_EXTENDED_MSG_IDS_CONFIG,
+    PAYLOAD_EXTENDED_LENGTH_CONFIG,
+    PAYLOAD_EXTENDED_CONFIG,
+    PAYLOAD_SYS_COMP_CONFIG,
+    PAYLOAD_SEQ_CONFIG,
+    PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG,
+    PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG,
+    PAYLOAD_CONFIGS,
+)
+
+# Frame profiles - Pre-defined Header + Payload combinations (like frame_profiles.hpp)
 from .frame_profiles import (
-    # Config class
-    FrameFormatConfig,
+    # Profile configuration class
+    ProfileConfig,
+    FrameFormatConfig,  # Backwards compatibility alias
     # Profile configurations
     PROFILE_STANDARD_CONFIG,
     PROFILE_SENSOR_CONFIG,
@@ -50,61 +73,75 @@ from .frame_profiles import (
     encode_frame,
     parse_frame_buffer,
     create_custom_config,
-    # BufferReader/BufferWriter/AccumulatingReader classes
+    # BufferReader/BufferWriter/AccumulatingReader base classes
     BufferReader,
     BufferWriter,
     AccumulatingReader,
     AccumulatingReaderState,
-    # Convenience factory functions for profiles
-    create_profile_standard_reader,
-    create_profile_standard_writer,
-    create_profile_standard_accumulating_reader,
-    create_profile_sensor_reader,
-    create_profile_sensor_writer,
-    create_profile_sensor_accumulating_reader,
-    create_profile_ipc_reader,
-    create_profile_ipc_writer,
-    create_profile_ipc_accumulating_reader,
-    create_profile_bulk_reader,
-    create_profile_bulk_writer,
-    create_profile_bulk_accumulating_reader,
-    create_profile_network_reader,
-    create_profile_network_writer,
-    create_profile_network_accumulating_reader,
+    # Profile-specific classes
+    ProfileStandardReader,
+    ProfileStandardWriter,
+    ProfileStandardAccumulatingReader,
+    ProfileSensorReader,
+    ProfileSensorWriter,
+    ProfileSensorAccumulatingReader,
+    ProfileIPCReader,
+    ProfileIPCWriter,
+    ProfileIPCAccumulatingReader,
+    ProfileBulkReader,
+    ProfileBulkWriter,
+    ProfileBulkAccumulatingReader,
+    ProfileNetworkReader,
+    ProfileNetworkWriter,
+    ProfileNetworkAccumulatingReader,
 )
 
 # Re-export all
 __all__ = [
-    # Enums
-    "HeaderType",
-    "PayloadType",
-    "ParserState",
-    # Classes
-    "PayloadConfig",
+    # Frame base
+    "FrameChecksum",
     "FrameMsgInfo",
-    "Parser",
-    "FrameFormatConfig",
-    "BufferReader",
-    "BufferWriter",
-    "AccumulatingReader",
-    "AccumulatingReaderState",
-    # Constants
+    "ParserState",
+    "fletcher_checksum",
+    # Frame headers
+    "HeaderType",
+    "HeaderConfig",
     "BASIC_START_BYTE",
     "PAYLOAD_TYPE_BASE",
-    "MAX_PAYLOAD_TYPE",
     "UBX_SYNC1",
     "UBX_SYNC2",
     "MAVLINK_V1_STX",
     "MAVLINK_V2_STX",
-    # Payload configurations
+    "MAX_PAYLOAD_TYPE",
+    "HEADER_NONE_CONFIG",
+    "HEADER_TINY_CONFIG",
+    "HEADER_BASIC_CONFIG",
+    "HEADER_UBX_CONFIG",
+    "HEADER_MAVLINK_V1_CONFIG",
+    "HEADER_MAVLINK_V2_CONFIG",
+    "HEADER_CONFIGS",
+    # Payload types
+    "PayloadType",
+    "PayloadConfig",
+    "MAX_PAYLOAD_TYPE_VALUE",
+    "PAYLOAD_MINIMAL_CONFIG",
+    "PAYLOAD_DEFAULT_CONFIG",
+    "PAYLOAD_EXTENDED_MSG_IDS_CONFIG",
+    "PAYLOAD_EXTENDED_LENGTH_CONFIG",
+    "PAYLOAD_EXTENDED_CONFIG",
+    "PAYLOAD_SYS_COMP_CONFIG",
+    "PAYLOAD_SEQ_CONFIG",
+    "PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG",
+    "PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG",
     "PAYLOAD_CONFIGS",
-    # Profile configurations
+    # Frame profiles
+    "ProfileConfig",
+    "FrameFormatConfig",
     "PROFILE_STANDARD_CONFIG",
     "PROFILE_SENSOR_CONFIG",
     "PROFILE_IPC_CONFIG",
     "PROFILE_BULK_CONFIG",
     "PROFILE_NETWORK_CONFIG",
-    # Profile convenience functions
     "encode_profile_standard",
     "parse_profile_standard_buffer",
     "encode_profile_sensor",
@@ -115,26 +152,27 @@ __all__ = [
     "parse_profile_bulk_buffer",
     "encode_profile_network",
     "parse_profile_network_buffer",
-    # Generic functions
     "encode_frame",
     "parse_frame_buffer",
     "create_custom_config",
-    # Convenience factory functions for profiles
-    "create_profile_standard_reader",
-    "create_profile_standard_writer",
-    "create_profile_standard_accumulating_reader",
-    "create_profile_sensor_reader",
-    "create_profile_sensor_writer",
-    "create_profile_sensor_accumulating_reader",
-    "create_profile_ipc_reader",
-    "create_profile_ipc_writer",
-    "create_profile_ipc_accumulating_reader",
-    "create_profile_bulk_reader",
-    "create_profile_bulk_writer",
-    "create_profile_bulk_accumulating_reader",
-    "create_profile_network_reader",
-    "create_profile_network_writer",
-    "create_profile_network_accumulating_reader",
-    # Utilities
-    "fletcher_checksum",
+    "BufferReader",
+    "BufferWriter",
+    "AccumulatingReader",
+    "AccumulatingReaderState",
+    # Profile-specific classes
+    "ProfileStandardReader",
+    "ProfileStandardWriter",
+    "ProfileStandardAccumulatingReader",
+    "ProfileSensorReader",
+    "ProfileSensorWriter",
+    "ProfileSensorAccumulatingReader",
+    "ProfileIPCReader",
+    "ProfileIPCWriter",
+    "ProfileIPCAccumulatingReader",
+    "ProfileBulkReader",
+    "ProfileBulkWriter",
+    "ProfileBulkAccumulatingReader",
+    "ProfileNetworkReader",
+    "ProfileNetworkWriter",
+    "ProfileNetworkAccumulatingReader",
 ]

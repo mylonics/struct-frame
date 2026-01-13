@@ -112,6 +112,25 @@ class FunctionObserver : public IObserver<TMessage> {
 };
 
 /**
+ * Lambda/callable-based observer for flexible callback subscription
+ * Uses templates instead of std::function - zero heap allocation for the wrapper
+ * @tparam TMessage The message type to observe
+ * @tparam Callable The callable type (lambda, functor, etc.)
+ */
+template <typename TMessage, typename Callable>
+class CallableObserver : public IObserver<TMessage> {
+ public:
+  explicit CallableObserver(Callable callback) : callback_(callback) {}
+
+  void onMessage(const TMessage& message, uint8_t msgId) override {
+    callback_(message, msgId);
+  }
+
+ private:
+  Callable callback_;
+};
+
+/**
  * Observable subject that notifies observers of messages
  * @tparam TMessage The message type
  * @tparam MaxObservers Maximum number of observers (default 16)

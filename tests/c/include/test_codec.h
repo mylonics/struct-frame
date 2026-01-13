@@ -15,7 +15,7 @@
  * - get_msg_id_order(): returns array of msg_ids in encode/decode order
  * - encode_message(): function to encode a message by index
  * - validate_message(): function to validate a decoded message
- * - get_message_length(): function for minimal profiles (optional)
+ * - get_message_info(): unified function for message lookup
  * - supports_format(): function to check if format is supported
  */
 
@@ -52,8 +52,8 @@ typedef struct test_config {
   /* Reset encoder/validator state for new run */
   void (*reset_state)(void);
 
-  /* Get message length for minimal profiles (can be NULL) */
-  bool (*get_message_length)(size_t msg_id, size_t* len);
+  /* Get message info (size and magic numbers) for profiles */
+  bool (*get_message_info)(uint16_t msg_id, message_info_t* info);
 
   /* Check if format is supported */
   bool (*supports_format)(const char* format);
@@ -104,7 +104,7 @@ static inline bool encode_messages(const test_config_t* config, const char* form
   *encoded_size = 0;
 
   /* Get the appropriate profile config */
-  const frame_format_config_t* profile_config = NULL;
+  const profile_config_t* profile_config = NULL;
 
   if (strcmp(format, "profile_standard") == 0) {
     profile_config = &PROFILE_STANDARD_CONFIG;
@@ -166,7 +166,7 @@ static inline bool decode_messages(const test_config_t* config, const char* form
   const uint8_t* chunk3 = buffer + chunk1_size + chunk2_size;
 
   /* Get the appropriate profile config */
-  const frame_format_config_t* profile_config = NULL;
+  const profile_config_t* profile_config = NULL;
 
   if (strcmp(format, "profile_standard") == 0) {
     profile_config = &PROFILE_STANDARD_CONFIG;
@@ -191,7 +191,7 @@ static inline bool decode_messages(const test_config_t* config, const char* form
   }
 
   accumulating_reader_t reader;
-  accumulating_reader_init(&reader, profile_config, internal_buffer, config->buffer_size, config->get_message_length);
+  accumulating_reader_init(&reader, profile_config, internal_buffer, config->buffer_size, config->get_message_info);
 
   const uint8_t* chunks[] = {chunk1, chunk2, chunk3};
   size_t sizes[] = {chunk1_size, chunk2_size, chunk3_size};
@@ -307,7 +307,7 @@ static inline int run_decode(const test_config_t* config, const char* format, co
 
   size_t message_count = 0;
   if (!decode_messages(config, format, buffer, size, &message_count)) {
-    printf("[DECODE] FAILED: Decoding error\n");
+    printf("[DECODE] FAILED: %zu messages validated before error\n", message_count);
     print_hex(buffer, size);
     free(buffer);
     return 1;

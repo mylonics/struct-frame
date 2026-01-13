@@ -7,7 +7,7 @@ This module generates TypeScript code for struct serialization using
 ES6 module syntax (import/export).
 """
 
-from struct_frame import version, NamingStyleC
+from struct_frame import version, NamingStyleC, pascalCase
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -43,8 +43,8 @@ class EnumTsGen():
             for c in leading_comment:
                 result = '%s\n' % c
 
-        result += 'export enum %s%s' % (packageName,
-                                        StyleC.enum_name(field.name))
+        # Use PascalCase for both package and enum name (TypeScript convention)
+        result += 'export enum %s%s' % (packageName, field.name)
 
         result += ' {\n'
 
@@ -99,7 +99,7 @@ class MessageTsGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s_%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (packageName, msg.name)
 
         result += 'export const %s = new Struct(\'%s\')' % (
             package_msg_name, package_msg_name)
@@ -107,6 +107,10 @@ class MessageTsGen():
         # Add message ID if present
         if msg.id:
             result += '.msgId(%d)' % msg.id
+        
+        # Add magic numbers if present
+        if msg.id is not None and msg.magic_bytes:
+            result += '.magic(%d, %d)' % (msg.magic_bytes[0], msg.magic_bytes[1])
 
         result += '\n'
 
@@ -149,7 +153,7 @@ class MessageTsClassGen():
     """Generate TypeScript message classes that extend MessageBase."""
     
     @staticmethod
-    def generate(msg, packageName, package, packages):
+    def generate(msg, packageName, package, packages, equality=False):
         """Generate a class-based message definition."""
         leading_comment = msg.comments
         result = ''
@@ -157,7 +161,7 @@ class MessageTsClassGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s_%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (packageName, msg.name)
         
         # Calculate field layout with offsets
         fields = calculate_field_layout(msg, package, packages)
@@ -174,6 +178,12 @@ class MessageTsClassGen():
         result += f'  static readonly _size: number = {total_size};\n'
         if msg.id:
             result += f'  static readonly _msgid: number = {msg.id};\n'
+        
+        # Add magic numbers for checksum
+        if msg.id is not None and msg.magic_bytes:
+            result += f'  static readonly _magic1: number = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
+            result += f'  static readonly _magic2: number = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
+        
         result += '\n'
         
         # Generate constructor that supports init object (only reference Init type if fields exist)
@@ -193,6 +203,10 @@ class MessageTsClassGen():
         for field_info in fields:
             result += MessageTsClassGen._generate_field_accessors(field_info, package_msg_name, packages)
         
+        # Generate equals method if requested
+        if equality:
+            result += MessageTsClassGen.generate_equals_method(msg, package_msg_name, fields)
+        
         # Static getSize method
         result += f'  static getSize(): number {{\n'
         result += f'    return {total_size};\n'
@@ -200,6 +214,37 @@ class MessageTsClassGen():
         
         result += '}\n'
         return result + '\n'
+    
+    @staticmethod
+    def generate_equals_method(msg, package_msg_name, fields):
+        """Generate equals() method for equality comparison."""
+        result = f'\n  equals(other: {package_msg_name}): boolean {{\n'
+        result += f'    if (!(other instanceof {package_msg_name})) {{\n'
+        result += f'      return false;\n'
+        result += f'    }}\n'
+        
+        if not fields:
+            result += f'    return true;\n'
+        else:
+            comparisons = []
+            for field_info in fields:
+                name = field_info.name
+                if field_info.is_array:
+                    # Arrays need element-by-element comparison or JSON comparison
+                    comparisons.append(f'JSON.stringify(this.{name}) === JSON.stringify(other.{name})')
+                elif field_info.field_type == 'string':
+                    comparisons.append(f'this.{name} === other.{name}')
+                elif field_info.is_nested:
+                    # Nested messages need recursive comparison
+                    comparisons.append(f'JSON.stringify(this.{name}) === JSON.stringify(other.{name})')
+                else:
+                    # Primitive types
+                    comparisons.append(f'this.{name} === other.{name}')
+            
+            result += f'    return ' + ' &&\n           '.join(comparisons) + ';\n'
+        
+        result += f'  }}\n'
+        return result
     
     @staticmethod
     def _generate_init_interface(class_name, fields):
@@ -352,16 +397,16 @@ class MessageTsClassGen():
 
 class FileTsGen():
     @staticmethod
-    def generate(package, use_class_based=False, packages=None):
+    def generate(package, use_class_based=False, packages=None, equality=False):
         yield '/* Automatically generated struct frame header */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
 
         # Only import MessageBase/Struct if there are messages
         if package.messages:
             if use_class_based:
-                yield "import { MessageBase } from './struct_base';\n"
+                yield "import { MessageBase } from './struct-base';\n"
             else:
-                yield "import { Struct, ExtractType } from './struct_base';\n"
+                yield "import { Struct, ExtractType } from './struct-base';\n"
         
         # Collect cross-package type dependencies
         external_types = {}  # {package_name: set of type names}
@@ -377,9 +422,10 @@ class FileTsGen():
         
         # Generate import statements for cross-package types
         for ext_package, type_names in sorted(external_types.items()):
-            # Use the type name directly (as it appears in msg.name) - don't convert case
-            imports = ', '.join('%s_%s' % (ext_package, t) for t in sorted(type_names))
-            yield "import { %s } from './%s.sf';\n" % (imports, ext_package)
+            # Convert package name to PascalCase for TypeScript conventions
+            ext_package_pascal = pascalCase(ext_package)
+            imports = ', '.join('%s%s' % (ext_package_pascal, t) for t in sorted(type_names))
+            yield "import { %s } from './%s.structframe';\n" % (imports, ext_package)
         
         yield "\n"
 
@@ -390,51 +436,63 @@ class FileTsGen():
 
         # include additional header files here if available in the future
 
+        # Convert package name to PascalCase for TypeScript naming conventions
+        package_name_pascal = pascalCase(package.name)
+        
         if package.enums:
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
-                yield EnumTsGen.generate(enum, package.name) + '\n\n'
+                yield EnumTsGen.generate(enum, package_name_pascal) + '\n\n'
 
         if package.messages:
             if use_class_based:
                 yield '/* Message class definitions */\n'
                 for key, msg in package.sortedMessages().items():
-                    yield MessageTsClassGen.generate(msg, package.name, package, packages or {}) + '\n'
+                    yield MessageTsClassGen.generate(msg, package_name_pascal, package, packages or {}, equality) + '\n'
             else:
                 yield '/* Struct definitions */\n'
                 for key, msg in package.sortedMessages().items():
-                    yield MessageTsGen.generate(msg, package.name, package) + '\n'
+                    yield MessageTsGen.generate(msg, package_name_pascal, package) + '\n'
             yield '\n'
 
         if package.messages:
-            # Only generate get_message_length if there are messages with IDs
+            # Only generate get_message_info if there are messages with IDs
             messages_with_id = [
                 msg for key, msg in package.sortedMessages().items() if msg.id]
             if messages_with_id:
+                # Import MessageInfo type
+                yield 'import { MessageInfo } from \'./frame-profiles\';\n\n'
+                
                 if package.package_id is not None:
                     # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
-                    yield 'export function get_message_length(msg_id: number) {\n'
+                    yield 'export function get_message_info(msg_id: number): MessageInfo | undefined {\n'
                     yield '    // Extract package ID and message ID from 16-bit message ID\n'
                     yield '    const pkg_id = (msg_id >> 8) & 0xFF;\n'
                     yield '    const local_msg_id = msg_id & 0xFF;\n'
                     yield '    \n'
                     yield '    // Check if this is our package\n'
                     yield '    if (pkg_id !== PACKAGE_ID) {\n'
-                    yield '        return 0;\n'
+                    yield '        return undefined;\n'
                     yield '    }\n'
                     yield '    \n'
                     yield '    switch (local_msg_id) {\n'
                 else:
                     # Flat namespace mode: 8-bit message ID
-                    yield 'export function get_message_length(msg_id: number) {\n'
+                    yield 'export function get_message_info(msg_id: number): MessageInfo | undefined {\n'
                     yield '    switch (msg_id) {\n'
                 
                 for msg in messages_with_id:
-                    package_msg_name = '%s_%s' % (package.name, msg.name)
-                    yield '        case %s._msgid: return %s._size;\n' % (package_msg_name, package_msg_name)
+                    package_msg_name = '%s%s' % (package_name_pascal, msg.name)
+                    magic1 = msg.magic_bytes[0] if msg.magic_bytes else 0
+                    magic2 = msg.magic_bytes[1] if msg.magic_bytes else 0
+                    if use_class_based:
+                        yield '        case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2 };\n' % (
+                            package_msg_name, package_msg_name, package_msg_name, package_msg_name)
+                    else:
+                        yield '        case %s._msgid: return { size: %s._size, magic1: %d, magic2: %d };\n' % (
+                            package_msg_name, package_msg_name, magic1, magic2)
 
-                yield '        default: break;\n'
+                yield '        default: return undefined;\n'
                 yield '    }\n'
-                yield '    return 0;\n'
                 yield '}\n'
             yield '\n'

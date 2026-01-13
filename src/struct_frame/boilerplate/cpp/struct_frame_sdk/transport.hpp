@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include <functional>
 #include <memory>
 #include <vector>
 #include <cstdint>
@@ -20,14 +19,18 @@ struct TransportConfig {
 };
 
 /**
+ * Callback types using function pointers (no std::function)
+ */
+using DataCallbackFn = void (*)(const uint8_t*, size_t, void*);
+using ErrorCallbackFn = void (*)(const char*, void*);
+using CloseCallbackFn = void (*)(void*);
+
+/**
  * Transport interface for sending and receiving data
+ * Uses function pointers with user_data for callback context
  */
 class ITransport {
 public:
-    using DataCallback = std::function<void(const uint8_t*, size_t)>;
-    using ErrorCallback = std::function<void(const std::string&)>;
-    using CloseCallback = std::function<void()>;
-
     virtual ~ITransport() = default;
 
     /**
@@ -50,20 +53,23 @@ public:
     /**
      * Set callback for receiving data
      * @param callback Function to call when data is received
+     * @param user_data User context passed to callback
      */
-    virtual void onData(DataCallback callback) = 0;
+    virtual void onData(DataCallbackFn callback, void* user_data) = 0;
 
     /**
      * Set callback for connection errors
      * @param callback Function to call when error occurs
+     * @param user_data User context passed to callback
      */
-    virtual void onError(ErrorCallback callback) = 0;
+    virtual void onError(ErrorCallbackFn callback, void* user_data) = 0;
 
     /**
      * Set callback for connection close
      * @param callback Function to call when connection closes
+     * @param user_data User context passed to callback
      */
-    virtual void onClose(CloseCallback callback) = 0;
+    virtual void onClose(CloseCallbackFn callback, void* user_data) = 0;
 
     /**
      * Check if transport is connected
@@ -77,21 +83,24 @@ public:
 class BaseTransport : public ITransport {
 protected:
     bool connected_ = false;
-    DataCallback dataCallback_;
-    ErrorCallback errorCallback_;
-    CloseCallback closeCallback_;
+    DataCallbackFn dataCallback_ = nullptr;
+    void* dataUserData_ = nullptr;
+    ErrorCallbackFn errorCallback_ = nullptr;
+    void* errorUserData_ = nullptr;
+    CloseCallbackFn closeCallback_ = nullptr;
+    void* closeUserData_ = nullptr;
     TransportConfig config_;
     int reconnectAttempts_ = 0;
 
     void handleData(const uint8_t* data, size_t length) {
         if (dataCallback_) {
-            dataCallback_(data, length);
+            dataCallback_(data, length, dataUserData_);
         }
     }
 
-    void handleError(const std::string& error) {
+    void handleError(const char* error) {
         if (errorCallback_) {
-            errorCallback_(error);
+            errorCallback_(error, errorUserData_);
         }
         if (config_.autoReconnect && connected_) {
             attemptReconnect();
@@ -101,7 +110,7 @@ protected:
     void handleClose() {
         connected_ = false;
         if (closeCallback_) {
-            closeCallback_();
+            closeCallback_(closeUserData_);
         }
         if (config_.autoReconnect) {
             attemptReconnect();
@@ -123,16 +132,19 @@ public:
     BaseTransport(const TransportConfig& config = TransportConfig())
         : config_(config) {}
 
-    void onData(DataCallback callback) override {
-        dataCallback_ = std::move(callback);
+    void onData(DataCallbackFn callback, void* user_data) override {
+        dataCallback_ = callback;
+        dataUserData_ = user_data;
     }
 
-    void onError(ErrorCallback callback) override {
-        errorCallback_ = std::move(callback);
+    void onError(ErrorCallbackFn callback, void* user_data) override {
+        errorCallback_ = callback;
+        errorUserData_ = user_data;
     }
 
-    void onClose(CloseCallback callback) override {
-        closeCallback_ = std::move(callback);
+    void onClose(CloseCallbackFn callback, void* user_data) override {
+        closeCallback_ = callback;
+        closeUserData_ = user_data;
     }
 
     bool isConnected() const override {

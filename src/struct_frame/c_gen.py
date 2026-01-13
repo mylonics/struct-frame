@@ -184,7 +184,68 @@ class OneOfCGen():
 
 class MessageCGen():
     @staticmethod
-    def generate(msg, package=None):
+    def _generate_field_comparison(field):
+        """Generate comparison code for a single field in C."""
+        var_name = field.name
+        type_name = field.fieldType
+        
+        # Handle arrays
+        if field.is_array:
+            if field.fieldType == "string":
+                if field.size_option is not None:
+                    # Fixed string array: memcmp
+                    return f'(memcmp(a->{var_name}, b->{var_name}, sizeof(a->{var_name})) == 0)'
+                elif field.max_size is not None:
+                    # Variable string array: compare count and data
+                    return f'(a->{var_name}.count == b->{var_name}.count && memcmp(a->{var_name}.data, b->{var_name}.data, sizeof(a->{var_name}.data)) == 0)'
+                else:
+                    return f'(memcmp(a->{var_name}, b->{var_name}, sizeof(a->{var_name})) == 0)'
+            else:
+                # Non-string arrays
+                if field.size_option is not None:
+                    # Fixed array: memcmp
+                    return f'(memcmp(a->{var_name}, b->{var_name}, sizeof(a->{var_name})) == 0)'
+                elif field.max_size is not None:
+                    # Variable array: compare count and data
+                    return f'(a->{var_name}.count == b->{var_name}.count && memcmp(a->{var_name}.data, b->{var_name}.data, sizeof(a->{var_name}.data)) == 0)'
+                else:
+                    return f'(memcmp(a->{var_name}, b->{var_name}, sizeof(a->{var_name})) == 0)'
+        
+        # Handle regular strings
+        elif field.fieldType == "string":
+            if field.size_option is not None:
+                # Fixed string: strncmp
+                return f'(strncmp(a->{var_name}, b->{var_name}, {field.size_option}) == 0)'
+            elif field.max_size is not None:
+                # Variable string: compare length and data
+                return f'(a->{var_name}.length == b->{var_name}.length && strncmp(a->{var_name}.data, b->{var_name}.data, {field.max_size}) == 0)'
+            else:
+                return f'(strcmp(a->{var_name}, b->{var_name}) == 0)'
+        
+        # Handle nested structs and enums with memcmp
+        elif type_name not in c_types:
+            return f'(memcmp(&a->{var_name}, &b->{var_name}, sizeof(a->{var_name})) == 0)'
+        
+        # Handle regular fields (primitives)
+        else:
+            return f'(a->{var_name} == b->{var_name})'
+    
+    @staticmethod
+    def _generate_oneof_comparison(oneof):
+        """Generate comparison code for a oneof (union) in C."""
+        comparisons = []
+        
+        # If auto-discriminator is enabled, compare discriminator first
+        if oneof.auto_discriminator:
+            comparisons.append(f'(a->{oneof.name}_discriminator == b->{oneof.name}_discriminator)')
+        
+        # Compare the union as raw bytes (since we don't know which variant is active)
+        comparisons.append(f'(memcmp(&a->{oneof.name}, &b->{oneof.name}, sizeof(a->{oneof.name})) == 0)')
+        
+        return ' && '.join(comparisons)
+    
+    @staticmethod
+    def generate(msg, package=None, equality=False):
         leading_comment = msg.comments
 
         result = ''
@@ -232,6 +293,37 @@ class MessageCGen():
             else:
                 # No package ID, use plain message ID
                 result += '#define %s_MSG_ID %d\n' % (defineName, msg.id)
+        
+        # Add magic numbers for checksum
+        if msg.id is not None and msg.magic_bytes:
+            result += f'#define {defineName}_MAGIC1 {msg.magic_bytes[0]} /* Checksum magic (based on field types and positions) */\n'
+            result += f'#define {defineName}_MAGIC2 {msg.magic_bytes[1]} /* Checksum magic (based on field types and positions) */\n'
+
+        # Generate equality function if requested
+        if equality:
+            func_name = f'{structName}_equals'
+            result += f'\nstatic inline bool {func_name}(const {structName}* a, const {structName}* b) {{\n'
+            
+            comparisons = []
+            
+            # Handle empty structs
+            if not msg.fields and not msg.oneofs:
+                comparisons.append('(a->dummy_field == b->dummy_field)')
+            else:
+                # Generate field comparisons
+                for key, field in msg.fields.items():
+                    comparisons.append(MessageCGen._generate_field_comparison(field))
+                
+                # Generate oneof comparisons
+                for key, oneof in msg.oneofs.items():
+                    comparisons.append(MessageCGen._generate_oneof_comparison(oneof))
+            
+            if comparisons:
+                result += '    return ' + ' &&\n           '.join(comparisons) + ';\n'
+            else:
+                result += '    return true;\n'
+            
+            result += '}\n'
 
         return result + '\n'
 
@@ -248,7 +340,7 @@ class MessageCGen():
 
 class FileCGen():
     @staticmethod
-    def generate(package):
+    def generate(package, equality=False):
         yield '/* Automatically generated struct frame header */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
 
@@ -256,7 +348,14 @@ class FileCGen():
         yield '#pragma pack(1)\n'
         yield '#include <stdbool.h>\n'
         yield '#include <stdint.h>\n'
-        yield '#include <stddef.h>\n\n'
+        yield '#include "frame_base.h"  // For message_info_t\n'
+        yield '#include <stddef.h>\n'
+        
+        # Include string.h for equality comparisons
+        if equality:
+            yield '#include <string.h>\n'
+        
+        yield '\n'
 
         # Add package ID constant if present
         if package.package_id is not None:
@@ -276,7 +375,7 @@ class FileCGen():
             # Need to sort messages to make sure dependecies are properly met
 
             for key, msg in package.sortedMessages().items():
-                yield MessageCGen.generate(msg, package) + '\n'
+                yield MessageCGen.generate(msg, package, equality) + '\n'
             yield '\n'
 
         # Add default initializers if needed
@@ -293,7 +392,13 @@ class FileCGen():
         if package.messages:
             if package.package_id is not None:
                 # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
-                yield 'static inline bool get_message_length(uint16_t msg_id, size_t* size) {\n'
+                yield '/**\n'
+                yield ' * Get message info (size and magic numbers) for a given message ID.\n'
+                yield ' * @param msg_id The 16-bit message ID (pkg_id << 8 | msg_id)\n'
+                yield ' * @param info Pointer to message_info_t struct to fill\n'
+                yield ' * @return true if message ID is known, false otherwise\n'
+                yield ' */\n'
+                yield 'static inline bool get_message_info(uint16_t msg_id, message_info_t* info) {\n'
                 yield '    /* Extract package ID and message ID from 16-bit message ID */\n'
                 yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
                 yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
@@ -307,7 +412,13 @@ class FileCGen():
                 yield '    switch (local_msg_id) {\n'
             else:
                 # Flat namespace mode: 8-bit message ID
-                yield 'static inline bool get_message_length(size_t msg_id, size_t* size) {\n'
+                yield '/**\n'
+                yield ' * Get message info (size and magic numbers) for a given message ID.\n'
+                yield ' * @param msg_id The message ID\n'
+                yield ' * @param info Pointer to message_info_t struct to fill\n'
+                yield ' * @return true if message ID is known, false otherwise\n'
+                yield ' */\n'
+                yield 'static inline bool get_message_info(uint16_t msg_id, message_info_t* info) {\n'
                 yield '    switch (msg_id) {\n'
             
             for key, msg in package.sortedMessages().items():
@@ -316,10 +427,22 @@ class FileCGen():
                 if msg.id:
                     if package.package_id is not None:
                         # When using package ID, compare against local message ID
-                        yield '        case %d: *size = %s_MAX_SIZE; return true;\n' % (msg.id, name)
+                        yield '        case %d:\n' % msg.id
                     else:
                         # No package ID, compare against full message ID constant
-                        yield '        case %s_MSG_ID: *size = %s_MAX_SIZE; return true;\n' % (name, name)
+                        yield '        case %s_MSG_ID:\n' % name
+                    
+                    # Get magic bytes values
+                    magic1 = '0'
+                    magic2 = '0'
+                    if msg.magic_bytes:
+                        magic1 = f'{name}_MAGIC1'
+                        magic2 = f'{name}_MAGIC2'
+                    
+                    yield f'            info->size = {name}_MAX_SIZE;\n'
+                    yield f'            info->magic1 = {magic1};\n'
+                    yield f'            info->magic2 = {magic2};\n'
+                    yield '            return true;\n'
 
             yield '        default: break;\n'
             yield '    }\n'

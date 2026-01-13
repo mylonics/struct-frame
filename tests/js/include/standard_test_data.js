@@ -4,12 +4,12 @@
  */
 
 const {
-  serialization_test_SerializationTestMessage,
-  serialization_test_BasicTypesMessage,
-  serialization_test_UnionTestMessage,
-  serialization_test_ComprehensiveArrayMessage,
-  get_message_length,
-} = require('../../generated/js/serialization_test.sf');
+  SerializationTestSerializationTestMessage,
+  SerializationTestBasicTypesMessage,
+  SerializationTestUnionTestMessage,
+  SerializationTestComprehensiveArrayMessage,
+  get_message_info,
+} = require('../../generated/js/serialization_test.structframe');
 
 /** Message count */
 const MESSAGE_COUNT = 11;
@@ -21,23 +21,23 @@ let unionIdx = 0;
 
 /** Message ID order array */
 const MSG_ID_ORDER = [
-  serialization_test_SerializationTestMessage._msgid,  // 0: SerializationTest[0]
-  serialization_test_SerializationTestMessage._msgid,  // 1: SerializationTest[1]
-  serialization_test_SerializationTestMessage._msgid,  // 2: SerializationTest[2]
-  serialization_test_SerializationTestMessage._msgid,  // 3: SerializationTest[3]
-  serialization_test_SerializationTestMessage._msgid,  // 4: SerializationTest[4]
-  serialization_test_BasicTypesMessage._msgid,         // 5: BasicTypes[0]
-  serialization_test_BasicTypesMessage._msgid,         // 6: BasicTypes[1]
-  serialization_test_BasicTypesMessage._msgid,         // 7: BasicTypes[2]
-  serialization_test_UnionTestMessage._msgid,          // 8: UnionTest[0]
-  serialization_test_UnionTestMessage._msgid,          // 9: UnionTest[1]
-  serialization_test_BasicTypesMessage._msgid,         // 10: BasicTypes[3]
+  SerializationTestSerializationTestMessage._msgid,  // 0: SerializationTest[0]
+  SerializationTestSerializationTestMessage._msgid,  // 1: SerializationTest[1]
+  SerializationTestSerializationTestMessage._msgid,  // 2: SerializationTest[2]
+  SerializationTestSerializationTestMessage._msgid,  // 3: SerializationTest[3]
+  SerializationTestSerializationTestMessage._msgid,  // 4: SerializationTest[4]
+  SerializationTestBasicTypesMessage._msgid,         // 5: BasicTypes[0]
+  SerializationTestBasicTypesMessage._msgid,         // 6: BasicTypes[1]
+  SerializationTestBasicTypesMessage._msgid,         // 7: BasicTypes[2]
+  SerializationTestUnionTestMessage._msgid,          // 8: UnionTest[0]
+  SerializationTestUnionTestMessage._msgid,          // 9: UnionTest[1]
+  SerializationTestBasicTypesMessage._msgid,         // 10: BasicTypes[3]
 ];
 
 /** SerializationTestMessage array (5 messages) */
 function getSerializationTestMessages() {
   return [
-    new serialization_test_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 0xDEADBEEF,
       test_string_length: 'Cross-platform test!'.length,
       test_string_data: 'Cross-platform test!',
@@ -46,7 +46,7 @@ function getSerializationTestMessages() {
       test_array_count: 3,
       test_array_data: [100, 200, 300],
     }),
-    new serialization_test_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 0,
       test_string_length: 0,
       test_string_data: '',
@@ -55,7 +55,7 @@ function getSerializationTestMessages() {
       test_array_count: 0,
       test_array_data: [],
     }),
-    new serialization_test_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 0xFFFFFFFF,
       test_string_length: 'Maximum length test string for coverage!'.length,
       test_string_data: 'Maximum length test string for coverage!',
@@ -64,7 +64,7 @@ function getSerializationTestMessages() {
       test_array_count: 5,
       test_array_data: [2147483647, -2147483648, 0, 1, -1],
     }),
-    new serialization_test_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 0xAAAAAAAA,
       test_string_length: 'Negative test'.length,
       test_string_data: 'Negative test',
@@ -73,7 +73,7 @@ function getSerializationTestMessages() {
       test_array_count: 4,
       test_array_data: [-100, -200, -300, -400],
     }),
-    new serialization_test_SerializationTestMessage({
+    new SerializationTestSerializationTestMessage({
       magic_number: 1234567890,
       test_string_length: 'Special: !@#$%^&*()'.length,
       test_string_data: 'Special: !@#$%^&*()',
@@ -88,7 +88,7 @@ function getSerializationTestMessages() {
 /** BasicTypesMessage array (4 messages) */
 function getBasicTypesMessages() {
   return [
-    new serialization_test_BasicTypesMessage({
+    new SerializationTestBasicTypesMessage({
       small_int: 42,
       medium_int: 1000,
       regular_int: 123456,
@@ -104,7 +104,7 @@ function getBasicTypesMessages() {
       description_length: 'Basic test values'.length,
       description_data: 'Basic test values',
     }),
-    new serialization_test_BasicTypesMessage({
+    new SerializationTestBasicTypesMessage({
       small_int: 0,
       medium_int: 0,
       regular_int: 0,
@@ -120,7 +120,7 @@ function getBasicTypesMessages() {
       description_length: 0,
       description_data: '',
     }),
-    new serialization_test_BasicTypesMessage({
+    new SerializationTestBasicTypesMessage({
       small_int: -128,
       medium_int: -32768,
       regular_int: -2147483648,
@@ -136,7 +136,7 @@ function getBasicTypesMessages() {
       description_length: 'Negative and max values'.length,
       description_data: 'Negative and max values',
     }),
-    new serialization_test_BasicTypesMessage({
+    new SerializationTestBasicTypesMessage({
       small_int: -128,
       medium_int: -32768,
       regular_int: -2147483648,
@@ -157,10 +157,10 @@ function getBasicTypesMessages() {
 
 /** Create UnionTestMessage with array payload */
 function createUnionWithArray() {
-  const msg = new serialization_test_UnionTestMessage();
-  msg.payload_discriminator = serialization_test_ComprehensiveArrayMessage._msgid;
+  const msg = new SerializationTestUnionTestMessage();
+  msg.payload_discriminator = SerializationTestComprehensiveArrayMessage._msgid;
 
-  const innerMsg = new serialization_test_ComprehensiveArrayMessage({
+  const innerMsg = new SerializationTestComprehensiveArrayMessage({
     fixed_ints: [10, 20, 30],
     fixed_floats: [1.5, 2.5],
     fixed_bools: [1, 0, 1, 0],  // Use 1/0 for bool array
@@ -183,17 +183,17 @@ function createUnionWithArray() {
   });
 
   // Copy inner buffer to payload area (offset 2 for discriminator)
-  innerMsg._buffer.copy(msg._buffer, 2, 0, serialization_test_ComprehensiveArrayMessage._size);
+  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestComprehensiveArrayMessage._size);
 
   return msg;
 }
 
 /** Create UnionTestMessage with test payload */
 function createUnionWithTest() {
-  const msg = new serialization_test_UnionTestMessage();
-  msg.payload_discriminator = serialization_test_SerializationTestMessage._msgid;
+  const msg = new SerializationTestUnionTestMessage();
+  msg.payload_discriminator = SerializationTestSerializationTestMessage._msgid;
 
-  const innerMsg = new serialization_test_SerializationTestMessage({
+  const innerMsg = new SerializationTestSerializationTestMessage({
     magic_number: 0x12345678,
     test_string_length: 'Union test message'.length,
     test_string_data: 'Union test message',
@@ -204,7 +204,7 @@ function createUnionWithTest() {
   });
 
   // Copy inner buffer to payload area (offset 2 for discriminator)
-  innerMsg._buffer.copy(msg._buffer, 2, 0, serialization_test_SerializationTestMessage._size);
+  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestSerializationTestMessage._size);
 
   return msg;
 }
@@ -228,13 +228,13 @@ function resetState() {
 function encodeMessage(writer, index) {
   const msgId = MSG_ID_ORDER[index];
 
-  if (msgId === serialization_test_SerializationTestMessage._msgid) {
+  if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const msg = getSerializationTestMessages()[serialIdx++];
     return writer.write(msg);
-  } else if (msgId === serialization_test_BasicTypesMessage._msgid) {
+  } else if (msgId === SerializationTestBasicTypesMessage._msgid) {
     const msg = getBasicTypesMessages()[basicIdx++];
     return writer.write(msg);
-  } else if (msgId === serialization_test_UnionTestMessage._msgid) {
+  } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const msg = getUnionTestMessages()[unionIdx++];
     return writer.write(msg);
   }
@@ -242,20 +242,26 @@ function encodeMessage(writer, index) {
   return 0;
 }
 
-/** Validate decoded message */
+/** Validate decoded message using equals() method */
 function validateMessage(msgId, data, _index) {
-  if (msgId === serialization_test_SerializationTestMessage._msgid) {
+  if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
-    if (data.length !== serialization_test_SerializationTestMessage._size) return false;
-    return data.equals(expected._buffer);
-  } else if (msgId === serialization_test_BasicTypesMessage._msgid) {
+    if (data.length !== SerializationTestSerializationTestMessage._size) return false;
+    const decoded = new SerializationTestSerializationTestMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
+  } else if (msgId === SerializationTestBasicTypesMessage._msgid) {
     const expected = getBasicTypesMessages()[basicIdx++];
-    if (data.length !== serialization_test_BasicTypesMessage._size) return false;
-    return data.equals(expected._buffer);
-  } else if (msgId === serialization_test_UnionTestMessage._msgid) {
+    if (data.length !== SerializationTestBasicTypesMessage._size) return false;
+    const decoded = new SerializationTestBasicTypesMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
+  } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const expected = getUnionTestMessages()[unionIdx++];
-    if (data.length !== serialization_test_UnionTestMessage._size) return false;
-    return data.equals(expected._buffer);
+    if (data.length !== SerializationTestUnionTestMessage._size) return false;
+    const decoded = new SerializationTestUnionTestMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
   }
 
   return false;
@@ -280,7 +286,7 @@ const stdTestConfig = {
   encodeMessage,
   validateMessage,
   resetState,
-  getMessageLength: get_message_length,
+  getMessageInfo: (msgId) => get_message_info(msgId),
   supportsFormat,
 };
 

@@ -17,7 +17,7 @@
  * - encodeMessage(): function to encode a message by index
  * - validateMessage(): function to validate a decoded message
  * - resetState(): function to reset encoder/validator state
- * - getMessageLength(): function for minimal profiles (optional)
+ * - getMessageInfo(): unified lookup for size and magic numbers
  * - supportsFormat(): function to check if format is supported
  */
 
@@ -33,7 +33,8 @@ import {
   ProfileBulkWriter,
   ProfileNetworkAccumulatingReader,
   ProfileNetworkWriter,
-} from '../../generated/ts/frame_profiles';
+  MessageInfo,
+} from '../../generated/ts/frame-profiles';
 
 /** Test configuration interface */
 export interface TestConfig {
@@ -54,8 +55,8 @@ export interface TestConfig {
   /** Reset encoder/validator state for new run */
   resetState(): void;
 
-  /** Get message length for minimal profiles (can return undefined) */
-  getMessageLength(msgId: number): number | undefined;
+  /** Get message info (size and magic numbers) for parsing */
+  getMessageInfo(msgId: number): MessageInfo | undefined;
 
   /** Check if format is supported */
   supportsFormat(format: string): boolean;
@@ -90,13 +91,13 @@ function getWriter(format: string, capacity: number): any {
 }
 
 /** Get reader for a profile format */
-function getReader(format: string, getMsgLength: (msgId: number) => number | undefined): any {
+function getReader(format: string, getMessageInfo: (msgId: number) => MessageInfo | undefined): any {
   const readers: { [key: string]: () => any } = {
-    'profile_standard': () => new ProfileStandardAccumulatingReader(),
-    'profile_sensor': () => new ProfileSensorAccumulatingReader(getMsgLength),
-    'profile_ipc': () => new ProfileIPCAccumulatingReader(getMsgLength),
-    'profile_bulk': () => new ProfileBulkAccumulatingReader(),
-    'profile_network': () => new ProfileNetworkAccumulatingReader(),
+    'profile_standard': () => new ProfileStandardAccumulatingReader(getMessageInfo),
+    'profile_sensor': () => new ProfileSensorAccumulatingReader(getMessageInfo),
+    'profile_ipc': () => new ProfileIPCAccumulatingReader(getMessageInfo),
+    'profile_bulk': () => new ProfileBulkAccumulatingReader(getMessageInfo),
+    'profile_network': () => new ProfileNetworkAccumulatingReader(getMessageInfo),
   };
 
   const creator = readers[format];
@@ -151,7 +152,7 @@ export function decodeMessages(config: TestConfig, format: string, data: Buffer)
   const chunk2 = data.slice(chunk1Size, chunk1Size + chunk2Size);
   const chunk3 = data.slice(chunk1Size + chunk2Size);
 
-  const reader = getReader(format, config.getMessageLength.bind(config));
+  const reader = getReader(format, config.getMessageInfo.bind(config));
   if (!reader) {
     console.log(`  Unknown frame format: ${format}`);
     return 0;
@@ -259,6 +260,12 @@ export function runDecode(config: TestConfig, format: string, inputFile: string)
 
   if (messageCount === 0) {
     console.log('[DECODE] FAILED: No messages decoded');
+    printHex(data);
+    return 1;
+  }
+
+  if (messageCount < config.messageCount) {
+    console.log(`[DECODE] FAILED: ${messageCount} messages validated before error`);
     printHex(data);
     return 1;
   }

@@ -35,6 +35,77 @@ default_types = {
     "string": {"size": 4}  # Variable length, estimated size for length prefix
 }
 
+# Type codes for magic number calculation
+type_codes = {
+    "uint8": 1,
+    "int8": 2,
+    "uint16": 3,
+    "int16": 4,
+    "uint32": 5,
+    "int32": 6,
+    "bool": 7,
+    "float": 8,
+    "double": 9,
+    "int64": 10,
+    "uint64": 11,
+    "string": 12
+}
+
+
+def calculate_magic_numbers(message):
+    """
+    Calculate two magic number bytes for a message based on field types and positions.
+    This ensures the checksum starts with non-zero values unique to each message structure.
+    
+    The magic numbers are calculated using a Fletcher-like algorithm over:
+    - Field type codes (not field names)
+    - Field positions
+    - Field sizes
+    
+    Returns: tuple (byte1, byte2)
+    """
+    magic1 = 0
+    magic2 = 0
+    
+    position = 0
+    for field_name, field in message.fields.items():
+        # Get type code
+        if field.fieldType in type_codes:
+            type_code = type_codes[field.fieldType]
+        else:
+            # For custom types (enums, nested messages), use a hash of the type name
+            # This ensures different custom types get different codes
+            type_code = sum(ord(c) for c in field.fieldType) % 256
+        
+        # Incorporate type code, position, and size into magic numbers
+        # Use Fletcher-like algorithm but ensure non-zero result
+        magic1 = (magic1 + type_code + position + 1) & 0xFF
+        magic2 = (magic2 + magic1) & 0xFF
+        
+        position += 1
+    
+    # Handle oneofs
+    for oneof_name, oneof in message.oneofs.items():
+        for field_name, field in oneof.fields.items():
+            if field.fieldType in type_codes:
+                type_code = type_codes[field.fieldType]
+            else:
+                type_code = sum(ord(c) for c in field.fieldType) % 256
+            
+            magic1 = (magic1 + type_code + position + 1) & 0xFF
+            magic2 = (magic2 + magic1) & 0xFF
+            
+            position += 1
+    
+    # Ensure magic numbers are non-zero
+    # If they are zero, use a default non-zero value
+    if magic1 == 0:
+        magic1 = 0x5A  # Default non-zero magic byte
+    if magic2 == 0:
+        magic2 = 0xA5  # Default non-zero magic byte
+    
+    return (magic1, magic2)
+
 
 class Enum:
     def __init__(self, package, comments):
@@ -381,6 +452,7 @@ class Message:
         self.comments = comments
         self.package = package
         self.isEnum = False
+        self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
 
     def parse(self, msg):
         self.name = msg.name
@@ -477,6 +549,10 @@ class Message:
                 return False
 
         self.validated = True
+        
+        # Calculate magic numbers for this message
+        self.magic_bytes = calculate_magic_numbers(self)
+        
         return True
 
     def __str__(self):
@@ -627,6 +703,8 @@ parser.add_argument('--sdk', action='store_true',
                     help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
 parser.add_argument('--sdk_embedded', action='store_true',
                     help='Include embedded SDK (serial transport only, no ASIO dependencies)')
+parser.add_argument('--equality', action='store_true',
+                    help='Generate equality comparison operators/methods for messages')
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -859,57 +937,71 @@ def printPackages():
         print(value)
 
 
-def generateCFileStrings(path):
+def generateCFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.h")
-        data = ''.join(FileCGen.generate(value))
+        name = os.path.join(path, value.name + ".structframe.h")
+        data = ''.join(FileCGen.generate(value, equality=equality))
         out[name] = data
 
     return out
 
 
-def generateTsFileStrings(path):
+def generateTsFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.ts")
-        data = ''.join(FileTsGen.generate(value, use_class_based=True, packages=packages))
+        name = os.path.join(path, value.name + ".structframe.ts")
+        data = ''.join(FileTsGen.generate(value, use_class_based=True, packages=packages, equality=equality))
         out[name] = data
     return out
 
 
-def generateJsFileStrings(path):
+def generateJsFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.js")
-        data = ''.join(FileJsGen.generate(value, use_class_based=True, packages=packages))
+        name = os.path.join(path, value.name + ".structframe.js")
+        data = ''.join(FileJsGen.generate(value, use_class_based=True, packages=packages, equality=equality))
         out[name] = data
     return out
 
 
-def generatePyFileStrings(path):
+def generatePyFileStrings(path, equality=False):
+    out = {}
+    
+    # Create package structure: struct_frame/generated/
+    generated_path = os.path.join(path, "struct_frame", "generated")
+    
+    # Create __init__.py for struct_frame package
+    struct_frame_init = os.path.join(path, "struct_frame", "__init__.py")
+    out[struct_frame_init] = '"""StructFrame generated code package."""\n'
+    
+    # Create __init__.py for generated subpackage
+    generated_init = os.path.join(generated_path, "__init__.py")
+    out[generated_init] = '"""StructFrame generated message definitions."""\n'
+    
+    # Generate message files in the generated package
+    for key, value in packages.items():
+        name = os.path.join(generated_path, value.name + ".py")
+        data = ''.join(FilePyGen.generate(value, equality=equality))
+        out[name] = data
+    
+    return out
+
+
+def generateCppFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + "_sf.py")
-        data = ''.join(FilePyGen.generate(value))
+        name = os.path.join(path, value.name + ".structframe.hpp")
+        data = ''.join(FileCppGen.generate(value, equality=equality))
         out[name] = data
     return out
 
 
-def generateCppFileStrings(path):
+def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.hpp")
-        data = ''.join(FileCppGen.generate(value))
-        out[name] = data
-    return out
-
-
-def generateCSharpFileStrings(path, include_sdk_interface=False):
-    out = {}
-    for key, value in packages.items():
-        name = os.path.join(path, value.name + ".sf.cs")
-        data = ''.join(FileCSharpGen.generate(value))
+        name = os.path.join(path, value.name + ".structframe.cs")
+        data = ''.join(FileCSharpGen.generate(value, equality=equality))
         out[name] = data
         
         # Generate SDK interface if requested
@@ -962,23 +1054,24 @@ def main():
     # Normal mode: generate files
     files = {}
     if (args.build_c):
-        files.update(generateCFileStrings(args.c_path[0]))
+        files.update(generateCFileStrings(args.c_path[0], equality=args.equality))
 
     if (args.build_ts):
-        files.update(generateTsFileStrings(args.ts_path[0]))
+        files.update(generateTsFileStrings(args.ts_path[0], equality=args.equality))
 
     if (args.build_js):
-        files.update(generateJsFileStrings(args.js_path[0]))
+        files.update(generateJsFileStrings(args.js_path[0], equality=args.equality))
 
     if (args.build_py):
-        files.update(generatePyFileStrings(args.py_path[0]))
+        files.update(generatePyFileStrings(args.py_path[0], equality=args.equality))
 
     if (args.build_cpp):
-        files.update(generateCppFileStrings(args.cpp_path[0]))
+        files.update(generateCppFileStrings(args.cpp_path[0], equality=args.equality))
 
     if (args.build_csharp):
         files.update(generateCSharpFileStrings(args.csharp_path[0], 
-                                               include_sdk_interface=(args.sdk or args.sdk_embedded)))
+                                               include_sdk_interface=(args.sdk or args.sdk_embedded),
+                                               equality=args.equality))
 
     if (args.build_gql):
         for key, value in packages.items():
