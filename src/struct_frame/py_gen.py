@@ -206,7 +206,18 @@ class MessagePyGen():
     def generate_pack_method(msg):
         """Generate the pack() method"""
         result = '\n    def pack(self) -> bytes:\n'
-        result += '        """Pack the message into binary format"""\n'
+        if msg.variable:
+            result += '        """Pack the message into binary format (variable-length encoding by default)\n'
+            result += '        \n'
+            result += '        For variable messages: returns variable-length encoding.\n'
+            result += '        Use pack_max_size() for MAX_SIZE encoding (needed for minimal profiles).\n'
+            result += '        """\n'
+            result += '        return self.pack_variable()\n'
+            result += '\n'
+            result += '    def pack_max_size(self) -> bytes:\n'
+            result += '        """Pack the message to MAX_SIZE (for minimal profiles without length field)"""\n'
+        else:
+            result += '        """Pack the message into binary format"""\n'
         result += '        data = b""\n'
         
         # Pack regular fields
