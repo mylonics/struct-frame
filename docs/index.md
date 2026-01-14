@@ -107,18 +107,6 @@ python -m struct_frame status.proto --build_c --build_py --build_ts
 
 For detailed examples, see [Language Examples](basic-usage/language-examples.md).
 
-## Language Support
-
-| Language | Code Generation | SDK |
-|----------|----------------|-----|
-| C | ✓ | - |
-| C++ | ✓ | ✓ |
-| TypeScript | ✓ | ✓ |
-| JavaScript | ✓ | ✓ |
-| Python | ✓ | ✓ |
-| C# | ✓ | ✓ |
-| GraphQL | ✓ | - |
-
 ## Next Steps
 
 - [Quick Start](getting-started/quick-start.md) - Complete walkthrough with C++ example
