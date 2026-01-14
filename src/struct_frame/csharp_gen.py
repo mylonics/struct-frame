@@ -156,11 +156,23 @@ class FieldCSharpGen():
         return result
 
     @staticmethod
-    def generate_pack_code(field, offset):
-        """Generate code to pack this field into a byte array"""
+    def generate_pack_code(field, base_offset, use_offset_param=False):
+        """Generate code to pack this field into a byte array.
+        
+        Args:
+            field: The field to pack
+            base_offset: The base offset in the message structure
+            use_offset_param: If True, generates code using 'offset + N' for PackTo method
+        """
         lines = []
         var_name = pascalCase(field.name)
         type_name = field.fieldType
+        
+        # Helper to format offset (for PackTo method compatibility)
+        def fmt_offset(off):
+            if use_offset_param:
+                return f'offset + {off}' if off > 0 else 'offset'
+            return str(off)
 
         # IMPORTANT: Check is_array FIRST to handle arrays of primitives correctly
         if field.is_array:
@@ -168,12 +180,12 @@ class FieldCSharpGen():
                 if field.size_option is not None:
                     # Fixed string array
                     total_size = field.size_option * field.element_size
-                    lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {offset}, Math.Min({var_name}.Length, {total_size}));')
+                    lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length, {total_size}));')
                 elif field.max_size is not None:
                     # Variable string array
                     total_size = field.max_size * field.element_size
-                    lines.append(f'            buffer[{offset}] = {var_name}Count;')
-                    lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {offset + 1}, Math.Min({var_name}Data.Length, {total_size}));')
+                    lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name}Count;')
+                    lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {fmt_offset(base_offset + 1)}, Math.Min({var_name}Data.Length, {total_size}));')
             else:
                 element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.fieldType, 1)
                 array_size = field.size_option if field.size_option else field.max_size
@@ -181,80 +193,88 @@ class FieldCSharpGen():
                 if field.size_option is not None:
                     # Fixed array
                     if field.isEnum:
-                        lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {offset}, Math.Min({var_name}.Length, {field.size_option}));')
+                        lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length, {field.size_option}));')
                     elif field.fieldType in csharp_type_sizes:
                         # Primitive array - use Buffer.BlockCopy
                         lines.append(f'            if ({var_name} != null)')
-                        lines.append(f'                Buffer.BlockCopy({var_name}, 0, buffer, {offset}, Math.Min({var_name}.Length * {element_size}, {total_data_size}));')
+                        lines.append(f'                Buffer.BlockCopy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length * {element_size}, {total_data_size}));')
                     else:
-                        # Nested struct array - pack each element
+                        # Nested struct array - pack each element using PackTo
                         lines.append(f'            if ({var_name} != null)')
                         lines.append(f'                for (int i = 0; i < Math.Min({var_name}.Length, {field.size_option}); i++)')
-                        lines.append(f'                    if ({var_name}[i] != null) {{ var bytes = {var_name}[i].Pack(); Array.Copy(bytes, 0, buffer, {offset} + i * {element_size}, bytes.Length); }}')
+                        if use_offset_param:
+                            lines.append(f'                    if ({var_name}[i] != null) {var_name}[i].PackTo(buffer, {fmt_offset(base_offset)} + i * {element_size});')
+                        else:
+                            lines.append(f'                    if ({var_name}[i] != null) {{ var bytes = {var_name}[i].Pack(); Array.Copy(bytes, 0, buffer, {base_offset} + i * {element_size}, bytes.Length); }}')
                 elif field.max_size is not None:
                     # Variable array
                     count_size = 2 if field.max_size > 255 else 1
                     if field.max_size > 255:
-                        lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({offset}, 2), {var_name}Count);')
+                        lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 2), {var_name}Count);')
                     else:
-                        lines.append(f'            buffer[{offset}] = {var_name}Count;')
+                        lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name}Count;')
                     if field.isEnum:
-                        lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {offset + count_size}, Math.Min({var_name}Data.Length, {field.max_size}));')
+                        lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {fmt_offset(base_offset + count_size)}, Math.Min({var_name}Data.Length, {field.max_size}));')
                     elif field.fieldType in csharp_type_sizes:
                         # Primitive array
                         lines.append(f'            if ({var_name}Data != null)')
-                        lines.append(f'                Buffer.BlockCopy({var_name}Data, 0, buffer, {offset + count_size}, Math.Min({var_name}Data.Length * {element_size}, {total_data_size}));')
+                        lines.append(f'                Buffer.BlockCopy({var_name}Data, 0, buffer, {fmt_offset(base_offset + count_size)}, Math.Min({var_name}Data.Length * {element_size}, {total_data_size}));')
                     else:
-                        # Nested struct array - pack each element
+                        # Nested struct array - pack each element using PackTo
                         lines.append(f'            if ({var_name}Data != null)')
                         lines.append(f'                for (int i = 0; i < Math.Min({var_name}Data.Length, {field.max_size}); i++)')
-                        lines.append(f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Pack(); Array.Copy(bytes, 0, buffer, {offset + count_size} + i * {element_size}, bytes.Length); }}')
+                        if use_offset_param:
+                            lines.append(f'                    if ({var_name}Data[i] != null) {var_name}Data[i].PackTo(buffer, {fmt_offset(base_offset + count_size)} + i * {element_size});')
+                        else:
+                            lines.append(f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Pack(); Array.Copy(bytes, 0, buffer, {base_offset + count_size} + i * {element_size}, bytes.Length); }}')
         elif type_name in csharp_type_sizes:
             # Single primitive field (not array)
             size = csharp_type_sizes[type_name]
             if type_name == "uint8":
-                lines.append(f'            buffer[{offset}] = {var_name};')
+                lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name};')
             elif type_name == "int8":
-                lines.append(f'            buffer[{offset}] = (byte){var_name};')
+                lines.append(f'            buffer[{fmt_offset(base_offset)}] = (byte){var_name};')
             elif type_name == "uint16":
-                lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({offset}, 2), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 2), {var_name});')
             elif type_name == "int16":
-                lines.append(f'            BinaryPrimitives.WriteInt16LittleEndian(buffer.AsSpan({offset}, 2), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteInt16LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 2), {var_name});')
             elif type_name == "uint32":
-                lines.append(f'            BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan({offset}, 4), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 4), {var_name});')
             elif type_name == "int32":
-                lines.append(f'            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan({offset}, 4), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteInt32LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 4), {var_name});')
             elif type_name == "uint64":
-                lines.append(f'            BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan({offset}, 8), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 8), {var_name});')
             elif type_name == "int64":
-                lines.append(f'            BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan({offset}, 8), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteInt64LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 8), {var_name});')
             elif type_name == "float":
-                lines.append(f'            BinaryPrimitives.WriteSingleLittleEndian(buffer.AsSpan({offset}, 4), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteSingleLittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 4), {var_name});')
             elif type_name == "double":
-                lines.append(f'            BinaryPrimitives.WriteDoubleLittleEndian(buffer.AsSpan({offset}, 8), {var_name});')
+                lines.append(f'            BinaryPrimitives.WriteDoubleLittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 8), {var_name});')
             elif type_name == "bool":
-                lines.append(f'            buffer[{offset}] = (byte)({var_name} ? 1 : 0);')
+                lines.append(f'            buffer[{fmt_offset(base_offset)}] = (byte)({var_name} ? 1 : 0);')
         elif field.fieldType == "string":
             if field.size_option is not None:
                 # Fixed string
-                lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {offset}, Math.Min({var_name}.Length, {field.size_option}));')
+                lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length, {field.size_option}));')
             elif field.max_size is not None:
                 # Variable string
                 length_size = 2 if field.max_size > 255 else 1
                 if field.max_size > 255:
-                    lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({offset}, 2), {var_name}Length);')
+                    lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 2), {var_name}Length);')
                 else:
-                    lines.append(f'            buffer[{offset}] = {var_name}Length;')
-                lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {offset + length_size}, Math.Min({var_name}Data.Length, {field.max_size}));')
+                    lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name}Length;')
+                lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {fmt_offset(base_offset + length_size)}, Math.Min({var_name}Data.Length, {field.max_size}));')
         elif field.isEnum:
             # Single enum field - enums are byte values
-            lines.append(f'            buffer[{offset}] = (byte){var_name};')
+            lines.append(f'            buffer[{fmt_offset(base_offset)}] = (byte){var_name};')
         else:
-            # Nested struct - would need recursive handling
-            # For now, copy the whole struct as bytes
+            # Nested struct - use PackTo for efficiency
             type_pkg = field.type_package if field.type_package else field.package
             nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
-            lines.append(f'            if ({var_name} != null) {{ var nestedBytes = {var_name}.Pack(); Array.Copy(nestedBytes, 0, buffer, {offset}, nestedBytes.Length); }}')
+            if use_offset_param:
+                lines.append(f'            if ({var_name} != null) {var_name}.PackTo(buffer, {fmt_offset(base_offset)});')
+            else:
+                lines.append(f'            if ({var_name} != null) {{ var nestedBytes = {var_name}.Pack(); Array.Copy(nestedBytes, 0, buffer, {base_offset}, nestedBytes.Length); }}')
 
         return lines
 
@@ -388,7 +408,11 @@ class MessageCSharpGen():
 
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
 
-        result += '    public class %s : IStructFrameMessage\n' % structName
+        # Add IEquatable<T> interface if equality is requested
+        if equality:
+            result += '    public class %s : IStructFrameMessage, IEquatable<%s>\n' % (structName, structName)
+        else:
+            result += '    public class %s : IStructFrameMessage\n' % structName
         result += '    {\n'
 
         result += '        public const int MaxSize = %d;\n' % msg.size
@@ -431,10 +455,22 @@ class MessageCSharpGen():
         result += '        public byte[] Pack()\n'
         result += '        {\n'
         result += '            byte[] buffer = new byte[MaxSize];\n'
+        result += '            PackTo(buffer, 0);\n'
+        result += '            return buffer;\n'
+        result += '        }\n'
+        
+        # Generate PackTo() method for zero-allocation packing
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Pack this message into an existing buffer (zero allocation).\n'
+        result += '        /// Returns the number of bytes written.\n'
+        result += '        /// </summary>\n'
+        result += '        public int PackTo(byte[] buffer, int offset)\n'
+        result += '        {\n'
 
         offset = 0
         for key, f in msg.fields.items():
-            pack_lines = FieldCSharpGen.generate_pack_code(f, offset)
+            pack_lines = FieldCSharpGen.generate_pack_code(f, offset, use_offset_param=True)
             for line in pack_lines:
                 result += line + '\n'
             offset += f.size
@@ -443,7 +479,7 @@ class MessageCSharpGen():
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 result += f'            // Oneof {oneof_name} discriminator\n'
-                result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({offset}), {pascalCase(oneof_name)}Discriminator);\n'
+                result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset + {offset}), {pascalCase(oneof_name)}Discriminator);\n'
                 offset += 2
             
             result += f'            // Oneof {oneof_name} payload (union size: {oneof.size})\n'
@@ -457,12 +493,11 @@ class MessageCSharpGen():
                 else:
                     result += f'            else if ({field_var} != null)\n'
                 result += '            {\n'
-                result += f'                var unionBytes = {field_var}.Pack();\n'
-                result += f'                Array.Copy(unionBytes, 0, buffer, {offset}, Math.Min(unionBytes.Length, {oneof.size}));\n'
+                result += f'                {field_var}.PackTo(buffer, offset + {offset});\n'
                 result += '            }\n'
             offset += oneof.size
 
-        result += '            return buffer;\n'
+        result += f'            return MaxSize;\n'
         result += '        }\n'
 
         # Generate Unpack() static method

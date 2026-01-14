@@ -704,7 +704,8 @@ namespace StructFrame
         // =========================================================================
 
         /// <summary>
-        /// Add a new buffer of data to process
+        /// Add a new buffer of data to process.
+        /// Note: The buffer is NOT copied. Ensure it remains valid until parsing is complete.
         /// </summary>
         public void AddData(byte[] buffer, int offset, int size)
         {
@@ -713,7 +714,7 @@ namespace StructFrame
             _currentSize = size;
             _state = State.BufferMode;
 
-            // If we have partial data in internal buffer, try to complete it
+            // If we have partial data in internal buffer, append new data to complete it
             if (_internalDataLen > 0)
             {
                 int spaceAvailable = _bufferSize - _internalDataLen;
@@ -725,11 +726,24 @@ namespace StructFrame
         }
 
         /// <summary>
-        /// Add a new buffer of data to process (convenience overload)
+        /// Add a new buffer of data to process (convenience overload).
+        /// Note: The buffer is NOT copied. Ensure it remains valid until parsing is complete.
         /// </summary>
         public void AddData(byte[] buffer)
         {
             AddData(buffer, 0, buffer.Length);
+        }
+
+        /// <summary>
+        /// Try to parse the next frame (buffer mode).
+        /// Returns true if a valid frame was found, false otherwise.
+        /// This method is useful for high-throughput scenarios where you want to avoid
+        /// checking the Valid property separately.
+        /// </summary>
+        public bool TryNext(out FrameMsgInfo result)
+        {
+            result = Next();
+            return result.Valid;
         }
 
         /// <summary>
