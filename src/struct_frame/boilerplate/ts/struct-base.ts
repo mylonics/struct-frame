@@ -11,12 +11,13 @@
  * Used for nested message types and StructArray fields.
  */
 export interface MessageConstructor<T extends MessageBase = MessageBase> {
-  new (bufferOrInit?: Buffer | Record<string, unknown>): T;
+  new(bufferOrInit?: Buffer | Record<string, unknown>): T;
   readonly _size: number;
   readonly _msgid?: number;
   readonly _magic1?: number;
   readonly _magic2?: number;
   getSize(): number;
+  unpack?(buffer: Buffer): T;
 }
 
 /**
@@ -88,6 +89,25 @@ export abstract class MessageBase {
   getMagic2(): number {
     return (this.constructor as MessageConstructor)._magic2 ?? 0;
   }
+
+  /**
+   * Check if this message uses variable-length encoding.
+   * Returns false for non-variable messages.
+   * Variable messages override this to return true.
+   */
+  isVariable?(): boolean;
+
+  /**
+   * Calculate the packed size for variable messages.
+   * Only available on variable messages.
+   */
+  packSize?(): number;
+
+  /**
+   * Pack message using variable-length encoding.
+   * Only available on variable messages.
+   */
+  packVariable?(): Buffer;
 
   /**
    * Get the raw buffer containing the message data.
@@ -235,8 +255,8 @@ export abstract class MessageBase {
   }
 
   protected _readStructArray<T extends MessageBase>(
-    offset: number, 
-    length: number, 
+    offset: number,
+    length: number,
     ctor: MessageConstructor<T>
   ): T[] {
     const result: T[] = [];
@@ -376,8 +396,8 @@ export abstract class MessageBase {
   }
 
   protected _writeStructArray<T extends MessageBase>(
-    offset: number, 
-    length: number, 
+    offset: number,
+    length: number,
     elemSize: number,
     value: (T | Record<string, unknown>)[],
     ctor: MessageConstructor<T>

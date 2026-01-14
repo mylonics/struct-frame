@@ -206,7 +206,38 @@ namespace StructFrame
         /// </summary>
         public int Encode(byte[] buffer, int offset, IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
-            byte[] payload = message.Pack();
+            // Use variable encoding if: (1) profile has length field, and (2) message is variable
+            byte[] payload;
+            if (_config.HasLength)
+            {
+                // Check if message has IsVariable property using reflection
+                var isVariableField = message.GetType().GetField("IsVariable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (isVariableField != null && isVariableField.GetValue(null) is bool isVariable && isVariable)
+                {
+                    // Message is variable and profile supports variable encoding - use PackVariable()
+                    var packVariableMethod = message.GetType().GetMethod("PackVariable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (packVariableMethod != null)
+                    {
+                        payload = (byte[])packVariableMethod.Invoke(message, null);
+                    }
+                    else
+                    {
+                        // Fallback to regular Pack() if PackVariable() not found
+                        payload = message.Pack();
+                    }
+                }
+                else
+                {
+                    // Not variable or doesn't have IsVariable field
+                    payload = message.Pack();
+                }
+            }
+            else
+            {
+                // Profile doesn't have length field (minimal profiles) - always use MAX_SIZE
+                payload = message.Pack();
+            }
+            
             var (magic1, magic2) = message.GetMagicNumbers();
             ushort msgId = message.GetMsgId();
             int payloadSize = payload.Length;

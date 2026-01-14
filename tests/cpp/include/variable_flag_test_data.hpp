@@ -141,15 +141,15 @@ struct Validator {
   bool validate_with_equals(uint16_t msg_id, const uint8_t* decoded_data, size_t decoded_size) {
     if (msg_id == SerializationTestTruncationTestNonVariable::MSG_ID) {
       const auto& expected = get_non_variable_messages()[non_var_idx++];
-      if (decoded_size != expected.size()) return false;
       SerializationTestTruncationTestNonVariable decoded;
-      std::memcpy(&decoded, decoded_data, decoded_size);
+      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      if (unpacked == 0) return false;
       return decoded == expected;
     } else if (msg_id == SerializationTestTruncationTestVariable::MSG_ID) {
       const auto& expected = get_variable_messages()[var_idx++];
-      if (decoded_size != expected.size()) return false;
       SerializationTestTruncationTestVariable decoded;
-      std::memcpy(&decoded, decoded_data, decoded_size);
+      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      if (unpacked == 0) return false;
       return decoded == expected;
     }
     return false;

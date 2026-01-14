@@ -289,8 +289,13 @@ def _frame_format_encode_with_crc(
     if msg_id is None:
         raise ValueError("Message object must have MSG_ID or msg_id attribute")
     
-    # Get payload
-    if hasattr(msg, 'data') and callable(msg.data):
+    # Check if this is a variable message
+    is_variable = getattr(msg, 'IS_VARIABLE', False)
+    
+    # Get payload (use pack_variable for variable messages, otherwise data/pack)
+    if is_variable and hasattr(msg, 'pack_variable') and callable(msg.pack_variable):
+        payload = msg.pack_variable()
+    elif hasattr(msg, 'data') and callable(msg.data):
         payload = msg.data()
     elif hasattr(msg, 'pack') and callable(msg.pack):
         payload = msg.pack()
@@ -363,6 +368,10 @@ def _frame_format_encode_minimal(
     """
     Generic encode function for minimal frames (no length, no CRC).
     
+    NOTE: Minimal profiles do NOT support variable-length encoding!
+    Variable messages are always encoded at MAX_SIZE for minimal profiles
+    because the parser has no length field and cannot determine message boundaries.
+    
     Args:
         config: Profile configuration
         msg: Message object with MSG_ID/msg_id and data()/pack() methods
@@ -375,7 +384,7 @@ def _frame_format_encode_minimal(
     if msg_id is None:
         raise ValueError("Message object must have MSG_ID or msg_id attribute")
     
-    # Get payload
+    # Get payload - ALWAYS use full size for minimal profiles (no variable encoding)
     if hasattr(msg, 'data') and callable(msg.data):
         payload = msg.data()
     elif hasattr(msg, 'pack') and callable(msg.pack):

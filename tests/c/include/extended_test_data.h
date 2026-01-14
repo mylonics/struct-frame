@@ -456,6 +456,15 @@ static inline size_t ext_encode_message(buffer_writer_t* writer, size_t index) {
     }
     case EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID: {
       const ExtendedTestExtendedVariableSingleArray* msg = get_ext_var_single_msg(ext_var_single_encode_idx++);
+      /* Variable message: use pack_variable if profile has length field */
+      #ifdef EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_IS_VARIABLE
+      if (writer->config->payload.has_length) {
+        static uint8_t pack_buffer[EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAX_SIZE];
+        size_t packed_size = ExtendedTestExtendedVariableSingleArray_pack_variable(msg, pack_buffer);
+        return buffer_writer_write(writer, low_msg_id, pack_buffer, packed_size, 0, 0, 0, pkg_id,
+                                   EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC1, EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC2);
+      }
+      #endif
       return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
                                  EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC1, EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC2);
     }
@@ -546,9 +555,9 @@ static inline bool ext_validate_message(uint16_t msg_id, const uint8_t* data, si
     }
     case EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID: {
       const ExtendedTestExtendedVariableSingleArray* expected = get_ext_var_single_msg(ext_var_single_validate_idx++);
-      if (size != sizeof(*expected)) return false;
-      const ExtendedTestExtendedVariableSingleArray* decoded = (const ExtendedTestExtendedVariableSingleArray*)data;
-      return ExtendedTestExtendedVariableSingleArray_equals(decoded, expected);
+      ExtendedTestExtendedVariableSingleArray decoded;
+      if (ExtendedTestExtendedVariableSingleArray_unpack(data, size, &decoded) == 0) return false;
+      return ExtendedTestExtendedVariableSingleArray_equals(&decoded, expected);
     }
     default:
       return false;

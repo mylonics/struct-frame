@@ -209,7 +209,21 @@ export function encodeMessage(
         throw new Error('Message struct must have _msgid static property');
     }
     
-    const payload = new Uint8Array(msg._buffer);
+    // Check if this is a variable message
+    const isVariable = msg.isVariable?.() ?? false;
+    
+    // Get payload - use packVariable() for variable messages with length fields,
+    // otherwise use full buffer (MAX_SIZE)
+    // Note: Minimal profiles (no length field) always use MAX_SIZE even for variable messages
+    let payload: Uint8Array;
+    if (isVariable && config.payload.hasLength && typeof msg.packVariable === 'function') {
+        // Variable message with length field - use efficient variable encoding
+        payload = new Uint8Array(msg.packVariable());
+    } else {
+        // Non-variable message OR minimal profile - use full buffer
+        payload = new Uint8Array(msg._buffer);
+    }
+    
     const magic1 = msg.getMagic1();
     const magic2 = msg.getMagic2();
     const { seq = 0, sysId = 0, compId = 0 } = options;

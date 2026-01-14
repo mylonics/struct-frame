@@ -403,15 +403,15 @@ class Validator:
         if msg_id == ExtendedTestExtendedVariableSingleArray.MSG_ID:
             expected = self._ext_var_single_msgs[self.ext_var_single_idx]
             self.ext_var_single_idx += 1
-            expected_unpacked = ExtendedTestExtendedVariableSingleArray.create_unpack(expected.data())
-            decoded = ExtendedTestExtendedVariableSingleArray.create_unpack(decoded_data)
+            expected_unpacked = ExtendedTestExtendedVariableSingleArray.unpack(expected.data())
+            decoded = ExtendedTestExtendedVariableSingleArray.unpack(decoded_data)
             return decoded == expected_unpacked
         
         getter = self._msg_getters.get(msg_id)
         if getter:
             expected = getter()
-            expected_unpacked = msg_class.create_unpack(expected.data())
-            decoded = msg_class.create_unpack(decoded_data)
+            expected_unpacked = msg_class.unpack(expected.data())
+            decoded = msg_class.unpack(decoded_data)
             return decoded == expected_unpacked
         return False
 

@@ -348,6 +348,15 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
                                SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC2);
   } else if (msg_id == SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID) {
     const SerializationTestVariableSingleArray* msg = &get_variable_single_array_messages()[std_var_single_idx++];
+    /* Variable message: use pack_variable if profile has length field */
+    #ifdef SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_IS_VARIABLE
+    if (writer->config->payload.has_length) {
+      static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAX_SIZE];
+      size_t packed_size = SerializationTestVariableSingleArray_pack_variable(msg, pack_buffer);
+      return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
+                                 SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1, SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
+    }
+    #endif
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
                                SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1, SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
   }
@@ -379,9 +388,12 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
     return SerializationTestUnionTestMessage_equals(decoded, expected);
   } else if (msg_id == SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID) {
     const SerializationTestVariableSingleArray* expected = &get_variable_single_array_messages()[std_var_single_idx++];
-    if (size != sizeof(*expected)) return false;
-    const SerializationTestVariableSingleArray* decoded = (const SerializationTestVariableSingleArray*)data;
-    return SerializationTestVariableSingleArray_equals(decoded, expected);
+    /* Variable message: use unified unpack() for both MAX_SIZE and variable encoding */
+    SerializationTestVariableSingleArray decoded;
+    if (!SerializationTestVariableSingleArray_unpack(data, size, &decoded)) {
+      return false;
+    }
+    return SerializationTestVariableSingleArray_equals(&decoded, expected);
   }
 
   return false;

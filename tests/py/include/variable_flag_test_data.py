@@ -135,14 +135,14 @@ class Validator:
         if msg_id == SerializationTestTruncationTestNonVariable.MSG_ID:
             expected = self._non_variable_messages[self.non_var_idx]
             self.non_var_idx += 1
-            expected_unpacked = SerializationTestTruncationTestNonVariable.create_unpack(expected.data())
-            decoded = SerializationTestTruncationTestNonVariable.create_unpack(decoded_data)
+            expected_unpacked = SerializationTestTruncationTestNonVariable.unpack(expected.data())
+            decoded = SerializationTestTruncationTestNonVariable.unpack(decoded_data)
             return decoded == expected_unpacked
         elif msg_id == SerializationTestTruncationTestVariable.MSG_ID:
             expected = self._variable_messages[self.var_idx]
             self.var_idx += 1
-            expected_unpacked = SerializationTestTruncationTestVariable.create_unpack(expected.data())
-            decoded = SerializationTestTruncationTestVariable.create_unpack(decoded_data)
+            expected_unpacked = SerializationTestTruncationTestVariable.unpack(expected.data())
+            decoded = SerializationTestTruncationTestVariable.unpack(decoded_data)
             return decoded == expected_unpacked
         return False
 

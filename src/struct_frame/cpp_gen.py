@@ -348,6 +348,10 @@ class MessageCppGen():
         if msg.variable:
             result += MessageCppGen._generate_variable_methods(msg, structName)
         
+        # Add unified unpack() method only for messages with MSG_ID (have MessageBase)
+        if has_msg_id:
+            result += MessageCppGen._generate_unified_unpack(msg, structName)
+        
         result += '};\n'
 
         return result + '\n'
@@ -458,6 +462,45 @@ class MessageCppGen():
                 result += f'        offset += {field.size};\n'
         
         result += f'        return offset;\n'
+        result += f'    }}\n'
+        
+        return result
+
+    @staticmethod
+    def _generate_unified_unpack(msg, structName):
+        """Generate unified unpack() method that works for both variable and non-variable messages."""
+        result = ''
+        
+        result += f'\n    /**\n'
+        result += f'     * Unified unpack method - works for both variable and non-variable messages.\n'
+        result += f'     * Uses compile-time dispatch for zero runtime overhead.\n'
+        result += f'     * For variable messages with minimal profiles (buffer_size == MAX_SIZE),\n'
+        result += f'     * uses direct copy instead of variable unpacking.\n'
+        result += f'     * @param buffer Input buffer containing packed message data\n'
+        result += f'     * @param buffer_size Size of input buffer\n'
+        result += f'     * @return Number of bytes read, or 0 if buffer too small\n'
+        result += f'     */\n'
+        result += f'    size_t unpack(const uint8_t* buffer, size_t buffer_size) {{\n'
+        
+        if msg.variable:
+            # Variable message: check if it's minimal profile (buffer_size == MAX_SIZE)
+            # If so, use direct copy; otherwise use variable unpacking
+            result += f'        // Variable message - check encoding format\n'
+            result += f'        if (buffer_size == MAX_SIZE) {{\n'
+            result += f'            // Minimal profile format (MAX_SIZE encoding)\n'
+            result += f'            std::memcpy(this, buffer, MAX_SIZE);\n'
+            result += f'            return MAX_SIZE;\n'
+            result += f'        }} else {{\n'
+            result += f'            // Variable-length format\n'
+            result += f'            return unpack_variable(buffer, buffer_size);\n'
+            result += f'        }}\n'
+        else:
+            # Non-variable message: simple memcpy with size check
+            result += f'        // Fixed-size message - use direct copy\n'
+            result += f'        if (buffer_size < MAX_SIZE) return 0;\n'
+            result += f'        std::memcpy(this, buffer, MAX_SIZE);\n'
+            result += f'        return MAX_SIZE;\n'
+        
         result += f'    }}\n'
         
         return result

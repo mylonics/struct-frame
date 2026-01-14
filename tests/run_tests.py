@@ -150,8 +150,8 @@ EXTENDED_PROFILES = [
 ]
 
 # Expected message counts
-STANDARD_MESSAGE_COUNT = 11
-EXTENDED_MESSAGE_COUNT = 12
+STANDARD_MESSAGE_COUNT = 16
+EXTENDED_MESSAGE_COUNT = 17
 
 
 # =============================================================================
@@ -747,30 +747,6 @@ class TestRunner:
                 row += format_cell(enc["success"], cell)
             print(row)
         
-        # For variable_flag tests, display encode output (shows sizes)
-        if test_name == "variable_flag":
-            print(f"\n  {Colors.bold('Message Sizes:')}")
-            for lang in testable:
-                enc_by_lang = {}
-                for profile_name, display_name in profiles:
-                    enc = encode_results[display_name][lang.name]
-                    if enc["success"] and enc.get("stdout"):
-                        stdout = enc["stdout"].strip()
-                        # Extract just the MSG and Total lines
-                        msg_lines = []
-                        for line in stdout.split('\n'):
-                            if line.strip().startswith(('MSG1:', 'MSG2:', 'Total:')):
-                                msg_lines.append(line.strip())
-                        if msg_lines:
-                            enc_by_lang[display_name] = msg_lines
-                
-                if enc_by_lang:
-                    print(f"  {lang.name}:")
-                    for display_name, lines in enc_by_lang.items():
-                        for line in lines:
-                            print(f"    {line}")
-                    print()
-        
         # =================================================================
         # PHASE 2: VALIDATE (binary compare + C++ decode)
         # =================================================================
@@ -990,7 +966,13 @@ class TestRunner:
     def _get_output_file(self, lang: Language, profile_name: str, runner_name: str) -> Path:
         """Get output file path for encoding."""
         prefix = lang.get_prefix()
-        test_type = "extended" if "extended" in runner_name else "standard"
+        # Determine test type from runner name
+        if "extended" in runner_name:
+            test_type = "extended"
+        elif "variable_flag" in runner_name or "variable" in runner_name:
+            test_type = "variable_flag"
+        else:
+            test_type = "standard"
         filename = f"{prefix}_{profile_name}_{test_type}_data.bin"
         return self._get_test_work_dir(lang) / filename
     
@@ -1074,8 +1056,8 @@ class TestRunner:
         # Collect all encoded variable_flag files
         encoded_files = {}
         for lang in self.get_testable_languages():
-            build_dir = self.tests_dir / lang.id / "build"
-            encode_file = build_dir / "variable_flag_profile_bulk_encode.bin"
+            # Use the same naming pattern as _get_output_file
+            encode_file = self._get_output_file(lang, "profile_bulk", "test_variable_flag")
             if encode_file.exists():
                 encoded_files[lang.id] = encode_file
         

@@ -105,6 +105,18 @@ static inline size_t var_flag_encode_message(buffer_writer_t* writer, size_t ind
     return written;
   } else if (msg_id == SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MSG_ID) {
     const SerializationTestTruncationTestVariable* msg = &get_variable_messages()[var_var_idx++];
+    /* Variable message: use pack_variable if profile has length field */
+    #ifdef SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_IS_VARIABLE
+    if (writer->config->payload.has_length) {
+      static uint8_t pack_buffer[SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAX_SIZE];
+      size_t packed_size = SerializationTestTruncationTestVariable_pack_variable(msg, pack_buffer);
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0,
+                                           0, SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC1,
+                                           SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC2);
+      printf("MSG2: %zu bytes (payload=%zu, TRUNCATED)\n", written, packed_size);
+      return written;
+    }
+    #endif
     size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
                                          0, SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC1,
                                          SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC2);
@@ -124,14 +136,14 @@ static inline bool var_flag_validate_message(uint16_t msg_id, const uint8_t* dat
 
   if (msg_id == SERIALIZATION_TEST_TRUNCATION_TEST_NON_VARIABLE_MSG_ID) {
     const SerializationTestTruncationTestNonVariable* expected = &get_non_variable_messages()[var_non_var_idx++];
-    if (size != sizeof(*expected)) return false;
-    const SerializationTestTruncationTestNonVariable* decoded = (const SerializationTestTruncationTestNonVariable*)data;
-    return SerializationTestTruncationTestNonVariable_equals(decoded, expected);
+    SerializationTestTruncationTestNonVariable decoded;
+    if (SerializationTestTruncationTestNonVariable_unpack(data, size, &decoded) == 0) return false;
+    return SerializationTestTruncationTestNonVariable_equals(&decoded, expected);
   } else if (msg_id == SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MSG_ID) {
     const SerializationTestTruncationTestVariable* expected = &get_variable_messages()[var_var_idx++];
-    if (size != sizeof(*expected)) return false;
-    const SerializationTestTruncationTestVariable* decoded = (const SerializationTestTruncationTestVariable*)data;
-    return SerializationTestTruncationTestVariable_equals(decoded, expected);
+    SerializationTestTruncationTestVariable decoded;
+    if (SerializationTestTruncationTestVariable_unpack(data, size, &decoded) == 0) return false;
+    return SerializationTestTruncationTestVariable_equals(&decoded, expected);
   }
 
   return false;

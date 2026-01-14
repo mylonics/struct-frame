@@ -503,9 +503,9 @@ struct Validator {
       }
       case ExtendedTestExtendedVariableSingleArray::MSG_ID: {
         const auto& expected = get_ext_var_single_messages()[ext_var_single_validate_idx++];
-        if (decoded_size != expected.size()) return false;
         ExtendedTestExtendedVariableSingleArray decoded;
-        std::memcpy(&decoded, decoded_data, decoded_size);
+        size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+        if (unpacked == 0) return false;
         return decoded == expected;
       }
       default:

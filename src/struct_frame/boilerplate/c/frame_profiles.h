@@ -560,6 +560,53 @@ static inline size_t buffer_writer_remaining(const buffer_writer_t* writer) {
 static inline uint8_t* buffer_writer_data(buffer_writer_t* writer) { return writer->buffer; }
 
 /*===========================================================================
+ * Helper Macros for Variable Message Encoding
+ *===========================================================================*/
+
+/**
+ * Get the payload and size for encoding a message.
+ * For variable messages with length field support, uses pack_variable() to truncate unused space.
+ * For non-variable messages or minimal profiles, uses the full buffer.
+ * 
+ * Usage:
+ *   GET_PAYLOAD_FOR_ENCODING(SerializationTestMyMessage, &msg, payload_ptr, payload_len);
+ *   buffer_writer_write(writer, msg_id, payload_ptr, payload_len, ...);
+ */
+#define GET_PAYLOAD_FOR_ENCODING(MSG_TYPE, msg_ptr, out_payload, out_size) \
+    do { \
+        static uint8_t _temp_pack_buffer[MSG_TYPE##_MAX_SIZE]; \
+        (void)_temp_pack_buffer; \
+        if (SUPPORTS_VARIABLE_ENCODING(MSG_TYPE)) { \
+            (out_size) = MSG_TYPE##_pack_variable((msg_ptr), _temp_pack_buffer); \
+            (out_payload) = _temp_pack_buffer; \
+        } else { \
+            (out_payload) = (const uint8_t*)(msg_ptr); \
+            (out_size) = sizeof(*(msg_ptr)); \
+        } \
+    } while(0)
+
+/**
+ * Check if variable encoding is supported for a message type.
+ * Returns true if the message has IS_VARIABLE defined (message is variable)
+ * AND the config has a length field (not a minimal profile).
+ */
+#define SUPPORTS_VARIABLE_ENCODING(MSG_TYPE) \
+    (IS_VARIABLE_MESSAGE(MSG_TYPE) && has_length_field_for_variable_encoding)
+
+/**
+ * Check if a message type has the IS_VARIABLE flag defined.
+ */
+#define IS_VARIABLE_MESSAGE(MSG_TYPE) \
+    (defined(MSG_TYPE##_IS_VARIABLE) && MSG_TYPE##_IS_VARIABLE)
+
+/**
+ * Set this variable based on the profile config before encoding.
+ * For profiles with length fields (Standard, Bulk, Network): true
+ * For minimal profiles (Sensor, IPC): false
+ */
+static bool has_length_field_for_variable_encoding = true;
+
+/*===========================================================================
  * AccumulatingReader - Unified parser for buffer and byte-by-byte streaming
  *===========================================================================*/
 

@@ -637,13 +637,46 @@ class MessagePyGen():
         # Generate variable message methods if this is a variable message
         if msg.variable:
             result += MessagePyGen.generate_variable_methods(msg)
+        
+        # Add unified unpack() method for messages with MSG_ID
+        if msg.id is not None:
+            result += MessagePyGen.generate_unified_unpack(msg)
 
+        return result
+    
+    @staticmethod
+    def generate_unified_unpack(msg):
+        """Generate unified unpack() method that works for both variable and non-variable messages."""
+        result = ''
+        
+        result += '\n    @classmethod\n'
+        result += '    def unpack(cls, data: bytes):\n'
+        result += '        """Unified unpack method - works for both variable and non-variable messages.\n'
+        result += '        For variable messages with minimal profiles (len(data) == MAX_SIZE),\n'
+        result += '        uses standard unpacking instead of variable unpacking.\n'
+        result += '        """\n'
+        
+        if msg.variable:
+            result += '        # Variable message - check encoding format\n'
+            result += '        if len(data) == cls.MAX_SIZE:\n'
+            result += '            # Minimal profile format (MAX_SIZE encoding)\n'
+            result += '            return cls.create_unpack(data)\n'
+            result += '        else:\n'
+            result += '            # Variable-length format\n'
+            result += '            return cls.unpack_variable(data)\n'
+        else:
+            result += '        # Fixed-size message - use standard unpacking\n'
+            result += '        return cls.create_unpack(data)\n'
+        
         return result
     
     @staticmethod
     def generate_variable_methods(msg):
         """Generate pack_size, pack_variable, and unpack_variable methods for variable messages."""
         result = ''
+        
+        # Add IS_VARIABLE constant
+        result += '\n    IS_VARIABLE = True\n'
         
         # Generate pack_size method
         result += '\n    def pack_size(self) -> int:\n'

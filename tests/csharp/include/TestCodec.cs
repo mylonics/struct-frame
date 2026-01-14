@@ -781,8 +781,42 @@ namespace StructFrameTests
                         return (expectedMsg.GetMsgId(), false);
                     }
                     
-                    // Validate by comparing packed message bytes
-                    var expectedData = expectedMsg.Pack();
+                    // Get expected data - use PackVariable() for variable messages if available
+                    byte[] expectedData;
+                    var msgType = expectedMsg.GetType();
+                    var isVariableField = msgType.GetField("IsVariable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    
+                    if (isVariableField != null && isVariableField.GetValue(null) is bool isVariable && isVariable)
+                    {
+                        // Variable message - check if we received variable encoding or MAX_SIZE
+                        var maxSizeField = msgType.GetField("MaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                        int maxSize = maxSizeField != null ? (int)maxSizeField.GetValue(null) : expectedMsg.GetSize();
+                        
+                        if (decodedPayload.Length == maxSize)
+                        {
+                            // Received MAX_SIZE format (ProfileSensor/ProfileIPC)
+                            expectedData = expectedMsg.Pack();
+                        }
+                        else
+                        {
+                            // Received variable-length format - use PackVariable()
+                            var packVariableMethod = msgType.GetMethod("PackVariable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                            if (packVariableMethod != null)
+                            {
+                                expectedData = (byte[])packVariableMethod.Invoke(expectedMsg, null);
+                            }
+                            else
+                            {
+                                expectedData = expectedMsg.Pack();
+                            }
+                        }
+                    }
+                    else
+                    {
+                        // Not a variable message - use regular Pack()
+                        expectedData = expectedMsg.Pack();
+                    }
+                    
                     if (decodedPayload.Length != expectedData.Length)
                     {
                         Console.WriteLine($"    Size mismatch: expected {expectedData.Length}, got {decodedPayload.Length}");
