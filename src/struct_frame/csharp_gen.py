@@ -451,13 +451,33 @@ class MessageCSharpGen():
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Pack this message into a byte array\n'
+        if msg.variable:
+            result += '        /// For variable messages: returns variable-length encoding by default\n'
+            result += '        /// Use PackMaxSize() for MAX_SIZE encoding (needed for minimal profiles)\n'
         result += '        /// </summary>\n'
         result += '        public byte[] Pack()\n'
         result += '        {\n'
-        result += '            byte[] buffer = new byte[MaxSize];\n'
-        result += '            PackTo(buffer, 0);\n'
-        result += '            return buffer;\n'
+        if msg.variable:
+            # Variable messages return variable-length encoding by default
+            result += '            return PackVariable();\n'
+        else:
+            result += '            byte[] buffer = new byte[MaxSize];\n'
+            result += '            PackTo(buffer, 0);\n'
+            result += '            return buffer;\n'
         result += '        }\n'
+        
+        # For variable messages, add PackMaxSize() method
+        if msg.variable:
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += '        /// Pack this message to MAX_SIZE (for minimal profiles without length field)\n'
+            result += '        /// </summary>\n'
+            result += '        public byte[] PackMaxSize()\n'
+            result += '        {\n'
+            result += '            byte[] buffer = new byte[MaxSize];\n'
+            result += '            PackTo(buffer, 0);\n'
+            result += '            return buffer;\n'
+            result += '        }\n'
         
         # Generate PackTo() method for zero-allocation packing
         result += '\n'

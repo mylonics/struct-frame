@@ -206,35 +206,28 @@ namespace StructFrame
         /// </summary>
         public int Encode(byte[] buffer, int offset, IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
-            // Use variable encoding if: (1) profile has length field, and (2) message is variable
+            // For variable messages with minimal profiles (no length field), use PackMaxSize()
+            // Otherwise, Pack() returns the appropriate encoding
             byte[] payload;
-            if (_config.HasLength)
+            if (!_config.HasLength)
             {
-                // Check if message has IsVariable property using reflection
-                var isVariableField = message.GetType().GetField("IsVariable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
-                if (isVariableField != null && isVariableField.GetValue(null) is bool isVariable && isVariable)
+                // Minimal profile (ProfileSensor/ProfileIPC) - need MAX_SIZE encoding
+                // Check if message has PackMaxSize() method (variable messages only)
+                var packMaxSizeMethod = message.GetType().GetMethod("PackMaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (packMaxSizeMethod != null)
                 {
-                    // Message is variable and profile supports variable encoding - use PackVariable()
-                    var packVariableMethod = message.GetType().GetMethod("PackVariable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                    if (packVariableMethod != null)
-                    {
-                        payload = (byte[])packVariableMethod.Invoke(message, null);
-                    }
-                    else
-                    {
-                        // Fallback to regular Pack() if PackVariable() not found
-                        payload = message.Pack();
-                    }
+                    payload = (byte[])packMaxSizeMethod.Invoke(message, null);
                 }
                 else
                 {
-                    // Not variable or doesn't have IsVariable field
+                    // Non-variable message - Pack() always returns MAX_SIZE
                     payload = message.Pack();
                 }
             }
             else
             {
-                // Profile doesn't have length field (minimal profiles) - always use MAX_SIZE
+                // Profile has length field - Pack() returns the correct encoding
+                // (variable-length for variable messages, MAX_SIZE for non-variable)
                 payload = message.Pack();
             }
             
