@@ -393,14 +393,16 @@ def calculate_field_layout(msg, package, packages):
                     # Count field
                     count_name = f"{var_name}_count"
                     data_name = f"{var_name}_data"
+                    count_type = "uint16" if max_count > 255 else "uint8"
+                    count_size = 2 if max_count > 255 else 1
                     fields.append(FieldInfo(
                         name=count_name,
                         offset=offset,
-                        size=1,
-                        field_type="uint8",
+                        size=count_size,
+                        field_type=count_type,
                         comments=comments
                     ))
-                    offset += 1
+                    offset += count_size
                     # Data field
                     total_data_size = elem_size * max_count
                     fields.append(FieldInfo(
@@ -450,15 +452,17 @@ def calculate_field_layout(msg, package, packages):
                     max_count = field.max_size
                     count_name = f"{var_name}_count"
                     data_name = f"{var_name}_data"
+                    count_type = "uint16" if max_count > 255 else "uint8"
+                    count_size = 2 if max_count > 255 else 1
                     # Count field
                     fields.append(FieldInfo(
                         name=count_name,
                         offset=offset,
-                        size=1,
-                        field_type="uint8",
+                        size=count_size,
+                        field_type=count_type,
                         comments=comments
                     ))
-                    offset += 1
+                    offset += count_size
                     # Data field
                     total_data_size = elem_size * max_count
                     fields.append(FieldInfo(
@@ -494,15 +498,17 @@ def calculate_field_layout(msg, package, packages):
                 max_len = field.max_size
                 length_name = f"{var_name}_length"
                 data_name = f"{var_name}_data"
+                length_type = "uint16" if max_len > 255 else "uint8"
+                length_size = 2 if max_len > 255 else 1
                 # Length field
                 fields.append(FieldInfo(
                     name=length_name,
                     offset=offset,
-                    size=1,
-                    field_type="uint8",
+                    size=length_size,
+                    field_type=length_type,
                     comments=comments
                 ))
-                offset += 1
+                offset += length_size
                 # Data field
                 fields.append(FieldInfo(
                     name=data_name,

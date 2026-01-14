@@ -242,14 +242,16 @@ class MessageTsClassGen():
             if field.is_array and field.max_size is not None:
                 # Variable array - TypeScript uses name_count
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_size = 2 if field.max_size > 255 else 1
                 if field.fieldType == "string":
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
-                result += f'    size += 1 + (this.{name}_count * {element_size}); // {name}\n'
+                    element_size = type_sizes.get(field.fieldType, (field.size - count_size) // field.max_size)
+                result += f'    size += {count_size} + (this.{name}_count * {element_size}); // {name}\n'
             elif field.fieldType == "string" and field.max_size is not None:
                 # Variable string - TypeScript uses name_length
-                result += f'    size += 1 + this.{name}_length; // {name}\n'
+                length_size = 2 if field.max_size > 255 else 1
+                result += f'    size += {length_size} + this.{name}_length; // {name}\n'
             else:
                 result += f'    size += {field.size}; // {name}\n'
         
