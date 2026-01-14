@@ -23,6 +23,7 @@ using ExtendedIdMessage9 = StructFrame.ExtendedTest.ExtendedTestExtendedIdMessag
 using ExtendedIdMessage10 = StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage10;
 using LargePayloadMessage1 = StructFrame.ExtendedTest.ExtendedTestLargePayloadMessage1;
 using LargePayloadMessage2 = StructFrame.ExtendedTest.ExtendedTestLargePayloadMessage2;
+using ExtendedVariableSingleArray = StructFrame.ExtendedTest.ExtendedTestExtendedVariableSingleArray;
 
 namespace StructFrameTests
 {
@@ -35,11 +36,101 @@ namespace StructFrameTests
         // Message count
         // ============================================================================
 
-        public const int MESSAGE_COUNT = 12;
+        public const int MESSAGE_COUNT = 17;
+        
+        // Variable message index trackers
+        private static int _extVarSingleEncodeIdx = 0;
+        private static int _extVarSingleValidateIdx = 0;
+        
+        // Cached variable messages
+        private static ExtendedVariableSingleArray[]? _extVarSingleMsgs = null;
 
         public static int GetExtendedTestMessageCount()
         {
             return MESSAGE_COUNT;
+        }
+        
+        public static void ResetState()
+        {
+            _extVarSingleEncodeIdx = 0;
+            _extVarSingleValidateIdx = 0;
+        }
+        
+        private static ExtendedVariableSingleArray[] GetExtVarSingleMessages()
+        {
+            if (_extVarSingleMsgs != null) return _extVarSingleMsgs;
+            
+            _extVarSingleMsgs = new ExtendedVariableSingleArray[5];
+            
+            // Empty payload (0 elements)
+            _extVarSingleMsgs[0] = new ExtendedVariableSingleArray
+            {
+                Timestamp = 0x0000000000000001UL,
+                TelemetryDataLength = 0,
+                TelemetryDataData = new byte[250],
+                Crc = 0x00000001
+            };
+            
+            // Single element
+            _extVarSingleMsgs[1] = new ExtendedVariableSingleArray
+            {
+                Timestamp = 0x0000000000000002UL,
+                TelemetryDataLength = 1,
+                TelemetryDataData = new byte[250],
+                Crc = 0x00000002
+            };
+            _extVarSingleMsgs[1].TelemetryDataData[0] = 42;
+            
+            // One-third filled (83 elements for max_size=250)
+            _extVarSingleMsgs[2] = new ExtendedVariableSingleArray
+            {
+                Timestamp = 0x0000000000000003UL,
+                TelemetryDataLength = 83,
+                TelemetryDataData = new byte[250],
+                Crc = 0x00000003
+            };
+            for (int i = 0; i < 83; i++)
+            {
+                _extVarSingleMsgs[2].TelemetryDataData[i] = (byte)i;
+            }
+            
+            // One position empty (249 elements)
+            _extVarSingleMsgs[3] = new ExtendedVariableSingleArray
+            {
+                Timestamp = 0x0000000000000004UL,
+                TelemetryDataLength = 249,
+                TelemetryDataData = new byte[250],
+                Crc = 0x00000004
+            };
+            for (int i = 0; i < 249; i++)
+            {
+                _extVarSingleMsgs[3].TelemetryDataData[i] = (byte)(i % 256);
+            }
+            
+            // Full (250 elements)
+            _extVarSingleMsgs[4] = new ExtendedVariableSingleArray
+            {
+                Timestamp = 0x0000000000000005UL,
+                TelemetryDataLength = 250,
+                TelemetryDataData = new byte[250],
+                Crc = 0x00000005
+            };
+            for (int i = 0; i < 250; i++)
+            {
+                _extVarSingleMsgs[4].TelemetryDataData[i] = (byte)(i % 256);
+            }
+            
+            return _extVarSingleMsgs;
+        }
+        
+        public static ExtendedVariableSingleArray GetNextExtVarSingleForEncode()
+        {
+            return GetExtVarSingleMessages()[_extVarSingleEncodeIdx++];
+        }
+        
+        public static ExtendedVariableSingleArray GetNextExtVarSingleForValidate()
+        {
+            return GetExtVarSingleMessages()[_extVarSingleValidateIdx++];
         }
 
         // ============================================================================
@@ -63,6 +154,7 @@ namespace StructFrameTests
                 case ExtendedIdMessage10.MsgId: return new MessageInfo(ExtendedIdMessage10.MaxSize, ExtendedIdMessage10.Magic1, ExtendedIdMessage10.Magic2);
                 case LargePayloadMessage1.MsgId: return new MessageInfo(LargePayloadMessage1.MaxSize, LargePayloadMessage1.Magic1, LargePayloadMessage1.Magic2);
                 case LargePayloadMessage2.MsgId: return new MessageInfo(LargePayloadMessage2.MaxSize, LargePayloadMessage2.Magic1, LargePayloadMessage2.Magic2);
+                case ExtendedVariableSingleArray.MsgId: return new MessageInfo(ExtendedVariableSingleArray.MaxSize, ExtendedVariableSingleArray.Magic1, ExtendedVariableSingleArray.Magic2);
                 default: return null;
             }
         }

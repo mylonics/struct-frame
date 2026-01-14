@@ -23,22 +23,27 @@
  * Message count and order
  * ============================================================================ */
 
-#define EXT_MESSAGE_COUNT 12
+#define EXT_MESSAGE_COUNT 17
 
 /* Message ID order array */
 static const uint16_t ext_msg_id_order[EXT_MESSAGE_COUNT] = {
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MSG_ID,   /* 0: 750 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MSG_ID,   /* 1: 1000 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MSG_ID,   /* 2: 500 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MSG_ID,   /* 3: 2048 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MSG_ID,   /* 4: 300 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MSG_ID,   /* 5: 1500 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MSG_ID,   /* 6: 999 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MSG_ID,   /* 7: 1234 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MSG_ID,   /* 8: 4000 */
-    EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MSG_ID,  /* 9: 256 */
-    EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MSG_ID, /* 10: 800 */
-    EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MSG_ID, /* 11: 801 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE1_MSG_ID,           /* 0: 750 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE2_MSG_ID,           /* 1: 1000 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE3_MSG_ID,           /* 2: 500 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE4_MSG_ID,           /* 3: 2048 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE5_MSG_ID,           /* 4: 300 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE6_MSG_ID,           /* 5: 1500 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE7_MSG_ID,           /* 6: 999 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE8_MSG_ID,           /* 7: 1234 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE9_MSG_ID,           /* 8: 4000 */
+    EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MSG_ID,          /* 9: 256 */
+    EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MSG_ID,         /* 10: 800 */
+    EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MSG_ID,         /* 11: 801 */
+    EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID, /* 12: empty */
+    EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID, /* 13: single */
+    EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID, /* 14: 1/3 filled */
+    EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID, /* 15: one empty */
+    EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID, /* 16: full */
 };
 
 static inline const uint16_t* ext_get_msg_id_order(void) { return ext_msg_id_order; }
@@ -180,6 +185,19 @@ static inline ExtendedTestLargePayloadMessage2 create_large_2(void) {
   return msg;
 }
 
+/* Create ExtendedVariableSingleArray messages with different fill levels */
+static inline ExtendedTestExtendedVariableSingleArray create_ext_var_single(uint64_t timestamp, const uint8_t* data, uint8_t length, uint32_t crc) {
+  ExtendedTestExtendedVariableSingleArray msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.timestamp = timestamp;
+  msg.telemetry_data.length = length;
+  for (int i = 0; i < length; i++) {
+    msg.telemetry_data.data[i] = data[i];
+  }
+  msg.crc = crc;
+  return msg;
+}
+
 /* ============================================================================
  * Message getters - return static instances of each message
  * ============================================================================ */
@@ -304,11 +322,67 @@ static inline const ExtendedTestLargePayloadMessage2* get_message_large_2(void) 
   return &msg;
 }
 
+/* Get ExtendedVariableSingleArray messages (5 with different fill levels) */
+static ExtendedTestExtendedVariableSingleArray ext_var_single_msgs[5];
+static bool ext_var_single_initialized = false;
+
+static inline void init_ext_var_single_msgs(void) {
+  if (ext_var_single_initialized) return;
+  
+  /* Empty payload (0 elements) */
+  ext_var_single_msgs[0].timestamp = 0x0000000000000001ULL;
+  ext_var_single_msgs[0].telemetry_data.length = 0;
+  ext_var_single_msgs[0].crc = 0x00000001;
+  
+  /* Single element */
+  ext_var_single_msgs[1].timestamp = 0x0000000000000002ULL;
+  ext_var_single_msgs[1].telemetry_data.length = 1;
+  ext_var_single_msgs[1].telemetry_data.data[0] = 42;
+  ext_var_single_msgs[1].crc = 0x00000002;
+  
+  /* One-third filled (83 elements for max_size=250) */
+  ext_var_single_msgs[2].timestamp = 0x0000000000000003ULL;
+  ext_var_single_msgs[2].telemetry_data.length = 83;
+  for (int i = 0; i < 83; i++) {
+    ext_var_single_msgs[2].telemetry_data.data[i] = (uint8_t)i;
+  }
+  ext_var_single_msgs[2].crc = 0x00000003;
+  
+  /* One position empty (249 elements) */
+  ext_var_single_msgs[3].timestamp = 0x0000000000000004ULL;
+  ext_var_single_msgs[3].telemetry_data.length = 249;
+  for (int i = 0; i < 249; i++) {
+    ext_var_single_msgs[3].telemetry_data.data[i] = (uint8_t)(i % 256);
+  }
+  ext_var_single_msgs[3].crc = 0x00000004;
+  
+  /* Full (250 elements) */
+  ext_var_single_msgs[4].timestamp = 0x0000000000000005ULL;
+  ext_var_single_msgs[4].telemetry_data.length = 250;
+  for (int i = 0; i < 250; i++) {
+    ext_var_single_msgs[4].telemetry_data.data[i] = (uint8_t)(i % 256);
+  }
+  ext_var_single_msgs[4].crc = 0x00000005;
+  
+  ext_var_single_initialized = true;
+}
+
+static inline const ExtendedTestExtendedVariableSingleArray* get_ext_var_single_msg(size_t index) {
+  init_ext_var_single_msgs();
+  return &ext_var_single_msgs[index];
+}
+
 /* ============================================================================
- * Reset state - not needed for extended tests (stateless)
+ * Reset state - resets variable message indices
  * ============================================================================ */
 
-static inline void ext_reset_state(void) { /* No state to reset - each message type has exactly one instance */ }
+static size_t ext_var_single_encode_idx = 0;
+static size_t ext_var_single_validate_idx = 0;
+
+static inline void ext_reset_state(void) {
+  ext_var_single_encode_idx = 0;
+  ext_var_single_validate_idx = 0;
+}
 
 /* ============================================================================
  * Encoder - writes messages by msg_id lookup
@@ -379,6 +453,11 @@ static inline size_t ext_encode_message(buffer_writer_t* writer, size_t index) {
       const ExtendedTestLargePayloadMessage2* msg = get_message_large_2();
       return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
                                  EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAGIC1, EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAGIC2);
+    }
+    case EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID: {
+      const ExtendedTestExtendedVariableSingleArray* msg = get_ext_var_single_msg(ext_var_single_encode_idx++);
+      return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
+                                 EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC1, EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC2);
     }
     default:
       return 0;
@@ -464,6 +543,12 @@ static inline bool ext_validate_message(uint16_t msg_id, const uint8_t* data, si
       if (size != sizeof(*expected)) return false;
       const ExtendedTestLargePayloadMessage2* decoded = (const ExtendedTestLargePayloadMessage2*)data;
       return ExtendedTestLargePayloadMessage2_equals(decoded, expected);
+    }
+    case EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID: {
+      const ExtendedTestExtendedVariableSingleArray* expected = get_ext_var_single_msg(ext_var_single_validate_idx++);
+      if (size != sizeof(*expected)) return false;
+      const ExtendedTestExtendedVariableSingleArray* decoded = (const ExtendedTestExtendedVariableSingleArray*)data;
+      return ExtendedTestExtendedVariableSingleArray_equals(decoded, expected);
     }
     default:
       return false;

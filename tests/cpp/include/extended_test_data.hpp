@@ -144,6 +144,17 @@ inline ExtendedTestLargePayloadMessage2 create_large_2() {
   return msg;
 }
 
+inline ExtendedTestExtendedVariableSingleArray create_ext_var_single(uint64_t timestamp, const uint8_t* data, uint8_t length, uint32_t crc) {
+  ExtendedTestExtendedVariableSingleArray msg{};
+  msg.timestamp = timestamp;
+  msg.telemetry_data.length = length;
+  for (int i = 0; i < length; i++) {
+    msg.telemetry_data.data[i] = data[i];
+  }
+  msg.crc = crc;
+  return msg;
+}
+
 // ============================================================================
 // Message getters - return static instances of each message
 // ============================================================================
@@ -208,40 +219,98 @@ inline const ExtendedTestLargePayloadMessage2& get_message_large_2() {
   return msg;
 }
 
+// Get ExtendedVariableSingleArray messages (5 with different fill levels for max_size=250)
+inline const std::array<ExtendedTestExtendedVariableSingleArray, 5>& get_ext_var_single_messages() {
+  static const auto msgs = []() {
+    std::array<ExtendedTestExtendedVariableSingleArray, 5> arr{};
+    
+    // Empty payload (0 elements)
+    arr[0].timestamp = 0x0000000000000001ULL;
+    arr[0].telemetry_data.length = 0;
+    arr[0].crc = 0x00000001;
+    
+    // Single element
+    arr[1].timestamp = 0x0000000000000002ULL;
+    arr[1].telemetry_data.length = 1;
+    arr[1].telemetry_data.data[0] = 42;
+    arr[1].crc = 0x00000002;
+    
+    // One-third filled (83 elements for max_size=250)
+    arr[2].timestamp = 0x0000000000000003ULL;
+    arr[2].telemetry_data.length = 83;
+    for (int i = 0; i < 83; i++) {
+      arr[2].telemetry_data.data[i] = static_cast<uint8_t>(i);
+    }
+    arr[2].crc = 0x00000003;
+    
+    // One position empty (249 elements)
+    arr[3].timestamp = 0x0000000000000004ULL;
+    arr[3].telemetry_data.length = 249;
+    for (int i = 0; i < 249; i++) {
+      arr[3].telemetry_data.data[i] = static_cast<uint8_t>(i % 256);
+    }
+    arr[3].crc = 0x00000004;
+    
+    // Full (250 elements)
+    arr[4].timestamp = 0x0000000000000005ULL;
+    arr[4].telemetry_data.length = 250;
+    for (int i = 0; i < 250; i++) {
+      arr[4].telemetry_data.data[i] = static_cast<uint8_t>(i % 256);
+    }
+    arr[4].crc = 0x00000005;
+    
+    return arr;
+  }();
+  return msgs;
+}
+
 // ============================================================================
 // Message ID order array - defines the encode/decode sequence
 // ============================================================================
 
 // Message count constant
-constexpr size_t MESSAGE_COUNT = 12;
+constexpr size_t MESSAGE_COUNT = 17;
 
 // The msg_id order array - maps position to which message type to use
 inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
   static const std::array<uint16_t, MESSAGE_COUNT> order = {
-      ExtendedTestExtendedIdMessage1::MSG_ID,    // 0
-      ExtendedTestExtendedIdMessage2::MSG_ID,    // 1
-      ExtendedTestExtendedIdMessage3::MSG_ID,    // 2
-      ExtendedTestExtendedIdMessage4::MSG_ID,    // 3
-      ExtendedTestExtendedIdMessage5::MSG_ID,    // 4
-      ExtendedTestExtendedIdMessage6::MSG_ID,    // 5
-      ExtendedTestExtendedIdMessage7::MSG_ID,    // 6
-      ExtendedTestExtendedIdMessage8::MSG_ID,    // 7
-      ExtendedTestExtendedIdMessage9::MSG_ID,    // 8
-      ExtendedTestExtendedIdMessage10::MSG_ID,   // 9
-      ExtendedTestLargePayloadMessage1::MSG_ID,  // 10
-      ExtendedTestLargePayloadMessage2::MSG_ID,  // 11
+      ExtendedTestExtendedIdMessage1::MSG_ID,          // 0
+      ExtendedTestExtendedIdMessage2::MSG_ID,          // 1
+      ExtendedTestExtendedIdMessage3::MSG_ID,          // 2
+      ExtendedTestExtendedIdMessage4::MSG_ID,          // 3
+      ExtendedTestExtendedIdMessage5::MSG_ID,          // 4
+      ExtendedTestExtendedIdMessage6::MSG_ID,          // 5
+      ExtendedTestExtendedIdMessage7::MSG_ID,          // 6
+      ExtendedTestExtendedIdMessage8::MSG_ID,          // 7
+      ExtendedTestExtendedIdMessage9::MSG_ID,          // 8
+      ExtendedTestExtendedIdMessage10::MSG_ID,         // 9
+      ExtendedTestLargePayloadMessage1::MSG_ID,        // 10
+      ExtendedTestLargePayloadMessage2::MSG_ID,        // 11
+      ExtendedTestExtendedVariableSingleArray::MSG_ID, // 12: empty
+      ExtendedTestExtendedVariableSingleArray::MSG_ID, // 13: single
+      ExtendedTestExtendedVariableSingleArray::MSG_ID, // 14: 1/3 filled
+      ExtendedTestExtendedVariableSingleArray::MSG_ID, // 15: one empty
+      ExtendedTestExtendedVariableSingleArray::MSG_ID, // 16: full
   };
   return order;
 }
 
 // ============================================================================
 // Encoder helper - writes messages by msg_id lookup
-// Since each message type has exactly one instance, no index tracking needed
+// For variable messages, tracks indices since we have multiple instances
 // ============================================================================
 
 struct Encoder {
+  size_t ext_var_single_idx = 0;
+  
   template <typename WriterType>
   size_t write_message(WriterType& writer, uint16_t msg_id) {
+    // Handle variable messages with index tracking
+    if (msg_id == ExtendedTestExtendedVariableSingleArray::MSG_ID) {
+      const auto& msg = get_ext_var_single_messages()[ext_var_single_idx++];
+      return writer.write(msg);
+    }
+    
     switch (msg_id) {
       case ExtendedTestExtendedIdMessage1::MSG_ID:
         return writer.write(get_message_ext_1());
@@ -275,10 +344,21 @@ struct Encoder {
 
 // ============================================================================
 // Validator helper - validates decoded messages against expected data
+// For variable messages, tracks indices since we have multiple instances
 // ============================================================================
 
 struct Validator {
+  size_t ext_var_single_idx = 0;
+  
   bool get_expected(uint16_t msg_id, const uint8_t*& data, size_t& size) {
+    // Handle variable messages with index tracking
+    if (msg_id == ExtendedTestExtendedVariableSingleArray::MSG_ID) {
+      const auto& msg = get_ext_var_single_messages()[ext_var_single_idx++];
+      data = msg.data();
+      size = msg.size();
+      return true;
+    }
+    
     switch (msg_id) {
       case ExtendedTestExtendedIdMessage1::MSG_ID:
         data = get_message_ext_1().data();
@@ -420,10 +500,19 @@ struct Validator {
         std::memcpy(&decoded, decoded_data, decoded_size);
         return decoded == expected;
       }
+      case ExtendedTestExtendedVariableSingleArray::MSG_ID: {
+        const auto& expected = get_ext_var_single_messages()[ext_var_single_validate_idx++];
+        if (decoded_size != expected.size()) return false;
+        ExtendedTestExtendedVariableSingleArray decoded;
+        std::memcpy(&decoded, decoded_data, decoded_size);
+        return decoded == expected;
+      }
       default:
         return false;
     }
   }
+  
+  size_t ext_var_single_validate_idx = 0;
 };
 
 // ============================================================================
