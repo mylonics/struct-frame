@@ -93,11 +93,11 @@ function getWriter(format: string, capacity: number): any {
 /** Get reader for a profile format */
 function getReader(format: string, getMessageInfo: (msgId: number) => MessageInfo | undefined): any {
   const readers: { [key: string]: () => any } = {
-    'profile_standard': () => new ProfileStandardAccumulatingReader(getMessageInfo),
-    'profile_sensor': () => new ProfileSensorAccumulatingReader(getMessageInfo),
-    'profile_ipc': () => new ProfileIPCAccumulatingReader(getMessageInfo),
-    'profile_bulk': () => new ProfileBulkAccumulatingReader(getMessageInfo),
-    'profile_network': () => new ProfileNetworkAccumulatingReader(getMessageInfo),
+    'profile_standard': () => new ProfileStandardAccumulatingReader(getMessageInfo, 4096),
+    'profile_sensor': () => new ProfileSensorAccumulatingReader(getMessageInfo, 4096),
+    'profile_ipc': () => new ProfileIPCAccumulatingReader(getMessageInfo, 4096),
+    'profile_bulk': () => new ProfileBulkAccumulatingReader(getMessageInfo, 4096),
+    'profile_network': () => new ProfileNetworkAccumulatingReader(getMessageInfo, 4096),
   };
 
   const creator = readers[format];

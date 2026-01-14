@@ -135,6 +135,63 @@ inline SerializationTestUnionTestMessage create_union_with_test() {
   return msg;
 }
 
+// Create VariableSingleArray test messages with different fill levels
+// 0: Empty (0 elements)
+// 1: Single element (1 element)
+// 2: One-third filled (67 elements for max_size=200)
+// 3: One position empty (199 elements)
+// 4: Full (200 elements)
+
+inline SerializationTestVariableSingleArray create_variable_single_array_empty() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000001;
+  msg.payload.count = 0;
+  msg.checksum = 0x0001;
+  return msg;
+}
+
+inline SerializationTestVariableSingleArray create_variable_single_array_single() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000002;
+  msg.payload.data[0] = 42;
+  msg.payload.count = 1;
+  msg.checksum = 0x0002;
+  return msg;
+}
+
+inline SerializationTestVariableSingleArray create_variable_single_array_third() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000003;
+  for (uint8_t i = 0; i < 67; i++) {
+    msg.payload.data[i] = i;
+  }
+  msg.payload.count = 67;
+  msg.checksum = 0x0003;
+  return msg;
+}
+
+inline SerializationTestVariableSingleArray create_variable_single_array_almost() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000004;
+  for (uint8_t i = 0; i < 199; i++) {
+    msg.payload.data[i] = i;
+  }
+  msg.payload.count = 199;
+  msg.checksum = 0x0004;
+  return msg;
+}
+
+inline SerializationTestVariableSingleArray create_variable_single_array_full() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000005;
+  for (int i = 0; i < 200; i++) {
+    msg.payload.data[i] = static_cast<uint8_t>(i);
+  }
+  msg.payload.count = 200;
+  msg.checksum = 0x0005;
+  return msg;
+}
+
 // ============================================================================
 // Typed message arrays (one per message type)
 // ============================================================================
@@ -175,12 +232,24 @@ inline const std::array<SerializationTestUnionTestMessage, 2>& get_union_test_me
   return messages;
 }
 
+// VariableSingleArray array (5 messages with different fill levels)
+inline const std::array<SerializationTestVariableSingleArray, 5>& get_variable_single_array_messages() {
+  static const std::array<SerializationTestVariableSingleArray, 5> messages = {
+      create_variable_single_array_empty(),    // 0: Empty
+      create_variable_single_array_single(),   // 1: Single element
+      create_variable_single_array_third(),    // 2: One-third filled
+      create_variable_single_array_almost(),   // 3: One position empty
+      create_variable_single_array_full(),     // 4: Full
+  };
+  return messages;
+}
+
 // ============================================================================
 // Message ID order array - defines the encode/decode sequence
 // ============================================================================
 
 // Message count constant
-constexpr size_t MESSAGE_COUNT = 11;
+constexpr size_t MESSAGE_COUNT = 16;
 
 // The msg_id order array - maps position to which message type to use
 inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
@@ -196,6 +265,11 @@ inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
       SerializationTestUnionTestMessage::MSG_ID,          // 8: UnionTest[0]
       SerializationTestUnionTestMessage::MSG_ID,          // 9: UnionTest[1]
       SerializationTestBasicTypesMessage::MSG_ID,         // 10: BasicTypes[3]
+      SerializationTestVariableSingleArray::MSG_ID,       // 11: VariableSingleArray[0] - empty
+      SerializationTestVariableSingleArray::MSG_ID,       // 12: VariableSingleArray[1] - single
+      SerializationTestVariableSingleArray::MSG_ID,       // 13: VariableSingleArray[2] - 1/3 filled
+      SerializationTestVariableSingleArray::MSG_ID,       // 14: VariableSingleArray[3] - one empty
+      SerializationTestVariableSingleArray::MSG_ID,       // 15: VariableSingleArray[4] - full
   };
   return order;
 }
@@ -208,6 +282,7 @@ struct Encoder {
   size_t serial_idx = 0;
   size_t basic_idx = 0;
   size_t union_idx = 0;
+  size_t var_single_idx = 0;
 
   template <typename WriterType>
   size_t write_message(WriterType& writer, uint16_t msg_id) {
@@ -217,6 +292,8 @@ struct Encoder {
       return writer.write(get_basic_types_messages()[basic_idx++]);
     } else if (msg_id == SerializationTestUnionTestMessage::MSG_ID) {
       return writer.write(get_union_test_messages()[union_idx++]);
+    } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
+      return writer.write(get_variable_single_array_messages()[var_single_idx++]);
     }
     return 0;
   }
@@ -230,6 +307,7 @@ struct Validator {
   size_t serial_idx = 0;
   size_t basic_idx = 0;
   size_t union_idx = 0;
+  size_t var_single_idx = 0;
 
   bool get_expected(uint16_t msg_id, const uint8_t*& data, size_t& size) {
     if (msg_id == SerializationTestSerializationTestMessage::MSG_ID) {
@@ -244,6 +322,11 @@ struct Validator {
       return true;
     } else if (msg_id == SerializationTestUnionTestMessage::MSG_ID) {
       const auto& msg = get_union_test_messages()[union_idx++];
+      data = msg.data();
+      size = msg.size();
+      return true;
+    } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
+      const auto& msg = get_variable_single_array_messages()[var_single_idx++];
       data = msg.data();
       size = msg.size();
       return true;
@@ -269,6 +352,12 @@ struct Validator {
       const auto& expected = get_union_test_messages()[union_idx++];
       if (decoded_size != expected.size()) return false;
       SerializationTestUnionTestMessage decoded;
+      std::memcpy(&decoded, decoded_data, decoded_size);
+      return decoded == expected;
+    } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
+      const auto& expected = get_variable_single_array_messages()[var_single_idx++];
+      if (decoded_size != expected.size()) return false;
+      SerializationTestVariableSingleArray decoded;
       std::memcpy(&decoded, decoded_data, decoded_size);
       return decoded == expected;
     }

@@ -8,16 +8,18 @@ const {
   SerializationTestBasicTypesMessage,
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
+  SerializationTestVariableSingleArray,
   get_message_info,
 } = require('../../generated/js/serialization_test.structframe');
 
 /** Message count */
-const MESSAGE_COUNT = 11;
+const MESSAGE_COUNT = 16;
 
 /** Index tracking for encoding/validation */
 let serialIdx = 0;
 let basicIdx = 0;
 let unionIdx = 0;
+let varSingleIdx = 0;
 
 /** Message ID order array */
 const MSG_ID_ORDER = [
@@ -32,6 +34,11 @@ const MSG_ID_ORDER = [
   SerializationTestUnionTestMessage._msgid,          // 8: UnionTest[0]
   SerializationTestUnionTestMessage._msgid,          // 9: UnionTest[1]
   SerializationTestBasicTypesMessage._msgid,         // 10: BasicTypes[3]
+  SerializationTestVariableSingleArray._msgid,       // 11: VariableSingleArray[0] - empty
+  SerializationTestVariableSingleArray._msgid,       // 12: VariableSingleArray[1] - single
+  SerializationTestVariableSingleArray._msgid,       // 13: VariableSingleArray[2] - 1/3 filled
+  SerializationTestVariableSingleArray._msgid,       // 14: VariableSingleArray[3] - one empty
+  SerializationTestVariableSingleArray._msgid,       // 15: VariableSingleArray[4] - full
 ];
 
 /** SerializationTestMessage array (5 messages) */
@@ -217,11 +224,58 @@ function getUnionTestMessages() {
   ];
 }
 
+/** VariableSingleArray array (5 messages with different fill levels) */
+function getVariableSingleArrayMessages() {
+  // Generate arrays for different fill levels
+  const thirdFilled = Array.from({ length: 67 }, (_, i) => i);
+  const almostFull = Array.from({ length: 199 }, (_, i) => i);
+  const full = Array.from({ length: 200 }, (_, i) => i);
+
+  return [
+    // 0: Empty payload (0 elements)
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000001,
+      payload_count: 0,
+      payload_data: [],
+      checksum: 0x0001,
+    }),
+    // 1: Single element
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000002,
+      payload_count: 1,
+      payload_data: [42],
+      checksum: 0x0002,
+    }),
+    // 2: One-third filled (67 elements for max_size=200)
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000003,
+      payload_count: 67,
+      payload_data: thirdFilled,
+      checksum: 0x0003,
+    }),
+    // 3: One position empty (199 elements)
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000004,
+      payload_count: 199,
+      payload_data: almostFull,
+      checksum: 0x0004,
+    }),
+    // 4: Full (200 elements)
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000005,
+      payload_count: 200,
+      payload_data: full,
+      checksum: 0x0005,
+    }),
+  ];
+}
+
 /** Reset state for new encode/decode run */
 function resetState() {
   serialIdx = 0;
   basicIdx = 0;
   unionIdx = 0;
+  varSingleIdx = 0;
 }
 
 /** Encode message by index */
@@ -236,6 +290,9 @@ function encodeMessage(writer, index) {
     return writer.write(msg);
   } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const msg = getUnionTestMessages()[unionIdx++];
+    return writer.write(msg);
+  } else if (msgId === SerializationTestVariableSingleArray._msgid) {
+    const msg = getVariableSingleArrayMessages()[varSingleIdx++];
     return writer.write(msg);
   }
 
@@ -260,6 +317,12 @@ function validateMessage(msgId, data, _index) {
     const expected = getUnionTestMessages()[unionIdx++];
     if (data.length !== SerializationTestUnionTestMessage._size) return false;
     const decoded = new SerializationTestUnionTestMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
+  } else if (msgId === SerializationTestVariableSingleArray._msgid) {
+    const expected = getVariableSingleArrayMessages()[varSingleIdx++];
+    if (data.length !== SerializationTestVariableSingleArray._size) return false;
+    const decoded = new SerializationTestVariableSingleArray();
     data.copy(decoded._buffer);
     return decoded.equals(expected);
   }

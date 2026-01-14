@@ -195,9 +195,9 @@ class Field:
                         # Fixed size for arrays or strings
                         try:
                             self.size_option = int(ovalue)
-                            if self.size_option <= 0 or self.size_option > 255:
+                            if self.size_option <= 0 or self.size_option > 65535:
                                 print(
-                                    f"Invalid size {self.size_option} for field {self.name}, must be 1-255")
+                                    f"Invalid size {self.size_option} for field {self.name}, must be 1-65535")
                                 return False
                         except (ValueError, TypeError):
                             print(
@@ -207,9 +207,9 @@ class Field:
                         # Variable size for arrays or strings
                         try:
                             self.max_size = int(ovalue)
-                            if self.max_size <= 0 or self.max_size > 255:
+                            if self.max_size <= 0 or self.max_size > 65535:
                                 print(
-                                    f"Invalid max_size {self.max_size} for field {self.name}, must be 1-255")
+                                    f"Invalid max_size {self.max_size} for field {self.name}, must be 1-65535")
                                 return False
                         except (ValueError, TypeError):
                             print(
@@ -219,9 +219,9 @@ class Field:
                         # Individual element size for repeated string arrays
                         try:
                             self.element_size = int(ovalue)
-                            if self.element_size <= 0 or self.element_size > 255:
+                            if self.element_size <= 0 or self.element_size > 65535:
                                 print(
-                                    f"Invalid element_size {self.element_size} for field {self.name}, must be 1-255")
+                                    f"Invalid element_size {self.element_size} for field {self.name}, must be 1-65535")
                                 return False
                         except (ValueError, TypeError):
                             print(
@@ -279,8 +279,9 @@ class Field:
                     # Fixed string array: size_option strings, each element_size bytes
                     self.size = self.size_option * self.element_size
                 elif self.max_size is not None:
-                    # Variable string array: 1 byte count + max_size strings of element_size bytes each
-                    self.size = 1 + (self.max_size * self.element_size)
+                    # Variable string array: count bytes (1 or 2) + max_size strings of element_size bytes each
+                    count_bytes = 2 if self.max_size > 255 else 1
+                    self.size = count_bytes + (self.max_size * self.element_size)
                 else:
                     print(
                         f"String array field {self.name} missing required size or max_size option")
@@ -291,8 +292,9 @@ class Field:
                     # Fixed array: always full, no count byte needed
                     self.size = base_size * self.size_option
                 elif self.max_size is not None:
-                    # Variable array: 1 byte for count + max space
-                    self.size = 1 + (base_size * self.max_size)
+                    # Variable array: count bytes (1 or 2) + max space
+                    count_bytes = 2 if self.max_size > 255 else 1
+                    self.size = count_bytes + (base_size * self.max_size)
                 else:
                     print(
                         f"Array field {self.name} missing required size or max_size option")
@@ -302,8 +304,9 @@ class Field:
                 # Fixed string: exactly size_option characters
                 self.size = self.size_option
             elif self.max_size is not None:
-                # Variable string: 1 byte length + max characters
-                self.size = 1 + self.max_size
+                # Variable string: length bytes (1 or 2) + max characters
+                length_bytes = 2 if self.max_size > 255 else 1
+                self.size = length_bytes + self.max_size
             else:
                 print(
                     f"String field {self.name} missing required size or max_size option")
@@ -453,6 +456,7 @@ class Message:
         self.package = package
         self.isEnum = False
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
+        self.variable = False  # Variable length message encoding
 
     def parse(self, msg):
         self.name = msg.name
@@ -463,6 +467,10 @@ class Message:
                     if self.id:
                         raise Exception(f"Redefinition of msg_id for {e.name}")
                     self.id = e.value
+                elif e.name == "variable":
+                    sval = str(e.value).strip().lower()
+                    if sval in ('true', '1', 'yes', 'on') or e.value is True:
+                        self.variable = True
             elif type(e) == ast.Comment:
                 comments.append(e.text)
             elif type(e) == ast.OneOf:
@@ -553,14 +561,37 @@ class Message:
         # Calculate magic numbers for this message
         self.magic_bytes = calculate_magic_numbers(self)
         
+        # Calculate minimum size for variable messages
+        # min_size is the size when all variable-length fields are at their minimum
+        if self.variable:
+            self.min_size = 0
+            for key, value in self.fields.items():
+                if value.is_array and value.max_size is not None:
+                    # Bounded array: only the count bytes (1 or 2, no data when empty)
+                    count_bytes = 2 if value.max_size > 255 else 1
+                    self.min_size += count_bytes
+                elif value.fieldType == "string" and value.max_size is not None:
+                    # Variable string: only the length bytes (1 or 2, no data when empty)
+                    length_bytes = 2 if value.max_size > 255 else 1
+                    self.min_size += length_bytes
+                else:
+                    # Fixed-size fields use their full size
+                    self.min_size += value.size
+        else:
+            self.min_size = self.size
+        
         return True
 
     def __str__(self):
         output = ""
         for c in self.comments:
             output = output + c + "\n"
-        output = output + \
-            f"Message: {self.name}, Size: {self.size}, ID: {self.id}\n"
+        if self.variable:
+            output = output + \
+                f"Message: {self.name}, Size: {self.size}, MinSize: {self.min_size}, ID: {self.id}, Variable: True\n"
+        else:
+            output = output + \
+                f"Message: {self.name}, Size: {self.size}, ID: {self.id}\n"
 
         for key, value in self.fields.items():
             output = output + value.__str__() + "\n"

@@ -184,6 +184,11 @@ class MessageTsClassGen():
             result += f'  static readonly _magic1: number = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
             result += f'  static readonly _magic2: number = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
         
+        # Add variable message constants
+        if msg.variable:
+            result += f'  static readonly _minSize: number = {msg.min_size}; // Minimum size when all variable fields are empty\n'
+            result += f'  static readonly _isVariable: boolean = true; // This message uses variable-length encoding\n'
+        
         result += '\n'
         
         # Generate constructor that supports init object (only reference Init type if fields exist)
@@ -207,6 +212,10 @@ class MessageTsClassGen():
         if equality:
             result += MessageTsClassGen.generate_equals_method(msg, package_msg_name, fields)
         
+        # Generate variable message methods if this is a variable message
+        if msg.variable:
+            result += MessageTsClassGen._generate_variable_methods(msg, package_msg_name, fields)
+        
         # Static getSize method
         result += f'  static getSize(): number {{\n'
         result += f'    return {total_size};\n'
@@ -214,6 +223,183 @@ class MessageTsClassGen():
         
         result += '}\n'
         return result + '\n'
+    
+    @staticmethod
+    def _generate_variable_methods(msg, package_msg_name, fields):
+        """Generate variable-length encoding methods for TypeScript messages."""
+        result = ''
+        
+        # Generate packSize method
+        result += f'\n  /**\n'
+        result += f'   * Calculate the packed size using variable-length encoding.\n'
+        result += f'   * @returns The size in bytes when packed (between _minSize and _size)\n'
+        result += f'   */\n'
+        result += f'  packSize(): number {{\n'
+        result += f'    let size = 0;\n'
+        
+        for key, field in msg.fields.items():
+            name = field.name
+            if field.is_array and field.max_size is not None:
+                # Variable array - TypeScript uses name_count
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_size = 2 if field.max_size > 255 else 1
+                if field.fieldType == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field.fieldType, (field.size - count_size) // field.max_size)
+                result += f'    size += {count_size} + (this.{name}_count * {element_size}); // {name}\n'
+            elif field.fieldType == "string" and field.max_size is not None:
+                # Variable string - TypeScript uses name_length
+                length_size = 2 if field.max_size > 255 else 1
+                result += f'    size += {length_size} + this.{name}_length; // {name}\n'
+            else:
+                result += f'    size += {field.size}; // {name}\n'
+        
+        result += f'    return size;\n'
+        result += f'  }}\n'
+        
+        # Generate packVariable method
+        result += f'\n  /**\n'
+        result += f'   * Pack message using variable-length encoding.\n'
+        result += f'   * @returns Buffer with packed data (only used bytes)\n'
+        result += f'   */\n'
+        result += f'  packVariable(): Buffer {{\n'
+        result += f'    const size = this.packSize();\n'
+        result += f'    const buffer = Buffer.alloc(size);\n'
+        result += f'    let offset = 0;\n'
+        
+        msg_offset = 0
+        for key, field in msg.fields.items():
+            name = field.name
+            field_type = field.fieldType
+            if field.is_array and field.max_size is not None:
+                # Variable array - TypeScript uses name_count and name_data
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if field_type == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                max_len = field.max_size
+                result += f'    // {name}: variable array\n'
+                result += f'    const {name}Count = this.{name}_count;\n'
+                result += f'    buffer.writeUInt8({name}Count, offset++);\n'
+                
+                if field_type not in type_sizes and field_type != "string" and not field.isEnum:
+                    # Nested struct array
+                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                    result += f'      const nested = this.{name}_data[i];\n'
+                    result += f'      nested._buffer.copy(buffer, offset);\n'
+                    result += f'      offset += {element_size};\n'
+                    result += f'    }}\n'
+                elif field_type == "string":
+                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                    result += f'      const str = this.{name}_data[i] || \'\';\n'
+                    result += f'      buffer.write(str.slice(0, {element_size}), offset);\n'
+                    result += f'      offset += {element_size};\n'
+                    result += f'    }}\n'
+                else:
+                    # Map types to Buffer API write methods
+                    buffer_write_methods = {
+                        "int8": "writeInt8", "uint8": "writeUInt8",
+                        "int16": "writeInt16LE", "uint16": "writeUInt16LE",
+                        "int32": "writeInt32LE", "uint32": "writeUInt32LE",
+                        "int64": "writeBigInt64LE", "uint64": "writeBigUInt64LE",
+                        "float": "writeFloatLE", "double": "writeDoubleLE",
+                        "bool": "writeUInt8",
+                    }
+                    write_method_name = buffer_write_methods.get(field_type if not field.isEnum else "uint8", "writeUInt8")
+                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                    result += f'      buffer.{write_method_name}(this.{name}_data[i], offset);\n'
+                    result += f'      offset += {element_size};\n'
+                    result += f'    }}\n'
+            elif field_type == "string" and field.max_size is not None:
+                # Variable string - copy from internal buffer (string is stored there)
+                max_len = field.max_size
+                result += f'    // {name}: variable string\n'
+                result += f'    const {name}Len = this.{name}_length;\n'
+                result += f'    buffer.writeUInt8({name}Len, offset++);\n'
+                # Copy string data from internal buffer
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset + 1}, {msg_offset + 1} + {name}Len);\n'
+                result += f'    offset += {name}Len;\n'
+            else:
+                # Fixed field - copy from internal buffer
+                result += f'    // {name}: fixed size ({field.size} bytes)\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset + field.size});\n'
+                result += f'    offset += {field.size};\n'
+            msg_offset += field.size
+        
+        result += f'    return buffer;\n'
+        result += f'  }}\n'
+        
+        # Generate static unpackVariable method
+        result += f'\n  /**\n'
+        result += f'   * Unpack message from variable-length encoded buffer.\n'
+        result += f'   * @param buffer Input buffer with variable-length encoded data\n'
+        result += f'   * @returns New instance with unpacked data\n'
+        result += f'   */\n'
+        result += f'  static unpackVariable(buffer: Buffer): {package_msg_name} {{\n'
+        result += f'    const msg = new {package_msg_name}();\n'
+        result += f'    let offset = 0;\n'
+        
+        msg_offset = 0
+        for key, field in msg.fields.items():
+            name = field.name
+            field_type = field.fieldType
+            if field.is_array and field.max_size is not None:
+                # Variable array
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if field_type == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                max_len = field.max_size
+                result += f'    // {name}: variable array\n'
+                result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {max_len});\n'
+                
+                if field_type not in type_sizes and field_type != "string" and not field.isEnum:
+                    # Nested struct array - need to set the internal buffer array elements
+                    nested_type = '%s%s' % (pascalCase(field.package), field_type)
+                    result += f'    // Write count to internal buffer\n'
+                    result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                    result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                    result += f'      offset += {element_size};\n'
+                    result += f'    }}\n'
+                elif field_type == "string":
+                    result += f'    // Write count to internal buffer\n'
+                    result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                    result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                    result += f'      offset += {element_size};\n'
+                    result += f'    }}\n'
+                else:
+                    # Primitive array
+                    result += f'    // Write count to internal buffer\n'
+                    result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                    result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                    result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                    result += f'      offset += {element_size};\n'
+                    result += f'    }}\n'
+            elif field_type == "string" and field.max_size is not None:
+                # Variable string
+                max_len = field.max_size
+                result += f'    // {name}: variable string\n'
+                result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {max_len});\n'
+                result += f'    // Write length to internal buffer\n'
+                result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset + 1}, offset, offset + {name}Len);\n'
+                result += f'    offset += {name}Len;\n'
+            else:
+                # Fixed field
+                result += f'    // {name}: fixed size ({field.size} bytes)\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset}, offset, offset + {field.size});\n'
+                result += f'    offset += {field.size};\n'
+            msg_offset += field.size
+        
+        result += f'    return msg;\n'
+        result += f'  }}\n'
+        
+        return result
     
     @staticmethod
     def generate_equals_method(msg, package_msg_name, fields):

@@ -50,6 +50,30 @@ class MessageBase {
   }
 
   /**
+   * Get the message ID for this message type.
+   * @returns {number|undefined} The message ID, or undefined if not defined
+   */
+  getMsgId() {
+    return this.constructor._msgid;
+  }
+
+  /**
+   * Get the magic1 checksum value for this message type.
+   * @returns {number} The magic1 value, or 0 if not defined
+   */
+  getMagic1() {
+    return this.constructor._magic1 ?? 0;
+  }
+
+  /**
+   * Get the magic2 checksum value for this message type.
+   * @returns {number} The magic2 value, or 0 if not defined
+   */
+  getMagic2() {
+    return this.constructor._magic2 ?? 0;
+  }
+
+  /**
    * Get the raw buffer containing the message data.
    * @param {MessageBase} instance - The message instance
    * @returns {Buffer} The raw buffer

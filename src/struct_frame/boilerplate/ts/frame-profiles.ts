@@ -203,16 +203,15 @@ export function encodeMessage(
     msg: MessageBase,
     options: EncodeOptions = {}
 ): Uint8Array {
-    const ctor = msg.constructor as typeof MessageBase & { _msgid?: number; _magic1?: number; _magic2?: number };
-    const msgId = ctor._msgid;
+    const msgId = msg.getMsgId();
     
     if (msgId === undefined) {
         throw new Error('Message struct must have _msgid static property');
     }
     
     const payload = new Uint8Array(msg._buffer);
-    const magic1 = ctor._magic1 ?? 0;
-    const magic2 = ctor._magic2 ?? 0;
+    const magic1 = msg.getMagic1();
+    const magic2 = msg.getMagic2();
     const { seq = 0, sysId = 0, compId = 0 } = options;
     
     // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id

@@ -16,26 +16,32 @@ const {
   ExtendedTestExtendedIdMessage10,
   ExtendedTestLargePayloadMessage1,
   ExtendedTestLargePayloadMessage2,
+  ExtendedTestExtendedVariableSingleArray,
   get_message_info,
 } = require('../../generated/js/extended_test.structframe');
 
 /** Message count */
-const MESSAGE_COUNT = 12;
+const MESSAGE_COUNT = 17;
 
 /** Message ID order array */
 const MSG_ID_ORDER = [
-  ExtendedTestExtendedIdMessage1._msgid,    // 0: 750
-  ExtendedTestExtendedIdMessage2._msgid,    // 1: 1000
-  ExtendedTestExtendedIdMessage3._msgid,    // 2: 500
-  ExtendedTestExtendedIdMessage4._msgid,    // 3: 2048
-  ExtendedTestExtendedIdMessage5._msgid,    // 4: 300
-  ExtendedTestExtendedIdMessage6._msgid,    // 5: 1500
-  ExtendedTestExtendedIdMessage7._msgid,    // 6: 999
-  ExtendedTestExtendedIdMessage8._msgid,    // 7: 1234
-  ExtendedTestExtendedIdMessage9._msgid,    // 8: 4000
-  ExtendedTestExtendedIdMessage10._msgid,   // 9: 256
-  ExtendedTestLargePayloadMessage1._msgid,  // 10: 800
-  ExtendedTestLargePayloadMessage2._msgid,  // 11: 801
+  ExtendedTestExtendedIdMessage1._msgid,            // 0: 750
+  ExtendedTestExtendedIdMessage2._msgid,            // 1: 1000
+  ExtendedTestExtendedIdMessage3._msgid,            // 2: 500
+  ExtendedTestExtendedIdMessage4._msgid,            // 3: 2048
+  ExtendedTestExtendedIdMessage5._msgid,            // 4: 300
+  ExtendedTestExtendedIdMessage6._msgid,            // 5: 1500
+  ExtendedTestExtendedIdMessage7._msgid,            // 6: 999
+  ExtendedTestExtendedIdMessage8._msgid,            // 7: 1234
+  ExtendedTestExtendedIdMessage9._msgid,            // 8: 4000
+  ExtendedTestExtendedIdMessage10._msgid,           // 9: 256
+  ExtendedTestLargePayloadMessage1._msgid,          // 10: 800
+  ExtendedTestLargePayloadMessage2._msgid,          // 11: 801
+  ExtendedTestExtendedVariableSingleArray._msgid,   // 12: empty
+  ExtendedTestExtendedVariableSingleArray._msgid,   // 13: single
+  ExtendedTestExtendedVariableSingleArray._msgid,   // 14: 1/3 filled
+  ExtendedTestExtendedVariableSingleArray._msgid,   // 15: one empty
+  ExtendedTestExtendedVariableSingleArray._msgid,   // 16: full
 ];
 
 /** Create message instances */
@@ -156,7 +162,53 @@ function getMessageLarge2() {
   });
 }
 
-/** Message getters by msg_id */
+/** Get ExtendedVariableSingleArray messages (5 with different fill levels) */
+function getExtVarSingleMessages() {
+  return [
+    // Empty payload (0 elements)
+    new ExtendedTestExtendedVariableSingleArray({
+      timestamp: 0x0000000000000001n,
+      telemetry_data_count: 0,
+      telemetry_data_data: [],
+      crc: 0x00000001,
+    }),
+    // Single element
+    new ExtendedTestExtendedVariableSingleArray({
+      timestamp: 0x0000000000000002n,
+      telemetry_data_count: 1,
+      telemetry_data_data: [42],
+      crc: 0x00000002,
+    }),
+    // One-third filled (83 elements for max_size=250)
+    new ExtendedTestExtendedVariableSingleArray({
+      timestamp: 0x0000000000000003n,
+      telemetry_data_count: 83,
+      telemetry_data_data: Array.from({length: 83}, (_, i) => i),
+      crc: 0x00000003,
+    }),
+    // One position empty (249 elements)
+    new ExtendedTestExtendedVariableSingleArray({
+      timestamp: 0x0000000000000004n,
+      telemetry_data_count: 249,
+      telemetry_data_data: Array.from({length: 249}, (_, i) => i % 256),
+      crc: 0x00000004,
+    }),
+    // Full (250 elements)
+    new ExtendedTestExtendedVariableSingleArray({
+      timestamp: 0x0000000000000005n,
+      telemetry_data_count: 250,
+      telemetry_data_data: Array.from({length: 250}, (_, i) => i % 256),
+      crc: 0x00000005,
+    }),
+  ];
+}
+
+/** Variable message indices for encoding/validation */
+let extVarSingleEncodeIdx = 0;
+let extVarSingleValidateIdx = 0;
+const extVarSingleMsgs = getExtVarSingleMessages();
+
+/** Message getters by msg_id - for fixed messages */
 function getMessage(msgId) {
   switch (msgId) {
     case ExtendedTestExtendedIdMessage1._msgid: return getMessageExt1();
@@ -190,18 +242,27 @@ function getMessageClass(msgId) {
     case ExtendedTestExtendedIdMessage10._msgid: return ExtendedTestExtendedIdMessage10;
     case ExtendedTestLargePayloadMessage1._msgid: return ExtendedTestLargePayloadMessage1;
     case ExtendedTestLargePayloadMessage2._msgid: return ExtendedTestLargePayloadMessage2;
+    case ExtendedTestExtendedVariableSingleArray._msgid: return ExtendedTestExtendedVariableSingleArray;
     default: return null;
   }
 }
 
-/** Reset state - not needed for extended tests (stateless) */
+/** Reset state - resets variable message indices */
 function resetState() {
-  // No state to reset - each message type has exactly one instance
+  extVarSingleEncodeIdx = 0;
+  extVarSingleValidateIdx = 0;
 }
 
 /** Encode message by index */
 function encodeMessage(writer, index) {
   const msgId = MSG_ID_ORDER[index];
+  
+  // Handle variable messages with index tracking
+  if (msgId === ExtendedTestExtendedVariableSingleArray._msgid) {
+    const msg = extVarSingleMsgs[extVarSingleEncodeIdx++];
+    return writer.write(msg);
+  }
+  
   const msg = getMessage(msgId);
   if (!msg) return 0;
   return writer.write(msg);
@@ -209,10 +270,20 @@ function encodeMessage(writer, index) {
 
 /** Validate decoded message using equals() method */
 function validateMessage(msgId, data, _index) {
-  const expected = getMessage(msgId);
   const MsgClass = getMessageClass(msgId);
-  if (!expected || !MsgClass) return false;
+  if (!MsgClass) return false;
 
+  // Handle variable messages with index tracking
+  if (msgId === ExtendedTestExtendedVariableSingleArray._msgid) {
+    const expected = extVarSingleMsgs[extVarSingleValidateIdx++];
+    if (data.length !== MsgClass._size) return false;
+    const decoded = new MsgClass();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
+  }
+
+  const expected = getMessage(msgId);
+  if (!expected) return false;
   if (data.length !== MsgClass._size) return false;
 
   const decoded = new MsgClass();

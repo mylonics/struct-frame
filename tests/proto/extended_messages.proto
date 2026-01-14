@@ -126,10 +126,87 @@ message LargePayloadMessage1 {
   string device_name = 4 [size=32];
 }
 
+// ============================================================================
+// Variable Length Message Tests for Extended IDs (msgid: 802-804)
+// These messages use option variable = true for variable-length encoding
+// with extended message IDs (> 255)
+// ============================================================================
+
+// Variable message with extended ID and single bounded array (msgid: 802)
+message ExtendedVariableSingleArray {
+  option msgid = 802;
+  option variable = true;
+  
+  uint64 timestamp = 1;
+  repeated uint8 telemetry_data = 2 [max_size=250];  // Up to 250 bytes
+  uint32 crc = 3;
+}
+
+// Variable message with extended ID and multiple bounded arrays (msgid: 803)
+message ExtendedVariableMultipleArrays {
+  option msgid = 803;
+  option variable = true;
+  
+  uint32 device_id = 1;
+  repeated int16 temperatures = 2 [max_size=100];   // Up to 200 bytes of int16 data
+  repeated uint32 timestamps = 3 [max_size=50];     // Up to 200 bytes of uint32 data
+  string device_info = 4 [max_size=128];            // Up to 128 chars variable string
+}
+
+// Variable message with extended ID and mixed fixed/variable fields (msgid: 804)
+message ExtendedVariableMixedFields {
+  option msgid = 804;
+  option variable = true;
+  
+  uint64 session_id = 1;             // Fixed field (8 bytes)
+  double latitude = 2;               // Fixed field (8 bytes)
+  double longitude = 3;              // Fixed field (8 bytes)
+  string fixed_tag = 4 [size=32];    // Fixed string (32 bytes)
+  repeated float sensor_values = 5 [max_size=80];   // Variable array
+  string variable_notes = 6 [max_size=200];         // Variable string
+}
+
+// ============================================================================
+// Large Payload Message 2 (msgid: 801) - Tests fixed array with 280 elements
+// ============================================================================
+
 // Another large message with different structure
 message LargePayloadMessage2 {
   option msgid = 801;
   
-  // Large array to ensure extended payload (> 255 bytes)
+  // Large fixed array to ensure extended payload (> 255 bytes)
   repeated uint8 large_data = 1 [size=280];
+}
+
+// ============================================================================
+// Array > 256 Element Tests (msgid: 805-807)
+// These messages test arrays with more than 256 elements, requiring uint16_t
+// for the count field instead of uint8_t
+// ============================================================================
+
+// Message with variable array of 300 uint8 elements (msgid: 805)
+message LargeArrayMessage1 {
+  option msgid = 805;
+  
+  uint32 sequence_number = 1;
+  repeated uint8 sensor_data = 2 [max_size=300];  // Up to 300 bytes of sensor data
+  uint32 checksum = 3;
+}
+
+// Message with variable array of 500 uint16 elements (msgid: 806)
+message LargeArrayMessage2 {
+  option msgid = 806;
+  
+  uint64 timestamp = 1;
+  repeated uint16 measurements = 2 [max_size=500];  // Up to 500 uint16 values
+  string device_id = 3 [size=16];
+}
+
+// Message with variable array of 1000 float elements (msgid: 807)
+message LargeArrayMessage3 {
+  option msgid = 807;
+  
+  int32 data_id = 1;
+  repeated float readings = 2 [max_size=1000];  // Up to 1000 float values
+  bool is_valid = 3;
 }
