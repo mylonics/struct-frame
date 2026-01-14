@@ -167,15 +167,46 @@ message ExtendedVariableMixedFields {
 }
 
 // ============================================================================
-// Large Payload Message 2 (msgid: 801) - NOTE: This message has intentionally
-// invalid field size (280 > 255) for testing error handling. It is placed at
-// the end so the generator processes variable messages first.
+// Large Payload Message 2 (msgid: 801) - Tests fixed array with 280 elements
 // ============================================================================
 
 // Another large message with different structure
 message LargePayloadMessage2 {
   option msgid = 801;
   
-  // Large array to ensure extended payload (> 255 bytes)
+  // Large fixed array to ensure extended payload (> 255 bytes)
   repeated uint8 large_data = 1 [size=280];
+}
+
+// ============================================================================
+// Array > 256 Element Tests (msgid: 805-807)
+// These messages test arrays with more than 256 elements, requiring uint16_t
+// for the count field instead of uint8_t
+// ============================================================================
+
+// Message with variable array of 300 uint8 elements (msgid: 805)
+message LargeArrayMessage1 {
+  option msgid = 805;
+  
+  uint32 sequence_number = 1;
+  repeated uint8 sensor_data = 2 [max_size=300];  // Up to 300 bytes of sensor data
+  uint32 checksum = 3;
+}
+
+// Message with variable array of 500 uint16 elements (msgid: 806)
+message LargeArrayMessage2 {
+  option msgid = 806;
+  
+  uint64 timestamp = 1;
+  repeated uint16 measurements = 2 [max_size=500];  // Up to 500 uint16 values
+  string device_id = 3 [size=16];
+}
+
+// Message with variable array of 1000 float elements (msgid: 807)
+message LargeArrayMessage3 {
+  option msgid = 807;
+  
+  int32 data_id = 1;
+  repeated float readings = 2 [max_size=1000];  // Up to 1000 float values
+  bool is_valid = 3;
 }

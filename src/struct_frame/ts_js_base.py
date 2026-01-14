@@ -93,9 +93,10 @@ class BaseFieldGen:
                     result += "    .StructArray('%s', %d, new Struct().String('value', %d).compile())" % (
                         var_name, field.size_option, field.element_size)
                 else:  # Variable size array [max_size=X]
+                    count_method = "UInt16LE" if field.max_size > 255 else "UInt8"
                     result += "    // Variable string array: up to %d strings, each max %d chars\n" % (
                         field.max_size, field.element_size)
-                    result += "    .UInt8('%s_count')\n" % var_name
+                    result += "    .%s('%s_count')\n" % (count_method, var_name)
                     result += "    .StructArray('%s_data', %d, new Struct().String('value', %d).compile())" % (
                         var_name, field.max_size, field.element_size)
             else:
@@ -124,8 +125,9 @@ class BaseFieldGen:
                             array_method, var_name, array_size)
                 else:  # Variable size array [max_size=X]
                     max_count = field.max_size
+                    count_method = "UInt16LE" if field.max_size > 255 else "UInt8"
                     result += '    // Variable array: up to %d elements\n' % max_count
-                    result += "    .UInt8('%s_count')\n" % var_name
+                    result += "    .%s('%s_count')\n" % (count_method, var_name)
                     if array_method == 'StructArray':
                         result += "    .%s('%s_data', %d, %s)" % (
                             array_method, var_name, max_count, base_type)
@@ -139,8 +141,9 @@ class BaseFieldGen:
                     result += '    // Fixed string: exactly %d chars\n' % field.size_option
                     result += "    .String('%s', %d)" % (var_name, field.size_option)
                 elif hasattr(field, 'max_size') and field.max_size is not None:
+                    length_method = "UInt16LE" if field.max_size > 255 else "UInt8"
                     result += '    // Variable string: up to %d chars\n' % field.max_size
-                    result += "    .UInt8('%s_length')\n" % var_name
+                    result += "    .%s('%s_length')\n" % (length_method, var_name)
                     result += "    .String('%s_data', %d)" % (var_name, field.max_size)
                 else:
                     result += "    .String('%s')" % var_name
@@ -390,14 +393,16 @@ def calculate_field_layout(msg, package, packages):
                     # Count field
                     count_name = f"{var_name}_count"
                     data_name = f"{var_name}_data"
+                    count_type = "uint16" if max_count > 255 else "uint8"
+                    count_size = 2 if max_count > 255 else 1
                     fields.append(FieldInfo(
                         name=count_name,
                         offset=offset,
-                        size=1,
-                        field_type="uint8",
+                        size=count_size,
+                        field_type=count_type,
                         comments=comments
                     ))
-                    offset += 1
+                    offset += count_size
                     # Data field
                     total_data_size = elem_size * max_count
                     fields.append(FieldInfo(
@@ -447,15 +452,17 @@ def calculate_field_layout(msg, package, packages):
                     max_count = field.max_size
                     count_name = f"{var_name}_count"
                     data_name = f"{var_name}_data"
+                    count_type = "uint16" if max_count > 255 else "uint8"
+                    count_size = 2 if max_count > 255 else 1
                     # Count field
                     fields.append(FieldInfo(
                         name=count_name,
                         offset=offset,
-                        size=1,
-                        field_type="uint8",
+                        size=count_size,
+                        field_type=count_type,
                         comments=comments
                     ))
-                    offset += 1
+                    offset += count_size
                     # Data field
                     total_data_size = elem_size * max_count
                     fields.append(FieldInfo(
@@ -491,15 +498,17 @@ def calculate_field_layout(msg, package, packages):
                 max_len = field.max_size
                 length_name = f"{var_name}_length"
                 data_name = f"{var_name}_data"
+                length_type = "uint16" if max_len > 255 else "uint8"
+                length_size = 2 if max_len > 255 else 1
                 # Length field
                 fields.append(FieldInfo(
                     name=length_name,
                     offset=offset,
-                    size=1,
-                    field_type="uint8",
+                    size=length_size,
+                    field_type=length_type,
                     comments=comments
                 ))
-                offset += 1
+                offset += length_size
                 # Data field
                 fields.append(FieldInfo(
                     name=data_name,
