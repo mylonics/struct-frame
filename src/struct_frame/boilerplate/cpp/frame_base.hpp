@@ -63,22 +63,24 @@ struct FrameMsgInfo {
 
 /**
  * Base class for message types with associated metadata.
- * Template parameters embed msg_id and max_size as compile-time constants.
+ * Template parameters embed msg_id, max_size, and magic bytes as compile-time constants.
  *
  * Usage:
- *   struct MyMessage : MessageBase<MyMessage, MSG_ID, MAX_SIZE> {
+ *   struct MyMessage : MessageBase<MyMessage, MSG_ID, MAX_SIZE, MAGIC1, MAGIC2> {
  *       uint32_t field1;
  *       float field2;
  *   };
  *
- *   // Encode directly without passing msg_id/size:
+ *   // Encode directly without passing msg_id/size/magic:
  *   MyMessage msg{.field1 = 42, .field2 = 3.14f};
  *   encode_profile_standard(buffer, sizeof(buffer), msg);
  */
-template <typename Derived, uint16_t MsgId, size_t MaxSize>
+template <typename Derived, uint16_t MsgId, size_t MaxSize, uint8_t Magic1, uint8_t Magic2>
 struct MessageBase {
   static constexpr uint16_t MSG_ID = MsgId;
   static constexpr size_t MAX_SIZE = MaxSize;
+  static constexpr uint8_t MAGIC1 = Magic1;
+  static constexpr uint8_t MAGIC2 = Magic2;
 
   // Get pointer to the message data (cast to derived type's data)
   const uint8_t* data() const { return reinterpret_cast<const uint8_t*>(static_cast<const Derived*>(this)); }

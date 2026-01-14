@@ -283,10 +283,14 @@ class MessageCppGen():
             else:
                 msg_id_value = msg.id
 
+        # Get magic bytes (default to 0 if not present)
+        magic1 = msg.magic_bytes[0] if msg.magic_bytes else 0
+        magic2 = msg.magic_bytes[1] if msg.magic_bytes else 0
+
         # Generate struct with optional MessageBase inheritance
         if has_msg_id:
-            result += 'struct %s : FrameParsers::MessageBase<%s, %d, %d> {' % (
-                structName, structName, msg_id_value, size)
+            result += 'struct %s : FrameParsers::MessageBase<%s, %d, %d, %d, %d> {\n' % (
+                structName, structName, msg_id_value, size, magic1, magic2)
         else:
             result += 'struct %s {' % structName
 
@@ -332,12 +336,6 @@ class MessageCppGen():
             
             result += '    }\n'
             result += f'    bool operator!=(const {structName}& other) const {{ return !(*this == other); }}\n'
-        
-        # Add magic number constants inside the class (for checksum initialization)
-        if has_msg_id and msg.magic_bytes:
-            result += f'\n    // Magic numbers for checksum (based on field types and positions)\n'
-            result += f'    static constexpr uint8_t MAGIC1 = {msg.magic_bytes[0]};\n'
-            result += f'    static constexpr uint8_t MAGIC2 = {msg.magic_bytes[1]};\n'
         
         # Add variable message constants and methods
         if msg.variable:
