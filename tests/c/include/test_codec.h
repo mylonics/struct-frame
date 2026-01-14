@@ -134,6 +134,11 @@ static inline bool encode_messages(const test_config_t* config, const char* form
   }
 
   *encoded_size = buffer_writer_size(&writer);
+
+  if (strstr(config->test_name, "Variable Flag") != NULL) {
+    printf("Total: %zu bytes\n", *encoded_size);
+  }
+
   return true;
 }
 

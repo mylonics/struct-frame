@@ -88,6 +88,10 @@ function encodeMessages(config, format) {
     }
   }
 
+  if (config.testName.includes('Variable Flag')) {
+    console.log(`Total: ${writer.size} bytes`);
+  }
+
   return Buffer.from(writer.data());
 }
 

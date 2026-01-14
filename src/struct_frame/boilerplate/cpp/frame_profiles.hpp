@@ -204,7 +204,16 @@ class FrameEncoderMinimal {
 template <typename Config>
 class BufferParserWithCrc {
  public:
-  static FrameMsgInfo parse(const uint8_t* buffer, size_t length) {
+  /**
+   * Parse a frame with CRC using a callable to get message info.
+   * @tparam GetMessageInfoFn Callable type (function pointer, lambda, or functor) with signature MessageInfo(uint16_t)
+   * @param buffer Pointer to data buffer
+   * @param length Size of buffer
+   * @param get_message_info Callable that returns MessageInfo for a given message ID
+   * @return FrameMsgInfo with valid=true if successful
+   */
+  template <typename GetMessageInfoFn>
+  static FrameMsgInfo parse(const uint8_t* buffer, size_t length, GetMessageInfoFn get_message_info) {
     if (length < Config::overhead) {
       return FrameMsgInfo();
     }
@@ -258,11 +267,10 @@ class BufferParserWithCrc {
     if constexpr (Config::has_crc) {
       size_t crc_len = total_size - crc_start - Config::footer_size;
       
-      // Get magic numbers for this message type
-      uint8_t magic1 = 0, magic2 = 0;
-      get_magic_numbers(msg_id, &magic1, &magic2);
+      // Get magic numbers for this message type from message info
+      auto info = get_message_info(msg_id);
       
-      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, magic1, magic2);
+      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, info.magic1, info.magic2);
       if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
         return FrameMsgInfo();
       }
@@ -394,12 +402,7 @@ class BufferReader {
       return FrameMsgInfo();
     }
 
-    FrameMsgInfo result;
-    if constexpr (Config::has_length || Config::has_crc) {
-      result = BufferParserWithCrc<Config>::parse(buffer_ + offset_, size_ - offset_);
-    } else {
-      result = BufferParserMinimal<Config>::template parse(buffer_ + offset_, size_ - offset_, get_message_info_);
-    }
+    FrameMsgInfo result = parse_frame(buffer_ + offset_, size_ - offset_);
 
     if (result.valid && result.frame_size > 0) {
       offset_ += result.frame_size;
@@ -429,6 +432,14 @@ class BufferReader {
   bool has_more() const { return offset_ < size_; }
 
  private:
+  FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
+    if constexpr (Config::has_length || Config::has_crc) {
+      return BufferParserWithCrc<Config>::template parse(buffer, size, get_message_info_);
+    } else {
+      return BufferParserMinimal<Config>::template parse(buffer, size, get_message_info_);
+    }
+  }
+
   const uint8_t* buffer_;
   size_t size_;
   size_t offset_;
@@ -658,7 +669,7 @@ class AccumulatingReader {
     size_t partial_len = internal_data_len_ > current_size_ ? internal_data_len_ - current_size_ : 0;
     if (internal_data_len_ > 0 && current_offset_ == 0) {
       // We have data in internal buffer that includes new data
-      FrameMsgInfo result = parse_buffer(internal_buffer_, internal_data_len_);
+      FrameMsgInfo result = parse_frame(internal_buffer_, internal_data_len_);
 
       if (result.valid) {
         // Successfully parsed from internal buffer
@@ -683,7 +694,7 @@ class AccumulatingReader {
       return FrameMsgInfo();
     }
 
-    FrameMsgInfo result = parse_buffer(current_buffer_ + current_offset_, current_size_ - current_offset_);
+    FrameMsgInfo result = parse_frame(current_buffer_ + current_offset_, current_size_ - current_offset_);
 
     if (result.valid && result.frame_size > 0) {
       current_offset_ += result.frame_size;
@@ -973,7 +984,7 @@ class AccumulatingReader {
   }
 
   FrameMsgInfo validate_and_return() {
-    FrameMsgInfo result = parse_buffer(internal_buffer_, internal_data_len_);
+    FrameMsgInfo result = parse_frame(internal_buffer_, internal_data_len_);
 
     // Reset state for next message
     state_ = State::LookingForStart1;
@@ -987,9 +998,9 @@ class AccumulatingReader {
    * Shared Parsing
    *=========================================================================*/
 
-  FrameMsgInfo parse_buffer(const uint8_t* buffer, size_t size) {
+  FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
     if constexpr (Config::has_length || Config::has_crc) {
-      return BufferParserWithCrc<Config>::parse(buffer, size);
+      return BufferParserWithCrc<Config>::template parse(buffer, size, get_message_info_);
     } else {
       return BufferParserMinimal<Config>::template parse(buffer, size, get_message_info_);
     }

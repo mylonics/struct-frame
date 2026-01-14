@@ -235,11 +235,11 @@ inline const std::array<SerializationTestUnionTestMessage, 2>& get_union_test_me
 // VariableSingleArray array (5 messages with different fill levels)
 inline const std::array<SerializationTestVariableSingleArray, 5>& get_variable_single_array_messages() {
   static const std::array<SerializationTestVariableSingleArray, 5> messages = {
-      create_variable_single_array_empty(),    // 0: Empty
-      create_variable_single_array_single(),   // 1: Single element
-      create_variable_single_array_third(),    // 2: One-third filled
-      create_variable_single_array_almost(),   // 3: One position empty
-      create_variable_single_array_full(),     // 4: Full
+      create_variable_single_array_empty(),   // 0: Empty
+      create_variable_single_array_single(),  // 1: Single element
+      create_variable_single_array_third(),   // 2: One-third filled
+      create_variable_single_array_almost(),  // 3: One position empty
+      create_variable_single_array_full(),    // 4: Full
   };
   return messages;
 }
@@ -381,9 +381,7 @@ struct Config {
 
   static const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() { return TestMessagesData::get_msg_id_order(); }
 
-  static FrameParsers::MessageInfo get_message_info(uint16_t msg_id) {
-    return FrameParsers::get_message_info(msg_id);
-  }
+  static FrameParsers::MessageInfo get_message_info(uint16_t msg_id) { return FrameParsers::get_message_info(msg_id); }
 
   static bool supports_format(const std::string& format) {
     return format == "profile_standard" || format == "profile_sensor" || format == "profile_ipc" ||

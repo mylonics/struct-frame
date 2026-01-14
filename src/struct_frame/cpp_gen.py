@@ -551,49 +551,6 @@ class FileCppGen():
             yield '    return false;\n'
             yield '}\n\n'
             
-            # Generate get_magic_numbers function (legacy support)
-            if use_namespace:
-                # When using package ID, message ID is 16-bit
-                yield 'inline bool get_magic_numbers(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
-                yield '    // Extract package ID and message ID from 16-bit message ID\n'
-                yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
-                yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
-                yield '    \n'
-                yield f'    // Check if this is our package\n'
-                yield f'    if (pkg_id != PACKAGE_ID) {{\n'
-                yield f'        return false;\n'
-                yield f'    }}\n'
-                yield '    \n'
-                yield '    switch (local_msg_id) {\n'
-            else:
-                # Flat namespace mode: 8-bit message ID
-                yield 'inline bool get_magic_numbers(size_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
-                yield '    switch (msg_id) {\n'
-            
-            for key, msg in package.sortedMessages().items():
-                if use_namespace:
-                    structName = msg.name
-                    defineName = CamelToSnakeCase(msg.name).upper()
-                else:
-                    structName = '%s%s' % (pascalCase(msg.package), msg.name)
-                    defineName = '%s_%s' % (CamelToSnakeCase(
-                        msg.package).upper(), CamelToSnakeCase(msg.name).upper())
-                    
-                if msg.id is not None and msg.magic_bytes:
-                    if use_namespace:
-                        # When using package ID, compare against local message ID
-                        yield '        case %d: *magic1 = %s::MAGIC1; *magic2 = %s::MAGIC2; return true;\n' % (
-                            msg.id, structName, structName)
-                    else:
-                        # No package ID, compare against MSG_ID from MessageBase
-                        yield '        case %s::MSG_ID: *magic1 = %s::MAGIC1; *magic2 = %s::MAGIC2; return true;\n' % (
-                            structName, structName, structName)
-
-            yield '        default: break;\n'
-            yield '    }\n'
-            yield '    return false;\n'
-            yield '}\n\n'
-            
             # Generate unified get_message_info function
             if use_namespace:
                 # When using package ID, message ID is 16-bit

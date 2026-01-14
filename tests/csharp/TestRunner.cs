@@ -53,6 +53,10 @@ class TestRunner
         {
             return TestExtended.Main(filteredArgs);
         }
+        else if (testSuite == "test_variable_flag")
+        {
+            return TestVariableFlag.Main(filteredArgs);
+        }
         else
         {
             return TestStandard.Main(filteredArgs);

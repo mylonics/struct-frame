@@ -166,3 +166,27 @@ message VariableMixedFields {
   repeated uint16 variable_data = 4 [max_size=100];  // Variable array
   string variable_desc = 5 [max_size=128];           // Variable string
 }
+
+// ============================================================================
+// Truncation Test Messages (msgid: 209-210)
+// These messages are identical except one has variable=true to test truncation
+// ============================================================================
+
+// Non-variable message with large array (msgid: 209)
+message TruncationTestNonVariable {
+  option msgid = 209;
+  
+  uint32 sequence_id = 1;
+  repeated uint8 data_array = 2 [max_size=200];  // Up to 200 bytes
+  uint16 footer = 3;
+}
+
+// Variable message with large array (msgid: 210)
+message TruncationTestVariable {
+  option msgid = 210;
+  option variable = true;
+  
+  uint32 sequence_id = 1;
+  repeated uint8 data_array = 2 [max_size=200];  // Up to 200 bytes
+  uint16 footer = 3;
+}
