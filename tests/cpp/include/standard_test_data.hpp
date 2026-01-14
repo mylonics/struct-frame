@@ -135,20 +135,60 @@ inline SerializationTestUnionTestMessage create_union_with_test() {
   return msg;
 }
 
-// Create VariableSingleArray test message
-inline SerializationTestVariableSingleArray create_variable_single_array() {
+// Create VariableSingleArray test messages with different fill levels
+// 0: Empty (0 elements)
+// 1: Single element (1 element)
+// 2: One-third filled (67 elements for max_size=200)
+// 3: One position empty (199 elements)
+// 4: Full (200 elements)
+
+inline SerializationTestVariableSingleArray create_variable_single_array_empty() {
   SerializationTestVariableSingleArray msg{};
-  msg.message_id = 0x12345678;
-  msg.payload.data[0] = 1;
-  msg.payload.data[1] = 2;
-  msg.payload.data[2] = 3;
-  msg.payload.data[3] = 4;
-  msg.payload.data[4] = 5;
-  msg.payload.data[5] = 6;
-  msg.payload.data[6] = 7;
-  msg.payload.data[7] = 8;
-  msg.payload.count = 8;
-  msg.checksum = 0xABCD;
+  msg.message_id = 0x00000001;
+  msg.payload.count = 0;
+  msg.checksum = 0x0001;
+  return msg;
+}
+
+inline SerializationTestVariableSingleArray create_variable_single_array_single() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000002;
+  msg.payload.data[0] = 42;
+  msg.payload.count = 1;
+  msg.checksum = 0x0002;
+  return msg;
+}
+
+inline SerializationTestVariableSingleArray create_variable_single_array_third() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000003;
+  for (uint8_t i = 0; i < 67; i++) {
+    msg.payload.data[i] = i;
+  }
+  msg.payload.count = 67;
+  msg.checksum = 0x0003;
+  return msg;
+}
+
+inline SerializationTestVariableSingleArray create_variable_single_array_almost() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000004;
+  for (uint8_t i = 0; i < 199; i++) {
+    msg.payload.data[i] = i;
+  }
+  msg.payload.count = 199;
+  msg.checksum = 0x0004;
+  return msg;
+}
+
+inline SerializationTestVariableSingleArray create_variable_single_array_full() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x00000005;
+  for (int i = 0; i < 200; i++) {
+    msg.payload.data[i] = static_cast<uint8_t>(i);
+  }
+  msg.payload.count = 200;
+  msg.checksum = 0x0005;
   return msg;
 }
 
@@ -192,10 +232,14 @@ inline const std::array<SerializationTestUnionTestMessage, 2>& get_union_test_me
   return messages;
 }
 
-// VariableSingleArray array (1 message)
-inline const std::array<SerializationTestVariableSingleArray, 1>& get_variable_single_array_messages() {
-  static const std::array<SerializationTestVariableSingleArray, 1> messages = {
-      create_variable_single_array(),
+// VariableSingleArray array (5 messages with different fill levels)
+inline const std::array<SerializationTestVariableSingleArray, 5>& get_variable_single_array_messages() {
+  static const std::array<SerializationTestVariableSingleArray, 5> messages = {
+      create_variable_single_array_empty(),    // 0: Empty
+      create_variable_single_array_single(),   // 1: Single element
+      create_variable_single_array_third(),    // 2: One-third filled
+      create_variable_single_array_almost(),   // 3: One position empty
+      create_variable_single_array_full(),     // 4: Full
   };
   return messages;
 }
@@ -205,7 +249,7 @@ inline const std::array<SerializationTestVariableSingleArray, 1>& get_variable_s
 // ============================================================================
 
 // Message count constant
-constexpr size_t MESSAGE_COUNT = 12;
+constexpr size_t MESSAGE_COUNT = 16;
 
 // The msg_id order array - maps position to which message type to use
 inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
@@ -221,7 +265,11 @@ inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
       SerializationTestUnionTestMessage::MSG_ID,          // 8: UnionTest[0]
       SerializationTestUnionTestMessage::MSG_ID,          // 9: UnionTest[1]
       SerializationTestBasicTypesMessage::MSG_ID,         // 10: BasicTypes[3]
-      SerializationTestVariableSingleArray::MSG_ID,       // 11: VariableSingleArray[0]
+      SerializationTestVariableSingleArray::MSG_ID,       // 11: VariableSingleArray[0] - empty
+      SerializationTestVariableSingleArray::MSG_ID,       // 12: VariableSingleArray[1] - single
+      SerializationTestVariableSingleArray::MSG_ID,       // 13: VariableSingleArray[2] - 1/3 filled
+      SerializationTestVariableSingleArray::MSG_ID,       // 14: VariableSingleArray[3] - one empty
+      SerializationTestVariableSingleArray::MSG_ID,       // 15: VariableSingleArray[4] - full
   };
   return order;
 }

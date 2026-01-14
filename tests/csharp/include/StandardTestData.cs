@@ -32,11 +32,22 @@ namespace StructFrameTests
         // Message count and order
         // ============================================================================
 
-        public const int MESSAGE_COUNT = 12;
+        public const int MESSAGE_COUNT = 16;
 
         public static int GetTestMessageCount()
         {
             return MESSAGE_COUNT;
+        }
+
+        // Generate byte array of sequential values
+        private static byte[] GenerateSequentialBytes(int length)
+        {
+            var result = new byte[length];
+            for (int i = 0; i < length; i++)
+            {
+                result[i] = (byte)i;
+            }
+            return result;
         }
 
         // ============================================================================
@@ -260,15 +271,59 @@ namespace StructFrameTests
                         ["description"] = "Negative and max values"
                     }
                 },
-                // 11: VariableSingleArray
+                // 11: VariableSingleArray - empty (0 elements)
                 new MixedMessage
                 {
                     Type = MessageType.VariableSingleArray,
                     Data = new Dictionary<string, object>
                     {
-                        ["message_id"] = 0x12345678u,
-                        ["payload"] = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },
-                        ["checksum"] = (ushort)0xABCD
+                        ["message_id"] = 0x00000001u,
+                        ["payload"] = new byte[0],
+                        ["checksum"] = (ushort)0x0001
+                    }
+                },
+                // 12: VariableSingleArray - single element
+                new MixedMessage
+                {
+                    Type = MessageType.VariableSingleArray,
+                    Data = new Dictionary<string, object>
+                    {
+                        ["message_id"] = 0x00000002u,
+                        ["payload"] = new byte[] { 42 },
+                        ["checksum"] = (ushort)0x0002
+                    }
+                },
+                // 13: VariableSingleArray - one-third filled (67 elements)
+                new MixedMessage
+                {
+                    Type = MessageType.VariableSingleArray,
+                    Data = new Dictionary<string, object>
+                    {
+                        ["message_id"] = 0x00000003u,
+                        ["payload"] = GenerateSequentialBytes(67),
+                        ["checksum"] = (ushort)0x0003
+                    }
+                },
+                // 14: VariableSingleArray - one position empty (199 elements)
+                new MixedMessage
+                {
+                    Type = MessageType.VariableSingleArray,
+                    Data = new Dictionary<string, object>
+                    {
+                        ["message_id"] = 0x00000004u,
+                        ["payload"] = GenerateSequentialBytes(199),
+                        ["checksum"] = (ushort)0x0004
+                    }
+                },
+                // 15: VariableSingleArray - full (200 elements)
+                new MixedMessage
+                {
+                    Type = MessageType.VariableSingleArray,
+                    Data = new Dictionary<string, object>
+                    {
+                        ["message_id"] = 0x00000005u,
+                        ["payload"] = GenerateSequentialBytes(200),
+                        ["checksum"] = (ushort)0x0005
                     }
                 }
             };
@@ -282,7 +337,7 @@ namespace StructFrameTests
 
         public static class Config
         {
-            public const int MESSAGE_COUNT = 12;
+            public const int MESSAGE_COUNT = 16;
             public const int BUFFER_SIZE = 4096;
             public const string FORMATS_HELP = "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network";
             public const string TEST_NAME = "standard";

@@ -173,9 +173,26 @@ def get_union_test_messages() -> List[SerializationTestUnionTestMessage]:
 
 
 def get_variable_single_array_messages() -> List[SerializationTestVariableSingleArray]:
-    """Get VariableSingleArray array (1 message)."""
+    """Get VariableSingleArray array (5 messages with different fill levels).
+    
+    Fill levels:
+    - Empty (0 elements)
+    - Single element (1 element)
+    - One-third filled (67 elements for max_size=200)
+    - One position empty (199 elements)
+    - Full (200 elements)
+    """
     return [
-        create_variable_single_array(0x12345678, [1, 2, 3, 4, 5, 6, 7, 8], 0xABCD),
+        # Empty payload (0 elements)
+        create_variable_single_array(0x00000001, [], 0x0001),
+        # Single element
+        create_variable_single_array(0x00000002, [42], 0x0002),
+        # One-third filled (67 elements)
+        create_variable_single_array(0x00000003, list(range(67)), 0x0003),
+        # One position empty (199 elements)
+        create_variable_single_array(0x00000004, list(range(199)), 0x0004),
+        # Full (200 elements)
+        create_variable_single_array(0x00000005, list(range(200)), 0x0005),
     ]
 
 
@@ -197,7 +214,7 @@ def get_variable_mixed_fields_messages() -> List[SerializationTestVariableMixedF
 # Message ID order array - defines the encode/decode sequence
 # ============================================================================
 
-MESSAGE_COUNT = 12
+MESSAGE_COUNT = 16
 
 
 def get_msg_id_order() -> List[int]:
@@ -214,7 +231,11 @@ def get_msg_id_order() -> List[int]:
         SerializationTestUnionTestMessage.MSG_ID,          # 8: UnionTest[0]
         SerializationTestUnionTestMessage.MSG_ID,          # 9: UnionTest[1]
         SerializationTestBasicTypesMessage.MSG_ID,         # 10: BasicTypes[3]
-        SerializationTestVariableSingleArray.MSG_ID,       # 11: VariableSingleArray[0]
+        SerializationTestVariableSingleArray.MSG_ID,       # 11: VariableSingleArray[0] - empty
+        SerializationTestVariableSingleArray.MSG_ID,       # 12: VariableSingleArray[1] - single
+        SerializationTestVariableSingleArray.MSG_ID,       # 13: VariableSingleArray[2] - 1/3 filled
+        SerializationTestVariableSingleArray.MSG_ID,       # 14: VariableSingleArray[3] - one empty
+        SerializationTestVariableSingleArray.MSG_ID,       # 15: VariableSingleArray[4] - full
     ]
 
 

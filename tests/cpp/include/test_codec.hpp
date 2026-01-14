@@ -193,19 +193,19 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
   };
 
   if (format == "profile_standard") {
-    AccumulatingReader<ProfileStandardConfig> reader;
+    AccumulatingReader<ProfileStandardConfig, 4096> reader;
     return decode_all(reader);
   } else if (format == "profile_sensor") {
-    auto reader = make_accumulating_reader<ProfileSensorConfig>(Config::get_message_info);
+    auto reader = make_accumulating_reader<ProfileSensorConfig, 4096>(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_ipc") {
-    auto reader = make_accumulating_reader<ProfileIPCConfig>(Config::get_message_info);
+    auto reader = make_accumulating_reader<ProfileIPCConfig, 4096>(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_bulk") {
-    AccumulatingReader<ProfileBulkConfig> reader;
+    AccumulatingReader<ProfileBulkConfig, 4096> reader;
     return decode_all(reader);
   } else if (format == "profile_network") {
-    AccumulatingReader<ProfileNetworkConfig> reader;
+    AccumulatingReader<ProfileNetworkConfig, 4096> reader;
     return decode_all(reader);
   }
 

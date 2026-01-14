@@ -13,7 +13,7 @@ const {
 } = require('../../generated/js/serialization_test.structframe');
 
 /** Message count */
-const MESSAGE_COUNT = 12;
+const MESSAGE_COUNT = 16;
 
 /** Index tracking for encoding/validation */
 let serialIdx = 0;
@@ -34,7 +34,11 @@ const MSG_ID_ORDER = [
   SerializationTestUnionTestMessage._msgid,          // 8: UnionTest[0]
   SerializationTestUnionTestMessage._msgid,          // 9: UnionTest[1]
   SerializationTestBasicTypesMessage._msgid,         // 10: BasicTypes[3]
-  SerializationTestVariableSingleArray._msgid,       // 11: VariableSingleArray[0]
+  SerializationTestVariableSingleArray._msgid,       // 11: VariableSingleArray[0] - empty
+  SerializationTestVariableSingleArray._msgid,       // 12: VariableSingleArray[1] - single
+  SerializationTestVariableSingleArray._msgid,       // 13: VariableSingleArray[2] - 1/3 filled
+  SerializationTestVariableSingleArray._msgid,       // 14: VariableSingleArray[3] - one empty
+  SerializationTestVariableSingleArray._msgid,       // 15: VariableSingleArray[4] - full
 ];
 
 /** SerializationTestMessage array (5 messages) */
@@ -220,14 +224,48 @@ function getUnionTestMessages() {
   ];
 }
 
-/** VariableSingleArray array (1 message) */
+/** VariableSingleArray array (5 messages with different fill levels) */
 function getVariableSingleArrayMessages() {
+  // Generate arrays for different fill levels
+  const thirdFilled = Array.from({ length: 67 }, (_, i) => i);
+  const almostFull = Array.from({ length: 199 }, (_, i) => i);
+  const full = Array.from({ length: 200 }, (_, i) => i);
+
   return [
+    // 0: Empty payload (0 elements)
     new SerializationTestVariableSingleArray({
-      message_id: 0x12345678,
-      payload_count: 8,
-      payload_data: [1, 2, 3, 4, 5, 6, 7, 8],
-      checksum: 0xABCD,
+      message_id: 0x00000001,
+      payload_count: 0,
+      payload_data: [],
+      checksum: 0x0001,
+    }),
+    // 1: Single element
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000002,
+      payload_count: 1,
+      payload_data: [42],
+      checksum: 0x0002,
+    }),
+    // 2: One-third filled (67 elements for max_size=200)
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000003,
+      payload_count: 67,
+      payload_data: thirdFilled,
+      checksum: 0x0003,
+    }),
+    // 3: One position empty (199 elements)
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000004,
+      payload_count: 199,
+      payload_data: almostFull,
+      checksum: 0x0004,
+    }),
+    // 4: Full (200 elements)
+    new SerializationTestVariableSingleArray({
+      message_id: 0x00000005,
+      payload_count: 200,
+      payload_data: full,
+      checksum: 0x0005,
     }),
   ];
 }
