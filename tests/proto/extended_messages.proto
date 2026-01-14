@@ -167,14 +167,14 @@ message ExtendedVariableMixedFields {
 }
 
 // ============================================================================
-// Large Payload Message 2 (msgid: 801) - Tests fixed array > 256 elements
+// Large Payload Message 2 (msgid: 801) - Tests fixed array with 280 elements
 // ============================================================================
 
 // Another large message with different structure
 message LargePayloadMessage2 {
   option msgid = 801;
   
-  // Large array to ensure extended payload (> 255 bytes)
+  // Large fixed array to ensure extended payload (> 255 bytes)
   repeated uint8 large_data = 1 [size=280];
 }
 
