@@ -621,6 +621,11 @@ class MessageCSharpGen():
                         result += f'            BinaryPrimitives.WriteDoubleLittleEndian(buffer.AsSpan(offset, 8), {var_name}); offset += 8;\n'
                     elif type_name == "bool":
                         result += f'            buffer[offset++] = (byte)({var_name} ? 1 : 0);\n'
+                elif type_name == "string" and f.size_option is not None:
+                    # Fixed string - copy from byte array
+                    result += f'            if ({var_name} != null)\n'
+                    result += f'                Array.Copy({var_name}, 0, buffer, offset, Math.Min({var_name}.Length, {f.size}));\n'
+                    result += f'            offset += {f.size};\n'
                 elif f.isEnum:
                     result += f'            buffer[offset++] = (byte){var_name};\n'
                 else:
@@ -699,6 +704,11 @@ class MessageCSharpGen():
                         result += f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(offset, 8)); offset += 8;\n'
                     elif type_name == "bool":
                         result += f'            msg.{var_name} = data[offset++] != 0;\n'
+                elif type_name == "string" and f.size_option is not None:
+                    # Fixed string - copy into byte array
+                    result += f'            msg.{var_name} = new byte[{f.size}];\n'
+                    result += f'            Array.Copy(data, offset, msg.{var_name}, 0, {f.size});\n'
+                    result += f'            offset += {f.size};\n'
                 elif f.isEnum:
                     type_pkg = f.type_package if f.type_package else f.package
                     enum_type = '%s%s' % (pascalCase(type_pkg), type_name)

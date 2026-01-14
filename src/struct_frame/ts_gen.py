@@ -296,21 +296,29 @@ class MessageTsClassGen():
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
                 else:
-                    write_method = WRITE_METHODS.get(field_type if not field.isEnum else "uint8", "_writeUInt8")
-                    write_method_name = write_method.replace("_write", "write")
+                    # Map types to Buffer API write methods
+                    buffer_write_methods = {
+                        "int8": "writeInt8", "uint8": "writeUInt8",
+                        "int16": "writeInt16LE", "uint16": "writeUInt16LE",
+                        "int32": "writeInt32LE", "uint32": "writeUInt32LE",
+                        "int64": "writeBigInt64LE", "uint64": "writeBigUInt64LE",
+                        "float": "writeFloatLE", "double": "writeDoubleLE",
+                        "bool": "writeUInt8",
+                    }
+                    write_method_name = buffer_write_methods.get(field_type if not field.isEnum else "uint8", "writeUInt8")
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
                     result += f'      buffer.{write_method_name}(this.{name}_data[i], offset);\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
             elif field_type == "string" and field.max_size is not None:
-                # Variable string - TypeScript uses name_length and name_data
+                # Variable string - copy from internal buffer (string is stored there)
                 max_len = field.max_size
                 result += f'    // {name}: variable string\n'
                 result += f'    const {name}Len = this.{name}_length;\n'
                 result += f'    buffer.writeUInt8({name}Len, offset++);\n'
-                result += f'    for (let i = 0; i < {name}Len; i++) {{\n'
-                result += f'      buffer.writeUInt8(this.{name}_data[i], offset++);\n'
-                result += f'    }}\n'
+                # Copy string data from internal buffer
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset + 1}, {msg_offset + 1} + {name}Len);\n'
+                result += f'    offset += {name}Len;\n'
             else:
                 # Fixed field - copy from internal buffer
                 result += f'    // {name}: fixed size ({field.size} bytes)\n'
