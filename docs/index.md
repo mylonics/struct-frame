@@ -2,6 +2,16 @@
 
 Struct Frame converts Protocol Buffer (.proto) files into serialization code for multiple languages. It generates C, C++, TypeScript, Python, JavaScript, C#, and GraphQL code from a single source.
 
+## Why Struct Frame
+
+Struct Frame offers several advantages over other serialization systems:
+
+- **Zero-copy encoding/decoding in C/C++**: Uses packed structs that map directly to memory. No encoding or decoding step required.
+- **Flexible framing**: Multiple frame profiles for different scenarios, from zero-overhead trusted links to robust multi-node networks.
+- **Nested messages and variable-length arrays**: Unlike Mavlink, supports complex message structures with nested messages and variable-length packing for arrays.
+- **Smaller and simpler than Protobuf/Cap'n Proto**: Lower encoding cost and complexity. No schema evolution overhead.
+- **Cross-platform**: Generate code for embedded C, server Python, and frontend TypeScript from a single proto definition.
+
 ## Installation
 
 Install via pip:
@@ -45,6 +55,58 @@ python -m struct_frame status.proto --build_c --build_py --build_ts
 
 3. Use the generated code in your application.
 
+## Quick Language Reference
+
+=== "C++"
+    ```cpp
+    #include "status.sf.hpp"
+    
+    // Create a message
+    Status msg;
+    msg.id = 42;
+    msg.value = 3.14f;
+    
+    // No encoding needed - use directly as bytes
+    uint8_t* data = (uint8_t*)&msg;
+    size_t size = sizeof(Status);
+    ```
+
+=== "Python"
+    ```python
+    from status_sf import Status
+    
+    # Create a message
+    msg = Status(id=42, value=3.14)
+    
+    # Serialize to bytes
+    data = bytes(msg)
+    ```
+
+=== "TypeScript"
+    ```typescript
+    import { Status } from './status.sf';
+    
+    // Create a message
+    const msg = new Status({ id: 42, value: 3.14 });
+    
+    // Serialize to buffer
+    const data = msg.serialize();
+    ```
+
+=== "C"
+    ```c
+    #include "status.sf.h"
+    
+    // Create a message
+    Status msg = { .id = 42, .value = 3.14f };
+    
+    // Use directly as bytes
+    uint8_t* data = (uint8_t*)&msg;
+    size_t size = sizeof(Status);
+    ```
+
+For detailed examples, see [Language Examples](basic-usage/language-examples.md).
+
 ## Language Support
 
 | Language | Code Generation | SDK |
@@ -59,16 +121,20 @@ python -m struct_frame status.proto --build_c --build_py --build_ts
 
 ## Next Steps
 
-- [Define Messages](basics/message-definitions.md) - Learn proto file syntax
-- [Language Examples](basics/language-examples.md) - See usage examples for each language
-- [Framing Guide](basics/framing.md) - Understand message framing for reliable communication
+- [Quick Start](getting-started/quick-start.md) - Complete walkthrough with C++ example
+- [Define Messages](basic-usage/message-definitions.md) - Learn proto file syntax
+- [Language Examples](basic-usage/language-examples.md) - See detailed examples for each language
+- [Framing Guide](basic-usage/framing.md) - Understand message framing for reliable communication
 
 ## Documentation Structure
 
-### Basics
-Essential information for getting started and common use cases.
+### Getting Started
+Installation and quick start guide.
 
-### Advanced
+### Basic Usage
+Essential information for common use cases.
+
+### Extended Features
 Detailed information on framing, SDKs, and advanced features.
 
 ### Reference

@@ -28,19 +28,22 @@ theme:
 
 nav:
   - Home: index.md
-  - Basics:
-      - Message Definitions: basics/message-definitions.md
-      - Code Generation: basics/code-generation.md
-      - Language Examples: basics/language-examples.md
-      - Framing: basics/framing.md
-  - Advanced:
-      - Framing Details: advanced/framing-details.md
-      - SDK Overview: advanced/sdk-overview.md
-      - C++ SDK: advanced/cpp-sdk.md
-      - TypeScript/JavaScript SDK: advanced/typescript-sdk.md
-      - Python SDK: advanced/python-sdk.md
-      - C# SDK: advanced/csharp-sdk.md
-      - Advanced Features: advanced/custom-features.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quick-start.md
+  - Basic Usage:
+      - Message Definitions: basic-usage/message-definitions.md
+      - Code Generation: basic-usage/code-generation.md
+      - Language Examples: basic-usage/language-examples.md
+      - Framing: basic-usage/framing.md
+      - Framing Details: basic-usage/framing-details.md
+  - Extended Features:
+      - SDK Overview: extended-features/sdk-overview.md
+      - C++ SDK: extended-features/cpp-sdk.md
+      - TypeScript/JavaScript SDK: extended-features/typescript-sdk.md
+      - Python SDK: extended-features/python-sdk.md
+      - C# SDK: extended-features/csharp-sdk.md
+      - Advanced Features: extended-features/custom-features.md
   - Reference:
       - Build Integration: reference/build-integration.md
       - CLI Reference: reference/cli-reference.md
