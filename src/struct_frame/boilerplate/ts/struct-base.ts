@@ -14,6 +14,8 @@ export interface MessageConstructor<T extends MessageBase = MessageBase> {
   new (bufferOrInit?: Buffer | Record<string, unknown>): T;
   readonly _size: number;
   readonly _msgid?: number;
+  readonly _magic1?: number;
+  readonly _magic2?: number;
   getSize(): number;
 }
 
@@ -61,6 +63,30 @@ export abstract class MessageBase {
    */
   getSize(): number {
     return (this.constructor as MessageConstructor)._size;
+  }
+
+  /**
+   * Get the message ID for this message type.
+   * Returns undefined if no message ID is defined.
+   */
+  getMsgId(): number | undefined {
+    return (this.constructor as MessageConstructor)._msgid;
+  }
+
+  /**
+   * Get the magic1 checksum value for this message type.
+   * Returns 0 if not defined.
+   */
+  getMagic1(): number {
+    return (this.constructor as MessageConstructor)._magic1 ?? 0;
+  }
+
+  /**
+   * Get the magic2 checksum value for this message type.
+   * Returns 0 if not defined.
+   */
+  getMagic2(): number {
+    return (this.constructor as MessageConstructor)._magic2 ?? 0;
   }
 
   /**
