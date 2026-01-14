@@ -89,6 +89,9 @@ bool encode_messages(const std::string& format, uint8_t* buffer, size_t buffer_s
       }
     }
     encoded_size = writer.size();
+    if (std::string(Config::TEST_NAME).find("Variable Flag") != std::string::npos) {
+      std::cout << "Total: " << encoded_size << " bytes\n";
+    }
     return true;
   };
 
@@ -193,7 +196,7 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
   };
 
   if (format == "profile_standard") {
-    AccumulatingReader<ProfileStandardConfig, 4096> reader;
+    auto reader = make_accumulating_reader<ProfileStandardConfig, 4096>(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_sensor") {
     auto reader = make_accumulating_reader<ProfileSensorConfig, 4096>(Config::get_message_info);
@@ -202,10 +205,10 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
     auto reader = make_accumulating_reader<ProfileIPCConfig, 4096>(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_bulk") {
-    AccumulatingReader<ProfileBulkConfig, 4096> reader;
+    auto reader = make_accumulating_reader<ProfileBulkConfig, 4096>(Config::get_message_info);
     return decode_all(reader);
   } else if (format == "profile_network") {
-    AccumulatingReader<ProfileNetworkConfig, 4096> reader;
+    auto reader = make_accumulating_reader<ProfileNetworkConfig, 4096>(Config::get_message_info);
     return decode_all(reader);
   }
 

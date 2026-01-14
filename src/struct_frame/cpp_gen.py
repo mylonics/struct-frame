@@ -313,9 +313,13 @@ class MessageCppGen():
             result += '\n'.join([OneOfCppGen.generate(o, use_namespace, package)
                                 for key, o in msg.oneofs.items()])
         
+        # Ensure newline after fields/oneofs
+        if msg.fields or msg.oneofs:
+            result += '\n'
+        
         # Generate equality operator if requested
         if equality:
-            result += '\n\n'
+            result += '\n'
             result += f'    bool operator==(const {structName}& other) const {{\n'
             
             comparisons = []
@@ -343,6 +347,10 @@ class MessageCppGen():
         # Add variable message constants and methods
         if msg.variable:
             result += MessageCppGen._generate_variable_methods(msg, structName)
+        
+        # Add unified unpack() method only for messages with MSG_ID (have MessageBase)
+        if has_msg_id:
+            result += MessageCppGen._generate_unified_unpack(msg, structName)
         
         result += '};\n'
 
@@ -458,6 +466,45 @@ class MessageCppGen():
         
         return result
 
+    @staticmethod
+    def _generate_unified_unpack(msg, structName):
+        """Generate unified unpack() method that works for both variable and non-variable messages."""
+        result = ''
+        
+        result += f'\n    /**\n'
+        result += f'     * Unified unpack method - works for both variable and non-variable messages.\n'
+        result += f'     * Uses compile-time dispatch for zero runtime overhead.\n'
+        result += f'     * For variable messages with minimal profiles (buffer_size == MAX_SIZE),\n'
+        result += f'     * uses direct copy instead of variable unpacking.\n'
+        result += f'     * @param buffer Input buffer containing packed message data\n'
+        result += f'     * @param buffer_size Size of input buffer\n'
+        result += f'     * @return Number of bytes read, or 0 if buffer too small\n'
+        result += f'     */\n'
+        result += f'    size_t unpack(const uint8_t* buffer, size_t buffer_size) {{\n'
+        
+        if msg.variable:
+            # Variable message: check if it's minimal profile (buffer_size == MAX_SIZE)
+            # If so, use direct copy; otherwise use variable unpacking
+            result += f'        // Variable message - check encoding format\n'
+            result += f'        if (buffer_size == MAX_SIZE) {{\n'
+            result += f'            // Minimal profile format (MAX_SIZE encoding)\n'
+            result += f'            std::memcpy(this, buffer, MAX_SIZE);\n'
+            result += f'            return MAX_SIZE;\n'
+            result += f'        }} else {{\n'
+            result += f'            // Variable-length format\n'
+            result += f'            return unpack_variable(buffer, buffer_size);\n'
+            result += f'        }}\n'
+        else:
+            # Non-variable message: simple memcpy with size check
+            result += f'        // Fixed-size message - use direct copy\n'
+            result += f'        if (buffer_size < MAX_SIZE) return 0;\n'
+            result += f'        std::memcpy(this, buffer, MAX_SIZE);\n'
+            result += f'        return MAX_SIZE;\n'
+        
+        result += f'    }}\n'
+        
+        return result
+
 
 class FileCppGen():
     @staticmethod
@@ -541,49 +588,6 @@ class FileCppGen():
                     else:
                         # No package ID, compare against MSG_ID from MessageBase
                         yield '        case %s::MSG_ID: *size = %s::MAX_SIZE; return true;\n' % (structName, structName)
-
-            yield '        default: break;\n'
-            yield '    }\n'
-            yield '    return false;\n'
-            yield '}\n\n'
-            
-            # Generate get_magic_numbers function (legacy support)
-            if use_namespace:
-                # When using package ID, message ID is 16-bit
-                yield 'inline bool get_magic_numbers(uint16_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
-                yield '    // Extract package ID and message ID from 16-bit message ID\n'
-                yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
-                yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
-                yield '    \n'
-                yield f'    // Check if this is our package\n'
-                yield f'    if (pkg_id != PACKAGE_ID) {{\n'
-                yield f'        return false;\n'
-                yield f'    }}\n'
-                yield '    \n'
-                yield '    switch (local_msg_id) {\n'
-            else:
-                # Flat namespace mode: 8-bit message ID
-                yield 'inline bool get_magic_numbers(size_t msg_id, uint8_t* magic1, uint8_t* magic2) {\n'
-                yield '    switch (msg_id) {\n'
-            
-            for key, msg in package.sortedMessages().items():
-                if use_namespace:
-                    structName = msg.name
-                    defineName = CamelToSnakeCase(msg.name).upper()
-                else:
-                    structName = '%s%s' % (pascalCase(msg.package), msg.name)
-                    defineName = '%s_%s' % (CamelToSnakeCase(
-                        msg.package).upper(), CamelToSnakeCase(msg.name).upper())
-                    
-                if msg.id is not None and msg.magic_bytes:
-                    if use_namespace:
-                        # When using package ID, compare against local message ID
-                        yield '        case %d: *magic1 = %s::MAGIC1; *magic2 = %s::MAGIC2; return true;\n' % (
-                            msg.id, structName, structName)
-                    else:
-                        # No package ID, compare against MSG_ID from MessageBase
-                        yield '        case %s::MSG_ID: *magic1 = %s::MAGIC1; *magic2 = %s::MAGIC2; return true;\n' % (
-                            structName, structName, structName)
 
             yield '        default: break;\n'
             yield '    }\n'

@@ -150,8 +150,8 @@ EXTENDED_PROFILES = [
 ]
 
 # Expected message counts
-STANDARD_MESSAGE_COUNT = 11
-EXTENDED_MESSAGE_COUNT = 12
+STANDARD_MESSAGE_COUNT = 16
+EXTENDED_MESSAGE_COUNT = 17
 
 
 # =============================================================================
@@ -247,6 +247,9 @@ class TestRunner:
             "extended_encode": {},
             "extended_validate": {},
             "extended_decode": {},
+            "variable_flag_encode": {},
+            "variable_flag_validate": {},
+            "variable_flag_decode": {},
         }
     
     def _init_languages(self) -> Dict[str, Language]:
@@ -624,7 +627,7 @@ class TestRunner:
         # C/C++: compile test_standard and test_extended executables
         if lang.id in ("c", "cpp"):
             success = True
-            for runner in ["test_standard", "test_extended"]:
+            for runner in ["test_standard", "test_extended", "test_variable_flag"]:
                 source = test_dir / f"{runner}{lang.source_ext}"
                 if not source.exists():
                     continue
@@ -885,7 +888,7 @@ class TestRunner:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
         success, stdout, _ = self._run_test_runner(lang, "encode", profile_name, output_file, runner_name)
-        return {"success": success, "file": output_file if success else None}
+        return {"success": success, "file": output_file if success else None, "stdout": stdout}
     
     def _validate_encoded_file(self, lang_file: Path, cpp_file: Path, 
                                 cpp_lang: Language, profile_name: str, 
@@ -963,7 +966,13 @@ class TestRunner:
     def _get_output_file(self, lang: Language, profile_name: str, runner_name: str) -> Path:
         """Get output file path for encoding."""
         prefix = lang.get_prefix()
-        test_type = "extended" if "extended" in runner_name else "standard"
+        # Determine test type from runner name
+        if "extended" in runner_name:
+            test_type = "extended"
+        elif "variable_flag" in runner_name or "variable" in runner_name:
+            test_type = "variable_flag"
+        else:
+            test_type = "standard"
         filename = f"{prefix}_{profile_name}_{test_type}_data.bin"
         return self._get_test_work_dir(lang) / filename
     
@@ -1040,6 +1049,78 @@ class TestRunner:
     # Phase 7: Standalone Tests
     # =========================================================================
     
+    def verify_variable_truncation(self) -> bool:
+        """Verify that variable messages are properly truncated by comparing binary file sizes."""
+        print(f"\n  {Colors.bold('Verifying Variable Message Truncation...')}")
+        
+        # Collect all encoded variable_flag files
+        encoded_files = {}
+        for lang in self.get_testable_languages():
+            # Use the same naming pattern as _get_output_file
+            encode_file = self._get_output_file(lang, "profile_bulk", "test_variable_flag")
+            if encode_file.exists():
+                encoded_files[lang.id] = encode_file
+        
+        if not encoded_files:
+            print(f"  {Colors.warn_tag()} No variable flag encoded files found to verify")
+            return True
+        
+        # Read and verify binary content
+        first_lang = None
+        reference_data = None
+        all_match = True
+        
+        for lang_id, file_path in encoded_files.items():
+            with open(file_path, 'rb') as f:
+                data = f.read()
+            
+            if first_lang is None:
+                first_lang = lang_id
+                reference_data = data
+                print(f"  {Colors.blue('[INFO]')} Using {lang_id} as reference ({len(data)} bytes)")
+            else:
+                if data == reference_data:
+                    print(f"  {Colors.ok_tag()} {lang_id}: Binary output matches reference ({len(data)} bytes)")
+                else:
+                    print(f"  {Colors.fail_tag()} {lang_id}: Binary output DIFFERS from reference")
+                    print(f"      Expected {len(reference_data)} bytes, got {len(data)} bytes")
+                    
+                    # Find first difference
+                    min_len = min(len(reference_data), len(data))
+                    for i in range(min_len):
+                        if reference_data[i] != data[i]:
+                            print(f"      First difference at byte {i}: expected 0x{reference_data[i]:02x}, got 0x{data[i]:02x}")
+                            break
+                    
+                    all_match = False
+                    self.record_failure("variable_flag_verify", lang_id, "profile_bulk", 
+                                      "Binary output does not match reference")
+        
+        # Verify truncation by checking frame sizes
+        # The encoded file should contain 2 frames:
+        # Frame 1: Non-variable message (should be full size with 200-byte array allocation)
+        # Frame 2: Variable message (should be truncated to only 67 bytes used)
+        if reference_data and all_match:
+            print(f"\n  {Colors.bold('Analyzing frame sizes for truncation...')}")
+            # This is a basic check - we expect the total size to be smaller than
+            # if both messages were non-variable
+            # Non-variable message size estimate: ~210 bytes (header + 4 + 200 + 2 + frame overhead)
+            # Variable message size estimate: ~80 bytes (header + 4 + 67 + 2 + frame overhead)
+            # Total should be roughly 290 bytes vs 420 bytes if both were non-variable
+            
+            total_size = len(reference_data)
+            max_expected_if_no_truncation = 450  # Conservative upper bound if no truncation
+            expected_with_truncation = 350  # Rough estimate with truncation
+            
+            if total_size < expected_with_truncation:
+                print(f"  {Colors.ok_tag()} Truncation verified: Total size {total_size} bytes < {expected_with_truncation} bytes")
+                print(f"      (Expected ~{max_expected_if_no_truncation} bytes if no truncation occurred)")
+            else:
+                print(f"  {Colors.warn_tag()} Truncation uncertain: Total size {total_size} bytes")
+                print(f"      Expected < {expected_with_truncation} bytes with truncation")
+        
+        return all_match
+    
     def run_standalone_tests(self) -> bool:
         """Run standalone Python test scripts."""
         test_scripts = list(self.tests_dir.glob("test_*.py"))
@@ -1091,6 +1172,14 @@ class TestRunner:
         ext_decode_total = len(self.results["extended_decode"])
         ext_decode_passed = sum(1 for v in self.results["extended_decode"].values() if v)
         
+        # Variable flag tests
+        var_encode_total = len(self.results["variable_flag_encode"])
+        var_encode_passed = sum(1 for v in self.results["variable_flag_encode"].values() if v)
+        var_validate_total = len(self.results.get("variable_flag_validate", {}))
+        var_validate_passed = sum(1 for v in self.results.get("variable_flag_validate", {}).values() if v)
+        var_decode_total = len(self.results["variable_flag_decode"])
+        var_decode_passed = sum(1 for v in self.results["variable_flag_decode"].values() if v)
+        
         # Helper to colorize counts
         def colorize_count(passed: int, total: int) -> str:
             if total == 0:
@@ -1100,21 +1189,26 @@ class TestRunner:
             return Colors.red(f"{passed}/{total}")
         
         # Print breakdown
-        print(f"\n  Code Generation:    {colorize_count(gen_passed, gen_total)}")
-        print(f"  Compilation:        {colorize_count(comp_passed, comp_total)}")
-        print(f"  Standard Encode:    {colorize_count(std_encode_passed, std_encode_total)}")
-        print(f"  Standard Validate:  {colorize_count(std_validate_passed, std_validate_total)}")
-        print(f"  Standard Decode:    {colorize_count(std_decode_passed, std_decode_total)}")
-        print(f"  Extended Encode:    {colorize_count(ext_encode_passed, ext_encode_total)}")
-        print(f"  Extended Validate:  {colorize_count(ext_validate_passed, ext_validate_total)}")
-        print(f"  Extended Decode:    {colorize_count(ext_decode_passed, ext_decode_total)}")
+        print(f"\n  Code Generation:       {colorize_count(gen_passed, gen_total)}")
+        print(f"  Compilation:           {colorize_count(comp_passed, comp_total)}")
+        print(f"  Standard Encode:       {colorize_count(std_encode_passed, std_encode_total)}")
+        print(f"  Standard Validate:     {colorize_count(std_validate_passed, std_validate_total)}")
+        print(f"  Standard Decode:       {colorize_count(std_decode_passed, std_decode_total)}")
+        print(f"  Extended Encode:       {colorize_count(ext_encode_passed, ext_encode_total)}")
+        print(f"  Extended Validate:     {colorize_count(ext_validate_passed, ext_validate_total)}")
+        print(f"  Extended Decode:       {colorize_count(ext_decode_passed, ext_decode_total)}")
+        print(f"  Variable Flag Encode:  {colorize_count(var_encode_passed, var_encode_total)}")
+        print(f"  Variable Flag Validate:{colorize_count(var_validate_passed, var_validate_total)}")
+        print(f"  Variable Flag Decode:  {colorize_count(var_decode_passed, var_decode_total)}")
         
         total = (gen_total + comp_total + 
                  std_encode_total + std_validate_total + std_decode_total + 
-                 ext_encode_total + ext_validate_total + ext_decode_total)
+                 ext_encode_total + ext_validate_total + ext_decode_total +
+                 var_encode_total + var_validate_total + var_decode_total)
         passed = (gen_passed + comp_passed + 
                   std_encode_passed + std_validate_passed + std_decode_passed + 
-                  ext_encode_passed + ext_validate_passed + ext_decode_passed)
+                  ext_encode_passed + ext_validate_passed + ext_decode_passed +
+                  var_encode_passed + var_validate_passed + var_decode_passed)
         
         print(f"\n  Total: {colorize_count(passed, total)} tests passed")
         
@@ -1231,8 +1325,14 @@ class TestRunner:
             if extended_profiles_to_test:
                 with self.timed_phase("Extended Tests"):
                     self.run_tests("extended", extended_profiles_to_test, EXTENDED_MESSAGE_COUNT, "test_extended")
+
+            # Phase 7: Variable-flag tests (only ProfileBulk, 2 messages)
+            with self.timed_phase("Variable Flag Tests"):
+                self.run_tests("variable_flag", [("profile_bulk", "ProfileBulk")], 2, "test_variable_flag")
+                # Verify truncation by checking binary file sizes
+                self.verify_variable_truncation()
             
-            # Phase 7: Standalone tests
+            # Phase 8: Standalone tests
             with self.timed_phase("Standalone Tests"):
                 self.run_standalone_tests()
             

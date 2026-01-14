@@ -474,6 +474,68 @@ namespace StructFrameTests
             return writer.GetData();
         }
 
+        public static byte[] EncodeVariableFlagMessages(string formatName)
+        {
+            var writer = Profiles.CreateWriter(formatName);
+            writer.SetBuffer(new byte[4096]);
+
+            for (int i = 0; i < VariableFlagTestData.MESSAGE_COUNT; i++)
+            {
+                var mixedMsg = VariableFlagTestData.GetTestMessage(i);
+                if (mixedMsg == null)
+                    throw new Exception($"Failed to get variable flag message {i}");
+                
+                IStructFrameMessage msg;
+                int payloadSize;
+                string msgName;
+                
+                if (mixedMsg.Type == VariableMessageType.NonVariable)
+                {
+                    msg = CreateTruncationTestNonVariable(mixedMsg.Data);
+                    payloadSize = msg.GetSize();
+                    msgName = "MSG1";
+                }
+                else
+                {
+                    msg = CreateTruncationTestVariable(mixedMsg.Data);
+                    payloadSize = msg.GetSize();
+                    msgName = "MSG2";
+                }
+                
+                int bytesWritten = writer.Write(msg);
+                if (bytesWritten == 0)
+                    throw new Exception($"Failed to encode message {i}");
+                
+                string truncationNote = mixedMsg.Type == VariableMessageType.Variable ? "TRUNCATED" : "no truncation";
+                Console.WriteLine($"{msgName}: {bytesWritten} bytes (payload={payloadSize}, {truncationNote})");
+            }
+
+            Console.WriteLine($"Total: {writer.Size} bytes");
+            return writer.GetData();
+        }
+
+        private static StructFrame.SerializationTest.SerializationTestTruncationTestNonVariable CreateTruncationTestNonVariable(Dictionary<string, object> data)
+        {
+            var msg = new StructFrame.SerializationTest.SerializationTestTruncationTestNonVariable();
+            msg.SequenceId = (uint)data["sequence_id"];
+            var dataArray = (List<byte>)data["data_array"];
+            msg.DataArrayCount = (byte)dataArray.Count;
+            msg.DataArrayData = dataArray.ToArray();
+            msg.Footer = (ushort)data["footer"];
+            return msg;
+        }
+
+        private static StructFrame.SerializationTest.SerializationTestTruncationTestVariable CreateTruncationTestVariable(Dictionary<string, object> data)
+        {
+            var msg = new StructFrame.SerializationTest.SerializationTestTruncationTestVariable();
+            msg.SequenceId = (uint)data["sequence_id"];
+            var dataArray = (List<byte>)data["data_array"];
+            msg.DataArrayCount = (byte)dataArray.Count;
+            msg.DataArrayData = dataArray.ToArray();
+            msg.Footer = (ushort)data["footer"];
+            return msg;
+        }
+
         // ============================================================================
         // Decoding functions (using generic implementation)
         // ============================================================================
@@ -622,6 +684,83 @@ namespace StructFrameTests
                 usePkgId: false);
         }
 
+        public static (bool success, int messageCount) DecodeVariableFlagMessages(string formatName, byte[] data)
+        {
+            return DecodeMessages(
+                formatName,
+                data,
+                VariableFlagTestData.MESSAGE_COUNT,
+                GetStandardMessageInfo,
+                (i, result) =>
+                {
+                    var expected = VariableFlagTestData.GetTestMessage(i);
+                    int expectedMsgId;
+                    bool isValid = true;
+
+                    if (expected.Type == VariableMessageType.NonVariable)
+                    {
+                        expectedMsgId = StructFrame.SerializationTest.SerializationTestTruncationTestNonVariable.MsgId;
+                        var msg = StructFrame.SerializationTest.SerializationTestTruncationTestNonVariable.Unpack(ExtractPayload(result));
+                        isValid = ValidateTruncationTestNonVariable(msg, expected.Data);
+                    }
+                    else if (expected.Type == VariableMessageType.Variable)
+                    {
+                        expectedMsgId = StructFrame.SerializationTest.SerializationTestTruncationTestVariable.MsgId;
+                        var msg = StructFrame.SerializationTest.SerializationTestTruncationTestVariable.Unpack(ExtractPayload(result));
+                        isValid = ValidateTruncationTestVariable(msg, expected.Data);
+                    }
+                    else
+                    {
+                        throw new Exception($"Unknown variable message type: {expected.Type}");
+                    }
+
+                    return (expectedMsgId, isValid);
+                },
+                usePkgId: false);
+        }
+
+        private static bool ValidateTruncationTestNonVariable(StructFrame.SerializationTest.SerializationTestTruncationTestNonVariable msg, Dictionary<string, object> expected)
+        {
+            if (!ValidateField(msg.SequenceId, (uint)expected["sequence_id"], "sequence_id"))
+                return false;
+
+            var expectedArray = (List<byte>)expected["data_array"];
+            if (!ValidateField(msg.DataArrayCount, (byte)expectedArray.Count, "data_array count"))
+                return false;
+
+            for (int i = 0; i < expectedArray.Count; i++)
+            {
+                if (!ValidateField(msg.DataArrayData[i], expectedArray[i], $"data_array[{i}]"))
+                    return false;
+            }
+
+            if (!ValidateField(msg.Footer, (ushort)expected["footer"], "footer"))
+                return false;
+
+            return true;
+        }
+
+        private static bool ValidateTruncationTestVariable(StructFrame.SerializationTest.SerializationTestTruncationTestVariable msg, Dictionary<string, object> expected)
+        {
+            if (!ValidateField(msg.SequenceId, (uint)expected["sequence_id"], "sequence_id"))
+                return false;
+
+            var expectedArray = (List<byte>)expected["data_array"];
+            if (!ValidateField(msg.DataArrayCount, (byte)expectedArray.Count, "data_array count"))
+                return false;
+
+            for (int i = 0; i < expectedArray.Count; i++)
+            {
+                if (!ValidateField(msg.DataArrayData[i], expectedArray[i], $"data_array[{i}]"))
+                    return false;
+            }
+
+            if (!ValidateField(msg.Footer, (ushort)expected["footer"], "footer"))
+                return false;
+
+            return true;
+        }
+
         public static (bool success, int messageCount) DecodeExtendedMessages(string formatName, byte[] data)
         {
             return DecodeMessages(
@@ -642,8 +781,35 @@ namespace StructFrameTests
                         return (expectedMsg.GetMsgId(), false);
                     }
                     
-                    // Validate by comparing packed message bytes
-                    var expectedData = expectedMsg.Pack();
+                    // Get expected data
+                    // For variable messages: Pack() returns variable encoding, PackMaxSize() returns MAX_SIZE
+                    // Check if we received MAX_SIZE or variable encoding
+                    byte[] expectedData;
+                    var msgType = expectedMsg.GetType();
+                    var maxSizeField = msgType.GetField("MaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                    int maxSize = maxSizeField != null ? (int)maxSizeField.GetValue(null) : expectedMsg.GetSize();
+                    
+                    if (decodedPayload.Length == maxSize)
+                    {
+                        // Received MAX_SIZE format (minimal profiles or non-variable messages)
+                        var packMaxSizeMethod = msgType.GetMethod("PackMaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                        if (packMaxSizeMethod != null)
+                        {
+                            // Variable message with MAX_SIZE encoding
+                            expectedData = (byte[])packMaxSizeMethod.Invoke(expectedMsg, null);
+                        }
+                        else
+                        {
+                            // Non-variable message
+                            expectedData = expectedMsg.Pack();
+                        }
+                    }
+                    else
+                    {
+                        // Received variable-length format - Pack() returns this for variable messages
+                        expectedData = expectedMsg.Pack();
+                    }
+                    
                     if (decodedPayload.Length != expectedData.Length)
                     {
                         Console.WriteLine($"    Size mismatch: expected {expectedData.Length}, got {decodedPayload.Length}");

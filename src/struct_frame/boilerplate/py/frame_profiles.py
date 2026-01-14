@@ -290,12 +290,22 @@ def _frame_format_encode_with_crc(
         raise ValueError("Message object must have MSG_ID or msg_id attribute")
     
     # Get payload
-    if hasattr(msg, 'data') and callable(msg.data):
-        payload = msg.data()
+    # For minimal profiles (no length field), variable messages must use pack_max_size()
+    # Non-variable messages and variable messages on profiles with length fields use pack()
+    is_variable = getattr(msg, 'IS_VARIABLE', False)
+    if is_variable and not config.payload.has_length:
+        # Variable message on minimal profile (ProfileSensor/ProfileIPC) - need MAX_SIZE
+        if hasattr(msg, 'pack_max_size') and callable(msg.pack_max_size):
+            payload = msg.pack_max_size()
+        else:
+            # Fallback to pack() if pack_max_size doesn't exist (shouldn't happen)
+            payload = msg.pack()
     elif hasattr(msg, 'pack') and callable(msg.pack):
+        # Standard path: pack() returns variable encoding for variable messages,
+        # MAX_SIZE for non-variable messages
         payload = msg.pack()
     else:
-        raise ValueError("Message object must have data() or pack() method")
+        raise ValueError("Message object must have pack() method")
     
     # Get magic numbers
     msg_class = type(msg)
@@ -363,6 +373,10 @@ def _frame_format_encode_minimal(
     """
     Generic encode function for minimal frames (no length, no CRC).
     
+    NOTE: Minimal profiles do NOT support variable-length encoding!
+    Variable messages are always encoded at MAX_SIZE for minimal profiles
+    because the parser has no length field and cannot determine message boundaries.
+    
     Args:
         config: Profile configuration
         msg: Message object with MSG_ID/msg_id and data()/pack() methods
@@ -375,13 +389,18 @@ def _frame_format_encode_minimal(
     if msg_id is None:
         raise ValueError("Message object must have MSG_ID or msg_id attribute")
     
-    # Get payload
-    if hasattr(msg, 'data') and callable(msg.data):
-        payload = msg.data()
+    # Get payload - ALWAYS use MAX_SIZE for minimal profiles
+    # For variable messages, use pack_max_size() if available
+    # For non-variable messages, pack() already returns MAX_SIZE
+    is_variable = getattr(msg, 'IS_VARIABLE', False)
+    if is_variable and hasattr(msg, 'pack_max_size') and callable(msg.pack_max_size):
+        payload = msg.pack_max_size()
     elif hasattr(msg, 'pack') and callable(msg.pack):
         payload = msg.pack()
+    elif hasattr(msg, 'data') and callable(msg.data):
+        payload = msg.data()
     else:
-        raise ValueError("Message object must have data() or pack() method")
+        raise ValueError("Message object must have pack(), data(), or pack_max_size() method")
     
     output = []
     

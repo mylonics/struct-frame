@@ -276,18 +276,14 @@ function validateMessage(msgId, data, _index) {
   // Handle variable messages with index tracking
   if (msgId === ExtendedTestExtendedVariableSingleArray._msgid) {
     const expected = extVarSingleMsgs[extVarSingleValidateIdx++];
-    if (data.length !== MsgClass._size) return false;
-    const decoded = new MsgClass();
-    data.copy(decoded._buffer);
+    const decoded = MsgClass.unpack(data);
     return decoded.equals(expected);
   }
 
   const expected = getMessage(msgId);
   if (!expected) return false;
-  if (data.length !== MsgClass._size) return false;
 
-  const decoded = new MsgClass();
-  data.copy(decoded._buffer);
+  const decoded = MsgClass.unpack(data);
   return decoded.equals(expected);
 }
 

@@ -209,6 +209,10 @@ class MessageJsClassGen():
         if msg.variable:
             result += MessageJsClassGen._generate_variable_methods(msg, package_msg_name)
         
+        # Generate unified unpack method for messages with MSG_ID
+        if msg.id is not None:
+            result += MessageJsClassGen._generate_unified_unpack(msg, package_msg_name)
+        
         # Static getSize method
         result += f'  static getSize() {{\n'
         result += f'    return {total_size};\n'
@@ -219,9 +223,53 @@ class MessageJsClassGen():
         return result + '\n'
     
     @staticmethod
+    def _generate_unified_unpack(msg, package_msg_name):
+        """Generate unified unpack() method that works for both variable and non-variable messages."""
+        result = ''
+        
+        result += f'\n  /**\n'
+        result += f'   * Unified unpack method - works for both variable and non-variable messages.\n'
+        result += f'   * For variable messages with minimal profiles (buffer.length === _size),\n'
+        result += f'   * uses standard unpacking instead of variable unpacking.\n'
+        result += f'   * @param {{Buffer}} buffer Input buffer containing packed message data\n'
+        result += f'   * @returns {{{package_msg_name}}} New instance with unpacked data\n'
+        result += f'   */\n'
+        result += f'  static unpack(buffer) {{\n'
+        
+        if msg.variable:
+            result += f'    // Variable message - check encoding format\n'
+            result += f'    if (buffer.length === {package_msg_name}._size) {{\n'
+            result += f'      // Minimal profile format (MAX_SIZE encoding)\n'
+            result += f'      const msg = new {package_msg_name}();\n'
+            result += f'      buffer.copy(msg._buffer);\n'
+            result += f'      return msg;\n'
+            result += f'    }} else {{\n'
+            result += f'      // Variable-length format\n'
+            result += f'      return {package_msg_name}.unpackVariable(buffer);\n'
+            result += f'    }}\n'
+        else:
+            result += f'    // Fixed-size message - use direct copy\n'
+            result += f'    const msg = new {package_msg_name}();\n'
+            result += f'    buffer.copy(msg._buffer);\n'
+            result += f'    return msg;\n'
+        
+        result += f'  }}\n'
+        
+        return result
+    
+    @staticmethod
     def _generate_variable_methods(msg, package_msg_name):
         """Generate variable-length encoding methods for JavaScript messages."""
         result = ''
+        
+        # Add isVariable() instance method
+        result += f'\n  /**\n'
+        result += f'   * Check if this message uses variable-length encoding.\n'
+        result += f'   * @returns {{boolean}} true (this message is variable-length)\n'
+        result += f'   */\n'
+        result += f'  isVariable() {{\n'
+        result += f'    return true;\n'
+        result += f'  }}\n'
         
         # Generate packSize method
         result += f'\n  /**\n'

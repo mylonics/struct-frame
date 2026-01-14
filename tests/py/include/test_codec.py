@@ -109,6 +109,9 @@ def encode_messages(config, format_name: str, buffer: bytearray) -> Tuple[bool, 
     data = writer.data()
     buffer[:len(data)] = data
     
+    if "Variable Flag" in config.TEST_NAME:
+        print(f"Total: {writer.size()} bytes")
+    
     return True, writer.size()
 
 

@@ -303,27 +303,19 @@ function encodeMessage(writer, index) {
 function validateMessage(msgId, data, _index) {
   if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
-    if (data.length !== SerializationTestSerializationTestMessage._size) return false;
-    const decoded = new SerializationTestSerializationTestMessage();
-    data.copy(decoded._buffer);
+    const decoded = SerializationTestSerializationTestMessage.unpack(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestBasicTypesMessage._msgid) {
     const expected = getBasicTypesMessages()[basicIdx++];
-    if (data.length !== SerializationTestBasicTypesMessage._size) return false;
-    const decoded = new SerializationTestBasicTypesMessage();
-    data.copy(decoded._buffer);
+    const decoded = SerializationTestBasicTypesMessage.unpack(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const expected = getUnionTestMessages()[unionIdx++];
-    if (data.length !== SerializationTestUnionTestMessage._size) return false;
-    const decoded = new SerializationTestUnionTestMessage();
-    data.copy(decoded._buffer);
+    const decoded = SerializationTestUnionTestMessage.unpack(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestVariableSingleArray._msgid) {
     const expected = getVariableSingleArrayMessages()[varSingleIdx++];
-    if (data.length !== SerializationTestVariableSingleArray._size) return false;
-    const decoded = new SerializationTestVariableSingleArray();
-    data.copy(decoded._buffer);
+    const decoded = SerializationTestVariableSingleArray.unpack(data);
     return decoded.equals(expected);
   }
 

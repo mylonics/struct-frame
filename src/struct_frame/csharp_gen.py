@@ -451,13 +451,33 @@ class MessageCSharpGen():
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Pack this message into a byte array\n'
+        if msg.variable:
+            result += '        /// For variable messages: returns variable-length encoding by default\n'
+            result += '        /// Use PackMaxSize() for MAX_SIZE encoding (needed for minimal profiles)\n'
         result += '        /// </summary>\n'
         result += '        public byte[] Pack()\n'
         result += '        {\n'
-        result += '            byte[] buffer = new byte[MaxSize];\n'
-        result += '            PackTo(buffer, 0);\n'
-        result += '            return buffer;\n'
+        if msg.variable:
+            # Variable messages return variable-length encoding by default
+            result += '            return PackVariable();\n'
+        else:
+            result += '            byte[] buffer = new byte[MaxSize];\n'
+            result += '            PackTo(buffer, 0);\n'
+            result += '            return buffer;\n'
         result += '        }\n'
+        
+        # For variable messages, add PackMaxSize() method
+        if msg.variable:
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += '        /// Pack this message to MAX_SIZE (for minimal profiles without length field)\n'
+            result += '        /// </summary>\n'
+            result += '        public byte[] PackMaxSize()\n'
+            result += '        {\n'
+            result += '            byte[] buffer = new byte[MaxSize];\n'
+            result += '            PackTo(buffer, 0);\n'
+            result += '            return buffer;\n'
+            result += '        }\n'
         
         # Generate PackTo() method for zero-allocation packing
         result += '\n'
@@ -504,9 +524,36 @@ class MessageCSharpGen():
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Unpack a byte array into this message type\n'
+        if msg.variable:
+            result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding\n'
         result += '        /// </summary>\n'
         result += f'        public static {structName} Unpack(byte[] data, int offset = 0)\n'
         result += '        {\n'
+        
+        # For variable messages, detect format based on size
+        if msg.variable:
+            result += f'            // Variable message - detect encoding format\n'
+            result += f'            int availableSize = data.Length - offset;\n'
+            result += f'            if (availableSize == MaxSize)\n'
+            result += '            {\n'
+            result += f'                // MAX_SIZE encoding (minimal profiles)\n'
+            result += f'                return UnpackMaxSize(data, offset);\n'
+            result += '            }\n'
+            result += '            else\n'
+            result += '            {\n'
+            result += f'                // Variable-length encoding\n'
+            result += f'                return UnpackVariable(data, offset);\n'
+            result += '            }\n'
+            result += '        }\n'
+            
+            # Add UnpackMaxSize for variable messages
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += '        /// Unpack from MAX_SIZE buffer (for minimal profiles)\n'
+            result += '        /// </summary>\n'
+            result += f'        private static {structName} UnpackMaxSize(byte[] data, int offset = 0)\n'
+            result += '        {\n'
+            
         result += f'            var msg = new {structName}();\n'
 
         offset = 0

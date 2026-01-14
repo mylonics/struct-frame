@@ -14,11 +14,13 @@
     <Compile Include="include\TestCodec.cs" />
     <Compile Include="include\StandardTestData.cs" />
     <Compile Include="include\ExtendedTestData.cs" />
+    <Compile Include="include\VariableFlagTestData.cs" />
     
     <!-- Test entry points -->
     <Compile Include="TestRunner.cs" />
     <Compile Include="test_standard.cs" />
     <Compile Include="test_extended.cs" />
+    <Compile Include="test_variable_flag.cs" />
     
     <!-- Generated struct files -->
     <Compile Include="..\generated\csharp\*.cs" Link="Generated\%(Filename)%(Extension)" />

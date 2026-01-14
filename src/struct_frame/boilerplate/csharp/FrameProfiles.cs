@@ -206,7 +206,31 @@ namespace StructFrame
         /// </summary>
         public int Encode(byte[] buffer, int offset, IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
-            byte[] payload = message.Pack();
+            // For variable messages with minimal profiles (no length field), use PackMaxSize()
+            // Otherwise, Pack() returns the appropriate encoding
+            byte[] payload;
+            if (!_config.HasLength)
+            {
+                // Minimal profile (ProfileSensor/ProfileIPC) - need MAX_SIZE encoding
+                // Check if message has PackMaxSize() method (variable messages only)
+                var packMaxSizeMethod = message.GetType().GetMethod("PackMaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (packMaxSizeMethod != null)
+                {
+                    payload = (byte[])packMaxSizeMethod.Invoke(message, null);
+                }
+                else
+                {
+                    // Non-variable message - Pack() always returns MAX_SIZE
+                    payload = message.Pack();
+                }
+            }
+            else
+            {
+                // Profile has length field - Pack() returns the correct encoding
+                // (variable-length for variable messages, MAX_SIZE for non-variable)
+                payload = message.Pack();
+            }
+            
             var (magic1, magic2) = message.GetMagicNumbers();
             ushort msgId = message.GetMsgId();
             int payloadSize = payload.Length;

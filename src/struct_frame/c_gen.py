@@ -310,6 +310,10 @@ class MessageCGen():
         # Generate variable message functions
         if msg.variable:
             result += MessageCGen._generate_variable_functions(msg, structName, defineName)
+        
+        # Generate unified unpack() for messages with MSG_ID (both variable and non-variable)
+        if msg.id:
+            result += MessageCGen._generate_unified_unpack(msg, structName, defineName)
 
         # Generate equality function if requested
         if equality:
@@ -482,6 +486,78 @@ class MessageCGen():
         
         result += f'    return offset;\n'
         result += f'}}\n'
+        
+        # Generate unified unpack() function
+        result += f'\n/**\n'
+        result += f' * Unified unpack function for {structName}.\n'
+        result += f' * Automatically detects whether the buffer contains variable-length or MAX_SIZE encoding.\n'
+        result += f' * For MAX_SIZE buffers: uses memcpy (compatible with minimal profiles)\n'
+        result += f' * For variable-length buffers: uses {structName}_unpack_variable()\n'
+        result += f' * @param buffer Input buffer\n'
+        result += f' * @param buffer_size Size of the input buffer\n'
+        result += f' * @param msg Pointer to the message to unpack into\n'
+        result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
+        result += f' */\n'
+        result += f'static inline size_t {structName}_unpack(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+        result += f'    if (buffer_size == {defineName}_MAX_SIZE) {{\n'
+        result += f'        /* MAX_SIZE encoding (from minimal profiles or non-variable encoding) */\n'
+        result += f'        memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
+        result += f'        return {defineName}_MAX_SIZE;\n'
+        result += f'    }} else {{\n'
+        result += f'        /* Variable-length encoding */\n'
+        result += f'        return {structName}_unpack_variable(buffer, buffer_size, msg);\n'
+        result += f'    }}\n'
+        result += f'}}\n'
+        
+        return result
+
+    @staticmethod
+    def _generate_unified_unpack(msg, structName, defineName):
+        """Generate unified unpack() function for non-variable messages with MSG_ID."""
+        result = ''
+        
+        # For variable messages, unpack() was already generated inline in _generate_variable_functions
+        # This method handles non-variable messages
+        if not msg.variable:
+            result += f'\n/**\n'
+            result += f' * Unified unpack function for {structName}.\n'
+            result += f' * For fixed-size messages: uses memcpy with size validation\n'
+            result += f' * @param buffer Input buffer\n'
+            result += f' * @param buffer_size Size of the input buffer\n'
+            result += f' * @param msg Pointer to the message to unpack into\n'
+            result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
+            result += f' */\n'
+            result += f'static inline size_t {structName}_unpack(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+            result += f'    /* Fixed-size message - use direct copy */\n'
+            result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
+            result += f'    memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
+            result += f'    return {defineName}_MAX_SIZE;\n'
+            result += f'}}\n'
+        
+        return result
+
+    @staticmethod
+    def _generate_unified_unpack(msg, structName, defineName):
+        """Generate unified unpack() function for non-variable messages with MSG_ID."""
+        result = ''
+        
+        # For variable messages, unpack() was already generated inline in _generate_variable_functions
+        # This method handles non-variable messages
+        if not msg.variable:
+            result += f'\n/**\n'
+            result += f' * Unified unpack function for {structName}.\n'
+            result += f' * For fixed-size messages: uses memcpy with size validation\n'
+            result += f' * @param buffer Input buffer\n'
+            result += f' * @param buffer_size Size of the input buffer\n'
+            result += f' * @param msg Pointer to the message to unpack into\n'
+            result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
+            result += f' */\n'
+            result += f'static inline size_t {structName}_unpack(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+            result += f'    /* Fixed-size message - use direct copy */\n'
+            result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
+            result += f'    memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
+            result += f'    return {defineName}_MAX_SIZE;\n'
+            result += f'}}\n'
         
         return result
 

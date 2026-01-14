@@ -91,16 +91,41 @@ struct ProfileConfig {
  */
 template <typename Config>
 class FrameEncoderWithCrc {
+ private:
+  // Helper to detect if T has IS_VARIABLE member and it's true
+  template <typename U>
+  static constexpr bool is_variable_message() {
+    if constexpr (requires { U::IS_VARIABLE; }) {
+      return U::IS_VARIABLE;
+    } else {
+      return false;
+    }
+  }
+
  public:
   /**
    * Encode a message object.
    * Message must be derived from MessageBase and have MSG_ID, MAX_SIZE, MAGIC1, MAGIC2.
+   * For variable messages (with IS_VARIABLE=true), uses pack_variable() for efficient encoding.
    */
-  template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
-  static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg, uint8_t seq = 0, uint8_t sys_id = 0, uint8_t comp_id = 0) {
-    size_t total_size = Config::overhead + T::MAX_SIZE;
+  template <typename T, typename = std::enable_if_t<
+                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
+  static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg, uint8_t seq = 0, uint8_t sys_id = 0,
+                       uint8_t comp_id = 0) {
+    // Determine if this is a variable message
+    constexpr bool is_variable = is_variable_message<T>();
 
-    if (buffer_size < total_size || T::MAX_SIZE > Config::max_payload) {
+    // Get the actual payload size (variable messages use pack_size(), others use MAX_SIZE)
+    size_t payload_size;
+    if constexpr (is_variable) {
+      payload_size = msg.pack_size();
+    } else {
+      payload_size = T::MAX_SIZE;
+    }
+
+    size_t total_size = Config::overhead + payload_size;
+
+    if (buffer_size < total_size || payload_size > Config::max_payload) {
       return 0;
     }
 
@@ -127,13 +152,13 @@ class FrameEncoderWithCrc {
       buffer[idx++] = comp_id;
     }
 
-    // Write length field
+    // Write length field (use actual payload size for variable messages)
     if constexpr (Config::has_length) {
       if constexpr (Config::length_bytes == 1) {
-        buffer[idx++] = static_cast<uint8_t>(T::MAX_SIZE & 0xFF);
+        buffer[idx++] = static_cast<uint8_t>(payload_size & 0xFF);
       } else {
-        buffer[idx++] = static_cast<uint8_t>(T::MAX_SIZE & 0xFF);
-        buffer[idx++] = static_cast<uint8_t>((T::MAX_SIZE >> 8) & 0xFF);
+        buffer[idx++] = static_cast<uint8_t>(payload_size & 0xFF);
+        buffer[idx++] = static_cast<uint8_t>((payload_size >> 8) & 0xFF);
       }
     }
 
@@ -143,9 +168,14 @@ class FrameEncoderWithCrc {
     }
     buffer[idx++] = static_cast<uint8_t>(T::MSG_ID & 0xFF);  // msg_id (low byte)
 
-    // Write payload
-    std::memcpy(buffer + idx, msg.data(), T::MAX_SIZE);
-    idx += T::MAX_SIZE;
+    // Write payload (use pack_variable for variable messages, memcpy for fixed)
+    if constexpr (is_variable) {
+      size_t written = msg.pack_variable(buffer + idx);
+      idx += written;
+    } else {
+      std::memcpy(buffer + idx, msg.data(), payload_size);
+      idx += payload_size;
+    }
 
     // Calculate and write CRC
     if constexpr (Config::has_crc) {
@@ -164,14 +194,32 @@ class FrameEncoderWithCrc {
  */
 template <typename Config>
 class FrameEncoderMinimal {
+ private:
+  // Helper to detect if T has IS_VARIABLE member and it's true
+  template <typename U>
+  static constexpr bool is_variable_message() {
+    if constexpr (requires { U::IS_VARIABLE; }) {
+      return U::IS_VARIABLE;
+    } else {
+      return false;
+    }
+  }
+
  public:
   /**
    * Encode a message object.
    * Message must be derived from MessageBase and have MSG_ID, MAX_SIZE.
+   * NOTE: Minimal profiles do NOT support variable-length encoding!
+   * Variable messages are always encoded at MAX_SIZE for minimal profiles
+   * because the parser has no length field and cannot determine message boundaries.
    */
-  template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
+  template <typename T, typename = std::enable_if_t<
+                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
   static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
-    size_t total_size = Config::overhead + T::MAX_SIZE;
+    // Minimal profiles ALWAYS use MAX_SIZE (no variable-length support)
+    constexpr size_t payload_size = T::MAX_SIZE;
+
+    size_t total_size = Config::overhead + payload_size;
 
     if (buffer_size < total_size) {
       return 0;
@@ -190,9 +238,9 @@ class FrameEncoderMinimal {
     // Write message ID
     buffer[idx++] = static_cast<uint8_t>(T::MSG_ID);
 
-    // Write payload
-    std::memcpy(buffer + idx, msg.data(), T::MAX_SIZE);
-    idx += T::MAX_SIZE;
+    // Write payload at MAX_SIZE (always use data() for minimal profiles)
+    std::memcpy(buffer + idx, msg.data(), payload_size);
+    idx += payload_size;
 
     return idx;
   }
@@ -204,7 +252,16 @@ class FrameEncoderMinimal {
 template <typename Config>
 class BufferParserWithCrc {
  public:
-  static FrameMsgInfo parse(const uint8_t* buffer, size_t length) {
+  /**
+   * Parse a frame with CRC using a callable to get message info.
+   * @tparam GetMessageInfoFn Callable type (function pointer, lambda, or functor) with signature MessageInfo(uint16_t)
+   * @param buffer Pointer to data buffer
+   * @param length Size of buffer
+   * @param get_message_info Callable that returns MessageInfo for a given message ID
+   * @return FrameMsgInfo with valid=true if successful
+   */
+  template <typename GetMessageInfoFn>
+  static FrameMsgInfo parse(const uint8_t* buffer, size_t length, GetMessageInfoFn get_message_info) {
     if (length < Config::overhead) {
       return FrameMsgInfo();
     }
@@ -257,12 +314,11 @@ class BufferParserWithCrc {
     // Verify CRC
     if constexpr (Config::has_crc) {
       size_t crc_len = total_size - crc_start - Config::footer_size;
-      
-      // Get magic numbers for this message type
-      uint8_t magic1 = 0, magic2 = 0;
-      get_magic_numbers(msg_id, &magic1, &magic2);
-      
-      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, magic1, magic2);
+
+      // Get magic numbers for this message type from message info
+      auto info = get_message_info(msg_id);
+
+      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, info.magic1, info.magic2);
       if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
         return FrameMsgInfo();
       }
@@ -379,8 +435,7 @@ using ProfileNetworkConfig =
 template <typename Config, typename GetMessageInfoFn = std::nullptr_t>
 class BufferReader {
  public:
-  BufferReader(const uint8_t* buffer, size_t size)
-      : buffer_(buffer), size_(size), offset_(0), get_message_info_{} {}
+  BufferReader(const uint8_t* buffer, size_t size) : buffer_(buffer), size_(size), offset_(0), get_message_info_{} {}
 
   BufferReader(const uint8_t* buffer, size_t size, GetMessageInfoFn get_message_info)
       : buffer_(buffer), size_(size), offset_(0), get_message_info_(get_message_info) {}
@@ -394,12 +449,7 @@ class BufferReader {
       return FrameMsgInfo();
     }
 
-    FrameMsgInfo result;
-    if constexpr (Config::has_length || Config::has_crc) {
-      result = BufferParserWithCrc<Config>::parse(buffer_ + offset_, size_ - offset_);
-    } else {
-      result = BufferParserMinimal<Config>::template parse(buffer_ + offset_, size_ - offset_, get_message_info_);
-    }
+    FrameMsgInfo result = parse_frame(buffer_ + offset_, size_ - offset_);
 
     if (result.valid && result.frame_size > 0) {
       offset_ += result.frame_size;
@@ -429,6 +479,14 @@ class BufferReader {
   bool has_more() const { return offset_ < size_; }
 
  private:
+  FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
+    if constexpr (Config::has_length || Config::has_crc) {
+      return BufferParserWithCrc<Config>::template parse(buffer, size, get_message_info_);
+    } else {
+      return BufferParserMinimal<Config>::template parse(buffer, size, get_message_info_);
+    }
+  }
+
   const uint8_t* buffer_;
   size_t size_;
   size_t offset_;
@@ -457,7 +515,8 @@ class BufferWriter {
    * Write a message to the buffer.
    * Returns the number of bytes written, or 0 on failure.
    */
-  template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
+  template <typename T, typename = std::enable_if_t<
+                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
   size_t write(const T& msg) {
     if constexpr (Config::has_length || Config::has_crc) {
       // Profiles with CRC use the full encoder signature
@@ -479,11 +538,13 @@ class BufferWriter {
   /**
    * Write a message with sequence and addressing (for profiles that support it).
    */
-  template <typename T, typename = std::enable_if_t<std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
+  template <typename T, typename = std::enable_if_t<
+                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
   size_t write(const T& msg, uint8_t seq, uint8_t sys_id = 0, uint8_t comp_id = 0) {
     static_assert(Config::has_seq || Config::has_sys_id || Config::has_comp_id,
                   "This profile does not support sequence/addressing fields");
-    size_t written = FrameEncoderWithCrc<Config>::encode(buffer_ + offset_, capacity_ - offset_, msg, seq, sys_id, comp_id);
+    size_t written =
+        FrameEncoderWithCrc<Config>::encode(buffer_ + offset_, capacity_ - offset_, msg, seq, sys_id, comp_id);
     if (written > 0) {
       offset_ += written;
     }
@@ -658,7 +719,7 @@ class AccumulatingReader {
     size_t partial_len = internal_data_len_ > current_size_ ? internal_data_len_ - current_size_ : 0;
     if (internal_data_len_ > 0 && current_offset_ == 0) {
       // We have data in internal buffer that includes new data
-      FrameMsgInfo result = parse_buffer(internal_buffer_, internal_data_len_);
+      FrameMsgInfo result = parse_frame(internal_buffer_, internal_data_len_);
 
       if (result.valid) {
         // Successfully parsed from internal buffer
@@ -683,7 +744,7 @@ class AccumulatingReader {
       return FrameMsgInfo();
     }
 
-    FrameMsgInfo result = parse_buffer(current_buffer_ + current_offset_, current_size_ - current_offset_);
+    FrameMsgInfo result = parse_frame(current_buffer_ + current_offset_, current_size_ - current_offset_);
 
     if (result.valid && result.frame_size > 0) {
       current_offset_ += result.frame_size;
@@ -973,7 +1034,7 @@ class AccumulatingReader {
   }
 
   FrameMsgInfo validate_and_return() {
-    FrameMsgInfo result = parse_buffer(internal_buffer_, internal_data_len_);
+    FrameMsgInfo result = parse_frame(internal_buffer_, internal_data_len_);
 
     // Reset state for next message
     state_ = State::LookingForStart1;
@@ -987,9 +1048,9 @@ class AccumulatingReader {
    * Shared Parsing
    *=========================================================================*/
 
-  FrameMsgInfo parse_buffer(const uint8_t* buffer, size_t size) {
+  FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
     if constexpr (Config::has_length || Config::has_crc) {
-      return BufferParserWithCrc<Config>::parse(buffer, size);
+      return BufferParserWithCrc<Config>::template parse(buffer, size, get_message_info_);
     } else {
       return BufferParserMinimal<Config>::template parse(buffer, size, get_message_info_);
     }
