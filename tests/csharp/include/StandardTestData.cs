@@ -16,7 +16,8 @@ namespace StructFrameTests
     {
         SerializationTest = 0,
         BasicTypes = 1,
-        UnionTest = 2
+        UnionTest = 2,
+        VariableSingleArray = 3
     }
 
     public class MixedMessage
@@ -31,7 +32,7 @@ namespace StructFrameTests
         // Message count and order
         // ============================================================================
 
-        public const int MESSAGE_COUNT = 11;
+        public const int MESSAGE_COUNT = 12;
 
         public static int GetTestMessageCount()
         {
@@ -258,6 +259,17 @@ namespace StructFrameTests
                         ["device_id"] = "NEG-TEST",
                         ["description"] = "Negative and max values"
                     }
+                },
+                // 11: VariableSingleArray
+                new MixedMessage
+                {
+                    Type = MessageType.VariableSingleArray,
+                    Data = new Dictionary<string, object>
+                    {
+                        ["message_id"] = 0x12345678u,
+                        ["payload"] = new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 },
+                        ["checksum"] = (ushort)0xABCD
+                    }
                 }
             };
 
@@ -270,7 +282,7 @@ namespace StructFrameTests
 
         public static class Config
         {
-            public const int MESSAGE_COUNT = 11;
+            public const int MESSAGE_COUNT = 12;
             public const int BUFFER_SIZE = 4096;
             public const string FORMATS_HELP = "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network";
             public const string TEST_NAME = "standard";

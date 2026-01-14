@@ -24,12 +24,13 @@
  * Message count and order
  * ============================================================================ */
 
-#define STD_MESSAGE_COUNT 11
+#define STD_MESSAGE_COUNT 12
 
 /* Index tracking for encoding/validation */
 static size_t std_serial_idx = 0;
 static size_t std_basic_idx = 0;
 static size_t std_union_idx = 0;
+static size_t std_var_single_idx = 0;
 
 /* Message ID order array */
 static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
@@ -44,6 +45,7 @@ static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID,         /* 8: UnionTest[0] */
     SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID,         /* 9: UnionTest[1] */
     SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,        /* 10: BasicTypes[3] */
+    SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 11: VariableSingleArray[0] */
 };
 
 static inline const uint16_t* std_get_msg_id_order(void) { return std_msg_id_order; }
@@ -231,6 +233,37 @@ static inline const SerializationTestUnionTestMessage* get_union_test_messages(v
   return messages;
 }
 
+/* Create VariableSingleArray test message */
+static inline SerializationTestVariableSingleArray create_variable_single_array(void) {
+  SerializationTestVariableSingleArray msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.message_id = 0x12345678;
+  msg.payload.data[0] = 1;
+  msg.payload.data[1] = 2;
+  msg.payload.data[2] = 3;
+  msg.payload.data[3] = 4;
+  msg.payload.data[4] = 5;
+  msg.payload.data[5] = 6;
+  msg.payload.data[6] = 7;
+  msg.payload.data[7] = 8;
+  msg.payload.count = 8;
+  msg.checksum = 0xABCD;
+  return msg;
+}
+
+/* VariableSingleArray array (1 message) */
+static inline const SerializationTestVariableSingleArray* get_variable_single_array_messages(void) {
+  static SerializationTestVariableSingleArray messages[1];
+  static bool initialized = false;
+
+  if (!initialized) {
+    messages[0] = create_variable_single_array();
+    initialized = true;
+  }
+
+  return messages;
+}
+
 /* ============================================================================
  * Reset state for new encode/decode run
  * ============================================================================ */
@@ -239,6 +272,7 @@ static inline void std_reset_state(void) {
   std_serial_idx = 0;
   std_basic_idx = 0;
   std_union_idx = 0;
+  std_var_single_idx = 0;
 }
 
 /* ============================================================================
@@ -260,6 +294,10 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
     const SerializationTestUnionTestMessage* msg = &get_union_test_messages()[std_union_idx++];
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
                                SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC2);
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID) {
+    const SerializationTestVariableSingleArray* msg = &get_variable_single_array_messages()[std_var_single_idx++];
+    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
+                               SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1, SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
   }
 
   return 0;
@@ -287,6 +325,11 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
     if (size != sizeof(*expected)) return false;
     const SerializationTestUnionTestMessage* decoded = (const SerializationTestUnionTestMessage*)data;
     return SerializationTestUnionTestMessage_equals(decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID) {
+    const SerializationTestVariableSingleArray* expected = &get_variable_single_array_messages()[std_var_single_idx++];
+    if (size != sizeof(*expected)) return false;
+    const SerializationTestVariableSingleArray* decoded = (const SerializationTestVariableSingleArray*)data;
+    return SerializationTestVariableSingleArray_equals(decoded, expected);
   }
 
   return false;

@@ -8,16 +8,18 @@ const {
   SerializationTestBasicTypesMessage,
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
+  SerializationTestVariableSingleArray,
   get_message_info,
 } = require('../../generated/js/serialization_test.structframe');
 
 /** Message count */
-const MESSAGE_COUNT = 11;
+const MESSAGE_COUNT = 12;
 
 /** Index tracking for encoding/validation */
 let serialIdx = 0;
 let basicIdx = 0;
 let unionIdx = 0;
+let varSingleIdx = 0;
 
 /** Message ID order array */
 const MSG_ID_ORDER = [
@@ -32,6 +34,7 @@ const MSG_ID_ORDER = [
   SerializationTestUnionTestMessage._msgid,          // 8: UnionTest[0]
   SerializationTestUnionTestMessage._msgid,          // 9: UnionTest[1]
   SerializationTestBasicTypesMessage._msgid,         // 10: BasicTypes[3]
+  SerializationTestVariableSingleArray._msgid,       // 11: VariableSingleArray[0]
 ];
 
 /** SerializationTestMessage array (5 messages) */
@@ -217,11 +220,24 @@ function getUnionTestMessages() {
   ];
 }
 
+/** VariableSingleArray array (1 message) */
+function getVariableSingleArrayMessages() {
+  return [
+    new SerializationTestVariableSingleArray({
+      message_id: 0x12345678,
+      payload_count: 8,
+      payload_data: [1, 2, 3, 4, 5, 6, 7, 8],
+      checksum: 0xABCD,
+    }),
+  ];
+}
+
 /** Reset state for new encode/decode run */
 function resetState() {
   serialIdx = 0;
   basicIdx = 0;
   unionIdx = 0;
+  varSingleIdx = 0;
 }
 
 /** Encode message by index */
@@ -236,6 +252,9 @@ function encodeMessage(writer, index) {
     return writer.write(msg);
   } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const msg = getUnionTestMessages()[unionIdx++];
+    return writer.write(msg);
+  } else if (msgId === SerializationTestVariableSingleArray._msgid) {
+    const msg = getVariableSingleArrayMessages()[varSingleIdx++];
     return writer.write(msg);
   }
 
@@ -260,6 +279,12 @@ function validateMessage(msgId, data, _index) {
     const expected = getUnionTestMessages()[unionIdx++];
     if (data.length !== SerializationTestUnionTestMessage._size) return false;
     const decoded = new SerializationTestUnionTestMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
+  } else if (msgId === SerializationTestVariableSingleArray._msgid) {
+    const expected = getVariableSingleArrayMessages()[varSingleIdx++];
+    if (data.length !== SerializationTestVariableSingleArray._size) return false;
+    const decoded = new SerializationTestVariableSingleArray();
     data.copy(decoded._buffer);
     return decoded.equals(expected);
   }
