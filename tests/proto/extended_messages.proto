@@ -126,14 +126,6 @@ message LargePayloadMessage1 {
   string device_name = 4 [size=32];
 }
 
-// Another large message with different structure
-message LargePayloadMessage2 {
-  option msgid = 801;
-  
-  // Large array to ensure extended payload (> 255 bytes)
-  repeated uint8 large_data = 1 [size=280];
-}
-
 // ============================================================================
 // Variable Length Message Tests for Extended IDs (msgid: 802-804)
 // These messages use option variable = true for variable-length encoding
@@ -172,4 +164,18 @@ message ExtendedVariableMixedFields {
   string fixed_tag = 4 [size=32];    // Fixed string (32 bytes)
   repeated float sensor_values = 5 [max_size=80];   // Variable array
   string variable_notes = 6 [max_size=200];         // Variable string
+}
+
+// ============================================================================
+// Large Payload Message 2 (msgid: 801) - NOTE: This message has intentionally
+// invalid field size (280 > 255) for testing error handling. It is placed at
+// the end so the generator processes variable messages first.
+// ============================================================================
+
+// Another large message with different structure
+message LargePayloadMessage2 {
+  option msgid = 801;
+  
+  // Large array to ensure extended payload (> 255 bytes)
+  repeated uint8 large_data = 1 [size=280];
 }
