@@ -313,9 +313,13 @@ class MessageCppGen():
             result += '\n'.join([OneOfCppGen.generate(o, use_namespace, package)
                                 for key, o in msg.oneofs.items()])
         
+        # Ensure newline after fields/oneofs
+        if msg.fields or msg.oneofs:
+            result += '\n'
+        
         # Generate equality operator if requested
         if equality:
-            result += '\n\n'
+            result += '\n'
             result += f'    bool operator==(const {structName}& other) const {{\n'
             
             comparisons = []
