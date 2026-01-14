@@ -3,9 +3,9 @@
  * Hardcoded test messages for cross-platform compatibility testing.
  *
  * Structure:
- * - Separate arrays for each message type (SerializationTest, BasicTypes, UnionTest)
+ * - Separate arrays for each message type (SerializationTest, BasicTypes, UnionTest, VariableSingleArray)
  * - Index variables track position within each typed array
- * - A msg_id order array (length 11) defines the encode/decode sequence
+ * - A msg_id order array (length 12) defines the encode/decode sequence
  * - Encoding uses msg_id array to select which typed array to pull from
  * - Decoding uses decoded msg_id to find the right array for comparison
  */
@@ -17,16 +17,18 @@ import {
   SerializationTestBasicTypesMessage,
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
+  SerializationTestVariableSingleArray,
   get_message_info,
 } from '../../generated/ts/serialization_test.structframe';
 
 /** Message count */
-const MESSAGE_COUNT = 11;
+const MESSAGE_COUNT = 12;
 
 /** Index tracking for encoding/validation */
 let serialIdx = 0;
 let basicIdx = 0;
 let unionIdx = 0;
+let varSingleIdx = 0;
 
 /** Message ID order array */
 const MSG_ID_ORDER: number[] = [
@@ -41,6 +43,7 @@ const MSG_ID_ORDER: number[] = [
   SerializationTestUnionTestMessage._msgid!,          // 8: UnionTest[0]
   SerializationTestUnionTestMessage._msgid!,          // 9: UnionTest[1]
   SerializationTestBasicTypesMessage._msgid!,         // 10: BasicTypes[3]
+  SerializationTestVariableSingleArray._msgid!,       // 11: VariableSingleArray[0]
 ];
 
 /** SerializationTestMessage array (5 messages) */
@@ -226,11 +229,24 @@ function getUnionTestMessages(): SerializationTestUnionTestMessage[] {
   ];
 }
 
+/** VariableSingleArray array (1 message) */
+function getVariableSingleArrayMessages(): SerializationTestVariableSingleArray[] {
+  return [
+    new SerializationTestVariableSingleArray({
+      message_id: 0x12345678,
+      payload_count: 8,
+      payload_data: [1, 2, 3, 4, 5, 6, 7, 8],
+      checksum: 0xABCD,
+    }),
+  ];
+}
+
 /** Reset state for new encode/decode run */
 function resetState(): void {
   serialIdx = 0;
   basicIdx = 0;
   unionIdx = 0;
+  varSingleIdx = 0;
 }
 
 /** Encode message by index */
@@ -245,6 +261,9 @@ function encodeMessage(writer: any, index: number): number {
     return writer.write(msg);
   } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const msg = getUnionTestMessages()[unionIdx++];
+    return writer.write(msg);
+  } else if (msgId === SerializationTestVariableSingleArray._msgid) {
+    const msg = getVariableSingleArrayMessages()[varSingleIdx++];
     return writer.write(msg);
   }
 
@@ -269,6 +288,12 @@ function validateMessage(msgId: number, data: Buffer, _index: number): boolean {
     const expected = getUnionTestMessages()[unionIdx++];
     if (data.length !== SerializationTestUnionTestMessage._size) return false;
     const decoded = new SerializationTestUnionTestMessage();
+    data.copy(decoded._buffer);
+    return decoded.equals(expected);
+  } else if (msgId === SerializationTestVariableSingleArray._msgid) {
+    const expected = getVariableSingleArrayMessages()[varSingleIdx++];
+    if (data.length !== SerializationTestVariableSingleArray._size) return false;
+    const decoded = new SerializationTestVariableSingleArray();
     data.copy(decoded._buffer);
     return decoded.equals(expected);
   }

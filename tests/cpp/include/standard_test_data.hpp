@@ -135,6 +135,23 @@ inline SerializationTestUnionTestMessage create_union_with_test() {
   return msg;
 }
 
+// Create VariableSingleArray test message
+inline SerializationTestVariableSingleArray create_variable_single_array() {
+  SerializationTestVariableSingleArray msg{};
+  msg.message_id = 0x12345678;
+  msg.payload.data[0] = 1;
+  msg.payload.data[1] = 2;
+  msg.payload.data[2] = 3;
+  msg.payload.data[3] = 4;
+  msg.payload.data[4] = 5;
+  msg.payload.data[5] = 6;
+  msg.payload.data[6] = 7;
+  msg.payload.data[7] = 8;
+  msg.payload.count = 8;
+  msg.checksum = 0xABCD;
+  return msg;
+}
+
 // ============================================================================
 // Typed message arrays (one per message type)
 // ============================================================================
@@ -175,12 +192,20 @@ inline const std::array<SerializationTestUnionTestMessage, 2>& get_union_test_me
   return messages;
 }
 
+// VariableSingleArray array (1 message)
+inline const std::array<SerializationTestVariableSingleArray, 1>& get_variable_single_array_messages() {
+  static const std::array<SerializationTestVariableSingleArray, 1> messages = {
+      create_variable_single_array(),
+  };
+  return messages;
+}
+
 // ============================================================================
 // Message ID order array - defines the encode/decode sequence
 // ============================================================================
 
 // Message count constant
-constexpr size_t MESSAGE_COUNT = 11;
+constexpr size_t MESSAGE_COUNT = 12;
 
 // The msg_id order array - maps position to which message type to use
 inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
@@ -196,6 +221,7 @@ inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
       SerializationTestUnionTestMessage::MSG_ID,          // 8: UnionTest[0]
       SerializationTestUnionTestMessage::MSG_ID,          // 9: UnionTest[1]
       SerializationTestBasicTypesMessage::MSG_ID,         // 10: BasicTypes[3]
+      SerializationTestVariableSingleArray::MSG_ID,       // 11: VariableSingleArray[0]
   };
   return order;
 }
@@ -208,6 +234,7 @@ struct Encoder {
   size_t serial_idx = 0;
   size_t basic_idx = 0;
   size_t union_idx = 0;
+  size_t var_single_idx = 0;
 
   template <typename WriterType>
   size_t write_message(WriterType& writer, uint16_t msg_id) {
@@ -217,6 +244,8 @@ struct Encoder {
       return writer.write(get_basic_types_messages()[basic_idx++]);
     } else if (msg_id == SerializationTestUnionTestMessage::MSG_ID) {
       return writer.write(get_union_test_messages()[union_idx++]);
+    } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
+      return writer.write(get_variable_single_array_messages()[var_single_idx++]);
     }
     return 0;
   }
@@ -230,6 +259,7 @@ struct Validator {
   size_t serial_idx = 0;
   size_t basic_idx = 0;
   size_t union_idx = 0;
+  size_t var_single_idx = 0;
 
   bool get_expected(uint16_t msg_id, const uint8_t*& data, size_t& size) {
     if (msg_id == SerializationTestSerializationTestMessage::MSG_ID) {
@@ -244,6 +274,11 @@ struct Validator {
       return true;
     } else if (msg_id == SerializationTestUnionTestMessage::MSG_ID) {
       const auto& msg = get_union_test_messages()[union_idx++];
+      data = msg.data();
+      size = msg.size();
+      return true;
+    } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
+      const auto& msg = get_variable_single_array_messages()[var_single_idx++];
       data = msg.data();
       size = msg.size();
       return true;
@@ -269,6 +304,12 @@ struct Validator {
       const auto& expected = get_union_test_messages()[union_idx++];
       if (decoded_size != expected.size()) return false;
       SerializationTestUnionTestMessage decoded;
+      std::memcpy(&decoded, decoded_data, decoded_size);
+      return decoded == expected;
+    } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
+      const auto& expected = get_variable_single_array_messages()[var_single_idx++];
+      if (decoded_size != expected.size()) return false;
+      SerializationTestVariableSingleArray decoded;
       std::memcpy(&decoded, decoded_data, decoded_size);
       return decoded == expected;
     }
