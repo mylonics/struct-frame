@@ -128,3 +128,41 @@ message UnionTestMessage {
     SerializationTestMessage test_payload = 2;
   }
 }
+
+// ============================================================================
+// Variable Length Message Tests (msgid: 206-208)
+// These messages use option variable = true for variable-length encoding
+// ============================================================================
+
+// Variable message with single bounded array (msgid: 206)
+message VariableSingleArray {
+  option msgid = 206;
+  option variable = true;
+  
+  uint32 message_id = 1;
+  repeated uint8 data = 2 [max_size=200];  // Up to 200 bytes, only sends used
+  uint16 checksum = 3;
+}
+
+// Variable message with multiple bounded arrays (msgid: 207)
+message VariableMultipleArrays {
+  option msgid = 207;
+  option variable = true;
+  
+  uint8 type = 1;
+  repeated int32 readings = 2 [max_size=50];   // Up to 200 bytes of int32 data
+  repeated float values = 3 [max_size=25];     // Up to 100 bytes of float data
+  string label = 4 [max_size=64];              // Up to 64 chars variable string
+}
+
+// Variable message with mixed fixed and variable fields (msgid: 208)
+message VariableMixedFields {
+  option msgid = 208;
+  option variable = true;
+  
+  uint32 fixed_id = 1;               // Fixed field
+  float fixed_value = 2;             // Fixed field
+  string fixed_name = 3 [size=16];   // Fixed string
+  repeated uint16 variable_data = 4 [max_size=100];  // Variable array
+  string variable_desc = 5 [max_size=128];           // Variable string
+}
