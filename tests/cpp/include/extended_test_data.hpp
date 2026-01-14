@@ -147,7 +147,7 @@ inline ExtendedTestLargePayloadMessage2 create_large_2() {
 inline ExtendedTestExtendedVariableSingleArray create_ext_var_single(uint64_t timestamp, const uint8_t* data, uint8_t length, uint32_t crc) {
   ExtendedTestExtendedVariableSingleArray msg{};
   msg.timestamp = timestamp;
-  msg.telemetry_data.length = length;
+  msg.telemetry_data.count = length;
   for (int i = 0; i < length; i++) {
     msg.telemetry_data.data[i] = data[i];
   }
@@ -226,18 +226,18 @@ inline const std::array<ExtendedTestExtendedVariableSingleArray, 5>& get_ext_var
     
     // Empty payload (0 elements)
     arr[0].timestamp = 0x0000000000000001ULL;
-    arr[0].telemetry_data.length = 0;
+    arr[0].telemetry_data.count = 0;
     arr[0].crc = 0x00000001;
     
     // Single element
     arr[1].timestamp = 0x0000000000000002ULL;
-    arr[1].telemetry_data.length = 1;
+    arr[1].telemetry_data.count = 1;
     arr[1].telemetry_data.data[0] = 42;
     arr[1].crc = 0x00000002;
     
     // One-third filled (83 elements for max_size=250)
     arr[2].timestamp = 0x0000000000000003ULL;
-    arr[2].telemetry_data.length = 83;
+    arr[2].telemetry_data.count = 83;
     for (int i = 0; i < 83; i++) {
       arr[2].telemetry_data.data[i] = static_cast<uint8_t>(i);
     }
@@ -245,7 +245,7 @@ inline const std::array<ExtendedTestExtendedVariableSingleArray, 5>& get_ext_var
     
     // One position empty (249 elements)
     arr[3].timestamp = 0x0000000000000004ULL;
-    arr[3].telemetry_data.length = 249;
+    arr[3].telemetry_data.count = 249;
     for (int i = 0; i < 249; i++) {
       arr[3].telemetry_data.data[i] = static_cast<uint8_t>(i % 256);
     }
@@ -253,7 +253,7 @@ inline const std::array<ExtendedTestExtendedVariableSingleArray, 5>& get_ext_var
     
     // Full (250 elements)
     arr[4].timestamp = 0x0000000000000005ULL;
-    arr[4].telemetry_data.length = 250;
+    arr[4].telemetry_data.count = 250;
     for (int i = 0; i < 250; i++) {
       arr[4].telemetry_data.data[i] = static_cast<uint8_t>(i % 256);
     }

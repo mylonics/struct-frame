@@ -190,7 +190,7 @@ static inline ExtendedTestExtendedVariableSingleArray create_ext_var_single(uint
   ExtendedTestExtendedVariableSingleArray msg;
   memset(&msg, 0, sizeof(msg));
   msg.timestamp = timestamp;
-  msg.telemetry_data.length = length;
+  msg.telemetry_data.count = length;
   for (int i = 0; i < length; i++) {
     msg.telemetry_data.data[i] = data[i];
   }
@@ -331,18 +331,18 @@ static inline void init_ext_var_single_msgs(void) {
   
   /* Empty payload (0 elements) */
   ext_var_single_msgs[0].timestamp = 0x0000000000000001ULL;
-  ext_var_single_msgs[0].telemetry_data.length = 0;
+  ext_var_single_msgs[0].telemetry_data.count = 0;
   ext_var_single_msgs[0].crc = 0x00000001;
   
   /* Single element */
   ext_var_single_msgs[1].timestamp = 0x0000000000000002ULL;
-  ext_var_single_msgs[1].telemetry_data.length = 1;
+  ext_var_single_msgs[1].telemetry_data.count = 1;
   ext_var_single_msgs[1].telemetry_data.data[0] = 42;
   ext_var_single_msgs[1].crc = 0x00000002;
   
   /* One-third filled (83 elements for max_size=250) */
   ext_var_single_msgs[2].timestamp = 0x0000000000000003ULL;
-  ext_var_single_msgs[2].telemetry_data.length = 83;
+  ext_var_single_msgs[2].telemetry_data.count = 83;
   for (int i = 0; i < 83; i++) {
     ext_var_single_msgs[2].telemetry_data.data[i] = (uint8_t)i;
   }
@@ -350,7 +350,7 @@ static inline void init_ext_var_single_msgs(void) {
   
   /* One position empty (249 elements) */
   ext_var_single_msgs[3].timestamp = 0x0000000000000004ULL;
-  ext_var_single_msgs[3].telemetry_data.length = 249;
+  ext_var_single_msgs[3].telemetry_data.count = 249;
   for (int i = 0; i < 249; i++) {
     ext_var_single_msgs[3].telemetry_data.data[i] = (uint8_t)(i % 256);
   }
@@ -358,7 +358,7 @@ static inline void init_ext_var_single_msgs(void) {
   
   /* Full (250 elements) */
   ext_var_single_msgs[4].timestamp = 0x0000000000000005ULL;
-  ext_var_single_msgs[4].telemetry_data.length = 250;
+  ext_var_single_msgs[4].telemetry_data.count = 250;
   for (int i = 0; i < 250; i++) {
     ext_var_single_msgs[4].telemetry_data.data[i] = (uint8_t)(i % 256);
   }

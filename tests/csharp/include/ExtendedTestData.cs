@@ -66,7 +66,7 @@ namespace StructFrameTests
             _extVarSingleMsgs[0] = new ExtendedVariableSingleArray
             {
                 Timestamp = 0x0000000000000001UL,
-                TelemetryDataLength = 0,
+                TelemetryDataCount = 0,
                 TelemetryDataData = new byte[250],
                 Crc = 0x00000001
             };
@@ -75,7 +75,7 @@ namespace StructFrameTests
             _extVarSingleMsgs[1] = new ExtendedVariableSingleArray
             {
                 Timestamp = 0x0000000000000002UL,
-                TelemetryDataLength = 1,
+                TelemetryDataCount = 1,
                 TelemetryDataData = new byte[250],
                 Crc = 0x00000002
             };
@@ -85,7 +85,7 @@ namespace StructFrameTests
             _extVarSingleMsgs[2] = new ExtendedVariableSingleArray
             {
                 Timestamp = 0x0000000000000003UL,
-                TelemetryDataLength = 83,
+                TelemetryDataCount = 83,
                 TelemetryDataData = new byte[250],
                 Crc = 0x00000003
             };
@@ -98,7 +98,7 @@ namespace StructFrameTests
             _extVarSingleMsgs[3] = new ExtendedVariableSingleArray
             {
                 Timestamp = 0x0000000000000004UL,
-                TelemetryDataLength = 249,
+                TelemetryDataCount = 249,
                 TelemetryDataData = new byte[250],
                 Crc = 0x00000004
             };
@@ -111,7 +111,7 @@ namespace StructFrameTests
             _extVarSingleMsgs[4] = new ExtendedVariableSingleArray
             {
                 Timestamp = 0x0000000000000005UL,
-                TelemetryDataLength = 250,
+                TelemetryDataCount = 250,
                 TelemetryDataData = new byte[250],
                 Crc = 0x00000005
             };
@@ -343,6 +343,17 @@ namespace StructFrameTests
                     return (msg, "LargePayloadMessage2");
                 }
 
+                // Messages 12-16: ExtendedVariableSingleArray with different fill levels
+                case 12:
+                case 13:
+                case 14:
+                case 15:
+                case 16:
+                {
+                    var msg = GetNextExtVarSingleForEncode();
+                    return (msg, "ExtendedVariableSingleArray");
+                }
+
                 default:
                     return (null, null);
             }
@@ -354,7 +365,7 @@ namespace StructFrameTests
 
         public static class Config
         {
-            public const int MESSAGE_COUNT = 12;
+            public const int MESSAGE_COUNT = 17;
             public const int BUFFER_SIZE = 8192;
             public const string FORMATS_HELP = "profile_bulk, profile_network";
             public const string TEST_NAME = "extended";
