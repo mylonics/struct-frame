@@ -31,6 +31,7 @@ from struct_frame.generated.extended_test import (
     ExtendedTestExtendedIdMessage10,
     ExtendedTestLargePayloadMessage1,
     ExtendedTestLargePayloadMessage2,
+    ExtendedTestExtendedVariableSingleArray,
     get_message_info,
 )
 
@@ -145,6 +146,15 @@ def create_large_2() -> ExtendedTestLargePayloadMessage2:
     )
 
 
+def create_ext_var_single(timestamp: int, telemetry_data: List[int], crc: int) -> ExtendedTestExtendedVariableSingleArray:
+    """Create an ExtendedVariableSingleArray message."""
+    return ExtendedTestExtendedVariableSingleArray(
+        timestamp=timestamp,
+        telemetry_data=telemetry_data,
+        crc=crc
+    )
+
+
 # ============================================================================
 # Message getters - return cached instances (like C++ static functions)
 # ============================================================================
@@ -224,11 +234,37 @@ def get_message_large_2() -> ExtendedTestLargePayloadMessage2:
     return _message_cache[12]
 
 
+def get_ext_var_single_messages() -> List[ExtendedTestExtendedVariableSingleArray]:
+    """Get ExtendedVariableSingleArray array (5 messages with different fill levels).
+    
+    Fill levels for max_size=250:
+    - Empty (0 elements)
+    - Single element (1 element)
+    - One-third filled (83 elements)
+    - One position empty (249 elements)
+    - Full (250 elements)
+    """
+    if 'ext_var_single' not in _message_cache:
+        _message_cache['ext_var_single'] = [
+            # Empty payload (0 elements)
+            create_ext_var_single(0x0000000000000001, [], 0x00000001),
+            # Single element
+            create_ext_var_single(0x0000000000000002, [42], 0x00000002),
+            # One-third filled (83 elements for max_size=250)
+            create_ext_var_single(0x0000000000000003, list(range(83)), 0x00000003),
+            # One position empty (249 elements)
+            create_ext_var_single(0x0000000000000004, list(range(249)), 0x00000004),
+            # Full (250 elements)
+            create_ext_var_single(0x0000000000000005, list(range(250)), 0x00000005),
+        ]
+    return _message_cache['ext_var_single']
+
+
 # ============================================================================
 # Message ID order array - defines the encode/decode sequence
 # ============================================================================
 
-MESSAGE_COUNT = 12
+MESSAGE_COUNT = 17
 
 
 def get_msg_id_order() -> List[int]:
@@ -246,18 +282,35 @@ def get_msg_id_order() -> List[int]:
         ExtendedTestExtendedIdMessage10.MSG_ID,   # 9
         ExtendedTestLargePayloadMessage1.MSG_ID,  # 10
         ExtendedTestLargePayloadMessage2.MSG_ID,  # 11
+        ExtendedTestExtendedVariableSingleArray.MSG_ID,  # 12: empty
+        ExtendedTestExtendedVariableSingleArray.MSG_ID,  # 13: single
+        ExtendedTestExtendedVariableSingleArray.MSG_ID,  # 14: 1/3 filled
+        ExtendedTestExtendedVariableSingleArray.MSG_ID,  # 15: one empty
+        ExtendedTestExtendedVariableSingleArray.MSG_ID,  # 16: full
     ]
 
 
 # ============================================================================
 # Encoder helper - writes messages by msg_id lookup (like C++)
+# For variable messages, tracks indices since we have multiple instances
 # ============================================================================
 
 class Encoder:
-    """Encoder that writes messages by msg_id lookup (no index tracking needed)."""
+    """Encoder that writes messages by msg_id lookup with index tracking for variable messages."""
+    
+    def __init__(self):
+        self.ext_var_single_idx = 0
+        self._ext_var_single_msgs = get_ext_var_single_messages()
     
     def write_message(self, writer, msg_id: int) -> int:
         """Write a message to the writer based on msg_id. Returns bytes written."""
+        # Handle variable messages with index tracking
+        if msg_id == ExtendedTestExtendedVariableSingleArray.MSG_ID:
+            msg = self._ext_var_single_msgs[self.ext_var_single_idx]
+            self.ext_var_single_idx += 1
+            return writer.write(msg)
+        
+        # Handle fixed messages (single instance per type)
         msg_getters = {
             ExtendedTestExtendedIdMessage1.MSG_ID: get_message_ext_1,
             ExtendedTestExtendedIdMessage2.MSG_ID: get_message_ext_2,
@@ -281,12 +334,15 @@ class Encoder:
 
 # ============================================================================
 # Validator helper - validates decoded messages against expected data (like C++)
+# For variable messages, tracks indices since we have multiple instances
 # ============================================================================
 
 class Validator:
     """Validator that returns expected message data and validates using __eq__."""
     
     def __init__(self):
+        self.ext_var_single_idx = 0
+        self._ext_var_single_msgs = get_ext_var_single_messages()
         self._msg_getters = {
             ExtendedTestExtendedIdMessage1.MSG_ID: get_message_ext_1,
             ExtendedTestExtendedIdMessage2.MSG_ID: get_message_ext_2,
@@ -314,10 +370,18 @@ class Validator:
             ExtendedTestExtendedIdMessage10.MSG_ID: ExtendedTestExtendedIdMessage10,
             ExtendedTestLargePayloadMessage1.MSG_ID: ExtendedTestLargePayloadMessage1,
             ExtendedTestLargePayloadMessage2.MSG_ID: ExtendedTestLargePayloadMessage2,
+            ExtendedTestExtendedVariableSingleArray.MSG_ID: ExtendedTestExtendedVariableSingleArray,
         }
     
     def get_expected(self, msg_id: int) -> Tuple[Optional[bytes], Optional[int]]:
         """Get expected message data for validation. Returns (data, size)."""
+        # Handle variable messages with index tracking
+        if msg_id == ExtendedTestExtendedVariableSingleArray.MSG_ID:
+            msg = self._ext_var_single_msgs[self.ext_var_single_idx]
+            self.ext_var_single_idx += 1
+            data = msg.data()
+            return data, len(data)
+        
         getter = self._msg_getters.get(msg_id)
         if getter:
             msg = getter()
@@ -331,11 +395,21 @@ class Validator:
         Note: We unpack the expected message's packed data to ensure both messages
         have been through string padding conversion, making equality comparison valid.
         """
-        getter = self._msg_getters.get(msg_id)
         msg_class = self._msg_classes.get(msg_id)
-        if getter and msg_class:
+        if not msg_class:
+            return False
+        
+        # Handle variable messages with index tracking
+        if msg_id == ExtendedTestExtendedVariableSingleArray.MSG_ID:
+            expected = self._ext_var_single_msgs[self.ext_var_single_idx]
+            self.ext_var_single_idx += 1
+            expected_unpacked = ExtendedTestExtendedVariableSingleArray.create_unpack(expected.data())
+            decoded = ExtendedTestExtendedVariableSingleArray.create_unpack(decoded_data)
+            return decoded == expected_unpacked
+        
+        getter = self._msg_getters.get(msg_id)
+        if getter:
             expected = getter()
-            # Unpack both from packed bytes to ensure string padding matches
             expected_unpacked = msg_class.create_unpack(expected.data())
             decoded = msg_class.create_unpack(decoded_data)
             return decoded == expected_unpacked

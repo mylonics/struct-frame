@@ -453,6 +453,7 @@ class Message:
         self.package = package
         self.isEnum = False
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
+        self.variable = False  # Variable length message encoding
 
     def parse(self, msg):
         self.name = msg.name
@@ -463,6 +464,10 @@ class Message:
                     if self.id:
                         raise Exception(f"Redefinition of msg_id for {e.name}")
                     self.id = e.value
+                elif e.name == "variable":
+                    sval = str(e.value).strip().lower()
+                    if sval in ('true', '1', 'yes', 'on') or e.value is True:
+                        self.variable = True
             elif type(e) == ast.Comment:
                 comments.append(e.text)
             elif type(e) == ast.OneOf:
@@ -553,14 +558,35 @@ class Message:
         # Calculate magic numbers for this message
         self.magic_bytes = calculate_magic_numbers(self)
         
+        # Calculate minimum size for variable messages
+        # min_size is the size when all variable-length fields are at their minimum
+        if self.variable:
+            self.min_size = 0
+            for key, value in self.fields.items():
+                if value.is_array and value.max_size is not None:
+                    # Bounded array: only the count byte (no data when empty)
+                    self.min_size += 1
+                elif value.fieldType == "string" and value.max_size is not None:
+                    # Variable string: only the length byte (no data when empty)
+                    self.min_size += 1
+                else:
+                    # Fixed-size fields use their full size
+                    self.min_size += value.size
+        else:
+            self.min_size = self.size
+        
         return True
 
     def __str__(self):
         output = ""
         for c in self.comments:
             output = output + c + "\n"
-        output = output + \
-            f"Message: {self.name}, Size: {self.size}, ID: {self.id}\n"
+        if self.variable:
+            output = output + \
+                f"Message: {self.name}, Size: {self.size}, MinSize: {self.min_size}, ID: {self.id}, Variable: True\n"
+        else:
+            output = output + \
+                f"Message: {self.name}, Size: {self.size}, ID: {self.id}\n"
 
         for key, value in self.fields.items():
             output = output + value.__str__() + "\n"

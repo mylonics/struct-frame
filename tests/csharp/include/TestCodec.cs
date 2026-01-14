@@ -21,6 +21,7 @@ using SerializationTestMessage = StructFrame.SerializationTest.SerializationTest
 using BasicTypesMessage = StructFrame.SerializationTest.SerializationTestBasicTypesMessage;
 using UnionTestMessage = StructFrame.SerializationTest.SerializationTestUnionTestMessage;
 using ComprehensiveArrayMessage = StructFrame.SerializationTest.SerializationTestComprehensiveArrayMessage;
+using VariableSingleArrayMessage = StructFrame.SerializationTest.SerializationTestVariableSingleArray;
 using Sensor = StructFrame.SerializationTest.SerializationTestSensor;
 using SerializationTestStatus = StructFrame.SerializationTest.SerializationTestStatus;
 
@@ -264,6 +265,20 @@ namespace StructFrameTests
             return sensor;
         }
 
+        private static VariableSingleArrayMessage CreateVariableSingleArrayMessage(Dictionary<string, object> data)
+        {
+            var msg = new VariableSingleArrayMessage();
+            msg.MessageId = (uint)data["message_id"];
+            
+            var payloadData = (byte[])data["payload"];
+            msg.PayloadCount = (byte)payloadData.Length;
+            msg.PayloadData = new byte[200];
+            Array.Copy(payloadData, msg.PayloadData, payloadData.Length);
+            
+            msg.Checksum = (ushort)data["checksum"];
+            return msg;
+        }
+
         private static byte[] EncodeMessage(object msg)
         {
             if (msg is SerializationTestMessage stm)
@@ -423,6 +438,11 @@ namespace StructFrameTests
                     var msg = CreateUnionTestMessage(mixedMsg.Data);
                     bytesWritten = writer.Write(msg);
                 }
+                else if (mixedMsg.Type == MessageType.VariableSingleArray)
+                {
+                    var msg = CreateVariableSingleArrayMessage(mixedMsg.Data);
+                    bytesWritten = writer.Write(msg);
+                }
                 else
                 {
                     throw new Exception($"Unknown message type: {mixedMsg.Type}");
@@ -535,6 +555,27 @@ namespace StructFrameTests
             return true;
         }
 
+        private static bool ValidateVariableSingleArrayMessage(VariableSingleArrayMessage msg, Dictionary<string, object> expected)
+        {
+            if (!ValidateField(msg.MessageId, (uint)expected["message_id"], "message_id"))
+                return false;
+
+            var expectedPayload = (byte[])expected["payload"];
+            if (!ValidateField(msg.PayloadCount, (byte)expectedPayload.Length, "payload_count"))
+                return false;
+
+            for (int i = 0; i < expectedPayload.Length; i++)
+            {
+                if (!ValidateField(msg.PayloadData[i], expectedPayload[i], $"payload_data[{i}]"))
+                    return false;
+            }
+
+            if (!ValidateField(msg.Checksum, (ushort)expected["checksum"], "checksum"))
+                return false;
+
+            return true;
+        }
+
         public static (bool success, int messageCount) DecodeStandardMessages(string formatName, byte[] data)
         {
             return DecodeMessages(
@@ -564,6 +605,12 @@ namespace StructFrameTests
                     {
                         expectedMsgId = UnionTestMessage.MsgId;
                         isValid = ValidateUnionTestMessage(ExtractPayload(result), expected.Data);
+                    }
+                    else if (expected.Type == MessageType.VariableSingleArray)
+                    {
+                        expectedMsgId = VariableSingleArrayMessage.MsgId;
+                        var msg = VariableSingleArrayMessage.Unpack(ExtractPayload(result));
+                        isValid = ValidateVariableSingleArrayMessage(msg, expected.Data);
                     }
                     else
                     {

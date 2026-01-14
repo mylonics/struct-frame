@@ -178,6 +178,11 @@ class MessageJsClassGen():
             result += f'  static _magic1 = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
             result += f'  static _magic2 = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
         
+        # Add variable message constants
+        if msg.variable:
+            result += f'  static _minSize = {msg.min_size}; // Minimum size when all variable fields are empty\n'
+            result += f'  static _isVariable = true; // This message uses variable-length encoding\n'
+        
         result += '\n'
         
         # Generate constructor that supports init object
@@ -200,6 +205,10 @@ class MessageJsClassGen():
         if equality:
             result += MessageJsClassGen.generate_equals_method(msg, package_msg_name, fields)
         
+        # Generate variable message methods if this is a variable message
+        if msg.variable:
+            result += MessageJsClassGen._generate_variable_methods(msg, package_msg_name)
+        
         # Static getSize method
         result += f'  static getSize() {{\n'
         result += f'    return {total_size};\n'
@@ -208,6 +217,126 @@ class MessageJsClassGen():
         result += '}\n'
         result += f'module.exports.{package_msg_name} = {package_msg_name};\n'
         return result + '\n'
+    
+    @staticmethod
+    def _generate_variable_methods(msg, package_msg_name):
+        """Generate variable-length encoding methods for JavaScript messages."""
+        result = ''
+        
+        # Generate packSize method
+        result += f'\n  /**\n'
+        result += f'   * Calculate the packed size using variable-length encoding.\n'
+        result += f'   * @returns {{number}} The size in bytes when packed\n'
+        result += f'   */\n'
+        result += f'  packSize() {{\n'
+        result += f'    let size = 0;\n'
+        
+        for key, field in msg.fields.items():
+            name = field.name
+            if field.is_array and field.max_size is not None:
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if field.fieldType == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
+                result += f'    size += 1 + (this.{name}_count * {element_size}); // {name}\n'
+            elif field.fieldType == "string" and field.max_size is not None:
+                result += f'    size += 1 + this.{name}_length; // {name}\n'
+            else:
+                result += f'    size += {field.size}; // {name}\n'
+        
+        result += f'    return size;\n'
+        result += f'  }}\n'
+        
+        # Generate packVariable method
+        result += f'\n  /**\n'
+        result += f'   * Pack message using variable-length encoding.\n'
+        result += f'   * @returns {{Buffer}} Buffer with packed data (only used bytes)\n'
+        result += f'   */\n'
+        result += f'  packVariable() {{\n'
+        result += f'    const size = this.packSize();\n'
+        result += f'    const buffer = Buffer.alloc(size);\n'
+        result += f'    let offset = 0;\n'
+        
+        msg_offset = 0
+        for key, field in msg.fields.items():
+            name = field.name
+            field_type = field.fieldType
+            if field.is_array and field.max_size is not None:
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if field_type == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                result += f'    // {name}: variable array\n'
+                result += f'    const {name}Count = this.{name}_count;\n'
+                result += f'    buffer.writeUInt8({name}Count, offset++);\n'
+                
+                write_method = WRITE_METHODS.get(field_type if not field.isEnum else "uint8", "_writeUInt8")
+                write_method_name = write_method.replace("_write", "write")
+                result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                result += f'      buffer.{write_method_name}(this.{name}_data[i], offset);\n'
+                result += f'      offset += {element_size};\n'
+                result += f'    }}\n'
+            elif field_type == "string" and field.max_size is not None:
+                result += f'    // {name}: variable string\n'
+                result += f'    const {name}Len = this.{name}_length;\n'
+                result += f'    buffer.writeUInt8({name}Len, offset++);\n'
+                result += f'    for (let i = 0; i < {name}Len; i++) {{\n'
+                result += f'      buffer.writeUInt8(this.{name}_data[i], offset++);\n'
+                result += f'    }}\n'
+            else:
+                result += f'    // {name}: fixed size ({field.size} bytes)\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset + field.size});\n'
+                result += f'    offset += {field.size};\n'
+            msg_offset += field.size
+        
+        result += f'    return buffer;\n'
+        result += f'  }}\n'
+        
+        # Generate static unpackVariable method
+        result += f'\n  /**\n'
+        result += f'   * Unpack message from variable-length encoded buffer.\n'
+        result += f'   * @param {{Buffer}} buffer Input buffer with variable-length encoded data\n'
+        result += f'   * @returns {{{package_msg_name}}} New instance with unpacked data\n'
+        result += f'   */\n'
+        result += f'  static unpackVariable(buffer) {{\n'
+        result += f'    const msg = new {package_msg_name}();\n'
+        result += f'    let offset = 0;\n'
+        
+        msg_offset = 0
+        for key, field in msg.fields.items():
+            name = field.name
+            field_type = field.fieldType
+            if field.is_array and field.max_size is not None:
+                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                if field_type == "string":
+                    element_size = field.element_size if field.element_size else 1
+                else:
+                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                result += f'    // {name}: variable array\n'
+                result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
+                result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
+                result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                result += f'      offset += {element_size};\n'
+                result += f'    }}\n'
+            elif field_type == "string" and field.max_size is not None:
+                result += f'    // {name}: variable string\n'
+                result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
+                result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset + 1}, offset, offset + {name}Len);\n'
+                result += f'    offset += {name}Len;\n'
+            else:
+                result += f'    // {name}: fixed size ({field.size} bytes)\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset}, offset, offset + {field.size});\n'
+                result += f'    offset += {field.size};\n'
+            msg_offset += field.size
+        
+        result += f'    return msg;\n'
+        result += f'  }}\n'
+        
+        return result
     
     @staticmethod
     def generate_equals_method(msg, package_msg_name, fields):

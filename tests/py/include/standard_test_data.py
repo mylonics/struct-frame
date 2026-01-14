@@ -25,6 +25,9 @@ from struct_frame.generated.serialization_test import (
     SerializationTestComprehensiveArrayMessage,
     SerializationTestSensor,
     SerializationTestStatus,
+    SerializationTestVariableSingleArray,
+    SerializationTestVariableMultipleArrays,
+    SerializationTestVariableMixedFields,
     get_message_info,
 )
 
@@ -102,6 +105,37 @@ def create_union_with_test() -> SerializationTestUnionTestMessage:
     )
 
 
+def create_variable_single_array(msg_id: int, payload: List[int], checksum: int) -> SerializationTestVariableSingleArray:
+    """Create a VariableSingleArray message."""
+    return SerializationTestVariableSingleArray(
+        message_id=msg_id,
+        payload=payload,
+        checksum=checksum
+    )
+
+
+def create_variable_multiple_arrays(typ: int, readings: List[int], values: List[float], label: str) -> SerializationTestVariableMultipleArrays:
+    """Create a VariableMultipleArrays message."""
+    return SerializationTestVariableMultipleArrays(
+        type=typ,
+        readings=readings,
+        values=values,
+        label=label.encode('utf-8')
+    )
+
+
+def create_variable_mixed_fields(fixed_id: int, fixed_value: float, fixed_name: str,
+                                  variable_data: List[int], variable_desc: str) -> SerializationTestVariableMixedFields:
+    """Create a VariableMixedFields message."""
+    return SerializationTestVariableMixedFields(
+        fixed_id=fixed_id,
+        fixed_value=fixed_value,
+        fixed_name=fixed_name.encode('utf-8'),
+        variable_data=variable_data,
+        variable_desc=variable_desc.encode('utf-8')
+    )
+
+
 # ============================================================================
 # Typed message arrays (one per message type, like C++)
 # ============================================================================
@@ -138,11 +172,49 @@ def get_union_test_messages() -> List[SerializationTestUnionTestMessage]:
     ]
 
 
+def get_variable_single_array_messages() -> List[SerializationTestVariableSingleArray]:
+    """Get VariableSingleArray array (5 messages with different fill levels).
+    
+    Fill levels:
+    - Empty (0 elements)
+    - Single element (1 element)
+    - One-third filled (67 elements for max_size=200)
+    - One position empty (199 elements)
+    - Full (200 elements)
+    """
+    return [
+        # Empty payload (0 elements)
+        create_variable_single_array(0x00000001, [], 0x0001),
+        # Single element
+        create_variable_single_array(0x00000002, [42], 0x0002),
+        # One-third filled (67 elements)
+        create_variable_single_array(0x00000003, list(range(67)), 0x0003),
+        # One position empty (199 elements)
+        create_variable_single_array(0x00000004, list(range(199)), 0x0004),
+        # Full (200 elements)
+        create_variable_single_array(0x00000005, list(range(200)), 0x0005),
+    ]
+
+
+def get_variable_multiple_arrays_messages() -> List[SerializationTestVariableMultipleArrays]:
+    """Get VariableMultipleArrays array (1 message)."""
+    return [
+        create_variable_multiple_arrays(42, [100, 200, 300], [1.5, 2.5, 3.5], "Variable test"),
+    ]
+
+
+def get_variable_mixed_fields_messages() -> List[SerializationTestVariableMixedFields]:
+    """Get VariableMixedFields array (1 message)."""
+    return [
+        create_variable_mixed_fields(0xDEADBEEF, 3.14159, "FixedName", [1000, 2000, 3000, 4000], "Variable description"),
+    ]
+
+
 # ============================================================================
 # Message ID order array - defines the encode/decode sequence
 # ============================================================================
 
-MESSAGE_COUNT = 11
+MESSAGE_COUNT = 16
 
 
 def get_msg_id_order() -> List[int]:
@@ -159,6 +231,11 @@ def get_msg_id_order() -> List[int]:
         SerializationTestUnionTestMessage.MSG_ID,          # 8: UnionTest[0]
         SerializationTestUnionTestMessage.MSG_ID,          # 9: UnionTest[1]
         SerializationTestBasicTypesMessage.MSG_ID,         # 10: BasicTypes[3]
+        SerializationTestVariableSingleArray.MSG_ID,       # 11: VariableSingleArray[0] - empty
+        SerializationTestVariableSingleArray.MSG_ID,       # 12: VariableSingleArray[1] - single
+        SerializationTestVariableSingleArray.MSG_ID,       # 13: VariableSingleArray[2] - 1/3 filled
+        SerializationTestVariableSingleArray.MSG_ID,       # 14: VariableSingleArray[3] - one empty
+        SerializationTestVariableSingleArray.MSG_ID,       # 15: VariableSingleArray[4] - full
     ]
 
 
@@ -173,10 +250,16 @@ class Encoder:
         self.serial_idx = 0
         self.basic_idx = 0
         self.union_idx = 0
+        self.var_single_idx = 0
+        self.var_multi_idx = 0
+        self.var_mixed_idx = 0
         # Cache message arrays
         self._serial_msgs = get_serialization_test_messages()
         self._basic_msgs = get_basic_types_messages()
         self._union_msgs = get_union_test_messages()
+        self._var_single_msgs = get_variable_single_array_messages()
+        self._var_multi_msgs = get_variable_multiple_arrays_messages()
+        self._var_mixed_msgs = get_variable_mixed_fields_messages()
     
     def write_message(self, writer, msg_id: int) -> int:
         """Write a message to the writer based on msg_id. Returns bytes written."""
@@ -192,6 +275,18 @@ class Encoder:
             msg = self._union_msgs[self.union_idx]
             self.union_idx += 1
             return writer.write(msg)
+        elif msg_id == SerializationTestVariableSingleArray.MSG_ID:
+            msg = self._var_single_msgs[self.var_single_idx]
+            self.var_single_idx += 1
+            return writer.write(msg)
+        elif msg_id == SerializationTestVariableMultipleArrays.MSG_ID:
+            msg = self._var_multi_msgs[self.var_multi_idx]
+            self.var_multi_idx += 1
+            return writer.write(msg)
+        elif msg_id == SerializationTestVariableMixedFields.MSG_ID:
+            msg = self._var_mixed_msgs[self.var_mixed_idx]
+            self.var_mixed_idx += 1
+            return writer.write(msg)
         return 0
 
 
@@ -206,10 +301,16 @@ class Validator:
         self.serial_idx = 0
         self.basic_idx = 0
         self.union_idx = 0
+        self.var_single_idx = 0
+        self.var_multi_idx = 0
+        self.var_mixed_idx = 0
         # Cache message arrays
         self._serial_msgs = get_serialization_test_messages()
         self._basic_msgs = get_basic_types_messages()
         self._union_msgs = get_union_test_messages()
+        self._var_single_msgs = get_variable_single_array_messages()
+        self._var_multi_msgs = get_variable_multiple_arrays_messages()
+        self._var_mixed_msgs = get_variable_mixed_fields_messages()
     
     def get_expected(self, msg_id: int) -> Tuple[Optional[bytes], Optional[int]]:
         """Get expected message data for validation. Returns (data, size)."""
@@ -226,6 +327,21 @@ class Validator:
         elif msg_id == SerializationTestUnionTestMessage.MSG_ID:
             msg = self._union_msgs[self.union_idx]
             self.union_idx += 1
+            data = msg.data()
+            return data, len(data)
+        elif msg_id == SerializationTestVariableSingleArray.MSG_ID:
+            msg = self._var_single_msgs[self.var_single_idx]
+            self.var_single_idx += 1
+            data = msg.data()
+            return data, len(data)
+        elif msg_id == SerializationTestVariableMultipleArrays.MSG_ID:
+            msg = self._var_multi_msgs[self.var_multi_idx]
+            self.var_multi_idx += 1
+            data = msg.data()
+            return data, len(data)
+        elif msg_id == SerializationTestVariableMixedFields.MSG_ID:
+            msg = self._var_mixed_msgs[self.var_mixed_idx]
+            self.var_mixed_idx += 1
             data = msg.data()
             return data, len(data)
         return None, None
@@ -254,6 +370,24 @@ class Validator:
             self.union_idx += 1
             expected_unpacked = SerializationTestUnionTestMessage.create_unpack(expected.data())
             decoded = SerializationTestUnionTestMessage.create_unpack(decoded_data)
+            return decoded == expected_unpacked
+        elif msg_id == SerializationTestVariableSingleArray.MSG_ID:
+            expected = self._var_single_msgs[self.var_single_idx]
+            self.var_single_idx += 1
+            expected_unpacked = SerializationTestVariableSingleArray.create_unpack(expected.data())
+            decoded = SerializationTestVariableSingleArray.create_unpack(decoded_data)
+            return decoded == expected_unpacked
+        elif msg_id == SerializationTestVariableMultipleArrays.MSG_ID:
+            expected = self._var_multi_msgs[self.var_multi_idx]
+            self.var_multi_idx += 1
+            expected_unpacked = SerializationTestVariableMultipleArrays.create_unpack(expected.data())
+            decoded = SerializationTestVariableMultipleArrays.create_unpack(decoded_data)
+            return decoded == expected_unpacked
+        elif msg_id == SerializationTestVariableMixedFields.MSG_ID:
+            expected = self._var_mixed_msgs[self.var_mixed_idx]
+            self.var_mixed_idx += 1
+            expected_unpacked = SerializationTestVariableMixedFields.create_unpack(expected.data())
+            decoded = SerializationTestVariableMixedFields.create_unpack(decoded_data)
             return decoded == expected_unpacked
         return False
 
