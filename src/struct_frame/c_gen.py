@@ -99,8 +99,9 @@ class FieldCGen():
                     declaration = f"char {var_name}[{field.size_option}][{field.element_size}];"
                     comment = f"  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars"
                 elif field.max_size is not None:
-                    # Variable string array: count byte + max_size strings of element_size chars each
-                    declaration = f"struct {{ uint8_t count; char data[{field.max_size}][{field.element_size}]; }} {var_name};"
+                    # Variable string array: count (uint8_t or uint16_t) + max_size strings of element_size chars each
+                    count_type = "uint16_t" if field.max_size > 255 else "uint8_t"
+                    declaration = f"struct {{ {count_type} count; char data[{field.max_size}][{field.element_size}]; }} {var_name};"
                     comment = f"  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars"
                 else:
                     declaration = f"char {var_name}[1][1];"  # Fallback
@@ -112,8 +113,9 @@ class FieldCGen():
                     declaration = f"{base_type} {var_name}[{field.size_option}];"
                     comment = f"  // Fixed array: always {field.size_option} elements"
                 elif field.max_size is not None:
-                    # Variable array: count byte + max elements
-                    declaration = f"struct {{ uint8_t count; {base_type} data[{field.max_size}]; }} {var_name};"
+                    # Variable array: count (uint8_t or uint16_t) + max elements
+                    count_type = "uint16_t" if field.max_size > 255 else "uint8_t"
+                    declaration = f"struct {{ {count_type} count; {base_type} data[{field.max_size}]; }} {var_name};"
                     comment = f"  // Variable array: up to {field.max_size} elements"
                 else:
                     declaration = f"{base_type} {var_name}[1];"  # Fallback
@@ -128,8 +130,9 @@ class FieldCGen():
                 declaration = f"char {var_name}[{field.size_option}];"
                 comment = f"  // Fixed string: exactly {field.size_option} chars"
             elif field.max_size is not None:
-                # Variable string: length byte + max characters
-                declaration = f"struct {{ uint8_t length; char data[{field.max_size}]; }} {var_name};"
+                # Variable string: length (uint8_t or uint16_t) + max characters
+                length_type = "uint16_t" if field.max_size > 255 else "uint8_t"
+                declaration = f"struct {{ {length_type} length; char data[{field.max_size}]; }} {var_name};"
                 comment = f"  // Variable string: up to {field.max_size} chars"
             else:
                 declaration = f"char {var_name}[1];"  # Fallback

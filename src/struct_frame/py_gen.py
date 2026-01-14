@@ -219,9 +219,10 @@ class MessagePyGen():
                     result += f'        data += struct.pack("<{f.size_option}s", self.{f.name}[:{f.size_option}])\n'
                 elif f.max_size is not None:
                     # Variable string with length prefix
+                    count_fmt = "H" if f.max_size > 255 else "B"
                     result += f'        # Variable string: {f.name}\n'
                     result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
-                    result += f'        data += struct.pack("<B", len(str_data))\n'
+                    result += f'        data += struct.pack("<{count_fmt}", len(str_data))\n'
                     result += f'        data += struct.pack("<{f.max_size}s", str_data)\n'
             elif f.is_array:
                 # Array field
@@ -238,9 +239,10 @@ class MessagePyGen():
                         result += f'                data += struct.pack("<{element_size}s", b"")\n'
                     elif f.max_size is not None:
                         # Bounded string array
+                        count_fmt = "H" if f.max_size > 255 else "B"
                         element_size = f.element_size if f.element_size else 16
                         result += f'        # Bounded string array: {f.name}\n'
-                        result += f'        data += struct.pack("<B", min(len(self.{f.name}), {f.max_size}))\n'
+                        result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
                         result += f'        for i in range({f.max_size}):\n'
                         result += f'            if i < len(self.{f.name}):\n'
                         result += f'                data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
@@ -272,10 +274,11 @@ class MessagePyGen():
                             result += f'                data += {type_name}().pack()\n'
                     elif f.max_size is not None:
                         # Bounded array
+                        count_fmt = "H" if f.max_size > 255 else "B"
                         if f.isDefaultType or f.isEnum:
                             # Primitives/enums
                             result += f'        # Bounded array: {f.name}\n'
-                            result += f'        data += struct.pack("<B", min(len(self.{f.name}), {f.max_size}))\n'
+                            result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
                             result += f'        for i in range({f.max_size}):\n'
                             result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
                             if f.isEnum:
@@ -286,7 +289,7 @@ class MessagePyGen():
                         else:
                             # Nested messages
                             result += f'        # Bounded nested message array: {f.name}\n'
-                            result += f'        data += struct.pack("<B", min(len(self.{f.name}), {f.max_size}))\n'
+                            result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
                             result += f'        for i in range({f.max_size}):\n'
                             result += f'            if i < len(self.{f.name}):\n'
                             result += f'                data += self.{f.name}[i].pack()\n'
@@ -346,9 +349,11 @@ class MessagePyGen():
                     result += f'        offset += {f.size_option}\n'
                 elif f.max_size is not None:
                     # Variable string with length prefix
+                    count_fmt = "H" if f.max_size > 255 else "B"
+                    count_size = 2 if f.max_size > 255 else 1
                     result += f'        # Variable string: {f.name}\n'
-                    result += f'        str_len = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
+                    result += f'        str_len = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                    result += f'        offset += {count_size}\n'
                     result += f'        str_data = struct.unpack_from("<{f.max_size}s", data, offset)[0]\n'
                     result += f'        fields["{f.name}"] = str_data[:str_len]\n'
                     result += f'        offset += {f.max_size}\n'
@@ -367,10 +372,12 @@ class MessagePyGen():
                         result += f'            offset += {element_size}\n'
                     elif f.max_size is not None:
                         # Bounded string array
+                        count_fmt = "H" if f.max_size > 255 else "B"
+                        count_size = 2 if f.max_size > 255 else 1
                         element_size = f.element_size if f.element_size else 16
                         result += f'        # Bounded string array: {f.name}\n'
-                        result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                        result += f'        offset += 1\n'
+                        result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                        result += f'        offset += {count_size}\n'
                         result += f'        fields["{f.name}"] = []\n'
                         result += f'        for i in range({f.max_size}):\n'
                         result += f'            s = struct.unpack_from("<{element_size}s", data, offset)[0]\n'
@@ -407,11 +414,13 @@ class MessagePyGen():
                             result += f'            offset += {type_name}.msg_size\n'
                     elif f.max_size is not None:
                         # Bounded array
+                        count_fmt = "H" if f.max_size > 255 else "B"
+                        count_size = 2 if f.max_size > 255 else 1
                         if f.isDefaultType or f.isEnum:
                             # Primitives/enums
                             result += f'        # Bounded array: {f.name}\n'
-                            result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                            result += f'        offset += 1\n'
+                            result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                            result += f'        offset += {count_size}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.max_size}):\n'
                             if f.isEnum:
@@ -428,8 +437,8 @@ class MessagePyGen():
                             # Nested messages
                             type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
                             result += f'        # Bounded nested message array: {f.name}\n'
-                            result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                            result += f'        offset += 1\n'
+                            result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                            result += f'        offset += {count_size}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.max_size}):\n'
                             result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'

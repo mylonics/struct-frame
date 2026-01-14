@@ -118,7 +118,8 @@ class FieldCSharpGen():
                     result += f'        public byte[] {var_name};  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars\n'
                 elif field.max_size is not None:
                     # Variable string array
-                    result += f'        public byte {var_name}Count;\n'
+                    count_type = "ushort" if field.max_size > 255 else "byte"
+                    result += f'        public {count_type} {var_name}Count;\n'
                     result += f'        public byte[] {var_name}Data;  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
             else:
                 # Non-string arrays
@@ -130,7 +131,8 @@ class FieldCSharpGen():
                         result += f'        public {base_type}[] {var_name};  // Fixed array: {field.size_option} elements\n'
                 elif field.max_size is not None:
                     # Variable array
-                    result += f'        public byte {var_name}Count;\n'
+                    count_type = "ushort" if field.max_size > 255 else "byte"
+                    result += f'        public {count_type} {var_name}Count;\n'
                     if field.isEnum:
                         result += f'        public byte[] {var_name}Data;  // Variable array of {base_type}: up to {field.max_size} elements\n'
                     else:
@@ -143,7 +145,8 @@ class FieldCSharpGen():
                 result += f'        public byte[] {var_name};  // Fixed string: exactly {field.size_option} chars\n'
             elif field.max_size is not None:
                 # Variable string
-                result += f'        public byte {var_name}Length;\n'
+                length_type = "ushort" if field.max_size > 255 else "byte"
+                result += f'        public {length_type} {var_name}Length;\n'
                 result += f'        public byte[] {var_name}Data;  // Variable string: up to {field.max_size} chars\n'
 
         # Handle regular fields
@@ -190,18 +193,22 @@ class FieldCSharpGen():
                         lines.append(f'                    if ({var_name}[i] != null) {{ var bytes = {var_name}[i].Pack(); Array.Copy(bytes, 0, buffer, {offset} + i * {element_size}, bytes.Length); }}')
                 elif field.max_size is not None:
                     # Variable array
-                    lines.append(f'            buffer[{offset}] = {var_name}Count;')
+                    count_size = 2 if field.max_size > 255 else 1
+                    if field.max_size > 255:
+                        lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({offset}, 2), {var_name}Count);')
+                    else:
+                        lines.append(f'            buffer[{offset}] = {var_name}Count;')
                     if field.isEnum:
-                        lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {offset + 1}, Math.Min({var_name}Data.Length, {field.max_size}));')
+                        lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {offset + count_size}, Math.Min({var_name}Data.Length, {field.max_size}));')
                     elif field.fieldType in csharp_type_sizes:
                         # Primitive array
                         lines.append(f'            if ({var_name}Data != null)')
-                        lines.append(f'                Buffer.BlockCopy({var_name}Data, 0, buffer, {offset + 1}, Math.Min({var_name}Data.Length * {element_size}, {total_data_size}));')
+                        lines.append(f'                Buffer.BlockCopy({var_name}Data, 0, buffer, {offset + count_size}, Math.Min({var_name}Data.Length * {element_size}, {total_data_size}));')
                     else:
                         # Nested struct array - pack each element
                         lines.append(f'            if ({var_name}Data != null)')
                         lines.append(f'                for (int i = 0; i < Math.Min({var_name}Data.Length, {field.max_size}); i++)')
-                        lines.append(f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Pack(); Array.Copy(bytes, 0, buffer, {offset + 1} + i * {element_size}, bytes.Length); }}')
+                        lines.append(f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Pack(); Array.Copy(bytes, 0, buffer, {offset + count_size} + i * {element_size}, bytes.Length); }}')
         elif type_name in csharp_type_sizes:
             # Single primitive field (not array)
             size = csharp_type_sizes[type_name]
@@ -233,8 +240,12 @@ class FieldCSharpGen():
                 lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {offset}, Math.Min({var_name}.Length, {field.size_option}));')
             elif field.max_size is not None:
                 # Variable string
-                lines.append(f'            buffer[{offset}] = {var_name}Length;')
-                lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {offset + 1}, Math.Min({var_name}Data.Length, {field.max_size}));')
+                length_size = 2 if field.max_size > 255 else 1
+                if field.max_size > 255:
+                    lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({offset}, 2), {var_name}Length);')
+                else:
+                    lines.append(f'            buffer[{offset}] = {var_name}Length;')
+                lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {offset + length_size}, Math.Min({var_name}Data.Length, {field.max_size}));')
         elif field.isEnum:
             # Single enum field - enums are byte values
             lines.append(f'            buffer[{offset}] = (byte){var_name};')
@@ -290,23 +301,27 @@ class FieldCSharpGen():
                         lines.append(f'                msg.{var_name}[i] = {nested_type}.Unpack(data, offset + {offset} + i * {element_size});')
                 elif field.max_size is not None:
                     # Variable array
-                    lines.append(f'            msg.{var_name}Count = data[offset + {offset}];')
+                    count_size = 2 if field.max_size > 255 else 1
+                    if field.max_size > 255:
+                        lines.append(f'            msg.{var_name}Count = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 2));')
+                    else:
+                        lines.append(f'            msg.{var_name}Count = data[offset + {offset}];')
                     if field.isEnum:
                         lines.append(f'            msg.{var_name}Data = new byte[{field.max_size}];')
-                        lines.append(f'            Array.Copy(data, offset + {offset + 1}, msg.{var_name}Data, 0, {field.max_size});')
+                        lines.append(f'            Array.Copy(data, offset + {offset + count_size}, msg.{var_name}Data, 0, {field.max_size});')
                     elif field.fieldType in csharp_type_sizes:
                         base_type = csharp_types.get(field.fieldType, field.fieldType)
-                        total_data_size = field.size - 1  # subtract count byte
+                        total_data_size = field.size - count_size  # subtract count bytes
                         lines.append(f'            msg.{var_name}Data = new {base_type}[{field.max_size}];')
-                        lines.append(f'            Buffer.BlockCopy(data, offset + {offset + 1}, msg.{var_name}Data, 0, {total_data_size});')
+                        lines.append(f'            Buffer.BlockCopy(data, offset + {offset + count_size}, msg.{var_name}Data, 0, {total_data_size});')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
                         nested_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
-                        element_size = field.element_size if field.element_size else ((field.size - 1) // field.max_size)
+                        element_size = field.element_size if field.element_size else ((field.size - count_size) // field.max_size)
                         lines.append(f'            msg.{var_name}Data = new {nested_type}[{field.max_size}];')
                         lines.append(f'            for (int i = 0; i < {field.max_size}; i++)')
-                        lines.append(f'                msg.{var_name}Data[i] = {nested_type}.Unpack(data, offset + {offset + 1} + i * {element_size});')
+                        lines.append(f'                msg.{var_name}Data[i] = {nested_type}.Unpack(data, offset + {offset + count_size} + i * {element_size});')
         elif type_name in csharp_type_sizes:
             # Single primitive field (not array)
             if type_name == "uint8":
@@ -338,9 +353,13 @@ class FieldCSharpGen():
                 lines.append(f'            Array.Copy(data, offset + {offset}, msg.{var_name}, 0, {field.size_option});')
             elif field.max_size is not None:
                 # Variable string
-                lines.append(f'            msg.{var_name}Length = data[offset + {offset}];')
+                length_size = 2 if field.max_size > 255 else 1
+                if field.max_size > 255:
+                    lines.append(f'            msg.{var_name}Length = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 2));')
+                else:
+                    lines.append(f'            msg.{var_name}Length = data[offset + {offset}];')
                 lines.append(f'            msg.{var_name}Data = new byte[{field.max_size}];')
-                lines.append(f'            Array.Copy(data, offset + {offset + 1}, msg.{var_name}Data, 0, {field.max_size});')
+                lines.append(f'            Array.Copy(data, offset + {offset + length_size}, msg.{var_name}Data, 0, {field.max_size});')
         elif field.isEnum:
             # Single enum field - enums are byte values, cast to enum type
             type_pkg = field.type_package if field.type_package else field.package
@@ -654,9 +673,14 @@ class MessageCSharpGen():
                 if type_name == "string":
                     element_size = f.element_size if f.element_size else 1
                 else:
-                    element_size = type_sizes.get(type_name, (f.size - 1) // f.max_size)
+                    count_size = 2 if f.max_size > 255 else 1
+                    element_size = type_sizes.get(type_name, (f.size - count_size) // f.max_size)
                 result += f'            // {f.name}: variable array\n'
-                result += f'            msg.{var_name}Count = Math.Min(data[offset++], (byte){f.max_size});\n'
+                if f.max_size > 255:
+                    result += f'            msg.{var_name}Count = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset, 2)), (ushort){f.max_size});\n'
+                    result += f'            offset += 2;\n'
+                else:
+                    result += f'            msg.{var_name}Count = Math.Min(data[offset++], (byte){f.max_size});\n'
                 if type_name in type_sizes:
                     base_type = csharp_types.get(type_name, type_name)
                     result += f'            msg.{var_name}Data = new {base_type}[{f.max_size}];\n'
@@ -675,7 +699,11 @@ class MessageCSharpGen():
                     result += f'            offset += msg.{var_name}Count * {element_size};\n'
             elif type_name == "string" and f.max_size is not None:
                 result += f'            // {f.name}: variable string\n'
-                result += f'            msg.{var_name}Length = Math.Min(data[offset++], (byte){f.max_size});\n'
+                if f.max_size > 255:
+                    result += f'            msg.{var_name}Length = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset, 2)), (ushort){f.max_size});\n'
+                    result += f'            offset += 2;\n'
+                else:
+                    result += f'            msg.{var_name}Length = Math.Min(data[offset++], (byte){f.max_size});\n'
                 result += f'            msg.{var_name}Data = new byte[{f.max_size}];\n'
                 result += f'            Array.Copy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Length);\n'
                 result += f'            offset += msg.{var_name}Length;\n'
