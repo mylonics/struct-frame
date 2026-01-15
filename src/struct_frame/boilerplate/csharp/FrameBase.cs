@@ -132,7 +132,7 @@ namespace StructFrame
     }
 
     /// <summary>
-    /// Interface for message types with associated metadata
+    /// Base interface for message types (non-generic, for encoding)
     /// </summary>
     public interface IStructFrameMessage
     {
@@ -155,6 +155,18 @@ namespace StructFrame
         /// Get the magic numbers for checksum calculation (based on field types and positions)
         /// </summary>
         (byte Magic1, byte Magic2) GetMagicNumbers();
+    }
+
+    /// <summary>
+    /// Generic interface for message types with deserialization support.
+    /// Uses C# 11 static abstract members for compile-time dispatch.
+    /// </summary>
+    public interface IStructFrameMessage<TSelf> : IStructFrameMessage where TSelf : IStructFrameMessage<TSelf>
+    {
+        /// <summary>
+        /// Deserialize a message from frame info
+        /// </summary>
+        static abstract TSelf Deserialize(FrameMsgInfo frame);
     }
 
     /// <summary>

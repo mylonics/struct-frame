@@ -736,6 +736,12 @@ parser.add_argument('--sdk_embedded', action='store_true',
                     help='Include embedded SDK (serial transport only, no ASIO dependencies)')
 parser.add_argument('--equality', action='store_true',
                     help='Generate equality comparison operators/methods for messages')
+parser.add_argument('--generate_csproj', action='store_true',
+                    help='Generate a .csproj file for C# projects (allows immediate dotnet build)')
+parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame.Generated'],
+                    help='Root namespace for generated C# code (default: StructFrame.Generated)')
+parser.add_argument('--target_framework', nargs=1, type=str, default=['net8.0'],
+                    help='Target framework for generated .csproj file (default: net8.0)')
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -1028,7 +1034,7 @@ def generateCppFileStrings(path, equality=False):
     return out
 
 
-def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False):
+def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False, generate_csproj=False, namespace='StructFrame.Generated', target_framework='net8.0', include_sdk=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.cs")
@@ -1041,7 +1047,49 @@ def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False)
             sdk_name = os.path.join(path, value.name + ".sdk.cs")
             sdk_data = generate_csharp_sdk_interface(value)
             out[sdk_name] = sdk_data
+    
+    # Generate .csproj file if requested
+    if generate_csproj:
+        csproj_name = os.path.join(path, "StructFrameGenerated.csproj")
+        csproj_data = _generateCSharpProjectFile(namespace, target_framework, include_sdk)
+        out[csproj_name] = csproj_data
+    
     return out
+
+
+def _generateCSharpProjectFile(namespace, target_framework, include_sdk=False):
+    """Generate a .csproj file for the generated C# code."""
+    # Base project configuration
+    project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>{target_framework}</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>{namespace}</RootNamespace>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+'''
+    
+    # Add package references for SDK if included
+    if include_sdk:
+        project_content += '''
+  <ItemGroup>
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+  </ItemGroup>
+'''
+    else:
+        # Exclude SDK folder for minimal builds
+        project_content += '''
+  <ItemGroup>
+    <Compile Remove="StructFrameSdk/**" />
+  </ItemGroup>
+'''
+    
+    project_content += '''
+</Project>
+'''
+    return project_content
 
 
 def main():
@@ -1102,7 +1150,11 @@ def main():
     if (args.build_csharp):
         files.update(generateCSharpFileStrings(args.csharp_path[0], 
                                                include_sdk_interface=(args.sdk or args.sdk_embedded),
-                                               equality=args.equality))
+                                               equality=args.equality,
+                                               generate_csproj=args.generate_csproj,
+                                               namespace=args.csharp_namespace[0],
+                                               target_framework=args.target_framework[0],
+                                               include_sdk=(args.sdk or args.sdk_embedded)))
 
     if (args.build_gql):
         for key, value in packages.items():

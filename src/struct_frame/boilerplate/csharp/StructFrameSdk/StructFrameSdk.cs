@@ -1,90 +1,146 @@
 // Struct Frame SDK Client for C#
 // High-level interface for sending and receiving framed messages
+// Uses the unified FrameProfiles infrastructure for encoding/parsing
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace StructFrame.Sdk
 {
     /// <summary>
-    /// Frame parser interface - must be implemented by generated frame parsers
+    /// Message handler delegate - receives deserialized messages
     /// </summary>
-    public interface IFrameParser
-    {
-        /// <summary>
-        /// Parse incoming data and extract message
-        /// </summary>
-        FrameMsgInfo Parse(byte[] data);
-
-        /// <summary>
-        /// Frame a message for sending
-        /// </summary>
-        byte[] Frame(byte msgId, byte[] data);
-    }
+    public delegate void MessageHandler<T>(T message) where T : IStructFrameMessage<T>;
 
     /// <summary>
-    /// Frame message info (compatible with generated parsers)
+    /// Raw message handler delegate (for unregistered message types)
     /// </summary>
-    public class FrameMsgInfo
-    {
-        public bool Valid { get; set; }
-        public byte MsgId { get; set; }
-        public int MsgLen { get; set; }
-        public byte[] MsgData { get; set; }
-    }
-
-    /// <summary>
-    /// Message codec interface - deserializes raw bytes into message objects
-    /// </summary>
-    public interface IMessageCodec<T>
-    {
-        byte MsgId { get; }
-        T Deserialize(byte[] data);
-    }
-
-    /// <summary>
-    /// Message handler delegate
-    /// </summary>
-    public delegate void MessageHandler<T>(T message, byte msgId);
+    public delegate void RawMessageHandler(FrameMsgInfo frame);
 
     /// <summary>
     /// Struct Frame SDK Configuration
     /// </summary>
     public class StructFrameSdkConfig
     {
-        public ITransport Transport { get; set; }
-        public IFrameParser FrameParser { get; set; }
-        public bool Debug { get; set; } = false;
+        /// <summary>
+        /// Transport layer for communication
+        /// </summary>
+        public ITransport Transport { get; }
+
+        /// <summary>
+        /// Profile configuration (e.g., Profiles.Standard, Profiles.Sensor)
+        /// </summary>
+        public ProfileConfig Profile { get; }
+
+        /// <summary>
+        /// Callback to get message info by ID. Required for:
+        /// - CRC validation (provides magic numbers for checksum)
+        /// - Minimal profiles (provides message size when no length field)
+        /// Use the generated MessageDefinitions.GetMessageInfo method.
+        /// </summary>
+        public Func<int, MessageInfo?> GetMessageInfo { get; }
+
+        /// <summary>
+        /// Internal buffer size for the accumulating reader
+        /// </summary>
+        public int BufferSize { get; }
+
+        /// <summary>
+        /// Enable debug logging
+        /// </summary>
+        public bool Debug { get; }
+
+        /// <summary>
+        /// Create SDK configuration with required parameters
+        /// </summary>
+        /// <param name="transport">Transport layer for communication</param>
+        /// <param name="getMessageInfo">Message info callback (use MessageDefinitions.GetMessageInfo)</param>
+        /// <param name="profile">Profile configuration (default: Profiles.Standard)</param>
+        /// <param name="bufferSize">Internal buffer size (default: 1024)</param>
+        /// <param name="debug">Enable debug logging (default: false)</param>
+        public StructFrameSdkConfig(
+            ITransport transport,
+            Func<int, MessageInfo?> getMessageInfo,
+            ProfileConfig profile = null,
+            int bufferSize = 1024,
+            bool debug = false)
+        {
+            Transport = transport ?? throw new ArgumentNullException(nameof(transport));
+            GetMessageInfo = getMessageInfo ?? throw new ArgumentNullException(nameof(getMessageInfo));
+            Profile = profile ?? Profiles.Standard;
+            BufferSize = bufferSize;
+            Debug = debug;
+        }
     }
 
     /// <summary>
-    /// Main SDK Client
+    /// Internal interface for type-erased handler invocation
+    /// </summary>
+    internal interface IMessageHandler
+    {
+        void Invoke(FrameMsgInfo frame);
+    }
+
+    /// <summary>
+    /// Typed message handler wrapper - deserializes and invokes handler
+    /// </summary>
+    internal class TypedMessageHandler<T> : IMessageHandler where T : IStructFrameMessage<T>, new()
+    {
+        private readonly MessageHandler<T> _handler;
+
+        public TypedMessageHandler(MessageHandler<T> handler)
+        {
+            _handler = handler;
+        }
+
+        public void Invoke(FrameMsgInfo frame)
+        {
+            var message = T.Deserialize(frame);
+            _handler(message);
+        }
+    }
+
+    /// <summary>
+    /// Main SDK Client - uses FrameProfiles infrastructure for encoding/parsing
     /// </summary>
     public class StructFrameSdk
     {
         private readonly ITransport _transport;
-        private readonly IFrameParser _frameParser;
+        private readonly ProfileConfig _profile;
+        private readonly FrameEncoder _encoder;
+        private readonly AccumulatingReader _reader;
         private readonly bool _debug;
-        private readonly Dictionary<byte, List<Delegate>> _messageHandlers;
-        private readonly Dictionary<byte, object> _messageCodecs;
-        private byte[] _buffer;
+        private readonly Dictionary<ushort, List<IMessageHandler>> _messageHandlers;
+        private readonly byte[] _writeBuffer;
+
+        /// <summary>
+        /// Event fired when an unhandled message is received
+        /// </summary>
+        public event RawMessageHandler UnhandledMessage;
 
         public StructFrameSdk(StructFrameSdkConfig config)
         {
             _transport = config.Transport;
-            _frameParser = config.FrameParser;
+            _profile = config.Profile;
             _debug = config.Debug;
-            _messageHandlers = new Dictionary<byte, List<Delegate>>();
-            _messageCodecs = new Dictionary<byte, object>();
-            _buffer = Array.Empty<byte>();
+            _messageHandlers = new Dictionary<ushort, List<IMessageHandler>>();
+
+            // Create encoder and reader using FrameProfiles infrastructure
+            _encoder = new FrameEncoder(_profile);
+            _reader = new AccumulatingReader(_profile, config.BufferSize, config.GetMessageInfo);
+            _writeBuffer = new byte[config.BufferSize];
 
             // Set up transport callbacks
             _transport.DataReceived += (sender, data) => HandleIncomingData(data);
             _transport.ErrorOccurred += (sender, error) => HandleError(error);
             _transport.ConnectionClosed += (sender, args) => HandleClose();
         }
+
+        /// <summary>
+        /// Get the profile configuration
+        /// </summary>
+        public ProfileConfig Profile => _profile;
 
         /// <summary>
         /// Connect to the transport
@@ -105,52 +161,43 @@ namespace StructFrame.Sdk
         }
 
         /// <summary>
-        /// Register a message codec for automatic deserialization
+        /// Subscribe to messages of a specific type.
+        /// The message ID is automatically inferred from the message type.
         /// </summary>
-        public void RegisterCodec<T>(IMessageCodec<T> codec)
+        public Action Subscribe<T>(MessageHandler<T> handler) where T : IStructFrameMessage<T>, new()
         {
-            _messageCodecs[codec.MsgId] = codec;
-        }
-
-        /// <summary>
-        /// Subscribe to messages with a specific message ID
-        /// </summary>
-        public Action Subscribe<T>(byte msgId, MessageHandler<T> handler)
-        {
-            if (!_messageHandlers.ContainsKey(msgId))
+            var temp = new T();
+            ushort msgId = temp.GetMsgId();
+            
+            var typedHandler = new TypedMessageHandler<T>(handler);
+            
+            if (!_messageHandlers.TryGetValue(msgId, out var handlers))
             {
-                _messageHandlers[msgId] = new List<Delegate>();
+                handlers = new List<IMessageHandler>();
+                _messageHandlers[msgId] = handlers;
             }
-            _messageHandlers[msgId].Add(handler);
-            Log($"Subscribed to message ID {msgId}");
+            handlers.Add(typedHandler);
+            Log($"Subscribed to message ID {msgId} ({typeof(T).Name})");
 
             // Return unsubscribe action
-            return () =>
+            return () => handlers.Remove(typedHandler);
+        }
+
+        /// <summary>
+        /// Send a message object
+        /// </summary>
+        public async Task SendAsync<T>(T message, byte seq = 0, byte sysId = 0, byte compId = 0) where T : IStructFrameMessage<T>
+        {
+            int bytesWritten = _encoder.Encode(_writeBuffer, 0, message, seq, sysId, compId);
+            if (bytesWritten == 0)
             {
-                if (_messageHandlers.ContainsKey(msgId))
-                {
-                    _messageHandlers[msgId].Remove(handler);
-                }
-            };
-        }
+                throw new InvalidOperationException("Failed to encode message - buffer too small or payload exceeds max size");
+            }
 
-        /// <summary>
-        /// Send a raw message (already serialized)
-        /// </summary>
-        public async Task SendRawAsync(byte msgId, byte[] data)
-        {
-            byte[] framedData = _frameParser.Frame(msgId, data);
+            byte[] framedData = new byte[bytesWritten];
+            Buffer.BlockCopy(_writeBuffer, 0, framedData, 0, bytesWritten);
             await _transport.SendAsync(framedData);
-            Log($"Sent message ID {msgId}, {data.Length} bytes");
-        }
-
-        /// <summary>
-        /// Send a message object (requires Pack() method and MsgId property)
-        /// </summary>
-        public async Task SendAsync<T>(T message) where T : IPackableMessage
-        {
-            byte[] data = message.Pack();
-            await SendRawAsync(message.MsgId, data);
+            Log($"Sent message ID {message.GetMsgId()}, {bytesWritten} bytes total");
         }
 
         /// <summary>
@@ -160,81 +207,35 @@ namespace StructFrame.Sdk
 
         private void HandleIncomingData(byte[] data)
         {
-            // Append to buffer
-            byte[] newBuffer = new byte[_buffer.Length + data.Length];
-            Buffer.BlockCopy(_buffer, 0, newBuffer, 0, _buffer.Length);
-            Buffer.BlockCopy(data, 0, newBuffer, _buffer.Length, data.Length);
-            _buffer = newBuffer;
-
-            // Try to parse messages from buffer
-            ParseBuffer();
-        }
-
-        private void ParseBuffer()
-        {
-            while (_buffer.Length > 0)
+            _reader.AddData(data);
+            while (_reader.TryNext(out var frame))
             {
-                FrameMsgInfo result = _frameParser.Parse(_buffer);
-
-                if (!result.Valid)
-                {
-                    // No valid frame found
-                    break;
-                }
-
-                // Valid message found
-                Log($"Received message ID {result.MsgId}, {result.MsgLen} bytes");
-
-                // Notify handlers
-                if (_messageHandlers.ContainsKey(result.MsgId))
-                {
-                    // Try to deserialize with registered codec
-                    object message = result.MsgData;
-                    if (_messageCodecs.ContainsKey(result.MsgId))
-                    {
-                        try
-                        {
-                            var codec = _messageCodecs[result.MsgId];
-                            var deserializeMethod = codec.GetType().GetMethod("Deserialize");
-                            message = deserializeMethod.Invoke(codec, new object[] { result.MsgData });
-                        }
-                        catch (Exception ex)
-                        {
-                            Log($"Failed to deserialize message ID {result.MsgId}: {ex.Message}");
-                        }
-                    }
-
-                    // Call all handlers
-                    foreach (var handler in _messageHandlers[result.MsgId])
-                    {
-                        try
-                        {
-                            handler.DynamicInvoke(message, result.MsgId);
-                        }
-                        catch (Exception ex)
-                        {
-                            Log($"Handler error for message ID {result.MsgId}: {ex.Message}");
-                        }
-                    }
-                }
-
-                // Remove parsed data from buffer
-                int totalFrameSize = CalculateFrameSize(result);
-                byte[] newBuffer = new byte[_buffer.Length - totalFrameSize];
-                Buffer.BlockCopy(_buffer, totalFrameSize, newBuffer, 0, newBuffer.Length);
-                _buffer = newBuffer;
+                ProcessFrame(frame);
             }
         }
 
-        private int CalculateFrameSize(FrameMsgInfo result)
+        private void ProcessFrame(FrameMsgInfo frame)
         {
-            // Calculate total frame size including headers and footers
-            // Frame overhead by format:
-            // - BasicDefault: 2 start + 1 length + 1 msg_id + payload + 2 crc = 6 + payload
-            // - TinyDefault: 1 start + 1 length + 1 msg_id + payload + 2 crc = 5 + payload
-            // Using conservative estimate of 10 bytes to handle all frame formats
-            // TODO: Query frame parser for exact overhead to avoid buffering issues
-            return result.MsgLen + 10;
+            Log($"Received message ID {frame.MsgId}, {frame.MsgLen} bytes payload");
+
+            if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers))
+            {
+                foreach (var handler in handlers)
+                {
+                    try
+                    {
+                        handler.Invoke(frame);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"Handler error for message ID {frame.MsgId}: {ex.Message}");
+                    }
+                }
+            }
+            else
+            {
+                UnhandledMessage?.Invoke(frame);
+            }
         }
 
         private void HandleError(Exception error)
@@ -245,7 +246,7 @@ namespace StructFrame.Sdk
         private void HandleClose()
         {
             Log("Transport closed");
-            _buffer = Array.Empty<byte>();
+            _reader.Reset();
         }
 
         private void Log(string message)
@@ -255,14 +256,5 @@ namespace StructFrame.Sdk
                 Console.WriteLine($"[StructFrameSdk] {message}");
             }
         }
-    }
-
-    /// <summary>
-    /// Interface for messages that can be packed
-    /// </summary>
-    public interface IPackableMessage
-    {
-        byte MsgId { get; }
-        byte[] Pack();
     }
 }

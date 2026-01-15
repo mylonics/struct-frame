@@ -4,9 +4,9 @@
 C# SDK Interface Generator for struct-frame.
 
 This module generates a high-level SDK interface class that provides
-type-safe send methods for each message type. Each message gets two
-overloads: one that takes individual fields, and one that takes the
-struct directly.
+type-safe send and subscribe methods for each message type. The generated
+interface wraps a StructFrameSdk instance and provides convenience methods
+for each message in the package.
 """
 
 from struct_frame import version, pascalCase
@@ -52,7 +52,7 @@ def get_csharp_field_type(field, package_name):
 
 
 class SdkInterfaceGen:
-    """Generates C# SDK interface class for message sending"""
+    """Generates C# SDK interface class for message sending and subscribing"""
     
     @staticmethod
     def generate(package):
@@ -63,6 +63,7 @@ class SdkInterfaceGen:
         yield 'using System;\n'
         yield 'using System.Threading.Tasks;\n'
         yield 'using StructFrame;\n'
+        yield 'using StructFrame.Sdk;\n'
         
         # Collect referenced packages for using directives
         referenced_packages = set()
@@ -86,34 +87,56 @@ class SdkInterfaceGen:
         # Generate the SDK interface class
         yield '    /// <summary>\n'
         yield f'    /// High-level SDK interface for {package.name} messages\n'
-        yield '    /// Provides type-safe send methods for each message type\n'
+        yield '    /// Provides type-safe send and subscribe methods for each message type\n'
         yield '    /// </summary>\n'
         yield f'    public class {namespace_name}SdkInterface\n'
         yield '    {\n'
-        yield '        private readonly FrameFormatBase _frameParser;\n'
-        yield '        private readonly Func<byte[], Task> _sendBytes;\n'
+        yield '        private readonly StructFrameSdk _sdk;\n'
         yield '\n'
         
         # Constructor
         yield '        /// <summary>\n'
         yield f'        /// Initialize the {namespace_name} SDK Interface\n'
         yield '        /// </summary>\n'
-        yield '        /// <param name="frameParser">Frame format parser/framer to use for encoding messages</param>\n'
-        yield '        /// <param name="sendBytes">Function to send raw bytes (e.g., transport.SendAsync)</param>\n'
-        yield '        public ' + namespace_name + 'SdkInterface(FrameFormatBase frameParser, Func<byte[], Task> sendBytes)\n'
+        yield '        /// <param name="sdk">The StructFrameSdk instance to use for communication</param>\n'
+        yield f'        public {namespace_name}SdkInterface(StructFrameSdk sdk)\n'
         yield '        {\n'
-        yield '            _frameParser = frameParser ?? throw new ArgumentNullException(nameof(frameParser));\n'
-        yield '            _sendBytes = sendBytes ?? throw new ArgumentNullException(nameof(sendBytes));\n'
+        yield '            _sdk = sdk ?? throw new ArgumentNullException(nameof(sdk));\n'
         yield '        }\n'
         yield '\n'
         
-        # Generate send methods for each message with msgid
+        # Expose underlying SDK for advanced usage
+        yield '        /// <summary>\n'
+        yield '        /// The underlying StructFrameSdk instance\n'
+        yield '        /// </summary>\n'
+        yield '        public StructFrameSdk Sdk => _sdk;\n'
+        yield '\n'
+        
+        # Generate send and subscribe methods for each message with msgid
         for key, msg in package.sortedMessages().items():
             if msg.id:  # Only generate for messages with a message ID
                 yield from SdkInterfaceGen._generate_send_methods(msg, package.name)
+                yield from SdkInterfaceGen._generate_subscribe_method(msg, package.name)
         
         yield '    }\n'
         yield '}\n'
+    
+    @staticmethod
+    def _generate_subscribe_method(msg, package_name):
+        """Generate subscribe method for a single message"""
+        struct_name = f'{pascalCase(package_name)}{msg.name}'
+        method_name = f'Subscribe{msg.name}'
+        
+        yield '        /// <summary>\n'
+        yield f'        /// Subscribe to {msg.name} messages\n'
+        yield '        /// </summary>\n'
+        yield f'        /// <param name="handler">Handler to call when {msg.name} message is received</param>\n'
+        yield '        /// <returns>Action to unsubscribe</returns>\n'
+        yield f'        public Action {method_name}(MessageHandler<{struct_name}> handler)\n'
+        yield '        {\n'
+        yield f'            return _sdk.Subscribe<{struct_name}>(handler);\n'
+        yield '        }\n'
+        yield '\n'
     
     @staticmethod
     def _generate_send_methods(msg, package_name):
@@ -126,11 +149,12 @@ class SdkInterfaceGen:
         yield f'        /// Send {msg.name} message\n'
         yield '        /// </summary>\n'
         yield f'        /// <param name="message">The {msg.name} message to send</param>\n'
-        yield f'        public async Task {method_name}({struct_name} message)\n'
+        yield f'        /// <param name="seq">Sequence number (optional)</param>\n'
+        yield f'        /// <param name="sysId">System ID (optional)</param>\n'
+        yield f'        /// <param name="compId">Component ID (optional)</param>\n'
+        yield f'        public async Task {method_name}({struct_name} message, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
         yield '        {\n'
-        yield '            byte[] msgData = StructHelper.StructToBytes(message);\n'
-        yield f'            byte[] framedData = _frameParser.Encode({struct_name}.MsgId, msgData);\n'
-        yield '            await _sendBytes(framedData);\n'
+        yield '            await _sdk.SendAsync(message, seq, sysId, compId);\n'
         yield '        }\n'
         yield '\n'
         
