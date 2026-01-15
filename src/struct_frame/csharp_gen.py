@@ -417,9 +417,9 @@ class MessageCSharpGen():
 
         # Add IEquatable<T> interface if equality is requested
         if equality:
-            result += '    public class %s : IStructFrameMessage, IEquatable<%s>\n' % (structName, structName)
+            result += '    public class %s : IStructFrameMessage<%s>, IEquatable<%s>\n' % (structName, structName, structName)
         else:
-            result += '    public class %s : IStructFrameMessage\n' % structName
+            result += '    public class %s : IStructFrameMessage<%s>\n' % (structName, structName)
         result += '    {\n'
 
         result += '        public const int MaxSize = %d;\n' % msg.size

@@ -293,38 +293,11 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static byte[] EncodeMessage(object msg)
-        {
-            if (msg is Message stm)
-                return stm.Serialize();
-            else if (msg is BasicTypesMessage btm)
-                return btm.Serialize();
-            else if (msg is UnionTestMessage utm)
-                return utm.Serialize();
-            throw new InvalidOperationException("Unknown message type");
-        }
+        private static byte[] EncodeMessage(IStructFrameMessage msg) => msg.Serialize();
 
-        private static int GetMessageId(object msg)
-        {
-            if (msg is SerializationTestMessage)
-                return SerializationTestMessage.MsgId;
-            else if (msg is BasicTypesMessage)
-                return BasicTypesMessage.MsgId;
-            else if (msg is UnionTestMessage)
-                return UnionTestMessage.MsgId;
-            throw new InvalidOperationException("Unknown message type");
-        }
+        private static int GetMessageId(IStructFrameMessage msg) => msg.GetMsgId();
 
-        private static (byte magic1, byte magic2) GetMessageMagicNumbers(object msg)
-        {
-            if (msg is SerializationTestMessage)
-                return (SerializationTestMessage.Magic1, SerializationTestMessage.Magic2);
-            else if (msg is BasicTypesMessage)
-                return (BasicTypesMessage.Magic1, BasicTypesMessage.Magic2);
-            else if (msg is UnionTestMessage)
-                return (UnionTestMessage.Magic1, UnionTestMessage.Magic2);
-            throw new InvalidOperationException("Unknown message type");
-        }
+        private static (byte magic1, byte magic2) GetMessageMagicNumbers(IStructFrameMessage msg) => msg.GetMagicNumbers();
 
         // ============================================================================
         // Generic encoding/decoding (unified logic)

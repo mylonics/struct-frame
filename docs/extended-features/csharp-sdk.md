@@ -1,6 +1,11 @@
 # C# SDK
 
-The C# SDK provides async/await-based transport layers for .NET applications.
+The C# SDK provides async/await-based transport layers for .NET applications using C# 11+ static abstract interface members.
+
+## Requirements
+
+- .NET 7.0+ (required for static abstract interface members)
+- For serial port support: `System.IO.Ports` NuGet package
 
 ## Installation
 
@@ -28,7 +33,7 @@ python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --
 python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --generate_csproj --csharp_namespace MyApp.Protocol
 
 # With custom target framework
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --generate_csproj --target_framework net6.0
+python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --generate_csproj --target_framework net7.0
 
 # Full SDK with .csproj (includes System.IO.Ports dependency)
 python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --sdk --generate_csproj
@@ -36,22 +41,71 @@ python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --
 
 ## Basic Usage
 
+The SDK client uses the unified `FrameProfiles` infrastructure for encoding and parsing:
+
 ```csharp
 using StructFrame;
-using StructFrame.SDK;
+using StructFrame.Sdk;
 
-var router = new MessageRouter();
+// Configure the SDK with required parameters
+var config = new StructFrameSdkConfig(
+    transport: new TcpTransport("192.168.1.100", 8080),
+    getMessageInfo: MessageDefinitions.GetMessageInfo,
+    profile: Profiles.Standard,  // optional, default is Standard
+    debug: true                  // optional, default is false
+);
 
-// Subscribe to messages
-router.Subscribe<Status>(msg => {
-    Console.WriteLine($"Status: {msg.Value}");
+var sdk = new StructFrameSdk(config);
+await sdk.ConnectAsync();
+
+// Subscribe to messages - type-safe with compile-time dispatch
+sdk.Subscribe<SensorDataMessage>(msg => {
+    Console.WriteLine($"Sensor value: {msg.Value}, ID: {msg.GetMsgId()}");
 });
 
-// Process incoming data
-router.ProcessByte(byte);
+// Send messages (uses IStructFrameMessage interface)
+var command = new CommandMessage { Action = 1 };
+await sdk.SendAsync(command);
+
+// Handle unregistered message types
+sdk.UnhandledMessage += frame => {
+    Console.WriteLine($"Unknown message ID: {frame.MsgId}");
+};
 ```
 
-## Message Registry and Deserialization
+## Message Interface
+
+Generated messages implement `IStructFrameMessage<T>` which provides:
+
+```csharp
+public interface IStructFrameMessage<TSelf> : IStructFrameMessage 
+    where TSelf : IStructFrameMessage<TSelf>
+{
+    /// <summary>
+    /// Deserialize a message from frame info (static abstract)
+    /// </summary>
+    static abstract TSelf Deserialize(FrameMsgInfo frame);
+}
+
+public interface IStructFrameMessage
+{
+    ushort GetMsgId();
+    int GetSize();
+    byte[] Serialize();
+    (byte Magic1, byte Magic2) GetMagicNumbers();
+}
+```
+
+This enables compile-time dispatch for deserialization without reflection:
+
+```csharp
+// The SDK internally calls T.Deserialize(frame) directly
+sdk.Subscribe<SensorDataMessage>(msg => {
+    // msg is already deserialized - no reflection needed
+});
+```
+
+## Message Registry
 
 The generated code includes a `MessageDefinitions` class that provides:
 
@@ -60,58 +114,9 @@ The generated code includes a `MessageDefinitions` class that provides:
 ```csharp
 using StructFrame.MyPackage;
 
-// Get message info by ID
+// Get message info by ID (required for SDK configuration)
 var info = MessageDefinitions.GetMessageInfo(SensorDataMessage.MsgId);
-Console.WriteLine($"Size: {info?.MaxSize}, Magic: {info?.Magic1:X2}{info?.Magic2:X2}");
-
-// Get full message entry (includes deserializer)
-var entry = MessageDefinitions.GetMessageEntry(SensorDataMessage.MsgId);
-Console.WriteLine($"Name: {entry?.Name}, Type: {entry?.PayloadType}");
-```
-
-### Message Lookup by Name
-
-```csharp
-// Get message entry by name (case-insensitive)
-var entry = MessageDefinitions.GetMessageEntry("SensorDataMessage");
-Console.WriteLine($"ID: {entry?.Id}, MaxSize: {entry?.MaxSize}");
-```
-
-### Automatic Deserialization Dispatch
-
-Instead of writing manual switch statements, use the automatic deserializer:
-
-```csharp
-// Parse a frame and get the message
-var reader = Profiles.CreateReader("ProfileStandard", MessageDefinitions.GetMessageInfo);
-reader.SetBuffer(frameData);
-
-while (reader.TryNext(out var frame))
-{
-    // Automatic deserialization - no switch needed!
-    var message = MessageDefinitions.Deserialize(frame);
-    
-    if (message is SensorDataMessage sensor)
-    {
-        Console.WriteLine($"Sensor: {sensor.Value}");
-    }
-    else if (message is StatusMessage status)
-    {
-        Console.WriteLine($"Status: {status.Code}");
-    }
-}
-```
-
-### Type-Safe Deserialization
-
-```csharp
-// Deserialize to a specific type
-byte[] payload = GetPayload();
-var sensor = MessageDefinitions.Deserialize<SensorDataMessage>(payload);
-if (sensor != null)
-{
-    Console.WriteLine($"Value: {sensor.Value}");
-}
+Console.WriteLine($"Size: {info?.Size}, Magic: {info?.Magic1:X2}{info?.Magic2:X2}");
 ```
 
 ### Enumerate All Messages
@@ -126,71 +131,68 @@ foreach (var entry in MessageDefinitions.GetAllMessages())
 
 ## Transports
 
-### UDP
-
-```csharp
-using StructFrame.SDK.Transports;
-
-var transport = new UdpTransport("192.168.1.100", 8080);
-await transport.ConnectAsync();
-await transport.SendAsync(msgId, data);
-```
-
 ### TCP
 
 ```csharp
-using StructFrame.SDK.Transports;
+using StructFrame.Sdk;
 
 var transport = new TcpTransport("192.168.1.100", 8080);
 await transport.ConnectAsync();
-await transport.SendAsync(msgId, data);
+await transport.SendAsync(data);
+```
+
+### UDP
+
+```csharp
+using StructFrame.Sdk;
+
+var transport = new UdpTransport("192.168.1.100", 8080);
+await transport.ConnectAsync();
+await transport.SendAsync(data);
 ```
 
 ### Serial
 
 ```csharp
-using StructFrame.SDK.Transports;
+using StructFrame.Sdk;
 
 var transport = new SerialTransport("COM3", 115200);
 await transport.ConnectAsync();
-await transport.SendAsync(msgId, data);
+await transport.SendAsync(data);
 ```
 
 ## Async/Await Patterns
 
 ```csharp
-public async Task HandleMessagesAsync()
+public async Task RunAsync()
 {
-    var transport = new TcpTransport("localhost", 8080);
-    await transport.ConnectAsync();
+    var config = new StructFrameSdkConfig(
+        transport: new TcpTransport("localhost", 8080),
+        getMessageInfo: MessageDefinitions.GetMessageInfo
+    );
     
-    var router = new MessageRouter();
-    router.Subscribe<Status>(HandleStatus);
+    var sdk = new StructFrameSdk(config);
     
-    while (await transport.ReceiveAsync() is byte[] data)
-    {
-        foreach (var b in data)
-        {
-            router.ProcessByte(b);
-        }
-    }
+    sdk.Subscribe<StatusMessage>(HandleStatus);
+    
+    await sdk.ConnectAsync();
+    
+    // SDK handles incoming data automatically via transport events
+    // Send messages as needed
+    await sdk.SendAsync(new CommandMessage { Action = 1 });
 }
 
-void HandleStatus(Status msg)
+void HandleStatus(StatusMessage msg)
 {
-    Console.WriteLine($"Received status: {msg.Value}");
+    Console.WriteLine($"Received status: {msg.Code}");
 }
 ```
 
 ## .NET Platform Support
 
-The SDK works on:
-- .NET Core 3.1+
-- .NET 5.0+
-- .NET 6.0+
+The SDK requires .NET 7.0+ due to the use of C# 11 static abstract interface members:
+
 - .NET 7.0+
 - .NET 8.0+
-- .NET Framework 4.7.2+
-- Xamarin
-- .NET MAUI
+- .NET 9.0+
 
