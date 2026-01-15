@@ -1147,14 +1147,14 @@ def main():
                 elif os.path.isfile(src_path):
                     shutil.copy2(src_path, dst_path)
     
-    def copy_sdk_files(src_dir, dst_dir, embedded=False, include_asio=True):
+    def copy_sdk_files(src_dir, dst_dir, embedded=False, include_asio=False):
         """Copy SDK files (struct_frame_sdk directory)
         
         Args:
             src_dir: Source boilerplate directory
             dst_dir: Destination directory
             embedded: If True, copy only embedded-safe files (no ASIO)
-            include_asio: If False, exclude ASIO files even for full SDK (default: True)
+            include_asio: If True, include ASIO files for full SDK (default: False)
         """
         sdk_src = os.path.join(src_dir, "struct_frame_sdk")
         sdk_dst = os.path.join(dst_dir, "struct_frame_sdk")
@@ -1235,17 +1235,17 @@ def main():
         if args.build_ts:
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/ts"),
-                args.ts_path[0], embedded_only, include_asio=False)
+                args.ts_path[0], embedded_only)
         
         if args.build_js:
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/js"),
-                args.js_path[0], embedded_only, include_asio=False)
+                args.js_path[0], embedded_only)
         
         if args.build_py:
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/py"),
-                args.py_path[0], embedded_only, include_asio=False)
+                args.py_path[0], embedded_only)
         
         if args.build_cpp:
             # ASIO is only included for C++ when full SDK is requested (not embedded)
@@ -1257,7 +1257,7 @@ def main():
         if args.build_csharp:
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/csharp"),
-                args.csharp_path[0], embedded_only, include_asio=False)
+                args.csharp_path[0], embedded_only)
 
     # No boilerplate for GraphQL currently
 
