@@ -1121,12 +1121,6 @@ def main():
     dir_path = os.path.dirname(os.path.realpath(__file__))
 
     def copy_all_files(src_dir, dst_dir, exclude_dirs=None):
-            src_path = os.path.join(src_dir, item)
-            dst_path = os.path.join(dst_dir, item)
-            if os.path.isfile(src_path):
-                shutil.copy2(src_path, dst_path)
-
-    def copy_all_files(src_dir, dst_dir, exclude_dirs=None):
         """Copy all files and directories from src_dir to dst_dir
         
         Args:
