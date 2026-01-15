@@ -248,10 +248,15 @@ class MessageTsClassGen():
         result += f'   * Works for both variable and non-variable messages.\n'
         result += f'   * For variable messages with minimal profiles (buffer.length == _size),\n'
         result += f'   * uses fixed-size deserialization instead of variable-length deserialization.\n'
-        result += f'   * @param buffer Input buffer containing serialized message data\n'
+        result += f'   * @param buffer Input buffer containing serialized message data, or FrameMsgInfo from frame parser\n'
         result += f'   * @returns New instance with deserialized data\n'
         result += f'   */\n'
-        result += f'  static deserialize(buffer: Buffer): {package_msg_name} {{\n'
+        result += f'  static deserialize(buffer: Buffer | any): {package_msg_name} {{\n'
+        result += f'    // Check if buffer is FrameMsgInfo (has msgData property)\n'
+        result += f'    if (buffer && typeof buffer === "object" && "msgData" in buffer) {{\n'
+        result += f'      buffer = buffer.msgData;\n'
+        result += f'    }}\n'
+        result += f'    \n'
         
         if msg.variable:
             result += f'    // Variable message - check encoding format\n'

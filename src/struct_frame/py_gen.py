@@ -680,6 +680,34 @@ class MessagePyGen():
             result += '        # Fixed-size message - use standard deserialization\n'
             result += '        return cls._deserialize_fixed(data)\n'
         
+        # Add convenience overload for FrameMsgInfo
+        result += '\n    @classmethod\n'
+        result += '    def deserialize(cls, data):\n'
+        result += '        """Deserialize message from binary data or FrameMsgInfo.\n'
+        result += '        \n'
+        result += '        Args:\n'
+        result += '            data: Either bytes to deserialize, or FrameMsgInfo from frame parser\n'
+        result += '        \n'
+        result += '        Returns:\n'
+        result += '            Deserialized message instance\n'
+        result += '        """\n'
+        result += '        # Check if data is FrameMsgInfo (duck typing - has msg_data attribute)\n'
+        result += '        if hasattr(data, "msg_data"):\n'
+        result += '            data = data.msg_data\n'
+        result += '        \n'
+        
+        if msg.variable:
+            result += '        # Variable message - check encoding format\n'
+            result += '        if len(data) == cls.MAX_SIZE:\n'
+            result += '            # Minimal profile format (MAX_SIZE encoding)\n'
+            result += '            return cls._deserialize_fixed(data)\n'
+            result += '        else:\n'
+            result += '            # Variable-length format\n'
+            result += '            return cls._deserialize_variable(data)\n'
+        else:
+            result += '        # Fixed-size message - use standard deserialization\n'
+            result += '        return cls._deserialize_fixed(data)\n'
+        
         return result
     
     @staticmethod

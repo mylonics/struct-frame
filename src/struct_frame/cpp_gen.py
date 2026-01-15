@@ -504,6 +504,16 @@ class MessageCppGen():
         
         result += f'    }}\n'
         
+        # Add FrameMsgInfo overload
+        result += f'\n    /**\n'
+        result += f'     * Deserialize message from FrameMsgInfo (convenience overload).\n'
+        result += f'     * @param frame_info Frame information from frame parser\n'
+        result += f'     * @return Number of bytes read, or 0 if buffer too small\n'
+        result += f'     */\n'
+        result += f'    size_t deserialize(const FrameMsgInfo& frame_info) {{\n'
+        result += f'        return deserialize(frame_info.msg_data, frame_info.msg_len);\n'
+        result += f'    }}\n'
+        
         # Add serialize method for non-variable messages (simple case)
         if not msg.variable:
             result += f'\n    /**\n'
