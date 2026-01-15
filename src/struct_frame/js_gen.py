@@ -330,9 +330,8 @@ class MessageJsClassGen():
                 result += f'    // {name}: variable string\n'
                 result += f'    const {name}Len = this.{name}_length;\n'
                 result += f'    buffer.writeUInt8({name}Len, offset++);\n'
-                result += f'    for (let i = 0; i < {name}Len; i++) {{\n'
-                result += f'      buffer.writeUInt8(this.{name}_data[i], offset++);\n'
-                result += f'    }}\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset + 1}, {msg_offset + 1} + {name}Len);\n'
+                result += f'    offset += {name}Len;\n'
             else:
                 result += f'    // {name}: fixed size ({field.size} bytes)\n'
                 result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset + field.size});\n'

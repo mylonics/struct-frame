@@ -17,7 +17,8 @@ namespace StructFrameTests
         SerializationTest = 0,
         BasicTypes = 1,
         UnionTest = 2,
-        VariableSingleArray = 3
+        VariableSingleArray = 3,
+        Message = 4
     }
 
     public class MixedMessage
@@ -32,7 +33,7 @@ namespace StructFrameTests
         // Message count and order
         // ============================================================================
 
-        public const int MESSAGE_COUNT = 16;
+        public const int MESSAGE_COUNT = 17;
 
         public static int GetTestMessageCount()
         {
@@ -325,6 +326,17 @@ namespace StructFrameTests
                         ["payload"] = GenerateSequentialBytes(200),
                         ["checksum"] = (ushort)0x0005
                     }
+                },
+                // 16: Message
+                new MixedMessage
+                {
+                    Type = MessageType.Message,
+                    Data = new Dictionary<string, object>
+                    {
+                        ["severity"] = 0, // SEV_MSG
+                        ["module"] = "test",
+                        ["msg"] = "A really good"
+                    }
                 }
             };
 
@@ -337,7 +349,7 @@ namespace StructFrameTests
 
         public static class Config
         {
-            public const int MESSAGE_COUNT = 16;
+            public const int MESSAGE_COUNT = 17;
             public const int BUFFER_SIZE = 4096;
             public const string FORMATS_HELP = "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network";
             public const string TEST_NAME = "standard";

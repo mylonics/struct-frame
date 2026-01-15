@@ -192,6 +192,16 @@ inline SerializationTestVariableSingleArray create_variable_single_array_full() 
   return msg;
 }
 
+inline SerializationTestMessage create_message_test() {
+  SerializationTestMessage msg{};
+  msg.severity = SerializationTestMsgSeverity::SEV_MSG;
+  msg.module.length = 4;
+  std::strcpy(msg.module.data, "test");
+  msg.msg.length = 13;
+  std::strcpy(msg.msg.data, "A really good");
+  return msg;
+}
+
 // ============================================================================
 // Typed message arrays (one per message type)
 // ============================================================================
@@ -244,12 +254,20 @@ inline const std::array<SerializationTestVariableSingleArray, 5>& get_variable_s
   return messages;
 }
 
+// Message array (1 message)
+inline const std::array<SerializationTestMessage, 1>& get_message_messages() {
+  static const std::array<SerializationTestMessage, 1> messages = {
+      create_message_test(),
+  };
+  return messages;
+}
+
 // ============================================================================
 // Message ID order array - defines the encode/decode sequence
 // ============================================================================
 
 // Message count constant
-constexpr size_t MESSAGE_COUNT = 16;
+constexpr size_t MESSAGE_COUNT = 17;
 
 // The msg_id order array - maps position to which message type to use
 inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
@@ -270,6 +288,7 @@ inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
       SerializationTestVariableSingleArray::MSG_ID,       // 13: VariableSingleArray[2] - 1/3 filled
       SerializationTestVariableSingleArray::MSG_ID,       // 14: VariableSingleArray[3] - one empty
       SerializationTestVariableSingleArray::MSG_ID,       // 15: VariableSingleArray[4] - full
+      SerializationTestMessage::MSG_ID,                   // 16: Message[0]
   };
   return order;
 }
@@ -283,6 +302,7 @@ struct Encoder {
   size_t basic_idx = 0;
   size_t union_idx = 0;
   size_t var_single_idx = 0;
+  size_t message_idx = 0;
 
   template <typename WriterType>
   size_t write_message(WriterType& writer, uint16_t msg_id) {
@@ -294,6 +314,8 @@ struct Encoder {
       return writer.write(get_union_test_messages()[union_idx++]);
     } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
       return writer.write(get_variable_single_array_messages()[var_single_idx++]);
+    } else if (msg_id == SerializationTestMessage::MSG_ID) {
+      return writer.write(get_message_messages()[message_idx++]);
     }
     return 0;
   }
@@ -308,6 +330,7 @@ struct Validator {
   size_t basic_idx = 0;
   size_t union_idx = 0;
   size_t var_single_idx = 0;
+  size_t message_idx = 0;
 
   bool get_expected(uint16_t msg_id, const uint8_t*& data, size_t& size) {
     if (msg_id == SerializationTestSerializationTestMessage::MSG_ID) {
@@ -327,6 +350,11 @@ struct Validator {
       return true;
     } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
       const auto& msg = get_variable_single_array_messages()[var_single_idx++];
+      data = msg.data();
+      size = msg.size();
+      return true;
+    } else if (msg_id == SerializationTestMessage::MSG_ID) {
+      const auto& msg = get_message_messages()[message_idx++];
       data = msg.data();
       size = msg.size();
       return true;
@@ -357,6 +385,12 @@ struct Validator {
     } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
       const auto& expected = get_variable_single_array_messages()[var_single_idx++];
       SerializationTestVariableSingleArray decoded;
+      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      if (unpacked == 0) return false;
+      return decoded == expected;
+    } else if (msg_id == SerializationTestMessage::MSG_ID) {
+      const auto& expected = get_message_messages()[message_idx++];
+      SerializationTestMessage decoded;
       size_t unpacked = decoded.unpack(decoded_data, decoded_size);
       if (unpacked == 0) return false;
       return decoded == expected;
