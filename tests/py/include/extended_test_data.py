@@ -379,13 +379,13 @@ class Validator:
         if msg_id == ExtendedTestExtendedVariableSingleArray.MSG_ID:
             msg = self._ext_var_single_msgs[self.ext_var_single_idx]
             self.ext_var_single_idx += 1
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         
         getter = self._msg_getters.get(msg_id)
         if getter:
             msg = getter()
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         return None, None
 
@@ -403,15 +403,15 @@ class Validator:
         if msg_id == ExtendedTestExtendedVariableSingleArray.MSG_ID:
             expected = self._ext_var_single_msgs[self.ext_var_single_idx]
             self.ext_var_single_idx += 1
-            expected_unpacked = ExtendedTestExtendedVariableSingleArray.unpack(expected.data())
-            decoded = ExtendedTestExtendedVariableSingleArray.unpack(decoded_data)
+            expected_unpacked = ExtendedTestExtendedVariableSingleArray.deserialize(expected.serialize())
+            decoded = ExtendedTestExtendedVariableSingleArray.deserialize(decoded_data)
             return decoded == expected_unpacked
         
         getter = self._msg_getters.get(msg_id)
         if getter:
             expected = getter()
-            expected_unpacked = msg_class.unpack(expected.data())
-            decoded = msg_class.unpack(decoded_data)
+            expected_unpacked = msg_class.deserialize(expected.serialize())
+            decoded = msg_class.deserialize(decoded_data)
             return decoded == expected_unpacked
         return False
 

@@ -79,11 +79,11 @@ function encodeMessage(writer: any, index: number): number {
 function validateMessage(msgId: number, data: Uint8Array, _index: number): boolean {
   if (msgId === SerializationTestTruncationTestNonVariable._msgid) {
     const expected = getNonVariableMessages()[nonVarIdx++];
-    const decoded = SerializationTestTruncationTestNonVariable.unpack(Buffer.from(data));
+    const decoded = SerializationTestTruncationTestNonVariable.deserialize(Buffer.from(data));
     return decoded.equals(expected);
   } else if (msgId === SerializationTestTruncationTestVariable._msgid) {
     const expected = getVariableMessages()[varIdx++];
-    const decoded = SerializationTestTruncationTestVariable.unpack(Buffer.from(data));
+    const decoded = SerializationTestTruncationTestVariable.deserialize(Buffer.from(data));
     return decoded.equals(expected);
   }
   return false;

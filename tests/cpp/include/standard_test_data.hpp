@@ -367,31 +367,31 @@ struct Validator {
     if (msg_id == SerializationTestSerializationTestMessage::MSG_ID) {
       const auto& expected = get_serialization_test_messages()[serial_idx++];
       SerializationTestSerializationTestMessage decoded;
-      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
       if (unpacked == 0) return false;
       return decoded == expected;
     } else if (msg_id == SerializationTestBasicTypesMessage::MSG_ID) {
       const auto& expected = get_basic_types_messages()[basic_idx++];
       SerializationTestBasicTypesMessage decoded;
-      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
       if (unpacked == 0) return false;
       return decoded == expected;
     } else if (msg_id == SerializationTestUnionTestMessage::MSG_ID) {
       const auto& expected = get_union_test_messages()[union_idx++];
       SerializationTestUnionTestMessage decoded;
-      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
       if (unpacked == 0) return false;
       return decoded == expected;
     } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
       const auto& expected = get_variable_single_array_messages()[var_single_idx++];
       SerializationTestVariableSingleArray decoded;
-      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
       if (unpacked == 0) return false;
       return decoded == expected;
     } else if (msg_id == SerializationTestMessage::MSG_ID) {
       const auto& expected = get_message_messages()[message_idx++];
       SerializationTestMessage decoded;
-      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
       if (unpacked == 0) return false;
       return decoded == expected;
     }

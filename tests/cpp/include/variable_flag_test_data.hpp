@@ -142,13 +142,13 @@ struct Validator {
     if (msg_id == SerializationTestTruncationTestNonVariable::MSG_ID) {
       const auto& expected = get_non_variable_messages()[non_var_idx++];
       SerializationTestTruncationTestNonVariable decoded;
-      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
       if (unpacked == 0) return false;
       return decoded == expected;
     } else if (msg_id == SerializationTestTruncationTestVariable::MSG_ID) {
       const auto& expected = get_variable_messages()[var_idx++];
       SerializationTestTruncationTestVariable decoded;
-      size_t unpacked = decoded.unpack(decoded_data, decoded_size);
+      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
       if (unpacked == 0) return false;
       return decoded == expected;
     }

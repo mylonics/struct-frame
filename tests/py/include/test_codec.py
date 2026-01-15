@@ -106,7 +106,7 @@ def encode_messages(config, format_name: str, buffer: bytearray) -> Tuple[bool, 
             return False, 0
     
     # Copy data back to the provided buffer
-    data = writer.data()
+    data = writer.serialize()
     buffer[:len(data)] = data
     
     if "Variable Flag" in config.TEST_NAME:

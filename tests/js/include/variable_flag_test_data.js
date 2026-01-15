@@ -103,11 +103,11 @@ function validateWithEquals(msgId, decodedData, decodedSize) {
 function validateMessage(msgId, data, _index) {
   if (msgId === SerializationTestTruncationTestNonVariable._msgid) {
     const expected = getNonVariableMessages()[nonVarIdx++];
-    const decoded = SerializationTestTruncationTestNonVariable.unpack(data);
+    const decoded = SerializationTestTruncationTestNonVariable.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestTruncationTestVariable._msgid) {
     const expected = getVariableMessages()[varIdx++];
-    const decoded = SerializationTestTruncationTestVariable.unpack(data);
+    const decoded = SerializationTestTruncationTestVariable.deserialize(data);
     return decoded.equals(expected);
   }
   return false;

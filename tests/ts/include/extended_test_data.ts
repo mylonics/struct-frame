@@ -284,14 +284,14 @@ function validateMessage(msgId: number, data: Buffer, _index: number): boolean {
   // Handle variable messages with index tracking
   if (msgId === ExtendedTestExtendedVariableSingleArray._msgid) {
     const expected = extVarSingleMsgs[extVarSingleValidateIdx++];
-    const decoded = MsgClass.unpack(data);
+    const decoded = MsgClass.deserialize(data);
     return decoded.equals(expected);
   }
 
   const expected = getMessage(msgId);
   if (!expected) return false;
 
-  const decoded = MsgClass.unpack(data);
+  const decoded = MsgClass.deserialize(data);
   return decoded.equals(expected);
 }
 

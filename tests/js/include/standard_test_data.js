@@ -324,23 +324,23 @@ function encodeMessage(writer, index) {
 function validateMessage(msgId, data, _index) {
   if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
-    const decoded = SerializationTestSerializationTestMessage.unpack(data);
+    const decoded = SerializationTestSerializationTestMessage.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestBasicTypesMessage._msgid) {
     const expected = getBasicTypesMessages()[basicIdx++];
-    const decoded = SerializationTestBasicTypesMessage.unpack(data);
+    const decoded = SerializationTestBasicTypesMessage.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const expected = getUnionTestMessages()[unionIdx++];
-    const decoded = SerializationTestUnionTestMessage.unpack(data);
+    const decoded = SerializationTestUnionTestMessage.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestVariableSingleArray._msgid) {
     const expected = getVariableSingleArrayMessages()[varSingleIdx++];
-    const decoded = SerializationTestVariableSingleArray.unpack(data);
+    const decoded = SerializationTestVariableSingleArray.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestMessage._msgid) {
     const expected = getMessageMessages()[messageIdx++];
-    const decoded = SerializationTestMessage.unpack(data);
+    const decoded = SerializationTestMessage.deserialize(data);
     return decoded.equals(expected);
   }
 
