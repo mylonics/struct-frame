@@ -105,10 +105,9 @@ FrameParsers::ProfileStandardAccumulatingReader reader;
 reader.add_data(buffer, writer.size());
 
 // Deserialize using FrameMsgInfo
-auto result = reader.next();
-if (result.has_value()) {
+if (auto result = reader.next()) {
     ExampleStatus decoded_msg;
-    decoded_msg.deserialize(result.value());  // Pass FrameMsgInfo directly
+    decoded_msg.deserialize(result);  // Pass FrameMsgInfo directly
     std::cout << "ID: " << decoded_msg.id << ", Value: " << decoded_msg.value << std::endl;
 }
 ```
@@ -314,7 +313,7 @@ while True:
         # Process all complete frames
         while True:
             result = reader.next()
-            if not result:
+            if result is None or not result.valid:
                 break
             
             # Deserialize using FrameMsgInfo
@@ -332,11 +331,10 @@ while True:
 FrameParsers::ProfileStandardAccumulatingReader reader;
 
 void on_byte_received(uint8_t byte) {
-    auto result = reader.push_byte(byte);
-    if (result.has_value()) {
-        // Complete message received
+    if (auto result = reader.push_byte(byte)) {
+        // Complete message received - result is valid due to operator bool()
         ExampleStatus msg;
-        msg.deserialize(result.value());
+        msg.deserialize(result);
         std::cout << "ID: " << msg.id << std::endl;
     }
 }
@@ -356,7 +354,7 @@ client.on('data', (data: Buffer) => {
     reader.addData(data);
     
     let result;
-    while ((result = reader.next())) {
+    while ((result = reader.next()) && result.valid) {
         const msg = ExampleStatus.deserialize(result);
         console.log(`ID: ${msg.id}, Value: ${msg.value}`);
     }
@@ -377,7 +375,7 @@ ws.on('message', (data) => {
     reader.addData(Buffer.from(data));
     
     let result;
-    while ((result = reader.next())) {
+    while ((result = reader.next()) && result.valid) {
         const msg = ExampleStatus.deserialize(result);
         console.log(`ID: ${msg.id}, Value: ${msg.value}`);
     }
