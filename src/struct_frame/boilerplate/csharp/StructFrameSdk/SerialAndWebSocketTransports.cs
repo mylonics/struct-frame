@@ -1,6 +1,8 @@
 // WebSocket and Serial transports for C#
 // WebSocket requires NetCoreServer package, Serial uses System.IO.Ports
 
+#nullable enable
+
 using System;
 using System.Threading.Tasks;
 
@@ -11,7 +13,7 @@ namespace StructFrame.Sdk
     /// </summary>
     public class WebSocketTransportConfig : TransportConfig
     {
-        public string Url { get; set; }
+        public string Url { get; set; } = "ws://localhost:8080";
         public int TimeoutMs { get; set; } = 5000;
     }
 
@@ -87,7 +89,7 @@ namespace StructFrame.Sdk
     /// </summary>
     public class SerialTransportConfig : TransportConfig
     {
-        public string PortName { get; set; }
+        public string PortName { get; set; } = "COM1";
         public int BaudRate { get; set; } = 9600;
         public int DataBits { get; set; } = 8;
         public System.IO.Ports.Parity Parity { get; set; } = System.IO.Ports.Parity.None;
@@ -100,7 +102,7 @@ namespace StructFrame.Sdk
     public class SerialTransport : BaseTransport
     {
         private readonly SerialTransportConfig _serialConfig;
-        private System.IO.Ports.SerialPort _serialPort;
+        private System.IO.Ports.SerialPort? _serialPort;
 
         public SerialTransport(SerialTransportConfig config) : base(config)
         {
@@ -202,7 +204,7 @@ namespace StructFrame.Sdk
     {
         private readonly IGenericSerialPort _serialPort;
 
-        public GenericSerialTransport(IGenericSerialPort serialPort, TransportConfig config = null)
+        public GenericSerialTransport(IGenericSerialPort serialPort, TransportConfig? config = null)
             : base(config)
         {
             _serialPort = serialPort;

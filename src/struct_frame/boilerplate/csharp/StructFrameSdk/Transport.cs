@@ -1,6 +1,8 @@
 // Transport interface for C# struct-frame SDK
 // Provides abstraction for various communication channels
 
+#nullable enable
+
 using System;
 using System.Threading.Tasks;
 
@@ -66,13 +68,13 @@ namespace StructFrame.Sdk
         protected TransportConfig _config;
         protected int _reconnectAttempts;
 
-        public event EventHandler<byte[]> DataReceived;
-        public event EventHandler<Exception> ErrorOccurred;
-        public event EventHandler ConnectionClosed;
+        public event EventHandler<byte[]>? DataReceived;
+        public event EventHandler<Exception>? ErrorOccurred;
+        public event EventHandler? ConnectionClosed;
 
         public bool IsConnected => _connected;
 
-        protected BaseTransport(TransportConfig config = null)
+        protected BaseTransport(TransportConfig? config = null)
         {
             _config = config ?? new TransportConfig();
         }

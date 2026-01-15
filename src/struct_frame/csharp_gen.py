@@ -115,43 +115,48 @@ class FieldCSharpGen():
                 # String arrays
                 if field.size_option is not None:
                     # Fixed string array
-                    result += f'        public byte[] {var_name};  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars\n'
+                    result += f'        public byte[] {var_name} = null!;  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars\n'
                 elif field.max_size is not None:
                     # Variable string array
                     count_type = "ushort" if field.max_size > 255 else "byte"
                     result += f'        public {count_type} {var_name}Count;\n'
-                    result += f'        public byte[] {var_name}Data;  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
+                    result += f'        public byte[] {var_name}Data = null!;  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
             else:
                 # Non-string arrays
                 if field.size_option is not None:
                     # Fixed array
                     if field.isEnum:
-                        result += f'        public byte[] {var_name};  // Fixed array of {base_type}: {field.size_option} elements\n'
+                        result += f'        public byte[] {var_name} = null!;  // Fixed array of {base_type}: {field.size_option} elements\n'
                     else:
-                        result += f'        public {base_type}[] {var_name};  // Fixed array: {field.size_option} elements\n'
+                        result += f'        public {base_type}[] {var_name} = null!;  // Fixed array: {field.size_option} elements\n'
                 elif field.max_size is not None:
                     # Variable array
                     count_type = "ushort" if field.max_size > 255 else "byte"
                     result += f'        public {count_type} {var_name}Count;\n'
                     if field.isEnum:
-                        result += f'        public byte[] {var_name}Data;  // Variable array of {base_type}: up to {field.max_size} elements\n'
+                        result += f'        public byte[] {var_name}Data = null!;  // Variable array of {base_type}: up to {field.max_size} elements\n'
                     else:
-                        result += f'        public {base_type}[] {var_name}Data;  // Variable array: up to {field.max_size} elements\n'
+                        result += f'        public {base_type}[] {var_name}Data = null!;  // Variable array: up to {field.max_size} elements\n'
 
         # Handle regular strings
         elif field.fieldType == "string":
             if field.size_option is not None:
                 # Fixed string
-                result += f'        public byte[] {var_name};  // Fixed string: exactly {field.size_option} chars\n'
+                result += f'        public byte[] {var_name} = null!;  // Fixed string: exactly {field.size_option} chars\n'
             elif field.max_size is not None:
                 # Variable string
                 length_type = "ushort" if field.max_size > 255 else "byte"
                 result += f'        public {length_type} {var_name}Length;\n'
-                result += f'        public byte[] {var_name}Data;  // Variable string: up to {field.max_size} chars\n'
+                result += f'        public byte[] {var_name}Data = null!;  // Variable string: up to {field.max_size} chars\n'
 
         # Handle regular fields
         else:
-            result += f'        public {base_type} {var_name};\n'
+            if type_name not in csharp_types and not field.isEnum:
+                # Nested struct - reference type needs null-forgiving operator
+                result += f'        public {base_type} {var_name} = null!;\n'
+            else:
+                # Primitive type or enum - value type doesn't need initializer
+                result += f'        public {base_type} {var_name};\n'
 
         return result
 
@@ -559,11 +564,7 @@ class MessageCSharpGen():
             result += '        /// </summary>\n'
             result += f'        private static {structName} _DeserializeMaxSize(byte[] data)\n'
             result += '        {\n'
-            result += '            int offset = 0;\n'
-        else:
-            # For fixed messages, add offset variable directly in Deserialize
-            result += '            int offset = 0;\n'
-            
+        
         result += f'            var msg = new {structName}();\n'
 
         offset = 0
@@ -577,7 +578,7 @@ class MessageCSharpGen():
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 result += f'            // Oneof {oneof_name} discriminator\n'
-                result += f'            msg.{pascalCase(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset + {offset}));\n'
+                result += f'            msg.{pascalCase(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan({offset}));\n'
                 result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
                 offset += 2
             
@@ -610,6 +611,10 @@ class MessageCSharpGen():
         result += f'        public static {structName} Deserialize(FrameMsgInfo frameInfo)\n'
         result += '        {\n'
         result += '            // Extract payload from frame info\n'
+        result += '            if (frameInfo.MsgData == null)\n'
+        result += '            {\n'
+        result += '                return new ' + structName + '();\n'
+        result += '            }\n'
         result += '            byte[] payload;\n'
         result += '            if (frameInfo.MsgDataOffset > 0)\n'
         result += '            {\n'

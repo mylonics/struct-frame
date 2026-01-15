@@ -1380,7 +1380,7 @@ Examples:
     parser.add_argument("--quiet", "-q", action="store_true", 
                         help="Suppress failure output")
     parser.add_argument("--skip-lang", action="append", dest="skip_languages", 
-                        metavar="LANG", help="Skip a language (can be repeated). Note: 'c' cannot be skipped as it's the base encoder.")
+                        metavar="LANG", help="Skip a language (can be repeated). Note: 'cpp' cannot be skipped as it's the base encoder.")
     parser.add_argument("--only-generate", action="store_true", 
                         help="Only generate code, don't compile or test")
     parser.add_argument("--only-compile", action="store_true", 
@@ -1402,11 +1402,11 @@ Examples:
     if args.no_color:
         Colors.disable()
     
-    # Validate skip_languages - 'c' cannot be skipped as it's the base encoder
+    # Validate skip_languages - 'cpp' cannot be skipped as it's the base encoder
     skip_languages = args.skip_languages or []
-    if "c" in skip_languages:
-        print(f"{Colors.warn_tag()} Cannot skip 'c' - it is required as the base encoder for decode tests")
-        skip_languages = [lang for lang in skip_languages if lang != "c"]
+    if "cpp" in skip_languages:
+        print(f"{Colors.warn_tag()} Cannot skip 'cpp' - it is required as the base encoder for decode tests")
+        skip_languages = [lang for lang in skip_languages if lang != "cpp"]
     
     runner = TestRunner(verbose=args.verbose, quiet=args.quiet)
     if skip_languages:

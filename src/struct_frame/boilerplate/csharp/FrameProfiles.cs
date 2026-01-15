@@ -16,6 +16,8 @@
 // - BufferWriter: encode multiple frames with automatic offset tracking
 // - AccumulatingReader: unified parser supporting both buffer chunks and byte-by-byte streaming
 
+#nullable enable
+
 using System;
 using StructFrame.FrameHeaders;
 using StructFrame.PayloadTypes;
@@ -166,7 +168,7 @@ namespace StructFrame
         /// <summary>
         /// Create a BufferReader for the specified profile name
         /// </summary>
-        public static BufferReader CreateReader(string profileName, Func<int, MessageInfo?> getMessageInfo = null)
+        public static BufferReader CreateReader(string profileName, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             return new BufferReader(GetByName(profileName), getMessageInfo);
         }
@@ -182,7 +184,7 @@ namespace StructFrame
         /// <summary>
         /// Create a BufferParser for the specified profile name
         /// </summary>
-        public static BufferParser CreateParser(string profileName, Func<int, MessageInfo?> getMessageInfo = null)
+        public static BufferParser CreateParser(string profileName, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             return new BufferParser(GetByName(profileName), getMessageInfo);
         }
@@ -216,7 +218,8 @@ namespace StructFrame
                 var serializeMaxSizeMethod = message.GetType().GetMethod("SerializeMaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
                 if (serializeMaxSizeMethod != null)
                 {
-                    payload = (byte[])serializeMaxSizeMethod.Invoke(message, null);
+                    var result = serializeMaxSizeMethod.Invoke(message, null);
+                    payload = result as byte[] ?? Array.Empty<byte>();
                 }
                 else
                 {
@@ -322,9 +325,9 @@ namespace StructFrame
     public class BufferParser
     {
         private readonly ProfileConfig _config;
-        private readonly Func<int, MessageInfo?> _getMessageInfo;
+        private readonly Func<int, MessageInfo?>? _getMessageInfo;
 
-        public BufferParser(ProfileConfig config, Func<int, MessageInfo?> getMessageInfo = null)
+        public BufferParser(ProfileConfig config, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             _config = config;
             _getMessageInfo = getMessageInfo;
@@ -496,11 +499,11 @@ namespace StructFrame
     {
         private readonly ProfileConfig _config;
         private readonly BufferParser _parser;
-        private byte[] _buffer;
+        private byte[]? _buffer;
         private int _offset;
         private int _size;
 
-        public BufferReader(ProfileConfig config, Func<int, MessageInfo?> getMessageInfo = null)
+        public BufferReader(ProfileConfig config, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             _config = config;
             _parser = new BufferParser(config, getMessageInfo);
@@ -575,7 +578,7 @@ namespace StructFrame
     {
         private readonly ProfileConfig _config;
         private readonly FrameEncoder _encoder;
-        private byte[] _buffer;
+        private byte[]? _buffer;
         private int _offset;
         private int _capacity;
 
@@ -645,6 +648,10 @@ namespace StructFrame
         /// </summary>
         public byte[] GetData()
         {
+            if (_buffer == null || _offset == 0)
+            {
+                return Array.Empty<byte>();
+            }
             byte[] result = new byte[_offset];
             Array.Copy(_buffer, 0, result, 0, _offset);
             return result;
@@ -671,7 +678,7 @@ namespace StructFrame
 
         private readonly ProfileConfig _config;
         private readonly BufferParser _parser;
-        private readonly Func<int, MessageInfo?> _getMessageInfo;
+        private readonly Func<int, MessageInfo?>? _getMessageInfo;
         private readonly int _bufferSize;
 
         // Internal buffer for partial messages
@@ -681,11 +688,11 @@ namespace StructFrame
         private State _state;
 
         // Buffer mode state
-        private byte[] _currentBuffer;
+        private byte[]? _currentBuffer;
         private int _currentOffset;
         private int _currentSize;
 
-        public AccumulatingReader(ProfileConfig config, int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null)
+        public AccumulatingReader(ProfileConfig config, int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             _config = config;
             _bufferSize = bufferSize;
@@ -1132,7 +1139,7 @@ namespace StructFrame
     /// </summary>
     public class BufferParser<TProfile> : BufferParser where TProfile : struct, IProfileProvider
     {
-        public BufferParser(Func<int, MessageInfo?> getMessageInfo = null) : base(TProfile.Profile, getMessageInfo) { }
+        public BufferParser(Func<int, MessageInfo?>? getMessageInfo = null) : base(TProfile.Profile, getMessageInfo) { }
     }
 
     /// <summary>
@@ -1140,7 +1147,7 @@ namespace StructFrame
     /// </summary>
     public class BufferReader<TProfile> : BufferReader where TProfile : struct, IProfileProvider
     {
-        public BufferReader(Func<int, MessageInfo?> getMessageInfo = null) : base(TProfile.Profile, getMessageInfo) { }
+        public BufferReader(Func<int, MessageInfo?>? getMessageInfo = null) : base(TProfile.Profile, getMessageInfo) { }
     }
 
     /// <summary>
@@ -1156,7 +1163,7 @@ namespace StructFrame
     /// </summary>
     public class AccumulatingReader<TProfile> : AccumulatingReader where TProfile : struct, IProfileProvider
     {
-        public AccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) 
+        public AccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null) 
             : base(TProfile.Profile, bufferSize, getMessageInfo) { }
     }
 
@@ -1172,18 +1179,18 @@ namespace StructFrame
     public class ProfileNetworkEncoder : FrameEncoder<NetworkProfile> { }
 
     // BufferParser aliases
-    public class ProfileStandardParser : BufferParser<StandardProfile> { public ProfileStandardParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
-    public class ProfileSensorParser : BufferParser<SensorProfile> { public ProfileSensorParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
-    public class ProfileIPCParser : BufferParser<IPCProfile> { public ProfileIPCParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
-    public class ProfileBulkParser : BufferParser<BulkProfile> { public ProfileBulkParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
-    public class ProfileNetworkParser : BufferParser<NetworkProfile> { public ProfileNetworkParser(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileStandardParser : BufferParser<StandardProfile> { public ProfileStandardParser(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileSensorParser : BufferParser<SensorProfile> { public ProfileSensorParser(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileIPCParser : BufferParser<IPCProfile> { public ProfileIPCParser(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileBulkParser : BufferParser<BulkProfile> { public ProfileBulkParser(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileNetworkParser : BufferParser<NetworkProfile> { public ProfileNetworkParser(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
 
     // BufferReader aliases
-    public class ProfileStandardReader : BufferReader<StandardProfile> { public ProfileStandardReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
-    public class ProfileSensorReader : BufferReader<SensorProfile> { public ProfileSensorReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
-    public class ProfileIPCReader : BufferReader<IPCProfile> { public ProfileIPCReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
-    public class ProfileBulkReader : BufferReader<BulkProfile> { public ProfileBulkReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
-    public class ProfileNetworkReader : BufferReader<NetworkProfile> { public ProfileNetworkReader(Func<int, MessageInfo?> getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileStandardReader : BufferReader<StandardProfile> { public ProfileStandardReader(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileSensorReader : BufferReader<SensorProfile> { public ProfileSensorReader(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileIPCReader : BufferReader<IPCProfile> { public ProfileIPCReader(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileBulkReader : BufferReader<BulkProfile> { public ProfileBulkReader(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
+    public class ProfileNetworkReader : BufferReader<NetworkProfile> { public ProfileNetworkReader(Func<int, MessageInfo?>? getMessageInfo = null) : base(getMessageInfo) { } }
 
     // BufferWriter aliases
     public class ProfileStandardWriter : BufferWriter<StandardProfile> { }
@@ -1193,9 +1200,9 @@ namespace StructFrame
     public class ProfileNetworkWriter : BufferWriter<NetworkProfile> { }
 
     // AccumulatingReader aliases
-    public class ProfileStandardAccumulatingReader : AccumulatingReader<StandardProfile> { public ProfileStandardAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
-    public class ProfileSensorAccumulatingReader : AccumulatingReader<SensorProfile> { public ProfileSensorAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
-    public class ProfileIPCAccumulatingReader : AccumulatingReader<IPCProfile> { public ProfileIPCAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
-    public class ProfileBulkAccumulatingReader : AccumulatingReader<BulkProfile> { public ProfileBulkAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
-    public class ProfileNetworkAccumulatingReader : AccumulatingReader<NetworkProfile> { public ProfileNetworkAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?> getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileStandardAccumulatingReader : AccumulatingReader<StandardProfile> { public ProfileStandardAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileSensorAccumulatingReader : AccumulatingReader<SensorProfile> { public ProfileSensorAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileIPCAccumulatingReader : AccumulatingReader<IPCProfile> { public ProfileIPCAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileBulkAccumulatingReader : AccumulatingReader<BulkProfile> { public ProfileBulkAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
+    public class ProfileNetworkAccumulatingReader : AccumulatingReader<NetworkProfile> { public ProfileNetworkAccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null) : base(bufferSize, getMessageInfo) { } }
 }

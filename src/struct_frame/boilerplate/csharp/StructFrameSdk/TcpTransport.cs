@@ -1,6 +1,8 @@
 // TCP Transport implementation using NetCoreServer
 // Requires: NetCoreServer NuGet package
 
+#nullable enable
+
 using System;
 using System.Net.Sockets;
 using System.Text;
@@ -13,7 +15,7 @@ namespace StructFrame.Sdk
     /// </summary>
     public class TcpTransportConfig : TransportConfig
     {
-        public string Host { get; set; }
+        public string Host { get; set; } = "localhost";
         public int Port { get; set; }
         public int TimeoutMs { get; set; } = 5000;
     }
@@ -43,8 +45,8 @@ namespace StructFrame.Sdk
     public class TcpTransport : BaseTransport
     {
         private readonly TcpTransportConfig _tcpConfig;
-        private TcpClient _client;
-        private NetworkStream _stream;
+        private TcpClient? _client;
+        private NetworkStream? _stream;
 
         public TcpTransport(TcpTransportConfig config) : base(config)
         {
