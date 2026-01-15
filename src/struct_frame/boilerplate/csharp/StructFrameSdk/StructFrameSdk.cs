@@ -2,6 +2,8 @@
 // High-level interface for sending and receiving framed messages
 // Uses the unified FrameProfiles infrastructure for encoding/parsing
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -117,7 +119,7 @@ namespace StructFrame.Sdk
         /// <summary>
         /// Event fired when an unhandled message is received
         /// </summary>
-        public event RawMessageHandler UnhandledMessage;
+        public event RawMessageHandler? UnhandledMessage;
 
         public StructFrameSdk(StructFrameSdkConfig config)
         {
@@ -220,7 +222,9 @@ namespace StructFrame.Sdk
 
             if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers))
             {
-                foreach (var handler in handlers)
+                // Create a copy to avoid collection modification during enumeration
+                var handlersCopy = handlers.ToArray();
+                foreach (var handler in handlersCopy)
                 {
                     try
                     {

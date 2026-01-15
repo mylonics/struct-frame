@@ -6,6 +6,8 @@
  * test data files.
  */
 
+#nullable enable
+
 using System;
 using StructFrame;
 using StructFrame.ExtendedTest;
@@ -171,7 +173,7 @@ namespace StructFrameTests
             return bytes;
         }
 
-        public static (IStructFrameMessage message, string typeName) GetExtendedTestMessage(int index)
+        public static (IStructFrameMessage? message, string? typeName) GetExtendedTestMessage(int index)
         {
             switch (index)
             {

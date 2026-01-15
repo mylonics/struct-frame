@@ -1,6 +1,8 @@
 // UDP Transport implementation using NetCoreServer
 // Requires: NetCoreServer NuGet package
 
+#nullable enable
+
 using System;
 using System.Net;
 using System.Net.Sockets;
@@ -15,7 +17,7 @@ namespace StructFrame.Sdk
     {
         public int LocalPort { get; set; } = 0;
         public string LocalAddress { get; set; } = "0.0.0.0";
-        public string RemoteHost { get; set; }
+        public string RemoteHost { get; set; } = "127.0.0.1";
         public int RemotePort { get; set; }
         public bool EnableBroadcast { get; set; } = false;
     }
@@ -46,8 +48,8 @@ namespace StructFrame.Sdk
     public class UdpTransport : BaseTransport
     {
         private readonly UdpTransportConfig _udpConfig;
-        private UdpClient _client;
-        private IPEndPoint _remoteEndpoint;
+        private UdpClient? _client;
+        private IPEndPoint? _remoteEndpoint;
 
         public UdpTransport(UdpTransportConfig config) : base(config)
         {

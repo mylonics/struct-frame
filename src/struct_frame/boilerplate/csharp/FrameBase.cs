@@ -1,6 +1,8 @@
 // Struct-frame boilerplate: frame parser base utilities (C#)
 // This file mirrors the C++ frame_base.hpp structure
 
+#nullable enable
+
 using System;
 
 namespace StructFrame
@@ -46,7 +48,7 @@ namespace StructFrame
         public ushort MsgId;
         public int MsgLen;      // Payload length (message data only)
         public int FrameSize;   // Total frame size (header + payload + footer)
-        public byte[] MsgData;
+        public byte[]? MsgData;
         public int MsgDataOffset;  // Offset into MsgData where the actual data starts
 
         // Additional fields for extended profiles
@@ -55,7 +57,7 @@ namespace StructFrame
         public byte CompId;
         public byte PkgId;
 
-        public FrameMsgInfo(bool valid, ushort msgId, int msgLen, int frameSize, byte[] msgData, int offset = 0)
+        public FrameMsgInfo(bool valid, ushort msgId, int msgLen, int frameSize, byte[]? msgData, int offset = 0)
         {
             Valid = valid;
             MsgId = msgId;
@@ -184,7 +186,7 @@ namespace StructFrame
             Data = new T[capacity];
         }
 
-        public BoundedArray(T[] data)
+        public BoundedArray(T[]? data)
         {
             Count = data?.Length ?? 0;
             Data = data ?? Array.Empty<T>();
@@ -216,6 +218,12 @@ namespace StructFrame
     {
         public byte Length;
         public byte[] Data;
+
+        public FixedString()
+        {
+            Length = 0;
+            Data = Array.Empty<byte>();
+        }
 
         public FixedString(int maxLength)
         {
