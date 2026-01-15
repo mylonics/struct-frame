@@ -149,7 +149,7 @@ msg.ReadingsCount = 4;
 msg.ReadingsData = new byte[] { 10, 20, 30, 40 };
 
 // Calculate size and pack
-int size = msg.PackSize();
+int size = msg.SerializedSize();
 byte[] packed = msg.PackVariable();
 
 // Unpack
