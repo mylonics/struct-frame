@@ -220,7 +220,9 @@ namespace StructFrame.Sdk
 
             if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers))
             {
-                foreach (var handler in handlers)
+                // Create a copy to avoid collection modification during enumeration
+                var handlersCopy = handlers.ToArray();
+                foreach (var handler in handlersCopy)
                 {
                     try
                     {
