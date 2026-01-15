@@ -24,13 +24,14 @@
  * Message count and order
  * ============================================================================ */
 
-#define STD_MESSAGE_COUNT 16
+#define STD_MESSAGE_COUNT 17
 
 /* Index tracking for encoding/validation */
 static size_t std_serial_idx = 0;
 static size_t std_basic_idx = 0;
 static size_t std_union_idx = 0;
 static size_t std_var_single_idx = 0;
+static size_t std_message_idx = 0;
 
 /* Message ID order array */
 static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
@@ -50,6 +51,7 @@ static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 13: VariableSingleArray[2] - 1/3 filled */
     SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 14: VariableSingleArray[3] - one empty */
     SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 15: VariableSingleArray[4] - full */
+    SERIALIZATION_TEST_MESSAGE_MSG_ID,                    /* 16: Message[0] */
 };
 
 static inline const uint16_t* std_get_msg_id_order(void) { return std_msg_id_order; }
@@ -316,6 +318,30 @@ static inline const SerializationTestVariableSingleArray* get_variable_single_ar
   return messages;
 }
 
+/* Message array (1 message) */
+static inline SerializationTestMessage create_message_test(void) {
+  SerializationTestMessage msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.severity = MSG_SEVERITY_SEV_MSG;
+  msg.module.length = 4;
+  strcpy(msg.module.data, "test");
+  msg.msg.length = 13;
+  strcpy(msg.msg.data, "A really good");
+  return msg;
+}
+
+static inline const SerializationTestMessage* get_message_messages(void) {
+  static SerializationTestMessage messages[1];
+  static bool initialized = false;
+
+  if (!initialized) {
+    messages[0] = create_message_test();
+    initialized = true;
+  }
+
+  return messages;
+}
+
 /* ============================================================================
  * Reset state for new encode/decode run
  * ============================================================================ */
@@ -325,6 +351,7 @@ static inline void std_reset_state(void) {
   std_basic_idx = 0;
   std_union_idx = 0;
   std_var_single_idx = 0;
+  std_message_idx = 0;
 }
 
 /* ============================================================================
@@ -352,13 +379,26 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
     #ifdef SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_IS_VARIABLE
     if (writer->config->payload.has_length) {
       static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAX_SIZE];
-      size_t packed_size = SerializationTestVariableSingleArray_pack_variable(msg, pack_buffer);
+      size_t packed_size = SerializationTestVariableSingleArray_serialize_variable(msg, pack_buffer);
       return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
                                  SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1, SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
     }
     #endif
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
                                SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1, SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
+  } else if (msg_id == SERIALIZATION_TEST_MESSAGE_MSG_ID) {
+    const SerializationTestMessage* msg = &get_message_messages()[std_message_idx++];
+    /* Variable message: use pack_variable if profile has length field */
+    #ifdef SERIALIZATION_TEST_MESSAGE_IS_VARIABLE
+    if (writer->config->payload.has_length) {
+      static uint8_t pack_buffer[SERIALIZATION_TEST_MESSAGE_MAX_SIZE];
+      size_t packed_size = SerializationTestMessage_serialize_variable(msg, pack_buffer);
+      return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
+                                 SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_MESSAGE_MAGIC2);
+    }
+    #endif
+    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
+                               SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_MESSAGE_MAGIC2);
   }
 
   return 0;
@@ -390,10 +430,18 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
     const SerializationTestVariableSingleArray* expected = &get_variable_single_array_messages()[std_var_single_idx++];
     /* Variable message: use unified unpack() for both MAX_SIZE and variable encoding */
     SerializationTestVariableSingleArray decoded;
-    if (!SerializationTestVariableSingleArray_unpack(data, size, &decoded)) {
+    if (!SerializationTestVariableSingleArray_deserialize(data, size, &decoded)) {
       return false;
     }
     return SerializationTestVariableSingleArray_equals(&decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_MESSAGE_MSG_ID) {
+    const SerializationTestMessage* expected = &get_message_messages()[std_message_idx++];
+    /* Variable message: use unified unpack() for both MAX_SIZE and variable encoding */
+    SerializationTestMessage decoded;
+    if (!SerializationTestMessage_deserialize(data, size, &decoded)) {
+      return false;
+    }
+    return SerializationTestMessage_equals(&decoded, expected);
   }
 
   return false;

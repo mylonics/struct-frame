@@ -206,29 +206,29 @@ namespace StructFrame
         /// </summary>
         public int Encode(byte[] buffer, int offset, IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
-            // For variable messages with minimal profiles (no length field), use PackMaxSize()
-            // Otherwise, Pack() returns the appropriate encoding
+            // For variable messages with minimal profiles (no length field), use SerializeMaxSize()
+            // Otherwise, Serialize() returns the appropriate encoding
             byte[] payload;
             if (!_config.HasLength)
             {
                 // Minimal profile (ProfileSensor/ProfileIPC) - need MAX_SIZE encoding
-                // Check if message has PackMaxSize() method (variable messages only)
-                var packMaxSizeMethod = message.GetType().GetMethod("PackMaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (packMaxSizeMethod != null)
+                // Check if message has SerializeMaxSize() method (variable messages only)
+                var serializeMaxSizeMethod = message.GetType().GetMethod("SerializeMaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (serializeMaxSizeMethod != null)
                 {
-                    payload = (byte[])packMaxSizeMethod.Invoke(message, null);
+                    payload = (byte[])serializeMaxSizeMethod.Invoke(message, null);
                 }
                 else
                 {
-                    // Non-variable message - Pack() always returns MAX_SIZE
-                    payload = message.Pack();
+                    // Non-variable message - Serialize() always returns MAX_SIZE
+                    payload = message.Serialize();
                 }
             }
             else
             {
-                // Profile has length field - Pack() returns the correct encoding
+                // Profile has length field - Serialize() returns the correct encoding
                 // (variable-length for variable messages, MAX_SIZE for non-variable)
-                payload = message.Pack();
+                payload = message.Serialize();
             }
             
             var (magic1, magic2) = message.GetMagicNumbers();

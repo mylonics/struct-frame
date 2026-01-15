@@ -98,6 +98,14 @@ export abstract class MessageBase {
   isVariable?(): boolean;
 
   /**
+   * Serialize the message to a Buffer.
+   * For variable messages, returns only the used bytes.
+   * For non-variable messages, returns the full buffer.
+   * Generated message classes override this method.
+   */
+  serialize?(): Buffer;
+
+  /**
    * Calculate the packed size for variable messages.
    * Only available on variable messages.
    */

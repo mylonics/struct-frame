@@ -204,20 +204,20 @@ class MessagePyGen():
     
     @staticmethod
     def generate_pack_method(msg):
-        """Generate the pack() method"""
-        result = '\n    def pack(self) -> bytes:\n'
+        """Generate the serialize() method"""
+        result = '\n    def serialize(self) -> bytes:\n'
         if msg.variable:
-            result += '        """Pack the message into binary format (variable-length encoding by default)\n'
+            result += '        """Serialize the message into binary format (variable-length encoding by default)\n'
             result += '        \n'
             result += '        For variable messages: returns variable-length encoding.\n'
-            result += '        Use pack_max_size() for MAX_SIZE encoding (needed for minimal profiles).\n'
+            result += '        Use serialize_max_size() for MAX_SIZE encoding (needed for minimal profiles).\n'
             result += '        """\n'
-            result += '        return self.pack_variable()\n'
+            result += '        return self._serialize_variable()\n'
             result += '\n'
-            result += '    def pack_max_size(self) -> bytes:\n'
-            result += '        """Pack the message to MAX_SIZE (for minimal profiles without length field)"""\n'
+            result += '    def serialize_max_size(self) -> bytes:\n'
+            result += '        """Serialize the message to MAX_SIZE (for minimal profiles without length field)"""\n'
         else:
-            result += '        """Pack the message into binary format"""\n'
+            result += '        """Serialize the message into binary format"""\n'
         result += '        data = b""\n'
         
         # Pack regular fields
@@ -280,9 +280,9 @@ class MessagePyGen():
                             result += f'        # Fixed nested message array: {f.name}\n'
                             result += f'        for i in range({f.size_option}):\n'
                             result += f'            if i < len(self.{f.name}):\n'
-                            result += f'                data += self.{f.name}[i].pack()\n'
+                            result += f'                data += self.{f.name}[i].serialize()\n'
                             result += f'            else:\n'
-                            result += f'                data += {type_name}().pack()\n'
+                            result += f'                data += {type_name}().serialize()\n'
                     elif f.max_size is not None:
                         # Bounded array
                         count_fmt = "H" if f.max_size > 255 else "B"
@@ -303,11 +303,11 @@ class MessagePyGen():
                             result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
                             result += f'        for i in range({f.max_size}):\n'
                             result += f'            if i < len(self.{f.name}):\n'
-                            result += f'                data += self.{f.name}[i].pack()\n'
+                            result += f'                data += self.{f.name}[i].serialize()\n'
                             result += f'            else:\n'
                             # Need to create empty instance
                             type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
-                            result += f'                data += {type_name}().pack()\n'
+                            result += f'                data += {type_name}().serialize()\n'
             else:
                 # Regular field
                 fmt = MessagePyGen.get_struct_format(f)
@@ -316,7 +316,7 @@ class MessagePyGen():
                     result += f'        data += struct.pack("<{fmt}", self.{f.name})\n'
                 else:
                     # Nested message
-                    result += f'        data += self.{f.name}.pack()\n'
+                    result += f'        data += self.{f.name}.serialize()\n'
         
         # Pack oneofs
         for oneof_name, oneof in msg.oneofs.items():
@@ -333,7 +333,7 @@ class MessagePyGen():
             # We need to allocate the full size for the union
             result += f'        union_data = b""\n'
             result += f'        if self.{oneof_name}_which is not None:\n'
-            result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].pack()\n'
+            result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
             result += f'        # Pad to union size\n'
             result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
             result += f'        data += union_data\n'
@@ -343,10 +343,10 @@ class MessagePyGen():
     
     @staticmethod
     def generate_unpack_method(msg):
-        """Generate the create_unpack() class method"""
+        """Generate the _deserialize_fixed() class method"""
         result = '\n    @classmethod\n'
-        result += '    def create_unpack(cls, data: bytes):\n'
-        result += '        """Unpack binary data into a message instance"""\n'
+        result += '    def _deserialize_fixed(cls, data: bytes):\n'
+        result += '        """Deserialize binary data into a message instance (fixed-size format)"""\n'
         result += '        offset = 0\n'
         result += '        fields = {}\n'
         
@@ -420,7 +420,7 @@ class MessagePyGen():
                             result += f'        # Fixed nested message array: {f.name}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.size_option}):\n'
-                            result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                             result += f'            fields["{f.name}"].append(msg)\n'
                             result += f'            offset += {type_name}.msg_size\n'
                     elif f.max_size is not None:
@@ -452,7 +452,7 @@ class MessagePyGen():
                             result += f'        offset += {count_size}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.max_size}):\n'
-                            result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                             result += f'            if i < count:\n'
                             result += f'                fields["{f.name}"].append(msg)\n'
                             result += f'            offset += {type_name}.msg_size\n'
@@ -471,7 +471,7 @@ class MessagePyGen():
                 else:
                     # Nested message
                     type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
-                    result += f'        fields["{f.name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                     result += f'        offset += {type_name}.msg_size\n'
         
         # Unpack oneofs
@@ -494,7 +494,7 @@ class MessagePyGen():
                 for field_name, field in oneof.fields.items():
                     type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
                     result += f'        if discriminator == {type_name}.msg_id:\n'
-                    result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                     result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
             
             result += f'        offset += {oneof.size}\n'
@@ -507,7 +507,7 @@ class MessagePyGen():
         """Generate the data() method that returns packed bytes (C++ compatible API)"""
         result = '\n    def data(self) -> bytes:\n'
         result += '        """Return packed message bytes (C++ MessageBase compatible API)"""\n'
-        result += '        return self.pack()\n'
+        result += '        return self.serialize()\n'
         return result
     
     @staticmethod
@@ -657,27 +657,56 @@ class MessagePyGen():
     
     @staticmethod
     def generate_unified_unpack(msg):
-        """Generate unified unpack() method that works for both variable and non-variable messages."""
+        """Generate unified deserialize() method that works for both variable and non-variable messages."""
         result = ''
         
         result += '\n    @classmethod\n'
-        result += '    def unpack(cls, data: bytes):\n'
-        result += '        """Unified unpack method - works for both variable and non-variable messages.\n'
+        result += '    def deserialize(cls, data: bytes):\n'
+        result += '        """Deserialize message from binary data.\n'
+        result += '        Works for both variable and non-variable messages.\n'
         result += '        For variable messages with minimal profiles (len(data) == MAX_SIZE),\n'
-        result += '        uses standard unpacking instead of variable unpacking.\n'
+        result += '        uses fixed-size deserialization instead of variable-length deserialization.\n'
         result += '        """\n'
         
         if msg.variable:
             result += '        # Variable message - check encoding format\n'
             result += '        if len(data) == cls.MAX_SIZE:\n'
             result += '            # Minimal profile format (MAX_SIZE encoding)\n'
-            result += '            return cls.create_unpack(data)\n'
+            result += '            return cls._deserialize_fixed(data)\n'
             result += '        else:\n'
             result += '            # Variable-length format\n'
-            result += '            return cls.unpack_variable(data)\n'
+            result += '            return cls._deserialize_variable(data)\n'
         else:
-            result += '        # Fixed-size message - use standard unpacking\n'
-            result += '        return cls.create_unpack(data)\n'
+            result += '        # Fixed-size message - use standard deserialization\n'
+            result += '        return cls._deserialize_fixed(data)\n'
+        
+        # Add convenience overload for FrameMsgInfo
+        result += '\n    @classmethod\n'
+        result += '    def deserialize(cls, data):\n'
+        result += '        """Deserialize message from binary data or FrameMsgInfo.\n'
+        result += '        \n'
+        result += '        Args:\n'
+        result += '            data: Either bytes to deserialize, or FrameMsgInfo from frame parser\n'
+        result += '        \n'
+        result += '        Returns:\n'
+        result += '            Deserialized message instance\n'
+        result += '        """\n'
+        result += '        # Check if data is FrameMsgInfo (duck typing - has msg_data attribute)\n'
+        result += '        if hasattr(data, "msg_data"):\n'
+        result += '            data = data.msg_data\n'
+        result += '        \n'
+        
+        if msg.variable:
+            result += '        # Variable message - check encoding format\n'
+            result += '        if len(data) == cls.MAX_SIZE:\n'
+            result += '            # Minimal profile format (MAX_SIZE encoding)\n'
+            result += '            return cls._deserialize_fixed(data)\n'
+            result += '        else:\n'
+            result += '            # Variable-length format\n'
+            result += '            return cls._deserialize_variable(data)\n'
+        else:
+            result += '        # Fixed-size message - use standard deserialization\n'
+            result += '        return cls._deserialize_fixed(data)\n'
         
         return result
     
@@ -689,9 +718,9 @@ class MessagePyGen():
         # Add IS_VARIABLE constant
         result += '\n    IS_VARIABLE = True\n'
         
-        # Generate pack_size method
-        result += '\n    def pack_size(self) -> int:\n'
-        result += '        """Calculate the packed size using variable-length encoding."""\n'
+        # Generate serialized_size method
+        result += '\n    def serialized_size(self) -> int:\n'
+        result += '        """Calculate the serialized size using variable-length encoding."""\n'
         result += '        size = 0\n'
         
         for key, f in msg.fields.items():
@@ -711,9 +740,9 @@ class MessagePyGen():
         
         result += '        return size\n'
         
-        # Generate pack_variable method
-        result += '\n    def pack_variable(self) -> bytes:\n'
-        result += '        """Pack message using variable-length encoding (only packs used bytes)."""\n'
+        # Generate _serialize_variable method (internal method)
+        result += '\n    def _serialize_variable(self) -> bytes:\n'
+        result += '        """Serialize message using variable-length encoding (only serializes used bytes)."""\n'
         result += '        data = b""\n'
         
         for key, f in msg.fields.items():
@@ -747,7 +776,7 @@ class MessagePyGen():
                     result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
                     result += f'        data += struct.pack("<B", count)\n'
                     result += f'        for i in range(count):\n'
-                    result += f'            data += self.{f.name}[i].pack()\n'
+                    result += f'            data += self.{f.name}[i].serialize()\n'
             elif f.fieldType == "string" and f.max_size is not None:
                 # Variable string
                 result += f'        # {f.name}: variable string\n'
@@ -777,9 +806,9 @@ class MessagePyGen():
                     result += f'        # {f.name}: fixed nested message array\n'
                     result += f'        for i in range({f.size_option}):\n'
                     result += f'            if i < len(self.{f.name}):\n'
-                    result += f'                data += self.{f.name}[i].pack()\n'
+                    result += f'                data += self.{f.name}[i].serialize()\n'
                     result += f'            else:\n'
-                    result += f'                data += {type_name}().pack()\n'
+                    result += f'                data += {type_name}().serialize()\n'
             elif f.fieldType in py_struct_format:
                 fmt = py_struct_format[f.fieldType]
                 result += f'        # {f.name}: {f.fieldType}\n'
@@ -790,14 +819,14 @@ class MessagePyGen():
             else:
                 # Nested message
                 result += f'        # {f.name}: nested message\n'
-                result += f'        data += self.{f.name}.pack()\n'
+                result += f'        data += self.{f.name}.serialize()\n'
         
         result += '        return data\n'
         
-        # Generate unpack_variable class method
+        # Generate _deserialize_variable class method (internal method)
         result += '\n    @classmethod\n'
-        result += '    def unpack_variable(cls, data: bytes):\n'
-        result += '        """Unpack message using variable-length encoding."""\n'
+        result += '    def _deserialize_variable(cls, data: bytes):\n'
+        result += '        """Deserialize message using variable-length encoding."""\n'
         result += '        offset = 0\n'
         result += '        fields = {}\n'
         
@@ -844,7 +873,7 @@ class MessagePyGen():
                     result += f'        offset += 1\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
+                    result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                     result += f'            fields["{f.name}"].append(msg)\n'
                     result += f'            offset += {type_name}.MAX_SIZE\n'
             elif f.fieldType == "string" and f.max_size is not None:
@@ -884,7 +913,7 @@ class MessagePyGen():
                     result += f'        # {f.name}: fixed nested message array\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range({f.size_option}):\n'
-                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
+                    result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                     result += f'            fields["{f.name}"].append(msg)\n'
                     result += f'            offset += {type_name}.MAX_SIZE\n'
             elif f.fieldType in py_struct_format:
@@ -901,7 +930,7 @@ class MessagePyGen():
                 # Nested message
                 type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
                 result += f'        # {f.name}: nested message\n'
-                result += f'        fields["{f.name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
+                result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                 result += f'        offset += {type_name}.MAX_SIZE\n'
         
         result += '        return cls(**fields)\n'

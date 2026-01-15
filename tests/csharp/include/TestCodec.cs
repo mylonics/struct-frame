@@ -17,6 +17,7 @@ using StructFrame.SerializationTest;
 using ExtendedMessageDefinitions = StructFrame.ExtendedTest.MessageDefinitions;
 
 // Type aliases to match expected names
+using Message = StructFrame.SerializationTest.SerializationTestMessage;
 using SerializationTestMessage = StructFrame.SerializationTest.SerializationTestSerializationTestMessage;
 using BasicTypesMessage = StructFrame.SerializationTest.SerializationTestBasicTypesMessage;
 using UnionTestMessage = StructFrame.SerializationTest.SerializationTestUnionTestMessage;
@@ -279,14 +280,27 @@ namespace StructFrameTests
             return msg;
         }
 
+        private static Message CreateMessage(Dictionary<string, object> data)
+        {
+            var msg = new Message();
+            msg.Severity = (SerializationTestMsgSeverity)Convert.ToByte(data["severity"]);
+            var module = (string)data["module"];
+            msg.ModuleLength = (byte)module.Length;
+            msg.ModuleData = Encoding.UTF8.GetBytes(module);
+            var msgText = (string)data["msg"];
+            msg.MsgLength = (byte)msgText.Length;
+            msg.MsgData = Encoding.UTF8.GetBytes(msgText);
+            return msg;
+        }
+
         private static byte[] EncodeMessage(object msg)
         {
-            if (msg is SerializationTestMessage stm)
-                return stm.Pack();
+            if (msg is Message stm)
+                return stm.Serialize();
             else if (msg is BasicTypesMessage btm)
-                return btm.Pack();
+                return btm.Serialize();
             else if (msg is UnionTestMessage utm)
-                return utm.Pack();
+                return utm.Serialize();
             throw new InvalidOperationException("Unknown message type");
         }
 
@@ -443,6 +457,11 @@ namespace StructFrameTests
                     var msg = CreateVariableSingleArrayMessage(mixedMsg.Data);
                     bytesWritten = writer.Write(msg);
                 }
+                else if (mixedMsg.Type == MessageType.Message)
+                {
+                    var msg = CreateMessage(mixedMsg.Data);
+                    bytesWritten = writer.Write(msg);
+                }
                 else
                 {
                     throw new Exception($"Unknown message type: {mixedMsg.Type}");
@@ -593,11 +612,15 @@ namespace StructFrameTests
                 && ValidateField(msg.Flag, (bool)expected["flag"], "flag");
         }
 
-        private static bool ValidateUnionTestMessage(byte[] decodedPayload, Dictionary<string, object> expected)
+        private static bool ValidateUnionTestMessage(FrameMsgInfo frameInfo, Dictionary<string, object> expected)
         {
+            // Extract payload from FrameMsgInfo
+            byte[] decodedPayload = new byte[frameInfo.MsgLen];
+            Array.Copy(frameInfo.MsgData, frameInfo.MsgDataOffset, decodedPayload, 0, frameInfo.MsgLen);
+            
             // Create expected message and compare packed bytes
             var expectedMsg = CreateUnionTestMessage(expected);
-            var expectedBytes = expectedMsg.Pack();
+            var expectedBytes = expectedMsg.Serialize();
             
             if (decodedPayload.Length != expectedBytes.Length)
             {
@@ -638,6 +661,28 @@ namespace StructFrameTests
             return true;
         }
 
+        private static bool ValidateMessage(Message msg, Dictionary<string, object> expected)
+        {
+            if (!ValidateField((byte)msg.Severity, Convert.ToByte(expected["severity"]), "severity"))
+                return false;
+
+            var expectedModule = (string)expected["module"];
+            if (!ValidateField(msg.ModuleLength, (byte)expectedModule.Length, "module_length"))
+                return false;
+            var actualModule = Encoding.UTF8.GetString(msg.ModuleData, 0, msg.ModuleLength);
+            if (!ValidateField(actualModule, expectedModule, "module"))
+                return false;
+
+            var expectedMsg = (string)expected["msg"];
+            if (!ValidateField(msg.MsgLength, (byte)expectedMsg.Length, "msg_length"))
+                return false;
+            var actualMsg = Encoding.UTF8.GetString(msg.MsgData, 0, msg.MsgLength);
+            if (!ValidateField(actualMsg, expectedMsg, "msg"))
+                return false;
+
+            return true;
+        }
+
         public static (bool success, int messageCount) DecodeStandardMessages(string formatName, byte[] data)
         {
             return DecodeMessages(
@@ -654,25 +699,31 @@ namespace StructFrameTests
                     if (expected.Type == MessageType.SerializationTest)
                     {
                         expectedMsgId = SerializationTestMessage.MsgId;
-                        var msg = SerializationTestMessage.Unpack(ExtractPayload(result));
+                        var msg = SerializationTestMessage.Deserialize(result);
                         isValid = ValidateSerializationTestMessage(msg, expected.Data);
                     }
                     else if (expected.Type == MessageType.BasicTypes)
                     {
                         expectedMsgId = BasicTypesMessage.MsgId;
-                        var msg = BasicTypesMessage.Unpack(ExtractPayload(result));
+                        var msg = BasicTypesMessage.Deserialize(result);
                         isValid = ValidateBasicTypesMessage(msg, expected.Data);
                     }
                     else if (expected.Type == MessageType.UnionTest)
                     {
                         expectedMsgId = UnionTestMessage.MsgId;
-                        isValid = ValidateUnionTestMessage(ExtractPayload(result), expected.Data);
+                        isValid = ValidateUnionTestMessage(result, expected.Data);
                     }
                     else if (expected.Type == MessageType.VariableSingleArray)
                     {
                         expectedMsgId = VariableSingleArrayMessage.MsgId;
-                        var msg = VariableSingleArrayMessage.Unpack(ExtractPayload(result));
+                        var msg = VariableSingleArrayMessage.Deserialize(result);
                         isValid = ValidateVariableSingleArrayMessage(msg, expected.Data);
+                    }
+                    else if (expected.Type == MessageType.Message)
+                    {
+                        expectedMsgId = Message.MsgId;
+                        var msg = Message.Deserialize(result);
+                        isValid = ValidateMessage(msg, expected.Data);
                     }
                     else
                     {
@@ -700,13 +751,13 @@ namespace StructFrameTests
                     if (expected.Type == VariableMessageType.NonVariable)
                     {
                         expectedMsgId = StructFrame.SerializationTest.SerializationTestTruncationTestNonVariable.MsgId;
-                        var msg = StructFrame.SerializationTest.SerializationTestTruncationTestNonVariable.Unpack(ExtractPayload(result));
+                        var msg = StructFrame.SerializationTest.SerializationTestTruncationTestNonVariable.Deserialize(result);
                         isValid = ValidateTruncationTestNonVariable(msg, expected.Data);
                     }
                     else if (expected.Type == VariableMessageType.Variable)
                     {
                         expectedMsgId = StructFrame.SerializationTest.SerializationTestTruncationTestVariable.MsgId;
-                        var msg = StructFrame.SerializationTest.SerializationTestTruncationTestVariable.Unpack(ExtractPayload(result));
+                        var msg = StructFrame.SerializationTest.SerializationTestTruncationTestVariable.Deserialize(result);
                         isValid = ValidateTruncationTestVariable(msg, expected.Data);
                     }
                     else
@@ -801,13 +852,13 @@ namespace StructFrameTests
                         else
                         {
                             // Non-variable message
-                            expectedData = expectedMsg.Pack();
+                            expectedData = expectedMsg.Serialize();
                         }
                     }
                     else
                     {
                         // Received variable-length format - Pack() returns this for variable messages
-                        expectedData = expectedMsg.Pack();
+                        expectedData = expectedMsg.Serialize();
                     }
                     
                     if (decodedPayload.Length != expectedData.Length)

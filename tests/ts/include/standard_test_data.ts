@@ -10,25 +10,28 @@
  * - Decoding uses decoded msg_id to find the right array for comparison
  */
 
+import { FrameMsgInfo } from '../../generated/ts/frame-base';
 import { TestConfig } from './test_codec';
-import { MessageInfo } from '../../generated/ts/frame-profiles';
 import {
   SerializationTestSerializationTestMessage,
   SerializationTestBasicTypesMessage,
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
   SerializationTestVariableSingleArray,
+  SerializationTestMessage,
+  SerializationTestMsgSeverity,
   get_message_info,
 } from '../../generated/ts/serialization_test.structframe';
 
 /** Message count */
-const MESSAGE_COUNT = 16;
+const MESSAGE_COUNT = 17;
 
 /** Index tracking for encoding/validation */
 let serialIdx = 0;
 let basicIdx = 0;
 let unionIdx = 0;
 let varSingleIdx = 0;
+let messageIdx = 0;
 
 /** Message ID order array */
 const MSG_ID_ORDER: number[] = [
@@ -48,6 +51,7 @@ const MSG_ID_ORDER: number[] = [
   SerializationTestVariableSingleArray._msgid!,       // 13: VariableSingleArray[2] - 1/3 filled
   SerializationTestVariableSingleArray._msgid!,       // 14: VariableSingleArray[3] - one empty
   SerializationTestVariableSingleArray._msgid!,       // 15: VariableSingleArray[4] - full
+  SerializationTestMessage._msgid!,                   // 16: Message[0]
 ];
 
 /** SerializationTestMessage array (5 messages) */
@@ -279,12 +283,26 @@ function getVariableSingleArrayMessages(): SerializationTestVariableSingleArray[
   ];
 }
 
+/** Message array (1 message) */
+function getMessageMessages(): SerializationTestMessage[] {
+  return [
+    new SerializationTestMessage({
+      severity: SerializationTestMsgSeverity.SEV_MSG,
+      module_length: 4,
+      module_data: 'test',
+      msg_length: 13,
+      msg_data: 'A really good',
+    }),
+  ];
+}
+
 /** Reset state for new encode/decode run */
 function resetState(): void {
   serialIdx = 0;
   basicIdx = 0;
   unionIdx = 0;
   varSingleIdx = 0;
+  messageIdx = 0;
 }
 
 /** Encode message by index */
@@ -303,28 +321,36 @@ function encodeMessage(writer: any, index: number): number {
   } else if (msgId === SerializationTestVariableSingleArray._msgid) {
     const msg = getVariableSingleArrayMessages()[varSingleIdx++];
     return writer.write(msg);
+  } else if (msgId === SerializationTestMessage._msgid) {
+    const msg = getMessageMessages()[messageIdx++];
+    return writer.write(msg);
   }
 
   return 0;
 }
 
-/** Validate decoded message using equals() method */
-function validateMessage(msgId: number, data: Buffer, _index: number): boolean {
+/** Validate decoded message using equals() method. Accepts FrameMsgInfo. */
+function validateMessage(data: FrameMsgInfo, _index: number): boolean {
+  const msgId = data.msg_id;
   if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
-    const decoded = SerializationTestSerializationTestMessage.unpack(data);
+    const decoded = SerializationTestSerializationTestMessage.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestBasicTypesMessage._msgid) {
     const expected = getBasicTypesMessages()[basicIdx++];
-    const decoded = SerializationTestBasicTypesMessage.unpack(data);
+    const decoded = SerializationTestBasicTypesMessage.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestUnionTestMessage._msgid) {
     const expected = getUnionTestMessages()[unionIdx++];
-    const decoded = SerializationTestUnionTestMessage.unpack(data);
+    const decoded = SerializationTestUnionTestMessage.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestVariableSingleArray._msgid) {
     const expected = getVariableSingleArrayMessages()[varSingleIdx++];
-    const decoded = SerializationTestVariableSingleArray.unpack(data);
+    const decoded = SerializationTestVariableSingleArray.deserialize(data);
+    return decoded.equals(expected);
+  } else if (msgId === SerializationTestMessage._msgid) {
+    const expected = getMessageMessages()[messageIdx++];
+    const decoded = SerializationTestMessage.deserialize(data);
     return decoded.equals(expected);
   }
 

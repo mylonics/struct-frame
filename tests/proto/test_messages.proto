@@ -25,6 +25,14 @@ enum Status {
   MAINTENANCE = 3;
 }
 
+enum MsgSeverity {
+  SEV_MSG = 0;
+  SEV_ERROR = 1;
+  SEV_WARN = 2;
+  SEV_INFO = 3;
+  SEV_DEBUG = 4;
+}
+
 // ============================================================================
 // Basic Types Test Message (msgid: 201)
 // ============================================================================
@@ -189,4 +197,18 @@ message TruncationTestVariable {
   uint32 sequence_id = 1;
   repeated uint8 data_array = 2 [max_size=200];  // Up to 200 bytes
   uint16 footer = 3;
+}
+
+// ============================================================================
+// Variable Message Test (msgid: 211)
+// ============================================================================
+
+// Variable message with two variable string fields
+message Message {
+  option msgid = 211;
+  option variable = true;
+  
+  MsgSeverity severity = 1;
+  string module = 2 [max_size=16];
+  string msg = 3 [max_size=255];
 }

@@ -144,10 +144,7 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
   typename Config::Validator validator;
 
   auto validate = [&](const FrameMsgInfo& result) -> bool {
-    if (!result.valid) {
-      std::cout << "  Decoding failed for message " << message_count << "\n";
-      return false;
-    }
+    // Note: result is already valid here due to while(auto result = reader.next()) implicit bool check
 
     if (message_count >= Config::MESSAGE_COUNT) {
       std::cout << "  Too many messages decoded: " << message_count << "\n";
@@ -162,7 +159,7 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
     }
 
     // Use operator== for validation via validate_with_equals
-    if (!validator.validate_with_equals(result.msg_id, result.msg_data, result.msg_len)) {
+    if (!validator.validate_with_equals(result)) {
       std::cout << "  Message " << message_count << " content mismatch (equality check failed)\n";
       return false;
     }

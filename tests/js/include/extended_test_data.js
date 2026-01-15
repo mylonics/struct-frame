@@ -268,22 +268,23 @@ function encodeMessage(writer, index) {
   return writer.write(msg);
 }
 
-/** Validate decoded message using equals() method */
-function validateMessage(msgId, data, _index) {
+/** Validate decoded message using equals() method. Accepts FrameMsgInfo. */
+function validateMessage(data, _index) {
+  const msgId = data.msg_id;
   const MsgClass = getMessageClass(msgId);
   if (!MsgClass) return false;
 
   // Handle variable messages with index tracking
   if (msgId === ExtendedTestExtendedVariableSingleArray._msgid) {
     const expected = extVarSingleMsgs[extVarSingleValidateIdx++];
-    const decoded = MsgClass.unpack(data);
+    const decoded = MsgClass.deserialize(data);
     return decoded.equals(expected);
   }
 
   const expected = getMessage(msgId);
   if (!expected) return false;
 
-  const decoded = MsgClass.unpack(data);
+  const decoded = MsgClass.deserialize(data);
   return decoded.equals(expected);
 }
 
