@@ -64,7 +64,7 @@ namespace StructFrame.Sdk
         public StructFrameSdkConfig(
             ITransport transport,
             Func<int, MessageInfo?> getMessageInfo,
-            ProfileConfig profile = null,
+            ProfileConfig? profile = null,
             int bufferSize = 1024,
             bool debug = false)
         {
