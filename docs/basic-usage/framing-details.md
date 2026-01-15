@@ -69,7 +69,14 @@ Profiles combine header + payload types:
 
 ## Checksum (Fletcher-16)
 
-The Default and Extended payload types use Fletcher-16 checksum:
+The Default and Extended payload types use Fletcher-16 checksum.
+
+**Magic Numbers:**
+- Basic frame start: `0x90` followed by `0x70 + PayloadType`
+- Tiny frame start: `0x70 + PayloadType`
+- Payload type base value: `0x70`
+
+The checksum algorithm:
 
 ```
 For each byte in [LENGTH, MSG_ID, PAYLOAD]:
@@ -77,12 +84,6 @@ For each byte in [LENGTH, MSG_ID, PAYLOAD]:
     sum2 = (sum2 + sum1) mod 255
 checksum = (sum2 << 8) | sum1
 ```
-
-Properties:
-- Detects all single-bit errors
-- Detects most burst errors
-- Detects byte order errors
-- Fast to compute
 
 ## Parser State Machine
 

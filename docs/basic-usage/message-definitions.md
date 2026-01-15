@@ -53,6 +53,18 @@ message Heartbeat {
 
 Message IDs must be unique within a package (range 0-255).
 
+**variable** (optional, enables variable-length encoding)
+
+```proto
+message SensorData {
+  option msgid = 1;
+  option variable = true;  // Encode only used bytes
+  repeated uint8 readings = 1 [max_size=100];
+}
+```
+
+With variable encoding, arrays and strings only transmit actual used bytes instead of the full max_size. This reduces bandwidth when fields are partially filled.
+
 **pkgid** (optional package-level option)
 
 ```proto
@@ -102,7 +114,7 @@ Stores up to 256 characters plus a 1-byte length prefix.
 
 ## Arrays
 
-All repeated fields must specify a size.
+All repeated fields must specify a size. Arrays can contain primitive types, enums, strings, or nested messages.
 
 **Fixed arrays**
 
@@ -125,6 +137,23 @@ repeated string names = 1 [max_size=10, element_size=32];
 ```
 
 Array of up to 10 strings, each up to 32 characters.
+
+**Arrays of nested messages**
+
+```proto
+message Waypoint {
+  double lat = 1;
+  double lon = 2;
+}
+
+message Route {
+  option msgid = 5;
+  string name = 1 [size=32];
+  repeated Waypoint waypoints = 2 [max_size=20];
+}
+```
+
+Array of up to 20 waypoint messages. Each Waypoint is embedded inline.
 
 ## Enums
 
@@ -160,6 +189,58 @@ message Vehicle {
 ```
 
 Nested messages are embedded inline.
+
+## Import Statements
+
+Import proto definitions from other files:
+
+```proto
+// types.proto
+package common;
+
+message Position {
+  double lat = 1;
+  double lon = 2;
+}
+```
+
+```proto
+// vehicle.proto
+import "types.proto";
+
+package fleet;
+
+message Vehicle {
+  option msgid = 1;
+  uint32 id = 1;
+  common.Position pos = 2;
+}
+```
+
+## Flatten Option
+
+Flatten nested message fields into the parent (Python/GraphQL only):
+
+```proto
+message Status {
+  Position pos = 1 [flatten=true];
+  float battery = 2;
+}
+```
+
+Access: `status.lat` instead of `status.pos.lat`
+
+## Validation Rules
+
+The generator enforces:
+
+- Message IDs unique within package (0-255)
+- Package IDs unique across packages (0-255)
+- Field numbers unique within message
+- All arrays must have size or max_size
+- All strings must have size or max_size
+- String arrays need both max_size and element_size
+- Array max_size limited to 255 (count fits in 1 byte)
 
 ## Complete Example
 
