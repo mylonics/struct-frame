@@ -176,10 +176,6 @@ if (result) {
 
 For cases where you need direct access to message bytes without framing:
 
-## Direct Message Serialization
-
-For cases where you need direct access to message bytes without framing:
-
 ### Python
 
 ```python
