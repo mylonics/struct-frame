@@ -1153,13 +1153,14 @@ def main():
                 elif os.path.isfile(src_path):
                     shutil.copy2(src_path, dst_path)
     
-    def copy_sdk_files(src_dir, dst_dir, embedded=False):
+    def copy_sdk_files(src_dir, dst_dir, embedded=False, include_asio=True):
         """Copy SDK files (struct_frame_sdk directory)
         
         Args:
             src_dir: Source boilerplate directory
             dst_dir: Destination directory
             embedded: If True, copy only embedded-safe files (no ASIO)
+            include_asio: If False, exclude ASIO files even for full SDK (default: True)
         """
         sdk_src = os.path.join(src_dir, "struct_frame_sdk")
         sdk_dst = os.path.join(dst_dir, "struct_frame_sdk")
@@ -1170,22 +1171,30 @@ def main():
         if not os.path.exists(sdk_dst):
             os.makedirs(sdk_dst)
         
+        # Determine which files to exclude
+        exclude_items = []
+        
         # For C++, handle embedded vs full SDK differently
-        if embedded and 'cpp' in src_dir:
-            # Copy only embedded-safe files (no ASIO, no network_transports)
-            exclude_items = ['asio.hpp', 'asio', 'network_transports.hpp', 'sdk.hpp']
-            for item in os.listdir(sdk_src):
-                if item in exclude_items:
-                    continue
-                src_path = os.path.join(sdk_src, item)
-                dst_path = os.path.join(sdk_dst, item)
-                if os.path.isfile(src_path):
-                    shutil.copy2(src_path, dst_path)
-                elif os.path.isdir(src_path):
-                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-        else:
-            # Copy all SDK files
-            shutil.copytree(sdk_src, sdk_dst, dirs_exist_ok=True)
+        if 'cpp' in src_dir:
+            if embedded or not include_asio:
+                # Exclude ASIO and network transports for embedded SDK or when ASIO not requested
+                exclude_items = ['asio.hpp', 'asio', 'asio-repo', 'network_transports.hpp', 'sdk.hpp']
+        
+        # Copy SDK files with exclusions
+        for item in os.listdir(sdk_src):
+            if item in exclude_items:
+                continue
+            src_path = os.path.join(sdk_src, item)
+            dst_path = os.path.join(sdk_dst, item)
+            
+            # Skip broken symlinks
+            if os.path.islink(src_path) and not os.path.exists(os.path.realpath(src_path)):
+                continue
+                
+            if os.path.isfile(src_path):
+                shutil.copy2(src_path, dst_path)
+            elif os.path.isdir(src_path):
+                shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
 
     # Copy all boilerplate files (excluding SDK by default)
     # SDK is handled separately below based on --sdk or --sdk_embedded flags
@@ -1232,27 +1241,29 @@ def main():
         if args.build_ts:
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/ts"),
-                args.ts_path[0], embedded_only)
+                args.ts_path[0], embedded_only, include_asio=False)
         
         if args.build_js:
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/js"),
-                args.js_path[0], embedded_only)
+                args.js_path[0], embedded_only, include_asio=False)
         
         if args.build_py:
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/py"),
-                args.py_path[0], embedded_only)
+                args.py_path[0], embedded_only, include_asio=False)
         
         if args.build_cpp:
+            # ASIO is only included for C++ when full SDK is requested (not embedded)
+            include_asio = args.sdk and not args.sdk_embedded
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/cpp"),
-                args.cpp_path[0], embedded_only)
+                args.cpp_path[0], embedded_only, include_asio=include_asio)
         
         if args.build_csharp:
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/csharp"),
-                args.csharp_path[0], embedded_only)
+                args.csharp_path[0], embedded_only, include_asio=False)
 
     # No boilerplate for GraphQL currently
 
