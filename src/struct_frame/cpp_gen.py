@@ -510,7 +510,7 @@ class MessageCppGen():
         result += f'     * @param frame_info Frame information from frame parser\n'
         result += f'     * @return Number of bytes read, or 0 if buffer too small\n'
         result += f'     */\n'
-        result += f'    size_t deserialize(const FrameMsgInfo& frame_info) {{\n'
+        result += f'    size_t deserialize(const FrameParsers::FrameMsgInfo& frame_info) {{\n'
         result += f'        return deserialize(frame_info.msg_data, frame_info.msg_len);\n'
         result += f'    }}\n'
         
@@ -543,10 +543,9 @@ class FileCppGen():
         if equality:
             yield '#include <cstring>\n'
         
-        # Check if any message has an ID (needs MessageBase from frame_base.hpp)
-        has_msg_with_id = any(msg.id is not None for msg in package.messages.values()) if package.messages else False
-        if has_msg_with_id:
-            yield '#include "frame_base.hpp"\n'
+        # Always include frame_base.hpp for FrameMsgInfo and MessageBase
+        # (needed for deserialize(FrameMsgInfo) overload and message base class)
+        yield '#include "frame_base.hpp"\n'
         yield '\n'
 
         # Check if package has package ID - if so, use namespaces
