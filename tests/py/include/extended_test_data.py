@@ -389,12 +389,14 @@ class Validator:
             return data, len(data)
         return None, None
 
-    def validate_with_equals(self, msg_id: int, decoded_data: bytes) -> bool:
+    def validate_with_equals(self, frame_info) -> bool:
         """Validate decoded message using __eq__ operator.
         
         Note: We unpack the expected message's packed data to ensure both messages
         have been through string padding conversion, making equality comparison valid.
         """
+        msg_id = frame_info.msg_id
+        decoded_data = frame_info
         msg_class = self._msg_classes.get(msg_id)
         if not msg_class:
             return False

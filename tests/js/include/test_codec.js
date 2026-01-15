@@ -144,7 +144,7 @@ function decodeMessages(config, format, data) {
         return messageCount;
       }
 
-      if (!config.validateMessage(result.msg_id, Buffer.from(result.msg_data), messageCount)) {
+      if (!config.validateMessage(result, messageCount)) {
         console.log(`  Message ${messageCount} validation failed`);
         return messageCount;
       }

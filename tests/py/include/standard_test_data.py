@@ -378,14 +378,16 @@ class Validator:
             return data, len(data)
         return None, None
 
-    def validate_with_equals(self, msg_id: int, decoded_data) -> bool:
+    def validate_with_equals(self, frame_info) -> bool:
         """Validate decoded message using __eq__ operator.
         
-        Accepts either bytes or FrameMsgInfo for decoded_data.
+        Accepts FrameMsgInfo for frame_info (contains msg_id and msg_data).
         
         Note: We unpack the expected message's packed data to ensure both messages
         have been through float32 conversion, making equality comparison valid.
         """
+        msg_id = frame_info.msg_id
+        decoded_data = frame_info
         if msg_id == SerializationTestSerializationTestMessage.MSG_ID:
             expected = self._serial_msgs[self.serial_idx]
             self.serial_idx += 1

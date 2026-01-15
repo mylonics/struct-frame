@@ -162,7 +162,7 @@ bool decode_messages(const std::string& format, const uint8_t* buffer, size_t bu
     }
 
     // Use operator== for validation via validate_with_equals
-    if (!validator.validate_with_equals(result.msg_id, result.msg_data, result.msg_len)) {
+    if (!validator.validate_with_equals(result)) {
       std::cout << "  Message " << message_count << " content mismatch (equality check failed)\n";
       return false;
     }

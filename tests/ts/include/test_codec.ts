@@ -35,6 +35,7 @@ import {
   ProfileNetworkWriter,
   MessageInfo,
 } from '../../generated/ts/frame-profiles';
+import { FrameMsgInfo } from '../../generated/ts/frame-base';
 
 /** Test configuration interface */
 export interface TestConfig {
@@ -49,8 +50,8 @@ export interface TestConfig {
   /** Encode message by index using the writer, returns bytes written */
   encodeMessage(writer: any, index: number): number;
 
-  /** Validate decoded message, returns true if valid */
-  validateMessage(msgId: number, data: Buffer, index: number): boolean;
+  /** Validate decoded message, returns true if valid. Accepts FrameMsgInfo directly for deserialize convenience. */
+  validateMessage(data: FrameMsgInfo, index: number): boolean;
 
   /** Reset encoder/validator state for new run */
   resetState(): void;
@@ -150,7 +151,7 @@ export function decodeMessages(config: TestConfig, format: string, data: Buffer)
   // Split buffer into 3 chunks to test partial message handling
   const chunk1Size = Math.floor(data.length / 3);
   const chunk2Size = Math.floor(data.length / 3);
-  const chunk3Size = data.length - chunk1Size - chunk2Size;
+  //const chunk3Size = data.length - chunk1Size - chunk2Size;
 
   const chunk1 = data.slice(0, chunk1Size);
   const chunk2 = data.slice(chunk1Size, chunk1Size + chunk2Size);
@@ -184,7 +185,7 @@ export function decodeMessages(config: TestConfig, format: string, data: Buffer)
         return messageCount;
       }
 
-      if (!config.validateMessage(result.msg_id, Buffer.from(result.msg_data), messageCount)) {
+      if (!config.validateMessage(result, messageCount)) {
         console.log(`  Message ${messageCount} validation failed`);
         return messageCount;
       }

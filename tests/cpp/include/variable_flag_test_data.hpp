@@ -138,18 +138,16 @@ struct Validator {
   }
 
   /** Validate decoded message using operator== (for equality testing) */
-  bool validate_with_equals(uint16_t msg_id, const uint8_t* decoded_data, size_t decoded_size) {
-    if (msg_id == SerializationTestTruncationTestNonVariable::MSG_ID) {
+  bool validate_with_equals(const FrameParsers::FrameMsgInfo& frame_info) {
+    if (frame_info.msg_id == SerializationTestTruncationTestNonVariable::MSG_ID) {
       const auto& expected = get_non_variable_messages()[non_var_idx++];
       SerializationTestTruncationTestNonVariable decoded;
-      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
-      if (unpacked == 0) return false;
+      if (decoded.deserialize(frame_info) == 0) return false;
       return decoded == expected;
-    } else if (msg_id == SerializationTestTruncationTestVariable::MSG_ID) {
+    } else if (frame_info.msg_id == SerializationTestTruncationTestVariable::MSG_ID) {
       const auto& expected = get_variable_messages()[var_idx++];
       SerializationTestTruncationTestVariable decoded;
-      size_t unpacked = decoded.deserialize(decoded_data, decoded_size);
-      if (unpacked == 0) return false;
+      if (decoded.deserialize(frame_info) == 0) return false;
       return decoded == expected;
     }
     return false;

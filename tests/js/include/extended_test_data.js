@@ -268,8 +268,9 @@ function encodeMessage(writer, index) {
   return writer.write(msg);
 }
 
-/** Validate decoded message using equals() method */
-function validateMessage(msgId, data, _index) {
+/** Validate decoded message using equals() method. Accepts FrameMsgInfo. */
+function validateMessage(data, _index) {
+  const msgId = data.msg_id;
   const MsgClass = getMessageClass(msgId);
   if (!MsgClass) return false;
 

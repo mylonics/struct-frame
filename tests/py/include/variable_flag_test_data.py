@@ -130,8 +130,10 @@ class Validator:
             return (data, len(data))
         return None
     
-    def validate_with_equals(self, msg_id: int, decoded_data: bytes) -> bool:
+    def validate_with_equals(self, frame_info) -> bool:
         """Validate decoded message using equality testing."""
+        msg_id = frame_info.msg_id
+        decoded_data = frame_info
         if msg_id == SerializationTestTruncationTestNonVariable.MSG_ID:
             expected = self._non_variable_messages[self.non_var_idx]
             self.non_var_idx += 1

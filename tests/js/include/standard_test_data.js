@@ -320,8 +320,9 @@ function encodeMessage(writer, index) {
   return 0;
 }
 
-/** Validate decoded message using equals() method */
-function validateMessage(msgId, data, _index) {
+/** Validate decoded message using equals() method. Accepts FrameMsgInfo. */
+function validateMessage(data, _index) {
+  const msgId = data.msg_id;
   if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
     const decoded = SerializationTestSerializationTestMessage.deserialize(data);

@@ -197,8 +197,8 @@ def decode_messages(config, format_name: str, buffer: bytes) -> Tuple[bool, int]
                 return False, message_count
             
             # Use validate_with_equals to compare using __eq__ operator
-            # Note: Can pass either result.msg_data or result (FrameMsgInfo) to deserialize
-            if not validator.validate_with_equals(result.msg_id, result):
+            # Pass the FrameMsgInfo directly - it contains msg_id
+            if not validator.validate_with_equals(result):
                 print(f"  Message {message_count} content mismatch (equality check failed)")
                 return False, message_count
             

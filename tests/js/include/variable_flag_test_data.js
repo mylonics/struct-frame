@@ -99,8 +99,9 @@ function validateWithEquals(msgId, decodedData, decodedSize) {
   return false;
 }
 
-/** Validate decoded message using equals() method */
-function validateMessage(msgId, data, _index) {
+/** Validate decoded message using equals() method. Accepts FrameMsgInfo. */
+function validateMessage(data, _index) {
+  const msgId = data.msg_id;
   if (msgId === SerializationTestTruncationTestNonVariable._msgid) {
     const expected = getNonVariableMessages()[nonVarIdx++];
     const decoded = SerializationTestTruncationTestNonVariable.deserialize(data);

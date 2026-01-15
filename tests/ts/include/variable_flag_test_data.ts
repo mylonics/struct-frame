@@ -11,6 +11,7 @@
 
 import { TestConfig } from './test_codec';
 import { MessageInfo } from '../../generated/ts/frame-profiles';
+import { FrameMsgInfo } from '../../generated/ts/frame-base';
 import {
   SerializationTestTruncationTestNonVariable,
   SerializationTestTruncationTestVariable,
@@ -75,15 +76,16 @@ function encodeMessage(writer: any, index: number): number {
   return 0;
 }
 
-/** Validate decoded message using equals() method */
-function validateMessage(msgId: number, data: Uint8Array, _index: number): boolean {
+/** Validate decoded message using equals() method. Accepts FrameMsgInfo. */
+function validateMessage(data: FrameMsgInfo, _index: number): boolean {
+  const msgId = data.msg_id;
   if (msgId === SerializationTestTruncationTestNonVariable._msgid) {
     const expected = getNonVariableMessages()[nonVarIdx++];
-    const decoded = SerializationTestTruncationTestNonVariable.deserialize(Buffer.from(data));
+    const decoded = SerializationTestTruncationTestNonVariable.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestTruncationTestVariable._msgid) {
     const expected = getVariableMessages()[varIdx++];
-    const decoded = SerializationTestTruncationTestVariable.deserialize(Buffer.from(data));
+    const decoded = SerializationTestTruncationTestVariable.deserialize(data);
     return decoded.equals(expected);
   }
   return false;

@@ -10,8 +10,8 @@
  * - Decoding uses decoded msg_id to find the right array for comparison
  */
 
+import { FrameMsgInfo } from '../../generated/ts/frame-base';
 import { TestConfig } from './test_codec';
-import { MessageInfo } from '../../generated/ts/frame-profiles';
 import {
   SerializationTestSerializationTestMessage,
   SerializationTestBasicTypesMessage,
@@ -329,8 +329,9 @@ function encodeMessage(writer: any, index: number): number {
   return 0;
 }
 
-/** Validate decoded message using equals() method */
-function validateMessage(msgId: number, data: Buffer, _index: number): boolean {
+/** Validate decoded message using equals() method. Accepts FrameMsgInfo. */
+function validateMessage(data: FrameMsgInfo, _index: number): boolean {
+  const msgId = data.msg_id;
   if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
     const decoded = SerializationTestSerializationTestMessage.deserialize(data);
