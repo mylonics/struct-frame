@@ -147,9 +147,9 @@ namespace StructFrame
         int GetSize();
 
         /// <summary>
-        /// Pack the message into a byte array
+        /// Serialize the message into a byte array
         /// </summary>
-        byte[] Pack();
+        byte[] Serialize();
 
         /// <summary>
         /// Get the magic numbers for checksum calculation (based on field types and positions)

@@ -559,6 +559,10 @@ class MessageCSharpGen():
             result += '        /// </summary>\n'
             result += f'        private static {structName} _DeserializeMaxSize(byte[] data)\n'
             result += '        {\n'
+            result += '            int offset = 0;\n'
+        else:
+            # For fixed messages, add offset variable directly in Deserialize
+            result += '            int offset = 0;\n'
             
         result += f'            var msg = new {structName}();\n'
 
@@ -589,7 +593,7 @@ class MessageCSharpGen():
                     else:
                         result += f'            else if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
                     result += '            {\n'
-                    result += f'                msg.{field_var} = {type_name}.Unpack(data, {offset});\n'
+                    result += f'                msg.{field_var} = {type_name}.Deserialize(data[{offset}..({offset} + {type_name}.MaxSize)]);\n'
                     result += '            }\n'
             offset += oneof.size
 
@@ -807,7 +811,7 @@ class MessageCSharpGen():
                     nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
                     result += f'            msg.{var_name}Data = new {nested_type}[{f.max_size}];\n'
                     result += f'            for (int i = 0; i < msg.{var_name}Count; i++)\n'
-                    result += f'                msg.{var_name}Data[i] = {nested_type}.Unpack(data, offset + i * {element_size});\n'
+                    result += f'                msg.{var_name}Data[i] = {nested_type}.Deserialize(data[(offset + i * {element_size})..(offset + (i + 1) * {element_size})]);\n'
                     result += f'            offset += msg.{var_name}Count * {element_size};\n'
             elif type_name == "string" and f.max_size is not None:
                 result += f'            // {f.name}: variable string\n'
@@ -856,7 +860,7 @@ class MessageCSharpGen():
                 else:
                     type_pkg = f.type_package if f.type_package else f.package
                     nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
-                    result += f'            msg.{var_name} = {nested_type}.Unpack(data, offset); offset += {nested_type}.MaxSize;\n'
+                    result += f'            msg.{var_name} = {nested_type}.Deserialize(data[offset..(offset + {nested_type}.MaxSize)]); offset += {nested_type}.MaxSize;\n'
         
         result += '            return msg;\n'
         result += '        }\n'
