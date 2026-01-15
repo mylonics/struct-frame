@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "struct-frame"
-version = "0.6.1"
+version = "0.6.2"
 authors = [
   { name="Rijesh Augustine", email="rijesh@mylonics.com" },
 ]
