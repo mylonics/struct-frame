@@ -90,14 +90,14 @@ class Encoder:
             msg = self._non_variable_messages[self.non_var_idx]
             self.non_var_idx += 1
             written = writer.write(msg)
-            payload_size = len(msg.pack())
+            payload_size = len(msg.serialize())
             print(f"MSG1: {written} bytes (payload={payload_size}, no truncation)")
             return written
         elif msg_id == SerializationTestTruncationTestVariable.MSG_ID:
             msg = self._variable_messages[self.var_idx]
             self.var_idx += 1
             written = writer.write(msg)
-            payload_size = len(msg.pack())
+            payload_size = len(msg.serialize())
             print(f"MSG2: {written} bytes (payload={payload_size}, TRUNCATED)")
             return written
         return 0
@@ -130,19 +130,21 @@ class Validator:
             return (data, len(data))
         return None
     
-    def validate_with_equals(self, msg_id: int, decoded_data: bytes) -> bool:
+    def validate_with_equals(self, frame_info) -> bool:
         """Validate decoded message using equality testing."""
+        msg_id = frame_info.msg_id
+        decoded_data = frame_info
         if msg_id == SerializationTestTruncationTestNonVariable.MSG_ID:
             expected = self._non_variable_messages[self.non_var_idx]
             self.non_var_idx += 1
-            expected_unpacked = SerializationTestTruncationTestNonVariable.unpack(expected.data())
-            decoded = SerializationTestTruncationTestNonVariable.unpack(decoded_data)
+            expected_unpacked = SerializationTestTruncationTestNonVariable.deserialize(expected.serialize())
+            decoded = SerializationTestTruncationTestNonVariable.deserialize(decoded_data)
             return decoded == expected_unpacked
         elif msg_id == SerializationTestTruncationTestVariable.MSG_ID:
             expected = self._variable_messages[self.var_idx]
             self.var_idx += 1
-            expected_unpacked = SerializationTestTruncationTestVariable.unpack(expected.data())
-            decoded = SerializationTestTruncationTestVariable.unpack(decoded_data)
+            expected_unpacked = SerializationTestTruncationTestVariable.deserialize(expected.serialize())
+            decoded = SerializationTestTruncationTestVariable.deserialize(decoded_data)
             return decoded == expected_unpacked
         return False
 

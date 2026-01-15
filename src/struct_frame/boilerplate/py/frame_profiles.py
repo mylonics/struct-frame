@@ -295,17 +295,17 @@ def _frame_format_encode_with_crc(
     is_variable = getattr(msg, 'IS_VARIABLE', False)
     if is_variable and not config.payload.has_length:
         # Variable message on minimal profile (ProfileSensor/ProfileIPC) - need MAX_SIZE
-        if hasattr(msg, 'pack_max_size') and callable(msg.pack_max_size):
-            payload = msg.pack_max_size()
+        if hasattr(msg, 'serialize_max_size') and callable(msg.serialize_max_size):
+            payload = msg.serialize_max_size()
         else:
-            # Fallback to pack() if pack_max_size doesn't exist (shouldn't happen)
-            payload = msg.pack()
-    elif hasattr(msg, 'pack') and callable(msg.pack):
-        # Standard path: pack() returns variable encoding for variable messages,
+            # Fallback to serialize() if serialize_max_size doesn't exist (shouldn't happen)
+            payload = msg.serialize()
+    elif hasattr(msg, 'serialize') and callable(msg.serialize):
+        # Standard path: serialize() returns variable encoding for variable messages,
         # MAX_SIZE for non-variable messages
-        payload = msg.pack()
+        payload = msg.serialize()
     else:
-        raise ValueError("Message object must have pack() method")
+        raise ValueError("Message object must have serialize() method")
     
     # Get magic numbers
     msg_class = type(msg)
@@ -393,14 +393,12 @@ def _frame_format_encode_minimal(
     # For variable messages, use pack_max_size() if available
     # For non-variable messages, pack() already returns MAX_SIZE
     is_variable = getattr(msg, 'IS_VARIABLE', False)
-    if is_variable and hasattr(msg, 'pack_max_size') and callable(msg.pack_max_size):
-        payload = msg.pack_max_size()
-    elif hasattr(msg, 'pack') and callable(msg.pack):
-        payload = msg.pack()
-    elif hasattr(msg, 'data') and callable(msg.data):
-        payload = msg.data()
+    if is_variable and hasattr(msg, 'serialize_max_size') and callable(msg.serialize_max_size):
+        payload = msg.serialize_max_size()
+    elif hasattr(msg, 'serialize') and callable(msg.serialize):
+        payload = msg.serialize()
     else:
-        raise ValueError("Message object must have pack(), data(), or pack_max_size() method")
+        raise ValueError("Message object must have serialize() or serialize_max_size() method")
     
     output = []
     

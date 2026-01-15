@@ -199,13 +199,13 @@ class FieldCSharpGen():
                         lines.append(f'            if ({var_name} != null)')
                         lines.append(f'                Buffer.BlockCopy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length * {element_size}, {total_data_size}));')
                     else:
-                        # Nested struct array - pack each element using PackTo
+                        # Nested struct array - serialize each element using SerializeTo
                         lines.append(f'            if ({var_name} != null)')
                         lines.append(f'                for (int i = 0; i < Math.Min({var_name}.Length, {field.size_option}); i++)')
                         if use_offset_param:
-                            lines.append(f'                    if ({var_name}[i] != null) {var_name}[i].PackTo(buffer, {fmt_offset(base_offset)} + i * {element_size});')
+                            lines.append(f'                    if ({var_name}[i] != null) {var_name}[i].SerializeTo(buffer, {fmt_offset(base_offset)} + i * {element_size});')
                         else:
-                            lines.append(f'                    if ({var_name}[i] != null) {{ var bytes = {var_name}[i].Pack(); Array.Copy(bytes, 0, buffer, {base_offset} + i * {element_size}, bytes.Length); }}')
+                            lines.append(f'                    if ({var_name}[i] != null) {{ var bytes = {var_name}[i].Serialize(); Array.Copy(bytes, 0, buffer, {base_offset} + i * {element_size}, bytes.Length); }}')
                 elif field.max_size is not None:
                     # Variable array
                     count_size = 2 if field.max_size > 255 else 1
@@ -220,13 +220,13 @@ class FieldCSharpGen():
                         lines.append(f'            if ({var_name}Data != null)')
                         lines.append(f'                Buffer.BlockCopy({var_name}Data, 0, buffer, {fmt_offset(base_offset + count_size)}, Math.Min({var_name}Data.Length * {element_size}, {total_data_size}));')
                     else:
-                        # Nested struct array - pack each element using PackTo
+                        # Nested struct array - serialize each element using SerializeTo
                         lines.append(f'            if ({var_name}Data != null)')
                         lines.append(f'                for (int i = 0; i < Math.Min({var_name}Data.Length, {field.max_size}); i++)')
                         if use_offset_param:
-                            lines.append(f'                    if ({var_name}Data[i] != null) {var_name}Data[i].PackTo(buffer, {fmt_offset(base_offset + count_size)} + i * {element_size});')
+                            lines.append(f'                    if ({var_name}Data[i] != null) {var_name}Data[i].SerializeTo(buffer, {fmt_offset(base_offset + count_size)} + i * {element_size});')
                         else:
-                            lines.append(f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Pack(); Array.Copy(bytes, 0, buffer, {base_offset + count_size} + i * {element_size}, bytes.Length); }}')
+                            lines.append(f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Serialize(); Array.Copy(bytes, 0, buffer, {base_offset + count_size} + i * {element_size}, bytes.Length); }}')
         elif type_name in csharp_type_sizes:
             # Single primitive field (not array)
             size = csharp_type_sizes[type_name]
@@ -268,13 +268,13 @@ class FieldCSharpGen():
             # Single enum field - enums are byte values
             lines.append(f'            buffer[{fmt_offset(base_offset)}] = (byte){var_name};')
         else:
-            # Nested struct - use PackTo for efficiency
+            # Nested struct - use SerializeTo for efficiency
             type_pkg = field.type_package if field.type_package else field.package
             nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
             if use_offset_param:
-                lines.append(f'            if ({var_name} != null) {var_name}.PackTo(buffer, {fmt_offset(base_offset)});')
+                lines.append(f'            if ({var_name} != null) {var_name}.SerializeTo(buffer, {fmt_offset(base_offset)});')
             else:
-                lines.append(f'            if ({var_name} != null) {{ var nestedBytes = {var_name}.Pack(); Array.Copy(nestedBytes, 0, buffer, {base_offset}, nestedBytes.Length); }}')
+                lines.append(f'            if ({var_name} != null) {{ var nestedBytes = {var_name}.Serialize(); Array.Copy(nestedBytes, 0, buffer, {base_offset}, nestedBytes.Length); }}')
 
         return lines
 
@@ -292,25 +292,25 @@ class FieldCSharpGen():
                     # Fixed string array
                     total_size = field.size_option * field.element_size
                     lines.append(f'            msg.{var_name} = new byte[{total_size}];')
-                    lines.append(f'            Array.Copy(data, offset + {offset}, msg.{var_name}, 0, {total_size});')
+                    lines.append(f'            Array.Copy(data, {offset}, msg.{var_name}, 0, {total_size});')
                 elif field.max_size is not None:
                     # Variable string array
                     total_size = field.max_size * field.element_size
-                    lines.append(f'            msg.{var_name}Count = data[offset + {offset}];')
+                    lines.append(f'            msg.{var_name}Count = data[{offset}];')
                     lines.append(f'            msg.{var_name}Data = new byte[{total_size}];')
-                    lines.append(f'            Array.Copy(data, offset + {offset + 1}, msg.{var_name}Data, 0, {total_size});')
+                    lines.append(f'            Array.Copy(data, {offset + 1}, msg.{var_name}Data, 0, {total_size});')
             else:
                 element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.fieldType, 1)
                 if field.size_option is not None:
                     # Fixed array
                     if field.isEnum:
                         lines.append(f'            msg.{var_name} = new byte[{field.size_option}];')
-                        lines.append(f'            Array.Copy(data, offset + {offset}, msg.{var_name}, 0, {field.size_option});')
+                        lines.append(f'            Array.Copy(data, {offset}, msg.{var_name}, 0, {field.size_option});')
                     elif field.fieldType in csharp_type_sizes:
                         base_type = csharp_types.get(field.fieldType, field.fieldType)
                         total_data_size = field.size
                         lines.append(f'            msg.{var_name} = new {base_type}[{field.size_option}];')
-                        lines.append(f'            Buffer.BlockCopy(data, offset + {offset}, msg.{var_name}, 0, {total_data_size});')
+                        lines.append(f'            Buffer.BlockCopy(data, {offset}, msg.{var_name}, 0, {total_data_size});')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
@@ -318,22 +318,25 @@ class FieldCSharpGen():
                         element_size = field.element_size if field.element_size else (field.size // field.size_option)
                         lines.append(f'            msg.{var_name} = new {nested_type}[{field.size_option}];')
                         lines.append(f'            for (int i = 0; i < {field.size_option}; i++)')
-                        lines.append(f'                msg.{var_name}[i] = {nested_type}.Unpack(data, offset + {offset} + i * {element_size});')
+                        lines.append(f'            {{')
+                        lines.append(f'                int elemOffset = {offset} + i * {element_size};')
+                        lines.append(f'                msg.{var_name}[i] = {nested_type}.Deserialize(data[elemOffset..(elemOffset + {element_size})]);')
+                        lines.append(f'            }}')
                 elif field.max_size is not None:
                     # Variable array
                     count_size = 2 if field.max_size > 255 else 1
                     if field.max_size > 255:
-                        lines.append(f'            msg.{var_name}Count = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 2));')
+                        lines.append(f'            msg.{var_name}Count = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
                     else:
-                        lines.append(f'            msg.{var_name}Count = data[offset + {offset}];')
+                        lines.append(f'            msg.{var_name}Count = data[{offset}];')
                     if field.isEnum:
                         lines.append(f'            msg.{var_name}Data = new byte[{field.max_size}];')
-                        lines.append(f'            Array.Copy(data, offset + {offset + count_size}, msg.{var_name}Data, 0, {field.max_size});')
+                        lines.append(f'            Array.Copy(data, {offset + count_size}, msg.{var_name}Data, 0, {field.max_size});')
                     elif field.fieldType in csharp_type_sizes:
                         base_type = csharp_types.get(field.fieldType, field.fieldType)
                         total_data_size = field.size - count_size  # subtract count bytes
                         lines.append(f'            msg.{var_name}Data = new {base_type}[{field.max_size}];')
-                        lines.append(f'            Buffer.BlockCopy(data, offset + {offset + count_size}, msg.{var_name}Data, 0, {total_data_size});')
+                        lines.append(f'            Buffer.BlockCopy(data, {offset + count_size}, msg.{var_name}Data, 0, {total_data_size});')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
@@ -341,55 +344,59 @@ class FieldCSharpGen():
                         element_size = field.element_size if field.element_size else ((field.size - count_size) // field.max_size)
                         lines.append(f'            msg.{var_name}Data = new {nested_type}[{field.max_size}];')
                         lines.append(f'            for (int i = 0; i < {field.max_size}; i++)')
-                        lines.append(f'                msg.{var_name}Data[i] = {nested_type}.Unpack(data, offset + {offset + count_size} + i * {element_size});')
+                        lines.append(f'            {{')
+                        lines.append(f'                int elemOffset = {offset + count_size} + i * {element_size};')
+                        lines.append(f'                msg.{var_name}Data[i] = {nested_type}.Deserialize(data[elemOffset..(elemOffset + {element_size})]);')
+                        lines.append(f'            }}')
         elif type_name in csharp_type_sizes:
             # Single primitive field (not array)
             if type_name == "uint8":
-                lines.append(f'            msg.{var_name} = data[offset + {offset}];')
+                lines.append(f'            msg.{var_name} = data[{offset}];')
             elif type_name == "int8":
-                lines.append(f'            msg.{var_name} = (sbyte)data[offset + {offset}];')
+                lines.append(f'            msg.{var_name} = (sbyte)data[{offset}];')
             elif type_name == "uint16":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 2));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
             elif type_name == "int16":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt16LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 2));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
             elif type_name == "uint32":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt32LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 4));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt32LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 4));')
             elif type_name == "int32":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 4));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 4));')
             elif type_name == "uint64":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt64LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 8));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt64LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 8));')
             elif type_name == "int64":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt64LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 8));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt64LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 8));')
             elif type_name == "float":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadSingleLittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 4));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadSingleLittleEndian(new ReadOnlySpan<byte>(data, {offset}, 4));')
             elif type_name == "double":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 8));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(new ReadOnlySpan<byte>(data, {offset}, 8));')
             elif type_name == "bool":
-                lines.append(f'            msg.{var_name} = data[offset + {offset}] != 0;')
+                lines.append(f'            msg.{var_name} = data[{offset}] != 0;')
         elif field.fieldType == "string":
             if field.size_option is not None:
                 # Fixed string
                 lines.append(f'            msg.{var_name} = new byte[{field.size_option}];')
-                lines.append(f'            Array.Copy(data, offset + {offset}, msg.{var_name}, 0, {field.size_option});')
+                lines.append(f'            Array.Copy(data, {offset}, msg.{var_name}, 0, {field.size_option});')
             elif field.max_size is not None:
                 # Variable string
                 length_size = 2 if field.max_size > 255 else 1
                 if field.max_size > 255:
-                    lines.append(f'            msg.{var_name}Length = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset + {offset}, 2));')
+                    lines.append(f'            msg.{var_name}Length = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
                 else:
-                    lines.append(f'            msg.{var_name}Length = data[offset + {offset}];')
+                    lines.append(f'            msg.{var_name}Length = data[{offset}];')
                 lines.append(f'            msg.{var_name}Data = new byte[{field.max_size}];')
-                lines.append(f'            Array.Copy(data, offset + {offset + length_size}, msg.{var_name}Data, 0, {field.max_size});')
+                lines.append(f'            Array.Copy(data, {offset + length_size}, msg.{var_name}Data, 0, {field.max_size});')
         elif field.isEnum:
             # Single enum field - enums are byte values, cast to enum type
             type_pkg = field.type_package if field.type_package else field.package
             enum_type = '%s%s' % (pascalCase(type_pkg), type_name)
-            lines.append(f'            msg.{var_name} = ({enum_type})data[offset + {offset}];')
+            lines.append(f'            msg.{var_name} = ({enum_type})data[{offset}];')
         else:
             # Nested struct
             type_pkg = field.type_package if field.type_package else field.package
             nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
-            lines.append(f'            msg.{var_name} = {nested_type}.Unpack(data, offset + {offset});')
+            struct_size = field.size
+            lines.append(f'            msg.{var_name} = {nested_type}.Deserialize(data[{offset}..({offset} + {struct_size})]);')
 
         return lines
 
@@ -447,45 +454,45 @@ class MessageCSharpGen():
                 result += f'        // Union member: {field_name}\n'
                 result += FieldCSharpGen.generate_field_declaration(field)
 
-        # Generate Pack() method
+        # Generate Serialize() method
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Pack this message into a byte array\n'
+        result += '        /// Serialize this message into a byte array\n'
         if msg.variable:
             result += '        /// For variable messages: returns variable-length encoding by default\n'
-            result += '        /// Use PackMaxSize() for MAX_SIZE encoding (needed for minimal profiles)\n'
+            result += '        /// Use SerializeMaxSize() for MAX_SIZE encoding (needed for minimal profiles)\n'
         result += '        /// </summary>\n'
-        result += '        public byte[] Pack()\n'
+        result += '        public byte[] Serialize()\n'
         result += '        {\n'
         if msg.variable:
             # Variable messages return variable-length encoding by default
-            result += '            return PackVariable();\n'
+            result += '            return _SerializeVariable();\n'
         else:
             result += '            byte[] buffer = new byte[MaxSize];\n'
-            result += '            PackTo(buffer, 0);\n'
+            result += '            SerializeTo(buffer, 0);\n'
             result += '            return buffer;\n'
         result += '        }\n'
         
-        # For variable messages, add PackMaxSize() method
+        # For variable messages, add SerializeMaxSize() method
         if msg.variable:
             result += '\n'
             result += '        /// <summary>\n'
-            result += '        /// Pack this message to MAX_SIZE (for minimal profiles without length field)\n'
+            result += '        /// Serialize this message to MAX_SIZE (for minimal profiles without length field)\n'
             result += '        /// </summary>\n'
-            result += '        public byte[] PackMaxSize()\n'
+            result += '        public byte[] SerializeMaxSize()\n'
             result += '        {\n'
             result += '            byte[] buffer = new byte[MaxSize];\n'
-            result += '            PackTo(buffer, 0);\n'
+            result += '            SerializeTo(buffer, 0);\n'
             result += '            return buffer;\n'
             result += '        }\n'
         
-        # Generate PackTo() method for zero-allocation packing
+        # Generate SerializeTo() method for zero-allocation serialization
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Pack this message into an existing buffer (zero allocation).\n'
+        result += '        /// Serialize this message into an existing buffer (zero allocation).\n'
         result += '        /// Returns the number of bytes written.\n'
         result += '        /// </summary>\n'
-        result += '        public int PackTo(byte[] buffer, int offset)\n'
+        result += '        public int SerializeTo(byte[] buffer, int offset)\n'
         result += '        {\n'
 
         offset = 0
@@ -513,46 +520,49 @@ class MessageCSharpGen():
                 else:
                     result += f'            else if ({field_var} != null)\n'
                 result += '            {\n'
-                result += f'                {field_var}.PackTo(buffer, offset + {offset});\n'
+                result += f'                {field_var}.SerializeTo(buffer, offset + {offset});\n'
                 result += '            }\n'
             offset += oneof.size
 
         result += f'            return MaxSize;\n'
         result += '        }\n'
 
-        # Generate Unpack() static method
+        # Generate Deserialize() static method
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Unpack a byte array into this message type\n'
+        result += '        /// Deserialize a byte array into this message type\n'
         if msg.variable:
             result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding\n'
         result += '        /// </summary>\n'
-        result += f'        public static {structName} Unpack(byte[] data, int offset = 0)\n'
+        result += f'        public static {structName} Deserialize(byte[] data)\n'
         result += '        {\n'
         
         # For variable messages, detect format based on size
         if msg.variable:
             result += f'            // Variable message - detect encoding format\n'
-            result += f'            int availableSize = data.Length - offset;\n'
-            result += f'            if (availableSize == MaxSize)\n'
+            result += f'            if (data.Length == MaxSize)\n'
             result += '            {\n'
             result += f'                // MAX_SIZE encoding (minimal profiles)\n'
-            result += f'                return UnpackMaxSize(data, offset);\n'
+            result += f'                return _DeserializeMaxSize(data);\n'
             result += '            }\n'
             result += '            else\n'
             result += '            {\n'
             result += f'                // Variable-length encoding\n'
-            result += f'                return UnpackVariable(data, offset);\n'
+            result += f'                return _DeserializeVariable(data);\n'
             result += '            }\n'
             result += '        }\n'
             
-            # Add UnpackMaxSize for variable messages
+            # Add _DeserializeMaxSize for variable messages
             result += '\n'
             result += '        /// <summary>\n'
-            result += '        /// Unpack from MAX_SIZE buffer (for minimal profiles)\n'
+            result += '        /// Deserialize from MAX_SIZE buffer (for minimal profiles)\n'
             result += '        /// </summary>\n'
-            result += f'        private static {structName} UnpackMaxSize(byte[] data, int offset = 0)\n'
+            result += f'        private static {structName} _DeserializeMaxSize(byte[] data)\n'
             result += '        {\n'
+            result += '            int offset = 0;\n'
+        else:
+            # For fixed messages, add offset variable directly in Deserialize
+            result += '            int offset = 0;\n'
             
         result += f'            var msg = new {structName}();\n'
 
@@ -583,11 +593,35 @@ class MessageCSharpGen():
                     else:
                         result += f'            else if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
                     result += '            {\n'
-                    result += f'                msg.{field_var} = {type_name}.Unpack(data, offset + {offset});\n'
+                    result += f'                msg.{field_var} = {type_name}.Deserialize(data[{offset}..({offset} + {type_name}.MaxSize)]);\n'
                     result += '            }\n'
             offset += oneof.size
 
         result += '            return msg;\n'
+        result += '        }\n'
+
+        # Add FrameMsgInfo overload
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Deserialize message from FrameMsgInfo (convenience overload)\n'
+        result += '        /// </summary>\n'
+        result += '        /// <param name="frameInfo">Frame information from frame parser</param>\n'
+        result += '        /// <returns>Deserialized message</returns>\n'
+        result += f'        public static {structName} Deserialize(FrameMsgInfo frameInfo)\n'
+        result += '        {\n'
+        result += '            // Extract payload from frame info\n'
+        result += '            byte[] payload;\n'
+        result += '            if (frameInfo.MsgDataOffset > 0)\n'
+        result += '            {\n'
+        result += '                // Copy from offset to new array\n'
+        result += '                payload = new byte[frameInfo.MsgLen];\n'
+        result += '                Array.Copy(frameInfo.MsgData, frameInfo.MsgDataOffset, payload, 0, frameInfo.MsgLen);\n'
+        result += '            }\n'
+        result += '            else\n'
+        result += '            {\n'
+        result += '                payload = frameInfo.MsgData;\n'
+        result += '            }\n'
+        result += '            return Deserialize(payload);\n'
         result += '        }\n'
 
         # Generate interface implementation methods
@@ -627,14 +661,14 @@ class MessageCSharpGen():
     
     @staticmethod
     def _generate_variable_methods(msg, structName):
-        """Generate PackSize, PackVariable, and UnpackVariable methods for variable messages."""
+        """Generate SerializedSize, _SerializeVariable, and _DeserializeVariable methods for variable messages."""
         result = '\n'
         
-        # Generate PackSize method
+        # Generate SerializedSize method
         result += '        /// <summary>\n'
-        result += '        /// Calculate the packed size using variable-length encoding\n'
+        result += '        /// Calculate the serialized size using variable-length encoding\n'
         result += '        /// </summary>\n'
-        result += '        public int PackSize()\n'
+        result += '        public int SerializedSize()\n'
         result += '        {\n'
         result += '            int size = 0;\n'
         
@@ -655,14 +689,14 @@ class MessageCSharpGen():
         result += '            return size;\n'
         result += '        }\n'
         
-        # Generate PackVariable method
+        # Generate _SerializeVariable method (internal method)
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Pack message using variable-length encoding (only packs used bytes)\n'
+        result += '        /// Serialize message using variable-length encoding (only serializes used bytes)\n'
         result += '        /// </summary>\n'
-        result += '        public byte[] PackVariable()\n'
+        result += '        private byte[] _SerializeVariable()\n'
         result += '        {\n'
-        result += '            int size = PackSize();\n'
+        result += '            int size = SerializedSize();\n'
         result += '            byte[] buffer = new byte[size];\n'
         result += '            int offset = 0;\n'
         
@@ -737,15 +771,15 @@ class MessageCSharpGen():
         result += '            return buffer;\n'
         result += '        }\n'
         
-        # Generate UnpackVariable static method
+        # Generate _DeserializeVariable static method (internal method)
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Unpack message from variable-length encoded buffer\n'
+        result += '        /// Deserialize message from variable-length encoded buffer\n'
         result += '        /// </summary>\n'
-        result += f'        public static {structName} UnpackVariable(byte[] data, int startOffset = 0)\n'
+        result += f'        private static {structName} _DeserializeVariable(byte[] data)\n'
         result += '        {\n'
         result += f'            var msg = new {structName}();\n'
-        result += '            int offset = startOffset;\n'
+        result += '            int offset = 0;\n'
         
         for key, f in msg.fields.items():
             var_name = pascalCase(f.name)
@@ -777,7 +811,7 @@ class MessageCSharpGen():
                     nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
                     result += f'            msg.{var_name}Data = new {nested_type}[{f.max_size}];\n'
                     result += f'            for (int i = 0; i < msg.{var_name}Count; i++)\n'
-                    result += f'                msg.{var_name}Data[i] = {nested_type}.Unpack(data, offset + i * {element_size});\n'
+                    result += f'                msg.{var_name}Data[i] = {nested_type}.Deserialize(data[(offset + i * {element_size})..(offset + (i + 1) * {element_size})]);\n'
                     result += f'            offset += msg.{var_name}Count * {element_size};\n'
             elif type_name == "string" and f.max_size is not None:
                 result += f'            // {f.name}: variable string\n'
@@ -826,7 +860,7 @@ class MessageCSharpGen():
                 else:
                     type_pkg = f.type_package if f.type_package else f.package
                     nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
-                    result += f'            msg.{var_name} = {nested_type}.Unpack(data, offset); offset += {nested_type}.MaxSize;\n'
+                    result += f'            msg.{var_name} = {nested_type}.Deserialize(data[offset..(offset + {nested_type}.MaxSize)]); offset += {nested_type}.MaxSize;\n'
         
         result += '            return msg;\n'
         result += '        }\n'

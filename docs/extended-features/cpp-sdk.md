@@ -83,15 +83,16 @@ Use predefined frame profiles:
 ```cpp
 #include "FrameProfiles.hpp"
 
-using namespace StructFrame;
+using namespace FrameParsers;
 
 // Standard profile (recommended)
-ProfileStandardWriter writer;
+uint8_t buffer[1024];
+ProfileStandardWriter writer(buffer, sizeof(buffer));
 ProfileStandardAccumulatingReader reader;
 
 // Sensor profile (minimal overhead)
-ProfileSensorWriter writer;
-ProfileSensorAccumulatingReader reader;
+ProfileSensorWriter sensor_writer(buffer, sizeof(buffer));
+ProfileSensorAccumulatingReader sensor_reader(get_message_info);
 ```
 
 See [Framing Details](../basic-usage/framing-details.md) for more profiles.

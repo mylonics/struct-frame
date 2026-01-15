@@ -345,16 +345,16 @@ class MessageCGen():
     
     @staticmethod
     def _generate_variable_functions(msg, structName, defineName):
-        """Generate pack_size and pack_variable functions for variable messages."""
+        """Generate serialized_size and serialize (variable) functions for variable messages."""
         result = ''
         
-        # Generate pack_size function - calculates actual size based on current data
+        # Generate serialized_size function - calculates actual size based on current data
         result += f'\n/**\n'
-        result += f' * Calculate the packed size of a {structName} message.\n'
+        result += f' * Calculate the serialized size of a {structName} message.\n'
         result += f' * @param msg Pointer to the message\n'
-        result += f' * @return The size in bytes when packed (variable, between MIN_SIZE and MAX_SIZE)\n'
+        result += f' * @return The size in bytes when serialized (variable, between MIN_SIZE and MAX_SIZE)\n'
         result += f' */\n'
-        result += f'static inline size_t {structName}_pack_size(const {structName}* msg) {{\n'
+        result += f'static inline size_t {structName}_serialized_size(const {structName}* msg) {{\n'
         result += f'    size_t size = 0;\n'
         
         for key, field in msg.fields.items():
@@ -384,15 +384,15 @@ class MessageCGen():
         result += f'    return size;\n'
         result += f'}}\n'
         
-        # Generate pack_variable function - packs only used bytes
+        # Generate _serialize_variable function - serializes only used bytes (internal function)
         result += f'\n/**\n'
-        result += f' * Pack a {structName} message into a buffer using variable-length encoding.\n'
-        result += f' * Only packs the actual used bytes, not the full MAX_SIZE.\n'
-        result += f' * @param msg Pointer to the message to pack\n'
-        result += f' * @param buffer Output buffer (must be at least {structName}_pack_size(msg) bytes)\n'
+        result += f' * Serialize a {structName} message into a buffer using variable-length encoding.\n'
+        result += f' * Only serializes the actual used bytes, not the full MAX_SIZE.\n'
+        result += f' * @param msg Pointer to the message to serialize\n'
+        result += f' * @param buffer Output buffer (must be at least {structName}_serialized_size(msg) bytes)\n'
         result += f' * @return The number of bytes written\n'
         result += f' */\n'
-        result += f'static inline size_t {structName}_pack_variable(const {structName}* msg, uint8_t* buffer) {{\n'
+        result += f'static inline size_t {structName}_serialize_variable(const {structName}* msg, uint8_t* buffer) {{\n'
         result += f'    size_t offset = 0;\n'
         
         for key, field in msg.fields.items():
@@ -430,15 +430,15 @@ class MessageCGen():
         result += f'    return offset;\n'
         result += f'}}\n'
         
-        # Generate unpack_variable function - unpacks variable-length data
+        # Generate _deserialize_variable function - deserializes variable-length data (internal function)
         result += f'\n/**\n'
-        result += f' * Unpack a {structName} message from a buffer with variable-length encoding.\n'
+        result += f' * Deserialize a {structName} message from a buffer with variable-length encoding.\n'
         result += f' * @param buffer Input buffer\n'
         result += f' * @param buffer_size Size of the input buffer\n'
-        result += f' * @param msg Pointer to the message to unpack into\n'
+        result += f' * @param msg Pointer to the message to deserialize into\n'
         result += f' * @return The number of bytes read, or 0 if buffer is too small\n'
         result += f' */\n'
-        result += f'static inline size_t {structName}_unpack_variable(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+        result += f'static inline size_t {structName}_deserialize_variable(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
         result += f'    size_t offset = 0;\n'
         result += f'    memset(msg, 0, sizeof({structName}));  // Zero-initialize\n'
         
@@ -487,36 +487,48 @@ class MessageCGen():
         result += f'    return offset;\n'
         result += f'}}\n'
         
-        # Generate unified unpack() function
+        # Generate unified deserialize() function
         result += f'\n/**\n'
-        result += f' * Unified unpack function for {structName}.\n'
+        result += f' * Unified deserialize function for {structName}.\n'
         result += f' * Automatically detects whether the buffer contains variable-length or MAX_SIZE encoding.\n'
         result += f' * For MAX_SIZE buffers: uses memcpy (compatible with minimal profiles)\n'
-        result += f' * For variable-length buffers: uses {structName}_unpack_variable()\n'
+        result += f' * For variable-length buffers: uses {structName}_deserialize_variable()\n'
         result += f' * @param buffer Input buffer\n'
         result += f' * @param buffer_size Size of the input buffer\n'
-        result += f' * @param msg Pointer to the message to unpack into\n'
+        result += f' * @param msg Pointer to the message to deserialize into\n'
         result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
         result += f' */\n'
-        result += f'static inline size_t {structName}_unpack(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+        result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
         result += f'    if (buffer_size == {defineName}_MAX_SIZE) {{\n'
         result += f'        /* MAX_SIZE encoding (from minimal profiles or non-variable encoding) */\n'
         result += f'        memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
         result += f'        return {defineName}_MAX_SIZE;\n'
         result += f'    }} else {{\n'
         result += f'        /* Variable-length encoding */\n'
-        result += f'        return {structName}_unpack_variable(buffer, buffer_size, msg);\n'
+        result += f'        return {structName}_deserialize_variable(buffer, buffer_size, msg);\n'
         result += f'    }}\n'
+        result += f'}}\n'
+        
+        # Also generate serialize() function for variable messages
+        result += f'\n/**\n'
+        result += f' * Serialize a {structName} message.\n'
+        result += f' * Automatically uses variable-length encoding.\n'
+        result += f' * @param msg Pointer to the message to serialize\n'
+        result += f' * @param buffer Output buffer (must be at least {structName}_serialized_size(msg) bytes)\n'
+        result += f' * @return The number of bytes written\n'
+        result += f' */\n'
+        result += f'static inline size_t {structName}_serialize(const {structName}* msg, uint8_t* buffer) {{\n'
+        result += f'    return {structName}_serialize_variable(msg, buffer);\n'
         result += f'}}\n'
         
         return result
 
     @staticmethod
     def _generate_unified_unpack(msg, structName, defineName):
-        """Generate unified unpack() function for non-variable messages with MSG_ID."""
+        """Generate unified deserialize() function for non-variable messages with MSG_ID."""
         result = ''
         
-        # For variable messages, unpack() was already generated inline in _generate_variable_functions
+        # For variable messages, deserialize() was already generated inline in _generate_variable_functions
         # This method handles non-variable messages
         if not msg.variable:
             result += f'\n/**\n'
@@ -538,24 +550,37 @@ class MessageCGen():
 
     @staticmethod
     def _generate_unified_unpack(msg, structName, defineName):
-        """Generate unified unpack() function for non-variable messages with MSG_ID."""
+        """Generate unified deserialize() and serialize() functions for non-variable messages with MSG_ID."""
         result = ''
         
-        # For variable messages, unpack() was already generated inline in _generate_variable_functions
+        # For variable messages, deserialize() was already generated inline in _generate_variable_functions
         # This method handles non-variable messages
         if not msg.variable:
             result += f'\n/**\n'
-            result += f' * Unified unpack function for {structName}.\n'
+            result += f' * Deserialize function for {structName}.\n'
             result += f' * For fixed-size messages: uses memcpy with size validation\n'
             result += f' * @param buffer Input buffer\n'
             result += f' * @param buffer_size Size of the input buffer\n'
-            result += f' * @param msg Pointer to the message to unpack into\n'
+            result += f' * @param msg Pointer to the message to deserialize into\n'
             result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
             result += f' */\n'
-            result += f'static inline size_t {structName}_unpack(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+            result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
             result += f'    /* Fixed-size message - use direct copy */\n'
             result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
             result += f'    memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
+            result += f'    return {defineName}_MAX_SIZE;\n'
+            result += f'}}\n'
+            
+            # Also add serialize() for non-variable messages
+            result += f'\n/**\n'
+            result += f' * Serialize function for {structName}.\n'
+            result += f' * For fixed-size messages: uses memcpy\n'
+            result += f' * @param msg Pointer to the message to serialize\n'
+            result += f' * @param buffer Output buffer (must be at least {defineName}_MAX_SIZE bytes)\n'
+            result += f' * @return The number of bytes written\n'
+            result += f' */\n'
+            result += f'static inline size_t {structName}_serialize(const {structName}* msg, uint8_t* buffer) {{\n'
+            result += f'    memcpy(buffer, msg, {defineName}_MAX_SIZE);\n'
             result += f'    return {defineName}_MAX_SIZE;\n'
             result += f'}}\n'
         

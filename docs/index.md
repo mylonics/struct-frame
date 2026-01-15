@@ -75,10 +75,10 @@ python -m struct_frame status.proto --build_c --build_py --build_ts
     ```python
     from struct_frame.generated.example import ExampleStatus
     
-    // Create a message
+    # Create a message
     msg = ExampleStatus(id=42, value=3.14)
     
-    // Serialize to bytes
+    # Serialize to bytes
     data = msg.pack()
     ```
 

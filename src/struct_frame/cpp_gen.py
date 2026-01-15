@@ -366,12 +366,12 @@ class MessageCppGen():
         result += f'    static constexpr size_t MIN_SIZE = {msg.min_size};\n'
         result += f'    static constexpr bool IS_VARIABLE = true;\n'
         
-        # Generate pack_size method
+        # Generate serialized_size method
         result += f'\n    /**\n'
-        result += f'     * Calculate the packed size using variable-length encoding.\n'
-        result += f'     * @return The size in bytes when packed (between MIN_SIZE and MAX_SIZE)\n'
+        result += f'     * Calculate the serialized size using variable-length encoding.\n'
+        result += f'     * @return The size in bytes when serialized (between MIN_SIZE and MAX_SIZE)\n'
         result += f'     */\n'
-        result += f'    size_t pack_size() const {{\n'
+        result += f'    size_t serialized_size() const {{\n'
         result += f'        size_t size = 0;\n'
         
         for key, field in msg.fields.items():
@@ -393,13 +393,13 @@ class MessageCppGen():
         result += f'        return size;\n'
         result += f'    }}\n'
         
-        # Generate pack_variable method
+        # Generate serialize method (was pack_variable)
         result += f'\n    /**\n'
-        result += f'     * Pack message using variable-length encoding.\n'
-        result += f'     * @param buffer Output buffer (must be at least pack_size() bytes)\n'
+        result += f'     * Serialize message using variable-length encoding.\n'
+        result += f'     * @param buffer Output buffer (must be at least serialized_size() bytes)\n'
         result += f'     * @return Number of bytes written\n'
         result += f'     */\n'
-        result += f'    size_t pack_variable(uint8_t* buffer) const {{\n'
+        result += f'    size_t serialize(uint8_t* buffer) const {{\n'
         result += f'        size_t offset = 0;\n'
         
         for key, field in msg.fields.items():
@@ -424,14 +424,14 @@ class MessageCppGen():
         result += f'        return offset;\n'
         result += f'    }}\n'
         
-        # Generate unpack_variable static method
+        # Generate _deserialize_variable method (was unpack_variable, now private)
         result += f'\n    /**\n'
-        result += f'     * Unpack message using variable-length encoding.\n'
+        result += f'     * Deserialize message from variable-length encoding (internal method).\n'
         result += f'     * @param buffer Input buffer\n'
         result += f'     * @param buffer_size Size of input buffer\n'
         result += f'     * @return Number of bytes read, or 0 if buffer too small\n'
         result += f'     */\n'
-        result += f'    size_t unpack_variable(const uint8_t* buffer, size_t buffer_size) {{\n'
+        result += f'    size_t _deserialize_variable(const uint8_t* buffer, size_t buffer_size) {{\n'
         result += f'        size_t offset = 0;\n'
         result += f'        std::memset(this, 0, sizeof(*this));\n'
         
@@ -468,23 +468,24 @@ class MessageCppGen():
 
     @staticmethod
     def _generate_unified_unpack(msg, structName):
-        """Generate unified unpack() method that works for both variable and non-variable messages."""
+        """Generate unified deserialize() method that works for both variable and non-variable messages."""
         result = ''
         
         result += f'\n    /**\n'
-        result += f'     * Unified unpack method - works for both variable and non-variable messages.\n'
+        result += f'     * Deserialize message from binary data.\n'
+        result += f'     * Works for both variable and non-variable messages.\n'
         result += f'     * Uses compile-time dispatch for zero runtime overhead.\n'
         result += f'     * For variable messages with minimal profiles (buffer_size == MAX_SIZE),\n'
-        result += f'     * uses direct copy instead of variable unpacking.\n'
-        result += f'     * @param buffer Input buffer containing packed message data\n'
+        result += f'     * uses direct copy instead of variable-length deserialization.\n'
+        result += f'     * @param buffer Input buffer containing serialized message data\n'
         result += f'     * @param buffer_size Size of input buffer\n'
         result += f'     * @return Number of bytes read, or 0 if buffer too small\n'
         result += f'     */\n'
-        result += f'    size_t unpack(const uint8_t* buffer, size_t buffer_size) {{\n'
+        result += f'    size_t deserialize(const uint8_t* buffer, size_t buffer_size) {{\n'
         
         if msg.variable:
             # Variable message: check if it's minimal profile (buffer_size == MAX_SIZE)
-            # If so, use direct copy; otherwise use variable unpacking
+            # If so, use direct copy; otherwise use variable deserialization
             result += f'        // Variable message - check encoding format\n'
             result += f'        if (buffer_size == MAX_SIZE) {{\n'
             result += f'            // Minimal profile format (MAX_SIZE encoding)\n'
@@ -492,7 +493,7 @@ class MessageCppGen():
             result += f'            return MAX_SIZE;\n'
             result += f'        }} else {{\n'
             result += f'            // Variable-length format\n'
-            result += f'            return unpack_variable(buffer, buffer_size);\n'
+            result += f'            return _deserialize_variable(buffer, buffer_size);\n'
             result += f'        }}\n'
         else:
             # Non-variable message: simple memcpy with size check
@@ -502,6 +503,28 @@ class MessageCppGen():
             result += f'        return MAX_SIZE;\n'
         
         result += f'    }}\n'
+        
+        # Add FrameMsgInfo overload
+        result += f'\n    /**\n'
+        result += f'     * Deserialize message from FrameMsgInfo (convenience overload).\n'
+        result += f'     * @param frame_info Frame information from frame parser\n'
+        result += f'     * @return Number of bytes read, or 0 if buffer too small\n'
+        result += f'     */\n'
+        result += f'    size_t deserialize(const FrameParsers::FrameMsgInfo& frame_info) {{\n'
+        result += f'        return deserialize(frame_info.msg_data, frame_info.msg_len);\n'
+        result += f'    }}\n'
+        
+        # Add serialize method for non-variable messages (simple case)
+        if not msg.variable:
+            result += f'\n    /**\n'
+            result += f'     * Serialize message to binary data.\n'
+            result += f'     * @param buffer Output buffer (must be at least MAX_SIZE bytes)\n'
+            result += f'     * @return Number of bytes written\n'
+            result += f'     */\n'
+            result += f'    size_t serialize(uint8_t* buffer) const {{\n'
+            result += f'        std::memcpy(buffer, this, MAX_SIZE);\n'
+            result += f'        return MAX_SIZE;\n'
+            result += f'    }}\n'
         
         return result
 
@@ -520,10 +543,9 @@ class FileCppGen():
         if equality:
             yield '#include <cstring>\n'
         
-        # Check if any message has an ID (needs MessageBase from frame_base.hpp)
-        has_msg_with_id = any(msg.id is not None for msg in package.messages.values()) if package.messages else False
-        if has_msg_with_id:
-            yield '#include "frame_base.hpp"\n'
+        # Always include frame_base.hpp for FrameMsgInfo and MessageBase
+        # (needed for deserialize(FrameMsgInfo) overload and message base class)
+        yield '#include "frame_base.hpp"\n'
         yield '\n'
 
         # Check if package has package ID - if so, use namespaces

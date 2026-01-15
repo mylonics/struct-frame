@@ -10,7 +10,7 @@
  */
 
 import { TestConfig } from './test_codec';
-import { MessageInfo } from '../../generated/ts/frame-profiles';
+import { FrameMsgInfo } from '../../generated/ts/frame-base';
 import {
   ExtendedTestExtendedIdMessage1,
   ExtendedTestExtendedIdMessage2,
@@ -191,21 +191,21 @@ function getExtVarSingleMessages(): ExtendedTestExtendedVariableSingleArray[] {
     new ExtendedTestExtendedVariableSingleArray({
       timestamp: 0x0000000000000003n,
       telemetry_data_count: 83,
-      telemetry_data_data: Array.from({length: 83}, (_, i) => i),
+      telemetry_data_data: Array.from({ length: 83 }, (_, i) => i),
       crc: 0x00000003,
     }),
     // One position empty (249 elements)
     new ExtendedTestExtendedVariableSingleArray({
       timestamp: 0x0000000000000004n,
       telemetry_data_count: 249,
-      telemetry_data_data: Array.from({length: 249}, (_, i) => i % 256),
+      telemetry_data_data: Array.from({ length: 249 }, (_, i) => i % 256),
       crc: 0x00000004,
     }),
     // Full (250 elements)
     new ExtendedTestExtendedVariableSingleArray({
       timestamp: 0x0000000000000005n,
       telemetry_data_count: 250,
-      telemetry_data_data: Array.from({length: 250}, (_, i) => i % 256),
+      telemetry_data_data: Array.from({ length: 250 }, (_, i) => i % 256),
       crc: 0x00000005,
     }),
   ];
@@ -264,34 +264,35 @@ function resetState(): void {
 /** Encode message by index */
 function encodeMessage(writer: any, index: number): number {
   const msgId = MSG_ID_ORDER[index];
-  
+
   // Handle variable messages with index tracking
   if (msgId === ExtendedTestExtendedVariableSingleArray._msgid) {
     const msg = extVarSingleMsgs[extVarSingleEncodeIdx++];
     return writer.write(msg);
   }
-  
+
   const msg = getMessage(msgId);
   if (!msg) return 0;
   return writer.write(msg);
 }
 
-/** Validate decoded message using equals() method */
-function validateMessage(msgId: number, data: Buffer, _index: number): boolean {
+/** Validate decoded message using equals() method. Accepts FrameMsgInfo. */
+function validateMessage(data: FrameMsgInfo, _index: number): boolean {
+  const msgId = data.msg_id;
   const MsgClass = getMessageClass(msgId);
   if (!MsgClass) return false;
 
   // Handle variable messages with index tracking
   if (msgId === ExtendedTestExtendedVariableSingleArray._msgid) {
     const expected = extVarSingleMsgs[extVarSingleValidateIdx++];
-    const decoded = MsgClass.unpack(data);
+    const decoded = MsgClass.deserialize(data);
     return decoded.equals(expected);
   }
 
   const expected = getMessage(msgId);
   if (!expected) return false;
 
-  const decoded = MsgClass.unpack(data);
+  const decoded = MsgClass.deserialize(data);
   return decoded.equals(expected);
 }
 

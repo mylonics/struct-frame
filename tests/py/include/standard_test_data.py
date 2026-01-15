@@ -344,88 +344,92 @@ class Validator:
         if msg_id == SerializationTestSerializationTestMessage.MSG_ID:
             msg = self._serial_msgs[self.serial_idx]
             self.serial_idx += 1
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         elif msg_id == SerializationTestBasicTypesMessage.MSG_ID:
             msg = self._basic_msgs[self.basic_idx]
             self.basic_idx += 1
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         elif msg_id == SerializationTestUnionTestMessage.MSG_ID:
             msg = self._union_msgs[self.union_idx]
             self.union_idx += 1
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         elif msg_id == SerializationTestVariableSingleArray.MSG_ID:
             msg = self._var_single_msgs[self.var_single_idx]
             self.var_single_idx += 1
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         elif msg_id == SerializationTestVariableMultipleArrays.MSG_ID:
             msg = self._var_multi_msgs[self.var_multi_idx]
             self.var_multi_idx += 1
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         elif msg_id == SerializationTestVariableMixedFields.MSG_ID:
             msg = self._var_mixed_msgs[self.var_mixed_idx]
             self.var_mixed_idx += 1
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         elif msg_id == SerializationTestMessage.MSG_ID:
             msg = self._message_msgs[self.message_idx]
             self.message_idx += 1
-            data = msg.data()
+            data = msg.serialize()
             return data, len(data)
         return None, None
 
-    def validate_with_equals(self, msg_id: int, decoded_data: bytes) -> bool:
+    def validate_with_equals(self, frame_info) -> bool:
         """Validate decoded message using __eq__ operator.
+        
+        Accepts FrameMsgInfo for frame_info (contains msg_id and msg_data).
         
         Note: We unpack the expected message's packed data to ensure both messages
         have been through float32 conversion, making equality comparison valid.
         """
+        msg_id = frame_info.msg_id
+        decoded_data = frame_info
         if msg_id == SerializationTestSerializationTestMessage.MSG_ID:
             expected = self._serial_msgs[self.serial_idx]
             self.serial_idx += 1
             # Unpack both from packed bytes to ensure float32 precision matches
-            expected_unpacked = SerializationTestSerializationTestMessage.unpack(expected.data())
-            decoded = SerializationTestSerializationTestMessage.unpack(decoded_data)
+            expected_unpacked = SerializationTestSerializationTestMessage.deserialize(expected.serialize())
+            decoded = SerializationTestSerializationTestMessage.deserialize(decoded_data)
             return decoded == expected_unpacked
         elif msg_id == SerializationTestBasicTypesMessage.MSG_ID:
             expected = self._basic_msgs[self.basic_idx]
             self.basic_idx += 1
-            expected_unpacked = SerializationTestBasicTypesMessage.unpack(expected.data())
-            decoded = SerializationTestBasicTypesMessage.unpack(decoded_data)
+            expected_unpacked = SerializationTestBasicTypesMessage.deserialize(expected.serialize())
+            decoded = SerializationTestBasicTypesMessage.deserialize(decoded_data)
             return decoded == expected_unpacked
         elif msg_id == SerializationTestUnionTestMessage.MSG_ID:
             expected = self._union_msgs[self.union_idx]
             self.union_idx += 1
-            expected_unpacked = SerializationTestUnionTestMessage.unpack(expected.data())
-            decoded = SerializationTestUnionTestMessage.unpack(decoded_data)
+            expected_unpacked = SerializationTestUnionTestMessage.deserialize(expected.serialize())
+            decoded = SerializationTestUnionTestMessage.deserialize(decoded_data)
             return decoded == expected_unpacked
         elif msg_id == SerializationTestVariableSingleArray.MSG_ID:
             expected = self._var_single_msgs[self.var_single_idx]
             self.var_single_idx += 1
-            expected_unpacked = SerializationTestVariableSingleArray.unpack(expected.data())
-            decoded = SerializationTestVariableSingleArray.unpack(decoded_data)
+            expected_unpacked = SerializationTestVariableSingleArray.deserialize(expected.serialize())
+            decoded = SerializationTestVariableSingleArray.deserialize(decoded_data)
             return decoded == expected_unpacked
         elif msg_id == SerializationTestVariableMultipleArrays.MSG_ID:
             expected = self._var_multi_msgs[self.var_multi_idx]
             self.var_multi_idx += 1
-            expected_unpacked = SerializationTestVariableMultipleArrays.unpack(expected.data())
-            decoded = SerializationTestVariableMultipleArrays.unpack(decoded_data)
+            expected_unpacked = SerializationTestVariableMultipleArrays.deserialize(expected.serialize())
+            decoded = SerializationTestVariableMultipleArrays.deserialize(decoded_data)
             return decoded == expected_unpacked
         elif msg_id == SerializationTestVariableMixedFields.MSG_ID:
             expected = self._var_mixed_msgs[self.var_mixed_idx]
             self.var_mixed_idx += 1
-            expected_unpacked = SerializationTestVariableMixedFields.unpack(expected.data())
-            decoded = SerializationTestVariableMixedFields.unpack(decoded_data)
+            expected_unpacked = SerializationTestVariableMixedFields.deserialize(expected.serialize())
+            decoded = SerializationTestVariableMixedFields.deserialize(decoded_data)
             return decoded == expected_unpacked
         elif msg_id == SerializationTestMessage.MSG_ID:
             expected = self._message_msgs[self.message_idx]
             self.message_idx += 1
-            expected_unpacked = SerializationTestMessage.unpack(expected.data())
-            decoded = SerializationTestMessage.unpack(decoded_data)
+            expected_unpacked = SerializationTestMessage.deserialize(expected.serialize())
+            decoded = SerializationTestMessage.deserialize(decoded_data)
             return decoded == expected_unpacked
         return False
 

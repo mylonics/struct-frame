@@ -104,27 +104,28 @@ For Minimal payloads, the parser requires a message length callback to determine
 ```cpp
 #include "FrameProfiles.hpp"
 
-using namespace StructFrame;
+using namespace FrameParsers;
 
 // Using profiles
-ProfileStandardWriter writer;
+uint8_t buffer[1024];
+ProfileStandardWriter writer(buffer, sizeof(buffer));
 ProfileStandardAccumulatingReader reader;
 
 // Encode
-writer.encode(msg_id, data, size);
+writer.write(msg);
 send_data(writer.buffer(), writer.size());
 
 // Decode (streaming)
 while (receiving) {
     if (auto result = reader.push_byte(read_byte())) {
-        handle_message(result->msg_id, result->msg_data, result->msg_length);
+        handle_message(result.msg_id, result.msg_data, result.msg_len);
     }
 }
 
 // Decode (buffer)
 reader.add_data(buffer, buffer_size);
 while (auto result = reader.next()) {
-    handle_message(result->msg_id, result->msg_data, result->msg_length);
+    handle_message(result.msg_id, result.msg_data, result.msg_len);
 }
 ```
 

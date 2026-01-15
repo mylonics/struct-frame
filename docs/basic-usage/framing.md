@@ -76,14 +76,15 @@ The Standard profile (recommended for most uses):
     using namespace StructFrame;
     
     // Encode
-    ProfileStandardWriter writer;
-    writer.encode(42, data, size);
+    uint8_t buffer[1024];
+    ProfileStandardWriter writer(buffer, sizeof(buffer));
+    writer.write(msg);
     
     // Decode
     ProfileStandardAccumulatingReader reader;
     reader.add_data(buffer, buffer_size);
     while (auto result = reader.next()) {
-        // Process message
+        // Process message - result is valid due to operator bool()
     }
     ```
 
