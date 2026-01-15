@@ -277,7 +277,18 @@ while (true)
 {
     var result = reader.Next();
     if (!result.Valid) break;
-    ProcessMessage(result.MsgId, result.MsgData);
+    
+    // Deserialize using FrameMsgInfo directly (recommended)
+    if (result.MsgId == StatusMessage.MsgId)
+    {
+        var msg = StatusMessage.Deserialize(result);  // Pass FrameMsgInfo directly
+        Console.WriteLine($"Status: {msg.StatusCode}");
+    }
+    else if (result.MsgId == SensorData.MsgId)
+    {
+        var msg = SensorData.Deserialize(result);  // Pass FrameMsgInfo directly
+        Console.WriteLine($"Sensor value: {msg.Value}");
+    }
 }
 
 // Add more data (handles partial messages automatically)
@@ -286,6 +297,7 @@ while (true)
 {
     var result = reader.Next();
     if (!result.Valid) break;
+    // Can also extract MsgData manually if needed
     ProcessMessage(result.MsgId, result.MsgData);
 }
 ```

@@ -147,8 +147,14 @@ void onSerialByte(uint8_t byte) {
     FrameMsgInfo result = parser.parse_byte(byte);
     
     if (result.valid) {
-        // Complete frame received
-        process_message(result.msg_id, result.msg_data, result.msg_len);
+        // Deserialize using FrameMsgInfo directly (recommended)
+        StatusMessage msg;
+        if (result.msg_id == StatusMessage::MSG_ID) {
+            msg.deserialize(result);  // Pass FrameMsgInfo directly
+            std::cout << "Temperature: " << msg.temperature << std::endl;
+        }
+        // Can also extract msg_data manually if needed
+        // process_message(result.msg_id, result.msg_data, result.msg_len);
     }
 }
 ```

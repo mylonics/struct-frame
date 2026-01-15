@@ -210,6 +210,7 @@ writer.write(msg_id=1, payload=data, seq=1, sys_id=10, comp_id=1)
 
 ```python
 from frame_profiles import create_profile_standard_accumulating_reader
+from my_messages_sf import StatusMessage, SensorData
 
 reader = create_profile_standard_accumulating_reader()
 
@@ -219,7 +220,14 @@ while True:
     result = reader.next()
     if not result.valid:
         break
-    process_message(result.msg_id, result.msg_data)
+    
+    # Deserialize using FrameMsgInfo directly (recommended)
+    if result.msg_id == StatusMessage.MSG_ID:
+        msg = StatusMessage.deserialize(result)  # Pass FrameMsgInfo directly
+        print(f"Status: {msg.status_code}")
+    elif result.msg_id == SensorData.MSG_ID:
+        msg = SensorData.deserialize(result)  # Pass FrameMsgInfo directly
+        print(f"Sensor value: {msg.value}")
 
 # Add more data (handles partial messages automatically)
 reader.add_data(chunk2)
@@ -227,6 +235,7 @@ while True:
     result = reader.next()
     if not result.valid:
         break
+    # Can also extract msg_data manually if needed
     process_message(result.msg_id, result.msg_data)
 ```
 

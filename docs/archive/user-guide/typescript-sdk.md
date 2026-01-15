@@ -250,6 +250,7 @@ writer.write(1, data, { seq: 1, sysId: 10, compId: 1 });
 
 ```typescript
 import { createProfileStandardAccumulatingReader } from './frame_profiles';
+import { StatusMessage, SensorData } from './my_messages.sf';
 
 const reader = createProfileStandardAccumulatingReader();
 
@@ -258,7 +259,15 @@ reader.addData(chunk1);
 while (true) {
     const result = reader.next();
     if (!result.valid) break;
-    processMessage(result.msg_id, result.msg_data);
+    
+    // Deserialize using FrameMsgInfo directly (recommended)
+    if (result.msgId === StatusMessage.msgId) {
+        const msg = StatusMessage.deserialize(result);  // Pass FrameMsgInfo directly
+        console.log(`Status: ${msg.statusCode}`);
+    } else if (result.msgId === SensorData.msgId) {
+        const msg = SensorData.deserialize(result);  // Pass FrameMsgInfo directly
+        console.log(`Sensor value: ${msg.value}`);
+    }
 }
 
 // Add more data (handles partial messages automatically)
@@ -266,7 +275,8 @@ reader.addData(chunk2);
 while (true) {
     const result = reader.next();
     if (!result.valid) break;
-    processMessage(result.msg_id, result.msg_data);
+    // Can also extract msgData manually if needed
+    processMessage(result.msgId, result.msgData);
 }
 ```
 
