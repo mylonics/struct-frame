@@ -73,6 +73,44 @@ sdk.UnhandledMessage += frame => {
 };
 ```
 
+## Generated SDK Interface
+
+When you generate with `--sdk`, a type-safe `SdkInterface` class is generated for each package. This provides convenience methods for sending and subscribing to specific message types:
+
+```csharp
+using StructFrame;
+using StructFrame.Sdk;
+using StructFrame.MyPackage.Sdk;
+
+// Create the base SDK
+var config = new StructFrameSdkConfig(
+    transport: new TcpTransport("192.168.1.100", 8080),
+    getMessageInfo: MessageDefinitions.GetMessageInfo
+);
+var sdk = new StructFrameSdk(config);
+
+// Create the package-specific interface
+var myPackageSdk = new MyPackageSdkInterface(sdk);
+
+// Type-safe subscribe methods for each message
+myPackageSdk.SubscribeSensorData(msg => {
+    Console.WriteLine($"Sensor: {msg.Value}");
+});
+
+myPackageSdk.SubscribeStatusUpdate(msg => {
+    Console.WriteLine($"Status: {msg.Code}");
+});
+
+// Type-safe send methods for each message
+await myPackageSdk.SendCommand(new MyPackageCommand { Action = 1 });
+
+// Or send with individual field values
+await myPackageSdk.SendCommand(action: 1);
+
+// Access underlying SDK for advanced usage
+await myPackageSdk.Sdk.ConnectAsync();
+```
+
 ## Message Interface
 
 Generated messages implement `IStructFrameMessage<T>` which provides:

@@ -534,6 +534,10 @@ class TestRunner:
                 gen_dir.mkdir(parents=True, exist_ok=True)
                 cmd_parts.extend([lang.gen_flag, "--" + lang.gen_flag.lstrip("-").replace("build_", "") + "_path", str(gen_dir)])
             
+            # Add --sdk flag if C# is being generated (generates SDK interface)
+            if any(l.id == "csharp" for l in active):
+                cmd_parts.append("--sdk")
+            
             env = {"PYTHONPATH": str(self.project_root / "src")}
             success, _, stderr = self.run_cmd(" ".join(cmd_parts), env=env)
             
