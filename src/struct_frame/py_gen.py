@@ -420,7 +420,7 @@ class MessagePyGen():
                             result += f'        # Fixed nested message array: {f.name}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.size_option}):\n'
-                            result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                             result += f'            fields["{f.name}"].append(msg)\n'
                             result += f'            offset += {type_name}.msg_size\n'
                     elif f.max_size is not None:
@@ -452,7 +452,7 @@ class MessagePyGen():
                             result += f'        offset += {count_size}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.max_size}):\n'
-                            result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                             result += f'            if i < count:\n'
                             result += f'                fields["{f.name}"].append(msg)\n'
                             result += f'            offset += {type_name}.msg_size\n'
@@ -471,7 +471,7 @@ class MessagePyGen():
                 else:
                     # Nested message
                     type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
-                    result += f'        fields["{f.name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                     result += f'        offset += {type_name}.msg_size\n'
         
         # Unpack oneofs
@@ -494,7 +494,7 @@ class MessagePyGen():
                 for field_name, field in oneof.fields.items():
                     type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
                     result += f'        if discriminator == {type_name}.msg_id:\n'
-                    result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.msg_size])\n'
+                    result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                     result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
             
             result += f'        offset += {oneof.size}\n'
@@ -845,7 +845,7 @@ class MessagePyGen():
                     result += f'        offset += 1\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
+                    result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                     result += f'            fields["{f.name}"].append(msg)\n'
                     result += f'            offset += {type_name}.MAX_SIZE\n'
             elif f.fieldType == "string" and f.max_size is not None:
@@ -885,7 +885,7 @@ class MessagePyGen():
                     result += f'        # {f.name}: fixed nested message array\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range({f.size_option}):\n'
-                    result += f'            msg = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
+                    result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                     result += f'            fields["{f.name}"].append(msg)\n'
                     result += f'            offset += {type_name}.MAX_SIZE\n'
             elif f.fieldType in py_struct_format:
@@ -902,7 +902,7 @@ class MessagePyGen():
                 # Nested message
                 type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
                 result += f'        # {f.name}: nested message\n'
-                result += f'        fields["{f.name}"] = {type_name}.create_unpack(data[offset:offset+{type_name}.MAX_SIZE])\n'
+                result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                 result += f'        offset += {type_name}.MAX_SIZE\n'
         
         result += '        return cls(**fields)\n'
