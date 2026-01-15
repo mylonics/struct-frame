@@ -212,13 +212,14 @@ export function encodeMessage(
     // Check if this is a variable message
     const isVariable = msg.isVariable?.() ?? false;
     
-    // Get payload - use packVariable() for variable messages with length fields,
-    // otherwise use full buffer (MAX_SIZE)
-    // Note: Minimal profiles (no length field) always use MAX_SIZE even for variable messages
+    // Get payload - use serialize() for all messages
+    // serialize() returns variable-length data for variable messages,
+    // and MAX_SIZE data for non-variable messages
+    // Note: Minimal profiles (no length field) use MAX_SIZE even for variable messages
     let payload: Uint8Array;
-    if (isVariable && config.payload.hasLength && typeof msg.packVariable === 'function') {
-        // Variable message with length field - use efficient variable encoding
-        payload = new Uint8Array(msg.packVariable());
+    if (isVariable && config.payload.hasLength && typeof msg.serialize === 'function') {
+        // Variable message with length field - serialize() returns only used bytes
+        payload = new Uint8Array(msg.serialize());
     } else {
         // Non-variable message OR minimal profile - use full buffer
         payload = new Uint8Array(msg._buffer);
