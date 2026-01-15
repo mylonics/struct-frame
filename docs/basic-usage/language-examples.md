@@ -24,23 +24,23 @@ python -m struct_frame status.proto --build_c --build_cpp --build_ts --build_py 
 ## C
 
 ```c
-#include "status.sf.h"
+#include "example.structframe.h"
 
 int main() {
     // Create a message
-    Status msg;
+    ExampleStatus msg;
     msg.id = 42;
     msg.value = 3.14f;
     
     // Message is already in binary format
     uint8_t* data = (uint8_t*)&msg;
-    size_t size = sizeof(Status);
+    size_t size = sizeof(ExampleStatus);
     
     // Send data over serial, network, etc.
     // ...
     
     // On receiving side, cast back to struct
-    Status* received = (Status*)data;
+    ExampleStatus* received = (ExampleStatus*)data;
     printf("ID: %u, Value: %.2f\n", received->id, received->value);
     
     return 0;
@@ -49,30 +49,30 @@ int main() {
 
 Compile:
 ```bash
-gcc main.c -I generated/c/ -o main
+gcc main.c -I generated/ -o main
 ```
 
 ## C++
 
 ```cpp
-#include "status.sf.hpp"
+#include "example.structframe.hpp"
 #include <iostream>
 
 int main() {
     // Create a message
-    Status msg;
+    ExampleStatus msg;
     msg.id = 42;
     msg.value = 3.14f;
     
     // Message is already in binary format
     uint8_t* data = reinterpret_cast<uint8_t*>(&msg);
-    size_t size = sizeof(Status);
+    size_t size = sizeof(ExampleStatus);
     
     // Send data over serial, network, etc.
     // ...
     
     // On receiving side, cast back to struct
-    Status* received = reinterpret_cast<Status*>(data);
+    ExampleStatus* received = reinterpret_cast<ExampleStatus*>(data);
     std::cout << "ID: " << received->id << ", Value: " << received->value << std::endl;
     
     return 0;
@@ -81,53 +81,51 @@ int main() {
 
 Compile:
 ```bash
-g++ -std=c++14 main.cpp -I generated/cpp/ -o main
+g++ -std=c++17 main.cpp -I generated/ -o main
 ```
 
 ## Python
 
 ```python
-from status_sf import Status
+from struct_frame.generated.example import ExampleStatus
 
 # Create a message
-msg = Status()
-msg.id = 42
-msg.value = 3.14
+msg = ExampleStatus(id=42, value=3.14)
 
 # Serialize to bytes
-data = bytes(msg)
+data = msg.pack()
 
 # Send data over serial, network, etc.
 # ...
 
 # Deserialize from bytes
-received = Status.from_bytes(data)
+received = ExampleStatus.create_unpack(data)
 print(f"ID: {received.id}, Value: {received.value}")
 ```
 
 Run:
 ```bash
-PYTHONPATH=generated/py python main.py
+PYTHONPATH=generated/ python main.py
 ```
 
 ## TypeScript
 
 ```typescript
-import { Status } from './generated/ts/status.sf';
+import { ExampleStatus } from './generated/example.structframe';
 
 // Create a message
-const msg = new Status();
+const msg = new ExampleStatus();
 msg.id = 42;
 msg.value = 3.14;
 
-// Serialize to buffer
-const data = msg.serialize();
+// Get binary data
+const data = msg.data();
 
 // Send data over network, etc.
 // ...
 
 // Deserialize from buffer
-const received = Status.deserialize(data);
+const received = new ExampleStatus(data);
 console.log(`ID: ${received.id}, Value: ${received.value}`);
 ```
 
@@ -140,21 +138,21 @@ node main.js
 ## JavaScript
 
 ```javascript
-const { Status } = require('./generated/js/status.sf');
+const { ExampleStatus } = require('./generated/example.structframe');
 
 // Create a message
-const msg = new Status();
+const msg = new ExampleStatus();
 msg.id = 42;
 msg.value = 3.14;
 
-// Serialize to buffer
-const data = msg.serialize();
+// Get binary data
+const data = msg.data();
 
 // Send data over network, etc.
 // ...
 
 // Deserialize from buffer
-const received = Status.deserialize(data);
+const received = new ExampleStatus(data);
 console.log(`ID: ${received.id}, Value: ${received.value}`);
 ```
 
@@ -171,7 +169,7 @@ using StructFrame;
 class Program {
     static void Main() {
         // Create a message
-        var msg = new Status {
+        var msg = new ExampleStatus {
             Id = 42,
             Value = 3.14f
         };
@@ -183,7 +181,7 @@ class Program {
         // ...
         
         // Deserialize from bytes
-        var received = Status.FromBytes(data);
+        var received = ExampleStatus.FromBytes(data);
         Console.WriteLine($"ID: {received.Id}, Value: {received.Value}");
     }
 }
@@ -208,7 +206,7 @@ message SensorData {
 
 === "C"
     ```c
-    SensorData data;
+    ExampleSensorData data;
     data.readings_count = 3;
     data.readings[0] = 1.1f;
     data.readings[1] = 2.2f;
@@ -217,7 +215,7 @@ message SensorData {
 
 === "C++"
     ```cpp
-    SensorData data;
+    ExampleSensorData data;
     data.readings_count = 3;
     data.readings[0] = 1.1f;
     data.readings[1] = 2.2f;
@@ -226,20 +224,30 @@ message SensorData {
 
 === "Python"
     ```python
-    data = SensorData()
-    data.readings = [1.1, 2.2, 3.3]
+    data = ExampleSensorData()
+    data.readings_count = 3
+    data.readings[0] = 1.1
+    data.readings[1] = 2.2
+    data.readings[2] = 3.3
     ```
 
 === "TypeScript"
     ```typescript
-    const data = new SensorData();
-    data.readings = [1.1, 2.2, 3.3];
+    const data = new ExampleSensorData();
+    data.readings_count = 3;
+    data.readings[0] = 1.1;
+    data.readings[1] = 2.2;
+    data.readings[2] = 3.3;
     ```
 
 === "C#"
     ```csharp
-    var data = new SensorData();
-    data.Readings = new List<float> { 1.1f, 2.2f, 3.3f };
+    var data = new ExampleSensorData {
+        ReadingsCount = 3
+    };
+    data.Readings[0] = 1.1f;
+    data.Readings[1] = 2.2f;
+    data.Readings[2] = 3.3f;
     ```
 
 ## Nested Messages
@@ -261,7 +269,7 @@ message Vehicle {
 
 === "C"
     ```c
-    Vehicle v;
+    ExampleVehicle v;
     v.id = 1;
     v.pos.lat = 37.7749;
     v.pos.lon = -122.4194;
@@ -269,7 +277,7 @@ message Vehicle {
 
 === "C++"
     ```cpp
-    Vehicle v;
+    ExampleVehicle v;
     v.id = 1;
     v.pos.lat = 37.7749;
     v.pos.lon = -122.4194;
@@ -277,15 +285,14 @@ message Vehicle {
 
 === "Python"
     ```python
-    v = Vehicle()
-    v.id = 1
+    v = ExampleVehicle(id=1)
     v.pos.lat = 37.7749
     v.pos.lon = -122.4194
     ```
 
 === "TypeScript"
     ```typescript
-    const v = new Vehicle();
+    const v = new ExampleVehicle();
     v.id = 1;
     v.pos.lat = 37.7749;
     v.pos.lon = -122.4194;
@@ -293,12 +300,11 @@ message Vehicle {
 
 === "C#"
     ```csharp
-    var v = new Vehicle {
+    var v = new ExampleVehicle {
         Id = 1,
-        Pos = new Position {
+        Pos = new ExamplePosition {
             Lat = 37.7749,
             Lon = -122.4194
         }
     };
     ```
-

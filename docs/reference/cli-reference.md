@@ -62,32 +62,32 @@ python -m struct_frame messages.proto --build_cpp --sdk
 ## Generated Files
 
 ### C
-- `<name>.sf.h` - Message definitions
-- `struct_frame_parser.h` - Frame parsing utilities (if using framing)
+- `<name>.structframe.h` - Message definitions
+- Frame utilities (frame_base.h, frame_headers.h, frame_profiles.h, etc.)
 
 ### C++
-- `<name>.sf.hpp` - Message definitions
-- `FrameProfiles.hpp` - Frame parsing utilities (if using framing)
+- `<name>.structframe.hpp` - Message definitions
+- Frame utilities (frame_base.hpp, frame_headers.hpp, frame_profiles.hpp, etc.)
 - `struct_frame_sdk/` - SDK files (if `--sdk` or `--sdk_embedded` used)
 
 ### TypeScript
-- `<name>.sf.ts` - Message definitions and classes
-- `struct_frame_parser.ts` - Frame parsing utilities (if using framing)
+- `<name>.structframe.ts` - Message definitions and classes
+- Frame utilities (frame-base.ts, frame-headers.ts, frame-profiles.ts, etc.)
 - `struct_frame_sdk/` - SDK files (if `--sdk` used)
 
 ### Python
-- `<name>_sf.py` - Message definitions and classes
-- `struct_frame_parser.py` - Frame parsing utilities (if using framing)
+- `struct_frame/generated/<name>.py` - Message definitions and classes
+- Frame utilities (__init__.py, frame_base.py, frame_profiles.py, etc.)
 - `struct_frame_sdk/` - SDK files (if `--sdk` used)
 
 ### JavaScript
-- `<name>.sf.js` - Message definitions and classes
-- `struct_frame_parser.js` - Frame parsing utilities (if using framing)
+- `<name>.structframe.js` - Message definitions and classes
+- Frame parsing utilities
 
 ### GraphQL
-- `<name>.sf.graphql` - GraphQL schema definitions
+- `<name>.structframe.graphql` - GraphQL schema definitions
 
 ### C#
-- `<name>.sf.cs` - Message definitions and classes
-- `StructFrameParser.cs` - Frame parsing utilities (if using framing)
+- `<name>.structframe.cs` - Message definitions and classes
+- Frame parsing utilities
 

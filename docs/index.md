@@ -59,50 +59,52 @@ python -m struct_frame status.proto --build_c --build_py --build_ts
 
 === "C++"
     ```cpp
-    #include "status.sf.hpp"
+    #include "example.structframe.hpp"
     
     // Create a message
-    Status msg;
+    ExampleStatus msg;
     msg.id = 42;
     msg.value = 3.14f;
     
     // No encoding needed - use directly as bytes
     uint8_t* data = (uint8_t*)&msg;
-    size_t size = sizeof(Status);
+    size_t size = sizeof(ExampleStatus);
     ```
 
 === "Python"
     ```python
-    from status_sf import Status
+    from struct_frame.generated.example import ExampleStatus
     
-    # Create a message
-    msg = Status(id=42, value=3.14)
+    // Create a message
+    msg = ExampleStatus(id=42, value=3.14)
     
-    # Serialize to bytes
-    data = bytes(msg)
+    // Serialize to bytes
+    data = msg.pack()
     ```
 
 === "TypeScript"
     ```typescript
-    import { Status } from './status.sf';
+    import { ExampleStatus } from './example.structframe';
     
     // Create a message
-    const msg = new Status({ id: 42, value: 3.14 });
+    const msg = new ExampleStatus();
+    msg.id = 42;
+    msg.value = 3.14;
     
-    // Serialize to buffer
-    const data = msg.serialize();
+    // Get binary data
+    const data = msg.data();
     ```
 
 === "C"
     ```c
-    #include "status.sf.h"
+    #include "example.structframe.h"
     
     // Create a message
-    Status msg = { .id = 42, .value = 3.14f };
+    ExampleStatus msg = { .id = 42, .value = 3.14f };
     
     // Use directly as bytes
     uint8_t* data = (uint8_t*)&msg;
-    size_t size = sizeof(Status);
+    size_t size = sizeof(ExampleStatus);
     ```
 
 For detailed examples, see [Language Examples](basic-usage/language-examples.md).
