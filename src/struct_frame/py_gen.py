@@ -280,9 +280,9 @@ class MessagePyGen():
                             result += f'        # Fixed nested message array: {f.name}\n'
                             result += f'        for i in range({f.size_option}):\n'
                             result += f'            if i < len(self.{f.name}):\n'
-                            result += f'                data += self.{f.name}[i].pack()\n'
+                            result += f'                data += self.{f.name}[i].serialize()\n'
                             result += f'            else:\n'
-                            result += f'                data += {type_name}().pack()\n'
+                            result += f'                data += {type_name}().serialize()\n'
                     elif f.max_size is not None:
                         # Bounded array
                         count_fmt = "H" if f.max_size > 255 else "B"
@@ -303,11 +303,11 @@ class MessagePyGen():
                             result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
                             result += f'        for i in range({f.max_size}):\n'
                             result += f'            if i < len(self.{f.name}):\n'
-                            result += f'                data += self.{f.name}[i].pack()\n'
+                            result += f'                data += self.{f.name}[i].serialize()\n'
                             result += f'            else:\n'
                             # Need to create empty instance
                             type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
-                            result += f'                data += {type_name}().pack()\n'
+                            result += f'                data += {type_name}().serialize()\n'
             else:
                 # Regular field
                 fmt = MessagePyGen.get_struct_format(f)
@@ -316,7 +316,7 @@ class MessagePyGen():
                     result += f'        data += struct.pack("<{fmt}", self.{f.name})\n'
                 else:
                     # Nested message
-                    result += f'        data += self.{f.name}.pack()\n'
+                    result += f'        data += self.{f.name}.serialize()\n'
         
         # Pack oneofs
         for oneof_name, oneof in msg.oneofs.items():
@@ -333,7 +333,7 @@ class MessagePyGen():
             # We need to allocate the full size for the union
             result += f'        union_data = b""\n'
             result += f'        if self.{oneof_name}_which is not None:\n'
-            result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].pack()\n'
+            result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
             result += f'        # Pad to union size\n'
             result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
             result += f'        data += union_data\n'
@@ -507,7 +507,7 @@ class MessagePyGen():
         """Generate the data() method that returns packed bytes (C++ compatible API)"""
         result = '\n    def data(self) -> bytes:\n'
         result += '        """Return packed message bytes (C++ MessageBase compatible API)"""\n'
-        result += '        return self.pack()\n'
+        result += '        return self.serialize()\n'
         return result
     
     @staticmethod
@@ -748,7 +748,7 @@ class MessagePyGen():
                     result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
                     result += f'        data += struct.pack("<B", count)\n'
                     result += f'        for i in range(count):\n'
-                    result += f'            data += self.{f.name}[i].pack()\n'
+                    result += f'            data += self.{f.name}[i].serialize()\n'
             elif f.fieldType == "string" and f.max_size is not None:
                 # Variable string
                 result += f'        # {f.name}: variable string\n'
@@ -778,9 +778,9 @@ class MessagePyGen():
                     result += f'        # {f.name}: fixed nested message array\n'
                     result += f'        for i in range({f.size_option}):\n'
                     result += f'            if i < len(self.{f.name}):\n'
-                    result += f'                data += self.{f.name}[i].pack()\n'
+                    result += f'                data += self.{f.name}[i].serialize()\n'
                     result += f'            else:\n'
-                    result += f'                data += {type_name}().pack()\n'
+                    result += f'                data += {type_name}().serialize()\n'
             elif f.fieldType in py_struct_format:
                 fmt = py_struct_format[f.fieldType]
                 result += f'        # {f.name}: {f.fieldType}\n'
@@ -791,7 +791,7 @@ class MessagePyGen():
             else:
                 # Nested message
                 result += f'        # {f.name}: nested message\n'
-                result += f'        data += self.{f.name}.pack()\n'
+                result += f'        data += self.{f.name}.serialize()\n'
         
         result += '        return data\n'
         
