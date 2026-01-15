@@ -447,45 +447,45 @@ class MessageCSharpGen():
                 result += f'        // Union member: {field_name}\n'
                 result += FieldCSharpGen.generate_field_declaration(field)
 
-        # Generate Pack() method
+        # Generate Serialize() method
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Pack this message into a byte array\n'
+        result += '        /// Serialize this message into a byte array\n'
         if msg.variable:
             result += '        /// For variable messages: returns variable-length encoding by default\n'
-            result += '        /// Use PackMaxSize() for MAX_SIZE encoding (needed for minimal profiles)\n'
+            result += '        /// Use SerializeMaxSize() for MAX_SIZE encoding (needed for minimal profiles)\n'
         result += '        /// </summary>\n'
-        result += '        public byte[] Pack()\n'
+        result += '        public byte[] Serialize()\n'
         result += '        {\n'
         if msg.variable:
             # Variable messages return variable-length encoding by default
-            result += '            return PackVariable();\n'
+            result += '            return _SerializeVariable();\n'
         else:
             result += '            byte[] buffer = new byte[MaxSize];\n'
-            result += '            PackTo(buffer, 0);\n'
+            result += '            SerializeTo(buffer, 0);\n'
             result += '            return buffer;\n'
         result += '        }\n'
         
-        # For variable messages, add PackMaxSize() method
+        # For variable messages, add SerializeMaxSize() method
         if msg.variable:
             result += '\n'
             result += '        /// <summary>\n'
-            result += '        /// Pack this message to MAX_SIZE (for minimal profiles without length field)\n'
+            result += '        /// Serialize this message to MAX_SIZE (for minimal profiles without length field)\n'
             result += '        /// </summary>\n'
-            result += '        public byte[] PackMaxSize()\n'
+            result += '        public byte[] SerializeMaxSize()\n'
             result += '        {\n'
             result += '            byte[] buffer = new byte[MaxSize];\n'
-            result += '            PackTo(buffer, 0);\n'
+            result += '            SerializeTo(buffer, 0);\n'
             result += '            return buffer;\n'
             result += '        }\n'
         
-        # Generate PackTo() method for zero-allocation packing
+        # Generate SerializeTo() method for zero-allocation serialization
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Pack this message into an existing buffer (zero allocation).\n'
+        result += '        /// Serialize this message into an existing buffer (zero allocation).\n'
         result += '        /// Returns the number of bytes written.\n'
         result += '        /// </summary>\n'
-        result += '        public int PackTo(byte[] buffer, int offset)\n'
+        result += '        public int SerializeTo(byte[] buffer, int offset)\n'
         result += '        {\n'
 
         offset = 0

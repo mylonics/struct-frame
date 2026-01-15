@@ -215,8 +215,18 @@ class MessageTsClassGen():
         # Generate variable message methods if this is a variable message
         if msg.variable:
             result += MessageTsClassGen._generate_variable_methods(msg, package_msg_name, fields)
+        else:
+            # For non-variable messages, add a serialize() method that returns the buffer
+            result += f'\n  /**\n'
+            result += f'   * Serialize message to binary data.\n'
+            result += f'   * Returns a copy of the internal buffer.\n'
+            result += f'   * @returns Buffer with serialized message data\n'
+            result += f'   */\n'
+            result += f'  serialize(): Buffer {{\n'
+            result += f'    return Buffer.from(this._buffer);\n'
+            result += f'  }}\n'
         
-        # Generate unified unpack method for messages with MSG_ID
+        # Generate unified deserialize method for messages with MSG_ID
         if msg.id is not None:
             result += MessageTsClassGen._generate_unified_unpack(msg, package_msg_name)
         
@@ -230,17 +240,18 @@ class MessageTsClassGen():
     
     @staticmethod
     def _generate_unified_unpack(msg, package_msg_name):
-        """Generate unified unpack() method that works for both variable and non-variable messages."""
+        """Generate unified deserialize() method that works for both variable and non-variable messages."""
         result = ''
         
         result += f'\n  /**\n'
-        result += f'   * Unified unpack method - works for both variable and non-variable messages.\n'
+        result += f'   * Deserialize message from binary data.\n'
+        result += f'   * Works for both variable and non-variable messages.\n'
         result += f'   * For variable messages with minimal profiles (buffer.length == _size),\n'
-        result += f'   * uses standard unpacking instead of variable unpacking.\n'
-        result += f'   * @param buffer Input buffer containing packed message data\n'
-        result += f'   * @returns New instance with unpacked data\n'
+        result += f'   * uses fixed-size deserialization instead of variable-length deserialization.\n'
+        result += f'   * @param buffer Input buffer containing serialized message data\n'
+        result += f'   * @returns New instance with deserialized data\n'
         result += f'   */\n'
-        result += f'  static unpack(buffer: Buffer): {package_msg_name} {{\n'
+        result += f'  static deserialize(buffer: Buffer): {package_msg_name} {{\n'
         
         if msg.variable:
             result += f'    // Variable message - check encoding format\n'
@@ -251,7 +262,7 @@ class MessageTsClassGen():
             result += f'      return msg;\n'
             result += f'    }} else {{\n'
             result += f'      // Variable-length format\n'
-            result += f'      return {package_msg_name}.unpackVariable(buffer);\n'
+            result += f'      return {package_msg_name}._deserializeVariable(buffer);\n'
             result += f'    }}\n'
         else:
             result += f'    // Fixed-size message - use direct copy\n'
@@ -277,12 +288,12 @@ class MessageTsClassGen():
         result += f'    return true;\n'
         result += f'  }}\n'
         
-        # Generate packSize method
+        # Generate serializedSize method (formerly packSize)
         result += f'\n  /**\n'
-        result += f'   * Calculate the packed size using variable-length encoding.\n'
-        result += f'   * @returns The size in bytes when packed (between _minSize and _size)\n'
+        result += f'   * Calculate the serialized size using variable-length encoding.\n'
+        result += f'   * @returns The size in bytes when serialized (between _minSize and _size)\n'
         result += f'   */\n'
-        result += f'  packSize(): number {{\n'
+        result += f'  serializedSize(): number {{\n'
         result += f'    let size = 0;\n'
         
         for key, field in msg.fields.items():
@@ -306,13 +317,13 @@ class MessageTsClassGen():
         result += f'    return size;\n'
         result += f'  }}\n'
         
-        # Generate packVariable method
+        # Generate serialize method (was packVariable)
         result += f'\n  /**\n'
-        result += f'   * Pack message using variable-length encoding.\n'
-        result += f'   * @returns Buffer with packed data (only used bytes)\n'
+        result += f'   * Serialize message using variable-length encoding.\n'
+        result += f'   * @returns Buffer with serialized data (only used bytes)\n'
         result += f'   */\n'
-        result += f'  packVariable(): Buffer {{\n'
-        result += f'    const size = this.packSize();\n'
+        result += f'  serialize(): Buffer {{\n'
+        result += f'    const size = this.serializedSize();\n'
         result += f'    const buffer = Buffer.alloc(size);\n'
         result += f'    let offset = 0;\n'
         
@@ -379,13 +390,14 @@ class MessageTsClassGen():
         result += f'    return buffer;\n'
         result += f'  }}\n'
         
-        # Generate static unpackVariable method
+        # Generate static _deserializeVariable method (was unpackVariable)
         result += f'\n  /**\n'
-        result += f'   * Unpack message from variable-length encoded buffer.\n'
+        result += f'   * Deserialize message from variable-length encoded buffer.\n'
+        result += f'   * Internal method used by deserialize().\n'
         result += f'   * @param buffer Input buffer with variable-length encoded data\n'
-        result += f'   * @returns New instance with unpacked data\n'
+        result += f'   * @returns New instance with deserialized data\n'
         result += f'   */\n'
-        result += f'  static unpackVariable(buffer: Buffer): {package_msg_name} {{\n'
+        result += f'  static _deserializeVariable(buffer: Buffer): {package_msg_name} {{\n'
         result += f'    const msg = new {package_msg_name}();\n'
         result += f'    let offset = 0;\n'
         
