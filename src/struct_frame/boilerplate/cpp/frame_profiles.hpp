@@ -106,7 +106,7 @@ class FrameEncoderWithCrc {
   /**
    * Encode a message object.
    * Message must be derived from MessageBase and have MSG_ID, MAX_SIZE, MAGIC1, MAGIC2.
-   * For variable messages (with IS_VARIABLE=true), uses pack_variable() for efficient encoding.
+   * For variable messages (with IS_VARIABLE=true), uses serialize() for variable-length encoding.
    */
   template <typename T, typename = std::enable_if_t<
                             std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
@@ -115,10 +115,10 @@ class FrameEncoderWithCrc {
     // Determine if this is a variable message
     constexpr bool is_variable = is_variable_message<T>();
 
-    // Get the actual payload size (variable messages use pack_size(), others use MAX_SIZE)
+    // Get the actual payload size (variable messages use serialized_size(), others use MAX_SIZE)
     size_t payload_size;
     if constexpr (is_variable) {
-      payload_size = msg.pack_size();
+      payload_size = msg.serialized_size();
     } else {
       payload_size = T::MAX_SIZE;
     }
@@ -168,9 +168,9 @@ class FrameEncoderWithCrc {
     }
     buffer[idx++] = static_cast<uint8_t>(T::MSG_ID & 0xFF);  // msg_id (low byte)
 
-    // Write payload (use pack_variable for variable messages, memcpy for fixed)
+    // Write payload (use serialize for variable messages, memcpy for fixed)
     if constexpr (is_variable) {
-      size_t written = msg.pack_variable(buffer + idx);
+      size_t written = msg.serialize(buffer + idx);
       idx += written;
     } else {
       std::memcpy(buffer + idx, msg.data(), payload_size);
