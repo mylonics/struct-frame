@@ -173,6 +173,66 @@ message SensorReading {
 
 Enums are stored as uint8 (1 byte).
 
+### Enum to String Conversion
+
+Each enum automatically generates a helper function to convert enum values to their string representation. This makes enums easy to use across different languages while maintaining simple integer serialization.
+
+**C**
+```c
+SerializationTestSensorType type = SENSOR_TYPE_TEMPERATURE;
+const char* type_str = SerializationTestSensorType_to_string(type);
+// Returns: "TEMPERATURE"
+```
+
+**C++**
+```cpp
+SerializationTestSensorType type = SerializationTestSensorType::TEMPERATURE;
+const char* type_str = SerializationTestSensorType_to_string(type);
+// Returns: "TEMPERATURE"
+```
+
+**Python**
+```python
+from sensor_system import SerializationTestSensorType
+
+type = SerializationTestSensorType.SENSOR_TYPE_TEMPERATURE
+type_str = SerializationTestSensorType.to_string(type)
+# Returns: "TEMPERATURE"
+
+# Also works with integer values
+type_str = SerializationTestSensorType.to_string(0)
+# Returns: "TEMPERATURE"
+```
+
+**TypeScript**
+```typescript
+import { SerializationTestSensorType, SerializationTestSensorType_to_string } from './sensor_system.structframe';
+
+const type = SerializationTestSensorType.TEMPERATURE;
+const typeStr = SerializationTestSensorType_to_string(type);
+// Returns: "TEMPERATURE"
+```
+
+**JavaScript**
+```javascript
+const { SerializationTestSensorType, SerializationTestSensorType_to_string } = require('./sensor_system.structframe');
+
+const type = SerializationTestSensorType.TEMPERATURE;
+const typeStr = SerializationTestSensorType_to_string(type);
+// Returns: "TEMPERATURE"
+```
+
+**C#**
+```csharp
+using StructFrame.SensorSystem;
+
+SerializationTestSensorType type = SerializationTestSensorType.TEMPERATURE;
+string typeStr = type.ToString();
+// Returns: "TEMPERATURE"
+```
+
+All enum to string functions return `"UNKNOWN"` for invalid enum values.
+
 ## Nested Messages
 
 ```proto
