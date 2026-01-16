@@ -63,6 +63,16 @@ class EnumCppGen():
         result += '\n'.join(enum_values)
         result += '\n};\n'
 
+        # Add enum-to-string helper function
+        result += f'\n/* Convert {enumName} to string */\n'
+        result += f'inline const char* {enumName}_to_string({enumName} value) {{\n'
+        result += '    switch (value) {\n'
+        for d in field.data:
+            result += f'        case {enumName}::{StyleC.enum_entry(d)}: return "{StyleC.enum_entry(d)}";\n'
+        result += '        default: return "UNKNOWN";\n'
+        result += '    }\n'
+        result += '}\n'
+
         return result
 
 

@@ -71,6 +71,17 @@ class EnumCGen():
             module_constant = f"{module_prefix}_{enum_constant}"
             result += f'#define {module_constant:<35} {enum_constant}\n'
 
+        # Add enum-to-string helper function
+        result += f'\n\n/* Convert {enumName} to string */\n'
+        result += f'static inline const char* {enumName}_to_string({enumName} value) {{\n'
+        result += '    switch (value) {\n'
+        for d in field.data:
+            enum_constant = f"{CamelToSnakeCase(field.name).upper()}_{StyleC.enum_entry(d)}"
+            result += f'        case {enum_constant}: return "{StyleC.enum_entry(d)}";\n'
+        result += '        default: return "UNKNOWN";\n'
+        result += '    }\n'
+        result += '}\n'
+
         return result
 
 

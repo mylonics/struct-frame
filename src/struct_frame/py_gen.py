@@ -76,6 +76,20 @@ class EnumPyGen():
             enum_values.append(enum_value)
 
         result += '\n'.join(enum_values)
+        
+        # Add enum-to-string method
+        result += '\n\n'
+        result += '    @staticmethod\n'
+        result += '    def to_string(value):\n'
+        result += '        """Convert enum value to string representation"""\n'
+        result += f'        if isinstance(value, {enumName}):\n'
+        result += '            return value.name.split("_", 1)[-1] if "_" in value.name else value.name\n'
+        result += '        # Handle integer values\n'
+        for d in field.data:
+            enum_constant = f"{CamelToSnakeCase(field.name).upper()}_{StyleC.enum_entry(d)}"
+            result += f'        if value == {field.data[d][0]}: return "{StyleC.enum_entry(d)}"\n'
+        result += '        return "UNKNOWN"\n'
+        
         return result
 
 
