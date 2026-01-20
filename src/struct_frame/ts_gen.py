@@ -70,6 +70,17 @@ class EnumTsGen():
         result += '\n'.join(enum_values)
         result += '\n}'
 
+        # Add enum-to-string helper function
+        enumFullName = '%s%s' % (packageName, field.name)
+        result += f'\n\n/* Convert {enumFullName} to string */\n'
+        result += f'export function {enumFullName}_to_string(value: {enumFullName}): string {{\n'
+        result += '    switch (value) {\n'
+        for d in field.data:
+            result += f'        case {enumFullName}.{StyleC.enum_entry(d)}: return "{StyleC.enum_entry(d)}";\n'
+        result += '        default: return "UNKNOWN";\n'
+        result += '    }\n'
+        result += '}\n'
+
         return result
 
 
