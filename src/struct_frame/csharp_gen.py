@@ -82,26 +82,6 @@ class EnumCSharpGen():
         result += '\n'.join(enum_values)
         result += '\n    }\n'
 
-        # Add enum-to-string extension method
-        result += f'\n    /// <summary>\n'
-        result += f'    /// Extension methods for {enumName}\n'
-        result += f'    /// </summary>\n'
-        result += f'    public static class {enumName}Extensions\n'
-        result += '    {\n'
-        result += f'        /// <summary>\n'
-        result += f'        /// Convert {enumName} value to string representation\n'
-        result += f'        /// </summary>\n'
-        result += f'        public static string ToString(this {enumName} value)\n'
-        result += '        {\n'
-        result += '            switch (value)\n'
-        result += '            {\n'
-        for d in field.data:
-            result += f'                case {enumName}.{StyleC.enum_entry(d)}: return "{StyleC.enum_entry(d)}";\n'
-        result += '                default: return "UNKNOWN";\n'
-        result += '            }\n'
-        result += '        }\n'
-        result += '    }\n'
-
         return result
 
 

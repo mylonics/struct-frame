@@ -70,17 +70,6 @@ class EnumJsGen():
         result += '\n});\n'
         result += 'module.exports.%s = %s;' % (enum_name, enum_name)
 
-        # Add enum-to-string helper function
-        result += f'\n\n/* Convert {enum_name} to string */\n'
-        result += f'function {enum_name}_to_string(value) {{\n'
-        result += '  switch (value) {\n'
-        for d in field.data:
-            result += f'    case {enum_name}.{StyleC.enum_entry(d)}: return "{StyleC.enum_entry(d)}";\n'
-        result += '    default: return "UNKNOWN";\n'
-        result += '  }\n'
-        result += '}\n'
-        result += f'module.exports.{enum_name}_to_string = {enum_name}_to_string;\n'
-
         return result
 
 
