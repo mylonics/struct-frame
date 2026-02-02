@@ -527,8 +527,9 @@ class TestRunner:
             
             print(f"  Processing: {proto_file}...")
             
-            # Build command - always include --equality flag for test generation
-            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality"]
+            # Build command - always include --equality and --force flags for test generation
+            # --force ensures regeneration even if hash matches (tests always need fresh generation)
+            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force"]
             for lang in active:
                 gen_dir = self.project_root / lang.gen_output_dir
                 gen_dir.mkdir(parents=True, exist_ok=True)
