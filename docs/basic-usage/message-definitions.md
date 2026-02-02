@@ -175,63 +175,67 @@ Enums are stored as uint8 (1 byte).
 
 ### Enum to String Conversion
 
-Each enum automatically generates a helper function to convert enum values to their string representation. This makes enums easy to use across different languages while maintaining simple integer serialization.
+Enums can be converted to strings using language built-in features or generated helper functions.
 
-**C**
+**C** (generated helper function)
 ```c
 SerializationTestSensorType type = SENSOR_TYPE_TEMPERATURE;
 const char* type_str = SerializationTestSensorType_to_string(type);
 // Returns: "TEMPERATURE"
 ```
 
-**C++**
+**C++** (generated helper function)
 ```cpp
 SerializationTestSensorType type = SerializationTestSensorType::TEMPERATURE;
 const char* type_str = SerializationTestSensorType_to_string(type);
 // Returns: "TEMPERATURE"
 ```
 
-**Python**
+**Python** (built-in Enum)
 ```python
 from sensor_system import SerializationTestSensorType
 
 type = SerializationTestSensorType.SENSOR_TYPE_TEMPERATURE
-type_str = SerializationTestSensorType.to_string(type)
-# Returns: "TEMPERATURE"
+# Use the built-in .name property
+type_str = type.name
+# Returns: "SENSOR_TYPE_TEMPERATURE"
 
-# Also works with integer values
-type_str = SerializationTestSensorType.to_string(0)
+# Or extract just the value name after the prefix
+type_str = type.name.split('_', 2)[-1]
 # Returns: "TEMPERATURE"
 ```
 
-**TypeScript**
+**TypeScript** (built-in reverse mapping)
 ```typescript
-import { SerializationTestSensorType, SerializationTestSensorType_to_string } from './sensor_system.structframe';
+import { SerializationTestSensorType } from './sensor_system.structframe';
 
 const type = SerializationTestSensorType.TEMPERATURE;
-const typeStr = SerializationTestSensorType_to_string(type);
+// TypeScript numeric enums support reverse mapping
+const typeStr = SerializationTestSensorType[type];
 // Returns: "TEMPERATURE"
 ```
 
-**JavaScript**
+**JavaScript** (Object.keys lookup)
 ```javascript
-const { SerializationTestSensorType, SerializationTestSensorType_to_string } = require('./sensor_system.structframe');
+const { SerializationTestSensorType } = require('./sensor_system.structframe');
 
 const type = SerializationTestSensorType.TEMPERATURE;
-const typeStr = SerializationTestSensorType_to_string(type);
+// Find the key by value
+const typeStr = Object.keys(SerializationTestSensorType).find(
+  key => SerializationTestSensorType[key] === type
+);
 // Returns: "TEMPERATURE"
 ```
 
-**C#**
+**C#** (built-in ToString)
 ```csharp
 using StructFrame.SensorSystem;
 
 SerializationTestSensorType type = SerializationTestSensorType.TEMPERATURE;
+// Use the built-in enum ToString method
 string typeStr = type.ToString();
 // Returns: "TEMPERATURE"
 ```
-
-All enum to string functions return `"UNKNOWN"` for invalid enum values.
 
 ## Nested Messages
 

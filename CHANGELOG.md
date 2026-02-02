@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## [Unreleased]
+
+### Changed
+
+- Removed redundant enum-to-string helper functions from TypeScript, JavaScript, Python, and C# generators. These languages have built-in enum/string conversion capabilities:
+  - **Python**: Use `.name` property on Enum instances
+  - **TypeScript**: Use reverse mapping (e.g., `EnumName[value]`)
+  - **JavaScript**: Use `Object.keys()` to find key by value
+  - **C#**: Use built-in `.ToString()` method
+  - **C and C++**: Still generate `_to_string()` helper functions as these languages lack built-in enum reflection
+
 ## [0.6.3](https://github.com/mylonics/struct-frame/releases/tag/0.6.3) - 2026-01-20
 
 <small>[Compare with v0.0.52](https://github.com/mylonics/struct-frame/compare/v0.0.52...0.6.3)</small>
