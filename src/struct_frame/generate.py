@@ -4,6 +4,8 @@
 
 import os
 import shutil
+import hashlib
+import json
 from struct_frame import FileCGen
 from struct_frame import FileTsGen
 from struct_frame import FileJsGen
@@ -105,6 +107,203 @@ def calculate_magic_numbers(message):
         magic2 = 0xA5  # Default non-zero magic byte
     
     return (magic1, magic2)
+
+
+# Generation hash file name
+HASH_FILENAME = ".structframe.hash"
+
+
+def get_version():
+    """Get the struct-frame version from pyproject.toml or package metadata."""
+    try:
+        # Try to get version from importlib.metadata (Python 3.8+)
+        from importlib.metadata import version as get_pkg_version
+        return get_pkg_version('struct-frame')
+    except Exception:
+        pass
+    
+    # Fallback: try to read from pyproject.toml
+    try:
+        import pathlib
+        pyproject_path = pathlib.Path(__file__).parent.parent.parent / "pyproject.toml"
+        if pyproject_path.exists():
+            with open(pyproject_path, 'r') as f:
+                for line in f:
+                    if line.strip().startswith('version'):
+                        # Parse: version = "0.6.3"
+                        parts = line.split('=', 1)
+                        if len(parts) == 2:
+                            return parts[1].strip().strip('"\'')
+    except Exception:
+        pass
+    
+    # Last fallback
+    return "unknown"
+
+
+def compute_generation_hash(args, packages_dict):
+    """
+    Compute a hash based on CLI parameters, struct-frame version, and parsed message definitions.
+    
+    Args:
+        args: Parsed argparse arguments
+        packages_dict: Dictionary of parsed packages with their messages and enums
+    
+    Returns:
+        str: SHA256 hash hex string
+    """
+    hasher = hashlib.sha256()
+    
+    # 1. Add struct-frame version
+    version = get_version()
+    hasher.update(f"version:{version}\n".encode('utf-8'))
+    
+    # 2. Add relevant CLI parameters (sorted for consistency)
+    cli_params = {
+        'build_c': args.build_c,
+        'build_ts': args.build_ts,
+        'build_js': args.build_js,
+        'build_py': args.build_py,
+        'build_cpp': args.build_cpp,
+        'build_csharp': args.build_csharp,
+        'build_gql': args.build_gql,
+        'c_path': args.c_path[0] if args.build_c else None,
+        'ts_path': args.ts_path[0] if args.build_ts else None,
+        'js_path': args.js_path[0] if args.build_js else None,
+        'py_path': args.py_path[0] if args.build_py else None,
+        'cpp_path': args.cpp_path[0] if args.build_cpp else None,
+        'csharp_path': args.csharp_path[0] if args.build_csharp else None,
+        'gql_path': args.gql_path[0] if args.build_gql else None,
+        'sdk': args.sdk,
+        'sdk_embedded': args.sdk_embedded,
+        'equality': args.equality,
+        'generate_csproj': args.generate_csproj,
+        'csharp_namespace': args.csharp_namespace[0],
+        'target_framework': args.target_framework[0],
+    }
+    hasher.update(f"cli:{json.dumps(cli_params, sort_keys=True)}\n".encode('utf-8'))
+    
+    # 3. Add parsed message definitions (sorted by package name for consistency)
+    for pkg_name in sorted(packages_dict.keys()):
+        pkg = packages_dict[pkg_name]
+        hasher.update(f"package:{pkg_name}\n".encode('utf-8'))
+        
+        if pkg.package_id is not None:
+            hasher.update(f"  pkgid:{pkg.package_id}\n".encode('utf-8'))
+        
+        # Add enums (sorted by name)
+        for enum_name in sorted(pkg.enums.keys()):
+            enum = pkg.enums[enum_name]
+            hasher.update(f"  enum:{enum_name}\n".encode('utf-8'))
+            for entry_name in sorted(enum.data.keys()):
+                value, _ = enum.data[entry_name]
+                hasher.update(f"    {entry_name}={value}\n".encode('utf-8'))
+        
+        # Add messages (sorted by name)
+        for msg_name in sorted(pkg.messages.keys()):
+            msg = pkg.messages[msg_name]
+            hasher.update(f"  message:{msg_name}\n".encode('utf-8'))
+            if msg.id is not None:
+                hasher.update(f"    msgid:{msg.id}\n".encode('utf-8'))
+            if msg.variable:
+                hasher.update(f"    variable:true\n".encode('utf-8'))
+            
+            # Add fields (sorted by name)
+            for field_name in sorted(msg.fields.keys()):
+                field = msg.fields[field_name]
+                field_info = f"    field:{field_name}:{field.fieldType}"
+                if field.is_array:
+                    field_info += ":array"
+                if field.size_option is not None:
+                    field_info += f":size={field.size_option}"
+                if field.max_size is not None:
+                    field_info += f":max_size={field.max_size}"
+                if field.element_size is not None:
+                    field_info += f":element_size={field.element_size}"
+                if field.flatten:
+                    field_info += ":flatten"
+                hasher.update(f"{field_info}\n".encode('utf-8'))
+            
+            # Add oneofs (sorted by name)
+            for oneof_name in sorted(msg.oneofs.keys()):
+                oneof = msg.oneofs[oneof_name]
+                hasher.update(f"    oneof:{oneof_name}\n".encode('utf-8'))
+                for oneof_field_name in sorted(oneof.fields.keys()):
+                    oneof_field = oneof.fields[oneof_field_name]
+                    hasher.update(f"      field:{oneof_field_name}:{oneof_field.fieldType}\n".encode('utf-8'))
+    
+    return hasher.hexdigest()
+
+
+def get_hash_file_path(args):
+    """
+    Determine the path for the hash file.
+    
+    Args:
+        args: Parsed argparse arguments
+    
+    Returns:
+        str: Path to the hash file
+    """
+    # Use explicit hash_path if provided
+    if args.hash_path[0] is not None:
+        hash_dir = args.hash_path[0]
+    else:
+        # Use the first enabled output path
+        if args.build_c:
+            hash_dir = args.c_path[0]
+        elif args.build_cpp:
+            hash_dir = args.cpp_path[0]
+        elif args.build_py:
+            hash_dir = args.py_path[0]
+        elif args.build_ts:
+            hash_dir = args.ts_path[0]
+        elif args.build_js:
+            hash_dir = args.js_path[0]
+        elif args.build_csharp:
+            hash_dir = args.csharp_path[0]
+        elif args.build_gql:
+            hash_dir = args.gql_path[0]
+        else:
+            # Fallback to current directory
+            hash_dir = "."
+    
+    return os.path.join(hash_dir, HASH_FILENAME)
+
+
+def read_previous_hash(hash_file_path):
+    """
+    Read the previously stored generation hash.
+    
+    Args:
+        hash_file_path: Path to the hash file
+    
+    Returns:
+        str or None: The stored hash, or None if file doesn't exist
+    """
+    try:
+        if os.path.exists(hash_file_path):
+            with open(hash_file_path, 'r') as f:
+                return f.read().strip()
+    except Exception:
+        pass
+    return None
+
+
+def write_generation_hash(hash_file_path, hash_value):
+    """
+    Write the generation hash to file.
+    
+    Args:
+        hash_file_path: Path to the hash file
+        hash_value: Hash string to write
+    """
+    dirname = os.path.dirname(hash_file_path)
+    if dirname and not os.path.exists(dirname):
+        os.makedirs(dirname)
+    
+    with open(hash_file_path, 'w') as f:
+        f.write(hash_value)
 
 
 class Enum:
@@ -742,6 +941,10 @@ parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFra
                     help='Root namespace for generated C# code (default: StructFrame.Generated)')
 parser.add_argument('--target_framework', nargs=1, type=str, default=['net8.0'],
                     help='Target framework for generated .csproj file (default: net8.0)')
+parser.add_argument('--force', action='store_true',
+                    help='Force regeneration even if hash matches previous generation')
+parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
+                    help='Path to store the generation hash file (default: first output path)')
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -1130,6 +1333,23 @@ def main():
             printPackages()
         return
 
+    # Compute generation hash and check if regeneration is needed
+    current_hash = compute_generation_hash(args, packages)
+    hash_file_path = get_hash_file_path(args)
+    previous_hash = read_previous_hash(hash_file_path)
+    
+    if not args.force and previous_hash == current_hash:
+        print("Generation skipped: no changes detected (hash matches previous generation)")
+        print(f"  Hash file: {hash_file_path}")
+        print("  Use --force to regenerate anyway")
+        return
+    
+    if args.debug:
+        if previous_hash is None:
+            print(f"No previous hash found at {hash_file_path}")
+        elif previous_hash != current_hash:
+            print(f"Hash changed: {previous_hash[:16]}... -> {current_hash[:16]}...")
+
     # Normal mode: generate files
     files = {}
     if (args.build_c):
@@ -1312,6 +1532,11 @@ def main():
                 args.csharp_path[0], embedded_only)
 
     # No boilerplate for GraphQL currently
+
+    # Write generation hash after successful generation
+    write_generation_hash(hash_file_path, current_hash)
+    if args.debug:
+        print(f"Generation hash written to {hash_file_path}")
 
     if args.debug:
         printPackages()
