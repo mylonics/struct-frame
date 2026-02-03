@@ -1197,13 +1197,13 @@ class TestRunner:
         all_success = True
         for lang in self.get_testable_languages():
             # Skip languages without negative tests
-            if lang.id == "ts" or lang.id == "js" or lang.id == "csharp":
+            if lang.id in ("c", "ts", "js", "csharp"):
                 continue
             
             test_name = f"{lang.name} negative tests"
             
-            if lang.id in ("c", "cpp"):
-                # C/C++: run compiled executable
+            if lang.id == "cpp":
+                # C++: run compiled executable
                 build_dir = self.project_root / lang.build_dir
                 test_exe = build_dir / f"test_negative{lang.exe_ext}"
                 

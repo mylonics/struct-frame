@@ -16,10 +16,11 @@ import os
 # Add paths
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'generated', 'py'))
 
-from struct_frame.generated.serialization_test import BasicTypesMessage, get_message_info
-from struct_frame.frame_profiles import (
-    FrameEncoderStandard, FrameParserStandard,
-    AccumulatingReaderStandard
+from struct_frame.generated.serialization_test import SerializationTestBasicTypesMessage as BasicTypesMessage, get_message_info
+from frame_profiles import (
+    ProfileStandardWriter,
+    ProfileStandardReader,
+    ProfileStandardAccumulatingReader
 )
 
 # Test result tracking
@@ -53,13 +54,14 @@ def test_corrupted_crc():
     msg.single_precision = 3.14159
     msg.double_precision = 2.71828
     msg.flag = True
-    msg.device_id = "DEVICE123"
-    msg.description = "Test device"
+    msg.device_id = b"DEVICE123"
+    msg.description = b"Test device"
     
     # Encode message
-    buffer = bytearray(1024)
-    encoder = FrameEncoderStandard(buffer)
-    bytes_written = msg.encode(encoder)
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    bytes_written = writer.size()
     
     if bytes_written < 4:
         return False
@@ -69,8 +71,8 @@ def test_corrupted_crc():
     buffer[bytes_written - 2] ^= 0xFF
     
     # Try to parse - should fail
-    parser = FrameParserStandard(bytes(buffer[:bytes_written]))
-    result = parser.next()
+    reader = ProfileStandardReader(buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
+    result = reader.next()
     
     return not result.valid  # Expect failure
 
@@ -89,13 +91,14 @@ def test_truncated_frame():
     msg.single_precision = 3.14159
     msg.double_precision = 2.71828
     msg.flag = True
-    msg.device_id = "DEVICE123"
-    msg.description = "Test device"
+    msg.device_id = b"DEVICE123"
+    msg.description = b"Test device"
     
     # Encode message
-    buffer = bytearray(1024)
-    encoder = FrameEncoderStandard(buffer)
-    bytes_written = msg.encode(encoder)
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    bytes_written = writer.size()
     
     if bytes_written < 10:
         return False
@@ -104,8 +107,8 @@ def test_truncated_frame():
     truncated_size = bytes_written - 5
     
     # Try to parse - should fail
-    parser = FrameParserStandard(bytes(buffer[:truncated_size]))
-    result = parser.next()
+    reader = ProfileStandardReader(buffer=bytes(buffer[:truncated_size]), get_message_info=get_message_info)
+    result = reader.next()
     
     return not result.valid  # Expect failure
 
@@ -124,13 +127,14 @@ def test_invalid_start_bytes():
     msg.single_precision = 3.14159
     msg.double_precision = 2.71828
     msg.flag = True
-    msg.device_id = "DEVICE123"
-    msg.description = "Test device"
+    msg.device_id = b"DEVICE123"
+    msg.description = b"Test device"
     
     # Encode message
-    buffer = bytearray(1024)
-    encoder = FrameEncoderStandard(buffer)
-    bytes_written = msg.encode(encoder)
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    bytes_written = writer.size()
     
     if bytes_written < 2:
         return False
@@ -140,15 +144,15 @@ def test_invalid_start_bytes():
     buffer[1] = 0xAD
     
     # Try to parse - should fail
-    parser = FrameParserStandard(bytes(buffer[:bytes_written]))
-    result = parser.next()
+    reader = ProfileStandardReader(buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
+    result = reader.next()
     
     return not result.valid  # Expect failure
 
 def test_zero_length_buffer():
     """Test: Parser handles zero-length buffer"""
-    parser = FrameParserStandard(b'')
-    result = parser.next()
+    reader = ProfileStandardReader(buffer=b'', get_message_info=get_message_info)
+    result = reader.next()
     
     return not result.valid  # Expect failure
 
@@ -167,13 +171,14 @@ def test_corrupted_length():
     msg.single_precision = 3.14159
     msg.double_precision = 2.71828
     msg.flag = True
-    msg.device_id = "DEVICE123"
-    msg.description = "Test device"
+    msg.device_id = b"DEVICE123"
+    msg.description = b"Test device"
     
     # Encode message
-    buffer = bytearray(1024)
-    encoder = FrameEncoderStandard(buffer)
-    bytes_written = msg.encode(encoder)
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    bytes_written = writer.size()
     
     if bytes_written < 4:
         return False
@@ -182,8 +187,8 @@ def test_corrupted_length():
     buffer[2] = 0xFF
     
     # Try to parse - should fail
-    parser = FrameParserStandard(bytes(buffer[:bytes_written]))
-    result = parser.next()
+    reader = ProfileStandardReader(buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
+    result = reader.next()
     
     return not result.valid  # Expect failure
 
@@ -202,13 +207,14 @@ def test_streaming_corrupted_crc():
     msg.single_precision = 3.14159
     msg.double_precision = 2.71828
     msg.flag = True
-    msg.device_id = "DEVICE123"
-    msg.description = "Test device"
+    msg.device_id = b"DEVICE123"
+    msg.description = b"Test device"
     
     # Encode message
-    buffer = bytearray(1024)
-    encoder = FrameEncoderStandard(buffer)
-    bytes_written = msg.encode(encoder)
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    bytes_written = writer.size()
     
     if bytes_written < 4:
         return False
@@ -217,7 +223,7 @@ def test_streaming_corrupted_crc():
     buffer[bytes_written - 1] ^= 0xFF
     
     # Try streaming parse
-    reader = AccumulatingReaderStandard(get_message_info)
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
     
     # Feed byte by byte
     for i in range(bytes_written):
@@ -228,7 +234,7 @@ def test_streaming_corrupted_crc():
 
 def test_streaming_garbage():
     """Test: Streaming parser handles garbage data"""
-    reader = AccumulatingReaderStandard(get_message_info)
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
     
     # Feed garbage bytes
     garbage = bytes([0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A])
@@ -242,8 +248,7 @@ def test_streaming_garbage():
 def test_multiple_corrupted_frames():
     """Test: Multiple frames with corrupted middle frame"""
     # Create buffer with 3 messages
-    buffer = bytearray(4096)
-    encoder = FrameEncoderStandard(buffer)
+    writer = ProfileStandardWriter(capacity=4096)
     
     msg1 = BasicTypesMessage()
     msg1.small_int = 1
@@ -257,10 +262,10 @@ def test_multiple_corrupted_frames():
     msg1.single_precision = 1.0
     msg1.double_precision = 1.0
     msg1.flag = True
-    msg1.device_id = "DEV1"
-    msg1.description = "First"
+    msg1.device_id = b"DEV1"
+    msg1.description = b"First"
     
-    bytes1 = msg1.encode(encoder)
+    bytes1 = writer.write(msg1)
     
     msg2 = BasicTypesMessage()
     msg2.small_int = 2
@@ -274,13 +279,12 @@ def test_multiple_corrupted_frames():
     msg2.single_precision = 2.0
     msg2.double_precision = 2.0
     msg2.flag = False
-    msg2.device_id = "DEV2"
-    msg2.description = "Second"
+    msg2.device_id = b"DEV2"
+    msg2.description = b"Second"
     
-    encoder.offset = bytes1
-    bytes2_start = bytes1
-    bytes2 = msg2.encode(encoder)
-    bytes2_end = encoder.offset
+    bytes2_start = writer.size()
+    bytes2 = writer.write(msg2)
+    bytes2_end = writer.size()
     
     msg3 = BasicTypesMessage()
     msg3.small_int = 3
@@ -294,23 +298,25 @@ def test_multiple_corrupted_frames():
     msg3.single_precision = 3.0
     msg3.double_precision = 3.0
     msg3.flag = True
-    msg3.device_id = "DEV3"
-    msg3.description = "Third"
+    msg3.device_id = b"DEV3"
+    msg3.description = b"Third"
     
-    bytes3 = msg3.encode(encoder)
-    total_bytes = encoder.offset
+    bytes3 = writer.write(msg3)
+    
+    buffer = bytearray(writer.data())
+    total_bytes = writer.size()
     
     # Corrupt second frame's CRC
     buffer[bytes2_end - 1] ^= 0xFF
     
     # Parse all frames
-    parser = FrameParserStandard(bytes(buffer[:total_bytes]))
+    reader = ProfileStandardReader(buffer=bytes(buffer[:total_bytes]), get_message_info=get_message_info)
     
-    result1 = parser.next()
+    result1 = reader.next()
     if not result1.valid:
         return False  # First should be valid
     
-    result2 = parser.next()
+    result2 = reader.next()
     return not result2.valid  # Second should be invalid
 
 def main():

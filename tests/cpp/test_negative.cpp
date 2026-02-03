@@ -14,7 +14,7 @@
 #include <vector>
 
 #include "include/standard_messages.hpp"
-#include "../generated/cpp/frame_profiles.hpp"
+#include "../../generated/cpp/frame_profiles.hpp"
 
 using namespace FrameParsers;
 
@@ -55,8 +55,9 @@ bool test_corrupted_crc() {
   buffer[frame_size - 1] ^= 0xFF;
   buffer[frame_size - 2] ^= 0xFF;
   
-  // Try to parse - should fail
-  BufferReader<ProfileStandardConfig> reader(buffer.data(), frame_size);
+  // Try to parse - should fail (need to provide get_message_info for CRC validation)
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+    buffer.data(), frame_size, get_message_info);
   auto result = reader.next();
   
   return !result.valid;  // Expect parsing to fail
@@ -80,7 +81,8 @@ bool test_truncated_frame() {
   size_t truncated_size = frame_size - 5;
   
   // Try to parse - should fail
-  BufferReader<ProfileStandardConfig> reader(buffer.data(), truncated_size);
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+    buffer.data(), truncated_size, get_message_info);
   auto result = reader.next();
   
   return !result.valid;  // Expect parsing to fail
@@ -105,7 +107,8 @@ bool test_invalid_start_byte() {
   buffer[1] = 0xAD;
   
   // Try to parse - should fail
-  BufferReader<ProfileStandardConfig> reader(buffer.data(), frame_size);
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+    buffer.data(), frame_size, get_message_info);
   auto result = reader.next();
   
   return !result.valid;  // Expect parsing to fail
@@ -117,7 +120,8 @@ bool test_invalid_start_byte() {
 bool test_zero_length_buffer() {
   std::vector<uint8_t> buffer(1024);
   
-  BufferReader<ProfileStandardConfig> reader(buffer.data(), 0);
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+    buffer.data(), 0, get_message_info);
   auto result = reader.next();
   
   return !result.valid;  // Expect parsing to fail
@@ -142,7 +146,8 @@ bool test_corrupted_length() {
   buffer[2] = 0xFF;
   
   // Try to parse - should fail due to buffer too small for claimed length
-  BufferReader<ProfileStandardConfig> reader(buffer.data(), frame_size);
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+    buffer.data(), frame_size, get_message_info);
   auto result = reader.next();
   
   return !result.valid;  // Expect parsing to fail
@@ -211,7 +216,8 @@ bool test_multiple_corrupted_frames() {
   
   // Corrupt the second frame (find its start and corrupt its CRC)
   // First, find where second frame starts
-  BufferReader<ProfileStandardConfig> reader(buffer.data(), total_size);
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+    buffer.data(), total_size, get_message_info);
   auto first = reader.next();
   size_t second_start = reader.offset();
   
@@ -224,7 +230,8 @@ bool test_multiple_corrupted_frames() {
   buffer[second_end - 1] ^= 0xFF;
   
   // Now parse all frames - should get first one valid, second invalid
-  BufferReader<ProfileStandardConfig> reader2(buffer.data(), total_size);
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader2(
+    buffer.data(), total_size, get_message_info);
   
   auto result1 = reader2.next();
   if (!result1.valid) return false;  // First should be valid
@@ -234,12 +241,12 @@ bool test_multiple_corrupted_frames() {
 }
 
 /**
- * Test: Sensor profile with corrupted CRC
+ * Test: Bulk profile with corrupted CRC
  */
-bool test_sensor_profile_corrupted_crc() {
-  // Encode a valid message with sensor profile
+bool test_bulk_profile_corrupted_crc() {
+  // Encode a valid message with bulk profile (has CRC)
   std::vector<uint8_t> buffer(1024);
-  BufferWriter<ProfileSensorConfig> writer(buffer.data(), buffer.size());
+  BufferWriter<ProfileBulkConfig> writer(buffer.data(), buffer.size());
   
   auto msg = StandardMessages::get_message(0);
   std::visit([&writer](auto&& m) { writer.write(m); }, msg);
@@ -247,11 +254,12 @@ bool test_sensor_profile_corrupted_crc() {
   size_t frame_size = writer.size();
   if (frame_size < 4) return false;
   
-  // Corrupt the CRC
+  // Corrupt the CRC (last 2 bytes)
   buffer[frame_size - 1] ^= 0xFF;
+  buffer[frame_size - 2] ^= 0xFF;
   
   // Try to parse - should fail
-  BufferReader<ProfileSensorConfig, decltype(&get_message_info)> reader(
+  BufferReader<ProfileBulkConfig, decltype(&get_message_info)> reader(
     buffer.data(), frame_size, get_message_info);
   auto result = reader.next();
   
@@ -297,8 +305,8 @@ int main() {
     test_multiple_corrupted_frames()
   EXPECT_FAIL()
   
-  TEST("Sensor profile: Corrupted CRC")
-    test_sensor_profile_corrupted_crc()
+  TEST("Bulk profile: Corrupted CRC")
+    test_bulk_profile_corrupted_crc()
   EXPECT_FAIL()
   
   printf("\n========================================\n");
