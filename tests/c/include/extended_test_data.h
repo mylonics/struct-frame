@@ -186,7 +186,8 @@ static inline ExtendedTestLargePayloadMessage2 create_large_2(void) {
 }
 
 /* Create ExtendedVariableSingleArray messages with different fill levels */
-static inline ExtendedTestExtendedVariableSingleArray create_ext_var_single(uint64_t timestamp, const uint8_t* data, uint8_t length, uint32_t crc) {
+static inline ExtendedTestExtendedVariableSingleArray create_ext_var_single(uint64_t timestamp, const uint8_t* data,
+                                                                            uint8_t length, uint32_t crc) {
   ExtendedTestExtendedVariableSingleArray msg;
   memset(&msg, 0, sizeof(msg));
   msg.timestamp = timestamp;
@@ -328,18 +329,18 @@ static bool ext_var_single_initialized = false;
 
 static inline void init_ext_var_single_msgs(void) {
   if (ext_var_single_initialized) return;
-  
+
   /* Empty payload (0 elements) */
   ext_var_single_msgs[0].timestamp = 0x0000000000000001ULL;
   ext_var_single_msgs[0].telemetry_data.count = 0;
   ext_var_single_msgs[0].crc = 0x00000001;
-  
+
   /* Single element */
   ext_var_single_msgs[1].timestamp = 0x0000000000000002ULL;
   ext_var_single_msgs[1].telemetry_data.count = 1;
   ext_var_single_msgs[1].telemetry_data.data[0] = 42;
   ext_var_single_msgs[1].crc = 0x00000002;
-  
+
   /* One-third filled (83 elements for max_size=250) */
   ext_var_single_msgs[2].timestamp = 0x0000000000000003ULL;
   ext_var_single_msgs[2].telemetry_data.count = 83;
@@ -347,7 +348,7 @@ static inline void init_ext_var_single_msgs(void) {
     ext_var_single_msgs[2].telemetry_data.data[i] = (uint8_t)i;
   }
   ext_var_single_msgs[2].crc = 0x00000003;
-  
+
   /* One position empty (249 elements) */
   ext_var_single_msgs[3].timestamp = 0x0000000000000004ULL;
   ext_var_single_msgs[3].telemetry_data.count = 249;
@@ -355,7 +356,7 @@ static inline void init_ext_var_single_msgs(void) {
     ext_var_single_msgs[3].telemetry_data.data[i] = (uint8_t)(i % 256);
   }
   ext_var_single_msgs[3].crc = 0x00000004;
-  
+
   /* Full (250 elements) */
   ext_var_single_msgs[4].timestamp = 0x0000000000000005ULL;
   ext_var_single_msgs[4].telemetry_data.count = 250;
@@ -363,7 +364,7 @@ static inline void init_ext_var_single_msgs(void) {
     ext_var_single_msgs[4].telemetry_data.data[i] = (uint8_t)(i % 256);
   }
   ext_var_single_msgs[4].crc = 0x00000005;
-  
+
   ext_var_single_initialized = true;
 }
 
@@ -442,31 +443,36 @@ static inline size_t ext_encode_message(buffer_writer_t* writer, size_t index) {
     case EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MSG_ID: {
       const ExtendedTestExtendedIdMessage10* msg = get_message_ext_10();
       return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
-                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MAGIC1, EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MAGIC2);
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MAGIC1,
+                                 EXTENDED_TEST_EXTENDED_ID_MESSAGE10_MAGIC2);
     }
     case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MSG_ID: {
       const ExtendedTestLargePayloadMessage1* msg = get_message_large_1();
       return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
-                                 EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MAGIC1, EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MAGIC2);
+                                 EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MAGIC1,
+                                 EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE1_MAGIC2);
     }
     case EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MSG_ID: {
       const ExtendedTestLargePayloadMessage2* msg = get_message_large_2();
       return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
-                                 EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAGIC1, EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAGIC2);
+                                 EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAGIC1,
+                                 EXTENDED_TEST_LARGE_PAYLOAD_MESSAGE2_MAGIC2);
     }
     case EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MSG_ID: {
       const ExtendedTestExtendedVariableSingleArray* msg = get_ext_var_single_msg(ext_var_single_encode_idx++);
-      /* Variable message: use pack_variable if profile has length field */
-      #ifdef EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_IS_VARIABLE
+/* Variable message: use pack_variable if profile has length field */
+#ifdef EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_IS_VARIABLE
       if (writer->config->payload.has_length) {
         static uint8_t pack_buffer[EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAX_SIZE];
         size_t packed_size = ExtendedTestExtendedVariableSingleArray_serialize_variable(msg, pack_buffer);
         return buffer_writer_write(writer, low_msg_id, pack_buffer, packed_size, 0, 0, 0, pkg_id,
-                                   EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC1, EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC2);
+                                   EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC1,
+                                   EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC2);
       }
-      #endif
+#endif
       return buffer_writer_write(writer, low_msg_id, (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, pkg_id,
-                                 EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC1, EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC2);
+                                 EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC1,
+                                 EXTENDED_TEST_EXTENDED_VARIABLE_SINGLE_ARRAY_MAGIC2);
     }
     default:
       return 0;
@@ -569,7 +575,7 @@ static inline bool ext_validate_message(uint16_t msg_id, const uint8_t* data, si
  * ============================================================================ */
 
 static inline bool ext_supports_format(const char* format) {
-  return strcmp(format, "profile_bulk") == 0 || strcmp(format, "profile_network") == 0;
+  return strcmp(format, "bulk") == 0 || strcmp(format, "network") == 0;
 }
 
 /* ============================================================================
@@ -579,7 +585,7 @@ static inline bool ext_supports_format(const char* format) {
 static const test_config_t ext_test_config = {
     .message_count = EXT_MESSAGE_COUNT,
     .buffer_size = 8192, /* Larger for extended payloads */
-    .formats_help = "profile_bulk, profile_network",
+    .formats_help = "bulk, network",
     .test_name = "C Extended",
     .get_msg_id_order = ext_get_msg_id_order,
     .encode_message = ext_encode_message,

@@ -162,7 +162,7 @@ static inline void var_flag_reset_state(void) {
  * Supports format check
  * ============================================================================ */
 
-static inline bool var_flag_supports_format(const char* format) { return strcmp(format, "profile_bulk") == 0; }
+static inline bool var_flag_supports_format(const char* format) { return strcmp(format, "bulk") == 0; }
 
 /* ============================================================================
  * Test configuration
@@ -171,8 +171,8 @@ static inline bool var_flag_supports_format(const char* format) { return strcmp(
 static const test_config_t var_flag_test_config = {
     .message_count = VAR_FLAG_MESSAGE_COUNT,
     .buffer_size = 4096,
-    .formats_help = "profile_bulk",
-    .test_name = "Variable Flag C",
+    .formats_help = "bulk",
+    .test_name = "Variable C",
     .get_msg_id_order = var_flag_get_msg_id_order,
     .encode_message = var_flag_encode_message,
     .validate_message = var_flag_validate_message,

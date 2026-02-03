@@ -1,27 +1,26 @@
 /**
  * Test entry point for standard message tests (C#).
- *
- * Usage:
- *   dotnet run -- encode <frame_format> <output_file>
- *   dotnet run -- decode <frame_format> <input_file>
- *
- * Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
  */
 
 using System;
+using StructFrame.SerializationTest;
 using StructFrameTests;
 
 class TestStandard
 {
+    private const string TEST_NAME = "StandardMessages";
+    private const string PROFILES = "standard, sensor, ipc, bulk, network";
+
     public static int Main(string[] args)
     {
-        return TestCodec.RunTestMain(
+        return TestHarness.Run(
             args,
-            StandardTestData.Config.SupportsFormat,
-            StandardTestData.Config.FORMATS_HELP,
-            StandardTestData.Config.TEST_NAME,
-            TestCodec.EncodeStandardMessages,
-            TestCodec.DecodeStandardMessages
+            StandardMessages.MESSAGE_COUNT,
+            StandardMessages.GetMessage,
+            StandardMessages.CheckMessage,
+            (msgId) => MessageDefinitions.GetMessageInfo(msgId),
+            TEST_NAME,
+            PROFILES
         );
     }
 }

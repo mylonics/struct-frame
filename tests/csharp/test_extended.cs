@@ -1,27 +1,26 @@
 /**
- * Test entry point for extended message ID and payload tests (C#).
- *
- * Usage:
- *   dotnet run -- encode <frame_format> <output_file>
- *   dotnet run -- decode <frame_format> <input_file>
- *
- * Frame formats (extended profiles only): profile_bulk, profile_network
+ * Test entry point for extended message tests (C#).
  */
 
 using System;
+using StructFrame.ExtendedTest;
 using StructFrameTests;
 
 class TestExtended
 {
+    private const string TEST_NAME = "ExtendedMessages";
+    private const string PROFILES = "bulk, network";
+
     public static int Main(string[] args)
     {
-        return TestCodec.RunTestMain(
+        return TestHarness.Run(
             args,
-            ExtendedTestData.Config.SupportsFormat,
-            ExtendedTestData.Config.FORMATS_HELP,
-            ExtendedTestData.Config.TEST_NAME,
-            TestCodec.EncodeExtendedMessages,
-            TestCodec.DecodeExtendedMessages
+            ExtendedMessages.MESSAGE_COUNT,
+            ExtendedMessages.GetMessage,
+            ExtendedMessages.CheckMessage,
+            (msgId) => MessageDefinitions.GetMessageInfo(msgId),
+            TEST_NAME,
+            PROFILES
         );
     }
 }

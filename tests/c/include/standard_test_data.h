@@ -452,9 +452,9 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
  * ============================================================================ */
 
 static inline bool std_supports_format(const char* format) {
-  return strcmp(format, "profile_standard") == 0 || strcmp(format, "profile_sensor") == 0 ||
-         strcmp(format, "profile_ipc") == 0 || strcmp(format, "profile_bulk") == 0 ||
-         strcmp(format, "profile_network") == 0;
+  return strcmp(format, "standard") == 0 || strcmp(format, "sensor") == 0 ||
+         strcmp(format, "ipc") == 0 || strcmp(format, "bulk") == 0 ||
+         strcmp(format, "network") == 0;
 }
 
 /* ============================================================================
@@ -464,7 +464,7 @@ static inline bool std_supports_format(const char* format) {
 static const test_config_t std_test_config = {
     .message_count = STD_MESSAGE_COUNT,
     .buffer_size = 4096,
-    .formats_help = "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network",
+    .formats_help = "standard, sensor, ipc, bulk, network",
     .test_name = "C",
     .get_msg_id_order = std_get_msg_id_order,
     .encode_message = std_encode_message,
