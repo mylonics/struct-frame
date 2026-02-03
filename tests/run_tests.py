@@ -632,7 +632,8 @@ class TestRunner:
         # C/C++: compile test_standard and test_extended executables
         if lang.id in ("c", "cpp"):
             success = True
-            for runner in ["test_standard", "test_extended", "test_variable_flag"]:
+            for runner in ["test_standard", "test_extended", "test_variable_flag", 
+                          "test_profiling", "test_profiling_generated"]:
                 source = test_dir / f"{runner}{lang.source_ext}"
                 if not source.exists():
                     continue
@@ -1127,6 +1128,45 @@ class TestRunner:
         
         return all_match
     
+    def run_profiling_tests(self) -> bool:
+        """Run all C++ profiling tests (barebones, generic, and generated)."""
+        cpp_lang = self.languages.get("cpp")
+        if not cpp_lang or "cpp" in self.skipped_languages:
+            print("  [SKIP] C++ not available for profiling tests")
+            return True
+        
+        build_dir = self.project_root / cpp_lang.build_dir
+        all_success = True
+        
+        # List of profiling tests to run
+        profiling_tests = [
+            ("test_profiling", "Struct-Frame-Generic (hardcoded messages with struct-frame)"),
+            ("test_profiling_generated", "Struct-Frame-Generated (all StandardMessages)")
+        ]
+        
+        for exe_name, description in profiling_tests:
+            exe_path = build_dir / f"{exe_name}{cpp_lang.exe_ext}"
+            
+            if not exe_path.exists():
+                print(f"\n  [SKIP] {description}: executable not found")
+                continue
+            
+            print(f"\n  Running {description}...")
+            success, stdout, stderr = self.run_cmd(str(exe_path), timeout=120)
+            
+            if stdout:
+                # Print the profiling output (it's nicely formatted)
+                for line in stdout.strip().split('\n'):
+                    print(f"  {line}")
+            
+            if stderr and not success:
+                print(f"  {Colors.fail_tag()} Error: {stderr}")
+            
+            if not success:
+                all_success = False
+        
+        return all_success
+    
     def run_standalone_tests(self) -> bool:
         """Run standalone Python test scripts."""
         test_scripts = list(self.tests_dir.glob("test_*.py"))
@@ -1247,7 +1287,8 @@ class TestRunner:
     def run(self, generate_only: bool = False, check_tools_only: bool = False,
             compile_only: bool = False, skip_clean: bool = False,
             profile_filter: Optional[List[str]] = None,
-            parallel_compile: bool = True) -> bool:
+            parallel_compile: bool = True,
+            profiling_only: bool = False) -> bool:
         """Run the complete test suite.
         
         Args:
@@ -1257,6 +1298,7 @@ class TestRunner:
             skip_clean: Skip the clean phase.
             profile_filter: Only test specific profiles (e.g., ['ProfileStandard']).
             parallel_compile: Use parallel compilation (default True).
+            profiling_only: Only run profiling tests (skips standard/extended/variable tests).
         """
         print(Colors.bold("Starting struct-frame Test Suite"))
         print(f"Project root: {self.project_root}")
@@ -1323,24 +1365,38 @@ class TestRunner:
                 return success
             
             # Phase 5: Standard tests
-            if profiles_to_test:
+            if not profiling_only and profiles_to_test:
                 with self.timed_phase("Standard Tests"):
                     self.run_tests("standard", profiles_to_test, STANDARD_MESSAGE_COUNT, "test_standard")
+            elif profiling_only:
+                print(f"\n{Colors.yellow('[SKIP]')} Standard tests (--profiling)")
             
             # Phase 6: Extended tests
-            if extended_profiles_to_test:
+            if not profiling_only and extended_profiles_to_test:
                 with self.timed_phase("Extended Tests"):
                     self.run_tests("extended", extended_profiles_to_test, EXTENDED_MESSAGE_COUNT, "test_extended")
+            elif profiling_only:
+                print(f"\n{Colors.yellow('[SKIP]')} Extended tests (--profiling)")
 
             # Phase 7: Variable tests (only ProfileBulk, 2 messages)
-            with self.timed_phase("Variable Tests"):
-                self.run_tests("variable", [("bulk", "ProfileBulk")], 2, "test_variable_flag")
-                # Verify truncation by checking binary file sizes
-                self.verify_variable_truncation()
+            if not profiling_only:
+                with self.timed_phase("Variable Tests"):
+                    self.run_tests("variable", [("bulk", "ProfileBulk")], 2, "test_variable_flag")
+                    # Verify truncation by checking binary file sizes
+                    self.verify_variable_truncation()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Variable tests (--profiling)")
             
-            # Phase 8: Standalone tests
-            with self.timed_phase("Standalone Tests"):
-                self.run_standalone_tests()
+            # Phase 8: Profiling tests (packed vs unpacked performance)
+            with self.timed_phase("Profiling Tests"):
+                self.run_profiling_tests()
+            
+            # Phase 9: Standalone tests
+            if not profiling_only:
+                with self.timed_phase("Standalone Tests"):
+                    self.run_standalone_tests()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Standalone tests (--profiling)")
             
             # Summary
             success = self.print_summary()
@@ -1374,6 +1430,7 @@ Examples:
   python run_tests.py --only-compile       # Stop after compilation
   python run_tests.py --skip-lang ts       # Skip TypeScript tests
   python run_tests.py --no-color           # Disable colored output
+  python run_tests.py --profiling          # Run only profiling tests
 """
     )
     
@@ -1397,6 +1454,8 @@ Examples:
                         help="Disable parallel compilation")
     parser.add_argument("--no-color", action="store_true", 
                         help="Disable colored output")
+    parser.add_argument("--profiling", action="store_true", 
+                        help="Run only time profiling tests (skips standard/extended/variable tests)")
     
     args = parser.parse_args()
     
@@ -1420,7 +1479,8 @@ Examples:
         compile_only=args.only_compile,
         skip_clean=args.no_clean,
         profile_filter=args.profiles,
-        parallel_compile=not args.no_parallel
+        parallel_compile=not args.no_parallel,
+        profiling_only=args.profiling
     )
     
     return 0 if success else 1

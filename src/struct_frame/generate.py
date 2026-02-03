@@ -13,6 +13,8 @@ from struct_frame import FilePyGen
 from struct_frame import FileGqlGen
 from struct_frame import FileCppGen
 from struct_frame import FileCSharpGen
+from struct_frame import TestCppGen
+from struct_frame import TestPyGen
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -1062,6 +1064,8 @@ parser.add_argument('--force', action='store_true',
                     help='Force regeneration even if hash matches previous generation')
 parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
                     help='Path to store the generation hash file (default: first output path)')
+parser.add_argument('--generate_tests', action='store_true',
+                    help='Generate test code with dummy values for all messages (round-trip encode/decode verification)')
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -1322,7 +1326,7 @@ def generateJsFileStrings(path, equality=False):
     return out
 
 
-def generatePyFileStrings(path, equality=False):
+def generatePyFileStrings(path, equality=False, generate_tests=False):
     out = {}
     
     # Create package structure: struct_frame/generated/
@@ -1341,16 +1345,28 @@ def generatePyFileStrings(path, equality=False):
         name = os.path.join(generated_path, value.name + ".py")
         data = ''.join(FilePyGen.generate(value, equality=equality))
         out[name] = data
+        
+        # Generate test file if requested
+        if generate_tests:
+            test_name = os.path.join(generated_path, value.name + "_tests.py")
+            test_data = ''.join(TestPyGen.generate(value))
+            out[test_name] = test_data
     
     return out
 
 
-def generateCppFileStrings(path, equality=False):
+def generateCppFileStrings(path, equality=False, generate_tests=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.hpp")
         data = ''.join(FileCppGen.generate(value, equality=equality))
         out[name] = data
+        
+        # Generate test file if requested
+        if generate_tests:
+            test_name = os.path.join(path, value.name + ".tests.hpp")
+            test_data = ''.join(TestCppGen.generate(value))
+            out[test_name] = test_data
     return out
 
 
@@ -1479,10 +1495,10 @@ def main():
         files.update(generateJsFileStrings(args.js_path[0], equality=args.equality))
 
     if (args.build_py):
-        files.update(generatePyFileStrings(args.py_path[0], equality=args.equality))
+        files.update(generatePyFileStrings(args.py_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_cpp):
-        files.update(generateCppFileStrings(args.cpp_path[0], equality=args.equality))
+        files.update(generateCppFileStrings(args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_csharp):
         files.update(generateCSharpFileStrings(args.csharp_path[0], 
