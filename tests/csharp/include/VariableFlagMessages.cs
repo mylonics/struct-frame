@@ -98,7 +98,7 @@ namespace StructFrameTests
 
         public static class Config
         {
-            public const int MESSAGE_COUNT = VariableFlagTestData.MESSAGE_COUNT;
+            public const int MESSAGE_COUNT = VariableFlagMessages.MESSAGE_COUNT;
             public const int BUFFER_SIZE = 4096;
             public const string FORMATS_HELP = "bulk";
             public const string TEST_NAME = "Variable C#";

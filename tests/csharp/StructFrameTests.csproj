@@ -12,9 +12,9 @@
   <ItemGroup>
     <!-- Test infrastructure -->
     <Compile Include="include\TestCodec.cs" />
-    <Compile Include="include\StandardTestData.cs" />
-    <Compile Include="include\ExtendedTestData.cs" />
-    <Compile Include="include\VariableFlagTestData.cs" />
+    <Compile Include="include\StandardMessages.cs" />
+    <Compile Include="include\ExtendedMessages.cs" />
+    <Compile Include="include\VariableFlagMessages.cs" />
     
     <!-- Test entry points -->
     <Compile Include="TestRunner.cs" />
