@@ -250,6 +250,7 @@ class TestRunner:
             "variable_encode": {},
             "variable_validate": {},
             "variable_decode": {},
+            "negative": {},
         }
     
     def _init_languages(self) -> Dict[str, Language]:
@@ -633,7 +634,7 @@ class TestRunner:
         if lang.id in ("c", "cpp"):
             success = True
             for runner in ["test_standard", "test_extended", "test_variable_flag", 
-                          "test_profiling", "test_profiling_generated"]:
+                          "test_profiling", "test_profiling_generated", "test_negative"]:
                 source = test_dir / f"{runner}{lang.source_ext}"
                 if not source.exists():
                     continue
@@ -1187,6 +1188,65 @@ class TestRunner:
         
         return all_success
     
+    def run_negative_tests(self) -> bool:
+        """Run negative tests (error handling tests)."""
+        self.print_section("NEGATIVE TESTS")
+        
+        print("  Testing error handling for invalid frames:\n")
+        
+        all_success = True
+        for lang in self.get_testable_languages():
+            # Skip languages without negative tests
+            if lang.id == "ts" or lang.id == "js" or lang.id == "csharp":
+                continue
+            
+            test_name = f"{lang.name} negative tests"
+            
+            if lang.id in ("c", "cpp"):
+                # C/C++: run compiled executable
+                build_dir = self.project_root / lang.build_dir
+                test_exe = build_dir / f"test_negative{lang.exe_ext}"
+                
+                if not test_exe.exists():
+                    print(f"  {Colors.warn_tag()} {test_name}: test_negative executable not found")
+                    continue
+                
+                success, stdout, stderr = self.run_cmd(str(test_exe), timeout=30)
+                
+            elif lang.id == "py":
+                # Python: run test script directly
+                test_script = self.project_root / lang.test_dir / "test_negative.py"
+                
+                if not test_script.exists():
+                    print(f"  {Colors.warn_tag()} {test_name}: test_negative.py not found")
+                    continue
+                
+                success, stdout, stderr = self.run_cmd(f'python "{test_script}"', timeout=30)
+            
+            else:
+                continue
+            
+            # Print output
+            if stdout:
+                print(stdout)
+            if stderr and not success:
+                print(stderr)
+            
+            # Record result
+            self.results["negative"][lang.id] = success
+            
+            if not success:
+                all_success = False
+                self.failures.append({
+                    "phase": "Negative Tests",
+                    "language": lang.name,
+                    "profile": "",
+                    "reason": "Error handling tests failed"
+                })
+        
+        return all_success
+    
+    
     # =========================================================================
     # Summary
     # =========================================================================
@@ -1226,6 +1286,10 @@ class TestRunner:
         var_decode_total = len(self.results["variable_decode"])
         var_decode_passed = sum(1 for v in self.results["variable_decode"].values() if v)
         
+        # Negative tests
+        neg_total = len(self.results.get("negative", {}))
+        neg_passed = sum(1 for v in self.results.get("negative", {}).values() if v)
+        
         # Helper to colorize counts
         def colorize_count(passed: int, total: int) -> str:
             if total == 0:
@@ -1246,15 +1310,18 @@ class TestRunner:
         print(f"  Variable Flag Encode:  {colorize_count(var_encode_passed, var_encode_total)}")
         print(f"  Variable Flag Validate:{colorize_count(var_validate_passed, var_validate_total)}")
         print(f"  Variable Flag Decode:  {colorize_count(var_decode_passed, var_decode_total)}")
+        print(f"  Negative Tests:        {colorize_count(neg_passed, neg_total)}")
         
         total = (gen_total + comp_total + 
                  std_encode_total + std_validate_total + std_decode_total + 
                  ext_encode_total + ext_validate_total + ext_decode_total +
-                 var_encode_total + var_validate_total + var_decode_total)
+                 var_encode_total + var_validate_total + var_decode_total +
+                 neg_total)
         passed = (gen_passed + comp_passed + 
                   std_encode_passed + std_validate_passed + std_decode_passed + 
                   ext_encode_passed + ext_validate_passed + ext_decode_passed +
-                  var_encode_passed + var_validate_passed + var_decode_passed)
+                  var_encode_passed + var_validate_passed + var_decode_passed +
+                  neg_passed)
         
         print(f"\n  Total: {colorize_count(passed, total)} tests passed")
         
@@ -1391,7 +1458,14 @@ class TestRunner:
             with self.timed_phase("Profiling Tests"):
                 self.run_profiling_tests()
             
-            # Phase 9: Standalone tests
+            # Phase 9: Negative tests (error handling)
+            if not profiling_only:
+                with self.timed_phase("Negative Tests"):
+                    self.run_negative_tests()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Negative tests (--profiling)")
+            
+            # Phase 10: Standalone tests
             if not profiling_only:
                 with self.timed_phase("Standalone Tests"):
                     self.run_standalone_tests()
