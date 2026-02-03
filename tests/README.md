@@ -1,6 +1,6 @@
 # struct-frame Test Suite
 
-Comprehensive test suite for struct-frame that validates code generation and serialization/deserialization across all supported languages (C, C++, Python, TypeScript, and GraphQL).
+Comprehensive test suite for struct-frame that validates code generation and serialization/deserialization across all supported languages (C, C++, Python, TypeScript, JavaScript, C#, and GraphQL).
 
 ## Quick Start
 
@@ -18,174 +18,122 @@ python test_all.py
 
 ## Test Output Format
 
-The test runner provides clean, organized output:
-
-```
-============================================================
-TOOL AVAILABILITY CHECK
-============================================================
-
-  [OK] C
-      Compiler:    [OK] gcc (gcc 6.3.0)
-
-  [OK] C++
-      Compiler:    [OK] g++ (g++ 6.3.0)
-
-  [OK] Python
-      Interpreter: [OK] python (Python 3.11.8)
-
-  [OK] TypeScript
-      Compiler:    [OK] npx tsc (Version 5.7.3)
-      Interpreter: [OK] node (v24.4.1)
-
-  [OK] GraphQL
-      (generation only)
-
-============================================================
-CODE GENERATION
-============================================================
-
-           C: PASS
-         C++: PASS
-      Python: PASS
-  TypeScript: PASS
-     GraphQL: PASS
-
-============================================================
-COMPILATION (all test files)
-============================================================
-
-           C: PASS
-         C++: PASS
-  TypeScript: PASS
-
-============================================================
-TEST EXECUTION
-============================================================
-
-[TEST] Tests basic integer, float, and boolean types
-
-           C: PASS
-         C++: PASS
-      Python: PASS
-  TypeScript: PASS
-```
+The test runner provides clean, organized output showing code generation, compilation, and test execution results for each language and frame profile.
 
 ## Cross-Platform Compatibility Matrix
 
-The test suite includes cross-platform serialization tests that produce a compatibility matrix:
+The test suite includes cross-platform serialization tests. Each language can encode messages, and then any language can decode and validate them, producing a compatibility matrix.
 
+## Test Architecture
+
+The test suite follows a consistent **three-component pattern** across all languages:
+
+### 1. Entry Point (`test_<suite>.*`)
+Minimal main function that configures and runs the test:
 ```
-Compatibility Matrix:
-Encoder\Decoder     C          C++        Python    TypeScript
----------------------------------------------------------------
-C                  OK          OK          OK         FAIL
-C++               FAIL         OK         FAIL        FAIL
-Python             OK          OK          OK         FAIL
-TypeScript        FAIL         OK         FAIL        FAIL
-
-Success rate: 8/16 (50%)
+test_standard.c     →  Runs standard message tests
+test_extended.c     →  Runs extended message ID tests  
+test_variable_flag.c →  Runs variable-length truncation tests
 ```
 
-## Test Types
+### 2. Test Data (`include/*_test_data.*`)
+Contains three logical sections:
+- **Message Definitions**: Hardcoded test messages with known values
+- **Encoder**: Functions to serialize messages into a byte stream
+- **Validator**: Functions to deserialize and compare with expected values
 
-### 1. Basic Types Test
-**Purpose**: Validates serialization and deserialization of primitive data types
+### 3. Test Codec (`include/test_codec.*`)
+Shared infrastructure for all test suites:
+- Frame profile configuration
+- File I/O utilities
+- Command-line parsing
+- Encode/decode orchestration
 
-**What it tests**:
-- Integer types: int8, int16, int32, int64, uint8, uint16, uint32, uint64
-- Floating point types: float32, float64
-- Boolean type: bool
-- String types: fixed-size strings
+## Test Suites
 
-**Files**:
-- C: `tests/c/test_basic_types.c`
-- C++: `tests/cpp/test_basic_types.cpp`
-- Python: `tests/py/test_basic_types.py`
-- TypeScript: `tests/ts/test_basic_types.ts`
-
-### 2. Array Operations Test
-**Purpose**: Validates array serialization for both fixed and bounded arrays
+### 1. Standard Messages Test (`test_standard.*`)
+**Purpose**: Validates serialization of common message types across all frame profiles.
 
 **What it tests**:
-- Fixed arrays: Arrays with a predetermined, unchanging size
-- Bounded arrays: Arrays with variable count up to a maximum size
-- Array element types: primitives, strings, enums, and nested messages
+- `SerializationTestMessage`: Magic numbers, strings, floats, bools, arrays
+- `BasicTypesMessage`: All integer sizes (8/16/32/64-bit signed/unsigned), floats, doubles
+- `UnionTestMessage`: Discriminated unions with nested message payloads
+- `VariableSingleArray`: Variable-length arrays with different fill levels
+- `Message`: Simple message with severity enum
 
-**Files**:
-- C: `tests/c/test_arrays.c`
-- C++: `tests/cpp/test_arrays.cpp`
-- Python: `tests/py/test_arrays.py`
-- TypeScript: `tests/ts/test_arrays.ts`
+**Frame Profiles**: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
 
-### 3. Cross-Platform Serialization Test
-**Purpose**: Validates data serialization format consistency
+### 2. Extended Messages Test (`test_extended.*`)
+**Purpose**: Validates message IDs greater than 255 (requiring 2-byte encoding).
 
 **What it tests**:
-- Binary format compatibility
-- Correct encoding/decoding of message framing
-- Data integrity
+- Extended message IDs (256-4095)
+- Large payload messages (up to 280 bytes)
+- Package ID support
 
-**Files**:
-- C: `tests/c/test_cross_platform_serialization.c`
-- C++: `tests/cpp/test_cross_platform_serialization.cpp`
-- Python: `tests/py/test_cross_platform_serialization.py`
-- TypeScript: `tests/ts/test_cross_platform_serialization.ts`
+**Frame Profiles**: profile_bulk, profile_network (profiles that support pkg_id)
 
-### 4. Cross-Platform Deserialization Test
-**Purpose**: Ensures data serialized in one language can be deserialized in another
+### 3. Variable Flag Test (`test_variable_flag.*`)
+**Purpose**: Validates the `variable=true` option truncates unused array space.
 
 **What it tests**:
-- Binary format compatibility across language implementations
-- Correct decoding across language boundaries
-- Produces compatibility matrix
+- Non-variable messages: Full struct size transmitted
+- Variable messages: Only used array elements transmitted
 
-**Files**:
-- C: `tests/c/test_cross_platform_deserialization.c`
-- C++: `tests/cpp/test_cross_platform_deserialization.cpp`
-- Python: `tests/py/test_cross_platform_deserialization.py`
-- TypeScript: `tests/ts/test_cross_platform_deserialization.ts`
+**Frame Profiles**: profile_bulk
 
 ## Test Organization
 
 ```
 tests/
-├── run_tests.py              # Main test runner entry point
-├── test_config.json          # Test configuration (languages, tests, paths)
-├── expected_values.json      # Expected values for cross-platform tests
+├── run_tests.py              # Main test runner
 ├── README.md                 # This file
-├── runner/                   # Modular test runner components
-│   ├── __init__.py
-│   ├── base.py               # Base utilities (logging, config, commands)
-│   ├── tool_checker.py       # Tool availability checking
-│   ├── code_generator.py     # Code generation from proto files
-│   ├── compiler.py           # Compilation for C, C++, TypeScript
-│   ├── test_executor.py      # Test execution
-│   ├── output_formatter.py   # Result formatting
-│   ├── plugins.py            # Test plugins (StandardTestPlugin, CrossPlatformMatrixPlugin)
-│   └── runner.py             # Main ConfigDrivenTestRunner
 ├── proto/                    # Proto definitions for tests
-│   ├── basic_types.proto
-│   ├── comprehensive_arrays.proto
-│   ├── nested_messages.proto
-│   └── serialization_test.proto
+│   ├── test_messages.proto       # Standard test messages
+│   ├── pkg_test_messages.proto   # Package ID test messages
+│   └── extended_messages.proto   # Extended message ID tests
 ├── c/                        # C language tests
-│   └── build/                # Compiled C executables
-├── cpp/                      # C++ language tests
-│   └── build/                # Compiled C++ executables
-├── py/                       # Python tests
-├── ts/                       # TypeScript tests
-│   ├── package.json          # Node.js dependencies
-│   ├── tsconfig.json         # TypeScript configuration
-│   ├── node_modules/         # Node.js modules
-│   └── build/                # Compiled JS files
+│   ├── test_standard.c           # Entry point
+│   ├── test_extended.c           # Entry point
+│   ├── test_variable_flag.c      # Entry point
+│   └── include/
+│       ├── standard_test_data.h      # Message definitions + encode/validate
+│       ├── extended_test_data.h      # Extended test data
+│       ├── variable_flag_test_data.h # Variable flag test data
+│       └── test_codec.h              # Shared codec infrastructure
+├── cpp/                      # C++ language tests (same structure)
+├── py/                       # Python tests (same structure)
+├── ts/                       # TypeScript tests (same structure)
+├── js/                       # JavaScript tests (same structure)
+├── csharp/                   # C# tests (same structure)
 └── generated/                # Generated code output
-    ├── c/                    # Generated C headers
-    ├── cpp/                  # Generated C++ headers
-    ├── py/                   # Generated Python modules
-    ├── ts/                   # Generated TypeScript modules
-    └── gql/                  # Generated GraphQL schemas
+    ├── c/
+    ├── cpp/
+    ├── py/
+    ├── ts/
+    ├── js/
+    ├── csharp/
+    └── gql/
 ```
+
+## How Tests Work
+
+### Encode Phase
+1. Create hardcoded test messages with known values
+2. Serialize messages in order using a BufferWriter
+3. Write encoded byte stream to a file
+
+### Decode Phase
+1. Read encoded byte stream from file
+2. Parse frames using an AccumulatingReader
+3. Deserialize each message and compare with expected values
+4. Report PASS if all messages match, FAIL otherwise
+
+### Cross-Platform Validation
+The test runner orchestrates encode/decode across languages:
+1. Language A encodes messages to a file
+2. Language B decodes that file and validates
+3. Matrix shows which combinations work
 
 ## Command Line Options
 
@@ -193,20 +141,23 @@ tests/
 python tests/run_tests.py [options]
 
 Options:
-  --config CONFIG     Path to test configuration file (default: tests/test_config.json)
   --verbose, -v       Enable verbose output for debugging
   --skip-lang LANG    Skip specific language (can be used multiple times)
-  --only-generate     Only run code generation, skip tests
-  --check-tools       Only check tool availability, don't run tests
-  --clean             Clean all generated and compiled test files
+  --only-generate     Only run code generation, skip compilation and tests
+  --only-compile      Only run code generation and compilation, skip tests
+  --check-tools       Only check tool availability
+  --no-clean          Skip cleaning generated files (faster iteration)
+  --profile NAME      Only test specific profile (e.g., ProfileStandard)
+  --no-parallel       Disable parallel compilation
+  --no-color          Disable colored output
 
 Examples:
-  python tests/run_tests.py                    # Run all tests
-  python tests/run_tests.py --clean            # Clean generated files
-  python tests/run_tests.py --only-generate    # Just generate code
-  python tests/run_tests.py --skip-lang ts     # Skip TypeScript tests
-  python tests/run_tests.py --verbose          # Show detailed output
-  python tests/run_tests.py --check-tools      # Check available tools
+  python tests/run_tests.py                      # Run all tests
+  python tests/run_tests.py --no-clean           # Skip cleaning for faster iteration
+  python tests/run_tests.py --profile ProfileStandard  # Test only one profile
+  python tests/run_tests.py --only-compile       # Stop after compilation
+  python tests/run_tests.py --skip-lang ts       # Skip TypeScript tests
+  python tests/run_tests.py --verbose            # Show detailed output
 ```
 
 ## Prerequisites
@@ -220,75 +171,32 @@ pip install proto-schema-parser
 - GCC compiler
 
 **For C++ tests**:
-- G++ compiler with C++14 support
+- G++ compiler with C++20 support
 
 **For TypeScript tests**:
 - Node.js
 - Install dependencies: `cd tests/ts && npm install`
 
-## Configuration
+**For C# tests**:
+- .NET SDK
 
-Tests are configured via `test_config.json`. Key sections:
+## Adding a New Test Suite
 
-- **languages**: Defines each language's compiler, interpreter, flags, and paths
-- **test_suites**: Defines test cases with names, descriptions, and plugins
-- **proto_files**: Proto files to generate code from
-
-### Adding a New Language
-
-1. Add language configuration to `test_config.json` under `languages`
-2. Define code generation flags, compilation settings, and execution interpreter
-3. Create test files following the naming convention
-
-### Adding a New Test
-
-1. Add a new entry to `test_suites` in `test_config.json`
-2. Create test files for each language: `test_<name>.<ext>`
-3. Use the standard test output format:
-   - Print `[TEST START] <Language> <Test Name>`
-   - Print `[TEST END] <Language> <Test Name>: PASS` or `FAIL`
-4. Return exit code 0 on success, 1 on failure
+1. Create proto definitions in `tests/proto/`
+2. For each language, create:
+   - Entry point: `test_<name>.<ext>`
+   - Test data: `include/<name>_test_data.<ext>` with:
+     - Message creation functions
+     - Message arrays
+     - Encoder functions
+     - Validator functions
+     - Test configuration
+3. Use the shared `test_codec` infrastructure for encode/decode orchestration
+4. Use the standard test output format:
+   - Print `[TEST START] <Language> <Profile> <Mode>`
+   - Print `[TEST END] <Language> <Profile> <Mode>: PASS` or `FAIL`
+5. Return exit code 0 on success, 1 on failure
 
 ## Debugging Failed Tests
 
-When a test fails, it prints detailed failure information:
-
-```
-============================================================
-FAILURE DETAILS: <Description>
-============================================================
-
-Expected Values:
-  field1: value1
-  field2: value2
-
-Actual Values:
-  field1: wrong_value1
-  field2: wrong_value2
-
-Raw Data (N bytes):
-  Hex: deadbeef...
-============================================================
-```
-
-Use `--verbose` flag to see all command output including successful operations.
-
-## Test Runner Architecture
-
-The test runner uses a modular, plugin-based architecture:
-
-```
-ConfigDrivenTestRunner
-├── ToolChecker        # Verifies compilers/interpreters are available
-├── CodeGenerator      # Generates code from proto files
-├── Compiler           # Compiles C, C++, TypeScript
-├── TestExecutor       # Runs test suites with plugins
-│   ├── StandardTestPlugin           # Standard test execution
-│   └── CrossPlatformMatrixPlugin    # Cross-platform compatibility matrix
-└── OutputFormatter    # Formats and prints results
-```
-
-This architecture allows:
-- Easy addition of new languages via configuration
-- Custom test behavior via plugins
-- Clean separation of concerns
+When a test fails, it prints detailed failure information including hex dump of the encoded data. Use `--verbose` flag to see all command output including successful operations.
