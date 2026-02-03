@@ -221,7 +221,7 @@ int main() {
     read_offset = 0;
     for (size_t i = 0; i < ITERATIONS; i++) {
         unpack_unpacked(unpacked_buffer + read_offset, decoded_unpacked[i]);
-        read_offset += sizeof(PackedMessage);  // Wire format size
+        read_offset += sizeof(PackedMessage);  // Packed size = wire format size
     }
     auto end_unpacked_decode = Clock::now();
     Duration unpacked_decode_time = end_unpacked_decode - start_unpacked_decode;
