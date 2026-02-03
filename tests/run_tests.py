@@ -1196,14 +1196,13 @@ class TestRunner:
         
         all_success = True
         for lang in self.get_testable_languages():
-            # Skip languages without negative tests
-            if lang.id in ("c", "ts", "js", "csharp"):
-                continue
-            
             test_name = f"{lang.name} negative tests"
+            success = False
+            stdout = ""
+            stderr = ""
             
-            if lang.id == "cpp":
-                # C++: run compiled executable
+            if lang.id in ("c", "cpp"):
+                # C/C++: run compiled executable
                 build_dir = self.project_root / lang.build_dir
                 test_exe = build_dir / f"test_negative{lang.exe_ext}"
                 
@@ -1222,6 +1221,43 @@ class TestRunner:
                     continue
                 
                 success, stdout, stderr = self.run_cmd(f'python "{test_script}"', timeout=30)
+                
+            elif lang.id == "ts":
+                # TypeScript: run compiled test
+                test_script = self.project_root / lang.test_dir / "test_negative.ts"
+                
+                if not test_script.exists():
+                    print(f"  {Colors.warn_tag()} {test_name}: test_negative.ts not found")
+                    continue
+                
+                # TypeScript uses npx ts-node or node with compiled JS
+                success, stdout, stderr = self.run_cmd(f'npx ts-node "{test_script}"', 
+                                                       cwd=self.project_root / lang.test_dir, timeout=30)
+                
+            elif lang.id == "js":
+                # JavaScript: run test script directly
+                test_script = self.project_root / lang.test_dir / "test_negative.js"
+                
+                if not test_script.exists():
+                    print(f"  {Colors.warn_tag()} {test_name}: test_negative.js not found")
+                    continue
+                
+                success, stdout, stderr = self.run_cmd(f'node "{test_script}"', timeout=30)
+                
+            elif lang.id == "csharp":
+                # C#: compile and run (handled by test runner executable)
+                build_dir = self.project_root / lang.build_dir
+                # C# test runner handles routing to test_negative
+                test_exe = build_dir / "StructFrameTests.exe"
+                
+                if not test_exe.exists():
+                    test_exe = build_dir / "StructFrameTests.dll"
+                    if not test_exe.exists():
+                        print(f"  {Colors.warn_tag()} {test_name}: C# test executable not found")
+                        continue
+                    success, stdout, stderr = self.run_cmd(f'dotnet "{test_exe}" --runner test_negative', timeout=30)
+                else:
+                    success, stdout, stderr = self.run_cmd(f'"{test_exe}" --runner test_negative', timeout=30)
             
             else:
                 continue

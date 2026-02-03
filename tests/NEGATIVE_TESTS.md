@@ -13,6 +13,11 @@ Negative tests are critical for ensuring robust error handling. They verify that
 
 ## Test Files
 
+### C Tests (`tests/c/test_negative.c`)
+- **6 test cases** covering error scenarios
+- Tests buffer reader and accumulating reader APIs
+- Uses ProfileStandard configuration
+
 ### C++ Tests (`tests/cpp/test_negative.cpp`)
 - **9 test cases** covering various error scenarios
 - Tests both BufferReader and AccumulatingReader APIs
@@ -22,6 +27,21 @@ Negative tests are critical for ensuring robust error handling. They verify that
 - **8 test cases** covering similar error scenarios
 - Tests both buffer and streaming modes
 - Uses ProfileStandardReader and ProfileStandardAccumulatingReader
+
+### TypeScript Tests (`tests/ts/test_negative.ts`)
+- **8 test cases** covering error scenarios
+- Tests ProfileStandardWriter/Reader and AccumulatingReader
+- Tests multiple profiles (Standard, Bulk)
+
+### JavaScript Tests (`tests/js/test_negative.js`)
+- **8 test cases** identical to TypeScript
+- Tests ProfileStandardWriter/Reader and AccumulatingReader
+- Tests multiple profiles (Standard, Bulk)
+
+### C# Tests (`tests/csharp/TestNegative.cs`)
+- **8 test cases** covering error scenarios
+- Tests ProfileStandardWriter/Reader and AccumulatingReader
+- Tests multiple profiles (Standard, Bulk)
 
 ## Test Scenarios
 
@@ -34,7 +54,7 @@ All implementations test the following scenarios:
 5. **Corrupted Length Field**: Verifies length validation
 6. **Streaming Corrupted CRC**: Tests CRC validation in byte-by-byte streaming mode
 7. **Streaming Garbage Data**: Verifies parser handles random invalid bytes
-8. **Multiple Corrupted Frames**: Tests parsing when middle frame in sequence is corrupted
+8. **Bulk/Multiple Profile Tests**: Tests error handling across different frame profiles
 
 ## Running the Tests
 
@@ -44,6 +64,15 @@ python tests/run_tests.py
 ```
 
 ### Run individual test files:
+
+**C:**
+```bash
+# Compile
+gcc -I"tests/generated/c" -o "tests/c/build/test_negative" "tests/c/test_negative.c" -lm
+
+# Run
+./tests/c/build/test_negative
+```
 
 **C++:**
 ```bash
@@ -58,6 +87,22 @@ g++ -std=c++20 -I"tests/generated/cpp" -I"tests/cpp/include" \
 **Python:**
 ```bash
 python tests/py/test_negative.py
+```
+
+**TypeScript:**
+```bash
+npx ts-node tests/ts/test_negative.ts
+```
+
+**JavaScript:**
+```bash
+node tests/js/test_negative.js
+```
+
+**C#:**
+```bash
+# Via test runner
+dotnet run --project tests/csharp/StructFrameTests.csproj -- --runner test_negative
 ```
 
 ## Expected Results
@@ -108,13 +153,18 @@ The negative tests are automatically integrated into the main test suite:
 
 To add a new negative test scenario:
 
-1. **C++**: Add a new test function following the pattern in `test_negative.cpp`
-2. **Python**: Add a new test function following the pattern in `test_negative.py`
-3. Update the test count in the main function
-4. Run the test to verify it correctly detects the error condition
+1. **C**: Add a new test function following the pattern in `test_negative.c`
+2. **C++**: Add a new test function following the pattern in `test_negative.cpp`
+3. **Python**: Add a new test function following the pattern in `test_negative.py`
+4. **TypeScript**: Add a new test function following the pattern in `test_negative.ts`
+5. **JavaScript**: Add a new test function following the pattern in `test_negative.js`
+6. **C#**: Add a new test method following the pattern in `TestNegative.cs`
 
-### Test Function Template (C++)
+Update the test count in the main function and run to verify.
 
+### Test Function Templates
+
+**C++:**
 ```cpp
 bool test_new_scenario() {
   // 1. Set up test data
@@ -133,8 +183,7 @@ bool test_new_scenario() {
 }
 ```
 
-### Test Function Template (Python)
-
+**Python:**
 ```python
 def test_new_scenario():
     """Test: Description of scenario"""
@@ -152,7 +201,41 @@ def test_new_scenario():
     return not result.valid
 ```
 
-## Why Some Languages Are Not Included
+**TypeScript/JavaScript:**
+```typescript
+function testNewScenario(): boolean {
+  // 1. Set up test data
+  const writer = new ProfileStandardWriter(1024);
+  
+  // 2. Create invalid/corrupted data
+  // ... corrupt buffer in specific way ...
+  
+  // 3. Try to parse
+  const reader = new ProfileStandardReader(buffer, get_message_info);
+  const result = reader.next();
+  
+  // 4. Expect parsing to fail
+  return !result.valid;
+}
+```
 
-- **C**: The C API uses a different pattern (buffer_writer_t, buffer_reader_t) that would require more complex test setup. The C++ and Python tests provide sufficient coverage of the underlying frame parsing logic.
-- **TypeScript/JavaScript/C#**: Not yet implemented, but can follow the same patterns as Python.
+**C#:**
+```csharp
+private static bool TestNewScenario()
+{
+    // 1. Set up test data
+    var writer = new ProfileStandardWriter();
+    
+    // 2. Create invalid/corrupted data
+    // ... corrupt buffer in specific way ...
+    
+    // 3. Try to parse
+    var reader = new ProfileStandardReader(GetMessageInfo);
+    reader.SetBuffer(buffer, size);
+    var result = reader.Next();
+    
+    // 4. Expect parsing to fail
+    return !result.valid;
+}
+```
+

@@ -46,6 +46,10 @@ class TestRunner
             {
                 testSuite = "test_extended";
             }
+            else if (exeName.Contains("test_negative") || exeName.Contains("negative"))
+            {
+                testSuite = "test_negative";
+            }
         }
 
         // Route to the appropriate test suite
@@ -56,6 +60,10 @@ class TestRunner
         else if (testSuite == "test_variable_flag")
         {
             return TestVariableFlag.Main(filteredArgs);
+        }
+        else if (testSuite == "test_negative")
+        {
+            return TestNegative.Main(filteredArgs);
         }
         else
         {
