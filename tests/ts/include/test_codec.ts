@@ -151,7 +151,6 @@ export function decodeMessages(config: TestConfig, format: string, data: Buffer)
   // Split buffer into 3 chunks to test partial message handling
   const chunk1Size = Math.floor(data.length / 3);
   const chunk2Size = Math.floor(data.length / 3);
-  //const chunk3Size = data.length - chunk1Size - chunk2Size;
 
   const chunk1 = data.slice(0, chunk1Size);
   const chunk2 = data.slice(chunk1Size, chunk1Size + chunk2Size);
