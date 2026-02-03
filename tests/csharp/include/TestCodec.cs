@@ -405,9 +405,9 @@ namespace StructFrameTests
             var writer = Profiles.CreateWriter(formatName);
             writer.SetBuffer(new byte[4096]);
 
-            for (int i = 0; i < StandardTestData.MESSAGE_COUNT; i++)
+            for (int i = 0; i < StandardMessages.MESSAGE_COUNT; i++)
             {
-                var mixedMsg = StandardTestData.GetTestMessage(i);
+                var mixedMsg = StandardMessages.GetTestMessage(i);
                 int bytesWritten = 0;
 
                 if (mixedMsg.Type == MessageType.SerializationTest)
@@ -452,9 +452,9 @@ namespace StructFrameTests
             var writer = Profiles.CreateWriter(formatName);
             writer.SetBuffer(new byte[8192]);
 
-            for (int i = 0; i < ExtendedTestData.MESSAGE_COUNT; i++)
+            for (int i = 0; i < ExtendedMessages.MESSAGE_COUNT; i++)
             {
-                var (msg, _) = ExtendedTestData.GetExtendedTestMessage(i);
+                var (msg, _) = ExtendedMessages.GetExtendedTestMessage(i);
                 if (msg == null)
                     throw new Exception($"Failed to get extended message {i}");
                 
@@ -471,9 +471,9 @@ namespace StructFrameTests
             var writer = Profiles.CreateWriter(formatName);
             writer.SetBuffer(new byte[4096]);
 
-            for (int i = 0; i < VariableFlagTestData.MESSAGE_COUNT; i++)
+            for (int i = 0; i < VariableFlagMessages.MESSAGE_COUNT; i++)
             {
-                var mixedMsg = VariableFlagTestData.GetTestMessage(i);
+                var mixedMsg = VariableFlagMessages.GetTestMessage(i);
                 if (mixedMsg == null)
                     throw new Exception($"Failed to get variable flag message {i}");
                 
@@ -539,7 +539,7 @@ namespace StructFrameTests
 
         private static MessageInfo? GetExtendedMessageInfo(int msgId)
         {
-            return ExtendedTestData.GetMessageInfo(msgId);
+            return ExtendedMessages.GetMessageInfo(msgId);
         }
 
         private static bool ValidateSerializationTestMessage(SerializationTestMessage msg, Dictionary<string, object> expected)
@@ -661,11 +661,11 @@ namespace StructFrameTests
             return DecodeMessages(
                 formatName,
                 data,
-                StandardTestData.MESSAGE_COUNT,
+                StandardMessages.MESSAGE_COUNT,
                 GetStandardMessageInfo,
                 (i, result) =>
                 {
-                    var expected = StandardTestData.GetTestMessage(i);
+                    var expected = StandardMessages.GetTestMessage(i);
                     int expectedMsgId;
                     bool isValid = true;
 
@@ -713,11 +713,11 @@ namespace StructFrameTests
             return DecodeMessages(
                 formatName,
                 data,
-                VariableFlagTestData.MESSAGE_COUNT,
+                VariableFlagMessages.MESSAGE_COUNT,
                 GetStandardMessageInfo,
                 (i, result) =>
                 {
-                    var expected = VariableFlagTestData.GetTestMessage(i);
+                    var expected = VariableFlagMessages.GetTestMessage(i);
                     int expectedMsgId;
                     bool isValid = true;
 
@@ -790,11 +790,11 @@ namespace StructFrameTests
             return DecodeMessages(
                 formatName,
                 data,
-                ExtendedTestData.MESSAGE_COUNT,
+                ExtendedMessages.MESSAGE_COUNT,
                 GetExtendedMessageInfo,
                 (i, result) =>
                 {
-                    var (expectedMsg, _) = ExtendedTestData.GetExtendedTestMessage(i);
+                    var (expectedMsg, _) = ExtendedMessages.GetExtendedTestMessage(i);
                     if (expectedMsg == null) return (0, false);
                     
                     // Extract the actual payload from the result

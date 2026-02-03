@@ -17,9 +17,9 @@ class TestStandard
     {
         return TestCodec.RunTestMain(
             args,
-            StandardTestData.Config.SupportsFormat,
-            StandardTestData.Config.FORMATS_HELP,
-            StandardTestData.Config.TEST_NAME,
+            StandardMessages.Config.SupportsFormat,
+            StandardMessages.Config.FORMATS_HELP,
+            StandardMessages.Config.TEST_NAME,
             TestCodec.EncodeStandardMessages,
             TestCodec.DecodeStandardMessages
         );

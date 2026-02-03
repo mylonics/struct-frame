@@ -9,6 +9,6 @@
  */
 
 import { runTestMain } from './include/test_codec';
-import { stdTestConfig } from './include/standard_test_data';
+import { stdTestConfig } from './include/standard_messages';
 
 process.exit(runTestMain(stdTestConfig));

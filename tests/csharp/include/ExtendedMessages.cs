@@ -32,7 +32,7 @@ namespace StructFrameTests
     /// <summary>
     /// Wrapper for extended test messages that provides a common interface
     /// </summary>
-    public static class ExtendedTestData
+    public static class ExtendedMessages
     {
         // ============================================================================
         // Message count

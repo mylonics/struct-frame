@@ -20,9 +20,9 @@ class TestVariableFlag
     {
         return TestCodec.RunTestMain(
             args,
-            VariableFlagTestData.Config.SupportsFormat,
-            VariableFlagTestData.Config.FORMATS_HELP,
-            VariableFlagTestData.Config.TEST_NAME,
+            VariableFlagMessages.Config.SupportsFormat,
+            VariableFlagMessages.Config.FORMATS_HELP,
+            VariableFlagMessages.Config.TEST_NAME,
             TestCodec.EncodeVariableFlagMessages,
             TestCodec.DecodeVariableFlagMessages
         );

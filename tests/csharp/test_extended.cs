@@ -17,9 +17,9 @@ class TestExtended
     {
         return TestCodec.RunTestMain(
             args,
-            ExtendedTestData.Config.SupportsFormat,
-            ExtendedTestData.Config.FORMATS_HELP,
-            ExtendedTestData.Config.TEST_NAME,
+            ExtendedMessages.Config.SupportsFormat,
+            ExtendedMessages.Config.FORMATS_HELP,
+            ExtendedMessages.Config.TEST_NAME,
             TestCodec.EncodeExtendedMessages,
             TestCodec.DecodeExtendedMessages
         );

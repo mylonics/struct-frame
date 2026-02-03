@@ -11,6 +11,6 @@
  * Frame formats: profile_bulk (only profile that supports extended features)
  */
 
-#include "include/variable_flag_test_data.h"
+#include "include/variable_flag_messages.h"
 
 int main(int argc, char* argv[]) { return run_test_main(&var_flag_test_config, argc, argv); }

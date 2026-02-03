@@ -12,6 +12,6 @@
  */
 
 import { runTestMain } from './include/test_codec';
-import { variableFlagTestConfig } from './include/variable_flag_test_data';
+import { variableFlagTestConfig } from './include/variable_flag_messages';
 
 process.exit(runTestMain(variableFlagTestConfig));

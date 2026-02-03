@@ -9,6 +9,6 @@
  */
 
 const { runTestMain } = require('./include/test_codec');
-const { stdTestConfig } = require('./include/standard_test_data');
+const { stdTestConfig } = require('./include/standard_messages');
 
 process.exit(runTestMain(stdTestConfig));

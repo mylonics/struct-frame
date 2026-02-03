@@ -16,7 +16,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'include'))
 
 from test_codec import run_test_main
-from standard_test_data import Config
+from standard_messages import Config
 
 if __name__ == "__main__":
     sys.exit(run_test_main(Config))

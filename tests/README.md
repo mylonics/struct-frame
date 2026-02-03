@@ -44,13 +44,13 @@ test_variable_flag.* →  Runs variable-length truncation tests
 - Entry points call `run_test_main()` with a test config object
 - Config provides message data factories and format support
 
-### 2. Message Data (`include/*_messages.* or *_test_data.*`)
+### 2. Message Data (`include/*_messages.*`)
 
 **C++ naming**: `standard_messages.hpp`, `extended_messages.hpp`, `variable_flag_messages.hpp`
 - Message provider structs with `MessageVariant` type, `MESSAGE_COUNT`, and `get_message(index)` factory
 - Pure message data - no infrastructure code
 
-**Other languages naming**: `standard_test_data.*`, `extended_test_data.*`, `variable_flag_test_data.*`
+**Other languages naming**: `standard_messages.*`, `extended_messages.*`, `variable_flag_messages.*`
 - Message creation functions
 - Encoder class (serializes messages)
 - Validator class (validates decoded messages)
@@ -114,10 +114,10 @@ tests/
 │   ├── test_extended.c           # Entry point
 │   ├── test_variable_flag.c      # Entry point
 │   └── include/
-│       ├── standard_test_data.h      # Message definitions + encode/validate
-│       ├── extended_test_data.h      # Extended test data
-│       ├── variable_flag_test_data.h # Variable flag test data
-│       └── test_codec.h              # Shared codec infrastructure
+│       ├── standard_messages.h      # Message definitions + encode/validate
+│       ├── extended_messages.h      # Extended message data
+│       ├── variable_flag_messages.h # Variable flag message data
+│       └── test_codec.h             # Shared codec infrastructure
 ├── cpp/                      # C++ language tests
 │   ├── test_standard.cpp         # Entry point
 │   ├── test_extended.cpp         # Entry point
@@ -129,9 +129,29 @@ tests/
 │       ├── test_harness.hpp          # Test infrastructure (CLI, file I/O)
 │       └── profile_runner.hpp        # Profile encode/decode logic
 ├── py/                       # Python tests (config-based like C)
+│   └── include/
+│       ├── standard_messages.py     # Message data + config
+│       ├── extended_messages.py     # Extended message data
+│       ├── variable_flag_messages.py # Variable flag message data
+│       └── test_codec.py            # Shared codec infrastructure
 ├── ts/                       # TypeScript tests (config-based like C)
+│   └── include/
+│       ├── standard_messages.ts     # Message data + config
+│       ├── extended_messages.ts     # Extended message data
+│       ├── variable_flag_messages.ts # Variable flag message data
+│       └── test_codec.ts            # Shared codec infrastructure
 ├── js/                       # JavaScript tests (config-based like C)
+│   └── include/
+│       ├── standard_messages.js     # Message data + config
+│       ├── extended_messages.js     # Extended message data
+│       ├── variable_flag_messages.js # Variable flag message data
+│       └── test_codec.js            # Shared codec infrastructure
 ├── csharp/                   # C# tests (config-based like C)
+│   └── include/
+│       ├── StandardMessages.cs      # Message data + config
+│       ├── ExtendedMessages.cs      # Extended message data
+│       ├── VariableFlagMessages.cs  # Variable flag message data
+│       └── TestCodec.cs             # Shared codec infrastructure
 └── generated/                # Generated code output
     ├── c/
     ├── cpp/
@@ -211,7 +231,7 @@ pip install proto-schema-parser
 1. Create proto definitions in `tests/proto/`
 2. For each language, create:
    - Entry point: `test_<name>.<ext>`
-   - Test data: `include/<name>_test_data.<ext>` with:
+   - Message data: `include/<name>_messages.<ext>` with:
      - Message creation functions
      - Message arrays
      - Encoder functions

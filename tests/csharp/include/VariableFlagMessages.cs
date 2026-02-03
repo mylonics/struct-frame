@@ -27,7 +27,7 @@ namespace StructFrameTests
         public Dictionary<string, object> Data { get; set; }
     }
 
-    public static class VariableFlagTestData
+    public static class VariableFlagMessages
     {
         // ============================================================================
         // Message count and order

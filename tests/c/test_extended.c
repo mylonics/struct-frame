@@ -8,6 +8,6 @@
  * Frame formats (extended profiles only): profile_bulk, profile_network
  */
 
-#include "include/extended_test_data.h"
+#include "include/extended_messages.h"
 
 int main(int argc, char* argv[]) { return run_test_main(&ext_test_config, argc, argv); }

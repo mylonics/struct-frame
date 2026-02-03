@@ -12,6 +12,6 @@
  */
 
 const { runTestMain } = require('./include/test_codec');
-const { variableFlagTestConfig } = require('./include/variable_flag_test_data');
+const { variableFlagTestConfig } = require('./include/variable_flag_messages');
 
 process.exit(runTestMain(variableFlagTestConfig));

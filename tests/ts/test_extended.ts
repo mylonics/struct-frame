@@ -9,6 +9,6 @@
  */
 
 import { runTestMain } from './include/test_codec';
-import { extTestConfig } from './include/extended_test_data';
+import { extTestConfig } from './include/extended_messages';
 
 process.exit(runTestMain(extTestConfig));
