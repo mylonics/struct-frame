@@ -79,9 +79,9 @@ def create_union_with_array() -> SerializationTestUnionTestMessage:
         bounded_doubles=[3.14159],
         fixed_strings=[b'Hello', b'World'],
         bounded_strings=[b'Test'],
-        fixed_statuses=[SerializationTestStatus.STATUS_ACTIVE.value, SerializationTestStatus.STATUS_ERROR.value],
-        bounded_statuses=[SerializationTestStatus.STATUS_INACTIVE.value],
-        fixed_sensors=[SerializationTestSensor(id=1, value=25.5, status=SerializationTestStatus.STATUS_ACTIVE.value, name=b'TempSensor')],
+        fixed_statuses=[SerializationTestStatus.ACTIVE.value, SerializationTestStatus.ERROR.value],
+        bounded_statuses=[SerializationTestStatus.INACTIVE.value],
+        fixed_sensors=[SerializationTestSensor(id=1, value=25.5, status=SerializationTestStatus.ACTIVE.value, name=b'TempSensor')],
         bounded_sensors=[]
     )
     return SerializationTestUnionTestMessage(
@@ -224,7 +224,7 @@ def get_variable_mixed_fields_messages() -> List[SerializationTestVariableMixedF
 def get_message_messages() -> List[SerializationTestMessage]:
     """Get Message array (1 message)."""
     return [
-        create_message_test(SerializationTestMsgSeverity.MSG_SEVERITY_SEV_MSG.value, "test", "A really good"),
+        create_message_test(SerializationTestMsgSeverity.SEV_MSG.value, "test", "A really good"),
     ]
 
 

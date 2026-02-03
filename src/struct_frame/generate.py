@@ -207,6 +207,8 @@ def compute_generation_hash(args, packages_dict):
                 hasher.update(f"    msgid:{msg.id}\n".encode('utf-8'))
             if msg.variable:
                 hasher.update(f"    variable:true\n".encode('utf-8'))
+            if msg.is_envelope:
+                hasher.update(f"    is_envelope:true\n".encode('utf-8'))
             
             # Add fields (sorted by name)
             for field_name in sorted(msg.fields.keys()):
@@ -563,15 +565,25 @@ class Field:
 
 
 class OneOf:
-    """Represents a oneof (union) construct in a message."""
+    """Represents a oneof (union) construct in a message.
+    
+    Discriminator modes:
+    - "auto" (default): Use msgid if all fields are messages with msgid, otherwise use field_order
+    - "msgid": Force use of message IDs as discriminator (error if any field lacks msgid)
+    - "field_order": Force use of field order (1-based index) as discriminator
+    - "none": No discriminator generated
+    """
     def __init__(self, package, comments):
         self.name = None
-        self.fields = {}  # Fields within this oneof
+        self.fields = {}  # Fields within this oneof (preserves insertion order in Python 3.7+)
+        self.field_order = []  # List of field names in declaration order
         self.size = 0  # Size of the largest field
         self.validated = False
         self.comments = comments
         self.package = package
-        self.auto_discriminator = None  # Will be set if all fields have message IDs
+        self.discriminator_mode = "auto"  # "auto", "msgid", "field_order", "none"
+        self.auto_discriminator = None  # True if using msgid, False if using field_order, None if none
+        self.discriminator_type = None  # "msgid" or "field_order" after validation
         
     def parse(self, oneof_element):
         """Parse a oneof element from the AST."""
@@ -581,11 +593,29 @@ class OneOf:
         for e in oneof_element.elements:
             if type(e) == ast.Comment:
                 comments.append(e.text)
+            elif type(e) == ast.Option:
+                if e.name == "discriminator":
+                    # Handle both string values and identifier values
+                    val = e.value
+                    if hasattr(val, 'name'):
+                        # It's an Identifier object (unquoted value like 'none')
+                        sval = val.name.lower()
+                    else:
+                        sval = str(val).strip().lower().strip('"\'')
+                    if sval in ('auto', 'msgid', 'field_order', 'none', 'false', 'off', 'disabled'):
+                        if sval in ('false', 'off', 'disabled'):
+                            sval = 'none'
+                        self.discriminator_mode = sval
+                    else:
+                        print(f"Invalid discriminator option '{e.value}' in oneof {self.name}. "
+                              f"Valid values: auto, msgid, field_order, none")
+                        return False
             elif type(e) == ast.Field:
                 if e.name in self.fields:
                     print(f"Field Redeclaration in oneof {self.name}")
                     return False
                 self.fields[e.name] = Field(self.package, comments)
+                self.field_order.append(e.name)  # Track declaration order
                 comments = []
                 if not self.fields[e.name].parse(e):
                     return False
@@ -627,17 +657,56 @@ class OneOf:
         
         self.size = max_size
         
-        # If all fields have message IDs, we can auto-generate a discriminator
-        if all_have_msg_id and len(self.fields) > 0:
+        # Determine discriminator type based on mode
+        if self.discriminator_mode == "none":
+            self.auto_discriminator = None
+            self.discriminator_type = None
+        elif self.discriminator_mode == "msgid":
+            if not all_have_msg_id:
+                print(f"Error: oneof '{self.name}' has discriminator=msgid but not all fields are messages with msgid")
+                return False
             self.auto_discriminator = True
-        else:
-            self.auto_discriminator = False
+            self.discriminator_type = "msgid"
+        elif self.discriminator_mode == "field_order":
+            self.auto_discriminator = True  # True means discriminator is present
+            self.discriminator_type = "field_order"
+        else:  # "auto" - default behavior
+            if all_have_msg_id and len(self.fields) > 0:
+                self.auto_discriminator = True
+                self.discriminator_type = "msgid"
+            elif len(self.fields) > 0:
+                # Fallback to field_order
+                self.auto_discriminator = True
+                self.discriminator_type = "field_order"
+            else:
+                self.auto_discriminator = None
+                self.discriminator_type = None
             
         self.validated = True
         return True
     
+    def get_field_discriminator_value(self, field_name, currentPackage, packages):
+        """Get the discriminator value for a field based on discriminator_type.
+        
+        Returns:
+            int: The discriminator value (msgid or 1-based field order index)
+        """
+        if self.discriminator_type == "msgid":
+            field = self.fields[field_name]
+            field_type = currentPackage.findFieldType(field.fieldType)
+            if not field_type:
+                for pkg_name, pkg in packages.items():
+                    field_type = pkg.findFieldType(field.fieldType)
+                    if field_type:
+                        break
+            return field_type.id if field_type else 0
+        elif self.discriminator_type == "field_order":
+            # 1-based index
+            return self.field_order.index(field_name) + 1
+        return 0
+    
     def __str__(self):
-        output = f"OneOf: {self.name}, Size: {self.size}\n"
+        output = f"OneOf: {self.name}, Size: {self.size}, Discriminator: {self.discriminator_type}\n"
         for key, value in self.fields.items():
             output += "  " + value.__str__() + "\n"
         return output
@@ -656,6 +725,7 @@ class Message:
         self.isEnum = False
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
         self.variable = False  # Variable length message encoding
+        self.is_envelope = False  # True if this message is an envelope/container for other messages
 
     def parse(self, msg):
         self.name = msg.name
@@ -670,6 +740,10 @@ class Message:
                     sval = str(e.value).strip().lower()
                     if sval in ('true', '1', 'yes', 'on') or e.value is True:
                         self.variable = True
+                elif e.name in ("is_envelope", "envelope"):
+                    sval = str(e.value).strip().lower()
+                    if sval in ('true', '1', 'yes', 'on') or e.value is True:
+                        self.is_envelope = True
             elif type(e) == ast.Comment:
                 comments.append(e.text)
             elif type(e) == ast.OneOf:
@@ -713,9 +787,12 @@ class Message:
                 return False
             # Add oneof size (largest field size)
             self.size = self.size + oneof.size
-            # If auto-discriminator is enabled, add 2 bytes for the uint16_t message_id discriminator
+            # If discriminator is enabled, add bytes for the discriminator field
             if oneof.auto_discriminator:
-                self.size = self.size + 2
+                if oneof.discriminator_type == "msgid":
+                    self.size = self.size + 2  # uint16_t for message ID
+                else:  # field_order
+                    self.size = self.size + 1  # uint8_t for field order index
 
         # Flatten collision detection: if a field is marked as flatten and is a message,
         # ensure none of the child field names collide with fields in this message.
@@ -754,6 +831,46 @@ class Message:
                 print(
                     f"Field {key} in Message {self.name}: size/max_size/element_size options can only be used with repeated fields or strings")
                 return False
+
+        # Envelope message validation
+        if self.is_envelope:
+            # Envelope messages must have exactly one oneof field
+            if len(self.oneofs) != 1:
+                print(
+                    f"Envelope message {self.name}: must have exactly one oneof field (found {len(self.oneofs)})")
+                return False
+            
+            # Get the single oneof
+            oneof_name = list(self.oneofs.keys())[0]
+            oneof = self.oneofs[oneof_name]
+            
+            # All fields in the oneof must be message types (not primitives or enums)
+            for field_name, field in oneof.fields.items():
+                if field.isDefaultType:
+                    print(
+                        f"Envelope message {self.name}: oneof field '{field_name}' must be a message type, not a primitive")
+                    return False
+                if field.isEnum:
+                    print(
+                        f"Envelope message {self.name}: oneof field '{field_name}' must be a message type, not an enum")
+                    return False
+            
+            # If discriminator mode is "msgid" (explicit or auto-determined), all messages must have msgid
+            # Note: oneof.validate() is called before message.validate(), so discriminator_type is set
+            if oneof.discriminator_type == "msgid":
+                for field_name, field in oneof.fields.items():
+                    # Find the message type and verify it has a message ID
+                    field_type = currentPackage.findFieldType(field.fieldType)
+                    if not field_type:
+                        for pkg_name, pkg in packages.items():
+                            field_type = pkg.findFieldType(field.fieldType)
+                            if field_type:
+                                break
+                    
+                    if not field_type or not hasattr(field_type, 'id') or field_type.id is None:
+                        print(
+                            f"Envelope message {self.name}: oneof field '{field_name}' type '{field.fieldType}' must have a message ID (option msgid) when using msgid discriminator")
+                        return False
 
         self.validated = True
         

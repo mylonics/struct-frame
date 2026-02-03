@@ -195,13 +195,9 @@ const char* type_str = SerializationTestSensorType_to_string(type);
 ```python
 from sensor_system import SerializationTestSensorType
 
-type = SerializationTestSensorType.SENSOR_TYPE_TEMPERATURE
+type = SerializationTestSensorType.TEMPERATURE
 # Use the built-in .name property
 type_str = type.name
-# Returns: "SENSOR_TYPE_TEMPERATURE"
-
-# Or extract just the value name after the prefix
-type_str = type.name.split('_', 2)[-1]
 # Returns: "TEMPERATURE"
 ```
 
@@ -294,6 +290,337 @@ message Status {
 
 Access: `status.lat` instead of `status.pos.lat`
 
+## Oneof (Union Types)
+
+The `oneof` construct creates a union type where only one of the fields can be populated at a time. All fields within the `oneof` share the same memory, with the total size equal to the largest field.
+
+### Basic Oneof
+
+```proto
+message SensorReading {
+  option msgid = 10;
+  uint32 timestamp = 1;
+  
+  oneof value {
+    float temperature = 2;
+    int32 pressure = 3;
+    uint16 humidity = 4;
+  }
+}
+```
+
+**Memory Layout:**
+- The `value` union occupies 4 bytes (size of the largest type: `float` or `int32`)
+- Only one field (`temperature`, `pressure`, or `humidity`) should be set at a time
+- A `uint8` field order discriminator is automatically generated (stores 1, 2, or 3 based on which field is active)
+
+### Oneof with Message Types
+
+When all fields in a `oneof` are messages with `msgid`, an auto-discriminator using message IDs is generated:
+
+```proto
+message CommandA {
+  option msgid = 100;
+  uint8 param1 = 1;
+}
+
+message CommandB {
+  option msgid = 101;
+  uint16 param1 = 1;
+  uint16 param2 = 2;
+}
+
+message CommandWrapper {
+  option msgid = 200;
+  uint32 sequence = 1;
+  
+  oneof command {
+    CommandA cmd_a = 2;
+    CommandB cmd_b = 3;
+  }
+}
+```
+
+**Memory Layout:**
+- `command_discriminator` (uint16_t) - auto-generated, stores the message ID of the active field
+- `command` union - size of the largest message type
+
+### Discriminator Option
+
+You can control discriminator behavior with the `discriminator` option inside a `oneof`:
+
+```proto
+oneof payload {
+  option discriminator = field_order;  // or: msgid, none, auto
+  CmdA cmd_a = 1;
+  CmdB cmd_b = 2;
+}
+```
+
+| Option | Discriminator Type | Size | Description |
+|--------|-------------------|------|-------------|
+| `auto` (default) | Depends on fields | varies | Uses `msgid` if all fields are messages with msgid, otherwise `field_order` |
+| `msgid` | Message ID | uint16 (2 bytes) | Forces use of message IDs. **Error** if any field lacks msgid |
+| `field_order` | Field order (1-based) | uint8 (1 byte) | Uses declaration order: 1st field = 1, 2nd = 2, etc. |
+| `none` | No discriminator | 0 bytes | Disables discriminator. Application must track active field |
+
+### Default Auto-Discriminator Behavior
+
+| Oneof Field Types | Default Discriminator | Size |
+|-------------------|----------------------|------|
+| All messages with `msgid` | msgid (uint16) | 2 bytes |
+| Mixed or all primitives/enums | field_order (uint8) | 1 byte |
+
+**Examples:**
+
+```proto
+// Auto: Uses msgid discriminator (uint16) - all fields have msgid
+oneof command {
+  CommandA cmd_a = 1;  // msgid = 100
+  CommandB cmd_b = 2;  // msgid = 101
+}
+
+// Auto: Uses field_order discriminator (uint8) - primitives don't have msgid
+oneof value {
+  float temperature = 1;  // discriminator = 1
+  int32 pressure = 2;     // discriminator = 2
+}
+
+// Explicit: Force field_order even with messages that have msgid
+oneof payload {
+  option discriminator = field_order;
+  CommandA cmd_a = 1;  // discriminator = 1
+  CommandB cmd_b = 2;  // discriminator = 2
+}
+
+// Explicit: Disable discriminator entirely
+oneof data {
+  option discriminator = none;
+  uint32 integer_val = 1;
+  float float_val = 2;
+}
+```
+
+### Using Discriminators
+
+**With msgid discriminator:**
+```cpp
+// C++ - check which message is active by message ID
+if (wrapper.command_discriminator == CommandA::MSG_ID) {
+    // Access wrapper.command.cmd_a
+}
+```
+
+**With field_order discriminator:**
+
+For `field_order` discriminators, a typed enum is generated named `{MessageName}{OneofName}Field`:
+
+```cpp
+// C++ - use the generated enum for type-safe discriminator checks
+if (sensor.value_discriminator == SensorValueField::TEMPERATURE) {
+    // temperature is active
+} else if (sensor.value_discriminator == SensorValueField::PRESSURE) {
+    // pressure is active
+}
+```
+
+### Multiple Oneofs
+
+A message can contain multiple `oneof` fields:
+
+```proto
+message MultiUnionMessage {
+  option msgid = 50;
+  
+  oneof input {
+    float analog_value = 1;
+    bool digital_value = 2;
+  }
+  
+  oneof output {
+    uint16 pwm_duty = 3;
+    bool relay_state = 4;
+  }
+}
+```
+
+Each `oneof` is independent and contributes its own union size to the message.
+
+## Envelope Messages (Oneof with is_envelope)
+
+Envelope messages are container messages that wrap other messages for unified handling. They use the `is_envelope` option along with a `oneof` field to contain different message types.
+
+### Why Envelope Messages?
+
+Envelope messages are useful when:
+
+- You have multiple command/response types but want a single message ID for routing
+- You need envelope-level metadata (sequence numbers, timestamps, priorities)
+- You want type-safe wrappers with SDK helper methods
+- You're implementing a command/response protocol with multiple operation types
+
+### Defining Envelope Messages
+
+```proto
+// Individual command messages (each must have a msgid)
+message ADCCommand {
+  option msgid = 112;
+  uint8 channel = 1;
+  uint16 sample_rate = 2;
+  bool enable = 3;
+}
+
+message DACCommand {
+  option msgid = 113;
+  uint8 channel = 1;
+  uint16 output_value = 2;
+  bool enable = 3;
+}
+
+// Envelope message
+message CommandEnvelope {
+  option msgid = 200;
+  option is_envelope = true;  // Enables envelope helper methods
+  
+  // Envelope-level fields (metadata)
+  uint32 sequence_number = 1;
+  uint8 priority = 2;
+  bool run_immediately = 3;
+  
+  // Union of all command types - exactly one will be populated
+  oneof command {
+    ADCCommand adc = 5;
+    DACCommand dac = 6;
+  }
+}
+```
+
+### Validation Rules
+
+Envelope messages have these requirements:
+
+- Must have `option is_envelope = true`
+- Must have exactly one `oneof` field
+- All types in the `oneof` must be message types (not primitives or enums)
+- If using `msgid` discriminator (auto or explicit), all message types must have `msgid`
+
+### Discriminator Behavior
+
+Envelope messages use the same discriminator system as regular `oneof` fields (see [Discriminator Options](#discriminator-options) above), but with the following defaults:
+
+| Discriminator Mode | When Used | Size | Value |
+|-------------------|-----------|------|-------|
+| `msgid` (default) | All inner messages have `msgid` | 2 bytes (uint16) | Message ID of wrapped payload |
+| `field_order` | Any inner message lacks `msgid` | 1 byte (uint8) | 1-based field order index |
+
+You can explicitly set the discriminator mode on the oneof:
+
+```proto
+message CommandEnvelope {
+  option is_envelope = true;
+  
+  oneof command {
+    option discriminator = "field_order";  // Force field_order even if all have msgid
+    ADCCommand adc = 5;
+    DACCommand dac = 6;
+  }
+}
+```
+
+**Wire Format:**
+```
+[envelope fields...] [discriminator (1-2 bytes)] [union payload (max field size)]
+```
+
+The discriminator is automatically set by the `wrap()` method and read during deserialization.
+
+### Generated SDK Helper Methods
+
+The SDK generates convenient helper methods for envelope messages:
+
+**C++ (msgid discriminator)**
+```cpp
+// Wrap a command into an envelope - template ensures type safety
+EnvelopeTestADCCommand adc_cmd{.channel = 1, .sample_rate = 1000, .enable = true};
+auto envelope = EnvelopeTestCommandEnvelope::wrap(
+    42,      // sequence_number
+    1,       // priority
+    true,    // run_immediately
+    adc_cmd  // payload (type validated at compile-time via T::MSG_ID)
+);
+
+// Only valid payload types are accepted - invalid types cause compile error:
+// auto bad = EnvelopeTestCommandEnvelope::wrap(42, 1, true, some_other_msg); // Won't compile!
+
+// Get payload message ID to determine which type was wrapped
+uint16_t payload_id = envelope.getPayloadMessageId();
+
+// Access the wrapped payload directly via the oneof field
+if (payload_id == EnvelopeTestADCCommand::MSG_ID) {
+    auto& adc = envelope.command.adc;
+    // Use adc.channel, adc.sample_rate, etc.
+}
+```
+
+**C++ (field_order discriminator)**
+```cpp
+// Separate wrap() overloads for each payload type
+auto envelope = MyEnvelope::wrap(42, 1, true, adc_cmd);  // Sets discriminator to 1
+auto envelope2 = MyEnvelope::wrap(42, 1, true, dac_cmd); // Sets discriminator to 2
+
+// Get field order (1-based) of the wrapped payload
+uint8_t field_order = envelope.getPayloadFieldOrder();
+```
+
+**Python**
+```python
+# Wrap a command into an envelope
+adc_cmd = EnvelopeTestADCCommand(channel=1, sample_rate=1000, enable=True)
+envelope = EnvelopeTestCommandEnvelope.wrap(
+    payload=adc_cmd,  # Runtime type check ensures valid payload
+    sequence_number=42,
+    priority=1,
+    run_immediately=True
+)
+
+# Invalid payload types raise TypeError:
+# envelope = EnvelopeTestCommandEnvelope.wrap(some_other_msg, ...)  # TypeError!
+
+# Unwrap - returns the correct message type based on discriminator
+payload = envelope.unwrap()
+if payload:
+    print(f"Got payload: {type(payload).__name__}")
+
+# Get discriminator value (method name depends on discriminator type)
+payload_id = envelope.get_payload_message_id()  # For msgid discriminator
+# field_order = envelope.get_payload_field_order()  # For field_order discriminator
+```
+
+**TypeScript**
+```typescript
+// Wrap a command into an envelope - union type ensures type safety
+const adcCmd = new EnvelopeTestADCCommand();
+adcCmd.channel = 1;
+adcCmd.sample_rate = 1000;
+adcCmd.enable = true;
+
+// payload type is: EnvelopeTestADCCommand | EnvelopeTestDACCommand | ...
+const envelope = EnvelopeTestCommandEnvelope.wrap(adcCmd, 42, 1, true);
+
+// Get payload message ID to determine which type was wrapped
+const payloadId = envelope.getPayloadMessageId();
+```
+
+**C#**
+```csharp
+// Wrap a command into an envelope - overloads provide type safety
+var adcCmd = new EnvelopeTestADCCommand { Channel = 1, SampleRate = 1000, Enable = true };
+var envelope = EnvelopeTestCommandEnvelope.Wrap(adcCmd, 42, 1, true);
+
+// Get payload message ID to determine which type was wrapped
+var payloadId = envelope.GetPayloadMessageId();
+```
+
 ## Validation Rules
 
 The generator enforces:
@@ -305,6 +632,9 @@ The generator enforces:
 - All strings must have size or max_size
 - String arrays need both max_size and element_size
 - Array max_size limited to 255 (count fits in 1 byte)
+- Envelope messages must have exactly one oneof field
+- Envelope oneof fields must be message types (not primitives/enums)
+- Envelope oneof using `msgid` discriminator must have messages with msgid
 
 ## Complete Example
 
