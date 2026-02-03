@@ -5,7 +5,7 @@
  *
  * Usage:
  *   #include "profiling_generic.hpp"
- *   
+ *
  *   GenericTests::init_all_messages();
  *   auto enc_result = GenericTests::encode_packed();
  *   GenericTests::do_not_optimize_packed_buffer();
@@ -32,185 +32,194 @@ inline volatile uint8_t g_generic_sink = 0;
  * Computes a simple checksum and stores to volatile sink.
  */
 inline void do_not_optimize_buffer(const uint8_t* buffer, size_t size) {
-    uint8_t sum = 0;
-    for (size_t i = 0; i < size; i++) {
-        sum ^= buffer[i];
-    }
-    g_generic_sink ^= sum;
+  uint8_t sum = 0;
+  for (size_t i = 0; i < size; i++) {
+    sum ^= buffer[i];
+  }
+  g_generic_sink ^= sum;
 }
 
 // =============================================================================
 // Memory copy helper (no std::memcpy dependency)
 // =============================================================================
 inline void mem_copy(void* dest, const void* src, size_t size) {
-    uint8_t* d = static_cast<uint8_t*>(dest);
-    const uint8_t* s = static_cast<const uint8_t*>(src);
-    for (size_t i = 0; i < size; i++) {
-        d[i] = s[i];
-    }
+  uint8_t* d = static_cast<uint8_t*>(dest);
+  const uint8_t* s = static_cast<const uint8_t*>(src);
+  for (size_t i = 0; i < size; i++) {
+    d[i] = s[i];
+  }
 }
 
 // =============================================================================
 // Hardcoded Packed Message (struct-frame style)
+// Wire format size: 40 bytes (1+4+2+4+4+8+1+16)
 // =============================================================================
 #pragma pack(push, 1)
-struct TestMessagePacked : public FrameParsers::MessageBase<TestMessagePacked, 0x01, 64, 0xAA, 0x55> {
-    uint8_t msg_type;
-    uint32_t sequence;
-    int16_t sensor_value;
-    int32_t counter;
-    float temperature;
-    double pressure;
-    uint8_t status;
-    char label[16];
-    
-    size_t serialize(uint8_t* buffer, size_t max_size) const {
-        if (max_size < sizeof(*this)) return 0;
-        mem_copy(buffer, this, sizeof(*this));
-        return sizeof(*this);
-    }
-    
-    size_t deserialize(const FrameParsers::FrameMsgInfo& info) {
-        if (info.msg_len < sizeof(*this)) return 0;
-        mem_copy(this, info.msg_data, sizeof(*this));
-        return sizeof(*this);
-    }
+struct TestMessagePacked : public FrameParsers::MessageBase<TestMessagePacked, 0x01, 40, 0xAA, 0x55> {
+  uint8_t msg_type;
+  uint32_t sequence;
+  int16_t sensor_value;
+  int32_t counter;
+  float temperature;
+  double pressure;
+  uint8_t status;
+  char label[16];
+
+  size_t serialize(uint8_t* buffer, size_t max_size) const {
+    if (max_size < sizeof(*this)) return 0;
+    mem_copy(buffer, this, sizeof(*this));
+    return sizeof(*this);
+  }
+
+  size_t deserialize(const FrameParsers::FrameMsgInfo& info) {
+    if (info.msg_len < sizeof(*this)) return 0;
+    mem_copy(this, info.msg_data, sizeof(*this));
+    return sizeof(*this);
+  }
 };
 #pragma pack(pop)
 
 // =============================================================================
 // Hardcoded Unpacked Message (natural alignment)
 // Wire format size matches packed struct (40 bytes)
+// Uses IS_VARIABLE=true so encoder calls serialize() instead of memcpy(data())
 // =============================================================================
-struct TestMessageUnpacked : public FrameParsers::MessageBase<TestMessageUnpacked, 0x01, 64, 0xAA, 0x55> {
-    uint8_t msg_type;
-    uint32_t sequence;
-    int16_t sensor_value;
-    int32_t counter;
-    float temperature;
-    double pressure;
-    uint8_t status;
-    char label[16];
-    
-    // Wire format size (same as packed struct)
-    static constexpr size_t WIRE_SIZE = 40;
-    
-    // Serialize directly to wire buffer (field-by-field)
-    size_t serialize(uint8_t* buffer, size_t max_size) const {
-        if (max_size < WIRE_SIZE) return 0;
-        size_t offset = 0;
-        
-        buffer[offset] = msg_type; offset += 1;
-        mem_copy(buffer + offset, &sequence, 4); offset += 4;
-        mem_copy(buffer + offset, &sensor_value, 2); offset += 2;
-        mem_copy(buffer + offset, &counter, 4); offset += 4;
-        mem_copy(buffer + offset, &temperature, 4); offset += 4;
-        mem_copy(buffer + offset, &pressure, 8); offset += 8;
-        buffer[offset] = status; offset += 1;
-        mem_copy(buffer + offset, label, 16); offset += 16;
-        
-        return WIRE_SIZE;
-    }
-    
-    // Deserialize directly from wire buffer (field-by-field)
-    size_t deserialize(const FrameParsers::FrameMsgInfo& info) {
-        if (info.msg_len < WIRE_SIZE) return 0;
-        const uint8_t* data = info.msg_data;
-        size_t offset = 0;
-        
-        msg_type = data[offset]; offset += 1;
-        mem_copy(&sequence, data + offset, 4); offset += 4;
-        mem_copy(&sensor_value, data + offset, 2); offset += 2;
-        mem_copy(&counter, data + offset, 4); offset += 4;
-        mem_copy(&temperature, data + offset, 4); offset += 4;
-        mem_copy(&pressure, data + offset, 8); offset += 8;
-        status = data[offset]; offset += 1;
-        mem_copy(label, data + offset, 16); offset += 16;
-        
-        return WIRE_SIZE;
-    }
+struct TestMessageUnpacked : public FrameParsers::MessageBase<TestMessageUnpacked, 0x01, 40, 0xAA, 0x55> {
+  // Mark as variable so encoder uses serialize() instead of raw memcpy
+  static constexpr bool IS_VARIABLE = true;
+
+  uint8_t msg_type;
+  uint32_t sequence;
+  int16_t sensor_value;
+  int32_t counter;
+  float temperature;
+  double pressure;
+  uint8_t status;
+  char label[16];
+
+  // Wire format size (same as packed struct)
+  static constexpr size_t WIRE_SIZE = 40;
+
+  // Required for variable messages - return serialized size
+  constexpr size_t serialized_size() const { return WIRE_SIZE; }
+
+  // Serialize directly to wire buffer (field-by-field, no intermediate packed struct)
+  size_t serialize(uint8_t* buffer) const {
+    size_t offset = 0;
+
+    buffer[offset] = msg_type;
+    offset += 1;
+    mem_copy(buffer + offset, &sequence, 4);
+    offset += 4;
+    mem_copy(buffer + offset, &sensor_value, 2);
+    offset += 2;
+    mem_copy(buffer + offset, &counter, 4);
+    offset += 4;
+    mem_copy(buffer + offset, &temperature, 4);
+    offset += 4;
+    mem_copy(buffer + offset, &pressure, 8);
+    offset += 8;
+    buffer[offset] = status;
+    offset += 1;
+    mem_copy(buffer + offset, label, 16);
+    offset += 16;
+
+    return WIRE_SIZE;
+  }
+
+  // Deserialize directly from wire buffer (field-by-field, no intermediate packed struct)
+  size_t deserialize(const FrameParsers::FrameMsgInfo& info) {
+    if (info.msg_len < WIRE_SIZE) return 0;
+    const uint8_t* data = info.msg_data;
+    size_t offset = 0;
+
+    msg_type = data[offset];
+    offset += 1;
+    mem_copy(&sequence, data + offset, 4);
+    offset += 4;
+    mem_copy(&sensor_value, data + offset, 2);
+    offset += 2;
+    mem_copy(&counter, data + offset, 4);
+    offset += 4;
+    mem_copy(&temperature, data + offset, 4);
+    offset += 4;
+    mem_copy(&pressure, data + offset, 8);
+    offset += 8;
+    status = data[offset];
+    offset += 1;
+    mem_copy(label, data + offset, 16);
+    offset += 16;
+
+    return WIRE_SIZE;
+  }
 };
 
 // =============================================================================
 // Initialize a packed message with test data
 // =============================================================================
 inline void init_packed_message(TestMessagePacked& msg, size_t index) {
-    msg.msg_type = static_cast<uint8_t>(index & 0xFF);
-    msg.sequence = static_cast<uint32_t>(index);
-    msg.sensor_value = static_cast<int16_t>(index * 10);
-    msg.counter = static_cast<int32_t>(index * 100);
-    msg.temperature = static_cast<float>(index) * 0.5f + 20.0f;
-    msg.pressure = static_cast<double>(index) * 0.1 + 1000.0;
-    msg.status = static_cast<uint8_t>(index % 4);
-    
-    // Simple label initialization without snprintf
-    const char* prefix = "Msg_";
-    size_t j = 0;
-    while (prefix[j] && j < sizeof(msg.label) - 1) {
-        msg.label[j] = prefix[j];
-        j++;
-    }
-    // Add index as simple decimal (variable digits)
-    size_t temp = index;
-    char digits[16];
-    size_t digit_count = 0;
-    do {
-        digits[digit_count++] = '0' + (temp % 10);
-        temp /= 10;
-    } while (temp > 0 && digit_count < 16);
-    
-    // Reverse digits into label
-    while (digit_count > 0 && j < sizeof(msg.label) - 1) {
-        msg.label[j++] = digits[--digit_count];
-    }
-    // Null terminate and fill rest
-    while (j < sizeof(msg.label)) {
-        msg.label[j++] = '\0';
-    }
-}
+  msg.msg_type = static_cast<uint8_t>(index & 0xFF);
+  msg.sequence = static_cast<uint32_t>(index);
+  msg.sensor_value = static_cast<int16_t>(index * 10);
+  msg.counter = static_cast<int32_t>(index * 100);
+  msg.temperature = static_cast<float>(index) * 0.5f + 20.0f;
+  msg.pressure = static_cast<double>(index) * 0.1 + 1000.0;
+  msg.status = static_cast<uint8_t>(index % 4);
 
-// =============================================================================
-// Copy functions
-// =============================================================================
-inline void copy_to_packed(TestMessagePacked& packed, const TestMessageUnpacked& unpacked) {
-    packed.msg_type = unpacked.msg_type;
-    packed.sequence = unpacked.sequence;
-    packed.sensor_value = unpacked.sensor_value;
-    packed.counter = unpacked.counter;
-    packed.temperature = unpacked.temperature;
-    packed.pressure = unpacked.pressure;
-    packed.status = unpacked.status;
-    mem_copy(packed.label, unpacked.label, sizeof(packed.label));
+  // Simple label initialization without snprintf
+  const char* prefix = "Msg_";
+  size_t j = 0;
+  while (prefix[j] && j < sizeof(msg.label) - 1) {
+    msg.label[j] = prefix[j];
+    j++;
+  }
+  // Add index as simple decimal (variable digits)
+  size_t temp = index;
+  char digits[16];
+  size_t digit_count = 0;
+  do {
+    digits[digit_count++] = '0' + (temp % 10);
+    temp /= 10;
+  } while (temp > 0 && digit_count < 16);
+
+  // Reverse digits into label
+  while (digit_count > 0 && j < sizeof(msg.label) - 1) {
+    msg.label[j++] = digits[--digit_count];
+  }
+  // Null terminate and fill rest
+  while (j < sizeof(msg.label)) {
+    msg.label[j++] = '\0';
+  }
 }
 
 inline void copy_to_unpacked(TestMessageUnpacked& unpacked, const TestMessagePacked& packed) {
-    unpacked.msg_type = packed.msg_type;
-    unpacked.sequence = packed.sequence;
-    unpacked.sensor_value = packed.sensor_value;
-    unpacked.counter = packed.counter;
-    unpacked.temperature = packed.temperature;
-    unpacked.pressure = packed.pressure;
-    unpacked.status = packed.status;
-    mem_copy(unpacked.label, packed.label, sizeof(unpacked.label));
+  unpacked.msg_type = packed.msg_type;
+  unpacked.sequence = packed.sequence;
+  unpacked.sensor_value = packed.sensor_value;
+  unpacked.counter = packed.counter;
+  unpacked.temperature = packed.temperature;
+  unpacked.pressure = packed.pressure;
+  unpacked.status = packed.status;
+  mem_copy(unpacked.label, packed.label, sizeof(unpacked.label));
 }
 
 // =============================================================================
 // Message info function for parsing
 // =============================================================================
 inline FrameParsers::MessageInfo get_test_message_info(uint16_t msg_id) {
-    if (msg_id == TestMessagePacked::MSG_ID) {
-        return {sizeof(TestMessagePacked), TestMessagePacked::MAGIC1, TestMessagePacked::MAGIC2};
-    }
-    return {0, 0, 0};
+  if (msg_id == TestMessagePacked::MSG_ID) {
+    return {sizeof(TestMessagePacked), TestMessagePacked::MAGIC1, TestMessagePacked::MAGIC2};
+  }
+  return {0, 0, 0};
 }
 
 // =============================================================================
 // Encode/Decode Result Structure
 // =============================================================================
 struct EncodeDecodeResult {
-    bool success;
-    size_t total_bytes;
-    size_t failed_at;  // Index where failure occurred (if any)
+  bool success;
+  size_t total_bytes;
+  size_t failed_at;  // Index where failure occurred (if any)
 };
 
 // =============================================================================
@@ -226,33 +235,33 @@ using DefaultConfig = FrameParsers::ProfileStandardConfig;
 
 // Static test buffers and message arrays
 inline uint8_t* get_packed_buffer() {
-    static uint8_t buffer[DEFAULT_BUFFER_SIZE];
-    return buffer;
+  static uint8_t buffer[DEFAULT_BUFFER_SIZE];
+  return buffer;
 }
 
 inline uint8_t* get_unpacked_buffer() {
-    static uint8_t buffer[DEFAULT_BUFFER_SIZE];
-    return buffer;
+  static uint8_t buffer[DEFAULT_BUFFER_SIZE];
+  return buffer;
 }
 
 inline TestMessagePacked* get_packed_messages() {
-    static TestMessagePacked messages[DEFAULT_ITERATIONS];
-    return messages;
+  static TestMessagePacked messages[DEFAULT_ITERATIONS];
+  return messages;
 }
 
 inline TestMessageUnpacked* get_unpacked_messages() {
-    static TestMessageUnpacked messages[DEFAULT_ITERATIONS];
-    return messages;
+  static TestMessageUnpacked messages[DEFAULT_ITERATIONS];
+  return messages;
 }
 
 inline TestMessagePacked* get_decoded_packed() {
-    static TestMessagePacked messages[DEFAULT_ITERATIONS];
-    return messages;
+  static TestMessagePacked messages[DEFAULT_ITERATIONS];
+  return messages;
 }
 
 inline TestMessageUnpacked* get_decoded_unpacked() {
-    static TestMessageUnpacked messages[DEFAULT_ITERATIONS];
-    return messages;
+  static TestMessageUnpacked messages[DEFAULT_ITERATIONS];
+  return messages;
 }
 
 /**
@@ -260,12 +269,12 @@ inline TestMessageUnpacked* get_decoded_unpacked() {
  * @param count Number of messages to initialize (default: DEFAULT_ITERATIONS)
  */
 inline void init_all_messages(size_t count = DEFAULT_ITERATIONS) {
-    TestMessagePacked* packed = get_packed_messages();
-    TestMessageUnpacked* unpacked = get_unpacked_messages();
-    for (size_t i = 0; i < count; i++) {
-        init_packed_message(packed[i], i);
-        copy_to_unpacked(unpacked[i], packed[i]);
-    }
+  TestMessagePacked* packed = get_packed_messages();
+  TestMessageUnpacked* unpacked = get_unpacked_messages();
+  for (size_t i = 0; i < count; i++) {
+    init_packed_message(packed[i], i);
+    copy_to_unpacked(unpacked[i], packed[i]);
+  }
 }
 
 // =============================================================================
@@ -274,13 +283,13 @@ inline void init_all_messages(size_t count = DEFAULT_ITERATIONS) {
 
 // Track encoded sizes for decode functions
 inline size_t& get_packed_encoded_size() {
-    static size_t size = 0;
-    return size;
+  static size_t size = 0;
+  return size;
 }
 
 inline size_t& get_unpacked_encoded_size() {
-    static size_t size = 0;
-    return size;
+  static size_t size = 0;
+  return size;
 }
 
 /**
@@ -288,19 +297,19 @@ inline size_t& get_unpacked_encoded_size() {
  * Stores encoded size for later decode.
  */
 inline EncodeDecodeResult encode_packed() {
-    uint8_t* buffer = get_packed_buffer();
-    const TestMessagePacked* messages = get_packed_messages();
-    size_t offset = 0;
-    for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-        size_t written = FrameParsers::FrameEncoderWithCrc<DefaultConfig>::encode(
-            buffer + offset, DEFAULT_BUFFER_SIZE - offset, messages[i]);
-        if (written == 0) {
-            return {false, offset, i};
-        }
-        offset += written;
+  uint8_t* buffer = get_packed_buffer();
+  const TestMessagePacked* messages = get_packed_messages();
+  size_t offset = 0;
+  for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
+    size_t written = FrameParsers::FrameEncoderWithCrc<DefaultConfig>::encode(
+        buffer + offset, DEFAULT_BUFFER_SIZE - offset, messages[i]);
+    if (written == 0) {
+      return {false, offset, i};
     }
-    get_packed_encoded_size() = offset;
-    return {true, offset, DEFAULT_ITERATIONS};
+    offset += written;
+  }
+  get_packed_encoded_size() = offset;
+  return {true, offset, DEFAULT_ITERATIONS};
 }
 
 /**
@@ -309,19 +318,19 @@ inline EncodeDecodeResult encode_packed() {
  * Stores encoded size for later decode.
  */
 inline EncodeDecodeResult encode_unpacked() {
-    uint8_t* buffer = get_unpacked_buffer();
-    const TestMessageUnpacked* messages = get_unpacked_messages();
-    size_t offset = 0;
-    for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-        size_t written = FrameParsers::FrameEncoderWithCrc<DefaultConfig>::encode(
-            buffer + offset, DEFAULT_BUFFER_SIZE - offset, messages[i]);
-        if (written == 0) {
-            return {false, offset, i};
-        }
-        offset += written;
+  uint8_t* buffer = get_unpacked_buffer();
+  const TestMessageUnpacked* messages = get_unpacked_messages();
+  size_t offset = 0;
+  for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
+    size_t written = FrameParsers::FrameEncoderWithCrc<DefaultConfig>::encode(
+        buffer + offset, DEFAULT_BUFFER_SIZE - offset, messages[i]);
+    if (written == 0) {
+      return {false, offset, i};
     }
-    get_unpacked_encoded_size() = offset;
-    return {true, offset, DEFAULT_ITERATIONS};
+    offset += written;
+  }
+  get_unpacked_encoded_size() = offset;
+  return {true, offset, DEFAULT_ITERATIONS};
 }
 
 /**
@@ -329,23 +338,23 @@ inline EncodeDecodeResult encode_unpacked() {
  * Uses size from previous encode_packed() call.
  */
 inline EncodeDecodeResult decode_packed() {
-    const uint8_t* buffer = get_packed_buffer();
-    size_t buffer_size = get_packed_encoded_size();
-    TestMessagePacked* messages = get_decoded_packed();
-    size_t offset = 0;
-    for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-        auto frame_info = FrameParsers::BufferParserWithCrc<DefaultConfig>::parse(
-            buffer + offset, buffer_size - offset, get_test_message_info);
-        if (!frame_info.valid) {
-            return {false, offset, i};
-        }
-        size_t bytes_read = messages[i].deserialize(frame_info);
-        if (bytes_read == 0) {
-            return {false, offset, i};
-        }
-        offset += frame_info.frame_size;
+  const uint8_t* buffer = get_packed_buffer();
+  size_t buffer_size = get_packed_encoded_size();
+  TestMessagePacked* messages = get_decoded_packed();
+  size_t offset = 0;
+  for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
+    auto frame_info = FrameParsers::BufferParserWithCrc<DefaultConfig>::parse(buffer + offset, buffer_size - offset,
+                                                                              get_test_message_info);
+    if (!frame_info.valid) {
+      return {false, offset, i};
     }
-    return {true, offset, DEFAULT_ITERATIONS};
+    size_t bytes_read = messages[i].deserialize(frame_info);
+    if (bytes_read == 0) {
+      return {false, offset, i};
+    }
+    offset += frame_info.frame_size;
+  }
+  return {true, offset, DEFAULT_ITERATIONS};
 }
 
 /**
@@ -354,23 +363,23 @@ inline EncodeDecodeResult decode_packed() {
  * Uses size from previous encode_unpacked() call.
  */
 inline EncodeDecodeResult decode_unpacked() {
-    const uint8_t* buffer = get_unpacked_buffer();
-    size_t buffer_size = get_unpacked_encoded_size();
-    TestMessageUnpacked* messages = get_decoded_unpacked();
-    size_t offset = 0;
-    for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-        auto frame_info = FrameParsers::BufferParserWithCrc<DefaultConfig>::parse(
-            buffer + offset, buffer_size - offset, get_test_message_info);
-        if (!frame_info.valid) {
-            return {false, offset, i};
-        }
-        size_t bytes_read = messages[i].deserialize(frame_info);
-        if (bytes_read == 0) {
-            return {false, offset, i};
-        }
-        offset += frame_info.frame_size;
+  const uint8_t* buffer = get_unpacked_buffer();
+  size_t buffer_size = get_unpacked_encoded_size();
+  TestMessageUnpacked* messages = get_decoded_unpacked();
+  size_t offset = 0;
+  for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
+    auto frame_info = FrameParsers::BufferParserWithCrc<DefaultConfig>::parse(buffer + offset, buffer_size - offset,
+                                                                              get_test_message_info);
+    if (!frame_info.valid) {
+      return {false, offset, i};
     }
-    return {true, offset, DEFAULT_ITERATIONS};
+    size_t bytes_read = messages[i].deserialize(frame_info);
+    if (bytes_read == 0) {
+      return {false, offset, i};
+    }
+    offset += frame_info.frame_size;
+  }
+  return {true, offset, DEFAULT_ITERATIONS};
 }
 
 // =============================================================================
@@ -378,39 +387,55 @@ inline EncodeDecodeResult decode_unpacked() {
 // =============================================================================
 
 inline bool verify_packed(const TestMessagePacked& original, const TestMessagePacked& decoded) {
-    return original.sequence == decoded.sequence &&
-           original.counter == decoded.counter &&
-           original.msg_type == decoded.msg_type;
+  return original.sequence == decoded.sequence && original.counter == decoded.counter &&
+         original.msg_type == decoded.msg_type;
+}
+
+inline bool verify_unpacked(const TestMessageUnpacked& original, const TestMessageUnpacked& decoded) {
+  return original.sequence == decoded.sequence && original.counter == decoded.counter &&
+         original.msg_type == decoded.msg_type;
 }
 
 /**
  * Verify decoded packed messages match originals.
  */
 inline bool verify_packed_results() {
-    const TestMessagePacked* original = get_packed_messages();
-    const TestMessagePacked* decoded = get_decoded_packed();
-    for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-        if (!verify_packed(original[i], decoded[i])) {
-            return false;
-        }
+  const TestMessagePacked* original = get_packed_messages();
+  const TestMessagePacked* decoded = get_decoded_packed();
+  for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
+    if (!verify_packed(original[i], decoded[i])) {
+      return false;
     }
-    return true;
+  }
+  return true;
+}
+
+/**
+ * Verify decoded unpacked messages match originals.
+ */
+inline bool verify_unpacked_results() {
+  const TestMessageUnpacked* original = get_unpacked_messages();
+  const TestMessageUnpacked* decoded = get_decoded_unpacked();
+  for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
+    if (!verify_unpacked(original[i], decoded[i])) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**
  * Prevent compiler from optimizing away packed buffer.
  * Call after encode_packed() to ensure the encode isn't optimized out.
  */
-inline void do_not_optimize_packed_buffer() {
-    do_not_optimize_buffer(get_packed_buffer(), get_packed_encoded_size());
-}
+inline void do_not_optimize_packed_buffer() { do_not_optimize_buffer(get_packed_buffer(), get_packed_encoded_size()); }
 
 /**
  * Prevent compiler from optimizing away unpacked buffer.
  * Call after encode_unpacked() to ensure the encode isn't optimized out.
  */
 inline void do_not_optimize_unpacked_buffer() {
-    do_not_optimize_buffer(get_unpacked_buffer(), get_unpacked_encoded_size());
+  do_not_optimize_buffer(get_unpacked_buffer(), get_unpacked_encoded_size());
 }
 
 /**
@@ -418,9 +443,8 @@ inline void do_not_optimize_unpacked_buffer() {
  * Call after decode_packed() to ensure the decode isn't optimized out.
  */
 inline void do_not_optimize_decoded_packed() {
-    do_not_optimize_buffer(
-        reinterpret_cast<uint8_t*>(get_decoded_packed()), 
-        sizeof(TestMessagePacked) * DEFAULT_ITERATIONS);
+  do_not_optimize_buffer(reinterpret_cast<uint8_t*>(get_decoded_packed()),
+                         sizeof(TestMessagePacked) * DEFAULT_ITERATIONS);
 }
 
 /**
@@ -428,9 +452,8 @@ inline void do_not_optimize_decoded_packed() {
  * Call after decode_unpacked() to ensure the decode isn't optimized out.
  */
 inline void do_not_optimize_decoded_unpacked() {
-    do_not_optimize_buffer(
-        reinterpret_cast<uint8_t*>(get_decoded_unpacked()), 
-        sizeof(TestMessageUnpacked) * DEFAULT_ITERATIONS);
+  do_not_optimize_buffer(reinterpret_cast<uint8_t*>(get_decoded_unpacked()),
+                         sizeof(TestMessageUnpacked) * DEFAULT_ITERATIONS);
 }
 
 }  // namespace GenericTests
