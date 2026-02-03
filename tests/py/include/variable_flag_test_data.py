@@ -3,16 +3,12 @@
 Variable flag truncation test data definitions (Python).
 Tests that messages with variable=true properly truncate unused array space.
 
-Structure:
-- Two identical messages (TruncationTestNonVariable and TruncationTestVariable)
-- Only difference: TruncationTestVariable has option variable = true
-- Both have data_array filled to 1/3 capacity (67 out of 200 bytes)
-- Tests that variable message gets truncated and non-variable does not
+This module follows the C++ test pattern with a unified get_message(index) interface.
 """
 
 import sys
 import os
-from typing import List, Tuple, Optional
+from typing import List, Union
 
 # Add generated directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
@@ -23,9 +19,22 @@ from struct_frame.generated.serialization_test import (
     get_message_info,
 )
 
+# Type alias for message union (like C++ MessageVariant)
+MessageType = Union[
+    SerializationTestTruncationTestNonVariable,
+    SerializationTestTruncationTestVariable,
+]
 
 # ============================================================================
-# Helper functions to create messages
+# Message count and supported profiles
+# ============================================================================
+
+MESSAGE_COUNT = 2
+PROFILES = "bulk"
+
+
+# ============================================================================
+# Helper functions to create messages (like C++ create_* functions)
 # ============================================================================
 
 def create_non_variable_1_3_filled() -> SerializationTestTruncationTestNonVariable:
@@ -38,8 +47,7 @@ def create_non_variable_1_3_filled() -> SerializationTestTruncationTestNonVariab
 
 
 def create_variable_1_3_filled() -> SerializationTestTruncationTestVariable:
-    """Create variable message with 1/3 filled array (67 out of 200 bytes).
-    This should be identical in content but will serialize smaller due to variable flag."""
+    """Create variable message with 1/3 filled array (67 out of 200 bytes)."""
     return SerializationTestTruncationTestVariable(
         sequence_id=0xDEADBEEF,
         data_array=list(range(67)),  # Fill 1/3 of the array
@@ -48,109 +56,86 @@ def create_variable_1_3_filled() -> SerializationTestTruncationTestVariable:
 
 
 # ============================================================================
-# Typed message arrays
+# Unified get_message(index) function - matches C++ MessageProvider pattern
 # ============================================================================
 
-def get_non_variable_messages() -> List[SerializationTestTruncationTestNonVariable]:
-    """Get non-variable message array (1 message)."""
-    return [create_non_variable_1_3_filled()]
-
-
-def get_variable_messages() -> List[SerializationTestTruncationTestVariable]:
-    """Get variable message array (1 message)."""
-    return [create_variable_1_3_filled()]
-
-
-# Message count constant
-MESSAGE_COUNT = 2
-
-# The msg_id order array - maps position to which message type to use
-MSG_ID_ORDER = [
-    SerializationTestTruncationTestNonVariable.MSG_ID,  # 0: Non-variable message
-    SerializationTestTruncationTestVariable.MSG_ID,     # 1: Variable message
-]
+def get_message(index: int) -> MessageType:
+    """
+    Get message by index - unified interface matching C++ get_message().
+    
+    Message order: TruncationTestNonVariable, TruncationTestVariable
+    """
+    if index == 0:
+        return create_non_variable_1_3_filled()
+    else:  # index == 1
+        return create_variable_1_3_filled()
 
 
 # ============================================================================
-# Encoder class - writes messages in order using index tracking
+# Message class lookup - maps message type to class for deserialization
+# ============================================================================
+
+MESSAGE_CLASSES = {
+    SerializationTestTruncationTestNonVariable.MSG_ID: SerializationTestTruncationTestNonVariable,
+    SerializationTestTruncationTestVariable.MSG_ID: SerializationTestTruncationTestVariable,
+}
+
+
+# ============================================================================
+# Encoder - simplified to use get_message(index) directly
 # ============================================================================
 
 class Encoder:
-    """Encoder class for variable flag tests."""
+    """Encoder that uses get_message(index) for encoding."""
     
     def __init__(self):
-        self.non_var_idx = 0
-        self.var_idx = 0
-        self._non_variable_messages = get_non_variable_messages()
-        self._variable_messages = get_variable_messages()
+        self._index = 0
     
-    def write_message(self, writer, msg_id: int) -> int:
-        """Write message to writer based on msg_id."""
-        if msg_id == SerializationTestTruncationTestNonVariable.MSG_ID:
-            msg = self._non_variable_messages[self.non_var_idx]
-            self.non_var_idx += 1
-            written = writer.write(msg)
-            payload_size = len(msg.serialize())
+    def write_message(self, writer, _msg_id: int) -> int:
+        """Write message at current index to writer. Returns bytes written."""
+        msg = get_message(self._index)
+        payload_size = len(msg.serialize())
+        
+        self._index += 1
+        written = writer.write(msg)
+        
+        # Print size info for variable flag tests
+        if self._index == 1:
             print(f"MSG1: {written} bytes (payload={payload_size}, no truncation)")
-            return written
-        elif msg_id == SerializationTestTruncationTestVariable.MSG_ID:
-            msg = self._variable_messages[self.var_idx]
-            self.var_idx += 1
-            written = writer.write(msg)
-            payload_size = len(msg.serialize())
+        else:
             print(f"MSG2: {written} bytes (payload={payload_size}, TRUNCATED)")
-            return written
-        return 0
+        
+        return written
 
 
 # ============================================================================
-# Validator class - validates decoded messages against expected data
+# Validator - simplified to use get_message(index) directly
 # ============================================================================
 
 class Validator:
-    """Validator class for variable flag tests."""
+    """Validator that uses get_message(index) for validation."""
     
     def __init__(self):
-        self.non_var_idx = 0
-        self.var_idx = 0
-        self._non_variable_messages = get_non_variable_messages()
-        self._variable_messages = get_variable_messages()
-    
-    def get_expected(self, msg_id: int) -> Optional[Tuple[bytes, int]]:
-        """Get expected serialized data for the given msg_id."""
-        if msg_id == SerializationTestTruncationTestNonVariable.MSG_ID:
-            msg = self._non_variable_messages[self.non_var_idx]
-            self.non_var_idx += 1
-            data = msg.serialize()
-            return (data, len(data))
-        elif msg_id == SerializationTestTruncationTestVariable.MSG_ID:
-            msg = self._variable_messages[self.var_idx]
-            self.var_idx += 1
-            data = msg.serialize()
-            return (data, len(data))
-        return None
+        self._index = 0
     
     def validate_with_equals(self, frame_info) -> bool:
-        """Validate decoded message using equality testing."""
+        """Validate decoded message using __eq__ operator."""
         msg_id = frame_info.msg_id
-        decoded_data = frame_info
-        if msg_id == SerializationTestTruncationTestNonVariable.MSG_ID:
-            expected = self._non_variable_messages[self.non_var_idx]
-            self.non_var_idx += 1
-            expected_unpacked = SerializationTestTruncationTestNonVariable.deserialize(expected.serialize())
-            decoded = SerializationTestTruncationTestNonVariable.deserialize(decoded_data)
-            return decoded == expected_unpacked
-        elif msg_id == SerializationTestTruncationTestVariable.MSG_ID:
-            expected = self._variable_messages[self.var_idx]
-            self.var_idx += 1
-            expected_unpacked = SerializationTestTruncationTestVariable.deserialize(expected.serialize())
-            decoded = SerializationTestTruncationTestVariable.deserialize(decoded_data)
-            return decoded == expected_unpacked
-        return False
+        msg_class = MESSAGE_CLASSES.get(msg_id)
+        if not msg_class:
+            return False
+        
+        expected = get_message(self._index)
+        self._index += 1
+        
+        # Unpack both from packed bytes to ensure precision matches
+        expected_unpacked = msg_class.deserialize(expected.serialize())
+        decoded = msg_class.deserialize(frame_info)
+        return decoded == expected_unpacked
 
 
 # ============================================================================
-# Test configuration - provides all data for TestCodec templates
+# Test configuration - matches C++ TestHarness pattern
 # ============================================================================
 
 class Config:
@@ -158,12 +143,13 @@ class Config:
     
     MESSAGE_COUNT = MESSAGE_COUNT
     BUFFER_SIZE = 4096
-    FORMATS_HELP = "bulk"
+    FORMATS_HELP = PROFILES
     TEST_NAME = "Variable Python"
     
     @staticmethod
     def get_msg_id_order() -> List[int]:
-        return MSG_ID_ORDER
+        """Get message ID order array."""
+        return [get_message(i).MSG_ID for i in range(MESSAGE_COUNT)]
     
     @staticmethod
     def get_message_info(msg_id: int):
