@@ -80,11 +80,11 @@ export function printUsage(programName: string, formatsHelp: string): void {
 /** Get writer for a profile format */
 function getWriter(format: string, capacity: number): any {
   const writers: { [key: string]: () => any } = {
-    'profile_standard': () => new ProfileStandardWriter(capacity),
-    'profile_sensor': () => new ProfileSensorWriter(capacity),
-    'profile_ipc': () => new ProfileIPCWriter(capacity),
-    'profile_bulk': () => new ProfileBulkWriter(capacity),
-    'profile_network': () => new ProfileNetworkWriter(capacity),
+    'standard': () => new ProfileStandardWriter(capacity),
+    'sensor': () => new ProfileSensorWriter(capacity),
+    'ipc': () => new ProfileIPCWriter(capacity),
+    'bulk': () => new ProfileBulkWriter(capacity),
+    'network': () => new ProfileNetworkWriter(capacity),
   };
 
   const creator = writers[format];
@@ -94,11 +94,11 @@ function getWriter(format: string, capacity: number): any {
 /** Get reader for a profile format */
 function getReader(format: string, getMessageInfo: (msgId: number) => MessageInfo | undefined): any {
   const readers: { [key: string]: () => any } = {
-    'profile_standard': () => new ProfileStandardAccumulatingReader(getMessageInfo, 4096),
-    'profile_sensor': () => new ProfileSensorAccumulatingReader(getMessageInfo, 4096),
-    'profile_ipc': () => new ProfileIPCAccumulatingReader(getMessageInfo, 4096),
-    'profile_bulk': () => new ProfileBulkAccumulatingReader(getMessageInfo, 4096),
-    'profile_network': () => new ProfileNetworkAccumulatingReader(getMessageInfo, 4096),
+    'standard': () => new ProfileStandardAccumulatingReader(getMessageInfo, 4096),
+    'sensor': () => new ProfileSensorAccumulatingReader(getMessageInfo, 4096),
+    'ipc': () => new ProfileIPCAccumulatingReader(getMessageInfo, 4096),
+    'bulk': () => new ProfileBulkAccumulatingReader(getMessageInfo, 4096),
+    'network': () => new ProfileNetworkAccumulatingReader(getMessageInfo, 4096),
   };
 
   const creator = readers[format];

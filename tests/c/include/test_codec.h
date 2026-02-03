@@ -106,15 +106,15 @@ static inline bool encode_messages(const test_config_t* config, const char* form
   /* Get the appropriate profile config */
   const profile_config_t* profile_config = NULL;
 
-  if (strcmp(format, "profile_standard") == 0) {
+  if (strcmp(format, "standard") == 0) {
     profile_config = &PROFILE_STANDARD_CONFIG;
-  } else if (strcmp(format, "profile_sensor") == 0) {
+  } else if (strcmp(format, "sensor") == 0) {
     profile_config = &PROFILE_SENSOR_CONFIG;
-  } else if (strcmp(format, "profile_ipc") == 0) {
+  } else if (strcmp(format, "ipc") == 0) {
     profile_config = &PROFILE_IPC_CONFIG;
-  } else if (strcmp(format, "profile_bulk") == 0) {
+  } else if (strcmp(format, "bulk") == 0) {
     profile_config = &PROFILE_BULK_CONFIG;
-  } else if (strcmp(format, "profile_network") == 0) {
+  } else if (strcmp(format, "network") == 0) {
     profile_config = &PROFILE_NETWORK_CONFIG;
   } else {
     printf("  Unknown frame format: %s\n", format);
@@ -173,15 +173,15 @@ static inline bool decode_messages(const test_config_t* config, const char* form
   /* Get the appropriate profile config */
   const profile_config_t* profile_config = NULL;
 
-  if (strcmp(format, "profile_standard") == 0) {
+  if (strcmp(format, "standard") == 0) {
     profile_config = &PROFILE_STANDARD_CONFIG;
-  } else if (strcmp(format, "profile_sensor") == 0) {
+  } else if (strcmp(format, "sensor") == 0) {
     profile_config = &PROFILE_SENSOR_CONFIG;
-  } else if (strcmp(format, "profile_ipc") == 0) {
+  } else if (strcmp(format, "ipc") == 0) {
     profile_config = &PROFILE_IPC_CONFIG;
-  } else if (strcmp(format, "profile_bulk") == 0) {
+  } else if (strcmp(format, "bulk") == 0) {
     profile_config = &PROFILE_BULK_CONFIG;
-  } else if (strcmp(format, "profile_network") == 0) {
+  } else if (strcmp(format, "network") == 0) {
     profile_config = &PROFILE_NETWORK_CONFIG;
   } else {
     printf("  Unknown frame format: %s\n", format);

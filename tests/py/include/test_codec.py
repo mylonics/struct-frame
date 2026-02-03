@@ -83,11 +83,11 @@ def encode_messages(config, format_name: str, buffer: bytearray) -> Tuple[bool, 
     
     # Writer classes for each format
     writer_classes = {
-        'profile_standard': ProfileStandardWriter,
-        'profile_sensor': ProfileSensorWriter,
-        'profile_ipc': ProfileIPCWriter,
-        'profile_bulk': ProfileBulkWriter,
-        'profile_network': ProfileNetworkWriter,
+        'standard': ProfileStandardWriter,
+        'sensor': ProfileSensorWriter,
+        'ipc': ProfileIPCWriter,
+        'bulk': ProfileBulkWriter,
+        'network': ProfileNetworkWriter,
     }
     
     writer_class = writer_classes.get(format_name)
@@ -164,11 +164,11 @@ def decode_messages(config, format_name: str, buffer: bytes) -> Tuple[bool, int]
     
     # Reader classes for each format
     reader_info = {
-        'profile_standard': lambda: ProfileStandardAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
-        'profile_sensor': lambda: ProfileSensorAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
-        'profile_ipc': lambda: ProfileIPCAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
-        'profile_bulk': lambda: ProfileBulkAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
-        'profile_network': lambda: ProfileNetworkAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'standard': lambda: ProfileStandardAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'sensor': lambda: ProfileSensorAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'ipc': lambda: ProfileIPCAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'bulk': lambda: ProfileBulkAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
+        'network': lambda: ProfileNetworkAccumulatingReader(get_msg_info, config.BUFFER_SIZE),
     }
     
     factory = reader_info.get(format_name)

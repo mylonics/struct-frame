@@ -298,14 +298,14 @@ function validateMessage(data: FrameMsgInfo, _index: number): boolean {
 
 /** Check if format is supported - extended tests only use bulk and network */
 function supportsFormat(format: string): boolean {
-  return format === 'profile_bulk' || format === 'profile_network';
+  return format === 'bulk' || format === 'network';
 }
 
 /** Extended test configuration */
 export const extTestConfig: TestConfig = {
   messageCount: MESSAGE_COUNT,
   bufferSize: 8192,  // Larger for extended payloads
-  formatsHelp: 'profile_bulk, profile_network',
+  formatsHelp: 'bulk, network',
   testName: 'TypeScript Extended',
   getMsgIdOrder: () => MSG_ID_ORDER,
   encodeMessage,

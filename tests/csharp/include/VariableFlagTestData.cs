@@ -100,12 +100,12 @@ namespace StructFrameTests
         {
             public const int MESSAGE_COUNT = VariableFlagTestData.MESSAGE_COUNT;
             public const int BUFFER_SIZE = 4096;
-            public const string FORMATS_HELP = "profile_bulk";
-            public const string TEST_NAME = "Variable Flag C#";
+            public const string FORMATS_HELP = "bulk";
+            public const string TEST_NAME = "Variable C#";
 
             public static bool SupportsFormat(string format)
             {
-                return format == "profile_bulk";
+                return format == "bulk";
             }
         }
     }

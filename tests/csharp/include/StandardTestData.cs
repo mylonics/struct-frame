@@ -351,16 +351,16 @@ namespace StructFrameTests
         {
             public const int MESSAGE_COUNT = 17;
             public const int BUFFER_SIZE = 4096;
-            public const string FORMATS_HELP = "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network";
+            public const string FORMATS_HELP = "standard, sensor, ipc, bulk, network";
             public const string TEST_NAME = "standard";
 
             public static bool SupportsFormat(string formatName)
             {
-                return formatName == "profile_standard" ||
-                       formatName == "profile_sensor" ||
-                       formatName == "profile_ipc" ||
-                       formatName == "profile_bulk" ||
-                       formatName == "profile_network";
+                return formatName == "standard" ||
+                       formatName == "sensor" ||
+                       formatName == "ipc" ||
+                       formatName == "bulk" ||
+                       formatName == "network";
             }
         }
     }

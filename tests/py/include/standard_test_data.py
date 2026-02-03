@@ -442,7 +442,7 @@ class Config:
     """Test configuration for standard messages."""
     MESSAGE_COUNT = MESSAGE_COUNT
     BUFFER_SIZE = 4096
-    FORMATS_HELP = "profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network"
+    FORMATS_HELP = "standard, sensor, ipc, bulk, network"
     TEST_NAME = "Python"
     
     @staticmethod
@@ -465,8 +465,8 @@ class Config:
     @staticmethod
     def supports_format(format_name: str) -> bool:
         return format_name in [
-            'profile_standard', 'profile_sensor', 'profile_ipc',
-            'profile_bulk', 'profile_network'
+            'standard', 'sensor', 'ipc',
+            'bulk', 'network'
         ]
 
 
