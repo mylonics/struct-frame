@@ -1,5 +1,8 @@
-// Common types that can be imported by other proto files
-// Note: No pkgid defined here - will inherit from importing file
+// Common reusable types for import testing
+//
+// Purpose: Provide shared types that can be imported by other proto files.
+// Note: No pkgid defined here - types inherit pkgid from the importing file.
+//
 package common_types;
 
 enum Status {

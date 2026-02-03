@@ -1,7 +1,8 @@
-// Package A with ID
+// Package A for cross-package import testing
+// Tests package B importing this package
 package package_a;
 
-option pkgid = 10;
+option pkgid = 12;
 
 message MessageA {
   option msgid = 1;

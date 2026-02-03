@@ -1,6 +1,13 @@
-// Test proto file for package ID support
-// This file tests the extended message ID feature with package IDs
-
+// Package ID feature test - Basic package messages
+//
+// Purpose: Test the extended message ID feature with package IDs.
+// Package ID enables 16-bit message IDs: (package_id << 8 | msg_id)
+//
+// Message ID Allocation:
+//   1: SimpleMessage - Basic types
+//   2: StatusMessage - Enum and string
+//   3: DataMessage   - Arrays
+//
 package pkg_test;
 
 // Package ID enables 16-bit message IDs (package_id << 8 | msg_id)

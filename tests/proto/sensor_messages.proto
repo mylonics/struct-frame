@@ -1,4 +1,8 @@
-// Part 2 of sensor package - messages that use the types
+// Sensor package - Part 2: Messages using sensor types
+//
+// Purpose: Define sensor messages that use types from sensor_types.proto
+// Demonstrates multi-file package organization.
+//
 package sensor_data;
 
 option pkgid = 2;

@@ -1,10 +1,18 @@
 // Extended test messages for struct-frame code generation framework
-// Tests for message IDs > 255 (require extended profiles with pkg_id)
-// Also tests for extended payloads > 255 bytes (require 2-byte length field)
 //
-// These messages are only compatible with extended profiles:
-// - profile_bulk (BasicExtended): supports extended msg_id and extended payload
-// - profile_network (BasicExtendedMultiSystemStream): supports extended msg_id and extended payload
+// Purpose: Test messages with extended features requiring advanced profiles
+//   - Message IDs > 255 (require 2-byte message ID encoding)
+//   - Payloads > 255 bytes (require 2-byte length field)
+//   - Arrays > 256 elements (require uint16_t count field)
+//
+// Message ID Allocation:
+//   256-2048:  Extended message ID tests (10 messages testing various ID ranges)
+//   800-807:   Large payload and array tests
+//
+// Compatible Profiles (support extended features):
+//   - ProfileBulk (BasicExtended)
+//   - ProfileNetwork (BasicExtendedMultiSystemStream)
+//
 package extended_test;
 
 // ============================================================================

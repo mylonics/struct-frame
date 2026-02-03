@@ -1,4 +1,9 @@
-// Main package that imports another without proper IDs
+// Multi-package without IDs - Main package
+//
+// Purpose: Test behavior when importing packages without pkgid defined.
+// This demonstrates the edge case where both main and imported packages
+// have no package IDs.
+//
 package main_package;
 
 import "no_id_pkg.proto";

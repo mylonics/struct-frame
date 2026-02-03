@@ -1,4 +1,9 @@
-// Package without ID
+// Package without ID - Imported by multi_pkg_no_ids
+//
+// Purpose: Provide a package without pkgid for edge case testing.
+// Used by multi_pkg_no_ids.proto to test import behavior when
+// neither the main nor imported package has a pkgid.
+//
 package no_id_package;
 
 message TestMessage {

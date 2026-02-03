@@ -1,5 +1,17 @@
-// Test file for envelope/container message feature
-// Demonstrates the is_envelope option for wrapping multiple message types
+// Envelope/container message tests for struct-frame
+//
+// Purpose: Test the is_envelope option for wrapping multiple message types
+// in a single container message using oneof fields.
+//
+// Message ID Allocation:
+//   112-115:  Command messages (ADC, DAC, Motor, Sensor)
+//   200:      CommandEnvelope (wraps all commands)
+//   212-215:  Response messages (ADC, DAC, Motor, Sensor)
+//   250:      ResponseEnvelope (wraps all responses)
+//
+// The is_envelope option enables special SDK helper methods for wrapping
+// and unwrapping messages using auto-discriminators based on message IDs.
+//
 package envelope_test;
 
 // ============================================================================

@@ -1,7 +1,8 @@
-// Package B that imports A
+// Package B that imports Package A
+// Tests cross-package imports and dependencies
 package package_b;
 
-option pkgid = 11;
+option pkgid = 13;
 
 import "package_a.proto";
 

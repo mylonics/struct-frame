@@ -1,4 +1,8 @@
-// Sensor data that imports common types
+// Sensor package - Cross-package import test
+//
+// Purpose: Test sensor messages importing common_types from another package.
+// Demonstrates how a package can import and use types from packages without pkgid.
+//
 package sensor_data;
 
 option pkgid = 2;

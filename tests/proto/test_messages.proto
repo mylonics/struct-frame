@@ -1,5 +1,12 @@
-// Combined test messages for struct-frame code generation framework
-// This file consolidates all test message definitions for testing
+// Test messages for struct-frame code generation framework
+// 
+// This file contains the core test message suite used for comprehensive testing
+// across all language backends (C, C++, Python, TypeScript, JavaScript, C#).
+//
+// Message ID Allocation:
+//   201-204: Basic type and array tests
+//   205:     Union/oneof tests
+//   206-211: Variable-length message tests
 //
 // Note: NestedMessage (from original nested_messages.proto) is intentionally
 // excluded because the JavaScript code generator has a bug with nested struct
@@ -37,7 +44,7 @@ enum MsgSeverity {
 // Basic Types Test Message (msgid: 201)
 // ============================================================================
 
-// Test all basic data types
+// Comprehensive test of all primitive data types supported by struct-frame
 message BasicTypesMessage {
   option msgid = 201;
   
@@ -71,6 +78,7 @@ message BasicTypesMessage {
 // Comprehensive Arrays Test (msgid: 203)
 // ============================================================================
 
+// Helper message for nested message array testing
 message Sensor {
   uint8 id = 1;
   float value = 2;
@@ -78,6 +86,8 @@ message Sensor {
   string name = 4 [size=16];
 }
 
+// Comprehensive test of all array types: fixed, bounded, primitives, 
+// strings, enums, and nested messages
 message ComprehensiveArrayMessage {
   option msgid = 203;
   
@@ -124,9 +134,9 @@ message SerializationTestMessage {
 // Union Message Test (msgid: 205)
 // ============================================================================
 
-// A message demonstrating union-like behavior using oneof
-// Since ComprehensiveArrayMessage and SerializationTestMessage both have
-// message IDs, the generator will automatically add a discriminator field
+// Test message demonstrating union-like behavior using oneof.
+// The generator automatically adds a discriminator field since both
+// ComprehensiveArrayMessage and SerializationTestMessage have message IDs.
 message UnionTestMessage {
   option msgid = 205;
   
@@ -203,8 +213,8 @@ message TruncationTestVariable {
 // Variable Message Test (msgid: 211)
 // ============================================================================
 
-// Variable message with two variable string fields
-message Message {
+// Variable-length log message with severity and module context
+message LogMessage {
   option msgid = 211;
   option variable = true;
   

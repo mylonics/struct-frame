@@ -1,6 +1,13 @@
-// Package test messages that imports common_types and pkg_test_a
-// common_types.proto has no pkgid, so it will inherit pkgid=1 from this file
-// pkg_test_a.proto has its own pkgid=2
+// Cross-package import and inheritance test
+//
+// Purpose: Test package imports and pkgid inheritance behavior
+//   - Imports common_types.proto (no pkgid - inherits pkgid=1 from this file)
+//   - Imports pkg_test_a.proto (has pkgid=2 - uses its own pkgid)
+//
+// Message ID Allocation:
+//   1: PackageTestMessage    - Uses inherited types from common_types
+//   2: CrossPackageMessage   - Uses types from pkg_test_a
+//
 package pkg_test_messages;
 
 option pkgid = 1;

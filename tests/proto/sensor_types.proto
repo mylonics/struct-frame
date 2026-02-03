@@ -1,4 +1,8 @@
-// Part 1 of sensor package - common enums
+// Sensor package - Part 1: Common type definitions
+//
+// Purpose: Define enums used by sensor_messages.proto
+// This file demonstrates splitting a package across multiple files.
+//
 package sensor_data;
 
 option pkgid = 2;

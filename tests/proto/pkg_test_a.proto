@@ -1,4 +1,9 @@
-// Package A for testing package imports and inheritance
+// Package A for cross-package import testing
+//
+// Purpose: Provide types and enums for cross-package import tests.
+// This package is imported by pkg_test_messages.proto to test that
+// imported packages with their own pkgid retain their package ID.
+//
 package pkg_test_a;
 
 option pkgid = 2;
