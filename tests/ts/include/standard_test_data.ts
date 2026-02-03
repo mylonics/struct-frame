@@ -359,18 +359,18 @@ function validateMessage(data: FrameMsgInfo, _index: number): boolean {
 
 /** Check if format is supported */
 function supportsFormat(format: string): boolean {
-  return format === 'profile_standard' ||
-    format === 'profile_sensor' ||
-    format === 'profile_ipc' ||
-    format === 'profile_bulk' ||
-    format === 'profile_network';
+  return format === 'standard' ||
+    format === 'sensor' ||
+    format === 'ipc' ||
+    format === 'bulk' ||
+    format === 'network';
 }
 
 /** Standard test configuration */
 export const stdTestConfig: TestConfig = {
   messageCount: MESSAGE_COUNT,
   bufferSize: 4096,
-  formatsHelp: 'profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network',
+  formatsHelp: 'standard, sensor, ipc, bulk, network',
   testName: 'TypeScript',
   getMsgIdOrder: () => MSG_ID_ORDER,
   encodeMessage,

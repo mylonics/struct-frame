@@ -154,12 +154,12 @@ class Validator:
 # ============================================================================
 
 class Config:
-    """Configuration for variable flag tests."""
+    """Configuration for variable tests."""
     
     MESSAGE_COUNT = MESSAGE_COUNT
     BUFFER_SIZE = 4096
-    FORMATS_HELP = "profile_bulk"
-    TEST_NAME = "Variable Flag Python"
+    FORMATS_HELP = "bulk"
+    TEST_NAME = "Variable Python"
     
     @staticmethod
     def get_msg_id_order() -> List[int]:
@@ -171,7 +171,7 @@ class Config:
     
     @staticmethod
     def supports_format(format: str) -> bool:
-        return format == "profile_bulk"
+        return format == "bulk"
     
     @staticmethod
     def create_encoder():

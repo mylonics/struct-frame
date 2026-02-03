@@ -183,21 +183,21 @@ function getExtVarSingleMessages() {
     new ExtendedTestExtendedVariableSingleArray({
       timestamp: 0x0000000000000003n,
       telemetry_data_count: 83,
-      telemetry_data_data: Array.from({length: 83}, (_, i) => i),
+      telemetry_data_data: Array.from({ length: 83 }, (_, i) => i),
       crc: 0x00000003,
     }),
     // One position empty (249 elements)
     new ExtendedTestExtendedVariableSingleArray({
       timestamp: 0x0000000000000004n,
       telemetry_data_count: 249,
-      telemetry_data_data: Array.from({length: 249}, (_, i) => i % 256),
+      telemetry_data_data: Array.from({ length: 249 }, (_, i) => i % 256),
       crc: 0x00000004,
     }),
     // Full (250 elements)
     new ExtendedTestExtendedVariableSingleArray({
       timestamp: 0x0000000000000005n,
       telemetry_data_count: 250,
-      telemetry_data_data: Array.from({length: 250}, (_, i) => i % 256),
+      telemetry_data_data: Array.from({ length: 250 }, (_, i) => i % 256),
       crc: 0x00000005,
     }),
   ];
@@ -256,13 +256,13 @@ function resetState() {
 /** Encode message by index */
 function encodeMessage(writer, index) {
   const msgId = MSG_ID_ORDER[index];
-  
+
   // Handle variable messages with index tracking
   if (msgId === ExtendedTestExtendedVariableSingleArray._msgid) {
     const msg = extVarSingleMsgs[extVarSingleEncodeIdx++];
     return writer.write(msg);
   }
-  
+
   const msg = getMessage(msgId);
   if (!msg) return 0;
   return writer.write(msg);
@@ -290,14 +290,14 @@ function validateMessage(data, _index) {
 
 /** Check if format is supported - extended tests only use bulk and network */
 function supportsFormat(format) {
-  return format === 'profile_bulk' || format === 'profile_network';
+  return format === 'bulk' || format === 'network';
 }
 
 /** Extended test configuration */
 const extTestConfig = {
   messageCount: MESSAGE_COUNT,
   bufferSize: 8192,  // Larger for extended payloads
-  formatsHelp: 'profile_bulk, profile_network',
+  formatsHelp: 'bulk, network',
   testName: 'JavaScript Extended',
   getMsgIdOrder: () => MSG_ID_ORDER,
   encodeMessage,

@@ -369,12 +369,12 @@ namespace StructFrameTests
         {
             public const int MESSAGE_COUNT = 17;
             public const int BUFFER_SIZE = 8192;
-            public const string FORMATS_HELP = "profile_bulk, profile_network";
+            public const string FORMATS_HELP = "bulk, network";
             public const string TEST_NAME = "extended";
 
             public static bool SupportsFormat(string formatName)
             {
-                return formatName == "profile_bulk" || formatName == "profile_network";
+                return formatName == "bulk" || formatName == "network";
             }
         }
     }

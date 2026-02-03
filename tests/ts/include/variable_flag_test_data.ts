@@ -95,13 +95,13 @@ function validateMessage(data: FrameMsgInfo, _index: number): boolean {
 export const variableFlagTestConfig: TestConfig = {
   messageCount: MESSAGE_COUNT,
   bufferSize: 4096,
-  formatsHelp: 'profile_bulk',
-  testName: 'Variable Flag TypeScript',
+  formatsHelp: 'bulk',
+  testName: 'Variable TypeScript',
   getMsgIdOrder: () => MSG_ID_ORDER,
   encodeMessage,
   validateMessage,
   getMessageInfo: (msgId: number): MessageInfo | undefined => get_message_info(msgId),
-  supportsFormat: (format: string): boolean => format === 'profile_bulk',
+  supportsFormat: (format: string): boolean => format === 'bulk',
   resetState: () => {
     nonVarIdx = 0;
     varIdx = 0;

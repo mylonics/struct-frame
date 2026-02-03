@@ -118,15 +118,15 @@ function validateMessage(data, _index) {
 const variableFlagTestConfig = {
   messageCount: MESSAGE_COUNT,
   bufferSize: 4096,
-  formatsHelp: 'profile_bulk',
-  testName: 'Variable Flag JavaScript',
+  formatsHelp: 'bulk',
+  testName: 'Variable JavaScript',
   getMsgIdOrder: () => MSG_ID_ORDER,
   encodeMessage,
   getExpected,
   validateWithEquals,
   validateMessage,
   getMessageInfo: (msgId) => get_message_info(msgId),
-  supportsFormat: (format) => format === 'profile_bulk',
+  supportsFormat: (format) => format === 'bulk',
   resetState: () => {
     nonVarIdx = 0;
     varIdx = 0;

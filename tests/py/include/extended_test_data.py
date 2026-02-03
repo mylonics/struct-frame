@@ -426,7 +426,7 @@ class Config:
     """Test configuration for extended messages."""
     MESSAGE_COUNT = MESSAGE_COUNT
     BUFFER_SIZE = 8192  # Larger for extended payloads
-    FORMATS_HELP = "profile_bulk, profile_network"
+    FORMATS_HELP = "bulk, network"
     TEST_NAME = "Python Extended"
     
     @staticmethod
@@ -447,7 +447,7 @@ class Config:
     
     @staticmethod
     def supports_format(format_name: str) -> bool:
-        return format_name in ['profile_bulk', 'profile_network']
+        return format_name in ['bulk', 'network']
 
 
 # Export config instance for convenience

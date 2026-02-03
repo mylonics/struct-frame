@@ -136,17 +136,17 @@ PROTO_FILES = [
 
 # Frame format profiles to test
 PROFILES = [
-    ("profile_standard", "ProfileStandard"),
-    ("profile_sensor", "ProfileSensor"),
-    ("profile_ipc", "ProfileIPC"),
-    ("profile_bulk", "ProfileBulk"),
-    ("profile_network", "ProfileNetwork"),
+    ("standard", "ProfileStandard"),
+    ("sensor", "ProfileSensor"),
+    ("ipc", "ProfileIPC"),
+    ("bulk", "ProfileBulk"),
+    ("network", "ProfileNetwork"),
 ]
 
 # Extended test profiles (only profiles that support pkg_id)
 EXTENDED_PROFILES = [
-    ("profile_bulk", "ProfileBulk"),
-    ("profile_network", "ProfileNetwork"),
+    ("bulk", "ProfileBulk"),
+    ("network", "ProfileNetwork"),
 ]
 
 # Expected message counts
@@ -247,9 +247,9 @@ class TestRunner:
             "extended_encode": {},
             "extended_validate": {},
             "extended_decode": {},
-            "variable_flag_encode": {},
-            "variable_flag_validate": {},
-            "variable_flag_decode": {},
+            "variable_encode": {},
+            "variable_validate": {},
+            "variable_decode": {},
         }
     
     def _init_languages(self) -> Dict[str, Language]:
@@ -641,7 +641,8 @@ class TestRunner:
                 if lang.id == "c":
                     cmd = f'gcc -I"{gen_dir}" -o "{output}" "{source}" -lm'
                 else:
-                    cmd = f'g++ -std=c++20 -I"{gen_dir}" -I"{test_dir}" -o "{output}" "{source}"'
+                    include_dir = test_dir / "include"
+                    cmd = f'g++ -std=c++20 -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}"'
                 
                 ok, _, _ = self.run_cmd(cmd)
                 if not ok:
@@ -974,8 +975,8 @@ class TestRunner:
         # Determine test type from runner name
         if "extended" in runner_name:
             test_type = "extended"
-        elif "variable_flag" in runner_name or "variable" in runner_name:
-            test_type = "variable_flag"
+        elif "variable" in runner_name:
+            test_type = "variable"
         else:
             test_type = "standard"
         filename = f"{prefix}_{profile_name}_{test_type}_data.bin"
@@ -1058,16 +1059,16 @@ class TestRunner:
         """Verify that variable messages are properly truncated by comparing binary file sizes."""
         print(f"\n  {Colors.bold('Verifying Variable Message Truncation...')}")
         
-        # Collect all encoded variable_flag files
+        # Collect all encoded variable files
         encoded_files = {}
         for lang in self.get_testable_languages():
             # Use the same naming pattern as _get_output_file
-            encode_file = self._get_output_file(lang, "profile_bulk", "test_variable_flag")
+            encode_file = self._get_output_file(lang, "bulk", "test_variable_flag")
             if encode_file.exists():
                 encoded_files[lang.id] = encode_file
         
         if not encoded_files:
-            print(f"  {Colors.warn_tag()} No variable flag encoded files found to verify")
+            print(f"  {Colors.warn_tag()} No variable encoded files found to verify")
             return True
         
         # Read and verify binary content
@@ -1098,7 +1099,7 @@ class TestRunner:
                             break
                     
                     all_match = False
-                    self.record_failure("variable_flag_verify", lang_id, "profile_bulk", 
+                    self.record_failure("variable_verify", lang_id, "bulk", 
                                       "Binary output does not match reference")
         
         # Verify truncation by checking frame sizes
@@ -1177,13 +1178,13 @@ class TestRunner:
         ext_decode_total = len(self.results["extended_decode"])
         ext_decode_passed = sum(1 for v in self.results["extended_decode"].values() if v)
         
-        # Variable flag tests
-        var_encode_total = len(self.results["variable_flag_encode"])
-        var_encode_passed = sum(1 for v in self.results["variable_flag_encode"].values() if v)
-        var_validate_total = len(self.results.get("variable_flag_validate", {}))
-        var_validate_passed = sum(1 for v in self.results.get("variable_flag_validate", {}).values() if v)
-        var_decode_total = len(self.results["variable_flag_decode"])
-        var_decode_passed = sum(1 for v in self.results["variable_flag_decode"].values() if v)
+        # Variable tests
+        var_encode_total = len(self.results["variable_encode"])
+        var_encode_passed = sum(1 for v in self.results["variable_encode"].values() if v)
+        var_validate_total = len(self.results.get("variable_validate", {}))
+        var_validate_passed = sum(1 for v in self.results.get("variable_validate", {}).values() if v)
+        var_decode_total = len(self.results["variable_decode"])
+        var_decode_passed = sum(1 for v in self.results["variable_decode"].values() if v)
         
         # Helper to colorize counts
         def colorize_count(passed: int, total: int) -> str:
@@ -1331,9 +1332,9 @@ class TestRunner:
                 with self.timed_phase("Extended Tests"):
                     self.run_tests("extended", extended_profiles_to_test, EXTENDED_MESSAGE_COUNT, "test_extended")
 
-            # Phase 7: Variable-flag tests (only ProfileBulk, 2 messages)
-            with self.timed_phase("Variable Flag Tests"):
-                self.run_tests("variable_flag", [("profile_bulk", "ProfileBulk")], 2, "test_variable_flag")
+            # Phase 7: Variable tests (only ProfileBulk, 2 messages)
+            with self.timed_phase("Variable Tests"):
+                self.run_tests("variable", [("bulk", "ProfileBulk")], 2, "test_variable_flag")
                 # Verify truncation by checking binary file sizes
                 self.verify_variable_truncation()
             
