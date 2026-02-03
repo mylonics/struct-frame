@@ -632,7 +632,8 @@ class TestRunner:
         # C/C++: compile test_standard and test_extended executables
         if lang.id in ("c", "cpp"):
             success = True
-            for runner in ["test_standard", "test_extended", "test_variable_flag", "test_profiling"]:
+            for runner in ["test_standard", "test_extended", "test_variable_flag", 
+                          "test_profiling_barebones", "test_profiling", "test_profiling_generated"]:
                 source = test_dir / f"{runner}{lang.source_ext}"
                 if not source.exists():
                     continue
@@ -1127,32 +1128,45 @@ class TestRunner:
         
         return all_match
     
-    def run_profiling_test(self) -> bool:
-        """Run the C++ profiling test (packed vs unpacked struct performance)."""
+    def run_profiling_tests(self) -> bool:
+        """Run all C++ profiling tests (barebones, generic, and generated)."""
         cpp_lang = self.languages.get("cpp")
         if not cpp_lang or "cpp" in self.skipped_languages:
-            print("  [SKIP] C++ not available for profiling test")
+            print("  [SKIP] C++ not available for profiling tests")
             return True
         
         build_dir = self.project_root / cpp_lang.build_dir
-        profiling_exe = build_dir / f"test_profiling{cpp_lang.exe_ext}"
+        all_success = True
         
-        if not profiling_exe.exists():
-            print(f"  [SKIP] Profiling test executable not found: {profiling_exe}")
-            return True
+        # List of profiling tests to run
+        profiling_tests = [
+            ("test_profiling_barebones", "Barebones (pure struct access, no struct-frame)"),
+            ("test_profiling", "Struct-Frame-Generic (hardcoded messages with struct-frame)"),
+            ("test_profiling_generated", "Struct-Frame-Generated (all StandardMessages)")
+        ]
         
-        print(f"\n  Running packed vs unpacked profiling test...")
-        success, stdout, stderr = self.run_cmd(str(profiling_exe), timeout=60)
+        for exe_name, description in profiling_tests:
+            exe_path = build_dir / f"{exe_name}{cpp_lang.exe_ext}"
+            
+            if not exe_path.exists():
+                print(f"\n  [SKIP] {description}: executable not found")
+                continue
+            
+            print(f"\n  Running {description}...")
+            success, stdout, stderr = self.run_cmd(str(exe_path), timeout=120)
+            
+            if stdout:
+                # Print the profiling output (it's nicely formatted)
+                for line in stdout.strip().split('\n'):
+                    print(f"  {line}")
+            
+            if stderr and not success:
+                print(f"  {Colors.fail_tag()} Error: {stderr}")
+            
+            if not success:
+                all_success = False
         
-        if stdout:
-            # Print the profiling output (it's nicely formatted)
-            for line in stdout.strip().split('\n'):
-                print(f"  {line}")
-        
-        if stderr and not success:
-            print(f"  {Colors.fail_tag()} Profiling test error: {stderr}")
-        
-        return success
+        return all_success
     
     def run_standalone_tests(self) -> bool:
         """Run standalone Python test scripts."""
@@ -1367,7 +1381,7 @@ class TestRunner:
             
             # Phase 8: Profiling tests (packed vs unpacked performance)
             with self.timed_phase("Profiling Tests"):
-                self.run_profiling_test()
+                self.run_profiling_tests()
             
             # Phase 9: Standalone tests
             with self.timed_phase("Standalone Tests"):
