@@ -103,10 +103,10 @@ int main() {
     packed_msg.single_precision = 3.14159f;
     packed_msg.double_precision = 2.718281828459045;
     packed_msg.flag = true;
-    std::strncpy(packed_msg.device_id, "DEVICE-001", 31);
-    packed_msg.device_id[31] = '\0';
+    std::strncpy(packed_msg.device_id, "DEVICE-001", sizeof(packed_msg.device_id) - 1);
+    packed_msg.device_id[sizeof(packed_msg.device_id) - 1] = '\0';
     packed_msg.description.length = 16;
-    std::strncpy(packed_msg.description.data, "Basic test data", 127);
+    std::strncpy(packed_msg.description.data, "Basic test data", sizeof(packed_msg.description.data) - 1);
 
     // Create unpacked version with same data
     BasicTypesMessageUnpacked unpacked_msg{};
