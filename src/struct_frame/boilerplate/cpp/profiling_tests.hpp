@@ -2,14 +2,30 @@
 /*
  * This file provides built-in profiling and verification tests for the struct-frame SDK.
  * These tests can be run on the target system to:
- * 1. Profile encode/decode performance with packed vs aligned memory access
+ * 1. Profile encode/decode performance comparing packed vs unpacked struct access
  * 2. Verify round-trip encode/decode correctness
  *
+ * The main purpose is to characterize memory access penalties when using packed structs
+ * (which is the core approach of struct-frame) vs unpacked/naturally-aligned structs.
+ * These penalties can vary across different platforms.
+ *
  * Usage:
+ *   // Define an unpacked version of your message for comparison
+ *   struct MyMessageUnpacked {
+ *     uint32_t field1;
+ *     uint8_t field2;
+ *     uint16_t field3;
+ *     // ... same fields as MyMessage but without packing
+ *   };
+ *
  *   // Time profiling - measure 1000 iterations of encode/decode
  *   auto start = get_time();
- *   ProfilingTests::encode_packed_test<MyMessage>(buffer, sizeof(buffer));
- *   auto elapsed = get_time() - start;
+ *   ProfilingTests::encode_packed_test<MyMessage>(msg, buffer, sizeof(buffer));
+ *   auto packed_time = get_time() - start;
+ *
+ *   start = get_time();
+ *   ProfilingTests::encode_unpacked_test<MyMessage, MyMessageUnpacked>(msg, unpacked_msg, buffer, sizeof(buffer));
+ *   auto unpacked_time = get_time() - start;
  *
  *   // Round-trip verification
  *   bool success = ProfilingTests::verify_roundtrip<MyMessage, ProfileStandard>(msg, buffer, sizeof(buffer));
@@ -62,6 +78,13 @@ inline void do_not_optimize_buffer(const uint8_t* buffer, size_t size) {
  * Time Profiling Tests
  * These tests run PROFILE_ITERATIONS encode/decode operations.
  * The user is responsible for timing before and after each call.
+ *
+ * The tests compare:
+ * - Packed struct: Direct access to packed (#pragma pack(1)) structs
+ * - Unpacked struct: Access to naturally-aligned structs (compiler default)
+ *
+ * This helps characterize any memory access penalties from unaligned access
+ * that may occur on different platforms when using packed structs.
  *===========================================================================*/
 
 /**
@@ -75,11 +98,11 @@ struct ProfileResult {
 
 /**
  * Encode a packed struct message PROFILE_ITERATIONS times.
- * Uses direct memory copy for packed struct encoding.
+ * Uses direct memory access to the packed struct.
  *
- * @tparam T Message type derived from MessageBase (must be packed)
+ * @tparam T Message type derived from MessageBase (must be packed with #pragma pack(1))
  * @tparam Config Frame profile configuration
- * @param msg Reference to message to encode
+ * @param msg Reference to packed message to encode
  * @param buffer Output buffer
  * @param buffer_size Size of output buffer
  * @return ProfileResult with iteration count, bytes processed, and success status
@@ -118,9 +141,9 @@ ProfileResult encode_packed_test(const T& msg, uint8_t* buffer, size_t buffer_si
 
 /**
  * Decode a packed struct message PROFILE_ITERATIONS times.
- * Uses direct memory copy for packed struct deserialization.
+ * Deserializes directly into a packed struct.
  *
- * @tparam T Message type derived from MessageBase (must be packed)
+ * @tparam T Message type derived from MessageBase (must be packed with #pragma pack(1))
  * @tparam Config Frame profile configuration
  * @tparam GetMsgInfo Function type for get_message_info callback
  * @param buffer Input buffer containing encoded frame
@@ -150,7 +173,7 @@ ProfileResult decode_packed_test(const uint8_t* buffer, size_t buffer_size, GetM
       break;
     }
 
-    // Deserialize the message using direct copy (packed)
+    // Deserialize the message directly into packed struct
     T decoded_msg{};
     size_t bytes_read = decoded_msg.deserialize(frame_info);
 
@@ -170,38 +193,42 @@ ProfileResult decode_packed_test(const uint8_t* buffer, size_t buffer_size, GetM
 }
 
 /**
- * Encode a message with aligned memory access PROFILE_ITERATIONS times.
- * This version copies to an aligned buffer first, then encodes.
+ * Encode from an unpacked struct PROFILE_ITERATIONS times.
+ * This version reads fields from an unpacked (naturally-aligned) struct
+ * and copies them to the packed struct for encoding.
  *
- * @tparam T Message type derived from MessageBase
+ * The unpacked struct should have the same fields as the packed struct
+ * but without #pragma pack(1), allowing the compiler to add natural alignment.
+ *
+ * @tparam TPacked Packed message type derived from MessageBase
+ * @tparam TUnpacked Unpacked version of the message (same fields, no packing)
  * @tparam Config Frame profile configuration
- * @param msg Reference to message to encode
+ * @param packed_msg Reference to packed message (destination for copy)
+ * @param unpacked_msg Reference to unpacked message (source for copy)
  * @param buffer Output buffer
  * @param buffer_size Size of output buffer
+ * @param copy_func Function to copy fields from unpacked to packed: void(TPacked&, const TUnpacked&)
  * @return ProfileResult with iteration count, bytes processed, and success status
  */
-template <typename T, typename Config>
-ProfileResult encode_aligned_test(const T& msg, uint8_t* buffer, size_t buffer_size) {
-  static_assert(std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>,
-                "Message type must derive from MessageBase");
+template <typename TPacked, typename TUnpacked, typename Config, typename CopyFunc>
+ProfileResult encode_unpacked_test(TPacked& packed_msg, const TUnpacked& unpacked_msg, 
+                                   uint8_t* buffer, size_t buffer_size, CopyFunc copy_func) {
+  static_assert(std::is_base_of_v<MessageBase<TPacked, TPacked::MSG_ID, TPacked::MAX_SIZE, TPacked::MAGIC1, TPacked::MAGIC2>, TPacked>,
+                "Packed message type must derive from MessageBase");
 
   ProfileResult result{0, 0, true};
 
-  // Create an aligned copy of the message
-  alignas(alignof(std::max_align_t)) uint8_t aligned_storage[sizeof(T)];
-
   for (size_t i = 0; i < PROFILE_ITERATIONS; i++) {
-    // Copy to aligned storage first
-    std::memcpy(aligned_storage, &msg, sizeof(T));
-
-    // Encode from aligned storage
-    const T* aligned_msg = reinterpret_cast<const T*>(aligned_storage);
+    // Copy from unpacked to packed struct (simulates reading from unpacked struct)
+    copy_func(packed_msg, unpacked_msg);
+    
     size_t written = 0;
 
+    // Encode the packed message
     if constexpr (Config::has_length || Config::has_crc) {
-      written = FrameEncoderWithCrc<Config>::encode(buffer, buffer_size, *aligned_msg);
+      written = FrameEncoderWithCrc<Config>::encode(buffer, buffer_size, packed_msg);
     } else {
-      written = FrameEncoderMinimal<Config>::encode(buffer, buffer_size, *aligned_msg);
+      written = FrameEncoderMinimal<Config>::encode(buffer, buffer_size, packed_msg);
     }
 
     if (written == 0) {
@@ -220,26 +247,28 @@ ProfileResult encode_aligned_test(const T& msg, uint8_t* buffer, size_t buffer_s
 }
 
 /**
- * Decode a message with aligned memory access PROFILE_ITERATIONS times.
- * This version deserializes to an aligned buffer.
+ * Decode into an unpacked struct PROFILE_ITERATIONS times.
+ * This version deserializes into a packed struct and then copies
+ * the fields to an unpacked (naturally-aligned) struct.
  *
- * @tparam T Message type derived from MessageBase
+ * @tparam TPacked Packed message type derived from MessageBase
+ * @tparam TUnpacked Unpacked version of the message (same fields, no packing)
  * @tparam Config Frame profile configuration
  * @tparam GetMsgInfo Function type for get_message_info callback
+ * @tparam CopyFunc Function type for copying: void(TUnpacked&, const TPacked&)
  * @param buffer Input buffer containing encoded frame
  * @param buffer_size Size of encoded frame
  * @param get_message_info Callback to get message info for parsing
+ * @param copy_func Function to copy fields from packed to unpacked: void(TUnpacked&, const TPacked&)
  * @return ProfileResult with iteration count, bytes processed, and success status
  */
-template <typename T, typename Config, typename GetMsgInfo>
-ProfileResult decode_aligned_test(const uint8_t* buffer, size_t buffer_size, GetMsgInfo get_message_info) {
-  static_assert(std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>,
-                "Message type must derive from MessageBase");
+template <typename TPacked, typename TUnpacked, typename Config, typename GetMsgInfo, typename CopyFunc>
+ProfileResult decode_unpacked_test(const uint8_t* buffer, size_t buffer_size, 
+                                   GetMsgInfo get_message_info, CopyFunc copy_func) {
+  static_assert(std::is_base_of_v<MessageBase<TPacked, TPacked::MSG_ID, TPacked::MAX_SIZE, TPacked::MAGIC1, TPacked::MAGIC2>, TPacked>,
+                "Packed message type must derive from MessageBase");
 
   ProfileResult result{0, 0, true};
-
-  // Aligned storage for decoded message
-  alignas(alignof(std::max_align_t)) uint8_t aligned_storage[sizeof(T)];
 
   for (size_t i = 0; i < PROFILE_ITERATIONS; i++) {
     FrameMsgInfo frame_info;
@@ -256,21 +285,24 @@ ProfileResult decode_aligned_test(const uint8_t* buffer, size_t buffer_size, Get
       break;
     }
 
-    // Deserialize to aligned storage
-    T* aligned_msg = reinterpret_cast<T*>(aligned_storage);
-    new (aligned_msg) T{};  // Placement new for proper initialization
-    size_t bytes_read = aligned_msg->deserialize(frame_info);
+    // Deserialize into packed struct first
+    TPacked decoded_packed{};
+    size_t bytes_read = decoded_packed.deserialize(frame_info);
 
     if (bytes_read == 0) {
       result.success = false;
       break;
     }
 
+    // Copy from packed to unpacked struct (simulates writing to unpacked struct)
+    TUnpacked decoded_unpacked{};
+    copy_func(decoded_unpacked, decoded_packed);
+
     result.bytes_total += bytes_read;
     result.iterations++;
 
     // Prevent compiler from optimizing away the decode
-    do_not_optimize(*aligned_msg);
+    do_not_optimize(decoded_unpacked);
   }
 
   return result;
@@ -340,49 +372,51 @@ bool verify_roundtrip(const T& msg, uint8_t* buffer, size_t buffer_size, GetMsgI
   return std::memcmp(&msg, &decoded_msg, sizeof(T)) == 0;
 }
 
+/*===========================================================================
+ * Profiling Suite
+ * Convenience functions for running multiple profiling tests
+ *===========================================================================*/
+
 /**
- * Run full profiling suite for a message type.
- * Returns a summary of encode/decode performance for both packed and aligned access.
+ * Result structure for packed-only profiling suite
+ */
+struct PackedProfilingResult {
+  ProfileResult encode_packed;
+  ProfileResult decode_packed;
+  bool roundtrip_verified;
+};
+
+/**
+ * Run packed struct profiling tests.
+ * Tests encode/decode performance using the packed struct directly.
  *
- * @tparam T Message type derived from MessageBase
+ * @tparam T Message type derived from MessageBase (packed with #pragma pack(1))
  * @tparam Config Frame profile configuration
  * @tparam GetMsgInfo Function type for get_message_info callback
  * @param msg Message to profile
  * @param buffer Working buffer
  * @param buffer_size Size of working buffer
  * @param get_message_info Callback to get message info for parsing
- * @return Array of 4 ProfileResults: [encode_packed, decode_packed, encode_aligned, decode_aligned]
+ * @return PackedProfilingResult with encode/decode results
  */
 template <typename T, typename Config, typename GetMsgInfo>
-struct ProfilingSuiteResult {
-  ProfileResult encode_packed;
-  ProfileResult decode_packed;
-  ProfileResult encode_aligned;
-  ProfileResult decode_aligned;
-  bool roundtrip_verified;
-};
-
-template <typename T, typename Config, typename GetMsgInfo>
-ProfilingSuiteResult<T, Config, GetMsgInfo> run_profiling_suite(const T& msg, uint8_t* buffer, size_t buffer_size,
-                                                                GetMsgInfo get_message_info) {
-  ProfilingSuiteResult<T, Config, GetMsgInfo> result;
+PackedProfilingResult run_packed_profiling(const T& msg, uint8_t* buffer, size_t buffer_size,
+                                           GetMsgInfo get_message_info) {
+  PackedProfilingResult result;
 
   // First verify round-trip works
   result.roundtrip_verified = verify_roundtrip<T, Config>(msg, buffer, buffer_size, get_message_info);
 
   if (!result.roundtrip_verified) {
-    // If round-trip fails, profiling results will be invalid
     result.encode_packed = {0, 0, false};
     result.decode_packed = {0, 0, false};
-    result.encode_aligned = {0, 0, false};
-    result.decode_aligned = {0, 0, false};
     return result;
   }
 
-  // Run encode profiling tests
+  // Run encode profiling test
   result.encode_packed = encode_packed_test<T, Config>(msg, buffer, buffer_size);
 
-  // Re-encode for decode tests (ensure buffer has valid frame)
+  // Re-encode for decode test (ensure buffer has valid frame)
   size_t frame_size = 0;
   if constexpr (Config::has_length || Config::has_crc) {
     frame_size = FrameEncoderWithCrc<Config>::encode(buffer, buffer_size, msg);
@@ -390,20 +424,96 @@ ProfilingSuiteResult<T, Config, GetMsgInfo> run_profiling_suite(const T& msg, ui
     frame_size = FrameEncoderMinimal<Config>::encode(buffer, buffer_size, msg);
   }
 
-  // Run decode profiling tests
+  // Run decode profiling test
   result.decode_packed = decode_packed_test<T, Config>(buffer, frame_size, get_message_info);
 
-  // Run aligned tests
-  result.encode_aligned = encode_aligned_test<T, Config>(msg, buffer, buffer_size);
+  return result;
+}
 
-  // Re-encode for aligned decode test
-  if constexpr (Config::has_length || Config::has_crc) {
-    frame_size = FrameEncoderWithCrc<Config>::encode(buffer, buffer_size, msg);
-  } else {
-    frame_size = FrameEncoderMinimal<Config>::encode(buffer, buffer_size, msg);
+/**
+ * Result structure for full packed vs unpacked profiling comparison
+ */
+struct PackedVsUnpackedResult {
+  ProfileResult encode_packed;
+  ProfileResult decode_packed;
+  ProfileResult encode_unpacked;
+  ProfileResult decode_unpacked;
+  bool roundtrip_verified;
+};
+
+/**
+ * Run full packed vs unpacked profiling comparison.
+ * Compares performance of:
+ * - Packed: Direct access to packed struct (struct-frame default)
+ * - Unpacked: Access through naturally-aligned struct with field-by-field copy
+ *
+ * This helps characterize memory access penalties on different platforms.
+ *
+ * @tparam TPacked Packed message type derived from MessageBase
+ * @tparam TUnpacked Unpacked version of the message (same fields, no #pragma pack)
+ * @tparam Config Frame profile configuration
+ * @tparam GetMsgInfo Function type for get_message_info callback
+ * @tparam CopyToPackedFunc Function type: void(TPacked&, const TUnpacked&)
+ * @tparam CopyToUnpackedFunc Function type: void(TUnpacked&, const TPacked&)
+ * @param packed_msg Packed message to profile
+ * @param unpacked_msg Unpacked message with same field values
+ * @param buffer Working buffer
+ * @param buffer_size Size of working buffer
+ * @param get_message_info Callback to get message info for parsing
+ * @param copy_to_packed Function to copy from unpacked to packed
+ * @param copy_to_unpacked Function to copy from packed to unpacked
+ * @return PackedVsUnpackedResult with all profiling results
+ */
+template <typename TPacked, typename TUnpacked, typename Config, typename GetMsgInfo,
+          typename CopyToPackedFunc, typename CopyToUnpackedFunc>
+PackedVsUnpackedResult run_packed_vs_unpacked_profiling(
+    TPacked& packed_msg, const TUnpacked& unpacked_msg,
+    uint8_t* buffer, size_t buffer_size,
+    GetMsgInfo get_message_info,
+    CopyToPackedFunc copy_to_packed,
+    CopyToUnpackedFunc copy_to_unpacked) {
+
+  PackedVsUnpackedResult result;
+
+  // First verify round-trip works
+  result.roundtrip_verified = verify_roundtrip<TPacked, Config>(packed_msg, buffer, buffer_size, get_message_info);
+
+  if (!result.roundtrip_verified) {
+    result.encode_packed = {0, 0, false};
+    result.decode_packed = {0, 0, false};
+    result.encode_unpacked = {0, 0, false};
+    result.decode_unpacked = {0, 0, false};
+    return result;
   }
 
-  result.decode_aligned = decode_aligned_test<T, Config>(buffer, frame_size, get_message_info);
+  // Run packed encode test
+  result.encode_packed = encode_packed_test<TPacked, Config>(packed_msg, buffer, buffer_size);
+
+  // Re-encode for decode tests
+  size_t frame_size = 0;
+  if constexpr (Config::has_length || Config::has_crc) {
+    frame_size = FrameEncoderWithCrc<Config>::encode(buffer, buffer_size, packed_msg);
+  } else {
+    frame_size = FrameEncoderMinimal<Config>::encode(buffer, buffer_size, packed_msg);
+  }
+
+  // Run packed decode test
+  result.decode_packed = decode_packed_test<TPacked, Config>(buffer, frame_size, get_message_info);
+
+  // Run unpacked encode test
+  result.encode_unpacked = encode_unpacked_test<TPacked, TUnpacked, Config>(
+      packed_msg, unpacked_msg, buffer, buffer_size, copy_to_packed);
+
+  // Re-encode for unpacked decode test
+  if constexpr (Config::has_length || Config::has_crc) {
+    frame_size = FrameEncoderWithCrc<Config>::encode(buffer, buffer_size, packed_msg);
+  } else {
+    frame_size = FrameEncoderMinimal<Config>::encode(buffer, buffer_size, packed_msg);
+  }
+
+  // Run unpacked decode test
+  result.decode_unpacked = decode_unpacked_test<TPacked, TUnpacked, Config>(
+      buffer, frame_size, get_message_info, copy_to_unpacked);
 
   return result;
 }
