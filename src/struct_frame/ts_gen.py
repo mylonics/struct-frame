@@ -70,18 +70,33 @@ class EnumTsGen():
         result += '\n'.join(enum_values)
         result += '\n}'
 
-        # Add enum-to-string helper function
-        enumFullName = '%s%s' % (packageName, field.name)
-        result += f'\n\n/* Convert {enumFullName} to string */\n'
-        result += f'export function {enumFullName}_to_string(value: {enumFullName}): string {{\n'
-        result += '    switch (value) {\n'
-        for d in field.data:
-            result += f'        case {enumFullName}.{StyleC.enum_entry(d)}: return "{StyleC.enum_entry(d)}";\n'
-        result += '        default: return "UNKNOWN";\n'
-        result += '    }\n'
-        result += '}\n'
-
         return result
+    
+    @staticmethod
+    def generate_discriminator_enum(oneof, msg_name):
+        """Generate a discriminator enum for field_order oneofs in TypeScript."""
+        if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
+            return ''
+        
+        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        result = f'/** Discriminator enum for {msg_name}.{oneof.name} oneof */\n'
+        result += f'export enum {enum_name} {{\n'
+        result += f'    None = 0,\n'
+        
+        for idx, (field_name, field) in enumerate(oneof.fields.items()):
+            field_order = idx + 1
+            # Use PascalCase for TypeScript enum values
+            enum_value = pascalCase(field_name)
+            comma = ',' if idx < len(oneof.fields) - 1 else ''
+            result += f'    {enum_value} = {field_order}{comma}\n'
+        
+        result += f'}}\n'
+        return result
+    
+    @staticmethod
+    def get_discriminator_enum_name(oneof, msg_name):
+        """Get the enum type name for a field_order discriminator."""
+        return f'{msg_name}{pascalCase(oneof.name)}Field'
 
 
 class FieldTsGen():
@@ -140,8 +155,12 @@ class MessageTsGen():
         # Generate oneofs - add discriminator and allocate union size
         for key, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
-                # Always use UInt16LE since message IDs can be up to 65535
-                result += f'\n    .UInt16LE(\'{oneof.name}_discriminator\')'
+                if oneof.discriminator_type == "msgid":
+                    # Use UInt16LE since message IDs can be up to 65535
+                    result += f'\n    .UInt16LE(\'{oneof.name}_discriminator\')'
+                else:  # field_order
+                    # Use UInt8 since field order is 1-based index
+                    result += f'\n    .UInt8(\'{oneof.name}_discriminator\')'
             # Allocate space for the union (largest member size)
             # Use a byte array to represent the union storage
             result += f'\n    .ByteArray(\'{oneof.name}_data\', {oneof.size})'
@@ -241,6 +260,10 @@ class MessageTsClassGen():
         if msg.id is not None:
             result += MessageTsClassGen._generate_unified_unpack(msg, package_msg_name)
         
+        # Generate envelope methods if this is an envelope message
+        if msg.is_envelope:
+            result += MessageTsClassGen._generate_envelope_methods(msg, package_msg_name, packageName, packages)
+        
         # Static getSize method
         result += f'  static getSize(): number {{\n'
         result += f'    return {total_size};\n'
@@ -292,6 +315,112 @@ class MessageTsClassGen():
         
         return result
     
+    @staticmethod
+    def _generate_envelope_methods(msg, package_msg_name, packageName, packages):
+        """Generate envelope-specific helper methods for wrapping inner messages."""
+        result = ''
+        
+        # Get the single oneof (validation ensures exactly one exists)
+        oneof_name = list(msg.oneofs.keys())[0]
+        oneof = msg.oneofs[oneof_name]
+        
+        result += f'\n  // ========================================\n'
+        result += f'  // Envelope message helper methods\n'
+        result += f'  // ========================================\n'
+        
+        # Build list of valid payload types
+        payload_types = []
+        for field_name, field in oneof.fields.items():
+            type_pkg = field.type_package if field.type_package else field.package
+            payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+            payload_types.append((field_name, payload_type))
+        
+        # Create union type for valid payloads
+        payload_union = ' | '.join([pt[1] for pt in payload_types])
+        
+        # Generate parameter list for envelope fields (non-oneof fields)
+        field_params = []
+        for f_name, f in msg.fields.items():
+            ts_type = TS_TYPE_ANNOTATIONS.get(f.fieldType, 'number')
+            if f.is_array or f.fieldType == "string":
+                if f.fieldType == "string":
+                    ts_type = "string"
+                elif f.is_array:
+                    ts_type = f'{TS_TYPE_ANNOTATIONS.get(f.fieldType, "number")}[]'
+            field_params.append(f'{f.name}?: {ts_type}')
+        
+        # Build parameter list: payload first, then optional envelope fields
+        all_params_list = [f'payload: {payload_union}'] + field_params
+        
+        result += f'\n  /**\n'
+        result += f'   * Create a {package_msg_name} envelope wrapping a payload message.\n'
+        result += f'   * @param payload The message to wrap (must be one of: {payload_union})\n'
+        for f_name, f in msg.fields.items():
+            result += f'   * @param {f.name} Envelope field value\n'
+        result += f'   * @returns A fully initialized {package_msg_name} envelope\n'
+        result += f'   */\n'
+        result += f'  static wrap({", ".join(all_params_list)}): {package_msg_name} {{\n'
+        result += f'    const envelope = new {package_msg_name}();\n'
+        
+        # Initialize envelope fields
+        for f_name, f in msg.fields.items():
+            result += f'    if ({f.name} !== undefined) envelope.{f.name} = {f.name};\n'
+        
+        # Set the discriminator to the payload's message ID or field order
+        if oneof.auto_discriminator:
+            if oneof.discriminator_type == "msgid":
+                result += f'    envelope.{oneof_name}_discriminator = (payload.constructor as any)._msgid;\n'
+            else:  # field_order - use enum values
+                enum_name = EnumTsGen.get_discriminator_enum_name(oneof, package_msg_name)
+                result += f'    // Set discriminator based on payload type\n'
+                for idx, (field_name, payload_type) in enumerate(payload_types):
+                    enum_value = pascalCase(field_name)
+                    if idx == 0:
+                        result += f'    if (payload instanceof {payload_type}) envelope.{oneof_name}_discriminator = {enum_name}.{enum_value};\n'
+                    else:
+                        result += f'    else if (payload instanceof {payload_type}) envelope.{oneof_name}_discriminator = {enum_name}.{enum_value};\n'
+        
+        # Copy the payload into the union data area
+        result += f'    // Copy payload into union data area\n'
+        result += f'    payload._buffer.copy(envelope._buffer, envelope._getUnionOffset("{oneof_name}"), 0, payload._buffer.length);\n'
+        result += f'    return envelope;\n'
+        result += f'  }}\n'
+        
+        # Generate helper to get the active payload type
+        if oneof.auto_discriminator:
+            if oneof.discriminator_type == "msgid":
+                result += f'\n  /**\n'
+                result += f'   * Get the message ID of the wrapped payload.\n'
+                result += f'   * @returns The message ID of the payload in the {oneof_name} union\n'
+                result += f'   */\n'
+                result += f'  getPayloadMessageId(): number {{\n'
+                result += f'    return this.{oneof_name}_discriminator;\n'
+                result += f'  }}\n'
+            else:  # field_order - return enum type
+                enum_name = EnumTsGen.get_discriminator_enum_name(oneof, package_msg_name)
+                result += f'\n  /**\n'
+                result += f'   * Get the discriminator enum value for the wrapped payload.\n'
+                result += f'   * @returns The {enum_name} enum value for the active payload\n'
+                result += f'   */\n'
+                result += f'  getPayloadField(): {enum_name} {{\n'
+                result += f'    return this.{oneof_name}_discriminator;\n'
+                result += f'  }}\n'
+        
+        # Generate helper to get the union offset (needed for envelope operations)
+        result += f'\n  private _getUnionOffset(name: string): number {{\n'
+        # Calculate offset to oneof data area
+        offset = sum(f.size for f in msg.fields.values())
+        if oneof.auto_discriminator:
+            if oneof.discriminator_type == "msgid":
+                offset += 2  # uint16 discriminator size
+            else:  # field_order
+                offset += 1  # uint8 discriminator size
+        result += f'    if (name === "{oneof_name}") return {offset}; // After discriminator\n'
+        result += f'    return 0;\n'
+        result += f'  }}\n'
+        
+        return result
+
     @staticmethod
     def _generate_variable_methods(msg, package_msg_name, fields):
         """Generate variable-length encoding methods for TypeScript messages."""
@@ -707,6 +836,18 @@ class FileTsGen():
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
                 yield EnumTsGen.generate(enum, package_name_pascal) + '\n\n'
+
+        # Generate discriminator enums for field_order oneofs (must come before message definitions)
+        has_discriminator_enums = False
+        for key, msg in package.messages.items():
+            structName = f'{package_name_pascal}{msg.name}'
+            for oneof_name, oneof in msg.oneofs.items():
+                enum_code = EnumTsGen.generate_discriminator_enum(oneof, structName)
+                if enum_code:
+                    if not has_discriminator_enums:
+                        yield '/* Oneof discriminator enums */\n'
+                        has_discriminator_enums = True
+                    yield enum_code + '\n'
 
         if package.messages:
             if use_class_based:

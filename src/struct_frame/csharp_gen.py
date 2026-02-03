@@ -82,27 +82,34 @@ class EnumCSharpGen():
         result += '\n'.join(enum_values)
         result += '\n    }\n'
 
-        # Add enum-to-string extension method
-        result += f'\n    /// <summary>\n'
-        result += f'    /// Extension methods for {enumName}\n'
-        result += f'    /// </summary>\n'
-        result += f'    public static class {enumName}Extensions\n'
-        result += '    {\n'
-        result += f'        /// <summary>\n'
-        result += f'        /// Convert {enumName} value to string representation\n'
-        result += f'        /// </summary>\n'
-        result += f'        public static string ToString(this {enumName} value)\n'
-        result += '        {\n'
-        result += '            switch (value)\n'
-        result += '            {\n'
-        for d in field.data:
-            result += f'                case {enumName}.{StyleC.enum_entry(d)}: return "{StyleC.enum_entry(d)}";\n'
-        result += '                default: return "UNKNOWN";\n'
-        result += '            }\n'
-        result += '        }\n'
-        result += '    }\n'
-
         return result
+    
+    @staticmethod
+    def generate_discriminator_enum(oneof, msg_name):
+        """Generate a discriminator enum for field_order oneofs in C#."""
+        if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
+            return ''
+        
+        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        result = f'    /// <summary>Discriminator enum for {msg_name}.{oneof.name} oneof</summary>\n'
+        result += f'    public enum {enum_name} : byte\n'
+        result += f'    {{\n'
+        result += f'        None = 0,\n'
+        
+        for idx, (field_name, field) in enumerate(oneof.fields.items()):
+            field_order = idx + 1
+            # Use PascalCase for C# enum values
+            enum_value = pascalCase(field_name)
+            comma = ',' if idx < len(oneof.fields) - 1 else ''
+            result += f'        {enum_value} = {field_order}{comma}\n'
+        
+        result += f'    }}\n'
+        return result
+    
+    @staticmethod
+    def get_discriminator_enum_name(oneof, msg_name):
+        """Get the enum type name for a field_order discriminator."""
+        return f'{msg_name}{pascalCase(oneof.name)}Field'
 
 
 class FieldCSharpGen():
@@ -474,7 +481,11 @@ class MessageCSharpGen():
         # Generate oneofs - declarations for discriminator and union members
         for key, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
-                result += f'        public ushort {pascalCase(oneof.name)}Discriminator;\n'
+                if oneof.discriminator_type == "msgid":
+                    result += f'        public ushort {pascalCase(oneof.name)}Discriminator;\n'
+                else:  # field_order
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    result += f'        public {enum_name} {pascalCase(oneof.name)}Discriminator;\n'
             for field_name, field in oneof.fields.items():
                 result += f'        // Union member: {field_name}\n'
                 result += FieldCSharpGen.generate_field_declaration(field)
@@ -531,8 +542,12 @@ class MessageCSharpGen():
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 result += f'            // Oneof {oneof_name} discriminator\n'
-                result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset + {offset}), {pascalCase(oneof_name)}Discriminator);\n'
-                offset += 2
+                if oneof.discriminator_type == "msgid":
+                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset + {offset}), {pascalCase(oneof_name)}Discriminator);\n'
+                    offset += 2
+                else:  # field_order
+                    result += f'            buffer[offset + {offset}] = (byte){pascalCase(oneof_name)}Discriminator;\n'
+                    offset += 1
             
             result += f'            // Oneof {oneof_name} payload (union size: {oneof.size})\n'
             first = True
@@ -598,24 +613,51 @@ class MessageCSharpGen():
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 result += f'            // Oneof {oneof_name} discriminator\n'
-                result += f'            msg.{pascalCase(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan({offset}));\n'
-                result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
-                offset += 2
+                if oneof.discriminator_type == "msgid":
+                    result += f'            msg.{pascalCase(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan({offset}));\n'
+                    result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
+                    offset += 2
+                else:  # field_order
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    result += f'            msg.{pascalCase(oneof_name)}Discriminator = ({enum_name})data[{offset}];\n'
+                    result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
+                    offset += 1
             
             result += f'            // Oneof {oneof_name} payload (union size: {oneof.size})\n'
             if oneof.auto_discriminator:
-                first = True
-                for field_name, field in oneof.fields.items():
-                    type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
-                    field_var = pascalCase(field_name)
-                    if first:
-                        result += f'            if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
-                        first = False
-                    else:
-                        result += f'            else if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
-                    result += '            {\n'
-                    result += f'                msg.{field_var} = {type_name}.Deserialize(data[{offset}..({offset} + {type_name}.MaxSize)]);\n'
-                    result += '            }\n'
+                if oneof.discriminator_type == "msgid":
+                    first = True
+                    for field_name, field in oneof.fields.items():
+                        type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
+                        field_var = pascalCase(field_name)
+                        if first:
+                            result += f'            if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
+                            first = False
+                        else:
+                            result += f'            else if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
+                        result += '            {\n'
+                        result += f'                msg.{field_var} = {type_name}.Deserialize(data[{offset}..({offset} + {type_name}.MaxSize)]);\n'
+                        result += '            }\n'
+                else:  # field_order
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    first = True
+                    for idx, field_name in enumerate(oneof.field_order):
+                        field = oneof.fields[field_name]
+                        enum_entry = pascalCase(field_name)
+                        field_var = pascalCase(field_name)
+                        if field.isDefaultType or field.isEnum:
+                            # Primitive or enum - we need to handle this differently
+                            pass  # Handled below in else case
+                        else:
+                            type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
+                            if first:
+                                result += f'            if ({oneof_name}_discriminator == {enum_name}.{enum_entry})\n'
+                                first = False
+                            else:
+                                result += f'            else if ({oneof_name}_discriminator == {enum_name}.{enum_entry})\n'
+                            result += '            {\n'
+                            result += f'                msg.{field_var} = {type_name}.Deserialize(data[{offset}..({offset} + {type_name}.MaxSize)]);\n'
+                            result += '            }\n'
             offset += oneof.size
 
         result += '            return msg;\n'
@@ -679,6 +721,10 @@ class MessageCSharpGen():
         # Generate equality members if requested
         if equality:
             result += MessageCSharpGen._generate_equality_members(msg, structName)
+        
+        # Generate envelope methods if this is an envelope message
+        if msg.is_envelope:
+            result += MessageCSharpGen._generate_envelope_methods(msg, structName, package)
 
         result += '    }\n'
 
@@ -1020,6 +1066,96 @@ class MessageCSharpGen():
         result += '        }\n'
         
         return result
+    
+    @staticmethod
+    def _generate_envelope_methods(msg, structName, package):
+        """Generate envelope-specific helper methods for wrapping inner messages."""
+        result = '\n'
+        
+        # Get the single oneof (validation ensures exactly one exists)
+        oneof_name = list(msg.oneofs.keys())[0]
+        oneof = msg.oneofs[oneof_name]
+        
+        # Get enum name for field_order discriminators
+        enum_name = None
+        if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
+            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+        
+        result += '        // ========================================\n'
+        result += '        // Envelope message helper methods\n'
+        result += '        // ========================================\n'
+        
+        # Generate Wrap static method for each payload type
+        for idx, (field_name, field) in enumerate(oneof.fields.items()):
+            # Get the payload type name
+            type_pkg = field.type_package if field.type_package else field.package
+            payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+            
+            # Generate parameter list for envelope fields (non-oneof fields)
+            field_params = []
+            for f_name, f in msg.fields.items():
+                csharp_type = csharp_types.get(f.fieldType)
+                if csharp_type is None:
+                    type_pkg = f.type_package if f.type_package else f.package
+                    csharp_type = '%s%s' % (pascalCase(type_pkg), f.fieldType)
+                if f.is_array or f.fieldType == "string":
+                    # Arrays and strings are complex types
+                    continue  # Skip for simplicity, user can set these after wrap
+                field_params.append(f'{csharp_type} {f.name}')
+            
+            # Build parameter list: payload first, then envelope fields
+            all_params_list = [f'{payload_type} payload'] + field_params
+            
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += f'        /// Create a {structName} envelope wrapping a {payload_type} payload.\n'
+            result += '        /// </summary>\n'
+            result += f'        /// <param name="payload">The {payload_type} message to wrap</param>\n'
+            for f_name, f in msg.fields.items():
+                if f.is_array or f.fieldType == "string":
+                    continue
+                result += f'        /// <param name="{f.name}">Envelope field value</param>\n'
+            result += f'        /// <returns>A fully initialized {structName} envelope</returns>\n'
+            result += f'        public static {structName} Wrap({", ".join(all_params_list)})\n'
+            result += '        {\n'
+            result += f'            var envelope = new {structName}();\n'
+            
+            # Initialize envelope fields
+            for f_name, f in msg.fields.items():
+                if f.is_array or f.fieldType == "string":
+                    continue
+                result += f'            envelope.{pascalCase(f.name)} = {f.name};\n'
+            
+            # Set the discriminator to the payload's message ID or field order
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'            envelope.{pascalCase(oneof_name)}Discriminator = {payload_type}.MsgId;\n'
+                else:  # field_order
+                    enum_entry = pascalCase(field_name)
+                    result += f'            envelope.{pascalCase(oneof_name)}Discriminator = {enum_name}.{enum_entry};\n'
+            
+            # Serialize payload and copy to the oneof field
+            result += f'            envelope.{pascalCase(field_name)} = payload;\n'
+            result += '            return envelope;\n'
+            result += '        }\n'
+        
+        # Generate helper to get the active payload type
+        if oneof.auto_discriminator:
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += f'        /// Get the discriminator value of the wrapped payload.\n'
+            result += '        /// </summary>\n'
+            if oneof.discriminator_type == "msgid":
+                result += f'        /// <returns>The message ID of the payload in the {oneof_name} union</returns>\n'
+                result += '        public ushort GetPayloadMessageId()\n'
+            else:  # field_order
+                result += f'        /// <returns>The field discriminator of the payload in the {oneof_name} union</returns>\n'
+                result += f'        public {enum_name} GetPayloadFieldDiscriminator()\n'
+            result += '        {\n'
+            result += f'            return {pascalCase(oneof_name)}Discriminator;\n'
+            result += '        }\n'
+        
+        return result
 
 
 class FileCSharpGen():
@@ -1069,6 +1205,17 @@ class FileCSharpGen():
             yield '    // Enum definitions\n'
             for key, enum in package.enums.items():
                 yield EnumCSharpGen.generate(enum) + '\n'
+
+        # Generate discriminator enums for field_order oneofs
+        discriminator_enums_generated = False
+        for key, msg in package.messages.items():
+            for oneof_name, oneof in msg.oneofs.items():
+                if oneof.auto_discriminator and oneof.discriminator_type == 'field_order':
+                    if not discriminator_enums_generated:
+                        yield '    // Discriminator enums\n'
+                        discriminator_enums_generated = True
+                    enum_code = EnumCSharpGen.generate_discriminator_enum(oneof, msg.name)
+                    yield enum_code + '\n'
 
         if package.messages:
             yield '    // Message definitions\n'

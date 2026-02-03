@@ -167,7 +167,34 @@ class FieldCGen():
 
 class OneOfCGen():
     @staticmethod
-    def generate(oneof, package=None):
+    def generate_discriminator_enum(oneof, msg_name, package=None):
+        """Generate a discriminator enum for field_order oneofs in C."""
+        if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
+            return ''
+        
+        result = ''
+        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        
+        result += f'/* Discriminator enum for {msg_name}::{oneof.name} oneof */\n'
+        result += f'typedef enum {enum_name} {{\n'
+        result += f'    {CamelToSnakeCase(msg_name).upper()}_{CamelToSnakeCase(oneof.name).upper()}_FIELD_NONE = 0,\n'
+        
+        for idx, (field_name, field) in enumerate(oneof.fields.items()):
+            field_order = idx + 1
+            # Use SCREAMING_SNAKE_CASE for enum values with message prefix
+            enum_value = f'{CamelToSnakeCase(msg_name).upper()}_{CamelToSnakeCase(oneof.name).upper()}_FIELD_{CamelToSnakeCase(field_name).upper()}'
+            result += f'    {enum_value} = {field_order},\n'
+        
+        result += f'}} {enum_name};\n\n'
+        return result
+    
+    @staticmethod
+    def get_discriminator_enum_name(oneof, msg_name):
+        """Get the enum type name for a field_order discriminator."""
+        return f'{msg_name}{pascalCase(oneof.name)}Field'
+    
+    @staticmethod
+    def generate(oneof, package=None, msg_name=None):
         """Generate C union for a oneof construct."""
         result = ''
         
@@ -176,10 +203,15 @@ class OneOfCGen():
             for c in oneof.comments:
                 result += '%s\n' % c
         
-        # If auto-discriminator is enabled, add discriminator field first
+        # If discriminator is enabled, add discriminator field first
         if oneof.auto_discriminator:
-            # Always use uint16_t since message IDs can be up to 65535
-            result += f'    uint16_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
+            if oneof.discriminator_type == "msgid":
+                # Use uint16_t since message IDs can be up to 65535
+                result += f'    uint16_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
+            else:  # field_order
+                # Use the generated enum type for better type safety
+                enum_name = OneOfCGen.get_discriminator_enum_name(oneof, msg_name) if msg_name else 'uint8_t'
+                result += f'    {enum_name} {oneof.name}_discriminator;  // Auto-generated field order discriminator\n'
         
         # Generate the union
         result += f'    union {{\n'
@@ -288,7 +320,7 @@ class MessageCGen():
         if msg.oneofs:
             if msg.fields:
                 result += '\n'
-            result += '\n'.join([OneOfCGen.generate(o, package)
+            result += '\n'.join([OneOfCGen.generate(o, package, structName)
                                 for key, o in msg.oneofs.items()])
         
         result += '\n}'
@@ -639,6 +671,18 @@ class FileCGen():
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
                 yield EnumCGen.generate(enum) + '\n\n'
+
+        # Generate discriminator enums for field_order oneofs (must come before struct definitions)
+        has_discriminator_enums = False
+        for key, msg in package.messages.items():
+            structName = '%s%s' % (pascalCase(msg.package), msg.name)
+            for oneof_name, oneof in msg.oneofs.items():
+                enum_code = OneOfCGen.generate_discriminator_enum(oneof, structName, package)
+                if enum_code:
+                    if not has_discriminator_enums:
+                        yield '/* Oneof discriminator enums */\n'
+                        has_discriminator_enums = True
+                    yield enum_code
 
         if package.messages:
             yield '/* Struct definitions */\n'
