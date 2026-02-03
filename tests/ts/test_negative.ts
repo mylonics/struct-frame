@@ -64,7 +64,7 @@ function testCorruptedCrc(): boolean {
   const writer = new ProfileStandardWriter(1024);
   writer.write(msg);
   const buffer = writer.data();
-  const bytesWritten = writer.size();
+  const bytesWritten = writer.size;
   
   if (bytesWritten < 4) return false;
   
@@ -88,7 +88,7 @@ function testTruncatedFrame(): boolean {
   const writer = new ProfileStandardWriter(1024);
   writer.write(msg);
   const buffer = writer.data();
-  const bytesWritten = writer.size();
+  const bytesWritten = writer.size;
   
   if (bytesWritten < 10) return false;
   
@@ -111,7 +111,7 @@ function testInvalidStartBytes(): boolean {
   const writer = new ProfileStandardWriter(1024);
   writer.write(msg);
   const buffer = writer.data();
-  const bytesWritten = writer.size();
+  const bytesWritten = writer.size;
   
   if (bytesWritten < 2) return false;
   
@@ -147,7 +147,7 @@ function testCorruptedLength(): boolean {
   const writer = new ProfileStandardWriter(1024);
   writer.write(msg);
   const buffer = writer.data();
-  const bytesWritten = writer.size();
+  const bytesWritten = writer.size;
   
   if (bytesWritten < 4) return false;
   
@@ -170,7 +170,7 @@ function testStreamingCorruptedCrc(): boolean {
   const writer = new ProfileStandardWriter(1024);
   writer.write(msg);
   const buffer = writer.data();
-  const bytesWritten = writer.size();
+  const bytesWritten = writer.size;
   
   if (bytesWritten < 4) return false;
   
@@ -215,7 +215,7 @@ function testBulkProfileCorruptedCrc(): boolean {
   const writer = new ProfileBulkWriter(1024);
   writer.write(msg);
   const buffer = writer.data();
-  const bytesWritten = writer.size();
+  const bytesWritten = writer.size;
   
   if (bytesWritten < 4) return false;
   

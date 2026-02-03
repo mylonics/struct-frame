@@ -9,15 +9,14 @@
  */
 
 using System;
-using StructFrame.Generated;
+using StructFrame;
+using StructFrame.SerializationTest;
 
-namespace StructFrameTests
+public class TestNegative
 {
-    public class TestNegative
-    {
-        private static int testsRun = 0;
-        private static int testsPassed = 0;
-        private static int testsFailed = 0;
+    private static int testsRun = 0;
+    private static int testsPassed = 0;
+    private static int testsFailed = 0;
 
         private static void TestResult(string name, bool passed)
         {
@@ -38,20 +37,30 @@ namespace StructFrameTests
         {
             var msg = new SerializationTestBasicTypesMessage
             {
-                small_int = 42,
-                medium_int = 1000,
-                regular_int = 100000,
-                large_int = 1000000000L,
-                small_uint = 200,
-                medium_uint = 50000,
-                regular_uint = 3000000000U,
-                large_uint = 9000000000000000000UL,
-                single_precision = 3.14159f,
-                double_precision = 2.71828,
-                flag = true,
-                device_id = "DEVICE123",
-                description = "Test device"
+                SmallInt = 42,
+                MediumInt = 1000,
+                RegularInt = 100000,
+                LargeInt = 1000000000L,
+                SmallUint = 200,
+                MediumUint = 50000,
+                RegularUint = 3000000000U,
+                LargeUint = 9000000000000000000UL,
+                SinglePrecision = 3.14159f,
+                DoublePrecision = 2.71828,
+                Flag = true
             };
+            
+            // Set DeviceId (fixed string, 32 bytes)
+            var deviceIdBytes = System.Text.Encoding.UTF8.GetBytes("DEVICE123");
+            msg.DeviceId = new byte[32];
+            Array.Copy(deviceIdBytes, msg.DeviceId, Math.Min(deviceIdBytes.Length, 32));
+            
+            // Set Description (variable string, up to 128 bytes)
+            var descBytes = System.Text.Encoding.UTF8.GetBytes("Test device");
+            msg.DescriptionLength = (byte)Math.Min(descBytes.Length, 128);
+            msg.DescriptionData = new byte[128];
+            Array.Copy(descBytes, msg.DescriptionData, msg.DescriptionLength);
+            
             return msg;
         }
 
@@ -62,10 +71,11 @@ namespace StructFrameTests
         {
             var msg = CreateTestMessage();
             
+            byte[] buffer = new byte[1024];
             var writer = new ProfileStandardWriter();
+            writer.SetBuffer(buffer);
             writer.Write(msg);
-            var buffer = writer.Data();
-            var bytesWritten = writer.Size();
+            var bytesWritten = writer.Size;
             
             if (bytesWritten < 4) return false;
             
@@ -74,11 +84,11 @@ namespace StructFrameTests
             buffer[bytesWritten - 2] ^= 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(SerializationTestMessages.GetMessageInfo);
-            reader.SetBuffer(buffer, bytesWritten);
+            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
-            return !result.valid;  // Expect failure
+            return !result.Valid;  // Expect failure
         }
 
         /**
@@ -88,10 +98,11 @@ namespace StructFrameTests
         {
             var msg = CreateTestMessage();
             
+            byte[] buffer = new byte[1024];
             var writer = new ProfileStandardWriter();
+            writer.SetBuffer(buffer);
             writer.Write(msg);
-            var buffer = writer.Data();
-            var bytesWritten = writer.Size();
+            var bytesWritten = writer.Size;
             
             if (bytesWritten < 10) return false;
             
@@ -99,11 +110,11 @@ namespace StructFrameTests
             var truncatedSize = bytesWritten - 5;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(SerializationTestMessages.GetMessageInfo);
-            reader.SetBuffer(buffer, truncatedSize);
+            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, truncatedSize);
             var result = reader.Next();
             
-            return !result.valid;  // Expect failure
+            return !result.Valid;  // Expect failure
         }
 
         /**
@@ -113,10 +124,11 @@ namespace StructFrameTests
         {
             var msg = CreateTestMessage();
             
+            byte[] buffer = new byte[1024];
             var writer = new ProfileStandardWriter();
+            writer.SetBuffer(buffer);
             writer.Write(msg);
-            var buffer = writer.Data();
-            var bytesWritten = writer.Size();
+            var bytesWritten = writer.Size;
             
             if (bytesWritten < 2) return false;
             
@@ -125,11 +137,11 @@ namespace StructFrameTests
             buffer[1] = 0xAD;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(SerializationTestMessages.GetMessageInfo);
-            reader.SetBuffer(buffer, bytesWritten);
+            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
-            return !result.valid;  // Expect failure
+            return !result.Valid;  // Expect failure
         }
 
         /**
@@ -139,11 +151,11 @@ namespace StructFrameTests
         {
             var buffer = new byte[0];
             
-            var reader = new ProfileStandardReader(SerializationTestMessages.GetMessageInfo);
-            reader.SetBuffer(buffer, 0);
+            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer);
             var result = reader.Next();
             
-            return !result.valid;  // Expect failure
+            return !result.Valid;  // Expect failure
         }
 
         /**
@@ -153,10 +165,11 @@ namespace StructFrameTests
         {
             var msg = CreateTestMessage();
             
+            byte[] buffer = new byte[1024];
             var writer = new ProfileStandardWriter();
+            writer.SetBuffer(buffer);
             writer.Write(msg);
-            var buffer = writer.Data();
-            var bytesWritten = writer.Size();
+            var bytesWritten = writer.Size;
             
             if (bytesWritten < 4) return false;
             
@@ -164,11 +177,11 @@ namespace StructFrameTests
             buffer[2] = 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(SerializationTestMessages.GetMessageInfo);
-            reader.SetBuffer(buffer, bytesWritten);
+            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
-            return !result.valid;  // Expect failure
+            return !result.Valid;  // Expect failure
         }
 
         /**
@@ -178,10 +191,11 @@ namespace StructFrameTests
         {
             var msg = CreateTestMessage();
             
+            byte[] buffer = new byte[1024];
             var writer = new ProfileStandardWriter();
+            writer.SetBuffer(buffer);
             writer.Write(msg);
-            var buffer = writer.Data();
-            var bytesWritten = writer.Size();
+            var bytesWritten = writer.Size;
             
             if (bytesWritten < 4) return false;
             
@@ -189,7 +203,7 @@ namespace StructFrameTests
             buffer[bytesWritten - 1] ^= 0xFF;
             
             // Try streaming parse
-            var reader = new ProfileStandardAccumulatingReader(1024, SerializationTestMessages.GetMessageInfo);
+            var reader = new ProfileStandardAccumulatingReader(1024, MessageDefinitions.GetMessageInfo);
             
             // Feed byte by byte
             for (int i = 0; i < bytesWritten; i++)
@@ -198,7 +212,7 @@ namespace StructFrameTests
             }
             
             var result = reader.Next();
-            return !result.valid;  // Expect failure
+            return !result.Valid;  // Expect failure
         }
 
         /**
@@ -206,7 +220,7 @@ namespace StructFrameTests
          */
         private static bool TestStreamingGarbage()
         {
-            var reader = new ProfileStandardAccumulatingReader(1024, SerializationTestMessages.GetMessageInfo);
+            var reader = new ProfileStandardAccumulatingReader(1024, MessageDefinitions.GetMessageInfo);
             
             // Feed garbage bytes
             byte[] garbage = { 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A };
@@ -217,7 +231,7 @@ namespace StructFrameTests
             }
             
             var result = reader.Next();
-            return !result.valid;  // Expect no valid frame
+            return !result.Valid;  // Expect no valid frame
         }
 
         /**
@@ -227,10 +241,11 @@ namespace StructFrameTests
         {
             var msg = CreateTestMessage();
             
+            byte[] buffer = new byte[1024];
             var writer = new ProfileBulkWriter();
+            writer.SetBuffer(buffer);
             writer.Write(msg);
-            var buffer = writer.Data();
-            var bytesWritten = writer.Size();
+            var bytesWritten = writer.Size;
             
             if (bytesWritten < 4) return false;
             
@@ -239,11 +254,11 @@ namespace StructFrameTests
             buffer[bytesWritten - 2] ^= 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileBulkReader(SerializationTestMessages.GetMessageInfo);
-            reader.SetBuffer(buffer, bytesWritten);
+            var reader = new ProfileBulkReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
-            return !result.valid;  // Expect failure
+            return !result.Valid;  // Expect failure
         }
 
         public static int Main(string[] args)
@@ -274,4 +289,3 @@ namespace StructFrameTests
             return testsFailed > 0 ? 1 : 0;
         }
     }
-}
