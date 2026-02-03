@@ -117,8 +117,10 @@ namespace StructFrameTests
                 Id = 1,
                 Value = 25.5f,
                 Status = SerializationTestStatus.ACTIVE,
-                Name = Encoding.UTF8.GetBytes("TempSensor\0\0\0\0\0\0")
+                Name = new byte[16]
             };
+            var sensorName = Encoding.UTF8.GetBytes("TempSensor");
+            Array.Copy(sensorName, arr.FixedSensors[0].Name, Math.Min(sensorName.Length, 16));
             
             arr.BoundedSensorsCount = 0;
             arr.BoundedSensorsData = new SerializationTestSensor[1];

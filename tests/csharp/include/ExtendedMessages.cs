@@ -56,9 +56,9 @@ namespace StructFrameTests
             msg.Timestamp = 1704067200000000UL;
             msg.Temperature = -40;
             msg.Humidity = 85;
-            var loc = Encoding.UTF8.GetBytes("Sensor Room A");
+            var locationBytes = Encoding.UTF8.GetBytes("Sensor Room A");
             msg.Location = new byte[32];
-            Array.Copy(loc, msg.Location, Math.Min(loc.Length, 32));
+            Array.Copy(locationBytes, msg.Location, Math.Min(locationBytes.Length, 32));
             return msg;
         }
 
