@@ -70,14 +70,37 @@ class EnumPyGen():
                 for c in leading_comment:
                     enum_values.append("#" + c)
 
-            enum_value = "    %s_%s = %d" % (CamelToSnakeCase(
-                field.name).upper(), StyleC.enum_entry(d), field.data[d][0])
+            enum_value = "    %s = %d" % (StyleC.enum_entry(d), field.data[d][0])
 
             enum_values.append(enum_value)
 
         result += '\n'.join(enum_values)
         
         return result
+    
+    @staticmethod
+    def generate_discriminator_enum(oneof, msg_name):
+        """Generate a discriminator enum for field_order oneofs in Python."""
+        if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
+            return ''
+        
+        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        result = f'class {enum_name}(Enum):\n'
+        result += f'    """Discriminator enum for {msg_name}.{oneof.name} oneof"""\n'
+        result += f'    NONE = 0\n'
+        
+        for idx, (field_name, field) in enumerate(oneof.fields.items()):
+            field_order = idx + 1
+            # Use SCREAMING_SNAKE_CASE for enum values
+            enum_value = CamelToSnakeCase(field_name).upper()
+            result += f'    {enum_value} = {field_order}\n'
+        
+        return result
+    
+    @staticmethod
+    def get_discriminator_enum_name(oneof, msg_name):
+        """Get the enum type name for a field_order discriminator."""
+        return f'{msg_name}{pascalCase(oneof.name)}Field'
 
 
 class FieldPyGen():
@@ -321,13 +344,22 @@ class MessagePyGen():
         
         # Pack oneofs
         for oneof_name, oneof in msg.oneofs.items():
-            # Auto-discriminator if needed
+            # Discriminator if enabled
             if oneof.auto_discriminator:
-                result += f'        # Oneof {oneof_name} auto-discriminator (uint16)\n'
-                result += f'        if self.{oneof_name}_which is not None:\n'
-                result += f'            data += struct.pack("<H", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
-                result += f'        else:\n'
-                result += f'            data += struct.pack("<H", 0)\n'
+                if oneof.discriminator_type == "msgid":
+                    result += f'        # Oneof {oneof_name} auto-discriminator (uint16 - message ID)\n'
+                    result += f'        if self.{oneof_name}_which is not None:\n'
+                    result += f'            data += struct.pack("<H", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
+                    result += f'        else:\n'
+                    result += f'            data += struct.pack("<H", 0)\n'
+                else:  # field_order
+                    result += f'        # Oneof {oneof_name} discriminator (uint8 - field order, 1-based)\n'
+                    field_order_map = {field_name: idx + 1 for idx, field_name in enumerate(oneof.field_order)}
+                    result += f'        _field_order_map = {field_order_map}\n'
+                    result += f'        if self.{oneof_name}_which is not None:\n'
+                    result += f'            data += struct.pack("<B", _field_order_map[self.{oneof_name}_which])\n'
+                    result += f'        else:\n'
+                    result += f'            data += struct.pack("<B", 0)\n'
             
             # Pack the union field (whichever is active)
             result += f'        # Oneof {oneof_name} payload\n'
@@ -477,11 +509,16 @@ class MessagePyGen():
         
         # Unpack oneofs
         for oneof_name, oneof in msg.oneofs.items():
-            # Auto-discriminator if needed
+            # Discriminator if enabled
             if oneof.auto_discriminator:
-                result += f'        # Oneof {oneof_name} auto-discriminator (uint16)\n'
-                result += f'        discriminator = struct.unpack_from("<H", data, offset)[0]\n'
-                result += f'        offset += 2\n'
+                if oneof.discriminator_type == "msgid":
+                    result += f'        # Oneof {oneof_name} auto-discriminator (uint16 - message ID)\n'
+                    result += f'        discriminator = struct.unpack_from("<H", data, offset)[0]\n'
+                    result += f'        offset += 2\n'
+                else:  # field_order
+                    result += f'        # Oneof {oneof_name} discriminator (uint8 - field order, 1-based)\n'
+                    result += f'        discriminator = struct.unpack_from("<B", data, offset)[0]\n'
+                    result += f'        offset += 1\n'
                 result += f'        fields["{oneof_name}_discriminator"] = discriminator\n'
             
             # Unpack the union payload
@@ -491,12 +528,30 @@ class MessagePyGen():
             
             # Try to unpack based on discriminator if available
             if oneof.auto_discriminator:
-                result += f'        # Determine which field is active based on message ID\n'
-                for field_name, field in oneof.fields.items():
-                    type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
-                    result += f'        if discriminator == {type_name}.msg_id:\n'
-                    result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
-                    result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
+                if oneof.discriminator_type == "msgid":
+                    result += f'        # Determine which field is active based on message ID\n'
+                    for field_name, field in oneof.fields.items():
+                        type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
+                        result += f'        if discriminator == {type_name}.msg_id:\n'
+                        result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
+                        result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
+                else:  # field_order
+                    result += f'        # Determine which field is active based on field order (1-based index)\n'
+                    for idx, field_name in enumerate(oneof.field_order):
+                        field = oneof.fields[field_name]
+                        field_idx = idx + 1  # 1-based index
+                        if field.isDefaultType or field.isEnum:
+                            # Primitive or enum type
+                            pack_format = py_struct_format.get(field.fieldType, 'B')
+                            result += f'        if discriminator == {field_idx}:\n'
+                            result += f'            fields["{oneof_name}"]["{field_name}"] = struct.unpack_from("<{pack_format}", data, offset)[0]\n'
+                            result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
+                        else:
+                            # Nested message
+                            type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
+                            result += f'        if discriminator == {field_idx}:\n'
+                            result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
             
             result += f'        offset += {oneof.size}\n'
         
@@ -653,6 +708,10 @@ class MessagePyGen():
         # Add unified unpack() method for messages with MSG_ID
         if msg.id is not None:
             result += MessagePyGen.generate_unified_unpack(msg)
+        
+        # Add envelope methods if this is an envelope message
+        if msg.is_envelope:
+            result += MessagePyGen.generate_envelope_methods(msg, structName)
 
         return result
     
@@ -937,6 +996,170 @@ class MessagePyGen():
         result += '        return cls(**fields)\n'
         
         return result
+    
+    @staticmethod
+    def generate_envelope_methods(msg, structName):
+        """Generate envelope-specific helper methods for wrapping inner messages."""
+        result = ''
+        
+        # Get the single oneof (validation ensures exactly one exists)
+        oneof_name = list(msg.oneofs.keys())[0]
+        oneof = msg.oneofs[oneof_name]
+        
+        result += '\n    # ========================================\n'
+        result += '    # Envelope message helper methods\n'
+        result += '    # ========================================\n'
+        
+        # Build list of valid payload types and their field mappings (with field order)
+        payload_types = []
+        payload_field_map = []
+        for idx, (field_name, field) in enumerate(oneof.fields.items()):
+            type_pkg = field.type_package if field.type_package else field.package
+            payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+            payload_types.append(f'"{payload_type}"')
+            payload_field_map.append((payload_type, field_name, idx + 1))  # 1-based index
+        
+        # Build union type hint for payload parameter
+        union_type = f'Union[{", ".join(payload_types)}]'
+        
+        # Generate parameter list for envelope fields (non-oneof fields)
+        field_params = []
+        field_inits = []
+        for f_name, f in msg.fields.items():
+            type_hint = FieldPyGen.get_type_hint(f)
+            if f.is_array or f.fieldType == "string":
+                field_params.append(f'{f.name}: {type_hint} = None')
+            else:
+                field_params.append(f'{f.name}: {type_hint}')
+            field_inits.append(f'            {f.name}={f.name}')
+        
+        # Build parameter list: payload first, then envelope fields
+        all_params = [f'payload: {union_type}'] + field_params
+        
+        # Generate class-level constant for valid payload types
+        result += f'\n    # Valid payload types for this envelope\n'
+        result += f'    _VALID_PAYLOAD_TYPES = ({", ".join(payload_types)},)\n'
+        
+        # Build cleaned payload type names for docstring (without quotes)
+        payload_type_names = [pt.strip('"') for pt in payload_types]
+        
+        result += f'\n    @classmethod\n'
+        result += f'    def wrap(cls, {", ".join(all_params)}) -> "{structName}":\n'
+        result += f'        """Create a {structName} envelope wrapping a payload message.\n'
+        result += f'        \n'
+        result += f'        Args:\n'
+        result += f'            payload: The message to wrap (must be one of: {", ".join(payload_type_names)})\n'
+        for f_name, f in msg.fields.items():
+            result += f'            {f.name}: Envelope field value\n'
+        result += f'        \n'
+        result += f'        Returns:\n'
+        result += f'            A fully initialized {structName} envelope\n'
+        result += f'        \n'
+        result += f'        Raises:\n'
+        result += f'            TypeError: If payload is not a valid payload type\n'
+        result += f'        """\n'
+        
+        # Runtime type check
+        result += f'        payload_type_name = type(payload).__name__\n'
+        result += f'        if payload_type_name not in cls._VALID_PAYLOAD_TYPES:\n'
+        result += f'            raise TypeError(f"Invalid payload type {{payload_type_name}}. Must be one of: {{cls._VALID_PAYLOAD_TYPES}}")\n'
+        result += f'        \n'
+        
+        # Determine field name and field_order based on payload type
+        if oneof.discriminator_type == "msgid":
+            result += f'        # Determine which oneof field to use based on MSG_ID\n'
+            for payload_type, field_name, field_order in payload_field_map:
+                result += f'        if payload.MSG_ID == {payload_type}.MSG_ID:\n'
+                result += f'            field_name = "{field_name}"\n'
+        else:  # field_order
+            enum_name = EnumPyGen.get_discriminator_enum_name(oneof, structName)
+            result += f'        # Determine which oneof field to use and its discriminator value\n'
+            first = True
+            for payload_type, field_name, field_order in payload_field_map:
+                enum_value = CamelToSnakeCase(field_name).upper()
+                if first:
+                    result += f'        if payload_type_name == "{payload_type}":\n'
+                    first = False
+                else:
+                    result += f'        elif payload_type_name == "{payload_type}":\n'
+                result += f'            field_name = "{field_name}"\n'
+                result += f'            discriminator_value = {enum_name}.{enum_value}\n'
+        
+        # Create envelope instance
+        result += f'        \n'
+        result += f'        envelope = cls(\n'
+        for init_line in field_inits:
+            result += f'{init_line},\n'
+        result += f'            {oneof_name}={{field_name: payload}},\n'
+        result += f'            {oneof_name}_which=field_name'
+        if oneof.auto_discriminator:
+            if oneof.discriminator_type == "msgid":
+                result += f',\n            {oneof_name}_discriminator=payload.MSG_ID'
+            else:  # field_order - use the enum value
+                result += f',\n            {oneof_name}_discriminator=discriminator_value'
+        result += f'\n        )\n'
+        result += f'        return envelope\n'
+        
+        # Generate single unwrap method that returns the correct message based on discriminator
+        if oneof.auto_discriminator:
+            # Build union type hint for return type
+            payload_types_for_hint = []
+            for field_name, field in oneof.fields.items():
+                type_pkg = field.type_package if field.type_package else field.package
+                payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+                payload_types_for_hint.append(f'"{payload_type}"')
+            union_type = f'Union[{", ".join(payload_types_for_hint)}, None]'
+            
+            result += f'\n    def unwrap(self) -> {union_type}:\n'
+            result += f'        """Unwrap and get the payload message based on the discriminator.\n'
+            result += f'        \n'
+            result += f'        Returns:\n'
+            result += f'            The payload message matching the discriminator, or None if not set\n'
+            result += f'        """\n'
+            
+            # Generate if/elif chain to check discriminator and return correct field
+            first = True
+            enum_name = EnumPyGen.get_discriminator_enum_name(oneof, structName) if oneof.discriminator_type == "field_order" else None
+            for idx, (field_name, field) in enumerate(oneof.fields.items()):
+                type_pkg = field.type_package if field.type_package else field.package
+                payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+                field_order = idx + 1
+                
+                if oneof.discriminator_type == "msgid":
+                    discriminator_check = f'{payload_type}.MSG_ID'
+                else:  # field_order - use enum
+                    enum_value = CamelToSnakeCase(field_name).upper()
+                    discriminator_check = f'{enum_name}.{enum_value}'
+                
+                if first:
+                    result += f'        if self.{oneof_name}_discriminator == {discriminator_check}:\n'
+                    first = False
+                else:
+                    result += f'        elif self.{oneof_name}_discriminator == {discriminator_check}:\n'
+                result += f'            return self.{oneof_name}.get("{field_name}")\n'
+            result += f'        return None\n'
+        
+        # Generate helper to get the discriminator value
+        if oneof.auto_discriminator:
+            if oneof.discriminator_type == "msgid":
+                result += f'\n    def get_payload_message_id(self) -> int:\n'
+                result += f'        """Get the message ID of the wrapped payload.\n'
+                result += f'        \n'
+                result += f'        Returns:\n'
+                result += f'            The message ID of the payload in the {oneof_name} union\n'
+                result += f'        """\n'
+                result += f'        return self.{oneof_name}_discriminator\n'
+            else:  # field_order
+                enum_name = EnumPyGen.get_discriminator_enum_name(oneof, structName)
+                result += f'\n    def get_payload_field(self) -> "{enum_name}":\n'
+                result += f'        """Get the discriminator enum value for the wrapped payload.\n'
+                result += f'        \n'
+                result += f'        Returns:\n'
+                result += f'            The {enum_name} enum value for the active payload\n'
+                result += f'        """\n'
+                result += f'        return self.{oneof_name}_discriminator\n'
+        
+        return result
 
 
 class FilePyGen():
@@ -947,13 +1170,12 @@ class FilePyGen():
 
         yield 'import struct\n'
         yield 'from enum import Enum\n'
-        yield 'from typing import List\n'
+        yield 'from typing import List, Union\n'
         yield '\n'
         yield '# Helper function to truncate float64 to float32 precision\n'
         yield 'def _truncate_float32(val: float) -> float:\n'
         yield '    """Truncate a Python float (float64) to float32 precision"""\n'
-        yield '    return struct.unpack("<f", struct.pack("<f", val))[0]\n'
-        yield 'from typing import List, Optional\n\n'
+        yield '    return struct.unpack("<f", struct.pack("<f", val))[0]\n\n'
 
         # Add package ID constant if present
         if package.package_id is not None:
@@ -964,6 +1186,18 @@ class FilePyGen():
             yield '# Enum definitions\n'
             for key, enum in package.enums.items():
                 yield EnumPyGen.generate(enum) + '\n\n'
+
+        # Generate discriminator enums for field_order oneofs (must come before message definitions)
+        has_discriminator_enums = False
+        for key, msg in package.messages.items():
+            structName = '%s%s' % (pascalCase(msg.package), msg.name)
+            for oneof_name, oneof in msg.oneofs.items():
+                enum_code = EnumPyGen.generate_discriminator_enum(oneof, structName)
+                if enum_code:
+                    if not has_discriminator_enums:
+                        yield '# Oneof discriminator enums\n'
+                        has_discriminator_enums = True
+                    yield enum_code + '\n'
 
         if package.messages:
             yield '# Message definitions \n'

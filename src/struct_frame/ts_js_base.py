@@ -566,15 +566,26 @@ def calculate_field_layout(msg, package, packages):
     for key, oneof in msg.oneofs.items():
         oneof_name = oneof.name
         if oneof.auto_discriminator:
-            # Discriminator field (UInt16LE)
+            # Discriminator field
             discrim_name = f"{oneof_name}_discriminator"
-            fields.append(FieldInfo(
-                name=discrim_name,
-                offset=offset,
-                size=2,
-                field_type="uint16"
-            ))
-            offset += 2
+            if oneof.discriminator_type == "msgid":
+                # UInt16LE for message ID discriminator
+                fields.append(FieldInfo(
+                    name=discrim_name,
+                    offset=offset,
+                    size=2,
+                    field_type="uint16"
+                ))
+                offset += 2
+            else:  # field_order
+                # UInt8 for field order discriminator
+                fields.append(FieldInfo(
+                    name=discrim_name,
+                    offset=offset,
+                    size=1,
+                    field_type="uint8"
+                ))
+                offset += 1
         # Union data (byte array)
         data_name = f"{oneof_name}_data"
         fields.append(FieldInfo(

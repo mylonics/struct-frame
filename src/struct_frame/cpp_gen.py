@@ -163,7 +163,34 @@ class FieldCppGen():
 
 class OneOfCppGen():
     @staticmethod
-    def generate(oneof, use_namespace=False, package=None):
+    def generate_discriminator_enum(oneof, msg_name, use_namespace=False):
+        """Generate a discriminator enum for field_order oneofs."""
+        if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
+            return ''
+        
+        result = ''
+        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        
+        result += f'/* Discriminator enum for {msg_name}::{oneof.name} oneof */\n'
+        result += f'enum class {enum_name} : uint8_t {{\n'
+        result += f'    NONE = 0,\n'
+        
+        for idx, (field_name, field) in enumerate(oneof.fields.items()):
+            field_order = idx + 1
+            # Use SCREAMING_SNAKE_CASE for enum values
+            enum_value = CamelToSnakeCase(field_name).upper()
+            result += f'    {enum_value} = {field_order},\n'
+        
+        result += f'}};\n\n'
+        return result
+    
+    @staticmethod
+    def get_discriminator_enum_name(oneof, msg_name):
+        """Get the enum type name for a field_order discriminator."""
+        return f'{msg_name}{pascalCase(oneof.name)}Field'
+    
+    @staticmethod
+    def generate(oneof, use_namespace=False, package=None, msg_name=None):
         """Generate C++ union for a oneof construct."""
         result = ''
         
@@ -172,10 +199,15 @@ class OneOfCppGen():
             for c in oneof.comments:
                 result += '%s\n' % c
         
-        # If auto-discriminator is enabled, add discriminator field first
+        # If discriminator is enabled, add discriminator field first
         if oneof.auto_discriminator:
-            # Always use uint16_t since message IDs can be up to 65535
-            result += f'    uint16_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
+            if oneof.discriminator_type == "msgid":
+                # Use uint16_t since message IDs can be up to 65535
+                result += f'    uint16_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
+            else:  # field_order
+                # Use the generated enum type for better type safety
+                enum_name = OneOfCppGen.get_discriminator_enum_name(oneof, msg_name) if msg_name else 'uint8_t'
+                result += f'    {enum_name} {oneof.name}_discriminator;  // Auto-generated field order discriminator\n'
         
         # Generate the union
         result += f'    union {{\n'
@@ -320,7 +352,7 @@ class MessageCppGen():
         if msg.oneofs:
             if msg.fields:
                 result += '\n'
-            result += '\n'.join([OneOfCppGen.generate(o, use_namespace, package)
+            result += '\n'.join([OneOfCppGen.generate(o, use_namespace, package, structName)
                                 for key, o in msg.oneofs.items()])
         
         # Ensure newline after fields/oneofs
@@ -361,6 +393,10 @@ class MessageCppGen():
         # Add unified unpack() method only for messages with MSG_ID (have MessageBase)
         if has_msg_id:
             result += MessageCppGen._generate_unified_unpack(msg, structName)
+        
+        # Add envelope methods if this is an envelope message
+        if msg.is_envelope:
+            result += MessageCppGen._generate_envelope_methods(msg, structName, use_namespace, package)
         
         result += '};\n'
 
@@ -538,6 +574,147 @@ class MessageCppGen():
         
         return result
 
+    @staticmethod
+    def _generate_envelope_methods(msg, structName, use_namespace, package):
+        """Generate envelope-specific helper methods for wrapping inner messages."""
+        result = ''
+        
+        # Get the single oneof (validation ensures exactly one exists)
+        oneof_name = list(msg.oneofs.keys())[0]
+        oneof = msg.oneofs[oneof_name]
+        
+        result += f'\n    // ========================================\n'
+        result += f'    // Envelope message helper methods\n'
+        result += f'    // ========================================\n'
+        
+        # Build list of valid payload types
+        payload_types = []
+        payload_msg_ids = []
+        for field_name, field in oneof.fields.items():
+            if use_namespace:
+                payload_type = field.fieldType
+            else:
+                type_pkg = field.type_package if field.type_package else field.package
+                payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+            payload_types.append((field_name, payload_type))
+            if oneof.discriminator_type == "msgid":
+                payload_msg_ids.append(f'{payload_type}::MSG_ID')
+        
+        # Generate parameter list for envelope fields (non-oneof fields)
+        param_list = []
+        init_list = []
+        for f_name, f in msg.fields.items():
+            if f.fieldType in cpp_types:
+                cpp_type = cpp_types[f.fieldType]
+            else:
+                if use_namespace:
+                    cpp_type = f.fieldType
+                else:
+                    cpp_type = '%s%s' % (pascalCase(f.package), f.fieldType)
+            
+            if f.is_array or f.fieldType == "string":
+                pass  # Skip arrays/strings for simplicity
+            else:
+                param_list.append(f'{cpp_type} {f.name}')
+                init_list.append(f'        envelope.{f.name} = {f.name};')
+        
+        if oneof.discriminator_type == "msgid":
+            # Generate a single templated wrap method with compile-time constraint using MSG_ID
+            result += f'\n    /**\n'
+            result += f'     * Create a {structName} envelope wrapping a payload message.\n'
+            result += f'     * Only accepts valid payload types: {", ".join([pt[1] for pt in payload_types])}\n'
+            result += f'     * @tparam T The payload message type (must be one of the valid types)\n'
+            result += f'     * @param payload The message to wrap\n'
+            for f_name, f in msg.fields.items():
+                if f.is_array or f.fieldType == "string":
+                    continue
+                result += f'     * @param {f.name} Envelope field value\n'
+            result += f'     * @return A fully initialized {structName} envelope\n'
+            result += f'     */\n'
+            
+            # Template constraint: T::MSG_ID must match one of the valid payload MSG_IDs
+            valid_ids_check = ' || '.join([f'T::MSG_ID == {msg_id}' for msg_id in payload_msg_ids])
+            all_template_params = param_list + ['const T& payload']
+            
+            result += f'    template<typename T, typename = std::enable_if_t<{valid_ids_check}>>\n'
+            result += f'    static {structName} wrap({", ".join(all_template_params)}) {{\n'
+            result += f'        {structName} envelope{{}};\n'
+            
+            # Initialize envelope fields
+            for init_line in init_list:
+                result += f'{init_line}\n'
+            
+            # Set the discriminator
+            if oneof.auto_discriminator:
+                result += f'        envelope.{oneof_name}_discriminator = T::MSG_ID;\n'
+            
+            # Copy payload based on which type it is
+            result += f'        // Copy payload into the correct union field based on MSG_ID\n'
+            for field_name, payload_type in payload_types:
+                result += f'        if constexpr (T::MSG_ID == {payload_type}::MSG_ID) {{\n'
+                result += f'            std::memcpy(&envelope.{oneof_name}.{field_name}, &payload, sizeof(T));\n'
+                result += f'        }}\n'
+            
+            result += f'        return envelope;\n'
+            result += f'    }}\n'
+            
+            # Generate a helper to get the active payload type
+            if oneof.auto_discriminator:
+                result += f'\n    /**\n'
+                result += f'     * Get the message ID of the wrapped payload.\n'
+                result += f'     * @return The message ID of the payload in the {oneof_name} union\n'
+                result += f'     */\n'
+                result += f'    uint16_t getPayloadMessageId() const {{\n'
+                result += f'        return {oneof_name}_discriminator;\n'
+                result += f'    }}\n'
+        
+        else:  # field_order discriminator
+            # Get the enum type name
+            enum_name = OneOfCppGen.get_discriminator_enum_name(oneof, structName)
+            
+            # Generate separate wrap methods for each payload type
+            for idx, (field_name, payload_type) in enumerate(payload_types):
+                field_order = idx + 1  # 1-based index
+                enum_value = CamelToSnakeCase(field_name).upper()
+                all_wrap_params = param_list + [f'const {payload_type}& payload']
+                
+                result += f'\n    /**\n'
+                result += f'     * Create a {structName} envelope wrapping a {payload_type} payload.\n'
+                result += f'     * @param payload The {payload_type} message to wrap\n'
+                for f_name, f in msg.fields.items():
+                    if f.is_array or f.fieldType == "string":
+                        continue
+                    result += f'     * @param {f.name} Envelope field value\n'
+                result += f'     * @return A fully initialized {structName} envelope\n'
+                result += f'     */\n'
+                result += f'    static {structName} wrap({", ".join(all_wrap_params)}) {{\n'
+                result += f'        {structName} envelope{{}};\n'
+                
+                # Initialize envelope fields
+                for init_line in init_list:
+                    result += f'{init_line}\n'
+                
+                # Set the discriminator using enum value
+                if oneof.auto_discriminator:
+                    result += f'        envelope.{oneof_name}_discriminator = {enum_name}::{enum_value};\n'
+                
+                # Copy payload
+                result += f'        std::memcpy(&envelope.{oneof_name}.{field_name}, &payload, sizeof({payload_type}));\n'
+                result += f'        return envelope;\n'
+                result += f'    }}\n'
+            
+            # Generate a helper to get the field order
+            if oneof.auto_discriminator:
+                result += f'\n    /**\n'
+                result += f'     * Get the discriminator value of the wrapped payload.\n'
+                result += f'     * @return The {enum_name} enum value for the active payload\n'
+                result += f'     */\n'
+                result += f'    {enum_name} getPayloadField() const {{\n'
+                result += f'        return {oneof_name}_discriminator;\n'
+                result += f'    }}\n'
+        
+        return result
+
 
 class FileCppGen():
     @staticmethod
@@ -576,6 +753,18 @@ class FileCppGen():
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
                 yield EnumCppGen.generate(enum, use_namespace) + '\n'
+
+        # Generate discriminator enums for field_order oneofs (must come before struct definitions)
+        has_discriminator_enums = False
+        for key, msg in package.messages.items():
+            structName = msg.name if use_namespace else '%s%s' % (pascalCase(msg.package), msg.name)
+            for oneof_name, oneof in msg.oneofs.items():
+                enum_code = OneOfCppGen.generate_discriminator_enum(oneof, structName, use_namespace)
+                if enum_code:
+                    if not has_discriminator_enums:
+                        yield '/* Oneof discriminator enums */\n'
+                        has_discriminator_enums = True
+                    yield enum_code
 
         if package.messages:
             yield '/* Struct definitions */\n'

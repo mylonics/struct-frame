@@ -226,6 +226,40 @@ void HandleStatus(StatusMessage msg)
 }
 ```
 
+## Envelope Message Support
+
+When you have envelope messages (messages with `is_envelope = true`), the SDK generates convenient helper methods:
+
+```csharp
+using StructFrame.MyPackage.Sdk;
+
+// Create the SDK interface
+var sdk = new MyPackageSdkInterface(baseSdk);
+
+// Send a payload wrapped in an envelope - multiple overloads available:
+
+// Overload 1: Pass the message object plus envelope fields
+var adcCmd = new ADCCommand { Channel = 1, SampleRate = 1000, Enable = true };
+await sdk.SendADCCommandViaCommandEnvelope(adcCmd, sequenceNumber: 42, priority: 1, runImmediately: true);
+
+// Overload 2: Pass all fields flat (payload fields + envelope fields)
+await sdk.SendADCCommandViaCommandEnvelope(
+    channel: 1,
+    sampleRate: 1000,
+    enable: true,
+    sequenceNumber: 42,
+    priority: 1,
+    runImmediately: true
+);
+```
+
+The naming convention is `Send{PayloadType}Via{EnvelopeName}`. This pattern:
+
+- Automatically wraps the payload in the envelope message
+- Sets the discriminator field correctly (msgid or field_order)
+- Handles serialization and framing
+- Works with both `msgid` and `field_order` discriminator types
+
 ## .NET Platform Support
 
 The SDK requires .NET 7.0+ due to the use of C# 11 static abstract interface members:
