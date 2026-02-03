@@ -632,7 +632,7 @@ class TestRunner:
         # C/C++: compile test_standard and test_extended executables
         if lang.id in ("c", "cpp"):
             success = True
-            for runner in ["test_standard", "test_extended", "test_variable_flag"]:
+            for runner in ["test_standard", "test_extended", "test_variable_flag", "test_profiling"]:
                 source = test_dir / f"{runner}{lang.source_ext}"
                 if not source.exists():
                     continue
@@ -1127,6 +1127,33 @@ class TestRunner:
         
         return all_match
     
+    def run_profiling_test(self) -> bool:
+        """Run the C++ profiling test (packed vs unpacked struct performance)."""
+        cpp_lang = self.languages.get("cpp")
+        if not cpp_lang or "cpp" in self.skipped_languages:
+            print("  [SKIP] C++ not available for profiling test")
+            return True
+        
+        build_dir = self.project_root / cpp_lang.build_dir
+        profiling_exe = build_dir / f"test_profiling{cpp_lang.exe_ext}"
+        
+        if not profiling_exe.exists():
+            print(f"  [SKIP] Profiling test executable not found: {profiling_exe}")
+            return True
+        
+        print(f"\n  Running packed vs unpacked profiling test...")
+        success, stdout, stderr = self.run_cmd(str(profiling_exe), timeout=60)
+        
+        if stdout:
+            # Print the profiling output (it's nicely formatted)
+            for line in stdout.strip().split('\n'):
+                print(f"  {line}")
+        
+        if stderr and not success:
+            print(f"  {Colors.fail_tag()} Profiling test error: {stderr}")
+        
+        return success
+    
     def run_standalone_tests(self) -> bool:
         """Run standalone Python test scripts."""
         test_scripts = list(self.tests_dir.glob("test_*.py"))
@@ -1338,7 +1365,11 @@ class TestRunner:
                 # Verify truncation by checking binary file sizes
                 self.verify_variable_truncation()
             
-            # Phase 8: Standalone tests
+            # Phase 8: Profiling tests (packed vs unpacked performance)
+            with self.timed_phase("Profiling Tests"):
+                self.run_profiling_test()
+            
+            # Phase 9: Standalone tests
             with self.timed_phase("Standalone Tests"):
                 self.run_standalone_tests()
             
