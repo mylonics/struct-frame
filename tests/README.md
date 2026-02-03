@@ -26,28 +26,45 @@ The test suite includes cross-platform serialization tests. Each language can en
 
 ## Test Architecture
 
-The test suite follows a consistent **three-component pattern** across all languages:
+The test suite follows a consistent **modular pattern** across all languages with clear separation of concerns:
 
 ### 1. Entry Point (`test_<suite>.*`)
 Minimal main function that configures and runs the test:
 ```
-test_standard.c     →  Runs standard message tests
-test_extended.c     →  Runs extended message ID tests  
-test_variable_flag.c →  Runs variable-length truncation tests
+test_standard.*     →  Runs standard message tests
+test_extended.*     →  Runs extended message ID tests  
+test_variable_flag.* →  Runs variable-length truncation tests
 ```
 
-### 2. Test Data (`include/*_test_data.*`)
-Contains three logical sections:
-- **Message Definitions**: Hardcoded test messages with known values
-- **Encoder**: Functions to serialize messages into a byte stream
-- **Validator**: Functions to deserialize and compare with expected values
+**C++ uses a template-based approach**:
+- Entry points instantiate `TestHarness` template with message provider type
+- Ultra-minimal (9 lines): just configuration, no logic
 
-### 3. Test Codec (`include/test_codec.*`)
-Shared infrastructure for all test suites:
-- Frame profile configuration
-- File I/O utilities
-- Command-line parsing
-- Encode/decode orchestration
+**Other languages use a config-based approach**:
+- Entry points call `run_test_main()` with a test config object
+- Config provides message data factories and format support
+
+### 2. Message Data (`include/*_messages.* or *_test_data.*`)
+
+**C++ naming**: `standard_messages.hpp`, `extended_messages.hpp`, `variable_flag_messages.hpp`
+- Message provider structs with `MessageVariant` type, `MESSAGE_COUNT`, and `get_message(index)` factory
+- Pure message data - no infrastructure code
+
+**Other languages naming**: `standard_test_data.*`, `extended_test_data.*`, `variable_flag_test_data.*`
+- Message creation functions
+- Encoder class (serializes messages)
+- Validator class (validates decoded messages)
+- Config class (provides configuration to test infrastructure)
+
+### 3. Test Infrastructure (`include/test_harness.hpp + profile_runner.hpp` or `test_codec.*`)
+
+**C++ (two-layer design)**:
+- `test_harness.hpp`: CLI parsing, file I/O, test orchestration
+- `profile_runner.hpp`: Profile-specific encode/decode logic using BufferWriter/AccumulatingReader
+
+**Other languages (unified design)**:
+- `test_codec.*`: Combined infrastructure for CLI parsing, file I/O, and encode/decode orchestration
+- Uses frame profile classes (ProfileStandardWriter, ProfileStandardAccumulatingReader, etc.)
 
 ## Test Suites
 
@@ -101,11 +118,20 @@ tests/
 │       ├── extended_test_data.h      # Extended test data
 │       ├── variable_flag_test_data.h # Variable flag test data
 │       └── test_codec.h              # Shared codec infrastructure
-├── cpp/                      # C++ language tests (same structure)
-├── py/                       # Python tests (same structure)
-├── ts/                       # TypeScript tests (same structure)
-├── js/                       # JavaScript tests (same structure)
-├── csharp/                   # C# tests (same structure)
+├── cpp/                      # C++ language tests
+│   ├── test_standard.cpp         # Entry point
+│   ├── test_extended.cpp         # Entry point
+│   ├── test_variable_flag.cpp    # Entry point
+│   └── include/
+│       ├── standard_messages.hpp     # Message provider (data only)
+│       ├── extended_messages.hpp     # Extended message provider
+│       ├── variable_flag_messages.hpp # Variable flag message provider
+│       ├── test_harness.hpp          # Test infrastructure (CLI, file I/O)
+│       └── profile_runner.hpp        # Profile encode/decode logic
+├── py/                       # Python tests (config-based like C)
+├── ts/                       # TypeScript tests (config-based like C)
+├── js/                       # JavaScript tests (config-based like C)
+├── csharp/                   # C# tests (config-based like C)
 └── generated/                # Generated code output
     ├── c/
     ├── cpp/
