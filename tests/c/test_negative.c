@@ -72,10 +72,12 @@ bool test_corrupted_crc(void) {
   buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
   
   uint8_t payload[256];
-  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload, sizeof(payload));
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
   
   size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
-                                          payload, payload_size, 0, 0, 0, 0);
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
   
   if (frame_size < 4) return false;
   
@@ -104,10 +106,12 @@ bool test_truncated_frame(void) {
   buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
   
   uint8_t payload[256];
-  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload, sizeof(payload));
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
   
   size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
-                                          payload, payload_size, 0, 0, 0, 0);
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
   
   if (frame_size < 10) return false;
   
@@ -135,10 +139,12 @@ bool test_invalid_start_bytes(void) {
   buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
   
   uint8_t payload[256];
-  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload, sizeof(payload));
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
   
   size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
-                                          payload, payload_size, 0, 0, 0, 0);
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
   
   if (frame_size < 2) return false;
   
@@ -180,10 +186,12 @@ bool test_corrupted_length(void) {
   buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
   
   uint8_t payload[256];
-  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload, sizeof(payload));
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
   
   size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
-                                          payload, payload_size, 0, 0, 0, 0);
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
   
   if (frame_size < 4) return false;
   
@@ -211,19 +219,24 @@ bool test_streaming_corrupted_crc(void) {
   buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
   
   uint8_t payload[256];
-  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload, sizeof(payload));
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
   
   size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
-                                          payload, payload_size, 0, 0, 0, 0);
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
   
   if (frame_size < 4) return false;
   
   // Corrupt CRC
   buffer[frame_size - 1] ^= 0xFF;
   
+  // Allocate internal buffer for accumulating reader
+  uint8_t internal_buffer[1024];
+  
   // Try streaming parse
   accumulating_reader_t reader;
-  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, NULL, 1024);
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), NULL);
   
   // Feed byte by byte
   for (size_t i = 0; i < frame_size; i++) {
