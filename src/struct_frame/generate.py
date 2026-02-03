@@ -14,6 +14,7 @@ from struct_frame import FileGqlGen
 from struct_frame import FileCppGen
 from struct_frame import FileCSharpGen
 from struct_frame import TestCppGen
+from struct_frame import TestPyGen
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -1325,7 +1326,7 @@ def generateJsFileStrings(path, equality=False):
     return out
 
 
-def generatePyFileStrings(path, equality=False):
+def generatePyFileStrings(path, equality=False, generate_tests=False):
     out = {}
     
     # Create package structure: struct_frame/generated/
@@ -1344,6 +1345,12 @@ def generatePyFileStrings(path, equality=False):
         name = os.path.join(generated_path, value.name + ".py")
         data = ''.join(FilePyGen.generate(value, equality=equality))
         out[name] = data
+        
+        # Generate test file if requested
+        if generate_tests:
+            test_name = os.path.join(generated_path, value.name + "_tests.py")
+            test_data = ''.join(TestPyGen.generate(value))
+            out[test_name] = test_data
     
     return out
 
@@ -1488,7 +1495,7 @@ def main():
         files.update(generateJsFileStrings(args.js_path[0], equality=args.equality))
 
     if (args.build_py):
-        files.update(generatePyFileStrings(args.py_path[0], equality=args.equality))
+        files.update(generatePyFileStrings(args.py_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_cpp):
         files.update(generateCppFileStrings(args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests))
