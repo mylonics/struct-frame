@@ -218,7 +218,26 @@ function getMessage(index) {
   }
 }
 
+
+// ============================================================================
+// checkMessage(index, info) - validates decoded message matches expected
+// This is the callback passed to ProfileRunner.parse()
+// ============================================================================
+
+function checkMessage(index, info) {
+  const expected = getMessage(index);
+  const msgClass = expected.constructor;
+
+  // Check msg_id matches
+  if (info.msg_id !== msgClass._msgid) return false;
+
+  // Deserialize and compare
+  const decoded = msgClass.deserialize(info);
+  return decoded.equals(expected);
+}
+
 module.exports = {
   MESSAGE_COUNT,
   getMessage,
+  checkMessage,
 };

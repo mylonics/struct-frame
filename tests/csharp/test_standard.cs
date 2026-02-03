@@ -17,6 +17,7 @@ class TestStandard
             args,
             StandardMessages.MESSAGE_COUNT,
             StandardMessages.GetMessage,
+            StandardMessages.CheckMessage,
             (msgId) => MessageDefinitions.GetMessageInfo(msgId),
             TEST_NAME,
             PROFILES

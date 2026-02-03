@@ -3,6 +3,8 @@
  * Low-level encoding and decoding for message providers.
  *
  * This file matches the C++ profile_runner.hpp structure.
+ * ProfileRunner has NO knowledge of message types - all message-specific
+ * logic is handled via callbacks (getMessage, checkMessage).
  */
 
 import {
@@ -19,16 +21,14 @@ import {
   MessageInfo,
 } from '../../generated/ts/frame-profiles';
 
+import { FrameMsgInfo } from '../../generated/ts/frame-base';
+
 // Buffer size for readers
 const BUFFER_SIZE = 16384;
 
-type GetMsgInfoFn = (msgId: number) => MessageInfo | undefined;
-type GetMsgFn = (index: number) => any;
-
-interface MessageProvider {
-  MESSAGE_COUNT: number;
-  getMessage: GetMsgFn;
-}
+export type GetMsgInfoFn = (msgId: number) => MessageInfo | undefined;
+export type GetMsgFn = (index: number) => any;
+export type CheckMsgFn = (index: number, info: FrameMsgInfo) => boolean;
 
 const writerClasses: { [key: string]: new (size: number) => any } = {
   'standard': ProfileStandardWriter,
@@ -50,14 +50,14 @@ const readerClasses: { [key: string]: new (getMsgInfo: GetMsgInfoFn, bufSize: nu
  * Encode all messages to buffer using BufferWriter.
  * Returns total bytes written.
  */
-export function encode(msgProvider: MessageProvider, profile: string, buffer: Buffer): number {
+export function encode(messageCount: number, getMessage: GetMsgFn, profile: string, buffer: Buffer): number {
   const WriterClass = writerClasses[profile];
   if (!WriterClass) return 0;
 
   const writer = new WriterClass(buffer.length);
 
-  for (let i = 0; i < msgProvider.MESSAGE_COUNT; i++) {
-    const msg = msgProvider.getMessage(i);
+  for (let i = 0; i < messageCount; i++) {
+    const msg = getMessage(i);
     writer.write(msg);
   }
 
@@ -71,41 +71,27 @@ export function encode(msgProvider: MessageProvider, profile: string, buffer: Bu
 
 /**
  * Parse all messages from buffer using AccumulatingReader.
- * Returns the number of messages that matched (MESSAGE_COUNT if all pass).
+ * Uses checkMessage callback to validate each decoded message.
+ * Returns the number of messages that matched (messageCount if all pass).
  */
-export function parse(msgProvider: MessageProvider, getMsgInfo: GetMsgInfoFn, profile: string, buffer: Buffer): number {
+export function parse(messageCount: number, checkMessage: CheckMsgFn, getMsgInfo: GetMsgInfoFn, profile: string, buffer: Buffer): number {
   const ReaderClass = readerClasses[profile];
   if (!ReaderClass) return 0;
 
   const reader = new ReaderClass(getMsgInfo, BUFFER_SIZE);
   reader.addData(buffer);
 
-  let messageCount = 0;
+  let count = 0;
 
   while (true) {
     const result = reader.next();
     if (!result || !result.valid) break;
 
-    const expected = msgProvider.getMessage(messageCount);
-    const msgClass = expected.constructor as any;
+    // Use callback to check if message matches expected
+    if (!checkMessage(count, result)) break;
 
-    if (result.msg_id !== msgClass._msgid) break;
-
-    const decoded = msgClass.deserialize(result);
-    if (!decoded.equals(expected)) break;
-
-    messageCount++;
+    count++;
   }
 
-  return messageCount;
-}
-
-/**
- * Get encode and parse functions for a profile.
- */
-export function getProfileOps(msgProvider: MessageProvider, getMsgInfo: GetMsgInfoFn, profile: string) {
-  return {
-    encode: (buffer: Buffer) => encode(msgProvider, profile, buffer),
-    parse: (buffer: Buffer) => parse(msgProvider, getMsgInfo, profile, buffer),
-  };
+  return count;
 }

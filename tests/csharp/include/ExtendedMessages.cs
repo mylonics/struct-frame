@@ -249,5 +249,62 @@ namespace StructFrameTests
                 default: return CreateExtVarSingleFull();
             }
         }
+
+        // ============================================================================
+        // CheckMessage(index, info) - validates decoded message matches expected
+        // This is the callback passed to ProfileRunner.Parse()
+        // ============================================================================
+
+        public static bool CheckMessage(int index, FrameMsgInfo info)
+        {
+            var expected = GetMessage(index);
+            int expectedMsgId = expected.GetMsgId();
+
+            // Check msg_id matches
+            if (info.MsgId != expectedMsgId) return false;
+
+            // Deserialize based on msg_id
+            IStructFrameMessage decoded = null;
+            if (info.MsgId == ExtendedTestExtendedIdMessage1.MsgId)
+                decoded = ExtendedTestExtendedIdMessage1.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage2.MsgId)
+                decoded = ExtendedTestExtendedIdMessage2.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage3.MsgId)
+                decoded = ExtendedTestExtendedIdMessage3.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage4.MsgId)
+                decoded = ExtendedTestExtendedIdMessage4.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage5.MsgId)
+                decoded = ExtendedTestExtendedIdMessage5.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage6.MsgId)
+                decoded = ExtendedTestExtendedIdMessage6.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage7.MsgId)
+                decoded = ExtendedTestExtendedIdMessage7.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage8.MsgId)
+                decoded = ExtendedTestExtendedIdMessage8.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage9.MsgId)
+                decoded = ExtendedTestExtendedIdMessage9.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedIdMessage10.MsgId)
+                decoded = ExtendedTestExtendedIdMessage10.Deserialize(info);
+            else if (info.MsgId == ExtendedTestLargePayloadMessage1.MsgId)
+                decoded = ExtendedTestLargePayloadMessage1.Deserialize(info);
+            else if (info.MsgId == ExtendedTestLargePayloadMessage2.MsgId)
+                decoded = ExtendedTestLargePayloadMessage2.Deserialize(info);
+            else if (info.MsgId == ExtendedTestExtendedVariableSingleArray.MsgId)
+                decoded = ExtendedTestExtendedVariableSingleArray.Deserialize(info);
+
+            if (decoded == null) return false;
+
+            // Compare serialized bytes
+            var decodedBytes = decoded.Serialize();
+            var expectedBytes = expected.Serialize();
+
+            if (decodedBytes.Length != expectedBytes.Length) return false;
+            for (int i = 0; i < decodedBytes.Length; i++)
+            {
+                if (decodedBytes[i] != expectedBytes[i]) return false;
+            }
+
+            return true;
+        }
     }
 }

@@ -17,6 +17,7 @@ class TestExtended
             args,
             ExtendedMessages.MESSAGE_COUNT,
             ExtendedMessages.GetMessage,
+            ExtendedMessages.CheckMessage,
             (msgId) => MessageDefinitions.GetMessageInfo(msgId),
             TEST_NAME,
             PROFILES

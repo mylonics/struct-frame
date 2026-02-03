@@ -75,7 +75,7 @@ namespace StructFrameTests
 
         private static int RunDecode(
             int messageCount,
-            GetMessageFunc getMessage,
+            CheckMessageFunc checkMessage,
             GetMessageInfoFunc getMessageInfo,
             string profile,
             string inputFile)
@@ -87,7 +87,7 @@ namespace StructFrameTests
                 return 1;
             }
 
-            int count = ProfileRunner.Parse(messageCount, getMessage, getMessageInfo, profile, buffer, buffer.Length);
+            int count = ProfileRunner.Parse(messageCount, checkMessage, getMessageInfo, profile, buffer, buffer.Length);
             if (count != messageCount)
             {
                 Console.WriteLine($"[DECODE] FAILED: {count} of {messageCount} messages validated");
@@ -101,6 +101,7 @@ namespace StructFrameTests
         private static int RunBoth(
             int messageCount,
             GetMessageFunc getMessage,
+            CheckMessageFunc checkMessage,
             GetMessageInfoFunc getMessageInfo,
             string profile)
         {
@@ -115,7 +116,7 @@ namespace StructFrameTests
 
             Console.WriteLine($"[BOTH] Encoded {bytesWritten} bytes");
 
-            int count = ProfileRunner.Parse(messageCount, getMessage, getMessageInfo, profile, buffer, bytesWritten);
+            int count = ProfileRunner.Parse(messageCount, checkMessage, getMessageInfo, profile, buffer, bytesWritten);
             if (count != messageCount)
             {
                 Console.WriteLine($"[BOTH] FAILED: {count} of {messageCount} messages validated");
@@ -133,6 +134,7 @@ namespace StructFrameTests
             string[] args,
             int messageCount,
             GetMessageFunc getMessage,
+            CheckMessageFunc checkMessage,
             GetMessageInfoFunc getMessageInfo,
             string testName,
             string profileHelp)
@@ -170,11 +172,11 @@ namespace StructFrameTests
             }
             else if (mode == "decode")
             {
-                result = RunDecode(messageCount, getMessage, getMessageInfo, profile, filePath);
+                result = RunDecode(messageCount, checkMessage, getMessageInfo, profile, filePath);
             }
             else // both
             {
-                result = RunBoth(messageCount, getMessage, getMessageInfo, profile);
+                result = RunBoth(messageCount, getMessage, checkMessage, getMessageInfo, profile);
             }
 
             string status = result == 0 ? "PASS" : "FAIL";

@@ -59,5 +59,40 @@ namespace StructFrameTests
             else
                 return CreateVariable1_3Filled();
         }
+
+        // ============================================================================
+        // CheckMessage(index, info) - validates decoded message matches expected
+        // This is the callback passed to ProfileRunner.Parse()
+        // ============================================================================
+
+        public static bool CheckMessage(int index, FrameMsgInfo info)
+        {
+            var expected = GetMessage(index);
+            int expectedMsgId = expected.GetMsgId();
+
+            // Check msg_id matches
+            if (info.MsgId != expectedMsgId) return false;
+
+            // Deserialize based on msg_id
+            IStructFrameMessage decoded = null;
+            if (info.MsgId == SerializationTestTruncationTestNonVariable.MsgId)
+                decoded = SerializationTestTruncationTestNonVariable.Deserialize(info);
+            else if (info.MsgId == SerializationTestTruncationTestVariable.MsgId)
+                decoded = SerializationTestTruncationTestVariable.Deserialize(info);
+
+            if (decoded == null) return false;
+
+            // Compare serialized bytes
+            var decodedBytes = decoded.Serialize();
+            var expectedBytes = expected.Serialize();
+
+            if (decodedBytes.Length != expectedBytes.Length) return false;
+            for (int i = 0; i < decodedBytes.Length; i++)
+            {
+                if (decodedBytes[i] != expectedBytes[i]) return false;
+            }
+
+            return true;
+        }
     }
 }

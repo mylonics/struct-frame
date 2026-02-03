@@ -4,6 +4,8 @@ Profile runner (Python).
 Low-level encoding and decoding for message providers.
 
 This file matches the C++ profile_runner.hpp structure.
+ProfileRunner has NO knowledge of message types - all message-specific
+logic is handled via callbacks (get_message, check_message).
 """
 
 import sys
@@ -31,12 +33,13 @@ from frame_profiles import (
 BUFFER_SIZE = 16384
 
 
-def encode(message_provider, profile: str, buffer: bytearray) -> int:
+def encode(message_count: int, get_message: Callable, profile: str, buffer: bytearray) -> int:
     """
     Encode all messages to buffer using BufferWriter.
     
     Args:
-        message_provider: Module with MESSAGE_COUNT and get_message(index)
+        message_count: Number of messages to encode
+        get_message: Function(index) -> message
         profile: Profile name (standard, sensor, ipc, bulk, network)
         buffer: Buffer to encode into
         
@@ -57,8 +60,8 @@ def encode(message_provider, profile: str, buffer: bytearray) -> int:
     
     writer = writer_class(len(buffer))
     
-    for i in range(message_provider.MESSAGE_COUNT):
-        msg = message_provider.get_message(i)
+    for i in range(message_count):
+        msg = get_message(i)
         writer.write(msg)
     
     data = writer.data()
@@ -66,18 +69,20 @@ def encode(message_provider, profile: str, buffer: bytearray) -> int:
     return writer.size()
 
 
-def parse(message_provider, get_message_info: Callable, profile: str, buffer: bytes) -> int:
+def parse(message_count: int, check_message: Callable, get_message_info: Callable, profile: str, buffer: bytes) -> int:
     """
     Parse all messages from buffer using AccumulatingReader.
+    Uses check_message callback to validate each decoded message.
     
     Args:
-        message_provider: Module with MESSAGE_COUNT and get_message(index)
+        message_count: Expected number of messages
+        check_message: Function(index, frame_info) -> bool to validate each message
         get_message_info: Function to get message info by msg_id
         profile: Profile name (standard, sensor, ipc, bulk, network)
         buffer: Buffer containing encoded data
         
     Returns:
-        Number of messages that matched (MESSAGE_COUNT if all pass)
+        Number of messages that matched (message_count if all pass)
     """
     reader_classes = {
         'standard': ProfileStandardAccumulatingReader,
@@ -94,35 +99,23 @@ def parse(message_provider, get_message_info: Callable, profile: str, buffer: by
     reader = reader_class(get_message_info, BUFFER_SIZE)
     reader.add_data(buffer)
     
-    message_count = 0
+    count = 0
     
     while True:
         result = reader.next()
         if result is None or not result.valid:
             break
         
-        expected = message_provider.get_message(message_count)
-        
-        # Get the message class from the expected message
-        msg_class = type(expected)
-        
-        # Check msg_id matches
-        if result.msg_id != expected.MSG_ID:
+        # Use callback to check if message matches expected
+        if not check_message(count, result):
             break
         
-        # Deserialize and compare
-        decoded = msg_class.deserialize(result)
-        expected_normalized = msg_class.deserialize(expected.serialize())
-        
-        if decoded != expected_normalized:
-            break
-        
-        message_count += 1
+        count += 1
     
-    return message_count
+    return count
 
 
-def get_profile_ops(message_provider, get_message_info: Callable, profile: str) -> Tuple[Callable, Callable]:
+def get_profile_ops(message_count: int, get_message: Callable, check_message: Callable, get_message_info: Callable, profile: str) -> Tuple[Callable, Callable]:
     """
     Get encode and parse functions for a profile.
     
@@ -132,9 +125,9 @@ def get_profile_ops(message_provider, get_message_info: Callable, profile: str) 
         - parse_fn(buffer) -> messages_validated
     """
     def encode_fn(buffer: bytearray) -> int:
-        return encode(message_provider, profile, buffer)
+        return encode(message_count, get_message, profile, buffer)
     
     def parse_fn(buffer: bytes) -> int:
-        return parse(message_provider, get_message_info, profile, buffer)
+        return parse(message_count, check_message, get_message_info, profile, buffer)
     
     return encode_fn, parse_fn

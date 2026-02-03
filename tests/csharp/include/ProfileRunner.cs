@@ -3,12 +3,12 @@
  * Low-level encoding and decoding for message providers.
  *
  * This file matches the C++ profile_runner.hpp structure.
+ * ProfileRunner has NO knowledge of message types - all message-specific
+ * logic is handled via callbacks (GetMessage, CheckMessage).
  */
 
 using System;
 using StructFrame;
-using StructFrame.SerializationTest;
-using ExtendedMessageDefinitions = StructFrame.ExtendedTest.MessageDefinitions;
 
 namespace StructFrameTests
 {
@@ -18,12 +18,19 @@ namespace StructFrameTests
     public delegate IStructFrameMessage GetMessageFunc(int index);
 
     /// <summary>
+    /// Delegate type for CheckMessage function - validates decoded message at index
+    /// </summary>
+    public delegate bool CheckMessageFunc(int index, FrameMsgInfo info);
+
+    /// <summary>
     /// Delegate type for get_message_info function
     /// </summary>
     public delegate MessageInfo? GetMessageInfoFunc(int msgId);
 
     /// <summary>
-    /// Profile runner - Low-level encoding and decoding for message providers
+    /// Profile runner - Low-level encoding and decoding for message providers.
+    /// This class has NO knowledge of message types - all message-specific
+    /// logic is handled via callbacks.
     /// </summary>
     public static class ProfileRunner
     {
@@ -55,11 +62,12 @@ namespace StructFrameTests
 
         /// <summary>
         /// Parse all messages from buffer using AccumulatingReader.
+        /// Uses checkMessage callback to validate each decoded message.
         /// Returns the number of messages that matched (messageCount if all pass).
         /// </summary>
         public static int Parse(
             int messageCount,
-            GetMessageFunc getMessage,
+            CheckMessageFunc checkMessage,
             GetMessageInfoFunc getMessageInfo,
             string profile,
             byte[] buffer,
@@ -76,14 +84,8 @@ namespace StructFrameTests
                 var result = reader.Next();
                 if (result == null || !result.Valid) break;
 
-                var expected = getMessage(count);
-                int expectedMsgId = expected.GetMsgId();
-
-                if (result.MsgId != expectedMsgId) break;
-
-                // Deserialize and compare
-                var decoded = DeserializeMessage(result.MsgId, result, profile);
-                if (decoded == null || !MessagesEqual(decoded, expected)) break;
+                // Use callback to check if message matches expected
+                if (!checkMessage(count, result)) break;
 
                 count++;
             }
@@ -117,130 +119,6 @@ namespace StructFrameTests
                 case "network": return new ProfileNetworkAccumulatingReader(bufferSize, msgInfoFunc);
                 default: return null;
             }
-        }
-
-        private static IStructFrameMessage DeserializeMessage(int msgId, FrameMsgInfo info, string profile)
-        {
-            // Try standard messages first
-            var stdMsgInfo = MessageDefinitions.GetMessageInfo(msgId);
-            if (stdMsgInfo.HasValue)
-            {
-                return DeserializeStandardMessage(msgId, info);
-            }
-
-            // Try extended messages
-            var extMsgInfo = ExtendedMessageDefinitions.GetMessageInfo(msgId);
-            if (extMsgInfo.HasValue)
-            {
-                return DeserializeExtendedMessage(msgId, info);
-            }
-
-            return null;
-        }
-
-        private static IStructFrameMessage DeserializeStandardMessage(int msgId, FrameMsgInfo info)
-        {
-            if (msgId == SerializationTestSerializationTestMessage.MsgId)
-            {
-                return SerializationTestSerializationTestMessage.Deserialize(info);
-            }
-            if (msgId == SerializationTestBasicTypesMessage.MsgId)
-            {
-                return SerializationTestBasicTypesMessage.Deserialize(info);
-            }
-            if (msgId == SerializationTestUnionTestMessage.MsgId)
-            {
-                return SerializationTestUnionTestMessage.Deserialize(info);
-            }
-            if (msgId == SerializationTestVariableSingleArray.MsgId)
-            {
-                return SerializationTestVariableSingleArray.Deserialize(info);
-            }
-            if (msgId == SerializationTestMessage.MsgId)
-            {
-                return SerializationTestMessage.Deserialize(info);
-            }
-            if (msgId == SerializationTestTruncationTestNonVariable.MsgId)
-            {
-                return SerializationTestTruncationTestNonVariable.Deserialize(info);
-            }
-            if (msgId == SerializationTestTruncationTestVariable.MsgId)
-            {
-                return SerializationTestTruncationTestVariable.Deserialize(info);
-            }
-            return null;
-        }
-
-        private static IStructFrameMessage DeserializeExtendedMessage(int msgId, FrameMsgInfo info)
-        {
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage1.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage1.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage2.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage2.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage3.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage3.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage4.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage4.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage5.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage5.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage6.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage6.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage7.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage7.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage8.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage8.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage9.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage9.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage10.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedIdMessage10.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestLargePayloadMessage1.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestLargePayloadMessage1.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestLargePayloadMessage2.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestLargePayloadMessage2.Deserialize(info);
-            }
-            if (msgId == StructFrame.ExtendedTest.ExtendedTestExtendedVariableSingleArray.MsgId)
-            {
-                return StructFrame.ExtendedTest.ExtendedTestExtendedVariableSingleArray.Deserialize(info);
-            }
-            return null;
-        }
-
-        private static bool MessagesEqual(IStructFrameMessage decoded, IStructFrameMessage expected)
-        {
-            var decodedBytes = decoded.Serialize();
-            var expectedBytes = expected.Serialize();
-
-            if (decodedBytes.Length != expectedBytes.Length) return false;
-
-            for (int i = 0; i < decodedBytes.Length; i++)
-            {
-                if (decodedBytes[i] != expectedBytes[i]) return false;
-            }
-
-            return true;
         }
     }
 }

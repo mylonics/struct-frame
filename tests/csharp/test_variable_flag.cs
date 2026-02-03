@@ -17,6 +17,7 @@ class TestVariableFlag
             args,
             VariableFlagMessages.MESSAGE_COUNT,
             VariableFlagMessages.GetMessage,
+            VariableFlagMessages.CheckMessage,
             (msgId) => MessageDefinitions.GetMessageInfo(msgId),
             TEST_NAME,
             PROFILES

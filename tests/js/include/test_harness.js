@@ -6,9 +6,7 @@
  */
 
 const fs = require('fs');
-const { getProfileOps } = require('./profile_runner');
-
-const BUFFER_SIZE = 16384;
+const { encode, parse, BUFFER_SIZE } = require('./profile_runner');
 
 function printUsage(programName, profileHelp) {
   console.log('Usage:');
@@ -35,9 +33,9 @@ function readFile(path) {
   }
 }
 
-function runEncode(encodeFn, outputFile, messageCount) {
+function runEncode(messageCount, getMessage, profile, outputFile) {
   const buffer = Buffer.alloc(BUFFER_SIZE);
-  const bytesWritten = encodeFn(buffer);
+  const bytesWritten = encode(messageCount, getMessage, profile, buffer);
 
   if (bytesWritten === 0 || !writeFile(outputFile, buffer.subarray(0, bytesWritten))) {
     console.log('[ENCODE] FAILED');
@@ -48,14 +46,14 @@ function runEncode(encodeFn, outputFile, messageCount) {
   return 0;
 }
 
-function runDecode(parseFn, inputFile, messageCount) {
+function runDecode(messageCount, checkMessage, getMsgInfo, profile, inputFile) {
   const buffer = readFile(inputFile);
   if (buffer.length === 0) {
     console.log('[DECODE] FAILED: Cannot read file');
     return 1;
   }
 
-  const count = parseFn(buffer);
+  const count = parse(messageCount, checkMessage, getMsgInfo, profile, buffer);
   if (count !== messageCount) {
     console.log(`[DECODE] FAILED: ${count} of ${messageCount} messages validated`);
     return 1;
@@ -65,9 +63,9 @@ function runDecode(parseFn, inputFile, messageCount) {
   return 0;
 }
 
-function runBoth(encodeFn, parseFn, messageCount) {
+function runBoth(messageCount, getMessage, checkMessage, getMsgInfo, profile) {
   const buffer = Buffer.alloc(BUFFER_SIZE);
-  const bytesWritten = encodeFn(buffer);
+  const bytesWritten = encode(messageCount, getMessage, profile, buffer);
 
   if (bytesWritten === 0) {
     console.log('[BOTH] FAILED: Encoding error');
@@ -76,7 +74,7 @@ function runBoth(encodeFn, parseFn, messageCount) {
 
   console.log(`[BOTH] Encoded ${bytesWritten} bytes`);
 
-  const count = parseFn(buffer.subarray(0, bytesWritten));
+  const count = parse(messageCount, checkMessage, getMsgInfo, profile, buffer.subarray(0, bytesWritten));
   if (count !== messageCount) {
     console.log(`[BOTH] FAILED: ${count} of ${messageCount} messages validated`);
     return 1;
@@ -89,7 +87,7 @@ function runBoth(encodeFn, parseFn, messageCount) {
 /**
  * Main entry point for test programs.
  */
-function run(msgProvider, getMsgInfo, testName, profileHelp) {
+function run(messageCount, getMessage, checkMessage, getMsgInfo, testName, profileHelp) {
   const args = process.argv.slice(2);
 
   if (args.length < 2) {
@@ -113,19 +111,16 @@ function run(msgProvider, getMsgInfo, testName, profileHelp) {
     return 1;
   }
 
-  const ops = getProfileOps(msgProvider, getMsgInfo, profile);
-
   console.log(`\n[TEST START] ${testName} ${profile} ${mode}`);
 
-  const messageCount = msgProvider.MESSAGE_COUNT;
   let result;
 
   if (mode === 'encode') {
-    result = runEncode(ops.encode, filePath, messageCount);
+    result = runEncode(messageCount, getMessage, profile, filePath);
   } else if (mode === 'decode') {
-    result = runDecode(ops.parse, filePath, messageCount);
+    result = runDecode(messageCount, checkMessage, getMsgInfo, profile, filePath);
   } else {
-    result = runBoth(ops.encode, ops.parse, messageCount);
+    result = runBoth(messageCount, getMessage, checkMessage, getMsgInfo, profile);
   }
 
   const status = result === 0 ? 'PASS' : 'FAIL';

@@ -61,3 +61,35 @@ def get_message(index: int) -> MessageType:
         return create_non_variable_1_3_filled()
     else:  # index == 1
         return create_variable_1_3_filled()
+
+
+# ============================================================================
+# check_message(index, info) - validates decoded message matches expected
+# This is the callback passed to ProfileRunner.parse()
+# ============================================================================
+
+def check_message(index: int, info) -> bool:
+    """
+    Check if decoded message matches expected.
+    
+    Args:
+        index: Message index
+        info: FrameMsgInfo from reader
+        
+    Returns:
+        True if message matches expected, False otherwise
+    """
+    expected = get_message(index)
+    
+    # Check msg_id matches
+    if info.msg_id != expected.MSG_ID:
+        return False
+    
+    # Deserialize using the expected message's class
+    msg_class = type(expected)
+    decoded = msg_class.deserialize(info)
+    
+    # Normalize expected for comparison (round-trip through serialize/deserialize)
+    expected_normalized = msg_class.deserialize(expected.serialize())
+    
+    return decoded == expected_normalized

@@ -15,6 +15,8 @@ import {
   SerializationTestMsgSeverity,
 } from '../../generated/ts/serialization_test.structframe';
 
+import { FrameMsgInfo } from '../../generated/ts/frame-base';
+
 // Type alias for message union (like C++ MessageVariant)
 export type MessageType = 
   | SerializationTestSerializationTestMessage
@@ -194,4 +196,22 @@ export function getMessage(index: number): MessageType {
     case 15: return createVariableSingleArrayFull();
     default: return createMessageTest();
   }
+}
+
+
+// ============================================================================
+// checkMessage(index, info) - validates decoded message matches expected
+// This is the callback passed to ProfileRunner.parse()
+// ============================================================================
+
+export function checkMessage(index: number, info: FrameMsgInfo): boolean {
+  const expected = getMessage(index);
+  const msgClass = expected.constructor as any;
+
+  // Check msg_id matches
+  if (info.msg_id !== msgClass._msgid) return false;
+
+  // Deserialize and compare
+  const decoded = msgClass.deserialize(info);
+  return decoded.equals(expected);
 }

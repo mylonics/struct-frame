@@ -3,6 +3,8 @@
  * Low-level encoding and decoding for message providers.
  *
  * This file matches the C++ profile_runner.hpp structure.
+ * ProfileRunner has NO knowledge of message types - all message-specific
+ * logic is handled via callbacks (getMessage, checkMessage).
  */
 
 const {
@@ -41,14 +43,14 @@ const readerClasses = {
  * Encode all messages to buffer using BufferWriter.
  * Returns total bytes written.
  */
-function encode(msgProvider, profile, buffer) {
+function encode(messageCount, getMessage, profile, buffer) {
   const WriterClass = writerClasses[profile];
   if (!WriterClass) return 0;
 
   const writer = new WriterClass(buffer.length);
 
-  for (let i = 0; i < msgProvider.MESSAGE_COUNT; i++) {
-    const msg = msgProvider.getMessage(i);
+  for (let i = 0; i < messageCount; i++) {
+    const msg = getMessage(i);
     writer.write(msg);
   }
 
@@ -62,47 +64,33 @@ function encode(msgProvider, profile, buffer) {
 
 /**
  * Parse all messages from buffer using AccumulatingReader.
- * Returns the number of messages that matched (MESSAGE_COUNT if all pass).
+ * Uses checkMessage callback to validate each decoded message.
+ * Returns the number of messages that matched (messageCount if all pass).
  */
-function parse(msgProvider, getMsgInfo, profile, buffer) {
+function parse(messageCount, checkMessage, getMsgInfo, profile, buffer) {
   const ReaderClass = readerClasses[profile];
   if (!ReaderClass) return 0;
 
   const reader = new ReaderClass(getMsgInfo, BUFFER_SIZE);
   reader.addData(buffer);
 
-  let messageCount = 0;
+  let count = 0;
 
   while (true) {
     const result = reader.next();
     if (!result || !result.valid) break;
 
-    const expected = msgProvider.getMessage(messageCount);
-    const msgClass = expected.constructor;
+    // Use callback to check if message matches expected
+    if (!checkMessage(count, result)) break;
 
-    if (result.msg_id !== msgClass._msgid) break;
-
-    const decoded = msgClass.deserialize(result);
-    if (!decoded.equals(expected)) break;
-
-    messageCount++;
+    count++;
   }
 
-  return messageCount;
-}
-
-/**
- * Get encode and parse functions for a profile.
- */
-function getProfileOps(msgProvider, getMsgInfo, profile) {
-  return {
-    encode: (buffer) => encode(msgProvider, profile, buffer),
-    parse: (buffer) => parse(msgProvider, getMsgInfo, profile, buffer),
-  };
+  return count;
 }
 
 module.exports = {
   encode,
   parse,
-  getProfileOps,
+  BUFFER_SIZE,
 };
