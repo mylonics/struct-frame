@@ -177,7 +177,7 @@ static inline SerializationTestUnionTestMessage create_union_with_test(void) {
  * Typed message arrays (one per message type)
  * ============================================================================ */
 
-/* SerializationTestMessage array (5 messages) */
+/* SerializationTestLogMessage array (1 message) */
 static inline const SerializationTestSerializationTestMessage* get_serialization_test_messages(void) {
   static SerializationTestSerializationTestMessage messages[5];
   static bool initialized = false;
@@ -319,8 +319,8 @@ static inline const SerializationTestVariableSingleArray* get_variable_single_ar
 }
 
 /* Message array (1 message) */
-static inline SerializationTestMessage create_message_test(void) {
-  SerializationTestMessage msg;
+static inline SerializationTestLogMessage create_message_test(void) {
+  SerializationTestLogMessage msg;
   memset(&msg, 0, sizeof(msg));
   msg.severity = MSG_SEVERITY_SEV_MSG;
   msg.module.length = 4;
@@ -330,8 +330,8 @@ static inline SerializationTestMessage create_message_test(void) {
   return msg;
 }
 
-static inline const SerializationTestMessage* get_message_messages(void) {
-  static SerializationTestMessage messages[1];
+static inline const SerializationTestLogMessage* get_message_messages(void) {
+  static SerializationTestLogMessage messages[1];
   static bool initialized = false;
 
   if (!initialized) {
@@ -386,19 +386,19 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
     #endif
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
                                SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1, SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
-  } else if (msg_id == SERIALIZATION_TEST_MESSAGE_MSG_ID) {
-    const SerializationTestMessage* msg = &get_message_messages()[std_message_idx++];
+  } else if (msg_id == SERIALIZATION_TEST_LOG_MESSAGE_MSG_ID) {
+    const SerializationTestLogMessage* msg = &get_message_messages()[std_message_idx++];
     /* Variable message: use pack_variable if profile has length field */
-    #ifdef SERIALIZATION_TEST_MESSAGE_IS_VARIABLE
+    #ifdef SERIALIZATION_TEST_LOG_MESSAGE_IS_VARIABLE
     if (writer->config->payload.has_length) {
-      static uint8_t pack_buffer[SERIALIZATION_TEST_MESSAGE_MAX_SIZE];
-      size_t packed_size = SerializationTestMessage_serialize_variable(msg, pack_buffer);
+      static uint8_t pack_buffer[SERIALIZATION_TEST_LOG_MESSAGE_MAX_SIZE];
+      size_t packed_size = SerializationTestLogMessage_serialize_variable(msg, pack_buffer);
       return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
-                                 SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_MESSAGE_MAGIC2);
+                                 SERIALIZATION_TEST_LOG_MESSAGE_MAGIC1, SERIALIZATION_TEST_LOG_MESSAGE_MAGIC2);
     }
     #endif
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
-                               SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_MESSAGE_MAGIC2);
+                               SERIALIZATION_TEST_LOG_MESSAGE_MAGIC1, SERIALIZATION_TEST_LOG_MESSAGE_MAGIC2);
   }
 
   return 0;
@@ -434,14 +434,14 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
       return false;
     }
     return SerializationTestVariableSingleArray_equals(&decoded, expected);
-  } else if (msg_id == SERIALIZATION_TEST_MESSAGE_MSG_ID) {
-    const SerializationTestMessage* expected = &get_message_messages()[std_message_idx++];
+  } else if (msg_id == SERIALIZATION_TEST_LOG_MESSAGE_MSG_ID) {
+    const SerializationTestLogMessage* expected = &get_message_messages()[std_message_idx++];
     /* Variable message: use unified unpack() for both MAX_SIZE and variable encoding */
-    SerializationTestMessage decoded;
-    if (!SerializationTestMessage_deserialize(data, size, &decoded)) {
+    SerializationTestLogMessage decoded;
+    if (!SerializationTestLogMessage_deserialize(data, size, &decoded)) {
       return false;
     }
-    return SerializationTestMessage_equals(&decoded, expected);
+    return SerializationTestLogMessage_equals(&decoded, expected);
   }
 
   return false;

@@ -18,7 +18,7 @@ import {
   SerializationTestUnionTestMessage,
   SerializationTestComprehensiveArrayMessage,
   SerializationTestVariableSingleArray,
-  SerializationTestMessage,
+  SerializationTestLogMessage,
   SerializationTestMsgSeverity,
   get_message_info,
 } from '../../generated/ts/serialization_test.structframe';
@@ -51,7 +51,7 @@ const MSG_ID_ORDER: number[] = [
   SerializationTestVariableSingleArray._msgid!,       // 13: VariableSingleArray[2] - 1/3 filled
   SerializationTestVariableSingleArray._msgid!,       // 14: VariableSingleArray[3] - one empty
   SerializationTestVariableSingleArray._msgid!,       // 15: VariableSingleArray[4] - full
-  SerializationTestMessage._msgid!,                   // 16: Message[0]
+  SerializationTestLogMessage._msgid!,                   // 16: LogMessage[0]
 ];
 
 /** SerializationTestMessage array (5 messages) */
@@ -283,10 +283,10 @@ function getVariableSingleArrayMessages(): SerializationTestVariableSingleArray[
   ];
 }
 
-/** Message array (1 message) */
-function getMessageMessages(): SerializationTestMessage[] {
+/** LogMessage array (1 message) */
+function getMessageMessages(): SerializationTestLogMessage[] {
   return [
-    new SerializationTestMessage({
+    new SerializationTestLogMessage({
       severity: SerializationTestMsgSeverity.SEV_MSG,
       module_length: 4,
       module_data: 'test',
@@ -321,7 +321,7 @@ function encodeMessage(writer: any, index: number): number {
   } else if (msgId === SerializationTestVariableSingleArray._msgid) {
     const msg = getVariableSingleArrayMessages()[varSingleIdx++];
     return writer.write(msg);
-  } else if (msgId === SerializationTestMessage._msgid) {
+  } else if (msgId === SerializationTestLogMessage._msgid) {
     const msg = getMessageMessages()[messageIdx++];
     return writer.write(msg);
   }
@@ -348,9 +348,9 @@ function validateMessage(data: FrameMsgInfo, _index: number): boolean {
     const expected = getVariableSingleArrayMessages()[varSingleIdx++];
     const decoded = SerializationTestVariableSingleArray.deserialize(data);
     return decoded.equals(expected);
-  } else if (msgId === SerializationTestMessage._msgid) {
+  } else if (msgId === SerializationTestLogMessage._msgid) {
     const expected = getMessageMessages()[messageIdx++];
-    const decoded = SerializationTestMessage.deserialize(data);
+    const decoded = SerializationTestLogMessage.deserialize(data);
     return decoded.equals(expected);
   }
 

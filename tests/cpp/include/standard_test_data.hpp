@@ -192,8 +192,8 @@ inline SerializationTestVariableSingleArray create_variable_single_array_full() 
   return msg;
 }
 
-inline SerializationTestMessage create_message_test() {
-  SerializationTestMessage msg{};
+inline SerializationTestLogMessage create_message_test() {
+  SerializationTestLogMessage msg{};
   msg.severity = SerializationTestMsgSeverity::SEV_MSG;
   msg.module.length = 4;
   std::strcpy(msg.module.data, "test");
@@ -206,7 +206,7 @@ inline SerializationTestMessage create_message_test() {
 // Typed message arrays (one per message type)
 // ============================================================================
 
-// SerializationTestMessage array (5 messages)
+// SerializationTestLogMessage array (1 message)
 inline const std::array<SerializationTestSerializationTestMessage, 5>& get_serialization_test_messages() {
   static const std::array<SerializationTestSerializationTestMessage, 5> messages = {
       create_serialization_test(0xDEADBEEF, "Cross-platform test!", 3.14159f, true, {100, 200, 300}),
@@ -255,8 +255,8 @@ inline const std::array<SerializationTestVariableSingleArray, 5>& get_variable_s
 }
 
 // Message array (1 message)
-inline const std::array<SerializationTestMessage, 1>& get_message_messages() {
-  static const std::array<SerializationTestMessage, 1> messages = {
+inline const std::array<SerializationTestLogMessage, 1>& get_message_messages() {
+  static const std::array<SerializationTestLogMessage, 1> messages = {
       create_message_test(),
   };
   return messages;
@@ -288,7 +288,7 @@ inline const std::array<uint16_t, MESSAGE_COUNT>& get_msg_id_order() {
       SerializationTestVariableSingleArray::MSG_ID,       // 13: VariableSingleArray[2] - 1/3 filled
       SerializationTestVariableSingleArray::MSG_ID,       // 14: VariableSingleArray[3] - one empty
       SerializationTestVariableSingleArray::MSG_ID,       // 15: VariableSingleArray[4] - full
-      SerializationTestMessage::MSG_ID,                   // 16: Message[0]
+      SerializationTestLogMessage::MSG_ID,                   // 16: LogMessage[0]
   };
   return order;
 }
@@ -314,7 +314,7 @@ struct Encoder {
       return writer.write(get_union_test_messages()[union_idx++]);
     } else if (msg_id == SerializationTestVariableSingleArray::MSG_ID) {
       return writer.write(get_variable_single_array_messages()[var_single_idx++]);
-    } else if (msg_id == SerializationTestMessage::MSG_ID) {
+    } else if (msg_id == SerializationTestLogMessage::MSG_ID) {
       return writer.write(get_message_messages()[message_idx++]);
     }
     return 0;
@@ -353,7 +353,7 @@ struct Validator {
       data = msg.data();
       size = msg.size();
       return true;
-    } else if (msg_id == SerializationTestMessage::MSG_ID) {
+    } else if (msg_id == SerializationTestLogMessage::MSG_ID) {
       const auto& msg = get_message_messages()[message_idx++];
       data = msg.data();
       size = msg.size();
@@ -388,9 +388,9 @@ struct Validator {
       size_t unpacked = decoded.deserialize(frame_info);
       if (unpacked == 0) return false;
       return decoded == expected;
-    } else if (frame_info.msg_id == SerializationTestMessage::MSG_ID) {
+    } else if (frame_info.msg_id == SerializationTestLogMessage::MSG_ID) {
       const auto& expected = get_message_messages()[message_idx++];
-      SerializationTestMessage decoded;
+      SerializationTestLogMessage decoded;
       size_t unpacked = decoded.deserialize(frame_info);
       if (unpacked == 0) return false;
       return decoded == expected;

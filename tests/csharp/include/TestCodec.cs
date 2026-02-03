@@ -17,7 +17,7 @@ using StructFrame.SerializationTest;
 using ExtendedMessageDefinitions = StructFrame.ExtendedTest.MessageDefinitions;
 
 // Type aliases to match expected names
-using Message = StructFrame.SerializationTest.SerializationTestMessage;
+using LogMessage = StructFrame.SerializationTest.SerializationTestLogMessage;
 using SerializationTestMessage = StructFrame.SerializationTest.SerializationTestSerializationTestMessage;
 using BasicTypesMessage = StructFrame.SerializationTest.SerializationTestBasicTypesMessage;
 using UnionTestMessage = StructFrame.SerializationTest.SerializationTestUnionTestMessage;
@@ -280,9 +280,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static Message CreateMessage(Dictionary<string, object> data)
+        private static LogMessage CreateMessage(Dictionary<string, object> data)
         {
-            var msg = new Message();
+            var msg = new LogMessage();
             msg.Severity = (SerializationTestMsgSeverity)Convert.ToByte(data["severity"]);
             var module = (string)data["module"];
             msg.ModuleLength = (byte)module.Length;
@@ -430,7 +430,7 @@ namespace StructFrameTests
                     var msg = CreateVariableSingleArrayMessage(mixedMsg.Data);
                     bytesWritten = writer.Write(msg);
                 }
-                else if (mixedMsg.Type == MessageType.Message)
+                else if (mixedMsg.Type == MessageType.LogMessage)
                 {
                     var msg = CreateMessage(mixedMsg.Data);
                     bytesWritten = writer.Write(msg);
@@ -634,7 +634,7 @@ namespace StructFrameTests
             return true;
         }
 
-        private static bool ValidateMessage(Message msg, Dictionary<string, object> expected)
+        private static bool ValidateMessage(LogMessage msg, Dictionary<string, object> expected)
         {
             if (!ValidateField((byte)msg.Severity, Convert.ToByte(expected["severity"]), "severity"))
                 return false;
@@ -692,10 +692,10 @@ namespace StructFrameTests
                         var msg = VariableSingleArrayMessage.Deserialize(result);
                         isValid = ValidateVariableSingleArrayMessage(msg, expected.Data);
                     }
-                    else if (expected.Type == MessageType.Message)
+                    else if (expected.Type == MessageType.LogMessage)
                     {
-                        expectedMsgId = Message.MsgId;
-                        var msg = Message.Deserialize(result);
+                        expectedMsgId = LogMessage.MsgId;
+                        var msg = LogMessage.Deserialize(result);
                         isValid = ValidateMessage(msg, expected.Data);
                     }
                     else

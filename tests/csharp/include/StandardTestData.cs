@@ -18,7 +18,7 @@ namespace StructFrameTests
         BasicTypes = 1,
         UnionTest = 2,
         VariableSingleArray = 3,
-        Message = 4
+        LogMessage = 4
     }
 
     public class MixedMessage
@@ -327,10 +327,10 @@ namespace StructFrameTests
                         ["checksum"] = (ushort)0x0005
                     }
                 },
-                // 16: Message
+                // 16: LogMessage
                 new MixedMessage
                 {
-                    Type = MessageType.Message,
+                    Type = MessageType.LogMessage,
                     Data = new Dictionary<string, object>
                     {
                         ["severity"] = 0, // SEV_MSG
