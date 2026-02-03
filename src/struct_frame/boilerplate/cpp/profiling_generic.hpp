@@ -124,14 +124,14 @@ inline void init_packed_message(TestMessagePacked& msg, size_t index) {
         msg.label[j] = prefix[j];
         j++;
     }
-    // Add index as simple decimal (4 digits with leading zeros)
+    // Add index as simple decimal (variable digits)
     size_t temp = index;
     char digits[16];
     size_t digit_count = 0;
     do {
         digits[digit_count++] = '0' + (temp % 10);
         temp /= 10;
-    } while (digit_count < 4);  // Ensure at least 4 digits
+    } while (temp > 0 && digit_count < 16);
     
     // Reverse digits into label
     while (digit_count > 0 && j < sizeof(msg.label) - 1) {

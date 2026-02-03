@@ -113,7 +113,7 @@ inline void init_packed_message(PackedMessage& msg, size_t index) {
         msg.name[j] = prefix[j];
         j++;
     }
-    // Add index as simple decimal
+    // Add index as simple decimal (variable digits)
     size_t temp = index;
     char digits[16];
     size_t digit_count = 0;
