@@ -1,14 +1,12 @@
 /**
  * Test entry point for standard message tests (TypeScript).
- *
- * Usage:
- *   node test_standard.js encode <frame_format> <output_file>
- *   node test_standard.js decode <frame_format> <input_file>
- *
- * Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
  */
 
-import { runTestMain } from './include/test_codec';
-import { stdTestConfig } from './include/standard_test_data';
+import * as StandardMessages from './include/standard_messages';
+import { get_message_info } from '../generated/ts/serialization_test.structframe';
+import { run } from './include/test_harness';
 
-process.exit(runTestMain(stdTestConfig));
+const TEST_NAME = 'StandardMessages';
+const PROFILES = 'standard, sensor, ipc, bulk, network';
+
+process.exit(run(StandardMessages, get_message_info, TEST_NAME, PROFILES));

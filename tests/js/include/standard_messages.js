@@ -1,9 +1,8 @@
 /**
- * Test message data definitions (JavaScript).
- * Hardcoded test messages for cross-platform compatibility testing.
+ * Standard test message definitions (JavaScript).
+ * Provides getMessage(index) function for test messages.
  *
- * This module follows the C++ test pattern with a unified getMessage(index) interface.
- * The getMessage() function returns a message based on index, matching the C++ approach.
+ * This file matches the C++ standard_messages.hpp structure.
  */
 
 const {
@@ -14,15 +13,11 @@ const {
   SerializationTestVariableSingleArray,
   SerializationTestMessage,
   SerializationTestMsgSeverity,
-  get_message_info,
 } = require('../../generated/js/serialization_test.structframe');
 
-// ============================================================================
-// Message count and supported profiles
-// ============================================================================
-
+// Message count
 const MESSAGE_COUNT = 17;
-const PROFILES = 'standard, sensor, ipc, bulk, network';
+
 
 // ============================================================================
 // Helper functions to create messages (like C++ create_* functions)
@@ -165,124 +160,34 @@ function createMessageTest() {
   });
 }
 
+
 // ============================================================================
-// Unified getMessage(index) function - matches C++ MessageProvider pattern
+// getMessage(index) - unified interface matching C++ MessageProvider pattern
 // ============================================================================
 
-/**
- * Get message by index - unified interface matching C++ get_message().
- * Message order matches standard_test_data get_msg_id_order().
- */
 function getMessage(index) {
   switch (index) {
-    // SerializationTest messages (0-4)
     case 0: return createSerializationTest(0xDEADBEEF, 'Cross-platform test!', 3.14159, true, [100, 200, 300]);
     case 1: return createSerializationTest(0, '', 0.0, false, []);
     case 2: return createSerializationTest(0xFFFFFFFF, 'Maximum length test string for coverage!', 999999.9, true, [2147483647, -2147483648, 0, 1, -1]);
     case 3: return createSerializationTest(0xAAAAAAAA, 'Negative test', -273.15, false, [-100, -200, -300, -400]);
     case 4: return createSerializationTest(1234567890, 'Special: !@#$%^&*()', 2.71828, true, [0, 1, 1, 2, 3]);
-    // BasicTypes messages (5-7)
     case 5: return createBasicTypes(42, 1000, 123456, 9876543210n, 200, 50000, 4000000000, 9223372036854775807n, 3.14159, 2.718281828459045, true, 'DEVICE-001', 'Basic test values');
     case 6: return createBasicTypes(0, 0, 0, 0n, 0, 0, 0, 0n, 0.0, 0.0, false, '', '');
     case 7: return createBasicTypes(-128, -32768, -2147483648, -9223372036854775807n, 255, 65535, 4294967295, 9223372036854775807n, -273.15, -9999.999999, false, 'NEG-TEST', 'Negative and max values');
-    // UnionTest messages (8-9)
     case 8: return createUnionWithArray();
     case 9: return createUnionWithTest();
-    // BasicTypes message (10)
     case 10: return createBasicTypes(-128, -32768, -2147483648, -9223372036854775807n, 255, 65535, 4294967295, 9223372036854775807n, -273.15, -9999.999999, false, 'NEG-TEST', 'Negative and max values');
-    // VariableSingleArray messages (11-15)
     case 11: return createVariableSingleArrayEmpty();
     case 12: return createVariableSingleArraySingle();
     case 13: return createVariableSingleArrayThird();
     case 14: return createVariableSingleArrayAlmost();
     case 15: return createVariableSingleArrayFull();
-    // Message (16)
     default: return createMessageTest();
   }
 }
 
-// ============================================================================
-// Message class lookup - maps message type to class for deserialization
-// ============================================================================
-
-const MESSAGE_CLASSES = {
-  [SerializationTestSerializationTestMessage._msgid]: SerializationTestSerializationTestMessage,
-  [SerializationTestBasicTypesMessage._msgid]: SerializationTestBasicTypesMessage,
-  [SerializationTestUnionTestMessage._msgid]: SerializationTestUnionTestMessage,
-  [SerializationTestVariableSingleArray._msgid]: SerializationTestVariableSingleArray,
-  [SerializationTestMessage._msgid]: SerializationTestMessage,
+module.exports = {
+  MESSAGE_COUNT,
+  getMessage,
 };
-
-// ============================================================================
-// Encoder/Validator state - simplified to use getMessage(index) directly
-// ============================================================================
-
-let currentIndex = 0;
-
-function resetState() {
-  currentIndex = 0;
-}
-
-function encodeMessage(writer, _index) {
-  const msg = getMessage(currentIndex);
-  currentIndex++;
-  return writer.write(msg);
-}
-
-function validateMessage(data, _index) {
-  const msgId = data.msg_id;
-  const MsgClass = MESSAGE_CLASSES[msgId];
-  if (!MsgClass) return false;
-
-  const expected = getMessage(currentIndex);
-  currentIndex++;
-  const decoded = MsgClass.deserialize(data);
-  return decoded.equals(expected);
-}
-
-function supportsFormat(format) {
-  return format === 'standard' || format === 'sensor' || format === 'ipc' || format === 'bulk' || format === 'network';
-}
-
-// ============================================================================
-// Message ID order array - derived from getMessage()
-// ============================================================================
-
-const MSG_ID_ORDER = [
-  SerializationTestSerializationTestMessage._msgid,  // 0-4: SerializationTest
-  SerializationTestSerializationTestMessage._msgid,
-  SerializationTestSerializationTestMessage._msgid,
-  SerializationTestSerializationTestMessage._msgid,
-  SerializationTestSerializationTestMessage._msgid,
-  SerializationTestBasicTypesMessage._msgid,         // 5-7: BasicTypes
-  SerializationTestBasicTypesMessage._msgid,
-  SerializationTestBasicTypesMessage._msgid,
-  SerializationTestUnionTestMessage._msgid,          // 8-9: UnionTest
-  SerializationTestUnionTestMessage._msgid,
-  SerializationTestBasicTypesMessage._msgid,         // 10: BasicTypes
-  SerializationTestVariableSingleArray._msgid,       // 11-15: VariableSingleArray
-  SerializationTestVariableSingleArray._msgid,
-  SerializationTestVariableSingleArray._msgid,
-  SerializationTestVariableSingleArray._msgid,
-  SerializationTestVariableSingleArray._msgid,
-  SerializationTestMessage._msgid,                   // 16: Message
-];
-
-// ============================================================================
-// Test configuration - matches C++ TestHarness pattern
-// ============================================================================
-
-const stdTestConfig = {
-  messageCount: MESSAGE_COUNT,
-  bufferSize: 4096,
-  formatsHelp: PROFILES,
-  testName: 'JavaScript',
-  getMsgIdOrder: () => MSG_ID_ORDER,
-  encodeMessage,
-  validateMessage,
-  resetState,
-  getMessageInfo: (msgId) => get_message_info(msgId),
-  supportsFormat,
-};
-
-module.exports = { stdTestConfig };

@@ -1,14 +1,12 @@
 /**
- * Test entry point for extended message ID and payload tests (JavaScript).
- *
- * Usage:
- *   node test_extended.js encode <frame_format> <output_file>
- *   node test_extended.js decode <frame_format> <input_file>
- *
- * Frame formats (extended profiles only): profile_bulk, profile_network
+ * Test entry point for extended message tests (JavaScript).
  */
 
-const { runTestMain } = require('./include/test_codec');
-const { extTestConfig } = require('./include/extended_test_data');
+const ExtendedMessages = require('./include/extended_messages');
+const { get_message_info } = require('../generated/js/extended_test.structframe');
+const { run } = require('./include/test_harness');
 
-process.exit(runTestMain(extTestConfig));
+const TEST_NAME = 'ExtendedMessages';
+const PROFILES = 'bulk, network';
+
+process.exit(run(ExtendedMessages, get_message_info, TEST_NAME, PROFILES));

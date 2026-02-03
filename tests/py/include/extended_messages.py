@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Extended test message data definitions (Python).
-Hardcoded test messages for extended message ID and payload testing.
+Extended test message definitions (Python).
+Provides get_message(index) function for extended message ID and payload testing.
 
-This module follows the C++ test pattern with a unified get_message(index) interface.
-The get_message() function returns a message based on index, matching the C++ approach.
+This file matches the C++ extended_messages.hpp structure.
 """
 
 import sys
 import os
-from typing import List, Union
+from typing import Union
 
 # Add generated directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
@@ -48,12 +47,8 @@ MessageType = Union[
     ExtendedTestExtendedVariableSingleArray,
 ]
 
-# ============================================================================
-# Message count and supported profiles
-# ============================================================================
-
+# Message count
 MESSAGE_COUNT = 17
-PROFILES = "bulk, network"
 
 
 # ============================================================================
@@ -167,50 +162,41 @@ def create_large_2() -> ExtendedTestLargePayloadMessage2:
 
 
 def create_ext_var_single_empty() -> ExtendedTestExtendedVariableSingleArray:
-    """Create ExtendedVariableSingleArray with empty payload."""
     return ExtendedTestExtendedVariableSingleArray(
         timestamp=0x0000000000000001, telemetry_data=[], crc=0x00000001
     )
 
 
 def create_ext_var_single_single() -> ExtendedTestExtendedVariableSingleArray:
-    """Create ExtendedVariableSingleArray with single element."""
     return ExtendedTestExtendedVariableSingleArray(
         timestamp=0x0000000000000002, telemetry_data=[42], crc=0x00000002
     )
 
 
 def create_ext_var_single_third() -> ExtendedTestExtendedVariableSingleArray:
-    """Create ExtendedVariableSingleArray with 1/3 filled (83 elements for max_size=250)."""
     return ExtendedTestExtendedVariableSingleArray(
         timestamp=0x0000000000000003, telemetry_data=list(range(83)), crc=0x00000003
     )
 
 
 def create_ext_var_single_almost() -> ExtendedTestExtendedVariableSingleArray:
-    """Create ExtendedVariableSingleArray with 249 elements."""
     return ExtendedTestExtendedVariableSingleArray(
         timestamp=0x0000000000000004, telemetry_data=list(range(249)), crc=0x00000004
     )
 
 
 def create_ext_var_single_full() -> ExtendedTestExtendedVariableSingleArray:
-    """Create ExtendedVariableSingleArray with full 250 elements."""
     return ExtendedTestExtendedVariableSingleArray(
         timestamp=0x0000000000000005, telemetry_data=list(range(250)), crc=0x00000005
     )
 
 
 # ============================================================================
-# Unified get_message(index) function - matches C++ MessageProvider pattern
+# get_message(index) - unified interface matching C++ MessageProvider pattern
 # ============================================================================
 
 def get_message(index: int) -> MessageType:
-    """
-    Get message by index - unified interface matching C++ get_message().
-    
-    Message order: ExtendedId1-10, LargePayload1-2, ExtendedVariableSingleArray x5
-    """
+    """Get message by index."""
     if index == 0:
         return create_ext_id_1()
     elif index == 1:
@@ -245,104 +231,3 @@ def get_message(index: int) -> MessageType:
         return create_ext_var_single_almost()
     else:  # index == 16
         return create_ext_var_single_full()
-
-
-# ============================================================================
-# Message class lookup - maps message type to class for deserialization
-# ============================================================================
-
-MESSAGE_CLASSES = {
-    ExtendedTestExtendedIdMessage1.MSG_ID: ExtendedTestExtendedIdMessage1,
-    ExtendedTestExtendedIdMessage2.MSG_ID: ExtendedTestExtendedIdMessage2,
-    ExtendedTestExtendedIdMessage3.MSG_ID: ExtendedTestExtendedIdMessage3,
-    ExtendedTestExtendedIdMessage4.MSG_ID: ExtendedTestExtendedIdMessage4,
-    ExtendedTestExtendedIdMessage5.MSG_ID: ExtendedTestExtendedIdMessage5,
-    ExtendedTestExtendedIdMessage6.MSG_ID: ExtendedTestExtendedIdMessage6,
-    ExtendedTestExtendedIdMessage7.MSG_ID: ExtendedTestExtendedIdMessage7,
-    ExtendedTestExtendedIdMessage8.MSG_ID: ExtendedTestExtendedIdMessage8,
-    ExtendedTestExtendedIdMessage9.MSG_ID: ExtendedTestExtendedIdMessage9,
-    ExtendedTestExtendedIdMessage10.MSG_ID: ExtendedTestExtendedIdMessage10,
-    ExtendedTestLargePayloadMessage1.MSG_ID: ExtendedTestLargePayloadMessage1,
-    ExtendedTestLargePayloadMessage2.MSG_ID: ExtendedTestLargePayloadMessage2,
-    ExtendedTestExtendedVariableSingleArray.MSG_ID: ExtendedTestExtendedVariableSingleArray,
-}
-
-
-# ============================================================================
-# Encoder - simplified to use get_message(index) directly
-# ============================================================================
-
-class Encoder:
-    """Encoder that uses get_message(index) for encoding."""
-    
-    def __init__(self):
-        self._index = 0
-    
-    def write_message(self, writer, _msg_id: int) -> int:
-        """Write message at current index to writer. Returns bytes written."""
-        msg = get_message(self._index)
-        self._index += 1
-        return writer.write(msg)
-
-
-# ============================================================================
-# Validator - simplified to use get_message(index) directly
-# ============================================================================
-
-class Validator:
-    """Validator that uses get_message(index) for validation."""
-    
-    def __init__(self):
-        self._index = 0
-    
-    def validate_with_equals(self, frame_info) -> bool:
-        """Validate decoded message using __eq__ operator."""
-        msg_id = frame_info.msg_id
-        msg_class = MESSAGE_CLASSES.get(msg_id)
-        if not msg_class:
-            return False
-        
-        expected = get_message(self._index)
-        self._index += 1
-        
-        # Unpack both from packed bytes to ensure precision matches
-        expected_unpacked = msg_class.deserialize(expected.serialize())
-        decoded = msg_class.deserialize(frame_info)
-        return decoded == expected_unpacked
-
-
-# ============================================================================
-# Test configuration - matches C++ TestHarness pattern
-# ============================================================================
-
-class Config:
-    """Test configuration for extended messages."""
-    MESSAGE_COUNT = MESSAGE_COUNT
-    BUFFER_SIZE = 8192  # Larger for extended payloads
-    FORMATS_HELP = PROFILES
-    TEST_NAME = "Python Extended"
-    
-    @staticmethod
-    def get_msg_id_order() -> List[int]:
-        """Get message ID order array."""
-        return [get_message(i).MSG_ID for i in range(MESSAGE_COUNT)]
-    
-    @staticmethod
-    def create_encoder() -> Encoder:
-        return Encoder()
-    
-    @staticmethod
-    def create_validator() -> Validator:
-        return Validator()
-    
-    @staticmethod
-    def get_message_info(msg_id: int):
-        return get_message_info(msg_id)
-    
-    @staticmethod
-    def supports_format(format_name: str) -> bool:
-        return format_name in ['bulk', 'network']
-
-
-# Export config instance for convenience
-extended_test_config = Config

@@ -1,14 +1,12 @@
 /**
- * Test entry point for extended message ID and payload tests (TypeScript).
- *
- * Usage:
- *   node test_extended.js encode <frame_format> <output_file>
- *   node test_extended.js decode <frame_format> <input_file>
- *
- * Frame formats (extended profiles only): profile_bulk, profile_network
+ * Test entry point for extended message tests (TypeScript).
  */
 
-import { runTestMain } from './include/test_codec';
-import { extTestConfig } from './include/extended_test_data';
+import * as ExtendedMessages from './include/extended_messages';
+import { get_message_info } from '../generated/ts/extended_test.structframe';
+import { run } from './include/test_harness';
 
-process.exit(runTestMain(extTestConfig));
+const TEST_NAME = 'ExtendedMessages';
+const PROFILES = 'bulk, network';
+
+process.exit(run(ExtendedMessages, get_message_info, TEST_NAME, PROFILES));
