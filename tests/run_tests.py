@@ -639,7 +639,7 @@ class TestRunner:
                 output = build_dir / f"{runner}{lang.exe_ext}"
                 
                 if lang.id == "c":
-                    cmd = f'gcc -I"{gen_dir}" -o "{output}" "{source}" -lm'
+                    cmd = f'gcc -I"{gen_dir}" -I"{test_dir}" -o "{output}" "{source}" -lm'
                 else:
                     cmd = f'g++ -std=c++20 -I"{gen_dir}" -I"{test_dir}" -o "{output}" "{source}"'
                 

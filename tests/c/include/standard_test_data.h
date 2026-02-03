@@ -51,7 +51,7 @@ static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 13: VariableSingleArray[2] - 1/3 filled */
     SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 14: VariableSingleArray[3] - one empty */
     SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 15: VariableSingleArray[4] - full */
-    SERIALIZATION_TEST_MESSAGE_MSG_ID,                    /* 16: Message[0] */
+    SERIALIZATION_TEST_LOG_MESSAGE_MSG_ID,                    /* 16: LogMessage[0] */
 };
 
 static inline const uint16_t* std_get_msg_id_order(void) { return std_msg_id_order; }

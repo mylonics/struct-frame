@@ -220,5 +220,5 @@ message LogMessage {
   
   MsgSeverity severity = 1;
   string module = 2 [max_size=16];
-  string msg = 3 [max_size=255];
+  string msg = 3 [max_size=254];  // 254 instead of 255 to avoid uint8_t comparison warning
 }
