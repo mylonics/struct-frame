@@ -29,6 +29,7 @@
   },
   "include": [
     "./*.ts",
+    "./include/*.ts",
     "../generated/ts/*.ts"
   ]
 }
