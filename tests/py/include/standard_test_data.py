@@ -9,7 +9,7 @@ The get_message() function returns a message based on index, matching the C++ ap
 
 import sys
 import os
-from typing import List, Optional, Union
+from typing import List, Union
 
 # Add generated directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
