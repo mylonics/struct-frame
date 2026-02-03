@@ -325,7 +325,7 @@ function validateMessage(data, _index) {
   const msgId = data.msg_id;
   if (msgId === SerializationTestSerializationTestMessage._msgid) {
     const expected = getSerializationTestMessages()[serialIdx++];
-    const decoded = SerializationTestSerializationTestLogMessage.deserialize(data);
+    const decoded = SerializationTestSerializationTestMessage.deserialize(data);
     return decoded.equals(expected);
   } else if (msgId === SerializationTestBasicTypesMessage._msgid) {
     const expected = getBasicTypesMessages()[basicIdx++];
