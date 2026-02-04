@@ -18,22 +18,7 @@ public class TestNegative
     private static int testsPassed = 0;
     private static int testsFailed = 0;
 
-        private static void TestResult(string name, bool passed)
-        {
-            testsRun++;
-            if (passed)
-            {
-                Console.WriteLine($"  [TEST] {name}... PASS");
-                testsPassed++;
-            }
-            else
-            {
-                Console.WriteLine($"  [TEST] {name}... FAIL");
-                testsFailed++;
-            }
-        }
-
-        private static SerializationTestBasicTypesMessage CreateTestMessage()
+    private static SerializationTestBasicTypesMessage CreateTestMessage()
         {
             var msg = new SerializationTestBasicTypesMessage
             {
@@ -269,14 +254,36 @@ public class TestNegative
             
             Console.WriteLine("Testing error handling for invalid frames:\n");
             
-            TestResult("Corrupted CRC detection", TestCorruptedCrc());
-            TestResult("Truncated frame detection", TestTruncatedFrame());
-            TestResult("Invalid start bytes detection", TestInvalidStartBytes());
-            TestResult("Zero-length buffer handling", TestZeroLengthBuffer());
-            TestResult("Corrupted length field detection", TestCorruptedLength());
-            TestResult("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc());
-            TestResult("Streaming: Garbage data handling", TestStreamingGarbage());
-            TestResult("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc());
+            // Define test matrix
+            var tests = new (string name, Func<bool> func)[]
+            {
+                ("Corrupted CRC detection", TestCorruptedCrc),
+                ("Truncated frame detection", TestTruncatedFrame),
+                ("Invalid start bytes detection", TestInvalidStartBytes),
+                ("Zero-length buffer handling", TestZeroLengthBuffer),
+                ("Corrupted length field detection", TestCorruptedLength),
+                ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
+                ("Streaming: Garbage data handling", TestStreamingGarbage),
+                ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
+            };
+            
+            // Run all tests from the matrix
+            foreach (var test in tests)
+            {
+                Console.Write($"  [TEST] {test.name}... ");
+                testsRun++;
+                
+                if (test.func())
+                {
+                    Console.WriteLine("PASS");
+                    testsPassed++;
+                }
+                else
+                {
+                    Console.WriteLine("FAIL");
+                    testsFailed++;
+                }
+            }
             
             Console.WriteLine("\n========================================");
             Console.WriteLine("RESULTS");

@@ -28,17 +28,6 @@ tests_run = 0
 tests_passed = 0
 tests_failed = 0
 
-def test_result(name, passed):
-    """Record and print test result"""
-    global tests_run, tests_passed, tests_failed
-    tests_run += 1
-    if passed:
-        print(f"  [TEST] {name}... PASS")
-        tests_passed += 1
-    else:
-        print(f"  [TEST] {name}... FAIL")
-        tests_failed += 1
-
 def test_corrupted_crc():
     """Test: Parser rejects frame with corrupted CRC"""
     # Create a valid message
@@ -326,14 +315,31 @@ def main():
     
     print("Testing error handling for invalid frames:\n")
     
-    test_result("Corrupted CRC detection", test_corrupted_crc())
-    test_result("Truncated frame detection", test_truncated_frame())
-    test_result("Invalid start bytes detection", test_invalid_start_bytes())
-    test_result("Zero-length buffer handling", test_zero_length_buffer())
-    test_result("Corrupted length field detection", test_corrupted_length())
-    test_result("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc())
-    test_result("Streaming: Garbage data handling", test_streaming_garbage())
-    test_result("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames())
+    # Define test matrix
+    tests = [
+        ("Corrupted CRC detection", test_corrupted_crc),
+        ("Truncated frame detection", test_truncated_frame),
+        ("Invalid start bytes detection", test_invalid_start_bytes),
+        ("Zero-length buffer handling", test_zero_length_buffer),
+        ("Corrupted length field detection", test_corrupted_length),
+        ("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc),
+        ("Streaming: Garbage data handling", test_streaming_garbage),
+        ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
+    ]
+    
+    global tests_run, tests_passed, tests_failed
+    
+    # Run all tests from the matrix
+    for name, test_func in tests:
+        print(f"  [TEST] {name}... ", end="")
+        tests_run += 1
+        
+        if test_func():
+            print("PASS")
+            tests_passed += 1
+        else:
+            print("FAIL")
+            tests_failed += 1
     
     print("\n========================================")
     print("RESULTS")

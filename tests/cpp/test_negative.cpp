@@ -23,20 +23,6 @@ static int tests_run = 0;
 static int tests_passed = 0;
 static int tests_failed = 0;
 
-#define TEST(name) \
-  printf("  [TEST] %s... ", name); \
-  tests_run++; \
-  if (
-
-#define EXPECT_FAIL() \
-  ) { \
-    printf("PASS\n"); \
-    tests_passed++; \
-  } else { \
-    printf("FAIL\n"); \
-    tests_failed++; \
-  }
-
 /**
  * Test: Parser rejects frame with corrupted CRC
  */
@@ -266,48 +252,50 @@ bool test_bulk_profile_corrupted_crc() {
   return !result.valid;  // Expect parsing to fail
 }
 
+// Test function pointer type
+typedef bool (*TestFunc)();
+
+// Test case structure
+struct TestCase {
+  const char* name;
+  TestFunc func;
+};
+
 int main() {
   printf("\n========================================\n");
   printf("NEGATIVE TESTS - C++ Parser\n");
   printf("========================================\n\n");
   
+  // Define test matrix
+  TestCase tests[] = {
+    {"Corrupted CRC detection", test_corrupted_crc},
+    {"Truncated frame detection", test_truncated_frame},
+    {"Invalid start byte detection", test_invalid_start_byte},
+    {"Zero-length buffer handling", test_zero_length_buffer},
+    {"Corrupted length field detection", test_corrupted_length},
+    {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
+    {"Streaming: Garbage data handling", test_streaming_garbage_data},
+    {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
+    {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc}
+  };
+  
+  int num_tests = sizeof(tests) / sizeof(tests[0]);
+  
   printf("Testing error handling for invalid frames:\n\n");
   
-  TEST("Corrupted CRC detection")
-    test_corrupted_crc()
-  EXPECT_FAIL()
-  
-  TEST("Truncated frame detection")
-    test_truncated_frame()
-  EXPECT_FAIL()
-  
-  TEST("Invalid start byte detection")
-    test_invalid_start_byte()
-  EXPECT_FAIL()
-  
-  TEST("Zero-length buffer handling")
-    test_zero_length_buffer()
-  EXPECT_FAIL()
-  
-  TEST("Corrupted length field detection")
-    test_corrupted_length()
-  EXPECT_FAIL()
-  
-  TEST("Streaming: Corrupted CRC detection")
-    test_streaming_corrupted_crc()
-  EXPECT_FAIL()
-  
-  TEST("Streaming: Garbage data handling")
-    test_streaming_garbage_data()
-  EXPECT_FAIL()
-  
-  TEST("Multiple frames: Corrupted middle frame")
-    test_multiple_corrupted_frames()
-  EXPECT_FAIL()
-  
-  TEST("Bulk profile: Corrupted CRC")
-    test_bulk_profile_corrupted_crc()
-  EXPECT_FAIL()
+  // Run all tests from the matrix
+  for (int i = 0; i < num_tests; i++) {
+    printf("  [TEST] %s... ", tests[i].name);
+    tests_run++;
+    
+    if (tests[i].func()) {
+      printf("PASS\n");
+      tests_passed++;
+    } else {
+      printf("FAIL\n");
+      tests_failed++;
+    }
+  }
   
   printf("\n========================================\n");
   printf("RESULTS\n");

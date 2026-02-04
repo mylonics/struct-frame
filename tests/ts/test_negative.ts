@@ -26,17 +26,6 @@ let testsRun = 0;
 let testsPassed = 0;
 let testsFailed = 0;
 
-function testResult(name: string, passed: boolean): void {
-  testsRun++;
-  if (passed) {
-    console.log(`  [TEST] ${name}... PASS`);
-    testsPassed++;
-  } else {
-    console.log(`  [TEST] ${name}... FAIL`);
-    testsFailed++;
-  }
-}
-
 function createTestMessage(): SerializationTestBasicTypesMessage {
   const msg = new SerializationTestBasicTypesMessage();
   msg.small_int = 42;
@@ -51,7 +40,7 @@ function createTestMessage(): SerializationTestBasicTypesMessage {
   msg.double_precision = 2.71828;
   msg.flag = true;
   msg.device_id = 'DEVICE123';
-  msg.description = 'Test device';
+  msg.description_data = 'Test device';
   return msg;
 }
 
@@ -237,14 +226,31 @@ function main(): number {
   
   console.log('Testing error handling for invalid frames:\n');
   
-  testResult('Corrupted CRC detection', testCorruptedCrc());
-  testResult('Truncated frame detection', testTruncatedFrame());
-  testResult('Invalid start bytes detection', testInvalidStartBytes());
-  testResult('Zero-length buffer handling', testZeroLengthBuffer());
-  testResult('Corrupted length field detection', testCorruptedLength());
-  testResult('Streaming: Corrupted CRC detection', testStreamingCorruptedCrc());
-  testResult('Streaming: Garbage data handling', testStreamingGarbage());
-  testResult('Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc());
+  // Define test matrix
+  const tests: Array<[string, () => boolean]> = [
+    ['Corrupted CRC detection', testCorruptedCrc],
+    ['Truncated frame detection', testTruncatedFrame],
+    ['Invalid start bytes detection', testInvalidStartBytes],
+    ['Zero-length buffer handling', testZeroLengthBuffer],
+    ['Corrupted length field detection', testCorruptedLength],
+    ['Streaming: Corrupted CRC detection', testStreamingCorruptedCrc],
+    ['Streaming: Garbage data handling', testStreamingGarbage],
+    ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],
+  ];
+  
+  // Run all tests from the matrix
+  for (const [name, testFunc] of tests) {
+    process.stdout.write(`  [TEST] ${name}... `);
+    testsRun++;
+    
+    if (testFunc()) {
+      console.log('PASS');
+      testsPassed++;
+    } else {
+      console.log('FAIL');
+      testsFailed++;
+    }
+  }
   
   console.log('\n========================================');
   console.log('RESULTS');
