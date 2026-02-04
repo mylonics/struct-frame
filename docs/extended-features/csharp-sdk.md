@@ -191,10 +191,21 @@ await transport.SendAsync(data);
 
 ### Serial
 
+The serial transport uses `System.IO.Ports.SerialPort.BaseStream` for reliable async reading, which is more robust than the event-based `DataReceived` approach.
+
 ```csharp
 using StructFrame.Sdk;
 
-var transport = new SerialTransport("COM3", 115200);
+var config = new SerialTransportConfig
+{
+    PortName = "COM3",
+    BaudRate = 115200,
+    DataBits = 8,
+    Parity = System.IO.Ports.Parity.None,
+    StopBits = System.IO.Ports.StopBits.One
+};
+
+var transport = new SerialTransport(config);
 await transport.ConnectAsync();
 await transport.SendAsync(data);
 ```
