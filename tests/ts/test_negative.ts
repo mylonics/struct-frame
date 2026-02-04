@@ -224,8 +224,6 @@ function main(): number {
   console.log('NEGATIVE TESTS - TypeScript Parser');
   console.log('========================================\n');
   
-  console.log('Testing error handling for invalid frames:\n');
-  
   // Define test matrix
   const tests: Array<[string, () => boolean]> = [
     ['Corrupted CRC detection', testCorruptedCrc],
@@ -238,26 +236,27 @@ function main(): number {
     ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],
   ];
   
+  console.log('Test Results Matrix:\n');
+  console.log(`${'Test Name'.padEnd(50)} ${'Result'.padStart(6)}`);
+  console.log(`${'='.repeat(50)} ${'='.repeat(6)}`);
+  
   // Run all tests from the matrix
   for (const [name, testFunc] of tests) {
-    process.stdout.write(`  [TEST] ${name}... `);
     testsRun++;
+    const passed = testFunc();
     
-    if (testFunc()) {
-      console.log('PASS');
+    const result = passed ? 'PASS' : 'FAIL';
+    console.log(`${name.padEnd(50)} ${result.padStart(6)}`);
+    
+    if (passed) {
       testsPassed++;
     } else {
-      console.log('FAIL');
       testsFailed++;
     }
   }
   
   console.log('\n========================================');
-  console.log('RESULTS');
-  console.log('========================================');
-  console.log(`Tests run:    ${testsRun}`);
-  console.log(`Tests passed: ${testsPassed}`);
-  console.log(`Tests failed: ${testsFailed}`);
+  console.log(`Summary: ${testsPassed}/${testsRun} tests passed`);
   console.log('========================================\n');
   
   return testsFailed > 0 ? 1 : 0;

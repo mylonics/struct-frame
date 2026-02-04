@@ -313,8 +313,6 @@ def main():
     print("NEGATIVE TESTS - Python Parser")
     print("========================================\n")
     
-    print("Testing error handling for invalid frames:\n")
-    
     # Define test matrix
     tests = [
         ("Corrupted CRC detection", test_corrupted_crc),
@@ -329,24 +327,25 @@ def main():
     
     global tests_run, tests_passed, tests_failed
     
+    print("Test Results Matrix:\n")
+    print(f"{'Test Name':<50} {'Result':>6}")
+    print(f"{'='*50} {'='*6}")
+    
     # Run all tests from the matrix
     for name, test_func in tests:
-        print(f"  [TEST] {name}... ", end="")
         tests_run += 1
+        passed = test_func()
         
-        if test_func():
-            print("PASS")
+        result = "PASS" if passed else "FAIL"
+        print(f"{name:<50} {result:>6}")
+        
+        if passed:
             tests_passed += 1
         else:
-            print("FAIL")
             tests_failed += 1
     
     print("\n========================================")
-    print("RESULTS")
-    print("========================================")
-    print(f"Tests run:    {tests_run}")
-    print(f"Tests passed: {tests_passed}")
-    print(f"Tests failed: {tests_failed}")
+    print(f"Summary: {tests_passed}/{tests_run} tests passed")
     print("========================================\n")
     
     return 1 if tests_failed > 0 else 0

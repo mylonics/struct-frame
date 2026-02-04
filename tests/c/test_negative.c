@@ -259,28 +259,26 @@ int main(void) {
   
   int num_tests = sizeof(tests) / sizeof(tests[0]);
   
-  printf("Testing error handling for invalid frames:\n\n");
+  printf("Test Results Matrix:\n\n");
+  printf("%-50s %6s\n", "Test Name", "Result");
+  printf("%-50s %6s\n", "==================================================", "======");
   
   // Run all tests from the matrix
   for (int i = 0; i < num_tests; i++) {
-    printf("  [TEST] %s... ", tests[i].name);
     tests_run++;
+    bool passed = tests[i].func();
     
-    if (tests[i].func()) {
-      printf("PASS\n");
+    printf("%-50s %6s\n", tests[i].name, passed ? "PASS" : "FAIL");
+    
+    if (passed) {
       tests_passed++;
     } else {
-      printf("FAIL\n");
       tests_failed++;
     }
   }
   
   printf("\n========================================\n");
-  printf("RESULTS\n");
-  printf("========================================\n");
-  printf("Tests run:    %d\n", tests_run);
-  printf("Tests passed: %d\n", tests_passed);
-  printf("Tests failed: %d\n", tests_failed);
+  printf("Summary: %d/%d tests passed\n", tests_passed, tests_run);
   printf("========================================\n\n");
   
   return tests_failed > 0 ? 1 : 0;

@@ -252,8 +252,6 @@ public class TestNegative
             Console.WriteLine("NEGATIVE TESTS - C# Parser");
             Console.WriteLine("========================================\n");
             
-            Console.WriteLine("Testing error handling for invalid frames:\n");
-            
             // Define test matrix
             var tests = new (string name, Func<bool> func)[]
             {
@@ -267,30 +265,31 @@ public class TestNegative
                 ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
             };
             
+            Console.WriteLine("Test Results Matrix:\n");
+            Console.WriteLine($"{"Test Name",-50} {"Result",6}");
+            Console.WriteLine($"{new string('=', 50)} {new string('=', 6)}");
+            
             // Run all tests from the matrix
             foreach (var test in tests)
             {
-                Console.Write($"  [TEST] {test.name}... ");
                 testsRun++;
+                bool passed = test.func();
                 
-                if (test.func())
+                string result = passed ? "PASS" : "FAIL";
+                Console.WriteLine($"{test.name,-50} {result,6}");
+                
+                if (passed)
                 {
-                    Console.WriteLine("PASS");
                     testsPassed++;
                 }
                 else
                 {
-                    Console.WriteLine("FAIL");
                     testsFailed++;
                 }
             }
             
             Console.WriteLine("\n========================================");
-            Console.WriteLine("RESULTS");
-            Console.WriteLine("========================================");
-            Console.WriteLine($"Tests run:    {testsRun}");
-            Console.WriteLine($"Tests passed: {testsPassed}");
-            Console.WriteLine($"Tests failed: {testsFailed}");
+            Console.WriteLine($"Summary: {testsPassed}/{testsRun} tests passed");
             Console.WriteLine("========================================\n");
             
             return testsFailed > 0 ? 1 : 0;
