@@ -97,12 +97,16 @@ namespace StructFrame.Sdk
     }
 
     /// <summary>
-    /// Serial Transport using System.IO.Ports
+    /// Serial Transport using System.IO.Ports with BaseStream for reliable async reading.
+    /// Uses BaseStream.ReadAsync instead of the DataReceived event which is known to be
+    /// unreliable with threading issues, missed data, and platform inconsistencies.
     /// </summary>
     public class SerialTransport : BaseTransport
     {
         private readonly SerialTransportConfig _serialConfig;
         private System.IO.Ports.SerialPort? _serialPort;
+        private System.Threading.CancellationTokenSource? _readCts;
+        private Task? _readTask;
 
         public SerialTransport(SerialTransportConfig config) : base(config)
         {
@@ -119,14 +123,17 @@ namespace StructFrame.Sdk
                     BaudRate = _serialConfig.BaudRate,
                     DataBits = _serialConfig.DataBits,
                     Parity = _serialConfig.Parity,
-                    StopBits = _serialConfig.StopBits
+                    StopBits = _serialConfig.StopBits,
+                    // Set read timeout to allow cancellation checks
+                    ReadTimeout = 100
                 };
-
-                _serialPort.DataReceived += OnSerialDataReceived;
-                _serialPort.ErrorReceived += OnSerialError;
 
                 _serialPort.Open();
                 _connected = true;
+
+                // Start the async read loop using BaseStream
+                _readCts = new System.Threading.CancellationTokenSource();
+                _readTask = ReadLoopAsync(_readCts.Token);
 
                 await Task.CompletedTask;
             }
@@ -140,13 +147,36 @@ namespace StructFrame.Sdk
         public override async Task DisconnectAsync()
         {
             _connected = false;
-            if (_serialPort != null && _serialPort.IsOpen)
+
+            // Cancel the read loop
+            if (_readCts != null)
             {
-                _serialPort.Close();
+                _readCts.Cancel();
+                try
+                {
+                    if (_readTask != null)
+                    {
+                        await _readTask.ConfigureAwait(false);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected when cancelling
+                }
+                _readCts.Dispose();
+                _readCts = null;
+                _readTask = null;
+            }
+
+            if (_serialPort != null)
+            {
+                if (_serialPort.IsOpen)
+                {
+                    _serialPort.Close();
+                }
                 _serialPort.Dispose();
                 _serialPort = null;
             }
-            await Task.CompletedTask;
         }
 
         public override async Task SendAsync(byte[] data)
@@ -158,8 +188,9 @@ namespace StructFrame.Sdk
 
             try
             {
-                _serialPort.Write(data, 0, data.Length);
-                await Task.CompletedTask;
+                // Use BaseStream for async write
+                await _serialPort.BaseStream.WriteAsync(data, 0, data.Length).ConfigureAwait(false);
+                await _serialPort.BaseStream.FlushAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -168,19 +199,43 @@ namespace StructFrame.Sdk
             }
         }
 
-        private void OnSerialDataReceived(object sender, System.IO.Ports.SerialDataReceivedEventArgs e)
+        private async Task ReadLoopAsync(System.Threading.CancellationToken cancellationToken)
         {
-            if (_serialPort != null && _serialPort.BytesToRead > 0)
-            {
-                byte[] buffer = new byte[_serialPort.BytesToRead];
-                _serialPort.Read(buffer, 0, buffer.Length);
-                OnDataReceived(buffer);
-            }
-        }
+            byte[] buffer = new byte[4096];
 
-        private void OnSerialError(object sender, System.IO.Ports.SerialErrorReceivedEventArgs e)
-        {
-            OnErrorOccurred(new Exception($"Serial error: {e.EventType}"));
+            while (!cancellationToken.IsCancellationRequested && _serialPort != null && _serialPort.IsOpen)
+            {
+                try
+                {
+                    // Use BaseStream.ReadAsync for reliable async reading
+                    int bytesRead = await _serialPort.BaseStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
+
+                    if (bytesRead > 0)
+                    {
+                        byte[] data = new byte[bytesRead];
+                        Array.Copy(buffer, data, bytesRead);
+                        OnDataReceived(data);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected during disconnect
+                    break;
+                }
+                catch (System.IO.IOException ex) when (ex.InnerException is OperationCanceledException)
+                {
+                    // Also expected during disconnect on some platforms
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    if (_connected)
+                    {
+                        OnErrorOccurred(ex);
+                    }
+                    break;
+                }
+            }
         }
     }
 
