@@ -16,15 +16,18 @@ class NamingStyle:
     
     Override methods in subclasses to customize naming for specific
     language conventions (e.g., snake_case for C, PascalCase for C#).
+    
+    The base class returns names unchanged - subclasses add language-specific 
+    prefixes, suffixes, or case transformations as needed.
     """
     def enum_name(self, name):
-        return "_%s" % (name)
+        return name
 
     def struct_name(self, name):
-        return "_%s" % (name)
+        return name
 
     def union_name(self, name):
-        return "_%s" % (name)
+        return name
 
     def type_name(self, name):
         return "%s" % (name)

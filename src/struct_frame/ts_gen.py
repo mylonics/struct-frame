@@ -323,12 +323,14 @@ class MessageTsClassGen():
         # Generate parameter list for envelope fields (non-oneof fields)
         field_params = []
         for f_name, f in msg.fields.items():
-            ts_type = TS_TYPE_ANNOTATIONS.get(f.fieldType, 'number')
-            if f.is_array or f.fieldType == "string":
-                if f.fieldType == "string":
-                    ts_type = "string"
-                elif f.is_array:
-                    ts_type = f'{TS_TYPE_ANNOTATIONS.get(f.fieldType, "number")}[]'
+            # Lookup type annotation once and reuse
+            base_ts_type = TS_TYPE_ANNOTATIONS.get(f.fieldType, 'number')
+            if f.fieldType == "string":
+                ts_type = "string"
+            elif f.is_array:
+                ts_type = f'{base_ts_type}[]'
+            else:
+                ts_type = base_ts_type
             field_params.append(f'{f.name}?: {ts_type}')
         
         # Build parameter list: payload first, then optional envelope fields
