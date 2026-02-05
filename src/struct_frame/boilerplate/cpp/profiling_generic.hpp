@@ -227,7 +227,8 @@ struct EncodeDecodeResult {
 // =============================================================================
 
 // Default test configuration
-static constexpr size_t DEFAULT_ITERATIONS = 4000;
+static constexpr size_t DEFAULT_ITERATIONS = 400;
+static constexpr size_t DEFAULT_RUNS = 1000;
 static constexpr size_t DEFAULT_BUFFER_SIZE = 128 * DEFAULT_ITERATIONS;
 
 // Default profile configuration
@@ -456,4 +457,190 @@ inline void do_not_optimize_decoded_unpacked() {
                          sizeof(TestMessageUnpacked) * DEFAULT_ITERATIONS);
 }
 
+// =============================================================================
+// Profiling Test Results Structure
+// =============================================================================
+struct ProfilingResults {
+  bool success;                      // Overall test success
+  size_t total_messages;             // Total messages encoded/decoded
+  double packed_encode_seconds;      // Total time for packed encode
+  double unpacked_encode_seconds;    // Total time for unpacked encode
+  double packed_decode_seconds;      // Total time for packed decode
+  double unpacked_decode_seconds;    // Total time for unpacked decode
+  double packed_encode_per_msg_seconds;    // Time per message for packed encode
+  double unpacked_encode_per_msg_seconds;  // Time per message for unpacked encode
+  double packed_decode_per_msg_seconds;    // Time per message for packed decode
+  double unpacked_decode_per_msg_seconds;  // Time per message for unpacked decode
+  double encode_diff_percent;        // Percentage difference (positive = packed slower)
+  double decode_diff_percent;        // Percentage difference (positive = packed slower)
+  double total_diff_percent;         // Overall percentage difference
+};
+
+// =============================================================================
+// Run Profiling Test
+// =============================================================================
+/**
+ * Run the complete profiling test with custom timing function.
+ * 
+ * @param get_current_time_seconds Function that returns current time in seconds.
+ *                                  Should be monotonic and have sufficient resolution.
+ * @param num_runs Number of times to run the test (default: DEFAULT_RUNS = 1000).
+ * @return ProfilingResults struct with timing measurements and percentage differences.
+ * 
+ * Example usage:
+ *   auto results = GenericTests::run_test([]() { return std::chrono::duration<double>(
+ *       std::chrono::high_resolution_clock::now().time_since_epoch()).count(); });
+ */
+inline ProfilingResults run_test(double (*get_current_time_seconds)(), size_t num_runs = DEFAULT_RUNS) {
+  ProfilingResults results = {};
+  
+  // Initialize all test messages once
+  init_all_messages();
+  
+  // Accumulators for timing across all runs
+  double total_packed_encode_time = 0.0;
+  double total_unpacked_encode_time = 0.0;
+  double total_packed_decode_time = 0.0;
+  double total_unpacked_decode_time = 0.0;
+  
+  // Run the test num_runs times
+  for (size_t run = 0; run < num_runs; run++) {
+    // ---- ENCODE TESTS ----
+    
+    // Encode packed messages
+    double packed_enc_start = get_current_time_seconds();
+    EncodeDecodeResult packed_enc = encode_packed();
+    do_not_optimize_packed_buffer();
+    double packed_enc_end = get_current_time_seconds();
+    total_packed_encode_time += (packed_enc_end - packed_enc_start);
+    
+    // Encode unpacked messages
+    double unpacked_enc_start = get_current_time_seconds();
+    EncodeDecodeResult unpacked_enc = encode_unpacked();
+    do_not_optimize_unpacked_buffer();
+    double unpacked_enc_end = get_current_time_seconds();
+    total_unpacked_encode_time += (unpacked_enc_end - unpacked_enc_start);
+    
+    // Check encode success
+    if (!packed_enc.success || !unpacked_enc.success) {
+      results.success = false;
+      return results;
+    }
+    
+    // ---- DECODE TESTS ----
+    
+    // Decode packed messages
+    double packed_dec_start = get_current_time_seconds();
+    EncodeDecodeResult packed_dec = decode_packed();
+    do_not_optimize_decoded_packed();
+    double packed_dec_end = get_current_time_seconds();
+    total_packed_decode_time += (packed_dec_end - packed_dec_start);
+    
+    // Decode unpacked messages
+    double unpacked_dec_start = get_current_time_seconds();
+    EncodeDecodeResult unpacked_dec = decode_unpacked();
+    do_not_optimize_decoded_unpacked();
+    double unpacked_dec_end = get_current_time_seconds();
+    total_unpacked_decode_time += (unpacked_dec_end - unpacked_dec_start);
+    
+    // Check decode success
+    if (!packed_dec.success || !unpacked_dec.success) {
+      results.success = false;
+      return results;
+    }
+    
+    // ---- VERIFY RESULTS (only on first run to save time) ----
+    if (run == 0) {
+      bool packed_verified = verify_packed_results();
+      bool unpacked_verified = verify_unpacked_results();
+      
+      if (!packed_verified || !unpacked_verified) {
+        results.success = false;
+        return results;
+      }
+    }
+  }
+  
+  // Store total timing results
+  results.packed_encode_seconds = total_packed_encode_time;
+  results.unpacked_encode_seconds = total_unpacked_encode_time;
+  results.packed_decode_seconds = total_packed_decode_time;
+  results.unpacked_decode_seconds = total_unpacked_decode_time;
+  
+  // Calculate total messages processed
+  results.total_messages = DEFAULT_ITERATIONS * num_runs;
+  
+  // Calculate per-message timings
+  results.packed_encode_per_msg_seconds = total_packed_encode_time / results.total_messages;
+  results.unpacked_encode_per_msg_seconds = total_unpacked_encode_time / results.total_messages;
+  results.packed_decode_per_msg_seconds = total_packed_decode_time / results.total_messages;
+  results.unpacked_decode_per_msg_seconds = total_unpacked_decode_time / results.total_messages;
+  
+  // ---- CALCULATE PERCENTAGE DIFFERENCES ----
+  
+  // Calculate encode difference (positive = packed slower)
+  results.encode_diff_percent = results.unpacked_encode_seconds > 0
+      ? ((results.packed_encode_seconds - results.unpacked_encode_seconds) / 
+         results.unpacked_encode_seconds) * 100.0
+      : 0.0;
+  
+  // Calculate decode difference (positive = packed slower)
+  results.decode_diff_percent = results.unpacked_decode_seconds > 0
+      ? ((results.packed_decode_seconds - results.unpacked_decode_seconds) / 
+         results.unpacked_decode_seconds) * 100.0
+      : 0.0;
+  
+  // Calculate total difference
+  double total_packed = results.packed_encode_seconds + results.packed_decode_seconds;
+  double total_unpacked = results.unpacked_encode_seconds + results.unpacked_decode_seconds;
+  results.total_diff_percent = total_unpacked > 0
+      ? ((total_packed - total_unpacked) / total_unpacked) * 100.0
+      : 0.0;
+  
+  results.success = true;
+  return results;
+}
+
 }  // namespace GenericTests
+
+// =============================================================================
+// USAGE EXAMPLE: Platform-Specific Timing Function
+// =============================================================================
+/*
+ * Implement get_current_time_seconds() for your platform and pass it to run_test().
+ * The function should return monotonic time in seconds with sufficient resolution.
+ *
+ * Example implementations:
+ *
+ * // Using std::chrono (C++11):
+ * double get_time_chrono() {
+ *   return std::chrono::duration<double>(
+ *       std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+ * }
+ *
+ * // STM32 HAL:
+ * double get_time_stm32() {
+ *   return HAL_GetTick() / 1000.0;  // Convert ms to seconds
+ * }
+ *
+ * // Arduino:
+ * double get_time_arduino() {
+ *   return micros() / 1000000.0;  // Convert us to seconds
+ * }
+ *
+ * // POSIX:
+ * double get_time_posix() {
+ *   struct timespec ts;
+ *   clock_gettime(CLOCK_MONOTONIC, &ts);
+ *   return ts.tv_sec + ts.tv_nsec / 1000000000.0;
+ * }
+ *
+ * // Usage:
+ * auto results = GenericTests::run_test(get_time_chrono);
+ * if (results.success) {
+ *   printf("Encode: packed=%.3fms, unpacked=%.3fms, diff=%+.1f%%\n",
+ *          results.packed_encode_seconds * 1000,
+ *          results.unpacked_encode_seconds * 1000,
+ *          results.encode_diff_percent);
+ * }
+ */

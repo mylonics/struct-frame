@@ -7,114 +7,86 @@
 
 #include <chrono>
 #include <cstdio>
-#include <functional>
 
 #include "profiling_generic.hpp"
 
-using Clock = std::chrono::high_resolution_clock;
-using Duration = std::chrono::duration<double, std::milli>;
-
-// Time an operation and return duration in milliseconds
-template <typename Func>
-Duration time_operation(Func&& func) {
-  auto start = Clock::now();
-  func();
-  return Clock::now() - start;
-}
-
-// Calculate percentage difference (positive = packed slower)
-double calc_diff_pct(double packed_ms, double unpacked_ms) {
-  return unpacked_ms > 0 ? ((packed_ms - unpacked_ms) / unpacked_ms) * 100.0 : 0.0;
-}
-
-// Print performance comparison
-void print_diff(const char* operation, double diff_pct) {
-  printf("\n  %s Performance Difference:\n", operation);
-  if (diff_pct > 0) {
-    printf("    Packed is %.1f%% SLOWER than unpacked\n", diff_pct);
-  } else if (diff_pct < 0) {
-    printf("    Packed is %.1f%% FASTER than unpacked\n", -diff_pct);
-  } else {
-    printf("    No significant difference\n");
-  }
+// Timing function using std::chrono
+double get_current_time_seconds() {
+  return std::chrono::duration<double>(
+      std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
 int main() {
   constexpr size_t ITERATIONS = GenericTests::DEFAULT_ITERATIONS;
+  constexpr size_t RUNS = GenericTests::DEFAULT_RUNS;
 
   printf("\n");
   printf("=============================================================\n");
   printf("STRUCT-FRAME-GENERIC PROFILING TEST\n");
   printf("=============================================================\n");
   printf("\nTest configuration:\n");
-  printf("  Messages: %zu | Packed size: %zu bytes | Unpacked size: %zu bytes\n", ITERATIONS,
+  printf("  Messages per run: %zu | Runs: %zu | Total messages: %zu\n", 
+         ITERATIONS, RUNS, ITERATIONS * RUNS);
+  printf("  Packed size: %zu bytes | Unpacked size: %zu bytes\n",
          sizeof(GenericTests::TestMessagePacked), sizeof(GenericTests::TestMessageUnpacked));
 
-  GenericTests::init_all_messages();
+  // Run the profiling test
+  auto results = GenericTests::run_test(get_current_time_seconds);
 
-  // ---- ENCODE ----
-
-  GenericTests::EncodeDecodeResult packed_enc, unpacked_enc;
-  auto packed_encode_time = time_operation([&] { packed_enc = GenericTests::encode_packed(); });
-  GenericTests::do_not_optimize_packed_buffer();
-
-  auto unpacked_encode_time = time_operation([&] { unpacked_enc = GenericTests::encode_unpacked(); });
-  GenericTests::do_not_optimize_unpacked_buffer();
-
-  if (!packed_enc.success || !unpacked_enc.success) {
-    printf("  [FAIL] Encode failed\n");
+  if (!results.success) {
+    printf("\n[TEST FAILED] Encode/decode or verification failed.\n\n");
     return 1;
   }
 
-  double encode_diff = calc_diff_pct(packed_encode_time.count(), unpacked_encode_time.count());
-  print_diff("Encode", encode_diff);
+  // Convert seconds to milliseconds for display
+  double packed_encode_ms = results.packed_encode_seconds * 1000.0;
+  double unpacked_encode_ms = results.unpacked_encode_seconds * 1000.0;
+  double packed_decode_ms = results.packed_decode_seconds * 1000.0;
+  double unpacked_decode_ms = results.unpacked_decode_seconds * 1000.0;
+  
+  // Convert per-message timings to microseconds for display
+  double packed_encode_us_per_msg = results.packed_encode_per_msg_seconds * 1000000.0;
+  double unpacked_encode_us_per_msg = results.unpacked_encode_per_msg_seconds * 1000000.0;
+  double packed_decode_us_per_msg = results.packed_decode_per_msg_seconds * 1000000.0;
+  double unpacked_decode_us_per_msg = results.unpacked_decode_per_msg_seconds * 1000000.0;
 
-  // ---- DECODE ----
-
-  GenericTests::EncodeDecodeResult packed_dec, unpacked_dec;
-  auto packed_decode_time = time_operation([&] { packed_dec = GenericTests::decode_packed(); });
-  GenericTests::do_not_optimize_decoded_packed();
-
-  auto unpacked_decode_time = time_operation([&] { unpacked_dec = GenericTests::decode_unpacked(); });
-  GenericTests::do_not_optimize_decoded_unpacked();
-
-  if (!packed_dec.success || !unpacked_dec.success) {
-    printf("  [FAIL] Decode failed\n");
-    return 1;
+  // Print encode performance
+  printf("\n  Encode Performance Difference:\n");
+  if (results.encode_diff_percent > 0) {
+    printf("    Packed is %.1f%% SLOWER than unpacked\n", results.encode_diff_percent);
+  } else if (results.encode_diff_percent < 0) {
+    printf("    Packed is %.1f%% FASTER than unpacked\n", -results.encode_diff_percent);
+  } else {
+    printf("    No significant difference\n");
   }
-
-  double decode_diff = calc_diff_pct(packed_decode_time.count(), unpacked_decode_time.count());
 
   // ---- SUMMARY ----
   printf("\n=============================================================\n");
-  printf("SUMMARY\n");
+  printf("SUMMARY (Total Time for %zu messages)\n", results.total_messages);
   printf("=============================================================\n\n");
   printf("  %-10s %10s %10s %10s\n", "Operation", "Packed", "Unpacked", "Diff");
   printf("  %-10s %10s %10s %10s\n", "----------", "----------", "----------", "----------");
-  printf("  %-10s %8.3f ms %8.3f ms %+9.1f%%\n", "Encode", packed_encode_time.count(), unpacked_encode_time.count(),
-         encode_diff);
-  printf("  %-10s %8.3f ms %8.3f ms %+9.1f%%\n", "Decode", packed_decode_time.count(), unpacked_decode_time.count(),
-         decode_diff);
+  printf("  %-10s %8.3f ms %8.3f ms %+9.1f%%\n", "Encode", 
+         packed_encode_ms, unpacked_encode_ms, results.encode_diff_percent);
+  printf("  %-10s %8.3f ms %8.3f ms %+9.1f%%\n", "Decode", 
+         packed_decode_ms, unpacked_decode_ms, results.decode_diff_percent);
 
-  double total_packed = packed_encode_time.count() + packed_decode_time.count();
-  double total_unpacked = unpacked_encode_time.count() + unpacked_decode_time.count();
-  double total_diff = calc_diff_pct(total_packed, total_unpacked);
+  printf("\n  Overall: Packed is %.1f%% %s than unpacked\n", 
+         results.total_diff_percent > 0 ? results.total_diff_percent : -results.total_diff_percent,
+         results.total_diff_percent > 1.0 ? "SLOWER" : 
+         (results.total_diff_percent < -1.0 ? "FASTER" : "~EQUAL"));
 
-  printf("\n  Overall: Packed is %.1f%% %s than unpacked\n", total_diff > 0 ? total_diff : -total_diff,
-         total_diff > 1.0 ? "SLOWER" : (total_diff < -1.0 ? "FASTER" : "~EQUAL"));
+  printf("\n=============================================================\n");
+  printf("PER-MESSAGE TIMING\n");
+  printf("=============================================================\n\n");
+  printf("  %-10s %12s %12s\n", "Operation", "Packed", "Unpacked");
+  printf("  %-10s %12s %12s\n", "----------", "------------", "------------");
+  printf("  %-10s %9.3f us %9.3f us\n", "Encode", 
+         packed_encode_us_per_msg, unpacked_encode_us_per_msg);
+  printf("  %-10s %9.3f us %9.3f us\n", "Decode", 
+         packed_decode_us_per_msg, unpacked_decode_us_per_msg);
 
-  // ---- VERIFY ----
-  bool packed_verified = GenericTests::verify_packed_results();
-  bool unpacked_verified = GenericTests::verify_unpacked_results();
-  bool verified = packed_verified && unpacked_verified;
-  
-  if (!packed_verified) {
-    printf("\n[TEST FAILED] Packed data integrity check failed.\n\n");
-  } else if (!unpacked_verified) {
-    printf("\n[TEST FAILED] Unpacked data integrity check failed.\n\n");
-  } else {
-    printf("\n[TEST PASSED] All messages verified successfully.\n\n");
-  }
+  printf("\n[TEST PASSED] All messages verified successfully.\n\n");
 
-  return verified ? 0 : 1;
+  return 0;
 }
