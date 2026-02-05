@@ -1189,10 +1189,12 @@ class TestRunner:
         return all_success
     
     def run_negative_tests(self) -> bool:
-        """Run negative tests (error handling tests)."""
+        """Run negative tests (error handling tests) and display results in a matrix."""
         self.print_section("NEGATIVE TESTS")
         
-        print("  Testing error handling for invalid frames:\n")
+        # Collect results from all languages
+        test_results = {}  # {lang_id: {test_name: "PASS"/"FAIL"}}
+        all_test_names = set()  # All unique test names across languages
         
         all_success = True
         for lang in self.get_testable_languages():
@@ -1207,7 +1209,6 @@ class TestRunner:
                 test_exe = build_dir / f"test_negative{lang.exe_ext}"
                 
                 if not test_exe.exists():
-                    print(f"  {Colors.warn_tag()} {test_name}: test_negative executable not found")
                     continue
                 
                 success, stdout, stderr = self.run_cmd(str(test_exe), timeout=30)
@@ -1217,7 +1218,6 @@ class TestRunner:
                 test_script = self.project_root / lang.test_dir / "test_negative.py"
                 
                 if not test_script.exists():
-                    print(f"  {Colors.warn_tag()} {test_name}: test_negative.py not found")
                     continue
                 
                 success, stdout, stderr = self.run_cmd(f'python "{test_script}"', timeout=30)
@@ -1227,7 +1227,6 @@ class TestRunner:
                 test_script = self.project_root / lang.test_dir / "test_negative.ts"
                 
                 if not test_script.exists():
-                    print(f"  {Colors.warn_tag()} {test_name}: test_negative.ts not found")
                     continue
                 
                 # TypeScript uses npx ts-node or node with compiled JS
@@ -1239,7 +1238,6 @@ class TestRunner:
                 test_script = self.project_root / lang.test_dir / "test_negative.js"
                 
                 if not test_script.exists():
-                    print(f"  {Colors.warn_tag()} {test_name}: test_negative.js not found")
                     continue
                 
                 success, stdout, stderr = self.run_cmd(f'node "{test_script}"', timeout=30)
@@ -1253,7 +1251,6 @@ class TestRunner:
                 if not test_exe.exists():
                     test_exe = build_dir / "StructFrameTests.dll"
                     if not test_exe.exists():
-                        print(f"  {Colors.warn_tag()} {test_name}: C# test executable not found")
                         continue
                     success, stdout, stderr = self.run_cmd(f'dotnet "{test_exe}" --runner test_negative', timeout=30)
                 else:
@@ -1262,11 +1259,28 @@ class TestRunner:
             else:
                 continue
             
-            # Print output
+            # Parse output to extract individual test results
+            lang_tests = {}
             if stdout:
-                print(stdout)
-            if stderr and not success:
-                print(stderr)
+                # Parse the test results from the matrix output
+                # Look for lines matching pattern: "Test name ... PASS/FAIL"
+                for line in stdout.split('\n'):
+                    # Match lines with test results (50 chars test name + result)
+                    line = line.strip()
+                    if line and not line.startswith('=') and not line.startswith('Test Name') and 'Summary:' not in line:
+                        # Try to extract test name and result
+                        if 'PASS' in line or 'FAIL' in line:
+                            # Split on multiple spaces or find PASS/FAIL at end
+                            parts = line.rsplit(maxsplit=1)
+                            if len(parts) == 2:
+                                test_nm, result = parts
+                                test_nm = test_nm.strip()
+                                result = result.strip()
+                                if result in ('PASS', 'FAIL') and test_nm:
+                                    lang_tests[test_nm] = result
+                                    all_test_names.add(test_nm)
+            
+            test_results[lang.id] = lang_tests
             
             # Record result
             self.results["negative"][lang.id] = success
@@ -1280,7 +1294,62 @@ class TestRunner:
                     "reason": "Error handling tests failed"
                 })
         
+        # Display cross-tabulation matrix
+        if test_results and all_test_names:
+            print("\nNegative Test Results (tests × languages):\n")
+            
+            # Get sorted language IDs and test names
+            lang_ids = sorted([lang.id for lang in self.get_testable_languages() if lang.id in test_results])
+            test_names = sorted(all_test_names)
+            
+            # Calculate column widths
+            test_name_width = max(len(name) for name in test_names) + 2
+            lang_col_width = 6  # Width for each language column
+            
+            # Print header
+            header = f"{'Test Name':<{test_name_width}}"
+            for lang_id in lang_ids:
+                # Use short language names for columns
+                lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#"}
+                lang_name = lang_display.get(lang_id, lang_id.upper()[:6])
+                header += f" {lang_name:^{lang_col_width}}"
+            print(header)
+            
+            # Print separator
+            separator = "=" * test_name_width
+            for _ in lang_ids:
+                separator += " " + "=" * lang_col_width
+            print(separator)
+            
+            # Print each test row
+            for test_name in test_names:
+                row = f"{test_name:<{test_name_width}}"
+                for lang_id in lang_ids:
+                    result = test_results.get(lang_id, {}).get(test_name, "-")
+                    # Use checkmark/X for pass/fail
+                    if result == "PASS":
+                        result_str = Colors.green("✓")
+                    elif result == "FAIL":
+                        result_str = Colors.red("✗")
+                    else:
+                        result_str = "-"
+                    row += f" {result_str:^{lang_col_width}}"
+                print(row)
+            
+            # Print summary row
+            print()
+            print("=" * (test_name_width + len(lang_ids) * (lang_col_width + 1)))
+            summary_row = f"{'Summary (Pass/Total)':<{test_name_width}}"
+            for lang_id in lang_ids:
+                lang_tests = test_results.get(lang_id, {})
+                total = len(lang_tests)
+                passed = sum(1 for r in lang_tests.values() if r == "PASS")
+                summary_row += f" {passed}/{total:<{lang_col_width-2}}"
+            print(summary_row)
+            print()
+        
         return all_success
+
     
     
     # =========================================================================
