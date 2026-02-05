@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-# Simple GraphQL schema generator for struct-frame
+"""
+GraphQL schema generator for struct-frame.
+
+This module generates GraphQL type definitions from Protocol Buffer messages,
+converting proto types to GraphQL scalars and generating type/input definitions.
+"""
 
 from struct_frame import version, pascalCase, CamelToSnakeCase
 import time
