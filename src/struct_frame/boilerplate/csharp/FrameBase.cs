@@ -91,7 +91,7 @@ namespace StructFrame
             // Validate buffer size
             if (MsgDataOffset + MsgLen > MsgData.Length)
             {
-                throw new ArgumentException($"Buffer underflow: MsgData length ({MsgData.Length}) is less than required (offset {MsgDataOffset} + length {MsgLen})");
+                throw new ArgumentException($"Invalid buffer range: MsgData length ({MsgData.Length}) is insufficient for offset {MsgDataOffset} + length {MsgLen}");
             }
 
             if (MsgDataOffset > 0)
