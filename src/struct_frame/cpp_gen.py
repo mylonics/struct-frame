@@ -269,7 +269,7 @@ class MessageCppGen():
         return ' && '.join(comparisons)
     
     @staticmethod
-    def generate(msg, use_namespace=False, package=None, equality=False):
+    def generate(msg, use_namespace=False, package=None, equality=False, no_packed=False):
         leading_comment = msg.comments
 
         result = ''
@@ -369,7 +369,11 @@ class MessageCppGen():
         
         # Add unified unpack() method only for messages with MSG_ID (have MessageBase)
         if has_msg_id:
-            result += MessageCppGen._generate_unified_unpack(msg, structName)
+            result += MessageCppGen._generate_unified_unpack(msg, structName, no_packed=no_packed)
+        
+        # When no_packed is active, generate field-by-field methods for non-variable messages
+        if no_packed and not msg.variable and msg.fields:
+            result += MessageCppGen._generate_no_packed_methods(msg, structName)
         
         # Add envelope methods if this is an envelope message
         if msg.is_envelope:
@@ -490,7 +494,7 @@ class MessageCppGen():
         return result
 
     @staticmethod
-    def _generate_unified_unpack(msg, structName):
+    def _generate_unified_unpack(msg, structName, no_packed=False):
         """Generate unified deserialize() method that works for both variable and non-variable messages."""
         result = ''
         
@@ -518,6 +522,9 @@ class MessageCppGen():
             result += f'            // Variable-length format\n'
             result += f'            return _deserialize_variable(buffer, buffer_size);\n'
             result += f'        }}\n'
+        elif no_packed and msg.fields:
+            # No-packed mode: use field-by-field deserialization
+            result += f'        return _deserialize_fields(buffer, buffer_size);\n'
         else:
             # Non-variable message: simple memcpy with size check
             result += f'        // Fixed-size message - use direct copy\n'
@@ -537,17 +544,73 @@ class MessageCppGen():
         result += f'        return deserialize(frame_info.msg_data, frame_info.msg_len);\n'
         result += f'    }}\n'
         
-        # Add serialize method for non-variable messages (simple case)
+        # Add serialize method for non-variable messages
         if not msg.variable:
-            result += f'\n    /**\n'
-            result += f'     * Serialize message to binary data.\n'
-            result += f'     * @param buffer Output buffer (must be at least MAX_SIZE bytes)\n'
-            result += f'     * @return Number of bytes written\n'
-            result += f'     */\n'
-            result += f'    size_t serialize(uint8_t* buffer) const {{\n'
-            result += f'        std::memcpy(buffer, this, MAX_SIZE);\n'
-            result += f'        return MAX_SIZE;\n'
-            result += f'    }}\n'
+            if no_packed and msg.fields:
+                result += f'\n    /**\n'
+                result += f'     * Serialize message to binary data (field-by-field, no packed struct dependency).\n'
+                result += f'     * @param buffer Output buffer (must be at least MAX_SIZE bytes)\n'
+                result += f'     * @return Number of bytes written\n'
+                result += f'     */\n'
+                result += f'    size_t serialize(uint8_t* buffer) const {{\n'
+                result += f'        return _serialize_fields(buffer);\n'
+                result += f'    }}\n'
+            else:
+                result += f'\n    /**\n'
+                result += f'     * Serialize message to binary data.\n'
+                result += f'     * @param buffer Output buffer (must be at least MAX_SIZE bytes)\n'
+                result += f'     * @return Number of bytes written\n'
+                result += f'     */\n'
+                result += f'    size_t serialize(uint8_t* buffer) const {{\n'
+                result += f'        std::memcpy(buffer, this, MAX_SIZE);\n'
+                result += f'        return MAX_SIZE;\n'
+                result += f'    }}\n'
+        
+        return result
+
+    @staticmethod
+    def _generate_no_packed_methods(msg, structName):
+        """Generate field-by-field serialize/deserialize methods for non-variable messages without packed structs."""
+        result = ''
+        
+        # Determine how to reference the message size
+        # Messages with msg_id inherit MAX_SIZE from MessageBase; others need a literal
+        wire_size = 'MAX_SIZE' if msg.id is not None else str(msg.size)
+        
+        # Internal serialize helper: writes each field individually
+        result += f'\n    /**\n'
+        result += f'     * Serialize each field individually (no packed struct dependency).\n'
+        result += f'     * @param buffer Output buffer (must be at least {wire_size} bytes)\n'
+        result += f'     * @return Number of bytes written\n'
+        result += f'     */\n'
+        result += f'    size_t _serialize_fields(uint8_t* buffer) const {{\n'
+        result += f'        size_t pos = 0;\n'
+        
+        for key, field in msg.fields.items():
+            result += f'        std::memcpy(buffer + pos, &{field.name}, {field.size});\n'
+            result += f'        pos += {field.size};\n'
+        
+        result += f'        return pos;\n'
+        result += f'    }}\n'
+        
+        # Internal deserialize helper: reads each field individually
+        result += f'\n    /**\n'
+        result += f'     * Deserialize each field individually (no packed struct dependency).\n'
+        result += f'     * @param buffer Input buffer\n'
+        result += f'     * @param buffer_size Size of input buffer\n'
+        result += f'     * @return Number of bytes consumed, or 0 if buffer too small\n'
+        result += f'     */\n'
+        result += f'    size_t _deserialize_fields(const uint8_t* buffer, size_t buffer_size) {{\n'
+        result += f'        if (buffer_size < {wire_size}) return 0;\n'
+        result += f'        size_t pos = 0;\n'
+        result += f'        std::memset(this, 0, sizeof(*this));\n'
+        
+        for key, field in msg.fields.items():
+            result += f'        std::memcpy(&{field.name}, buffer + pos, {field.size});\n'
+            result += f'        pos += {field.size};\n'
+        
+        result += f'        return pos;\n'
+        result += f'    }}\n'
         
         return result
 
@@ -695,7 +758,7 @@ class MessageCppGen():
 
 class FileCppGen():
     @staticmethod
-    def generate(package, equality=False):
+    def generate(package, equality=False, no_packed=False):
         yield '/* Automatically generated struct frame header for C++ */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
 
@@ -703,8 +766,8 @@ class FileCppGen():
         yield '#include <cstdint>\n'
         yield '#include <cstddef>\n'
         
-        # Include cstring for string comparison if equality is enabled
-        if equality:
+        # Include cstring for string comparison, or when no_packed needs field-by-field ops
+        if equality or no_packed:
             yield '#include <cstring>\n'
         
         # Always include frame_base.hpp for FrameMsgInfo and MessageBase
@@ -745,12 +808,16 @@ class FileCppGen():
 
         if package.messages:
             yield '/* Struct definitions */\n'
-            yield '#pragma pack(push, 1)\n'
+            if not no_packed:
+                yield '#pragma pack(push, 1)\n'
             # Need to sort messages to make sure dependencies are properly met
 
             for key, msg in package.sortedMessages().items():
-                yield MessageCppGen.generate(msg, use_namespace, package, equality) + '\n'
-            yield '#pragma pack(pop)\n\n'
+                yield MessageCppGen.generate(msg, use_namespace, package, equality, no_packed=no_packed) + '\n'
+            if not no_packed:
+                yield '#pragma pack(pop)\n\n'
+            else:
+                yield '\n'
 
         # Generate get_message_length function
         if package.messages:
