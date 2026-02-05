@@ -457,3 +457,169 @@ inline void do_not_optimize_decoded_unpacked() {
 }
 
 }  // namespace GenericTests
+
+// =============================================================================
+// PSEUDO CODE EXAMPLE: Generic/Embedded-Friendly Usage
+// =============================================================================
+/*
+ * This pseudo code demonstrates how to use the profiling functions in a
+ * generic/embedded environment without relying on std::chrono or other
+ * standard library timing utilities.
+ *
+ * Replace the platform-specific timing functions with your target platform's
+ * timer implementation (e.g., HAL_GetTick() for STM32, micros() for Arduino,
+ * clock_gettime() for POSIX, or custom hardware timer registers).
+ */
+
+#if 0  // Pseudo code - not compiled
+
+// Platform-specific timer functions (replace with your actual implementation)
+typedef uint32_t timestamp_t;
+
+// Get current timestamp in platform-specific units (microseconds, ticks, etc.)
+timestamp_t get_timestamp() {
+  // Example implementations:
+  // STM32: return HAL_GetTick() * 1000;  // Convert ms to us
+  // Arduino: return micros();
+  // POSIX: struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); 
+  //        return ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+  // Bare metal: return TIMER_COUNTER_REGISTER;
+  return 0;  // Placeholder
+}
+
+// Calculate elapsed time between two timestamps
+uint32_t elapsed_time(timestamp_t start, timestamp_t end) {
+  return (end >= start) ? (end - start) : 0;
+}
+
+// Simple output function (replace with your platform's output)
+void output(const char* msg) {
+  // Example implementations:
+  // printf("%s", msg);
+  // Serial.print(msg);  // Arduino
+  // UART_Transmit(msg);  // Bare metal
+}
+
+void output_number(uint32_t num) {
+  // Example implementations:
+  // printf("%u", num);
+  // Serial.print(num);  // Arduino
+  // Convert to string and use UART_Transmit()  // Bare metal
+}
+
+// =============================================================================
+// Main profiling test (embedded-friendly)
+// =============================================================================
+int main() {
+  // Initialize all test messages
+  GenericTests::init_all_messages();
+  
+  // ---- ENCODE TESTS ----
+  
+  // Encode packed messages
+  timestamp_t packed_enc_start = get_timestamp();
+  GenericTests::EncodeDecodeResult packed_enc = GenericTests::encode_packed();
+  GenericTests::do_not_optimize_packed_buffer();
+  timestamp_t packed_enc_end = get_timestamp();
+  
+  // Encode unpacked messages
+  timestamp_t unpacked_enc_start = get_timestamp();
+  GenericTests::EncodeDecodeResult unpacked_enc = GenericTests::encode_unpacked();
+  GenericTests::do_not_optimize_unpacked_buffer();
+  timestamp_t unpacked_enc_end = get_timestamp();
+  
+  // Check encode success
+  if (!packed_enc.success || !unpacked_enc.success) {
+    output("ERROR: Encode failed\n");
+    return 1;
+  }
+  
+  // ---- DECODE TESTS ----
+  
+  // Decode packed messages
+  timestamp_t packed_dec_start = get_timestamp();
+  GenericTests::EncodeDecodeResult packed_dec = GenericTests::decode_packed();
+  GenericTests::do_not_optimize_decoded_packed();
+  timestamp_t packed_dec_end = get_timestamp();
+  
+  // Decode unpacked messages
+  timestamp_t unpacked_dec_start = get_timestamp();
+  GenericTests::EncodeDecodeResult unpacked_dec = GenericTests::decode_unpacked();
+  GenericTests::do_not_optimize_decoded_unpacked();
+  timestamp_t unpacked_dec_end = get_timestamp();
+  
+  // Check decode success
+  if (!packed_dec.success || !unpacked_dec.success) {
+    output("ERROR: Decode failed\n");
+    return 1;
+  }
+  
+  // ---- VERIFY RESULTS ----
+  
+  bool packed_verified = GenericTests::verify_packed_results();
+  bool unpacked_verified = GenericTests::verify_unpacked_results();
+  
+  if (!packed_verified || !unpacked_verified) {
+    output("ERROR: Verification failed\n");
+    return 1;
+  }
+  
+  // ---- CALCULATE TIMING ----
+  
+  uint32_t packed_enc_time = elapsed_time(packed_enc_start, packed_enc_end);
+  uint32_t unpacked_enc_time = elapsed_time(unpacked_enc_start, unpacked_enc_end);
+  uint32_t packed_dec_time = elapsed_time(packed_dec_start, packed_dec_end);
+  uint32_t unpacked_dec_time = elapsed_time(unpacked_dec_start, unpacked_dec_end);
+  
+  // ---- OUTPUT RESULTS ----
+  
+  output("=== PROFILING RESULTS ===\n");
+  
+  output("Encode (packed):   ");
+  output_number(packed_enc_time);
+  output(" time units\n");
+  
+  output("Encode (unpacked): ");
+  output_number(unpacked_enc_time);
+  output(" time units\n");
+  
+  output("Decode (packed):   ");
+  output_number(packed_dec_time);
+  output(" time units\n");
+  
+  output("Decode (unpacked): ");
+  output_number(unpacked_dec_time);
+  output(" time units\n");
+  
+  output("\nAll tests PASSED\n");
+  
+  return 0;
+}
+
+// =============================================================================
+// MINIMAL EMBEDDED EXAMPLE (No Timing)
+// =============================================================================
+/*
+ * If you only need to verify functionality without performance measurements:
+ */
+
+int minimal_test() {
+  // 1. Initialize messages
+  GenericTests::init_all_messages();
+  
+  // 2. Encode
+  GenericTests::EncodeDecodeResult enc = GenericTests::encode_packed();
+  if (!enc.success) return 1;
+  
+  // 3. Decode
+  GenericTests::EncodeDecodeResult dec = GenericTests::decode_packed();
+  if (!dec.success) return 1;
+  
+  // 4. Verify
+  if (!GenericTests::verify_packed_results()) return 1;
+  
+  output("Test PASSED\n");
+  return 0;
+}
+
+#endif  // Pseudo code
