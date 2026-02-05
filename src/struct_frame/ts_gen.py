@@ -41,7 +41,7 @@ class EnumTsGen():
         result = ''
         if leading_comment:
             for c in leading_comment:
-                result = '%s\n' % c
+                result += '%s\n' % c
 
         # Use PascalCase for both package and enum name (TypeScript convention)
         result += 'export enum %s%s' % (packageName, field.name)

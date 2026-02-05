@@ -1,3 +1,9 @@
+"""
+Base utilities for struct-frame code generation.
+
+This module provides naming conventions and utilities shared across all
+language-specific code generators.
+"""
 
 import re
 
@@ -5,6 +11,12 @@ version = "0.0.1"
 
 
 class NamingStyle:
+    """
+    Base class for naming conventions across different languages.
+    
+    Override methods in subclasses to customize naming for specific
+    language conventions (e.g., snake_case for C, PascalCase for C#).
+    """
     def enum_name(self, name):
         return "_%s" % (name)
 
@@ -34,6 +46,12 @@ class NamingStyle:
 
 
 class NamingStyleC(NamingStyle):
+    """
+    C-style naming conventions.
+    
+    Uses snake_case for variables and functions, UPPER_CASE for enums
+    and defines, and adds _t suffix for type names.
+    """
     def enum_name(self, name):
         return self.underscore(name)
 
@@ -70,11 +88,13 @@ class NamingStyleC(NamingStyle):
 
 
 def camelCase(st):
+    """Convert string to camelCase (first letter lowercase)."""
     output = ''.join(x for x in st.title() if x.isalnum())
     return output[0].lower() + output[1:]
 
 
 def pascalCase(st):
+    """Convert string to PascalCase (first letter uppercase)."""
     return ''.join(x for x in st.title() if x.isalnum())
 
 
@@ -82,4 +102,5 @@ pattern = re.compile(r'(?<!^)(?=[A-Z])')
 
 
 def CamelToSnakeCase(data):
+    """Convert CamelCase or PascalCase to snake_case."""
     return pattern.sub('_', data).lower()

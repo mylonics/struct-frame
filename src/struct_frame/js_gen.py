@@ -39,7 +39,7 @@ class EnumJsGen():
         result = ''
         if leading_comment:
             for c in leading_comment:
-                result = '%s\n' % c
+                result += '%s\n' % c
 
         # Use PascalCase for both package and enum name (JavaScript convention)
         enum_name = '%s%s' % (packageName, field.name)

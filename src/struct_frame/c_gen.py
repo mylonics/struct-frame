@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # kate: replace-tabs on; indent-width 4;
+"""
+C code generator for struct-frame.
+
+This module generates C code for struct serialization with manual Pack/Unpack
+functions for binary compatibility across platforms.
+"""
 
 from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
 import time
@@ -29,7 +35,7 @@ class EnumCGen():
         result = ''
         if leading_comment:
             for c in leading_comment:
-                result = '%s\n' % c
+                result += '%s\n' % c
 
         enumName = '%s%s' % (pascalCase(field.package), field.name)
         result += 'typedef enum %s' % (enumName)

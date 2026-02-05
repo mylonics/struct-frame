@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # kate: replace-tabs on; indent-width 4;
+"""
+C++ code generator for struct-frame.
+
+This module generates C++ code for struct serialization with template-based
+Pack/Unpack methods and optional namespace support.
+"""
 
 from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
 import time

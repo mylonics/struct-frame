@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 # kate: replace-tabs on; indent-width 4;
+"""
+Python code generator for struct-frame.
+
+This module generates Python code for struct serialization using the struct
+module for binary packing/unpacking with dataclass-style message definitions.
+"""
 
 from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
 import time
@@ -56,7 +62,7 @@ class EnumPyGen():
         result = ''
         if leading_comment:
             for c in leading_comment:
-                result = '#%s\n' % c
+                result += '#%s\n' % c
 
         enumName = '%s%s' % (pascalCase(field.package), field.name)
         result += 'class %s(Enum):\n' % (enumName)
