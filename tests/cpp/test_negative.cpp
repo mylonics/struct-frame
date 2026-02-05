@@ -100,6 +100,11 @@ bool test_invalid_start_byte() {
   return !result.valid;  // Expect parsing to fail
 }
 
+// Alias for consistency with other languages
+bool test_invalid_start_bytes() {
+  return test_invalid_start_byte();
+}
+
 /**
  * Test: Parser handles zero-length buffer
  */
@@ -268,15 +273,16 @@ int main() {
   
   // Define test matrix
   TestCase tests[] = {
+    {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},
     {"Corrupted CRC detection", test_corrupted_crc},
-    {"Truncated frame detection", test_truncated_frame},
-    {"Invalid start byte detection", test_invalid_start_byte},
-    {"Zero-length buffer handling", test_zero_length_buffer},
     {"Corrupted length field detection", test_corrupted_length},
+    {"Invalid start byte detection", test_invalid_start_byte},
+    {"Invalid start bytes detection", test_invalid_start_bytes},
+    {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage_data},
-    {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
-    {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc}
+    {"Truncated frame detection", test_truncated_frame},
+    {"Zero-length buffer handling", test_zero_length_buffer}
   };
   
   int num_tests = sizeof(tests) / sizeof(tests[0]);

@@ -246,6 +246,46 @@ public class TestNegative
             return !result.Valid;  // Expect failure
         }
 
+        /**
+         * Test: Multiple frames with corrupted middle frame
+         */
+        private static bool TestMultipleCorruptedFrames()
+        {
+            // Create buffer with 3 messages
+            byte[] buffer = new byte[4096];
+            var writer = new ProfileStandardWriter();
+            writer.SetBuffer(buffer);
+            
+            var msg1 = CreateTestMessage();
+            msg1.SmallInt = 1;
+            writer.Write(msg1);
+            var bytes1End = writer.Size;
+            
+            var msg2 = CreateTestMessage();
+            msg2.SmallInt = 2;
+            writer.Write(msg2);
+            var bytes2End = writer.Size;
+            
+            var msg3 = CreateTestMessage();
+            msg3.SmallInt = 3;
+            writer.Write(msg3);
+            
+            var totalBytes = writer.Size;
+            
+            // Corrupt second frame's CRC (last byte before third frame)
+            buffer[bytes2End - 1] ^= 0xFF;
+            
+            // Parse all frames
+            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, totalBytes);
+            
+            var result1 = reader.Next();
+            if (!result1.Valid) return false;  // First should be valid
+            
+            var result2 = reader.Next();
+            return !result2.Valid;  // Second should be invalid
+        }
+
         public static int Main(string[] args)
         {
             Console.WriteLine("\n========================================");
@@ -255,14 +295,15 @@ public class TestNegative
             // Define test matrix
             var tests = new (string name, Func<bool> func)[]
             {
+                ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
                 ("Corrupted CRC detection", TestCorruptedCrc),
-                ("Truncated frame detection", TestTruncatedFrame),
-                ("Invalid start bytes detection", TestInvalidStartBytes),
-                ("Zero-length buffer handling", TestZeroLengthBuffer),
                 ("Corrupted length field detection", TestCorruptedLength),
+                ("Invalid start bytes detection", TestInvalidStartBytes),
+                ("Multiple frames: Corrupted middle frame", TestMultipleCorruptedFrames),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
                 ("Streaming: Garbage data handling", TestStreamingGarbage),
-                ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
+                ("Truncated frame detection", TestTruncatedFrame),
+                ("Zero-length buffer handling", TestZeroLengthBuffer),
             };
             
             Console.WriteLine("Test Results Matrix:\n");

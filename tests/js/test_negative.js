@@ -219,6 +219,43 @@ function testBulkProfileCorruptedCrc() {
   return !result.valid;  // Expect failure
 }
 
+/**
+ * Test: Multiple frames with corrupted middle frame
+ */
+function testMultipleCorruptedFrames() {
+  // Create buffer with 3 messages
+  const writer = new ProfileStandardWriter(4096);
+  
+  const msg1 = createTestMessage();
+  msg1.small_int = 1;
+  writer.write(msg1);
+  const bytes1End = writer.size;
+  
+  const msg2 = createTestMessage();
+  msg2.small_int = 2;
+  writer.write(msg2);
+  const bytes2End = writer.size;
+  
+  const msg3 = createTestMessage();
+  msg3.small_int = 3;
+  writer.write(msg3);
+  
+  const buffer = writer.data();
+  const totalBytes = writer.size;
+  
+  // Corrupt second frame's CRC (last byte before third frame)
+  buffer[bytes2End - 1] ^= 0xFF;
+  
+  // Parse all frames
+  const reader = new ProfileStandardReader(buffer.subarray(0, totalBytes), get_message_info);
+  
+  const result1 = reader.next();
+  if (!result1.valid) return false;  // First should be valid
+  
+  const result2 = reader.next();
+  return !result2.valid;  // Second should be invalid
+}
+
 function main() {
   console.log('\n========================================');
   console.log('NEGATIVE TESTS - JavaScript Parser');
@@ -226,14 +263,15 @@ function main() {
   
   // Define test matrix
   const tests = [
+    ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],
     ['Corrupted CRC detection', testCorruptedCrc],
-    ['Truncated frame detection', testTruncatedFrame],
-    ['Invalid start bytes detection', testInvalidStartBytes],
-    ['Zero-length buffer handling', testZeroLengthBuffer],
     ['Corrupted length field detection', testCorruptedLength],
+    ['Invalid start bytes detection', testInvalidStartBytes],
+    ['Multiple frames: Corrupted middle frame', testMultipleCorruptedFrames],
     ['Streaming: Corrupted CRC detection', testStreamingCorruptedCrc],
     ['Streaming: Garbage data handling', testStreamingGarbage],
-    ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],
+    ['Truncated frame detection', testTruncatedFrame],
+    ['Zero-length buffer handling', testZeroLengthBuffer],
   ];
   
   console.log('Test Results Matrix:\n');

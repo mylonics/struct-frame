@@ -20,7 +20,9 @@ from struct_frame.generated.serialization_test import SerializationTestBasicType
 from frame_profiles import (
     ProfileStandardWriter,
     ProfileStandardReader,
-    ProfileStandardAccumulatingReader
+    ProfileStandardAccumulatingReader,
+    ProfileBulkWriter,
+    ProfileBulkReader
 )
 
 # Test result tracking
@@ -308,6 +310,43 @@ def test_multiple_corrupted_frames():
     result2 = reader.next()
     return not result2.valid  # Second should be invalid
 
+def test_bulk_profile_corrupted_crc():
+    """Test: Bulk profile with corrupted CRC"""
+    # Create a valid message
+    msg = BasicTypesMessage()
+    msg.small_int = 42
+    msg.medium_int = 1000
+    msg.regular_int = 100000
+    msg.large_int = 1000000000
+    msg.small_uint = 200
+    msg.medium_uint = 50000
+    msg.regular_uint = 3000000000
+    msg.large_uint = 9000000000000000000
+    msg.single_precision = 3.14159
+    msg.double_precision = 2.71828
+    msg.flag = True
+    msg.device_id = b"DEVICE123"
+    msg.description = b"Test device"
+    
+    # Encode message with bulk profile
+    writer = ProfileBulkWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    bytes_written = writer.size()
+    
+    if bytes_written < 4:
+        return False
+    
+    # Corrupt the CRC (last 2 bytes)
+    buffer[bytes_written - 1] ^= 0xFF
+    buffer[bytes_written - 2] ^= 0xFF
+    
+    # Try to parse - should fail
+    reader = ProfileBulkReader(buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
+    result = reader.next()
+    
+    return not result.valid  # Expect failure
+
 def main():
     print("\n========================================")
     print("NEGATIVE TESTS - Python Parser")
@@ -315,14 +354,15 @@ def main():
     
     # Define test matrix
     tests = [
+        ("Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc),
         ("Corrupted CRC detection", test_corrupted_crc),
-        ("Truncated frame detection", test_truncated_frame),
-        ("Invalid start bytes detection", test_invalid_start_bytes),
-        ("Zero-length buffer handling", test_zero_length_buffer),
         ("Corrupted length field detection", test_corrupted_length),
+        ("Invalid start bytes detection", test_invalid_start_bytes),
+        ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
         ("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling", test_streaming_garbage),
-        ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
+        ("Truncated frame detection", test_truncated_frame),
+        ("Zero-length buffer handling", test_zero_length_buffer),
     ]
     
     global tests_run, tests_passed, tests_failed
