@@ -686,13 +686,18 @@ class MessageCSharpGen():
         result += '        }\n'
 
         # Generate interface implementation methods
-        # Only generate GetMsgId() for messages with a msgid
+        result += '\n'
+        result += '        /// <summary>\n'
         if msg.id is not None:
-            result += '\n'
-            result += '        /// <summary>\n'
             result += '        /// Get the message ID (IStructFrameMessage)\n'
             result += '        /// </summary>\n'
             result += '        public ushort GetMsgId() => MsgId;\n'
+        else:
+            result += '        /// Get the message ID (IStructFrameMessage)\n'
+            result += '        /// Note: This message does not have a message ID defined.\n'
+            result += '        /// </summary>\n'
+            result += '        /// <exception cref="System.NotSupportedException">This message type does not have a message ID</exception>\n'
+            result += '        public ushort GetMsgId() => throw new System.NotSupportedException("' + structName + ' does not have a message ID defined");\n'
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Get the message size (IStructFrameMessage)\n'
