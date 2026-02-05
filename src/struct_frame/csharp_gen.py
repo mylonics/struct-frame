@@ -687,12 +687,13 @@ class MessageCSharpGen():
 
         # Generate interface implementation methods
         result += '\n'
-        result += '        /// <summary>\n'
         if msg.id is not None:
+            result += '        /// <summary>\n'
             result += '        /// Get the message ID (IStructFrameMessage)\n'
             result += '        /// </summary>\n'
             result += '        public ushort GetMsgId() => MsgId;\n'
         else:
+            result += '        /// <summary>\n'
             result += '        /// Get the message ID (IStructFrameMessage)\n'
             result += '        /// Note: This message does not have a message ID defined.\n'
             result += '        /// </summary>\n'
