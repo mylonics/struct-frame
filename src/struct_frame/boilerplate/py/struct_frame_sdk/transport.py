@@ -2,6 +2,8 @@
 Provides abstraction for various communication channels
 """
 
+import socket
+import threading
 from abc import ABC, abstractmethod
 from typing import Callable, Optional
 from dataclasses import dataclass
@@ -13,6 +15,12 @@ class TransportConfig:
     auto_reconnect: bool = False
     reconnect_delay: float = 1.0  # seconds
     max_reconnect_attempts: int = 0  # 0 = infinite
+
+
+@dataclass
+class SocketTransportConfig(TransportConfig):
+    """Base configuration for socket-based transports"""
+    buffer_size: int = 4096
 
 
 class ITransport(ABC):
@@ -113,3 +121,53 @@ class BaseTransport(ITransport):
             self.reconnect_attempts = 0
         except Exception as e:
             self._handle_error(e)
+
+
+class BaseSocketTransport(BaseTransport):
+    """
+    Base class for socket-based transports (TCP, UDP).
+    
+    Consolidates common socket functionality like receive thread management,
+    connection state, and error handling. Pre-allocates a receive buffer to
+    avoid repeated memory allocation in the receive loop.
+    """
+
+    def __init__(self, config: SocketTransportConfig):
+        super().__init__(config)
+        self.socket_config = config
+        self.socket: Optional[socket.socket] = None
+        self.receive_thread: Optional[threading.Thread] = None
+        self.running = False
+        # Pre-allocate receive buffer to avoid repeated allocation in receive loop
+        self._recv_buffer = bytearray(config.buffer_size)
+        self._recv_view = memoryview(self._recv_buffer)
+
+    def _start_receive_thread(self) -> None:
+        """Start the receive loop thread"""
+        self.running = True
+        self.receive_thread = threading.Thread(target=self._receive_loop, daemon=True)
+        self.receive_thread.start()
+
+    def _stop_receive_thread(self) -> None:
+        """Stop the receive loop thread"""
+        self.running = False
+        if self.receive_thread:
+            self.receive_thread.join(timeout=1.0)
+            self.receive_thread = None
+
+    def _close_socket(self) -> None:
+        """Close the socket (override for protocol-specific cleanup)"""
+        if self.socket:
+            self.socket.close()
+            self.socket = None
+
+    def disconnect(self) -> None:
+        """Disconnect the socket transport"""
+        self._stop_receive_thread()
+        self._close_socket()
+        self.connected = False
+
+    @abstractmethod
+    def _receive_loop(self) -> None:
+        """Receive loop running in separate thread (subclass must implement)"""
+        pass

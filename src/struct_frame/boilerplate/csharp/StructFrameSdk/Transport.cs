@@ -39,6 +39,11 @@ namespace StructFrame.Sdk
         Task SendAsync(byte[] data);
 
         /// <summary>
+        /// Send data through the transport (memory-efficient overload)
+        /// </summary>
+        Task SendAsync(ReadOnlyMemory<byte> data);
+
+        /// <summary>
         /// Event fired when data is received
         /// </summary>
         event EventHandler<byte[]> DataReceived;
@@ -82,6 +87,15 @@ namespace StructFrame.Sdk
         public abstract Task ConnectAsync();
         public abstract Task DisconnectAsync();
         public abstract Task SendAsync(byte[] data);
+        
+        /// <summary>
+        /// Send data through the transport (memory-efficient overload).
+        /// Default implementation converts to array - subclasses should override for zero-copy.
+        /// </summary>
+        public virtual Task SendAsync(ReadOnlyMemory<byte> data)
+        {
+            return SendAsync(data.ToArray());
+        }
 
         protected void OnDataReceived(byte[] data)
         {

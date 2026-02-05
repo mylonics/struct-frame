@@ -7,7 +7,7 @@ This module generates C# code for struct serialization using
 classes with manual Pack/Unpack methods for binary compatibility.
 """
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
+from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
 import time
 
 StyleC = NamingStyleC()
@@ -47,11 +47,10 @@ csharp_type_sizes = {
 class EnumCSharpGen():
     @staticmethod
     def generate(field):
-        leading_comment = field.comments
-
+        # C# uses XML doc comments with different formatting
         result = ''
-        if leading_comment:
-            for c in leading_comment:
+        if field.comments:
+            for c in field.comments:
                 result += '    /// <summary>\n'
                 result += '    /// %s\n' % c.strip('/')
                 result += '    /// </summary>\n'
@@ -60,24 +59,20 @@ class EnumCSharpGen():
         result += '    public enum %s : byte\n' % enumName
         result += '    {\n'
 
-        enum_length = len(field.data)
-        enum_values = []
-        for index, (d) in enumerate(field.data):
-            leading_comment = field.data[d][1]
+        def csharp_comment_formatter(comments):
+            lines = []
+            for c in comments:
+                lines.append('        /// <summary>')
+                lines.append('        /// %s' % c.strip('/'))
+                lines.append('        /// </summary>')
+            return lines
 
-            if leading_comment:
-                for c in leading_comment:
-                    enum_values.append('        /// <summary>')
-                    enum_values.append('        /// %s' % c.strip('/'))
-                    enum_values.append('        /// </summary>')
-
-            comma = ","
-            if index == enum_length - 1:
-                comma = ""
-
-            enum_value = "        %s = %d%s" % (
-                StyleC.enum_entry(d), field.data[d][0], comma)
-            enum_values.append(enum_value)
+        enum_values = build_enum_values(
+            field, StyleC,
+            value_format='        {name} = {value}{comma}',
+            comment_formatter=csharp_comment_formatter,
+            skip_trailing_comma=True
+        )
 
         result += '\n'.join(enum_values)
         result += '\n    }\n'
@@ -189,18 +184,29 @@ class FieldCSharpGen():
 
     @staticmethod
     def generate_pack_code(field, base_offset, use_offset_param=False):
-        """Generate code to pack this field into a byte array.
+        """Generate C# code to pack a field into a byte array buffer.
+        
+        Handles serialization of:
+        - Fixed and variable-length strings
+        - Fixed and variable-length arrays of primitives, enums, and nested structs
+        - Primitive types (using BinaryPrimitives for endian-correct encoding)
+        - Nested message types (using their SerializeTo method)
         
         Args:
-            field: The field to pack
-            base_offset: The base offset in the message structure
-            use_offset_param: If True, generates code using 'offset + N' for PackTo method
+            field: The field object containing type, size, and array information
+            base_offset: The byte offset where this field starts in the buffer
+            use_offset_param: If True, generates code using 'offset + N' syntax
+                              for the PackTo() method variant. If False, uses
+                              literal offset values for Serialize() method.
+        
+        Returns:
+            List of C# code lines for serializing this field
         """
         lines = []
         var_name = pascalCase(field.name)
         type_name = field.fieldType
         
-        # Helper to format offset (for PackTo method compatibility)
+        # Local helper to format offset expressions
         def fmt_offset(off):
             if use_offset_param:
                 return f'offset + {off}' if off > 0 else 'offset'

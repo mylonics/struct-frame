@@ -1,4 +1,4 @@
-from .base import version, NamingStyleC, CamelToSnakeCase, pascalCase
+from .base import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
 
 from .c_gen import FileCGen
 from .ts_gen import FileTsGen
@@ -11,4 +11,4 @@ from .csharp_gen import FileCSharpGen
 from .generate import main
 
 __all__ = ["main", "FileCGen", "FileTsGen", "FileJsGen", "FilePyGen", "TestPyGen", "FileGqlGen", "FileCppGen", "TestCppGen", "FileCSharpGen", "version",
-           "NamingStyleC", "CamelToSnakeCase", "pascalCase"]
+           "NamingStyleC", "CamelToSnakeCase", "pascalCase", "build_enum_leading_comments", "build_enum_values"]

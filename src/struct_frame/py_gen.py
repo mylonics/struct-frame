@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 # kate: replace-tabs on; indent-width 4;
+"""
+Python code generator for struct-frame.
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
+This module generates Python code for struct serialization using the struct
+module for binary packing/unpacking with dataclass-style message definitions.
+"""
+
+from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
 import time
 
 StyleC = NamingStyleC()
@@ -51,28 +57,20 @@ py_type_hints = {
 class EnumPyGen():
     @staticmethod
     def generate(field):
-        leading_comment = field.comments
-
-        result = ''
-        if leading_comment:
-            for c in leading_comment:
-                result = '#%s\n' % c
+        result = build_enum_leading_comments(field.comments, comment_prefix='#')
 
         enumName = '%s%s' % (pascalCase(field.package), field.name)
         result += 'class %s(Enum):\n' % (enumName)
 
-        enum_length = len(field.data)
-        enum_values = []
-        for index, (d) in enumerate(field.data):
-            leading_comment = field.data[d][1]
+        def py_comment_formatter(comments):
+            return ['#' + c for c in comments]
 
-            if leading_comment:
-                for c in leading_comment:
-                    enum_values.append("#" + c)
-
-            enum_value = "    %s = %d" % (StyleC.enum_entry(d), field.data[d][0])
-
-            enum_values.append(enum_value)
+        enum_values = build_enum_values(
+            field, StyleC,
+            value_format='{indent}{name} = {value}',
+            comment_formatter=py_comment_formatter,
+            skip_trailing_comma=False  # Python doesn't need comma handling
+        )
 
         result += '\n'.join(enum_values)
         
@@ -228,7 +226,20 @@ class MessagePyGen():
     
     @staticmethod
     def generate_pack_method(msg):
-        """Generate the serialize() method"""
+        """Generate the serialize() method for a message.
+        
+        Generates code to serialize all fields into a bytes object using struct.pack().
+        Handles:
+        - Fixed and variable-length strings
+        - Fixed and variable-length arrays of primitives, enums, and nested messages
+        - Oneof (union) fields with discriminators
+        
+        Args:
+            msg: Message object containing fields and oneofs to serialize
+        
+        Returns:
+            String containing the Python serialize() method implementation
+        """
         result = '\n    def serialize(self) -> bytes:\n'
         if msg.variable:
             result += '        """Serialize the message into binary format (variable-length encoding by default)\n'
