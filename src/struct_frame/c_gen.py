@@ -682,7 +682,7 @@ class MessageCGen():
         result += f'static inline size_t {structName}_deserialize_no_packed(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
         result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
         result += f'    size_t pos = 0;\n'
-        result += f'    memset(msg, 0, sizeof({structName}));\n'
+        result += f'    memset(msg, 0, sizeof(*msg));\n'
         
         for key, field in msg.fields.items():
             result += f'    memcpy(&msg->{field.name}, buffer + pos, {field.size});\n'
