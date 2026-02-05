@@ -1,30 +1,24 @@
 """TCP Transport implementation using socket"""
 
 import socket
-import threading
 from dataclasses import dataclass
-from typing import Optional
-from .transport import BaseTransport, TransportConfig
+from .transport import BaseSocketTransport, SocketTransportConfig
 
 
 @dataclass
-class TcpTransportConfig(TransportConfig):
+class TcpTransportConfig(SocketTransportConfig):
     """TCP transport configuration"""
     host: str = ''
     port: int = 0
     timeout: float = 5.0
-    buffer_size: int = 4096
 
 
-class TcpTransport(BaseTransport):
+class TcpTransport(BaseSocketTransport):
     """TCP transport using socket"""
 
     def __init__(self, config: TcpTransportConfig):
         super().__init__(config)
         self.tcp_config = config
-        self.socket: Optional[socket.socket] = None
-        self.receive_thread: Optional[threading.Thread] = None
-        self.running = False
 
     def connect(self) -> None:
         """Connect TCP socket"""
@@ -33,19 +27,13 @@ class TcpTransport(BaseTransport):
             self.socket.settimeout(self.tcp_config.timeout)
             self.socket.connect((self.tcp_config.host, self.tcp_config.port))
             self.connected = True
-            
-            # Start receive thread
-            self.running = True
-            self.receive_thread = threading.Thread(target=self._receive_loop, daemon=True)
-            self.receive_thread.start()
-            
+            self._start_receive_thread()
         except Exception as e:
             self._handle_error(e)
             raise
 
-    def disconnect(self) -> None:
-        """Disconnect TCP socket"""
-        self.running = False
+    def _close_socket(self) -> None:
+        """Close TCP socket with proper shutdown"""
         if self.socket:
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)
@@ -53,10 +41,6 @@ class TcpTransport(BaseTransport):
                 pass
             self.socket.close()
             self.socket = None
-        if self.receive_thread:
-            self.receive_thread.join(timeout=1.0)
-            self.receive_thread = None
-        self.connected = False
 
     def send(self, data: bytes) -> None:
         """Send data via TCP"""
@@ -73,7 +57,7 @@ class TcpTransport(BaseTransport):
         """Receive loop running in separate thread"""
         while self.running and self.socket:
             try:
-                data = self.socket.recv(self.tcp_config.buffer_size)
+                data = self.socket.recv(self.socket_config.buffer_size)
                 if not data:
                     # Connection closed
                     self._handle_close()

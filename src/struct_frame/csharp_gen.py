@@ -7,7 +7,7 @@ This module generates C# code for struct serialization using
 classes with manual Pack/Unpack methods for binary compatibility.
 """
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
+from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
 import time
 
 StyleC = NamingStyleC()
@@ -47,11 +47,10 @@ csharp_type_sizes = {
 class EnumCSharpGen():
     @staticmethod
     def generate(field):
-        leading_comment = field.comments
-
+        # C# uses XML doc comments with different formatting
         result = ''
-        if leading_comment:
-            for c in leading_comment:
+        if field.comments:
+            for c in field.comments:
                 result += '    /// <summary>\n'
                 result += '    /// %s\n' % c.strip('/')
                 result += '    /// </summary>\n'
@@ -60,24 +59,20 @@ class EnumCSharpGen():
         result += '    public enum %s : byte\n' % enumName
         result += '    {\n'
 
-        enum_length = len(field.data)
-        enum_values = []
-        for index, (d) in enumerate(field.data):
-            leading_comment = field.data[d][1]
+        def csharp_comment_formatter(comments):
+            lines = []
+            for c in comments:
+                lines.append('        /// <summary>')
+                lines.append('        /// %s' % c.strip('/'))
+                lines.append('        /// </summary>')
+            return lines
 
-            if leading_comment:
-                for c in leading_comment:
-                    enum_values.append('        /// <summary>')
-                    enum_values.append('        /// %s' % c.strip('/'))
-                    enum_values.append('        /// </summary>')
-
-            comma = ","
-            if index == enum_length - 1:
-                comma = ""
-
-            enum_value = "        %s = %d%s" % (
-                StyleC.enum_entry(d), field.data[d][0], comma)
-            enum_values.append(enum_value)
+        enum_values = build_enum_values(
+            field, StyleC,
+            value_format='        {name} = {value}{comma}',
+            comment_formatter=csharp_comment_formatter,
+            skip_trailing_comma=True
+        )
 
         result += '\n'.join(enum_values)
         result += '\n    }\n'

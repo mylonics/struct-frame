@@ -8,7 +8,7 @@ It reuses the shared TypeScript/JavaScript base module for common logic
 but outputs JavaScript syntax (CommonJS) instead of TypeScript.
 """
 
-from struct_frame import version, NamingStyleC, pascalCase
+from struct_frame import version, NamingStyleC, pascalCase, build_enum_leading_comments, build_enum_values
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -35,36 +35,21 @@ js_typed_array_methods = common_typed_array_methods
 class EnumJsGen():
     @staticmethod
     def generate(field, packageName):
-        leading_comment = field.comments
-        result = ''
-        if leading_comment:
-            for c in leading_comment:
-                result += '%s\n' % c
+        result = build_enum_leading_comments(field.comments)
 
         # Use PascalCase for both package and enum name (JavaScript convention)
         enum_name = '%s%s' % (packageName, field.name)
-        result += 'const %s = Object.freeze({' % enum_name
+        result += 'const %s = Object.freeze({\n' % enum_name
 
-        result += '\n'
+        def js_comment_formatter(comments):
+            return ['  ' + c for c in comments]
 
-        enum_length = len(field.data)
-        enum_values = []
-        for index, (d) in enumerate(field.data):
-            leading_comment = field.data[d][1]
-
-            if leading_comment:
-                for c in leading_comment:
-                    enum_values.append('  ' + c)
-
-            comma = ","
-            if index == enum_length - 1:
-                # last enum member should not end with a comma
-                comma = ""
-
-            enum_value = "  %s: %d%s" % (
-                StyleC.enum_entry(d), field.data[d][0], comma)
-
-            enum_values.append(enum_value)
+        enum_values = build_enum_values(
+            field, StyleC,
+            value_format='  {name}: {value}{comma}',
+            comment_formatter=js_comment_formatter,
+            skip_trailing_comma=True
+        )
 
         result += '\n'.join(enum_values)
         result += '\n});\n'

@@ -7,7 +7,7 @@ This module generates C++ code for struct serialization with template-based
 Pack/Unpack methods and optional namespace support.
 """
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
+from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
 import time
 
 StyleC = NamingStyleC()
@@ -30,12 +30,7 @@ cpp_types = {"uint8": "uint8_t",
 class EnumCppGen():
     @staticmethod
     def generate(field, use_namespace=False):
-        leading_comment = field.comments
-
-        result = ''
-        if leading_comment:
-            for c in leading_comment:
-                result += '%s\n' % c
+        result = build_enum_leading_comments(field.comments)
 
         # When using namespaces, don't prefix with package name
         if use_namespace:
@@ -43,28 +38,13 @@ class EnumCppGen():
         else:
             enumName = '%s%s' % (pascalCase(field.package), field.name)
         # Use enum class for C++
-        result += 'enum class %s : uint8_t' % (enumName)
+        result += 'enum class %s : uint8_t {\n' % (enumName)
 
-        result += ' {\n'
-
-        enum_length = len(field.data)
-        enum_values = []
-        for index, (d) in enumerate(field.data):
-            leading_comment = field.data[d][1]
-
-            if leading_comment:
-                for c in leading_comment:
-                    enum_values.append(c)
-
-            comma = ","
-            if index == enum_length - 1:
-                # last enum member should not end with a comma
-                comma = ""
-
-            enum_value = "    %s = %d%s" % (
-                StyleC.enum_entry(d), field.data[d][0], comma)
-
-            enum_values.append(enum_value)
+        enum_values = build_enum_values(
+            field, StyleC,
+            value_format='{indent}{name} = {value}{comma}',
+            skip_trailing_comma=True
+        )
 
         result += '\n'.join(enum_values)
         result += '\n};\n'
