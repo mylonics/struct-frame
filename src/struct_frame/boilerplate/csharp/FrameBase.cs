@@ -88,6 +88,12 @@ namespace StructFrame
                 return Array.Empty<byte>();
             }
 
+            // Validate buffer size
+            if (MsgDataOffset + MsgLen > MsgData.Length)
+            {
+                throw new ArgumentException($"Buffer underflow: MsgData length ({MsgData.Length}) is less than required (offset {MsgDataOffset} + length {MsgLen})");
+            }
+
             if (MsgDataOffset > 0)
             {
                 // Copy from offset to new array

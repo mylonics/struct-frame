@@ -693,12 +693,14 @@ class MessageCSharpGen():
             result += '        /// </summary>\n'
             result += '        public ushort GetMsgId() => MsgId;\n'
         else:
+            # Escape the struct name for use in a C# string literal
+            escaped_name = structName.replace('\\', '\\\\').replace('"', '\\"')
             result += '        /// <summary>\n'
             result += '        /// Get the message ID (IStructFrameMessage)\n'
             result += '        /// Note: This message does not have a message ID defined.\n'
             result += '        /// </summary>\n'
             result += '        /// <exception cref="System.NotSupportedException">This message type does not have a message ID</exception>\n'
-            result += '        public ushort GetMsgId() => throw new System.NotSupportedException("' + structName + ' does not have a message ID defined");\n'
+            result += f'        public ushort GetMsgId() => throw new System.NotSupportedException("{escaped_name} does not have a message ID defined");\n'
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Get the message size (IStructFrameMessage)\n'
