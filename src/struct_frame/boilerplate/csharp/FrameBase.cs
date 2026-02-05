@@ -77,6 +77,43 @@ namespace StructFrame
         /// Allow use in boolean context
         /// </summary>
         public static implicit operator bool(FrameMsgInfo info) => info.Valid;
+
+        /// <summary>
+        /// Extract payload from frame info, handling offset if needed
+        /// </summary>
+        public byte[] ExtractPayload()
+        {
+            if (MsgData == null)
+            {
+                return Array.Empty<byte>();
+            }
+
+            // Validate buffer size
+            if (MsgDataOffset + MsgLen > MsgData.Length)
+            {
+                throw new ArgumentException($"Invalid buffer range: MsgData length ({MsgData.Length}) is insufficient for offset {MsgDataOffset} + length {MsgLen}");
+            }
+
+            if (MsgDataOffset > 0)
+            {
+                // Copy from offset to new array
+                byte[] payload = new byte[MsgLen];
+                Array.Copy(MsgData, MsgDataOffset, payload, 0, MsgLen);
+                return payload;
+            }
+            else if (MsgData.Length == MsgLen)
+            {
+                // Data is exactly the right size, use it directly
+                return MsgData;
+            }
+            else
+            {
+                // Data is larger than needed, copy the required portion
+                byte[] payload = new byte[MsgLen];
+                Array.Copy(MsgData, 0, payload, 0, MsgLen);
+                return payload;
+            }
+        }
     }
 
     /// <summary>

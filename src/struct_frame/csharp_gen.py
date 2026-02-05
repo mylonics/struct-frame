@@ -44,27 +44,48 @@ csharp_type_sizes = {
 }
 
 
+def format_xml_summary(comments, indent='    '):
+    """
+    Format multi-line comments into a single XML summary block.
+    
+    Args:
+        comments: List of comment strings
+        indent: Indentation string (default: '    ')
+    
+    Returns:
+        Formatted XML summary string with all comments in a single block
+    """
+    if not comments:
+        return ''
+    
+    result = f'{indent}/// <summary>\n'
+    for comment in comments:
+        # Strip leading/trailing slashes and whitespace
+        clean_comment = comment.strip('/').strip()
+        result += f'{indent}/// {clean_comment}\n'
+    result += f'{indent}/// </summary>\n'
+    return result
+
+
 class EnumCSharpGen():
     @staticmethod
     def generate(field):
         # C# uses XML doc comments with different formatting
         result = ''
         if field.comments:
-            for c in field.comments:
-                result += '    /// <summary>\n'
-                result += '    /// %s\n' % c.strip('/')
-                result += '    /// </summary>\n'
+            result += format_xml_summary(field.comments, indent='    ')
 
         enumName = '%s%s' % (pascalCase(field.package), field.name)
         result += '    public enum %s : byte\n' % enumName
         result += '    {\n'
 
         def csharp_comment_formatter(comments):
-            lines = []
+            if not comments:
+                return []
+            lines = ['        /// <summary>']
             for c in comments:
-                lines.append('        /// <summary>')
-                lines.append('        /// %s' % c.strip('/'))
-                lines.append('        /// </summary>')
+                lines.append('        /// %s' % c.strip('/').strip())
+            lines.append('        /// </summary>')
             return lines
 
         enum_values = build_enum_values(
@@ -118,10 +139,7 @@ class FieldCSharpGen():
         # Add leading comments
         leading_comment = field.comments
         if leading_comment:
-            for c in leading_comment:
-                result += '        /// <summary>\n'
-                result += '        /// %s\n' % c.strip('/')
-                result += '        /// </summary>\n'
+            result += format_xml_summary(leading_comment, indent='        ')
 
         # Handle basic type resolution
         if type_name in csharp_types:
@@ -446,10 +464,7 @@ class MessageCSharpGen():
 
         result = ''
         if leading_comment:
-            for c in msg.comments:
-                result += '    /// <summary>\n'
-                result += '    /// %s\n' % c.strip('/')
-                result += '    /// </summary>\n'
+            result += format_xml_summary(leading_comment, indent='    ')
 
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
 
@@ -678,34 +693,29 @@ class MessageCSharpGen():
         result += '        /// <returns>Deserialized message</returns>\n'
         result += f'        public static {structName} Deserialize(FrameMsgInfo frameInfo)\n'
         result += '        {\n'
-        result += '            // Extract payload from frame info\n'
         result += '            if (frameInfo.MsgData == null)\n'
         result += '            {\n'
         result += '                return new ' + structName + '();\n'
         result += '            }\n'
-        result += '            byte[] payload;\n'
-        result += '            if (frameInfo.MsgDataOffset > 0)\n'
-        result += '            {\n'
-        result += '                // Copy from offset to new array\n'
-        result += '                payload = new byte[frameInfo.MsgLen];\n'
-        result += '                Array.Copy(frameInfo.MsgData, frameInfo.MsgDataOffset, payload, 0, frameInfo.MsgLen);\n'
-        result += '            }\n'
-        result += '            else\n'
-        result += '            {\n'
-        result += '                payload = frameInfo.MsgData;\n'
-        result += '            }\n'
-        result += '            return Deserialize(payload);\n'
+        result += '            return Deserialize(frameInfo.ExtractPayload());\n'
         result += '        }\n'
 
         # Generate interface implementation methods
         result += '\n'
-        result += '        /// <summary>\n'
-        result += '        /// Get the message ID (IStructFrameMessage)\n'
-        result += '        /// </summary>\n'
         if msg.id is not None:
+            result += '        /// <summary>\n'
+            result += '        /// Get the message ID (IStructFrameMessage)\n'
+            result += '        /// </summary>\n'
             result += '        public ushort GetMsgId() => MsgId;\n'
         else:
-            result += '        public ushort GetMsgId() => 0;\n'
+            # Escape the struct name for use in a C# string literal
+            escaped_name = structName.replace('\\', '\\\\').replace('"', '\\"')
+            result += '        /// <summary>\n'
+            result += '        /// Get the message ID (IStructFrameMessage)\n'
+            result += '        /// Note: This message does not have a message ID defined.\n'
+            result += '        /// </summary>\n'
+            result += '        /// <exception cref="System.NotSupportedException">This message type does not have a message ID</exception>\n'
+            result += f'        public ushort GetMsgId() => throw new System.NotSupportedException("{escaped_name} does not have a message ID defined");\n'
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Get the message size (IStructFrameMessage)\n'
@@ -1398,24 +1408,7 @@ class FileCSharpGen():
             yield '                return null;\n'
             yield '            }\n'
             yield '            \n'
-            yield '            // Extract payload from frame info\n'
-            yield '            byte[] payload;\n'
-            yield '            if (frameInfo.MsgDataOffset > 0)\n'
-            yield '            {\n'
-            yield '                payload = new byte[frameInfo.MsgLen];\n'
-            yield '                Array.Copy(frameInfo.MsgData, frameInfo.MsgDataOffset, payload, 0, frameInfo.MsgLen);\n'
-            yield '            }\n'
-            yield '            else if (frameInfo.MsgData.Length == frameInfo.MsgLen)\n'
-            yield '            {\n'
-            yield '                payload = frameInfo.MsgData;\n'
-            yield '            }\n'
-            yield '            else\n'
-            yield '            {\n'
-            yield '                payload = new byte[frameInfo.MsgLen];\n'
-            yield '                Array.Copy(frameInfo.MsgData, 0, payload, 0, frameInfo.MsgLen);\n'
-            yield '            }\n'
-            yield '            \n'
-            yield '            return Deserialize(frameInfo.MsgId, payload);\n'
+            yield '            return Deserialize(frameInfo.MsgId, frameInfo.ExtractPayload());\n'
             yield '        }\n\n'
             
             # Generic Deserialize<T>
