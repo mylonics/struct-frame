@@ -250,6 +250,7 @@ class TestRunner:
             "variable_encode": {},
             "variable_validate": {},
             "variable_decode": {},
+            "negative": {},
         }
     
     def _init_languages(self) -> Dict[str, Language]:
@@ -633,7 +634,7 @@ class TestRunner:
         if lang.id in ("c", "cpp"):
             success = True
             for runner in ["test_standard", "test_extended", "test_variable_flag", 
-                          "test_profiling", "test_profiling_generated"]:
+                          "test_profiling", "test_profiling_generated", "test_negative"]:
                 source = test_dir / f"{runner}{lang.source_ext}"
                 if not source.exists():
                     continue
@@ -1187,6 +1188,170 @@ class TestRunner:
         
         return all_success
     
+    def run_negative_tests(self) -> bool:
+        """Run negative tests (error handling tests) and display results in a matrix."""
+        self.print_section("NEGATIVE TESTS")
+        
+        # Collect results from all languages
+        test_results = {}  # {lang_id: {test_name: "PASS"/"FAIL"}}
+        all_test_names = set()  # All unique test names across languages
+        
+        all_success = True
+        for lang in self.get_testable_languages():
+            test_name = f"{lang.name} negative tests"
+            success = False
+            stdout = ""
+            stderr = ""
+            
+            if lang.id in ("c", "cpp"):
+                # C/C++: run compiled executable
+                build_dir = self.project_root / lang.build_dir
+                test_exe = build_dir / f"test_negative{lang.exe_ext}"
+                
+                if not test_exe.exists():
+                    continue
+                
+                success, stdout, stderr = self.run_cmd(str(test_exe), timeout=30)
+                
+            elif lang.id == "py":
+                # Python: run test script directly
+                test_script = self.project_root / lang.test_dir / "test_negative.py"
+                
+                if not test_script.exists():
+                    continue
+                
+                success, stdout, stderr = self.run_cmd(f'python "{test_script}"', timeout=30)
+                
+            elif lang.id == "ts":
+                # TypeScript: run compiled test
+                test_script = self.project_root / lang.test_dir / "test_negative.ts"
+                
+                if not test_script.exists():
+                    continue
+                
+                # TypeScript uses npx ts-node or node with compiled JS
+                success, stdout, stderr = self.run_cmd(f'npx ts-node "{test_script}"', 
+                                                       cwd=self.project_root / lang.test_dir, timeout=30)
+                
+            elif lang.id == "js":
+                # JavaScript: run test script directly
+                test_script = self.project_root / lang.test_dir / "test_negative.js"
+                
+                if not test_script.exists():
+                    continue
+                
+                success, stdout, stderr = self.run_cmd(f'node "{test_script}"', timeout=30)
+                
+            elif lang.id == "csharp":
+                # C#: compile and run (handled by test runner executable)
+                build_dir = self.project_root / lang.build_dir
+                # C# test runner handles routing to test_negative
+                test_exe = build_dir / "StructFrameTests.exe"
+                
+                if not test_exe.exists():
+                    test_exe = build_dir / "StructFrameTests.dll"
+                    if not test_exe.exists():
+                        continue
+                    success, stdout, stderr = self.run_cmd(f'dotnet "{test_exe}" --runner test_negative', timeout=30)
+                else:
+                    success, stdout, stderr = self.run_cmd(f'"{test_exe}" --runner test_negative', timeout=30)
+            
+            else:
+                continue
+            
+            # Parse output to extract individual test results
+            lang_tests = {}
+            if stdout:
+                # Parse the test results from the matrix output
+                # Look for lines matching pattern: "Test name ... PASS/FAIL"
+                for line in stdout.split('\n'):
+                    # Match lines with test results (50 chars test name + result)
+                    line = line.strip()
+                    if line and not line.startswith('=') and not line.startswith('Test Name') and 'Summary:' not in line:
+                        # Try to extract test name and result
+                        if 'PASS' in line or 'FAIL' in line:
+                            # Split on multiple spaces or find PASS/FAIL at end
+                            parts = line.rsplit(maxsplit=1)
+                            if len(parts) == 2:
+                                test_nm, result = parts
+                                test_nm = test_nm.strip()
+                                result = result.strip()
+                                if result in ('PASS', 'FAIL') and test_nm:
+                                    lang_tests[test_nm] = result
+                                    all_test_names.add(test_nm)
+            
+            test_results[lang.id] = lang_tests
+            
+            # Record result
+            self.results["negative"][lang.id] = success
+            
+            if not success:
+                all_success = False
+                self.failures.append({
+                    "phase": "Negative Tests",
+                    "language": lang.name,
+                    "profile": "",
+                    "reason": "Error handling tests failed"
+                })
+        
+        # Display cross-tabulation matrix
+        if test_results and all_test_names:
+            print("\nNegative Test Results (tests × languages):\n")
+            
+            # Get sorted language IDs and test names
+            lang_ids = sorted([lang.id for lang in self.get_testable_languages() if lang.id in test_results])
+            test_names = sorted(all_test_names)
+            
+            # Calculate column widths
+            test_name_width = max(len(name) for name in test_names) + 2
+            lang_col_width = 6  # Width for each language column
+            
+            # Print header
+            header = f"{'Test Name':<{test_name_width}}"
+            for lang_id in lang_ids:
+                # Use short language names for columns
+                lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#"}
+                lang_name = lang_display.get(lang_id, lang_id.upper()[:6])
+                header += f" {lang_name:^{lang_col_width}}"
+            print(header)
+            
+            # Print separator
+            separator = "=" * test_name_width
+            for _ in lang_ids:
+                separator += " " + "=" * lang_col_width
+            print(separator)
+            
+            # Print each test row
+            for test_name in test_names:
+                row = f"{test_name:<{test_name_width}}"
+                for lang_id in lang_ids:
+                    result = test_results.get(lang_id, {}).get(test_name, "-")
+                    # Use checkmark/X for pass/fail
+                    if result == "PASS":
+                        result_str = Colors.green("✓")
+                    elif result == "FAIL":
+                        result_str = Colors.red("✗")
+                    else:
+                        result_str = "-"
+                    row += f" {result_str:^{lang_col_width}}"
+                print(row)
+            
+            # Print summary row
+            print()
+            print("=" * (test_name_width + len(lang_ids) * (lang_col_width + 1)))
+            summary_row = f"{'Summary (Pass/Total)':<{test_name_width}}"
+            for lang_id in lang_ids:
+                lang_tests = test_results.get(lang_id, {})
+                total = len(lang_tests)
+                passed = sum(1 for r in lang_tests.values() if r == "PASS")
+                summary_row += f" {passed}/{total:<{lang_col_width-2}}"
+            print(summary_row)
+            print()
+        
+        return all_success
+
+    
+    
     # =========================================================================
     # Summary
     # =========================================================================
@@ -1226,6 +1391,10 @@ class TestRunner:
         var_decode_total = len(self.results["variable_decode"])
         var_decode_passed = sum(1 for v in self.results["variable_decode"].values() if v)
         
+        # Negative tests
+        neg_total = len(self.results.get("negative", {}))
+        neg_passed = sum(1 for v in self.results.get("negative", {}).values() if v)
+        
         # Helper to colorize counts
         def colorize_count(passed: int, total: int) -> str:
             if total == 0:
@@ -1246,15 +1415,18 @@ class TestRunner:
         print(f"  Variable Flag Encode:  {colorize_count(var_encode_passed, var_encode_total)}")
         print(f"  Variable Flag Validate:{colorize_count(var_validate_passed, var_validate_total)}")
         print(f"  Variable Flag Decode:  {colorize_count(var_decode_passed, var_decode_total)}")
+        print(f"  Negative Tests:        {colorize_count(neg_passed, neg_total)}")
         
         total = (gen_total + comp_total + 
                  std_encode_total + std_validate_total + std_decode_total + 
                  ext_encode_total + ext_validate_total + ext_decode_total +
-                 var_encode_total + var_validate_total + var_decode_total)
+                 var_encode_total + var_validate_total + var_decode_total +
+                 neg_total)
         passed = (gen_passed + comp_passed + 
                   std_encode_passed + std_validate_passed + std_decode_passed + 
                   ext_encode_passed + ext_validate_passed + ext_decode_passed +
-                  var_encode_passed + var_validate_passed + var_decode_passed)
+                  var_encode_passed + var_validate_passed + var_decode_passed +
+                  neg_passed)
         
         print(f"\n  Total: {colorize_count(passed, total)} tests passed")
         
@@ -1391,7 +1563,14 @@ class TestRunner:
             with self.timed_phase("Profiling Tests"):
                 self.run_profiling_tests()
             
-            # Phase 9: Standalone tests
+            # Phase 9: Negative tests (error handling)
+            if not profiling_only:
+                with self.timed_phase("Negative Tests"):
+                    self.run_negative_tests()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Negative tests (--profiling)")
+            
+            # Phase 10: Standalone tests
             if not profiling_only:
                 with self.timed_phase("Standalone Tests"):
                     self.run_standalone_tests()

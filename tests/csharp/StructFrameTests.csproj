@@ -22,6 +22,7 @@
     <Compile Include="test_standard.cs" />
     <Compile Include="test_extended.cs" />
     <Compile Include="test_variable_flag.cs" />
+    <Compile Include="TestNegative.cs" />
     
     <!-- Generated struct files (exclude SDK and .sdk.cs files - SDK is generated but not used in tests) -->
     <Compile Include="..\generated\csharp\*.cs" Exclude="..\generated\csharp\*.sdk.cs" Link="Generated\%(Filename)%(Extension)" />
