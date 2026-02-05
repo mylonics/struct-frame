@@ -456,170 +456,159 @@ inline void do_not_optimize_decoded_unpacked() {
                          sizeof(TestMessageUnpacked) * DEFAULT_ITERATIONS);
 }
 
-}  // namespace GenericTests
+// =============================================================================
+// Profiling Test Results Structure
+// =============================================================================
+struct ProfilingResults {
+  bool success;                      // Overall test success
+  double packed_encode_seconds;      // Time for packed encode
+  double unpacked_encode_seconds;    // Time for unpacked encode
+  double packed_decode_seconds;      // Time for packed decode
+  double unpacked_decode_seconds;    // Time for unpacked decode
+  double encode_diff_percent;        // Percentage difference (positive = packed slower)
+  double decode_diff_percent;        // Percentage difference (positive = packed slower)
+  double total_diff_percent;         // Overall percentage difference
+};
 
 // =============================================================================
-// PSEUDO CODE EXAMPLE: Generic/Embedded-Friendly Usage
+// Run Profiling Test
 // =============================================================================
-/*
- * This pseudo code demonstrates how to use the profiling functions in a
- * generic/embedded environment without relying on std::chrono or other
- * standard library timing utilities.
- *
- * Replace the platform-specific timing functions with your target platform's
- * timer implementation (e.g., HAL_GetTick() for STM32, micros() for Arduino,
- * clock_gettime() for POSIX, or custom hardware timer registers).
+/**
+ * Run the complete profiling test with custom timing function.
+ * 
+ * @param get_current_time_seconds Function that returns current time in seconds.
+ *                                  Should be monotonic and have sufficient resolution.
+ * @return ProfilingResults struct with timing measurements and percentage differences.
+ * 
+ * Example usage:
+ *   auto results = GenericTests::run_test([]() { return std::chrono::duration<double>(
+ *       std::chrono::high_resolution_clock::now().time_since_epoch()).count(); });
  */
-
-#if 0  // Pseudo code - not compiled
-
-// Platform-specific timer functions (replace with your actual implementation)
-typedef uint32_t timestamp_t;
-
-// Get current timestamp in platform-specific units (microseconds, ticks, etc.)
-timestamp_t get_timestamp() {
-  // Example implementations:
-  // STM32: return HAL_GetTick() * 1000;  // Convert ms to us
-  // Arduino: return micros();
-  // POSIX: struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); 
-  //        return ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
-  // Bare metal: return TIMER_COUNTER_REGISTER;
-  return 0;  // Placeholder
-}
-
-// Calculate elapsed time between two timestamps
-uint32_t elapsed_time(timestamp_t start, timestamp_t end) {
-  return (end >= start) ? (end - start) : 0;
-}
-
-// Simple output function (replace with your platform's output)
-void output(const char* msg) {
-  // Example implementations:
-  // printf("%s", msg);
-  // Serial.print(msg);  // Arduino
-  // UART_Transmit(msg);  // Bare metal
-}
-
-void output_number(uint32_t num) {
-  // Example implementations:
-  // printf("%u", num);
-  // Serial.print(num);  // Arduino
-  // Convert to string and use UART_Transmit()  // Bare metal
-}
-
-// =============================================================================
-// Main profiling test (embedded-friendly)
-// =============================================================================
-int main() {
+inline ProfilingResults run_test(double (*get_current_time_seconds)()) {
+  ProfilingResults results = {};
+  
   // Initialize all test messages
-  GenericTests::init_all_messages();
+  init_all_messages();
   
   // ---- ENCODE TESTS ----
   
   // Encode packed messages
-  timestamp_t packed_enc_start = get_timestamp();
-  GenericTests::EncodeDecodeResult packed_enc = GenericTests::encode_packed();
-  GenericTests::do_not_optimize_packed_buffer();
-  timestamp_t packed_enc_end = get_timestamp();
+  double packed_enc_start = get_current_time_seconds();
+  EncodeDecodeResult packed_enc = encode_packed();
+  do_not_optimize_packed_buffer();
+  double packed_enc_end = get_current_time_seconds();
+  results.packed_encode_seconds = packed_enc_end - packed_enc_start;
   
   // Encode unpacked messages
-  timestamp_t unpacked_enc_start = get_timestamp();
-  GenericTests::EncodeDecodeResult unpacked_enc = GenericTests::encode_unpacked();
-  GenericTests::do_not_optimize_unpacked_buffer();
-  timestamp_t unpacked_enc_end = get_timestamp();
+  double unpacked_enc_start = get_current_time_seconds();
+  EncodeDecodeResult unpacked_enc = encode_unpacked();
+  do_not_optimize_unpacked_buffer();
+  double unpacked_enc_end = get_current_time_seconds();
+  results.unpacked_encode_seconds = unpacked_enc_end - unpacked_enc_start;
   
   // Check encode success
   if (!packed_enc.success || !unpacked_enc.success) {
-    output("ERROR: Encode failed\n");
-    return 1;
+    results.success = false;
+    return results;
   }
   
   // ---- DECODE TESTS ----
   
   // Decode packed messages
-  timestamp_t packed_dec_start = get_timestamp();
-  GenericTests::EncodeDecodeResult packed_dec = GenericTests::decode_packed();
-  GenericTests::do_not_optimize_decoded_packed();
-  timestamp_t packed_dec_end = get_timestamp();
+  double packed_dec_start = get_current_time_seconds();
+  EncodeDecodeResult packed_dec = decode_packed();
+  do_not_optimize_decoded_packed();
+  double packed_dec_end = get_current_time_seconds();
+  results.packed_decode_seconds = packed_dec_end - packed_dec_start;
   
   // Decode unpacked messages
-  timestamp_t unpacked_dec_start = get_timestamp();
-  GenericTests::EncodeDecodeResult unpacked_dec = GenericTests::decode_unpacked();
-  GenericTests::do_not_optimize_decoded_unpacked();
-  timestamp_t unpacked_dec_end = get_timestamp();
+  double unpacked_dec_start = get_current_time_seconds();
+  EncodeDecodeResult unpacked_dec = decode_unpacked();
+  do_not_optimize_decoded_unpacked();
+  double unpacked_dec_end = get_current_time_seconds();
+  results.unpacked_decode_seconds = unpacked_dec_end - unpacked_dec_start;
   
   // Check decode success
   if (!packed_dec.success || !unpacked_dec.success) {
-    output("ERROR: Decode failed\n");
-    return 1;
+    results.success = false;
+    return results;
   }
   
   // ---- VERIFY RESULTS ----
   
-  bool packed_verified = GenericTests::verify_packed_results();
-  bool unpacked_verified = GenericTests::verify_unpacked_results();
+  bool packed_verified = verify_packed_results();
+  bool unpacked_verified = verify_unpacked_results();
   
   if (!packed_verified || !unpacked_verified) {
-    output("ERROR: Verification failed\n");
-    return 1;
+    results.success = false;
+    return results;
   }
   
-  // ---- CALCULATE TIMING ----
+  // ---- CALCULATE PERCENTAGE DIFFERENCES ----
   
-  uint32_t packed_enc_time = elapsed_time(packed_enc_start, packed_enc_end);
-  uint32_t unpacked_enc_time = elapsed_time(unpacked_enc_start, unpacked_enc_end);
-  uint32_t packed_dec_time = elapsed_time(packed_dec_start, packed_dec_end);
-  uint32_t unpacked_dec_time = elapsed_time(unpacked_dec_start, unpacked_dec_end);
+  // Calculate encode difference (positive = packed slower)
+  results.encode_diff_percent = results.unpacked_encode_seconds > 0
+      ? ((results.packed_encode_seconds - results.unpacked_encode_seconds) / 
+         results.unpacked_encode_seconds) * 100.0
+      : 0.0;
   
-  // ---- OUTPUT RESULTS ----
+  // Calculate decode difference (positive = packed slower)
+  results.decode_diff_percent = results.unpacked_decode_seconds > 0
+      ? ((results.packed_decode_seconds - results.unpacked_decode_seconds) / 
+         results.unpacked_decode_seconds) * 100.0
+      : 0.0;
   
-  output("=== PROFILING RESULTS ===\n");
+  // Calculate total difference
+  double total_packed = results.packed_encode_seconds + results.packed_decode_seconds;
+  double total_unpacked = results.unpacked_encode_seconds + results.unpacked_decode_seconds;
+  results.total_diff_percent = total_unpacked > 0
+      ? ((total_packed - total_unpacked) / total_unpacked) * 100.0
+      : 0.0;
   
-  output("Encode (packed):   ");
-  output_number(packed_enc_time);
-  output(" time units\n");
-  
-  output("Encode (unpacked): ");
-  output_number(unpacked_enc_time);
-  output(" time units\n");
-  
-  output("Decode (packed):   ");
-  output_number(packed_dec_time);
-  output(" time units\n");
-  
-  output("Decode (unpacked): ");
-  output_number(unpacked_dec_time);
-  output(" time units\n");
-  
-  output("\nAll tests PASSED\n");
-  
-  return 0;
+  results.success = true;
+  return results;
 }
 
+}  // namespace GenericTests
+
 // =============================================================================
-// MINIMAL EMBEDDED EXAMPLE (No Timing)
+// USAGE EXAMPLE: Platform-Specific Timing Function
 // =============================================================================
 /*
- * If you only need to verify functionality without performance measurements:
+ * Implement get_current_time_seconds() for your platform and pass it to run_test().
+ * The function should return monotonic time in seconds with sufficient resolution.
+ *
+ * Example implementations:
+ *
+ * // Using std::chrono (C++11):
+ * double get_time_chrono() {
+ *   return std::chrono::duration<double>(
+ *       std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+ * }
+ *
+ * // STM32 HAL:
+ * double get_time_stm32() {
+ *   return HAL_GetTick() / 1000.0;  // Convert ms to seconds
+ * }
+ *
+ * // Arduino:
+ * double get_time_arduino() {
+ *   return micros() / 1000000.0;  // Convert us to seconds
+ * }
+ *
+ * // POSIX:
+ * double get_time_posix() {
+ *   struct timespec ts;
+ *   clock_gettime(CLOCK_MONOTONIC, &ts);
+ *   return ts.tv_sec + ts.tv_nsec / 1000000000.0;
+ * }
+ *
+ * // Usage:
+ * auto results = GenericTests::run_test(get_time_chrono);
+ * if (results.success) {
+ *   printf("Encode: packed=%.3fms, unpacked=%.3fms, diff=%+.1f%%\n",
+ *          results.packed_encode_seconds * 1000,
+ *          results.unpacked_encode_seconds * 1000,
+ *          results.encode_diff_percent);
+ * }
  */
-
-int minimal_test() {
-  // 1. Initialize messages
-  GenericTests::init_all_messages();
-  
-  // 2. Encode
-  GenericTests::EncodeDecodeResult enc = GenericTests::encode_packed();
-  if (!enc.success) return 1;
-  
-  // 3. Decode
-  GenericTests::EncodeDecodeResult dec = GenericTests::decode_packed();
-  if (!dec.success) return 1;
-  
-  // 4. Verify
-  if (!GenericTests::verify_packed_results()) return 1;
-  
-  output("Test PASSED\n");
-  return 0;
-}
-
-#endif  // Pseudo code
