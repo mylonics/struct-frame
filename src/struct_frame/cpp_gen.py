@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 # kate: replace-tabs on; indent-width 4;
+"""
+C++ code generator for struct-frame.
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
+This module generates C++ code for struct serialization with template-based
+Pack/Unpack methods and optional namespace support.
+"""
+
+from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
 import time
 
 StyleC = NamingStyleC()
@@ -24,12 +30,7 @@ cpp_types = {"uint8": "uint8_t",
 class EnumCppGen():
     @staticmethod
     def generate(field, use_namespace=False):
-        leading_comment = field.comments
-
-        result = ''
-        if leading_comment:
-            for c in leading_comment:
-                result += '%s\n' % c
+        result = build_enum_leading_comments(field.comments)
 
         # When using namespaces, don't prefix with package name
         if use_namespace:
@@ -37,28 +38,13 @@ class EnumCppGen():
         else:
             enumName = '%s%s' % (pascalCase(field.package), field.name)
         # Use enum class for C++
-        result += 'enum class %s : uint8_t' % (enumName)
+        result += 'enum class %s : uint8_t {\n' % (enumName)
 
-        result += ' {\n'
-
-        enum_length = len(field.data)
-        enum_values = []
-        for index, (d) in enumerate(field.data):
-            leading_comment = field.data[d][1]
-
-            if leading_comment:
-                for c in leading_comment:
-                    enum_values.append(c)
-
-            comma = ","
-            if index == enum_length - 1:
-                # last enum member should not end with a comma
-                comma = ""
-
-            enum_value = "    %s = %d%s" % (
-                StyleC.enum_entry(d), field.data[d][0], comma)
-
-            enum_values.append(enum_value)
+        enum_values = build_enum_values(
+            field, StyleC,
+            value_format='{indent}{name} = {value}{comma}',
+            skip_trailing_comma=True
+        )
 
         result += '\n'.join(enum_values)
         result += '\n};\n'
@@ -226,56 +212,47 @@ class OneOfCppGen():
 
 class MessageCppGen():
     @staticmethod
+    def _mem_compare_expr(var_name):
+        """Generate memcmp comparison for fixed-size arrays and structs."""
+        return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+    
+    @staticmethod
+    def _variable_array_compare_expr(var_name):
+        """Generate comparison for variable-length arrays with count field.
+        
+        Compares count first, then compares the full data buffer. Using sizeof(data)
+        compares the entire allocated buffer which is safe for equality checking.
+        """
+        return f'({var_name}.count == other.{var_name}.count && std::memcmp({var_name}.data, other.{var_name}.data, sizeof({var_name}.data)) == 0)'
+    
+    @staticmethod
     def _generate_field_comparison(field, use_namespace=False):
         """Generate comparison code for a single field."""
         var_name = field.name
         type_name = field.fieldType
+        has_fixed_size = field.size_option is not None
+        has_max_size = field.max_size is not None
         
-        # Handle arrays
+        # Arrays use memcmp-based comparison
         if field.is_array:
-            if field.fieldType == "string":
-                if field.size_option is not None:
-                    # Fixed string array: compare each string with strncmp
-                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
-                elif field.max_size is not None:
-                    # Variable string array: compare count and data
-                    return f'({var_name}.count == other.{var_name}.count && std::memcmp({var_name}.data, other.{var_name}.data, sizeof({var_name}.data)) == 0)'
-                else:
-                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
-            else:
-                # Non-string arrays
-                if field.size_option is not None:
-                    # Fixed array: compare with memcmp
-                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
-                elif field.max_size is not None:
-                    # Variable array: compare count and data
-                    return f'({var_name}.count == other.{var_name}.count && std::memcmp({var_name}.data, other.{var_name}.data, sizeof({var_name}.data)) == 0)'
-                else:
-                    return f'(std::memcmp({var_name}, other.{var_name}, sizeof({var_name})) == 0)'
+            if has_max_size:
+                return MessageCppGen._variable_array_compare_expr(var_name)
+            return MessageCppGen._mem_compare_expr(var_name)
         
-        # Handle regular strings
-        elif field.fieldType == "string":
-            if field.size_option is not None:
-                # Fixed string: compare with strncmp
+        # String fields need special handling
+        if field.fieldType == "string":
+            if has_fixed_size:
                 return f'(std::strncmp({var_name}, other.{var_name}, {field.size_option}) == 0)'
-            elif field.max_size is not None:
-                # Variable string: compare length and data
+            if has_max_size:
                 return f'({var_name}.length == other.{var_name}.length && std::strncmp({var_name}.data, other.{var_name}.data, {field.max_size}) == 0)'
-            else:
-                return f'(std::strcmp({var_name}, other.{var_name}) == 0)'
+            return f'(std::strcmp({var_name}, other.{var_name}) == 0)'
         
-        # Handle enums - compare with ==
-        elif field.isEnum:
+        # Enums and primitives use direct equality
+        if field.isEnum or type_name in cpp_types:
             return f'({var_name} == other.{var_name})'
         
-        # Handle nested messages (compare as byte memory since they're packed)
-        elif type_name not in cpp_types:
-            # Nested struct - compare with memcmp for packed structs
-            return f'(std::memcmp(&{var_name}, &other.{var_name}, sizeof({var_name})) == 0)'
-        
-        # Handle regular fields (primitives)
-        else:
-            return f'({var_name} == other.{var_name})'
+        # Nested structs use memcmp
+        return f'(std::memcmp(&{var_name}, &other.{var_name}, sizeof({var_name})) == 0)'
     
     @staticmethod
     def _generate_oneof_comparison(oneof):

@@ -7,7 +7,7 @@ This module generates TypeScript code for struct serialization using
 ES6 module syntax (import/export).
 """
 
-from struct_frame import version, NamingStyleC, pascalCase
+from struct_frame import version, NamingStyleC, pascalCase, build_enum_leading_comments, build_enum_values
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -37,35 +37,17 @@ ts_typed_array_methods = common_typed_array_methods
 class EnumTsGen():
     @staticmethod
     def generate(field, packageName):
-        leading_comment = field.comments
-        result = ''
-        if leading_comment:
-            for c in leading_comment:
-                result = '%s\n' % c
+        result = build_enum_leading_comments(field.comments)
 
         # Use PascalCase for both package and enum name (TypeScript convention)
         result += 'export enum %s%s' % (packageName, field.name)
-
         result += ' {\n'
 
-        enum_length = len(field.data)
-        enum_values = []
-        for index, (d) in enumerate(field.data):
-            leading_comment = field.data[d][1]
-
-            if leading_comment:
-                for c in leading_comment:
-                    enum_values.append(c)
-
-            comma = ","
-            if index == enum_length - 1:
-                # last enum member should not end with a comma
-                comma = ""
-
-            enum_value = "    %s = %d%s" % (
-                StyleC.enum_entry(d), field.data[d][0], comma)
-
-            enum_values.append(enum_value)
+        enum_values = build_enum_values(
+            field, StyleC,
+            value_format='{indent}{name} = {value}{comma}',
+            skip_trailing_comma=True
+        )
 
         result += '\n'.join(enum_values)
         result += '\n}'
@@ -341,12 +323,14 @@ class MessageTsClassGen():
         # Generate parameter list for envelope fields (non-oneof fields)
         field_params = []
         for f_name, f in msg.fields.items():
-            ts_type = TS_TYPE_ANNOTATIONS.get(f.fieldType, 'number')
-            if f.is_array or f.fieldType == "string":
-                if f.fieldType == "string":
-                    ts_type = "string"
-                elif f.is_array:
-                    ts_type = f'{TS_TYPE_ANNOTATIONS.get(f.fieldType, "number")}[]'
+            # Lookup type annotation once and reuse
+            base_ts_type = TS_TYPE_ANNOTATIONS.get(f.fieldType, 'number')
+            if f.fieldType == "string":
+                ts_type = "string"
+            elif f.is_array:
+                ts_type = f'{base_ts_type}[]'
+            else:
+                ts_type = base_ts_type
             field_params.append(f'{f.name}?: {ts_type}')
         
         # Build parameter list: payload first, then optional envelope fields

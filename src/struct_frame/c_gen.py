@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 # kate: replace-tabs on; indent-width 4;
+"""
+C code generator for struct-frame.
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase
+This module generates C code for struct serialization with manual Pack/Unpack
+functions for binary compatibility across platforms.
+"""
+
+from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
 import time
 
 StyleC = NamingStyleC()
@@ -24,41 +30,25 @@ c_types = {"uint8": "uint8_t",
 class EnumCGen():
     @staticmethod
     def generate(field):
-        leading_comment = field.comments
-
-        result = ''
-        if leading_comment:
-            for c in leading_comment:
-                result = '%s\n' % c
+        result = build_enum_leading_comments(field.comments)
 
         enumName = '%s%s' % (pascalCase(field.package), field.name)
-        result += 'typedef enum %s' % (enumName)
+        result += 'typedef enum %s {\n' % (enumName)
 
-        result += ' {\n'
+        # C uses ENUM_NAME_VALUE format with prefix
+        enum_prefix = CamelToSnakeCase(field.name).upper()
+        
+        def c_value_generator(name, entry_name, value, comma):
+            return "    %s_%s = %d%s" % (enum_prefix, entry_name, value, comma)
 
-        enum_length = len(field.data)
-        enum_values = []
-        for index, (d) in enumerate(field.data):
-            leading_comment = field.data[d][1]
-
-            if leading_comment:
-                for c in leading_comment:
-                    enum_values.append(c)
-
-            comma = ","
-            if index == enum_length - 1:
-                # last enum member should not end with a comma
-                comma = ""
-
-            enum_value = "    %s_%s = %d%s" % (CamelToSnakeCase(
-                field.name).upper(), StyleC.enum_entry(d), field.data[d][0], comma)
-
-            enum_values.append(enum_value)
+        enum_values = build_enum_values(
+            field, StyleC,
+            skip_trailing_comma=True,
+            value_generator=c_value_generator
+        )
 
         result += '\n'.join(enum_values)
-        result += '\n}'
-
-        result += ' %s;\n' % (enumName)
+        result += '\n} %s;\n' % (enumName)
 
         result += 'typedef uint8_t %s_t;' % (enumName)
 
@@ -67,7 +57,7 @@ class EnumCGen():
         module_prefix = CamelToSnakeCase(field.package).upper()
         for d in field.data:
             # Use the already correct enum constant name
-            enum_constant = f"{CamelToSnakeCase(field.name).upper()}_{StyleC.enum_entry(d)}"
+            enum_constant = f"{enum_prefix}_{StyleC.enum_entry(d)}"
             module_constant = f"{module_prefix}_{enum_constant}"
             result += f'#define {module_constant:<35} {enum_constant}\n'
 
@@ -76,7 +66,7 @@ class EnumCGen():
         result += f'static inline const char* {enumName}_to_string({enumName} value) {{\n'
         result += '    switch (value) {\n'
         for d in field.data:
-            enum_constant = f"{CamelToSnakeCase(field.name).upper()}_{StyleC.enum_entry(d)}"
+            enum_constant = f"{enum_prefix}_{StyleC.enum_entry(d)}"
             result += f'        case {enum_constant}: return "{StyleC.enum_entry(d)}";\n'
         result += '        default: return "UNKNOWN";\n'
         result += '    }\n'
