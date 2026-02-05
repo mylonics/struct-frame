@@ -184,18 +184,29 @@ class FieldCSharpGen():
 
     @staticmethod
     def generate_pack_code(field, base_offset, use_offset_param=False):
-        """Generate code to pack this field into a byte array.
+        """Generate C# code to pack a field into a byte array buffer.
+        
+        Handles serialization of:
+        - Fixed and variable-length strings
+        - Fixed and variable-length arrays of primitives, enums, and nested structs
+        - Primitive types (using BinaryPrimitives for endian-correct encoding)
+        - Nested message types (using their SerializeTo method)
         
         Args:
-            field: The field to pack
-            base_offset: The base offset in the message structure
-            use_offset_param: If True, generates code using 'offset + N' for PackTo method
+            field: The field object containing type, size, and array information
+            base_offset: The byte offset where this field starts in the buffer
+            use_offset_param: If True, generates code using 'offset + N' syntax
+                              for the PackTo() method variant. If False, uses
+                              literal offset values for Serialize() method.
+        
+        Returns:
+            List of C# code lines for serializing this field
         """
         lines = []
         var_name = pascalCase(field.name)
         type_name = field.fieldType
         
-        # Helper to format offset (for PackTo method compatibility)
+        # Local helper to format offset expressions
         def fmt_offset(off):
             if use_offset_param:
                 return f'offset + {off}' if off > 0 else 'offset'

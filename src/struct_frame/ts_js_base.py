@@ -66,6 +66,58 @@ class BaseFieldGen:
     """Base field generator with shared logic for TypeScript and JavaScript."""
 
     @staticmethod
+    def _generate_string_array(field, var_name):
+        """Generate code for string array fields (fixed or variable size)."""
+        if field.size_option is not None:
+            # Fixed size string array
+            return (
+                "    // Fixed string array: %d strings, each exactly %d chars\n"
+                "    .StructArray('%s', %d, new Struct().String('value', %d).compile())"
+            ) % (field.size_option, field.element_size, var_name, field.size_option, field.element_size)
+        else:
+            # Variable size string array
+            count_method = "UInt16LE" if field.max_size > 255 else "UInt8"
+            return (
+                "    // Variable string array: up to %d strings, each max %d chars\n"
+                "    .%s('%s_count')\n"
+                "    .StructArray('%s_data', %d, new Struct().String('value', %d).compile())"
+            ) % (field.max_size, field.element_size, count_method, var_name, var_name, field.max_size, field.element_size)
+
+    @staticmethod
+    def _generate_typed_array(field, var_name, base_type, array_method):
+        """Generate code for typed array fields (fixed or variable size)."""
+        if field.size_option is not None:
+            # Fixed size array
+            comment = '    // Fixed array: always %d elements\n' % field.size_option
+            if array_method == 'StructArray':
+                return comment + "    .%s('%s', %d, %s)" % (array_method, var_name, field.size_option, base_type)
+            return comment + "    .%s('%s', %d)" % (array_method, var_name, field.size_option)
+        else:
+            # Variable size array
+            count_method = "UInt16LE" if field.max_size > 255 else "UInt8"
+            comment = '    // Variable array: up to %d elements\n' % field.max_size
+            count_line = "    .%s('%s_count')\n" % (count_method, var_name)
+            if array_method == 'StructArray':
+                return comment + count_line + "    .%s('%s_data', %d, %s)" % (array_method, var_name, field.max_size, base_type)
+            return comment + count_line + "    .%s('%s_data', %d)" % (array_method, var_name, field.max_size)
+
+    @staticmethod
+    def _resolve_array_type(field, packageName, types_dict, typed_array_methods_dict, isEnum):
+        """Resolve base type and array method for an array field."""
+        type_name = field.fieldType
+        if type_name in types_dict:
+            base_type = types_dict[type_name]
+            array_method = typed_array_methods_dict.get(type_name, 'StructArray')
+        elif isEnum:
+            base_type = 'UInt8'
+            array_method = 'UInt8Array'
+        else:
+            type_package = getattr(field, 'type_package', None) or packageName
+            base_type = '%s_%s' % (type_package, type_name)
+            array_method = 'StructArray'
+        return base_type, array_method
+
+    @staticmethod
     def generate(field, packageName, types_dict, typed_array_methods_dict):
         """
         Generate field definition code.
@@ -87,53 +139,11 @@ class BaseFieldGen:
         # Handle arrays
         if field.is_array:
             if field.fieldType == "string":
-                if field.size_option is not None:  # Fixed size array [size=X]
-                    result += "    // Fixed string array: %d strings, each exactly %d chars\n" % (
-                        field.size_option, field.element_size)
-                    result += "    .StructArray('%s', %d, new Struct().String('value', %d).compile())" % (
-                        var_name, field.size_option, field.element_size)
-                else:  # Variable size array [max_size=X]
-                    count_method = "UInt16LE" if field.max_size > 255 else "UInt8"
-                    result += "    // Variable string array: up to %d strings, each max %d chars\n" % (
-                        field.max_size, field.element_size)
-                    result += "    .%s('%s_count')\n" % (count_method, var_name)
-                    result += "    .StructArray('%s_data', %d, new Struct().String('value', %d).compile())" % (
-                        var_name, field.max_size, field.element_size)
+                result = BaseFieldGen._generate_string_array(field, var_name)
             else:
-                # Regular type arrays
-                if type_name in types_dict:
-                    base_type = types_dict[type_name]
-                    array_method = typed_array_methods_dict.get(
-                        type_name, 'StructArray')
-                elif isEnum:
-                    base_type = 'UInt8'
-                    array_method = 'UInt8Array'
-                else:
-                    # Use field.type_package to get the package where the field's type is defined
-                    type_package = getattr(field, 'type_package', None) or packageName
-                    base_type = '%s_%s' % (type_package, type_name)
-                    array_method = 'StructArray'
-
-                if field.size_option is not None:  # Fixed size array [size=X]
-                    array_size = field.size_option
-                    result += '    // Fixed array: always %d elements\n' % array_size
-                    if array_method == 'StructArray':
-                        result += "    .%s('%s', %d, %s)" % (
-                            array_method, var_name, array_size, base_type)
-                    else:
-                        result += "    .%s('%s', %d)" % (
-                            array_method, var_name, array_size)
-                else:  # Variable size array [max_size=X]
-                    max_count = field.max_size
-                    count_method = "UInt16LE" if field.max_size > 255 else "UInt8"
-                    result += '    // Variable array: up to %d elements\n' % max_count
-                    result += "    .%s('%s_count')\n" % (count_method, var_name)
-                    if array_method == 'StructArray':
-                        result += "    .%s('%s_data', %d, %s)" % (
-                            array_method, var_name, max_count, base_type)
-                    else:
-                        result += "    .%s('%s_data', %d)" % (
-                            array_method, var_name, max_count)
+                base_type, array_method = BaseFieldGen._resolve_array_type(
+                    field, packageName, types_dict, typed_array_methods_dict, isEnum)
+                result = BaseFieldGen._generate_typed_array(field, var_name, base_type, array_method)
         else:
             # Non-array fields
             if field.fieldType == "string":

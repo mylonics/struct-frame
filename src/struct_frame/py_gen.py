@@ -226,7 +226,20 @@ class MessagePyGen():
     
     @staticmethod
     def generate_pack_method(msg):
-        """Generate the serialize() method"""
+        """Generate the serialize() method for a message.
+        
+        Generates code to serialize all fields into a bytes object using struct.pack().
+        Handles:
+        - Fixed and variable-length strings
+        - Fixed and variable-length arrays of primitives, enums, and nested messages
+        - Oneof (union) fields with discriminators
+        
+        Args:
+            msg: Message object containing fields and oneofs to serialize
+        
+        Returns:
+            String containing the Python serialize() method implementation
+        """
         result = '\n    def serialize(self) -> bytes:\n'
         if msg.variable:
             result += '        """Serialize the message into binary format (variable-length encoding by default)\n'

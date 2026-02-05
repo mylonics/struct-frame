@@ -128,7 +128,8 @@ class BaseSocketTransport(BaseTransport):
     Base class for socket-based transports (TCP, UDP).
     
     Consolidates common socket functionality like receive thread management,
-    connection state, and error handling.
+    connection state, and error handling. Pre-allocates a receive buffer to
+    avoid repeated memory allocation in the receive loop.
     """
 
     def __init__(self, config: SocketTransportConfig):
@@ -137,6 +138,9 @@ class BaseSocketTransport(BaseTransport):
         self.socket: Optional[socket.socket] = None
         self.receive_thread: Optional[threading.Thread] = None
         self.running = False
+        # Pre-allocate receive buffer to avoid repeated allocation in receive loop
+        self._recv_buffer = bytearray(config.buffer_size)
+        self._recv_view = memoryview(self._recv_buffer)
 
     def _start_receive_thread(self) -> None:
         """Start the receive loop thread"""

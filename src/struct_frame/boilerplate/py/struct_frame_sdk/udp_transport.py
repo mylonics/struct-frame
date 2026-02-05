@@ -49,11 +49,18 @@ class UdpTransport(BaseSocketTransport):
             raise
 
     def _receive_loop(self) -> None:
-        """Receive loop running in separate thread"""
+        """Receive loop running in separate thread using pre-allocated buffer.
+        
+        Uses recvfrom_into to receive directly into the pre-allocated buffer,
+        reducing socket-layer allocations. The bytes copy to pass to handler
+        is necessary to maintain API compatibility with bytes-expecting callbacks.
+        """
         while self.running and self.socket:
             try:
-                data, addr = self.socket.recvfrom(self.socket_config.buffer_size)
-                self._handle_data(data)
+                # Use recvfrom_into with pre-allocated buffer to reduce socket-layer allocation
+                nbytes, addr = self.socket.recvfrom_into(self._recv_view)
+                # Copy received bytes for handler (maintains bytes-based callback API)
+                self._handle_data(bytes(self._recv_buffer[:nbytes]))
             except Exception as e:
                 if self.running:  # Only handle error if still running
                     self._handle_error(e)

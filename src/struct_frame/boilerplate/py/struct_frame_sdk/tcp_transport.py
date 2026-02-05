@@ -54,15 +54,22 @@ class TcpTransport(BaseSocketTransport):
             raise
 
     def _receive_loop(self) -> None:
-        """Receive loop running in separate thread"""
+        """Receive loop running in separate thread using pre-allocated buffer.
+        
+        Uses recv_into to receive directly into the pre-allocated buffer,
+        reducing socket-layer allocations. The bytes copy to pass to handler
+        is necessary to maintain API compatibility with bytes-expecting callbacks.
+        """
         while self.running and self.socket:
             try:
-                data = self.socket.recv(self.socket_config.buffer_size)
-                if not data:
+                # Use recv_into with pre-allocated buffer to avoid socket-layer allocation
+                nbytes = self.socket.recv_into(self._recv_view)
+                if nbytes == 0:
                     # Connection closed
                     self._handle_close()
                     break
-                self._handle_data(data)
+                # Copy received bytes for handler (maintains bytes-based callback API)
+                self._handle_data(bytes(self._recv_buffer[:nbytes]))
             except socket.timeout:
                 continue
             except Exception as e:
