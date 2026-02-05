@@ -44,27 +44,48 @@ csharp_type_sizes = {
 }
 
 
+def format_xml_summary(comments, indent='    '):
+    """
+    Format multi-line comments into a single XML summary block.
+    
+    Args:
+        comments: List of comment strings
+        indent: Indentation string (default: '    ')
+    
+    Returns:
+        Formatted XML summary string with all comments in a single block
+    """
+    if not comments:
+        return ''
+    
+    result = f'{indent}/// <summary>\n'
+    for comment in comments:
+        # Strip leading/trailing slashes and whitespace
+        clean_comment = comment.strip('/').strip()
+        result += f'{indent}/// {clean_comment}\n'
+    result += f'{indent}/// </summary>\n'
+    return result
+
+
 class EnumCSharpGen():
     @staticmethod
     def generate(field):
         # C# uses XML doc comments with different formatting
         result = ''
         if field.comments:
-            for c in field.comments:
-                result += '    /// <summary>\n'
-                result += '    /// %s\n' % c.strip('/')
-                result += '    /// </summary>\n'
+            result += format_xml_summary(field.comments, indent='    ')
 
         enumName = '%s%s' % (pascalCase(field.package), field.name)
         result += '    public enum %s : byte\n' % enumName
         result += '    {\n'
 
         def csharp_comment_formatter(comments):
-            lines = []
+            if not comments:
+                return []
+            lines = ['        /// <summary>']
             for c in comments:
-                lines.append('        /// <summary>')
-                lines.append('        /// %s' % c.strip('/'))
-                lines.append('        /// </summary>')
+                lines.append('        /// %s' % c.strip('/').strip())
+            lines.append('        /// </summary>')
             return lines
 
         enum_values = build_enum_values(
@@ -118,10 +139,7 @@ class FieldCSharpGen():
         # Add leading comments
         leading_comment = field.comments
         if leading_comment:
-            for c in leading_comment:
-                result += '        /// <summary>\n'
-                result += '        /// %s\n' % c.strip('/')
-                result += '        /// </summary>\n'
+            result += format_xml_summary(leading_comment, indent='        ')
 
         # Handle basic type resolution
         if type_name in csharp_types:
@@ -446,10 +464,7 @@ class MessageCSharpGen():
 
         result = ''
         if leading_comment:
-            for c in msg.comments:
-                result += '    /// <summary>\n'
-                result += '    /// %s\n' % c.strip('/')
-                result += '    /// </summary>\n'
+            result += format_xml_summary(leading_comment, indent='    ')
 
         structName = '%s%s' % (pascalCase(msg.package), msg.name)
 
