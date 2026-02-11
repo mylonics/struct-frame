@@ -281,7 +281,7 @@ class MessageCGen():
         return ' && '.join(comparisons)
     
     @staticmethod
-    def generate(msg, package=None, equality=False):
+    def generate(msg, package=None, equality=False, no_packed=False):
         leading_comment = msg.comments
 
         result = ''
@@ -340,13 +340,18 @@ class MessageCGen():
             result += f'#define {defineName}_MAGIC1 {msg.magic_bytes[0]} /* Checksum magic (based on field types and positions) */\n'
             result += f'#define {defineName}_MAGIC2 {msg.magic_bytes[1]} /* Checksum magic (based on field types and positions) */\n'
 
+        # Generate no-packed serialize/deserialize for non-variable messages
+        # (must be before unified unpack which delegates to these)
+        if no_packed and not msg.variable and msg.fields:
+            result += MessageCGen._generate_no_packed_functions(msg, structName, defineName)
+
         # Generate variable message functions
         if msg.variable:
             result += MessageCGen._generate_variable_functions(msg, structName, defineName)
         
         # Generate unified unpack() for messages with MSG_ID (both variable and non-variable)
         if msg.id:
-            result += MessageCGen._generate_unified_unpack(msg, structName, defineName)
+            result += MessageCGen._generate_unified_unpack(msg, structName, defineName, no_packed=no_packed)
 
         # Generate equality function if requested
         if equality:
@@ -582,40 +587,109 @@ class MessageCGen():
         return result
 
     @staticmethod
-    def _generate_unified_unpack(msg, structName, defineName):
+    def _generate_unified_unpack(msg, structName, defineName, no_packed=False):
         """Generate unified deserialize() and serialize() functions for non-variable messages with MSG_ID."""
         result = ''
         
         # For variable messages, deserialize() was already generated inline in _generate_variable_functions
         # This method handles non-variable messages
         if not msg.variable:
-            result += f'\n/**\n'
-            result += f' * Deserialize function for {structName}.\n'
-            result += f' * For fixed-size messages: uses memcpy with size validation\n'
-            result += f' * @param buffer Input buffer\n'
-            result += f' * @param buffer_size Size of the input buffer\n'
-            result += f' * @param msg Pointer to the message to deserialize into\n'
-            result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
-            result += f' */\n'
-            result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
-            result += f'    /* Fixed-size message - use direct copy */\n'
-            result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
-            result += f'    memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
-            result += f'    return {defineName}_MAX_SIZE;\n'
-            result += f'}}\n'
-            
-            # Also add serialize() for non-variable messages
-            result += f'\n/**\n'
-            result += f' * Serialize function for {structName}.\n'
-            result += f' * For fixed-size messages: uses memcpy\n'
-            result += f' * @param msg Pointer to the message to serialize\n'
-            result += f' * @param buffer Output buffer (must be at least {defineName}_MAX_SIZE bytes)\n'
-            result += f' * @return The number of bytes written\n'
-            result += f' */\n'
-            result += f'static inline size_t {structName}_serialize(const {structName}* msg, uint8_t* buffer) {{\n'
-            result += f'    memcpy(buffer, msg, {defineName}_MAX_SIZE);\n'
-            result += f'    return {defineName}_MAX_SIZE;\n'
-            result += f'}}\n'
+            if no_packed and msg.fields:
+                # In no_packed mode, delegate to field-by-field functions
+                result += f'\n/**\n'
+                result += f' * Deserialize function for {structName}.\n'
+                result += f' * Uses field-by-field deserialization (no packed structs).\n'
+                result += f' * @param buffer Input buffer\n'
+                result += f' * @param buffer_size Size of the input buffer\n'
+                result += f' * @param msg Pointer to the message to deserialize into\n'
+                result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
+                result += f' */\n'
+                result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+                result += f'    return {structName}_deserialize_no_packed(buffer, buffer_size, msg);\n'
+                result += f'}}\n'
+                
+                result += f'\n/**\n'
+                result += f' * Serialize function for {structName}.\n'
+                result += f' * Uses field-by-field serialization (no packed structs).\n'
+                result += f' * @param msg Pointer to the message to serialize\n'
+                result += f' * @param buffer Output buffer (must be at least {defineName}_MAX_SIZE bytes)\n'
+                result += f' * @return The number of bytes written\n'
+                result += f' */\n'
+                result += f'static inline size_t {structName}_serialize(const {structName}* msg, uint8_t* buffer) {{\n'
+                result += f'    return {structName}_serialize_no_packed(msg, buffer);\n'
+                result += f'}}\n'
+            else:
+                result += f'\n/**\n'
+                result += f' * Deserialize function for {structName}.\n'
+                result += f' * For fixed-size messages: uses memcpy with size validation\n'
+                result += f' * @param buffer Input buffer\n'
+                result += f' * @param buffer_size Size of the input buffer\n'
+                result += f' * @param msg Pointer to the message to deserialize into\n'
+                result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
+                result += f' */\n'
+                result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+                result += f'    /* Fixed-size message - use direct copy */\n'
+                result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
+                result += f'    memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
+                result += f'    return {defineName}_MAX_SIZE;\n'
+                result += f'}}\n'
+                
+                # Also add serialize() for non-variable messages
+                result += f'\n/**\n'
+                result += f' * Serialize function for {structName}.\n'
+                result += f' * For fixed-size messages: uses memcpy\n'
+                result += f' * @param msg Pointer to the message to serialize\n'
+                result += f' * @param buffer Output buffer (must be at least {defineName}_MAX_SIZE bytes)\n'
+                result += f' * @return The number of bytes written\n'
+                result += f' */\n'
+                result += f'static inline size_t {structName}_serialize(const {structName}* msg, uint8_t* buffer) {{\n'
+                result += f'    memcpy(buffer, msg, {defineName}_MAX_SIZE);\n'
+                result += f'    return {defineName}_MAX_SIZE;\n'
+                result += f'}}\n'
+        
+        return result
+
+    @staticmethod
+    def _generate_no_packed_functions(msg, structName, defineName):
+        """Generate field-by-field serialize/deserialize for non-variable messages when packed structs are disabled."""
+        result = ''
+        
+        # Serialize: write each field individually into the buffer
+        result += f'\n/**\n'
+        result += f' * Serialize {structName} field-by-field (no packed struct dependency).\n'
+        result += f' * @param msg Pointer to the message to serialize\n'
+        result += f' * @param buffer Output buffer (must be at least {defineName}_MAX_SIZE bytes)\n'
+        result += f' * @return Number of bytes written ({defineName}_MAX_SIZE)\n'
+        result += f' */\n'
+        result += f'static inline size_t {structName}_serialize_no_packed(const {structName}* msg, uint8_t* buffer) {{\n'
+        result += f'    size_t pos = 0;\n'
+        
+        for key, field in msg.fields.items():
+            result += f'    memcpy(buffer + pos, &msg->{field.name}, {field.size});\n'
+            result += f'    pos += {field.size};\n'
+        
+        result += f'    return pos;\n'
+        result += f'}}\n'
+        
+        # Deserialize: read each field individually from the buffer
+        result += f'\n/**\n'
+        result += f' * Deserialize {structName} field-by-field (no packed struct dependency).\n'
+        result += f' * @param buffer Input buffer\n'
+        result += f' * @param buffer_size Size of the input buffer\n'
+        result += f' * @param msg Pointer to the message to deserialize into\n'
+        result += f' * @return Number of bytes consumed, or 0 if buffer too small\n'
+        result += f' */\n'
+        result += f'static inline size_t {structName}_deserialize_no_packed(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
+        result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
+        result += f'    size_t pos = 0;\n'
+        result += f'    memset(msg, 0, sizeof(*msg));\n'
+        
+        for key, field in msg.fields.items():
+            result += f'    memcpy(&msg->{field.name}, buffer + pos, {field.size});\n'
+            result += f'    pos += {field.size};\n'
+        
+        result += f'    return pos;\n'
+        result += f'}}\n'
         
         return result
 
@@ -632,19 +706,20 @@ class MessageCGen():
 
 class FileCGen():
     @staticmethod
-    def generate(package, equality=False):
+    def generate(package, equality=False, no_packed=False):
         yield '/* Automatically generated struct frame header */\n'
         yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
 
         yield '#pragma once\n'
-        yield '#pragma pack(1)\n'
+        if not no_packed:
+            yield '#pragma pack(1)\n'
         yield '#include <stdbool.h>\n'
         yield '#include <stdint.h>\n'
         yield '#include "frame_base.h"  // For message_info_t\n'
         yield '#include <stddef.h>\n'
         
-        # Include string.h for equality comparisons
-        if equality:
+        # Include string.h for equality comparisons or no_packed mode (needs memcpy/memset)
+        if equality or no_packed:
             yield '#include <string.h>\n'
         
         yield '\n'
@@ -679,7 +754,7 @@ class FileCGen():
             # Need to sort messages to make sure dependecies are properly met
 
             for key, msg in package.sortedMessages().items():
-                yield MessageCGen.generate(msg, package, equality) + '\n'
+                yield MessageCGen.generate(msg, package, equality, no_packed=no_packed) + '\n'
             yield '\n'
 
         # Add default initializers if needed

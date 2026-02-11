@@ -72,6 +72,22 @@ python -m struct_frame messages.proto \
   --build_c --build_cpp --build_ts --build_py --build_js --build_csharp --build_gql
 ```
 
+### Without Packed Structs (C/C++)
+
+By default, generated C and C++ code uses `#pragma pack(1)` for struct definitions, allowing direct memory-mapped serialization via `memcpy`. Use `--no_packed` to disable this and generate field-by-field serialize/deserialize functions instead:
+
+```bash
+python -m struct_frame messages.proto --build_c --build_cpp --no_packed
+```
+
+This is useful when:
+
+- Your platform or compiler does not support packed structs
+- You want to avoid unaligned memory access penalties
+- You need portable code that does not rely on compiler-specific packing behavior
+
+When `--no_packed` is used, all non-variable messages get the same field-by-field serialization approach that variable messages already use. The wire format remains identical, so no_packed and packed code can interoperate.
+
 ## Generated Files
 
 Each language generates:

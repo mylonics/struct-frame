@@ -179,6 +179,7 @@ def compute_generation_hash(args, packages_dict):
         'sdk': args.sdk,
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
+        'no_packed': args.no_packed,
         'generate_csproj': args.generate_csproj,
         'csharp_namespace': args.csharp_namespace[0],
         'target_framework': args.target_framework[0],
@@ -1066,6 +1067,8 @@ parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
                     help='Path to store the generation hash file (default: first output path)')
 parser.add_argument('--generate_tests', action='store_true',
                     help='Generate test code with dummy values for all messages (round-trip encode/decode verification)')
+parser.add_argument('--no_packed', action='store_true',
+                    help='Generate code without packed structs. Uses field-by-field serialize/deserialize for all messages instead of memcpy (C/C++ only)')
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -1298,11 +1301,11 @@ def printPackages():
         print(value)
 
 
-def generateCFileStrings(path, equality=False):
+def generateCFileStrings(path, equality=False, no_packed=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.h")
-        data = ''.join(FileCGen.generate(value, equality=equality))
+        data = ''.join(FileCGen.generate(value, equality=equality, no_packed=no_packed))
         out[name] = data
 
     return out
@@ -1355,11 +1358,11 @@ def generatePyFileStrings(path, equality=False, generate_tests=False):
     return out
 
 
-def generateCppFileStrings(path, equality=False, generate_tests=False):
+def generateCppFileStrings(path, equality=False, generate_tests=False, no_packed=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.hpp")
-        data = ''.join(FileCppGen.generate(value, equality=equality))
+        data = ''.join(FileCppGen.generate(value, equality=equality, no_packed=no_packed))
         out[name] = data
         
         # Generate test file if requested
@@ -1486,7 +1489,7 @@ def main():
     # Normal mode: generate files
     files = {}
     if (args.build_c):
-        files.update(generateCFileStrings(args.c_path[0], equality=args.equality))
+        files.update(generateCFileStrings(args.c_path[0], equality=args.equality, no_packed=args.no_packed))
 
     if (args.build_ts):
         files.update(generateTsFileStrings(args.ts_path[0], equality=args.equality))
@@ -1498,7 +1501,7 @@ def main():
         files.update(generatePyFileStrings(args.py_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_cpp):
-        files.update(generateCppFileStrings(args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        files.update(generateCppFileStrings(args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests, no_packed=args.no_packed))
 
     if (args.build_csharp):
         files.update(generateCSharpFileStrings(args.csharp_path[0], 

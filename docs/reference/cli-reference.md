@@ -37,6 +37,16 @@ python -m struct_frame [proto_file] [options]
 | `--sdk` | Include full SDK with network transports (C++, Python, TypeScript) |
 | `--sdk_embedded` | Include embedded SDK without external dependencies (C++ only) |
 
+## Additional Options
+
+| Flag | Description |
+|------|-------------|
+| `--equality` | Generate equality comparison operators/methods for messages |
+| `--no_packed` | Generate C/C++ code without packed structs. Uses field-by-field serialize/deserialize for all messages instead of relying on struct memory layout |
+| `--force` | Force regeneration even if no changes are detected |
+| `--validate` | Validate the proto file without generating any output files |
+| `--generate_tests` | Generate test code with dummy values for round-trip verification (C++, Python) |
+
 ## Examples
 
 Generate C code:
@@ -57,6 +67,11 @@ python -m struct_frame messages.proto --build_c --c_path src/generated/
 Generate with SDK:
 ```bash
 python -m struct_frame messages.proto --build_cpp --sdk
+```
+
+Generate without packed structs (for platforms where struct packing is problematic):
+```bash
+python -m struct_frame messages.proto --build_c --build_cpp --no_packed
 ```
 
 ## Generated Files
