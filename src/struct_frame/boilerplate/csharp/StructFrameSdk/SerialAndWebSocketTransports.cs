@@ -125,7 +125,9 @@ namespace StructFrame.Sdk
                     Parity = _serialConfig.Parity,
                     StopBits = _serialConfig.StopBits,
                     // Set read timeout to allow cancellation checks
-                    ReadTimeout = 100
+                    ReadTimeout = 100,
+                    // Set write timeout to prevent indefinite blocking
+                    WriteTimeout = 500
                 };
 
                 _serialPort.Open();
@@ -188,9 +190,12 @@ namespace StructFrame.Sdk
 
             try
             {
-                // Use BaseStream for async write
-                await _serialPort.BaseStream.WriteAsync(data, 0, data.Length).ConfigureAwait(false);
-                await _serialPort.BaseStream.FlushAsync().ConfigureAwait(false);
+                // Use synchronous Write in Task.Run — BaseStream.WriteAsync is known to
+                // stall on Windows due to unreliable overlapped I/O completion on serial ports.
+                await Task.Run(() =>
+                {
+                    _serialPort.Write(data, 0, data.Length);
+                }).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -203,39 +208,52 @@ namespace StructFrame.Sdk
         {
             byte[] buffer = new byte[4096];
 
-            while (!cancellationToken.IsCancellationRequested && _serialPort != null && _serialPort.IsOpen)
+            // Use synchronous Read on a dedicated thread — BaseStream.ReadAsync
+            // uses overlapped I/O that can stall or ignore cancellation on Windows
+            // serial ports. LongRunning creates a dedicated thread (not a thread-pool
+            // thread) since this loop runs for the entire connection lifetime.
+            // The ReadTimeout (100 ms) causes Read to throw TimeoutException
+            // periodically, giving us a natural cancellation check.
+            await Task.Factory.StartNew(() =>
             {
-                try
+                while (!cancellationToken.IsCancellationRequested && _serialPort != null && _serialPort.IsOpen)
                 {
-                    // Use BaseStream.ReadAsync for reliable async reading
-                    int bytesRead = await _serialPort.BaseStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        int bytesRead = _serialPort.Read(buffer, 0, buffer.Length);
 
-                    if (bytesRead > 0)
+                        if (bytesRead > 0)
+                        {
+                            byte[] data = new byte[bytesRead];
+                            Array.Copy(buffer, data, bytesRead);
+                            OnDataReceived(data);
+                        }
+                    }
+                    catch (TimeoutException)
                     {
-                        byte[] data = new byte[bytesRead];
-                        Array.Copy(buffer, data, bytesRead);
-                        OnDataReceived(data);
+                        // ReadTimeout expired — loop back to check cancellation
+                        continue;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Expected during disconnect
+                        break;
+                    }
+                    catch (System.IO.IOException)
+                    {
+                        // Port closed or disconnected
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_connected)
+                        {
+                            OnErrorOccurred(ex);
+                        }
+                        break;
                     }
                 }
-                catch (OperationCanceledException)
-                {
-                    // Expected during disconnect
-                    break;
-                }
-                catch (System.IO.IOException ex) when (ex.InnerException is OperationCanceledException)
-                {
-                    // Also expected during disconnect on some platforms
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    if (_connected)
-                    {
-                        OnErrorOccurred(ex);
-                    }
-                    break;
-                }
-            }
+            }, cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
         }
     }
 
