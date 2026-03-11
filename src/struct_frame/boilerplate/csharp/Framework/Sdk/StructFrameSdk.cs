@@ -194,10 +194,15 @@ namespace StructFrame.Sdk
         /// <summary>
         /// Connect to the transport. When strict ordering is enabled,
         /// starts the background send queue consumer.
+        /// If the transport is already connected, skips the transport connect
+        /// and only starts the send queue.
         /// </summary>
         public async Task ConnectAsync()
         {
-            await _transport.ConnectAsync();
+            if (!_transport.IsConnected)
+            {
+                await _transport.ConnectAsync();
+            }
             if (_strictOrdering) StartSendQueue();
             Log("Connected");
         }
