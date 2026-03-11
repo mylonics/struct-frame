@@ -114,7 +114,7 @@ namespace StructFrame.Sdk
         private readonly AccumulatingReader _reader;
         private readonly bool _debug;
         private readonly Dictionary<ushort, List<IMessageHandler>> _messageHandlers;
-        private readonly byte[] _writeBuffer;
+        private readonly int _bufferSize;
 
         /// <summary>
         /// Event fired when an unhandled message is received
@@ -131,7 +131,7 @@ namespace StructFrame.Sdk
             // Create encoder and reader using FrameProfiles infrastructure
             _encoder = new FrameEncoder(_profile);
             _reader = new AccumulatingReader(_profile, config.BufferSize, config.GetMessageInfo);
-            _writeBuffer = new byte[config.BufferSize];
+            _bufferSize = config.BufferSize;
 
             // Set up transport callbacks
             _transport.DataReceived += (sender, data) => HandleIncomingData(data);
@@ -186,18 +186,30 @@ namespace StructFrame.Sdk
         }
 
         /// <summary>
-        /// Send a message object
+        /// Send a framed message through the transport.
+        /// Thread-safe: concurrent calls are serialized at the transport level
+        /// to prevent data corruption on the wire.
+        /// <para>
+        /// Message ordering is NOT guaranteed when multiple callers invoke
+        /// SendAsync concurrently. If message order matters, await each call
+        /// sequentially:
+        /// <code>
+        /// await sdk.SendAsync(msg1);  // sent first
+        /// await sdk.SendAsync(msg2);  // guaranteed after msg1
+        /// </code>
+        /// </para>
         /// </summary>
         public async Task SendAsync<T>(T message, byte seq = 0, byte sysId = 0, byte compId = 0) where T : IStructFrameMessage<T>
         {
-            int bytesWritten = _encoder.Encode(_writeBuffer, 0, message, seq, sysId, compId);
+            byte[] buffer = new byte[_profile.MaxPayload + _profile.Overhead];
+            int bytesWritten = _encoder.Encode(buffer, 0, message, seq, sysId, compId);
             if (bytesWritten == 0)
             {
                 throw new InvalidOperationException("Failed to encode message - buffer too small or payload exceeds max size");
             }
 
             byte[] framedData = new byte[bytesWritten];
-            Buffer.BlockCopy(_writeBuffer, 0, framedData, 0, bytesWritten);
+            Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
             await _transport.SendAsync(framedData);
             Log($"Sent message ID {message.GetMsgId()}, {bytesWritten} bytes total");
         }

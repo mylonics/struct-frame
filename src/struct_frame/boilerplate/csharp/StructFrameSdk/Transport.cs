@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace StructFrame.Sdk
@@ -34,12 +35,17 @@ namespace StructFrame.Sdk
         Task DisconnectAsync();
 
         /// <summary>
-        /// Send data through the transport
+        /// Send data through the transport.
+        /// Thread-safe: concurrent calls are serialized to prevent data corruption.
+        /// Note: message ordering is NOT guaranteed when multiple callers invoke
+        /// SendAsync concurrently. If message order matters, the caller must
+        /// await each SendAsync call sequentially.
         /// </summary>
         Task SendAsync(byte[] data);
 
         /// <summary>
-        /// Send data through the transport (memory-efficient overload)
+        /// Send data through the transport (memory-efficient overload).
+        /// See <see cref="SendAsync(byte[])"/> for thread-safety and ordering notes.
         /// </summary>
         Task SendAsync(ReadOnlyMemory<byte> data);
 
@@ -72,6 +78,7 @@ namespace StructFrame.Sdk
         protected bool _connected;
         protected TransportConfig _config;
         protected int _reconnectAttempts;
+        private readonly SemaphoreSlim _sendSemaphore = new SemaphoreSlim(1, 1);
 
         public event EventHandler<byte[]>? DataReceived;
         public event EventHandler<Exception>? ErrorOccurred;
@@ -86,16 +93,58 @@ namespace StructFrame.Sdk
 
         public abstract Task ConnectAsync();
         public abstract Task DisconnectAsync();
-        public abstract Task SendAsync(byte[] data);
-        
+
+        /// <summary>
+        /// Send data through the transport.
+        /// Serialized with a SemaphoreSlim to prevent concurrent writes
+        /// from corrupting the underlying stream.
+        /// <para>
+        /// Thread-safe: multiple callers may invoke SendAsync concurrently;
+        /// each write completes atomically (no interleaving). However, the
+        /// order in which queued writes execute is not guaranteed. If message
+        /// order matters, callers must await each SendAsync sequentially:
+        /// <code>
+        /// await transport.SendAsync(msg1);  // completes first
+        /// await transport.SendAsync(msg2);  // guaranteed after msg1
+        /// </code>
+        /// </para>
+        /// </summary>
+        public async Task SendAsync(byte[] data)
+        {
+            await _sendSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await SendCoreAsync(data).ConfigureAwait(false);
+            }
+            finally
+            {
+                _sendSemaphore.Release();
+            }
+        }
+
         /// <summary>
         /// Send data through the transport (memory-efficient overload).
-        /// Default implementation converts to array - subclasses should override for zero-copy.
+        /// Serialized with a SemaphoreSlim to prevent concurrent writes.
+        /// Default implementation converts to array - subclasses should override SendCoreAsync for zero-copy.
         /// </summary>
-        public virtual Task SendAsync(ReadOnlyMemory<byte> data)
+        public async Task SendAsync(ReadOnlyMemory<byte> data)
         {
-            return SendAsync(data.ToArray());
+            await _sendSemaphore.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await SendCoreAsync(data.ToArray()).ConfigureAwait(false);
+            }
+            finally
+            {
+                _sendSemaphore.Release();
+            }
         }
+
+        /// <summary>
+        /// Implement the actual send logic in subclasses.
+        /// Called under the send semaphore — only one call executes at a time.
+        /// </summary>
+        protected abstract Task SendCoreAsync(byte[] data);
 
         protected void OnDataReceived(byte[] data)
         {
