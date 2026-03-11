@@ -181,6 +181,7 @@ def compute_generation_hash(args, packages_dict):
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
         'csharp_namespace': args.csharp_namespace[0],
+        'csharp_sdk': args.csharp_sdk,
         'target_framework': args.target_framework[0],
     }
     hasher.update(f"cli:{json.dumps(cli_params, sort_keys=True)}\n".encode('utf-8'))
@@ -1056,6 +1057,8 @@ parser.add_argument('--equality', action='store_true',
                     help='Generate equality comparison operators/methods for messages')
 parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame'],
                     help='Root namespace for generated C# code (default: StructFrame)')
+parser.add_argument('--csharp_sdk', action='store_true',
+                    help='Include C# SDK transports (Serial, TCP, UDP, WebSocket)')
 parser.add_argument('--target_framework', nargs=1, type=str, default=['net8.0'],
                     help='Target framework for generated .csproj file (default: net8.0)')
 parser.add_argument('--force', action='store_true',
@@ -1368,7 +1371,7 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
     return out
 
 
-def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False, namespace='StructFrame.Generated', target_framework='net8.0'):
+def generateCSharpFileStrings(path, include_transports=False, equality=False, namespace='StructFrame.Generated', target_framework='net8.0'):
     out = {}
     for key, value in packages.items():
         # Generate per-file output into a package subfolder
@@ -1377,22 +1380,21 @@ def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False,
         for filename, content in per_file.items():
             out[os.path.join(pkg_folder, filename)] = content
         
-        # Generate SDK interface if requested (inside package folder)
-        if include_sdk_interface:
-            from struct_frame.csharp_sdk_interface_gen import generate_csharp_sdk_interface
-            sdk_name = os.path.join(pkg_folder, "SdkInterface.cs")
-            sdk_data = generate_csharp_sdk_interface(value)
-            out[sdk_name] = sdk_data
+        # Always generate SDK interface (inside package folder)
+        from struct_frame.csharp_sdk_interface_gen import generate_csharp_sdk_interface
+        sdk_name = os.path.join(pkg_folder, "SdkInterface.cs")
+        sdk_data = generate_csharp_sdk_interface(value)
+        out[sdk_name] = sdk_data
     
     # Always generate .csproj so consumers can use <ProjectReference>
     csproj_name = os.path.join(path, "StructFrame.csproj")
-    csproj_data = _generateCSharpProjectFile(namespace, target_framework)
+    csproj_data = _generateCSharpProjectFile(namespace, target_framework, include_transports=include_transports)
     out[csproj_name] = csproj_data
     
     return out
 
 
-def _generateCSharpProjectFile(namespace, target_framework):
+def _generateCSharpProjectFile(namespace, target_framework, include_transports=False):
     """Generate a .csproj file for the generated C# code.
     
     Produces an SDK-style class library project that auto-includes all .cs files.
@@ -1402,26 +1404,22 @@ def _generateCSharpProjectFile(namespace, target_framework):
     The Framework folder (Types, Framing, Profiles, Sdk core) and all generated
     message/SdkInterface files are always included.
     
-    Transport implementations under Framework/Sdk/Transports/ are excluded by
-    default. Enable them individually:
+    When --csharp_sdk is used, the Transports/ folder is
+    copied and transport implementations are included in the .csproj with
+    conditional compilation. Enable them individually at build time:
     
       dotnet build -p:IncludeSerialTransport=true    # Serial (System.IO.Ports)
       dotnet build -p:IncludeNetCoreServer=true      # TCP, UDP, WebSocket (NetCoreServer)
     
     Both flags can be combined.
     """
-    project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>{target_framework}</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>{namespace}</RootNamespace>
-    <LangVersion>latest</LangVersion>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    transport_props = ''
+    transport_sections = ''
+    if include_transports:
+        transport_props = f'''
     <IncludeSerialTransport Condition="'$(IncludeSerialTransport)' == ''">false</IncludeSerialTransport>
-    <IncludeNetCoreServer Condition="'$(IncludeNetCoreServer)' == ''">false</IncludeNetCoreServer>
-  </PropertyGroup>
+    <IncludeNetCoreServer Condition="'$(IncludeNetCoreServer)' == ''">false</IncludeNetCoreServer>'''
+        transport_sections = f'''
 
   <!-- Define NETCORESERVER_AVAILABLE when NetCoreServer is enabled -->
   <PropertyGroup Condition="'$(IncludeNetCoreServer)' == 'true'">
@@ -1445,7 +1443,18 @@ def _generateCSharpProjectFile(namespace, target_framework):
     <Compile Include="Framework\\Sdk\\Transports\\UdpTransport.cs" />
     <Compile Include="Framework\\Sdk\\Transports\\WebSocketTransport.cs" />
     <PackageReference Include="NetCoreServer" Version="8.*" />
-  </ItemGroup>
+  </ItemGroup>'''
+
+    project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>{target_framework}</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>{namespace}</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>{transport_props}
+  </PropertyGroup>{transport_sections}
 
 </Project>
 '''
@@ -1526,7 +1535,7 @@ def main():
 
     if (args.build_csharp):
         files.update(generateCSharpFileStrings(args.csharp_path[0], 
-                                               include_sdk_interface=(args.sdk or args.sdk_embedded),
+                                               include_transports=args.csharp_sdk,
                                                equality=args.equality,
                                                namespace=args.csharp_namespace[0],
                                                target_framework=args.target_framework[0]))
@@ -1553,7 +1562,7 @@ def main():
         Args:
             src_dir: Source directory
             dst_dir: Destination directory  
-            exclude_dirs: List of directory names to exclude (e.g., ['struct_frame_sdk'])
+            exclude_dirs: List of directory names to exclude at any level (e.g., ['struct_frame_sdk', 'Transports'])
         """
         if exclude_dirs is None:
             exclude_dirs = []
@@ -1561,6 +1570,7 @@ def main():
         if not os.path.exists(dst_dir):
             os.makedirs(dst_dir)
         if os.path.exists(src_dir):
+            ignore_fn = shutil.ignore_patterns(*exclude_dirs) if exclude_dirs else None
             for item in os.listdir(src_dir):
                 # Skip excluded directories
                 if item in exclude_dirs:
@@ -1570,7 +1580,7 @@ def main():
                 dst_path = os.path.join(dst_dir, item)
                 if os.path.isdir(src_path):
                     # Recursively copy directories
-                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+                    shutil.copytree(src_path, dst_path, dirs_exist_ok=True, ignore=ignore_fn)
                 elif os.path.isfile(src_path):
                     shutil.copy2(src_path, dst_path)
     
@@ -1652,13 +1662,15 @@ def main():
             args.cpp_path[0], exclude_sdk)
 
     if (args.build_csharp):
-        # C# boilerplate uses Framework/ structure — everything is always copied.
+        # C# boilerplate uses Framework/ structure.
+        # Exclude Transports/ by default — only include when --csharp_sdk is used.
         # The .csproj controls conditional compilation of transport implementations:
         #   -p:IncludeSerialTransport=true   → Serial (System.IO.Ports)
         #   -p:IncludeNetCoreServer=true     → TCP, UDP, WebSocket (NetCoreServer)
+        exclude_transports = [] if args.csharp_sdk else ['Transports']
         copy_all_files(
             os.path.join(dir_path, "boilerplate/csharp"),
-            args.csharp_path[0])
+            args.csharp_path[0], exclude_transports)
     
     # Copy SDK files if requested
     if args.sdk or args.sdk_embedded:
