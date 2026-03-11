@@ -6,6 +6,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace StructFrame.Sdk
@@ -54,6 +56,14 @@ namespace StructFrame.Sdk
         public bool Debug { get; }
 
         /// <summary>
+        /// When true, messages are sent in strict FIFO order using an internal
+        /// queue with a dedicated background consumer. When false (default),
+        /// messages are sent directly through the transport — concurrent calls
+        /// are safe but ordering is not guaranteed.
+        /// </summary>
+        public bool StrictOrdering { get; }
+
+        /// <summary>
         /// Create SDK configuration with required parameters
         /// </summary>
         /// <param name="transport">Transport layer for communication</param>
@@ -61,18 +71,21 @@ namespace StructFrame.Sdk
         /// <param name="profile">Profile configuration (default: Profiles.Standard)</param>
         /// <param name="bufferSize">Internal buffer size (default: 1024)</param>
         /// <param name="debug">Enable debug logging (default: false)</param>
+        /// <param name="strictOrdering">Enforce strict FIFO send ordering (default: false)</param>
         public StructFrameSdkConfig(
             ITransport transport,
             Func<int, MessageInfo?> getMessageInfo,
             ProfileConfig? profile = null,
             int bufferSize = 1024,
-            bool debug = false)
+            bool debug = false,
+            bool strictOrdering = false)
         {
             Transport = transport ?? throw new ArgumentNullException(nameof(transport));
             GetMessageInfo = getMessageInfo ?? throw new ArgumentNullException(nameof(getMessageInfo));
             Profile = profile ?? Profiles.Standard;
             BufferSize = bufferSize;
             Debug = debug;
+            StrictOrdering = strictOrdering;
         }
     }
 
@@ -115,6 +128,27 @@ namespace StructFrame.Sdk
         private readonly bool _debug;
         private readonly Dictionary<ushort, List<IMessageHandler>> _messageHandlers;
         private readonly int _bufferSize;
+        private readonly bool _strictOrdering;
+
+        // Send queue infrastructure (only used when StrictOrdering is enabled)
+        private readonly Channel<QueuedMessage>? _sendQueue;
+        private CancellationTokenSource? _sendQueueCts;
+        private Task? _sendQueueTask;
+
+        /// <summary>
+        /// A queued send operation: encoded frame data + completion signal.
+        /// </summary>
+        private readonly struct QueuedMessage
+        {
+            public readonly byte[] Data;
+            public readonly TaskCompletionSource<bool> Completion;
+
+            public QueuedMessage(byte[] data, TaskCompletionSource<bool> completion)
+            {
+                Data = data;
+                Completion = completion;
+            }
+        }
 
         /// <summary>
         /// Event fired when an unhandled message is received
@@ -132,6 +166,16 @@ namespace StructFrame.Sdk
             _encoder = new FrameEncoder(_profile);
             _reader = new AccumulatingReader(_profile, config.BufferSize, config.GetMessageInfo);
             _bufferSize = config.BufferSize;
+            _strictOrdering = config.StrictOrdering;
+
+            // Create send queue only when strict ordering is enabled
+            if (_strictOrdering)
+            {
+                _sendQueue = Channel.CreateUnbounded<QueuedMessage>(new UnboundedChannelOptions
+                {
+                    SingleReader = true
+                });
+            }
 
             // Set up transport callbacks
             _transport.DataReceived += (sender, data) => HandleIncomingData(data);
@@ -145,19 +189,23 @@ namespace StructFrame.Sdk
         public ProfileConfig Profile => _profile;
 
         /// <summary>
-        /// Connect to the transport
+        /// Connect to the transport. When strict ordering is enabled,
+        /// starts the background send queue consumer.
         /// </summary>
         public async Task ConnectAsync()
         {
             await _transport.ConnectAsync();
+            if (_strictOrdering) StartSendQueue();
             Log("Connected");
         }
 
         /// <summary>
-        /// Disconnect from the transport
+        /// Disconnect from the transport. When strict ordering is enabled,
+        /// stops the send queue consumer and cancels any pending queued messages.
         /// </summary>
         public async Task DisconnectAsync()
         {
+            if (_strictOrdering) StopSendQueue();
             await _transport.DisconnectAsync();
             Log("Disconnected");
         }
@@ -187,12 +235,17 @@ namespace StructFrame.Sdk
 
         /// <summary>
         /// Send a framed message through the transport.
-        /// Thread-safe: concurrent calls are serialized at the transport level
-        /// to prevent data corruption on the wire.
         /// <para>
-        /// Message ordering is NOT guaranteed when multiple callers invoke
-        /// SendAsync concurrently. If message order matters, await each call
-        /// sequentially:
+        /// When <c>StrictOrdering</c> is enabled (set in config), messages are
+        /// placed into an internal FIFO queue and sent sequentially by a
+        /// background consumer, guaranteeing order even with concurrent callers.
+        /// The returned Task completes when the message has actually been sent.
+        /// </para>
+        /// <para>
+        /// When <c>StrictOrdering</c> is disabled (default), messages are sent
+        /// directly through the transport. Concurrent calls are safe (serialized
+        /// at the transport level) but ordering is not guaranteed. To ensure
+        /// order without strict ordering, await each call sequentially:
         /// <code>
         /// await sdk.SendAsync(msg1);  // sent first
         /// await sdk.SendAsync(msg2);  // guaranteed after msg1
@@ -210,7 +263,24 @@ namespace StructFrame.Sdk
 
             byte[] framedData = new byte[bytesWritten];
             Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
-            await _transport.SendAsync(framedData);
+
+            if (_strictOrdering)
+            {
+                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+                if (!_sendQueue!.Writer.TryWrite(new QueuedMessage(framedData, tcs)))
+                {
+                    throw new InvalidOperationException("Send queue is closed - transport may be disconnected");
+                }
+
+                Log($"Queued message ID {message.GetMsgId()}, {bytesWritten} bytes");
+                await tcs.Task.ConfigureAwait(false);
+            }
+            else
+            {
+                await _transport.SendAsync(framedData).ConfigureAwait(false);
+            }
+
             Log($"Sent message ID {message.GetMsgId()}, {bytesWritten} bytes total");
         }
 
@@ -262,7 +332,56 @@ namespace StructFrame.Sdk
         private void HandleClose()
         {
             Log("Transport closed");
+            if (_strictOrdering) StopSendQueue();
             _reader.Reset();
+        }
+
+        private void StartSendQueue()
+        {
+            _sendQueueCts = new CancellationTokenSource();
+            _sendQueueTask = SendQueueConsumerAsync(_sendQueueCts.Token);
+        }
+
+        private void StopSendQueue()
+        {
+            if (_sendQueueCts != null)
+            {
+                _sendQueueCts.Cancel();
+                _sendQueueCts.Dispose();
+                _sendQueueCts = null;
+            }
+
+            // Drain remaining queued messages and cancel them
+            while (_sendQueue.Reader.TryRead(out var queued))
+            {
+                queued.Completion.TrySetCanceled();
+            }
+
+            _sendQueueTask = null;
+        }
+
+        private async Task SendQueueConsumerAsync(CancellationToken ct)
+        {
+            try
+            {
+                await foreach (var queued in _sendQueue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                {
+                    try
+                    {
+                        await _transport.SendAsync(queued.Data).ConfigureAwait(false);
+                        queued.Completion.TrySetResult(true);
+                    }
+                    catch (Exception ex)
+                    {
+                        queued.Completion.TrySetException(ex);
+                        Log($"Send queue error: {ex.Message}");
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected on disconnect
+            }
         }
 
         private void Log(string message)
