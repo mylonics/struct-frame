@@ -4,16 +4,80 @@ This document describes how to release new versions of struct-frame to PyPI.
 
 ## Automated Release Pipeline
 
-The repository includes an automated release workflow that handles:
-- Version bumping (major, minor, or patch)
-- Changelog updates
-- Git tagging
-- Package building
-- PyPI publishing
+The release process has been consolidated into a streamlined workflow that requires **only one manual action** — triggering the "Bump Version" workflow. Everything else happens automatically.
+
+### Workflows Overview
+
+1. **`release.yml`** (Bump Version) — Manual workflow to bump version and trigger a release
+   - **Trigger**: Manual (`workflow_dispatch`) on the `develop` branch
+   - **Inputs**: `version_bump` — patch, minor, or major
+   - **Actions**:
+     - Bumps version in `pyproject.toml`
+     - Auto-generates a `CHANGELOG.md` entry from git commit history since the last tag
+     - Creates a PR to `develop` branch with auto-merge enabled (SQUASH)
+     - Tags the PR title with `[release]` to signal downstream workflows
+
+2. **`release-to-main.yml`** (Auto: Merge to Release Branch) — Automatic workflow triggered when the version bump PR merges
+   - **Trigger**: PR merged to `develop` branch, or manual `workflow_dispatch`
+   - **Actions**:
+     - Detects `[release]` tag in the merged PR title
+     - Directly rebases `develop` onto `main` (no PRs, no squash, no merge commits)
+     - Skips if no `[release]` tag is found
+
+3. **`publish.yml`** (Publish to PyPI) — Automatic workflow for publishing the package
+   - **Trigger**: Push to `main` branch (with `pyproject.toml` changes)
+   - **Actions**:
+     - Creates and pushes a git tag
+     - Builds the Python package (wheel and sdist)
+     - Publishes to PyPI via OIDC trusted publishing
+     - Creates a GitHub Release with release notes
+
+### Release Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. Developer triggers "Bump Version" workflow                   │
+│    - Selects bump type (patch/minor/major)                     │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 2. release.yml workflow runs                                    │
+│    - Bumps version in pyproject.toml                           │
+│    - Generates CHANGELOG.md entry from git history             │
+│    - Creates PR to develop branch                              │
+│    - PR title: "feat: Bump version to X.Y.Z [release]"         │
+│    - Auto-merge enabled (SQUASH)                               │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 3. PR auto-merges to develop (after CI passes)                  │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 4. release-to-main.yml workflow triggers                        │
+│    - Detects [release] tag in PR title                         │
+│    - Rebases develop directly onto main                        │
+│    - No PRs, no squash, no merge commits                       │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 5. Push to main triggers publish.yml                            │
+│    - Creates git tag (vX.Y.Z)                                  │
+│    - Builds Python package                                     │
+│    - Publishes to PyPI                                         │
+│    - Creates GitHub Release                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ### Prerequisites
 
-Before using the automated release pipeline, you need to configure PyPI trusted publishing:
+Before using the automated release pipeline, you need to configure:
+
+#### PyPI Trusted Publishing
 
 1. Go to [PyPI](https://pypi.org/) and log in
 2. Navigate to your project: https://pypi.org/manage/project/struct-frame/
@@ -22,30 +86,40 @@ Before using the automated release pipeline, you need to configure PyPI trusted 
    - **PyPI Project Name**: `struct-frame`
    - **Owner**: `mylonics`
    - **Repository name**: `struct-frame`
-   - **Workflow name**: `release.yml`
+   - **Workflow name**: `publish.yml`
    - **Environment name**: (leave blank)
 
 This allows GitHub Actions to publish to PyPI using OIDC authentication, which is more secure than API tokens.
 
+#### Required Secrets
+
+The following secrets must be configured in the GitHub repository settings:
+
+| Secret | Purpose |
+|--------|---------|
+| `PAT_GITHUB` | GitHub PAT with `repo` + `workflow` scopes. Required for auto-merge and to trigger downstream workflows (pushes with `GITHUB_TOKEN` do not trigger other workflows). |
+
+#### Repository Settings
+
+- **Enable "Allow auto-merge"** in repository settings (Settings → General → Pull Requests)
+- **Branch protection rules** on `develop` should require at least one status check (the test suite) for auto-merge to work
+
 ### Running a Release
 
-1. Navigate to the [Release workflow](https://github.com/mylonics/struct-frame/actions/workflows/release.yml)
+1. Navigate to the [Bump Version workflow](https://github.com/mylonics/struct-frame/actions/workflows/release.yml)
 2. Click **"Run workflow"**
-3. Select the branch (should be `main`)
+3. Select the branch: **`develop`**
 4. Choose the version bump type:
    - **patch**: Bug fixes and minor changes (e.g., `0.0.50` → `0.0.51`)
    - **minor**: New features (e.g., `0.0.50` → `0.1.0`)
    - **major**: Breaking changes (e.g., `0.0.50` → `1.0.0`)
 5. Click **"Run workflow"**
 
-The workflow will:
-1. Calculate the new version number
-2. Update `pyproject.toml` with the new version
-3. Add a new entry to `CHANGELOG.md` with the version and current date
-4. Commit the changes to the main branch
-5. Create and push a git tag (e.g., `v0.0.51`)
-6. Build the Python package (wheel and sdist)
-7. Publish to PyPI
+That's it! The rest happens automatically:
+- PR is created and auto-merges after CI passes
+- `develop` is rebased onto `main`
+- Package is built and published to PyPI
+- GitHub Release is created
 
 ### What Gets Published
 
@@ -185,11 +259,12 @@ You can manually update the changelog and re-run the workflow, or manually creat
 
 ## Release Checklist
 
-- [ ] All tests pass on main branch
-- [ ] CHANGELOG.md [Unreleased] section is up to date
+- [ ] All tests pass on develop branch
+- [ ] CHANGELOG.md [Unreleased] section is up to date (optional — auto-generated from commits)
 - [ ] Choose appropriate version bump (major/minor/patch)
-- [ ] Run the release workflow
+- [ ] Run the "Bump Version" workflow on the `develop` branch
+- [ ] Verify the PR was created and auto-merged to develop
+- [ ] Verify develop was rebased onto main
 - [ ] Verify the git tag was created
 - [ ] Verify the new version appears on PyPI
-- [ ] Test installing the new version
-- [ ] Create a GitHub Release with release notes (optional but recommended)
+- [ ] Test installing the new version: `pip install struct-frame==X.Y.Z`

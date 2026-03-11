@@ -1,4 +1,22 @@
-name: Prepare Release
+# This workflow handles version bumping and triggers the release pipeline.
+#
+# How to use:
+# 1. Run this workflow manually from GitHub Actions on the develop branch
+# 2. Select version bump type (patch/minor/major)
+#
+# What happens:
+# 1. Version is bumped in pyproject.toml
+# 2. CHANGELOG.md is updated using git-changelog
+# 3. A PR is created to develop branch with auto-merge enabled (SQUASH)
+# 4. After PR auto-merges, release-to-main.yml rebases develop onto main
+# 5. Push to main triggers publish.yml which publishes to PyPI
+#
+# Required secrets:
+# - PAT_GITHUB: GitHub PAT with repo + workflow scopes (for auto-merge and
+#   triggering downstream workflows). Falls back to GITHUB_TOKEN if not set,
+#   but auto-merge and downstream workflow triggers may not work.
+
+name: Bump Version
 
 on:
   workflow_dispatch:
@@ -17,14 +35,14 @@ permissions:
   pull-requests: write
 
 jobs:
-  prepare-release:
-    name: Prepare Release PR
+  bump_version:
+    name: Bump Version
     runs-on: ubuntu-latest
     # This workflow should only be run on the develop branch
     if: github.ref == 'refs/heads/develop'
 
     steps:
-      - name: Checkout code
+      - name: Checkout develop branch
         uses: actions/checkout@v4
         with:
           ref: develop
@@ -76,55 +94,77 @@ jobs:
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION"
 
-      - name: Create release branch
+      - name: Bump version and generate changelog
         run: |
           NEW_VERSION="${{ steps.calc_version.outputs.new_version }}"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "release/v$NEW_VERSION"
 
-      - name: Update pyproject.toml
-        run: |
-          NEW_VERSION="${{ steps.calc_version.outputs.new_version }}"
+          # Update pyproject.toml
           sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
           echo "Updated pyproject.toml to version $NEW_VERSION"
 
-      - name: Update CHANGELOG.md
-        run: |
-          NEW_VERSION="${{ steps.calc_version.outputs.new_version }}"
-
           # Generate changelog using git-changelog
-          # The --in-place flag updates the CHANGELOG.md at the insertion marker
-          # while preserving existing content
           git-changelog --in-place --output CHANGELOG.md --provider github --bump "$NEW_VERSION"
-
           echo "Updated CHANGELOG.md with version $NEW_VERSION using git-changelog"
 
-      - name: Commit version bump
-        run: |
-          NEW_VERSION="${{ steps.calc_version.outputs.new_version }}"
+          # Commit and push to bump branch
+          git checkout -b "bump-version-${NEW_VERSION}"
           git add pyproject.toml CHANGELOG.md
-          git commit -m "Bump version to $NEW_VERSION"
-          git push origin "release/v$NEW_VERSION"
+          git commit -m "feat: Bump version to ${NEW_VERSION} [release]"
+          git push --set-upstream origin "bump-version-${NEW_VERSION}"
 
-      - name: Create Pull Request to develop
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          NEW_VERSION="${{ steps.calc_version.outputs.new_version }}"
-          gh pr create \
-            --base develop \
-            --head "release/v$NEW_VERSION" \
-            --title "Release v$NEW_VERSION" \
-            --body "## Release v$NEW_VERSION
+      - name: Create Pull Request
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.PAT_GITHUB || secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const version = '${{ steps.calc_version.outputs.new_version }}';
+            const branchName = `bump-version-${version}`;
+            const title = `feat: Bump version to ${version} [release]`;
 
-          This PR was automatically created by the release workflow.
+            const pr = await github.rest.pulls.create({
+              owner,
+              repo,
+              title: title,
+              head: branchName,
+              base: 'develop',
+              body: [
+                `## Release v${version}`,
+                '',
+                'This PR was automatically created by the release workflow.',
+                '',
+                '### Changes',
+                `- Bumped version to ${version}`,
+                '- Updated CHANGELOG.md',
+                '',
+                'This PR will auto-merge after CI passes, then automatically rebase to main and publish to PyPI.'
+              ].join('\n')
+            });
+            core.setOutput('pr_number', pr.data.number);
 
-          ### Changes
-          - Bumped version to $NEW_VERSION
-          - Updated CHANGELOG.md
+            // Enable auto-merge with SQUASH method
+            try {
+              await github.graphql(`
+                mutation($pullRequestId: ID!, $mergeMethod: PullRequestMergeMethod!) {
+                  enablePullRequestAutoMerge(input: {
+                    pullRequestId: $pullRequestId,
+                    mergeMethod: $mergeMethod
+                  }) {
+                    pullRequest {
+                      id
+                    }
+                  }
+                }
+              `, {
+                pullRequestId: pr.data.node_id,
+                mergeMethod: 'SQUASH'
+              });
 
-          ### Instructions
-          1. Review the changes in this PR
-          2. Merge this PR to develop
-          3. A PR to main will be automatically created after merge"
+              console.log(`PR #${pr.data.number} created with auto-merge enabled (SQUASH method)`);
+            } catch (error) {
+              console.error(`Failed to enable auto-merge: ${error.message}`);
+              core.warning(`Auto-merge could not be enabled. Please merge manually.`);
+            }
