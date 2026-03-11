@@ -1,7 +1,7 @@
 // Frame Headers - Start byte patterns and header configurations (C#)
 // This file mirrors the C++ frame_headers.hpp structure
 
-namespace StructFrame.FrameHeaders
+namespace StructFrame.Profiles
 {
     /// <summary>
     /// Header type enumeration

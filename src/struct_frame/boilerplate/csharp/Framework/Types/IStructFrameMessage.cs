@@ -17,8 +17,16 @@ namespace StructFrame
 
         /// <summary>
         /// Serialize the message into a byte array.
+        /// For variable messages this returns the variable-length encoding.
         /// </summary>
         byte[] Serialize();
+
+        /// <summary>
+        /// Serialize the message to its maximum size buffer.
+        /// For variable messages this pads to MaxSize (needed for minimal profiles without a length field).
+        /// For non-variable messages this is identical to Serialize().
+        /// </summary>
+        byte[] SerializeMaxSize() => Serialize();
 
         /// <summary>
         /// Get the magic numbers for checksum calculation (based on field types and positions).

@@ -1,8 +1,5 @@
 #nullable enable
 
-using StructFrame.FrameHeaders;
-using StructFrame.PayloadTypes;
-
 namespace StructFrame.Profiles
 {
     /// <summary>

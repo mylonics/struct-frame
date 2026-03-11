@@ -666,6 +666,18 @@ class TestRunner:
             if csproj.exists():
                 cmd = f'dotnet build "{csproj}" -c Release -o "{build_dir}" --verbosity quiet'
                 success, _, _ = self.run_cmd(cmd)
+                
+                # Also verify transport implementations compile
+                gen_csproj = gen_dir / "StructFrame.csproj"
+                if gen_csproj.exists():
+                    transport_build_dir = build_dir / "transport_verify"
+                    transport_build_dir.mkdir(parents=True, exist_ok=True)
+                    transport_cmd = f'dotnet build "{gen_csproj}" -c Release -o "{transport_build_dir}" -p:IncludeTransports=true --verbosity quiet'
+                    transport_ok, _, _ = self.run_cmd(transport_cmd)
+                    if not transport_ok:
+                        print(f"  WARNING: Transport compilation verification failed (transport files may have errors)")
+                        success = False
+                
                 return success
             return False
         

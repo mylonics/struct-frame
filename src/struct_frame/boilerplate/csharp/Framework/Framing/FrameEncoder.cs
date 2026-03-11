@@ -30,18 +30,8 @@ namespace StructFrame.Framing
             if (!_config.HasLength)
             {
                 // Minimal profile (ProfileSensor/ProfileIPC) - need MAX_SIZE encoding
-                // Check if message has SerializeMaxSize() method (variable messages only)
-                var serializeMaxSizeMethod = message.GetType().GetMethod("SerializeMaxSize", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (serializeMaxSizeMethod != null)
-                {
-                    var result = serializeMaxSizeMethod.Invoke(message, null);
-                    payload = result as byte[] ?? Array.Empty<byte>();
-                }
-                else
-                {
-                    // Non-variable message - Serialize() always returns MAX_SIZE
-                    payload = message.Serialize();
-                }
+                // SerializeMaxSize() returns MAX_SIZE for variable messages, same as Serialize() for non-variable
+                payload = message.SerializeMaxSize();
             }
             else
             {

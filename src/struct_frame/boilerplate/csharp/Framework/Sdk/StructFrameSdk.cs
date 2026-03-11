@@ -84,7 +84,7 @@ namespace StructFrame.Sdk
         {
             Transport = transport ?? throw new ArgumentNullException(nameof(transport));
             GetMessageInfo = getMessageInfo ?? throw new ArgumentNullException(nameof(getMessageInfo));
-            Profile = profile ?? Profiles.Standard;
+            Profile = profile ?? StructFrame.Profiles.Profiles.Standard;
             BufferSize = bufferSize;
             Debug = debug;
             StrictOrdering = strictOrdering;

@@ -1,7 +1,7 @@
 // Payload Types - Message structure configurations (C#)
 // This file mirrors the C++ payload_types.hpp structure
 
-namespace StructFrame.PayloadTypes
+namespace StructFrame.Profiles
 {
     /// <summary>
     /// Payload type enumeration

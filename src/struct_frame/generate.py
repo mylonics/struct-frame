@@ -1399,10 +1399,16 @@ def _generateCSharpProjectFile(namespace, target_framework):
     Consumers can reference this via <ProjectReference> instead of listing
     individual generated files.
     
-    SDK interface files (SdkInterface.cs) and the Sdk folder are always
-    excluded from the core library project since they depend on the separate
-    Sdk component. Consumers who need SDK integration can include
-    SdkInterface.cs in their own project alongside the Sdk dependency.
+    The Framework folder (Types, Framing, Profiles, Sdk core) and all generated
+    message/SdkInterface files are always included.
+    
+    Transport implementations under Framework/Sdk/Transports/ are excluded by
+    default. Enable them individually:
+    
+      dotnet build -p:IncludeSerialTransport=true    # Serial (System.IO.Ports)
+      dotnet build -p:IncludeNetCoreServer=true      # TCP, UDP, WebSocket (NetCoreServer)
+    
+    Both flags can be combined.
     """
     project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
 
@@ -1413,11 +1419,32 @@ def _generateCSharpProjectFile(namespace, target_framework):
     <RootNamespace>{namespace}</RootNamespace>
     <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IncludeSerialTransport Condition="'$(IncludeSerialTransport)' == ''">false</IncludeSerialTransport>
+    <IncludeNetCoreServer Condition="'$(IncludeNetCoreServer)' == ''">false</IncludeNetCoreServer>
   </PropertyGroup>
 
+  <!-- Define NETCORESERVER_AVAILABLE when NetCoreServer is enabled -->
+  <PropertyGroup Condition="'$(IncludeNetCoreServer)' == 'true'">
+    <DefineConstants>$(DefineConstants);NETCORESERVER_AVAILABLE</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Exclude all transports by default -->
   <ItemGroup>
-    <Compile Remove="Sdk\\**" />
-    <Compile Remove="**/SdkInterface.cs" />
+    <Compile Remove="Framework\\Sdk\\Transports\\**" />
+  </ItemGroup>
+
+  <!-- Serial transport: SerialTransport.cs + System.IO.Ports package -->
+  <ItemGroup Condition="'$(IncludeSerialTransport)' == 'true'">
+    <Compile Include="Framework\\Sdk\\Transports\\SerialTransport.cs" />
+    <PackageReference Include="System.IO.Ports" Version="8.*" />
+  </ItemGroup>
+
+  <!-- Network transports: TCP, UDP, WebSocket + NetCoreServer package -->
+  <ItemGroup Condition="'$(IncludeNetCoreServer)' == 'true'">
+    <Compile Include="Framework\\Sdk\\Transports\\TcpTransport.cs" />
+    <Compile Include="Framework\\Sdk\\Transports\\UdpTransport.cs" />
+    <Compile Include="Framework\\Sdk\\Transports\\WebSocketTransport.cs" />
+    <PackageReference Include="NetCoreServer" Version="8.*" />
   </ItemGroup>
 
 </Project>
@@ -1625,9 +1652,13 @@ def main():
             args.cpp_path[0], exclude_sdk)
 
     if (args.build_csharp):
+        # C# boilerplate uses Framework/ structure — everything is always copied.
+        # The .csproj controls conditional compilation of transport implementations:
+        #   -p:IncludeSerialTransport=true   → Serial (System.IO.Ports)
+        #   -p:IncludeNetCoreServer=true     → TCP, UDP, WebSocket (NetCoreServer)
         copy_all_files(
             os.path.join(dir_path, "boilerplate/csharp"),
-            args.csharp_path[0], exclude_sdk)
+            args.csharp_path[0])
     
     # Copy SDK files if requested
     if args.sdk or args.sdk_embedded:
@@ -1658,11 +1689,6 @@ def main():
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/cpp"),
                 args.cpp_path[0], embedded_only, include_asio=include_asio)
-        
-        if args.build_csharp:
-            copy_sdk_files(
-                os.path.join(dir_path, "boilerplate/csharp"),
-                args.csharp_path[0], embedded_only)
 
     # No boilerplate for GraphQL currently
 
