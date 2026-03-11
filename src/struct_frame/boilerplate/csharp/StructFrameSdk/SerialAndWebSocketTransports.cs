@@ -181,7 +181,7 @@ namespace StructFrame.Sdk
             }
         }
 
-        public override async Task SendAsync(byte[] data)
+        protected override async Task SendCoreAsync(byte[] data)
         {
             if (_serialPort == null || !_connected || !_serialPort.IsOpen)
             {
@@ -313,7 +313,7 @@ namespace StructFrame.Sdk
             }
         }
 
-        public override async Task SendAsync(byte[] data)
+        protected override async Task SendCoreAsync(byte[] data)
         {
             if (!_connected || !_serialPort.IsOpen)
             {
