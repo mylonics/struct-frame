@@ -71,14 +71,16 @@ namespace StructFrame.Sdk
     }
 
     /// <summary>
-    /// Base transport with common functionality
+    /// Base transport with common functionality.
+    /// Implements IDisposable to clean up the internal send semaphore.
     /// </summary>
-    public abstract class BaseTransport : ITransport
+    public abstract class BaseTransport : ITransport, IDisposable
     {
         protected bool _connected;
         protected TransportConfig _config;
         protected int _reconnectAttempts;
         private readonly SemaphoreSlim _sendSemaphore = new SemaphoreSlim(1, 1);
+        private bool _disposed;
 
         public event EventHandler<byte[]>? DataReceived;
         public event EventHandler<Exception>? ErrorOccurred;
@@ -189,6 +191,30 @@ namespace StructFrame.Sdk
             catch (Exception ex)
             {
                 OnErrorOccurred(ex);
+            }
+        }
+
+        /// <summary>
+        /// Releases resources used by this transport.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Releases the unmanaged resources and optionally releases the managed resources.
+        /// </summary>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    _sendSemaphore.Dispose();
+                }
+                _disposed = true;
             }
         }
     }

@@ -35,11 +35,11 @@ namespace StructFrame.FrameHeaders
     /// </summary>
     public readonly struct HeaderConfig
     {
-        public readonly HeaderType HeaderType;
-        public readonly byte StartByte1;       // First start byte (0 if none or dynamic)
-        public readonly byte StartByte2;       // Second start byte (0 if none or dynamic)
-        public readonly byte NumStartBytes;    // Number of start bytes (0, 1, or 2)
-        public readonly bool EncodesPayloadType; // True if start byte encodes payload type
+        public HeaderType HeaderType { get; }
+        public byte StartByte1 { get; }       // First start byte (0 if none or dynamic)
+        public byte StartByte2 { get; }       // Second start byte (0 if none or dynamic)
+        public byte NumStartBytes { get; }    // Number of start bytes (0, 1, or 2)
+        public bool EncodesPayloadType { get; } // True if start byte encodes payload type
 
         public HeaderConfig(HeaderType headerType, byte startByte1, byte startByte2, 
                            byte numStartBytes, bool encodesPayloadType)

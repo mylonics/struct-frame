@@ -15,6 +15,7 @@ from struct_frame import FileCppGen
 from struct_frame import FileCSharpGen
 from struct_frame import TestCppGen
 from struct_frame import TestPyGen
+from struct_frame import pascalCase
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -1373,14 +1374,14 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
 def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False, generate_csproj=False, namespace='StructFrame.Generated', target_framework='net8.0', include_sdk=False):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".structframe.cs")
+        name = os.path.join(path, pascalCase(value.name) + ".StructFrame.cs")
         data = ''.join(FileCSharpGen.generate(value, equality=equality))
         out[name] = data
         
         # Generate SDK interface if requested
         if include_sdk_interface:
             from struct_frame.csharp_sdk_interface_gen import generate_csharp_sdk_interface
-            sdk_name = os.path.join(path, value.name + ".sdk.cs")
+            sdk_name = os.path.join(path, pascalCase(value.name) + ".Sdk.cs")
             sdk_data = generate_csharp_sdk_interface(value)
             out[sdk_name] = sdk_data
     

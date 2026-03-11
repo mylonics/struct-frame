@@ -24,8 +24,8 @@
     <Compile Include="test_variable_flag.cs" />
     <Compile Include="TestNegative.cs" />
     
-    <!-- Generated struct files (exclude SDK and .sdk.cs files - SDK is generated but not used in tests) -->
-    <Compile Include="..\generated\csharp\*.cs" Exclude="..\generated\csharp\*.sdk.cs" Link="Generated\%(Filename)%(Extension)" />
+    <!-- Generated struct files (exclude SDK files - SDK is generated but not used in tests) -->
+    <Compile Include="..\generated\csharp\*.cs" Exclude="..\generated\csharp\*.Sdk.cs" Link="Generated\%(Filename)%(Extension)" />
     <Compile Include="..\generated\csharp\FrameHeaders\*.cs" Link="Generated\FrameHeaders\%(Filename)%(Extension)" />
     <Compile Include="..\generated\csharp\PayloadTypes\*.cs" Link="Generated\PayloadTypes\%(Filename)%(Extension)" />
   </ItemGroup>

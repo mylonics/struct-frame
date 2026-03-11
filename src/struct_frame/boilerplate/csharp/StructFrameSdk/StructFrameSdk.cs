@@ -117,9 +117,10 @@ namespace StructFrame.Sdk
     }
 
     /// <summary>
-    /// Main SDK Client - uses FrameProfiles infrastructure for encoding/parsing
+    /// Main SDK Client - uses FrameProfiles infrastructure for encoding/parsing.
+    /// Implements IDisposable to clean up internal resources.
     /// </summary>
-    public class StructFrameSdk
+    public class StructFrameSdk : IDisposable
     {
         private readonly ITransport _transport;
         private readonly ProfileConfig _profile;
@@ -389,6 +390,33 @@ namespace StructFrame.Sdk
             if (_debug)
             {
                 Console.WriteLine($"[StructFrameSdk] {message}");
+            }
+        }
+
+        private bool _disposed;
+
+        /// <summary>
+        /// Releases resources used by the SDK.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Releases the unmanaged resources and optionally releases the managed resources.
+        /// </summary>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    StopSendQueue();
+                    _sendQueueCts?.Dispose();
+                }
+                _disposed = true;
             }
         }
     }

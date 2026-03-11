@@ -155,48 +155,48 @@ class FieldCSharpGen():
                 # String arrays
                 if field.size_option is not None:
                     # Fixed string array
-                    result += f'        public byte[] {var_name} = null!;  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars\n'
+                    result += f'        public byte[] {var_name} {{ get; set; }} = null!;  // Fixed string array: {field.size_option} strings, each max {field.element_size} chars\n'
                 elif field.max_size is not None:
                     # Variable string array
                     count_type = "ushort" if field.max_size > 255 else "byte"
-                    result += f'        public {count_type} {var_name}Count;\n'
-                    result += f'        public byte[] {var_name}Data = null!;  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
+                    result += f'        public {count_type} {var_name}Count {{ get; set; }}\n'
+                    result += f'        public byte[] {var_name}Data {{ get; set; }} = null!;  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
             else:
                 # Non-string arrays
                 if field.size_option is not None:
                     # Fixed array
                     if field.isEnum:
-                        result += f'        public byte[] {var_name} = null!;  // Fixed array of {base_type}: {field.size_option} elements\n'
+                        result += f'        public byte[] {var_name} {{ get; set; }} = null!;  // Fixed array of {base_type}: {field.size_option} elements\n'
                     else:
-                        result += f'        public {base_type}[] {var_name} = null!;  // Fixed array: {field.size_option} elements\n'
+                        result += f'        public {base_type}[] {var_name} {{ get; set; }} = null!;  // Fixed array: {field.size_option} elements\n'
                 elif field.max_size is not None:
                     # Variable array
                     count_type = "ushort" if field.max_size > 255 else "byte"
-                    result += f'        public {count_type} {var_name}Count;\n'
+                    result += f'        public {count_type} {var_name}Count {{ get; set; }}\n'
                     if field.isEnum:
-                        result += f'        public byte[] {var_name}Data = null!;  // Variable array of {base_type}: up to {field.max_size} elements\n'
+                        result += f'        public byte[] {var_name}Data {{ get; set; }} = null!;  // Variable array of {base_type}: up to {field.max_size} elements\n'
                     else:
-                        result += f'        public {base_type}[] {var_name}Data = null!;  // Variable array: up to {field.max_size} elements\n'
+                        result += f'        public {base_type}[] {var_name}Data {{ get; set; }} = null!;  // Variable array: up to {field.max_size} elements\n'
 
         # Handle regular strings
         elif field.fieldType == "string":
             if field.size_option is not None:
                 # Fixed string
-                result += f'        public byte[] {var_name} = null!;  // Fixed string: exactly {field.size_option} chars\n'
+                result += f'        public byte[] {var_name} {{ get; set; }} = null!;  // Fixed string: exactly {field.size_option} chars\n'
             elif field.max_size is not None:
                 # Variable string
                 length_type = "ushort" if field.max_size > 255 else "byte"
-                result += f'        public {length_type} {var_name}Length;\n'
-                result += f'        public byte[] {var_name}Data = null!;  // Variable string: up to {field.max_size} chars\n'
+                result += f'        public {length_type} {var_name}Length {{ get; set; }}\n'
+                result += f'        public byte[] {var_name}Data {{ get; set; }} = null!;  // Variable string: up to {field.max_size} chars\n'
 
         # Handle regular fields
         else:
             if type_name not in csharp_types and not field.isEnum:
                 # Nested struct - reference type needs null-forgiving operator
-                result += f'        public {base_type} {var_name} = null!;\n'
+                result += f'        public {base_type} {var_name} {{ get; set; }} = null!;\n'
             else:
                 # Primitive type or enum - value type doesn't need initializer
-                result += f'        public {base_type} {var_name};\n'
+                result += f'        public {base_type} {var_name} {{ get; set; }}\n'
 
         return result
 
@@ -503,10 +503,10 @@ class MessageCSharpGen():
         for key, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
-                    result += f'        public ushort {pascalCase(oneof.name)}Discriminator;\n'
+                    result += f'        public ushort {pascalCase(oneof.name)}Discriminator {{ get; set; }}\n'
                 else:  # field_order
                     enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
-                    result += f'        public {enum_name} {pascalCase(oneof.name)}Discriminator;\n'
+                    result += f'        public {enum_name} {pascalCase(oneof.name)}Discriminator {{ get; set; }}\n'
             for field_name, field in oneof.fields.items():
                 result += f'        // Union member: {field_name}\n'
                 result += FieldCSharpGen.generate_field_declaration(field)
