@@ -3,7 +3,7 @@
 using StructFrame.FrameHeaders;
 using StructFrame.PayloadTypes;
 
-namespace StructFrame
+namespace StructFrame.Profiles
 {
     /// <summary>
     /// Profile configuration - combines a HeaderConfig with a PayloadConfig.

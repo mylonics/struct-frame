@@ -1,6 +1,7 @@
 using System;
+using StructFrame;
 
-namespace StructFrame
+namespace StructFrame.Framing
 {
     /// <summary>
     /// Base utilities for struct frame parsing and encoding.

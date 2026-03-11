@@ -1,8 +1,10 @@
 #nullable enable
 
 using System;
+using StructFrame;
+using StructFrame.Profiles;
 
-namespace StructFrame
+namespace StructFrame.Framing
 {
     /// <summary>
     /// AccumulatingReader - Unified parser for buffer and byte-by-byte streaming input.

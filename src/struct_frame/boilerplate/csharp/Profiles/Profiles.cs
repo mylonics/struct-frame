@@ -1,10 +1,12 @@
 #nullable enable
 
 using System;
+using StructFrame;
+using StructFrame.Framing;
 using StructFrame.FrameHeaders;
 using StructFrame.PayloadTypes;
 
-namespace StructFrame
+namespace StructFrame.Profiles
 {
     /// <summary>
     /// Pre-defined profile configurations.

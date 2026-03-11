@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using StructFrame.Framing;
+using StructFrame.Profiles;
 
 namespace StructFrame.Sdk
 {

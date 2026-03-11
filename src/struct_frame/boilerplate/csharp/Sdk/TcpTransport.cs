@@ -90,7 +90,7 @@ namespace StructFrame.Sdk
             await Task.CompletedTask;
         }
 
-        public override async Task SendAsync(byte[] data)
+        protected override async Task SendCoreAsync(byte[] data)
         {
             if (_stream == null || !_connected)
             {
@@ -100,28 +100,6 @@ namespace StructFrame.Sdk
             try
             {
                 await _stream.WriteAsync(data, 0, data.Length);
-                await _stream.FlushAsync();
-            }
-            catch (Exception ex)
-            {
-                OnErrorOccurred(ex);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// Send data using ReadOnlyMemory for zero-copy efficiency
-        /// </summary>
-        public override async Task SendAsync(ReadOnlyMemory<byte> data)
-        {
-            if (_stream == null || !_connected)
-            {
-                throw new InvalidOperationException("TCP socket not connected");
-            }
-
-            try
-            {
-                await _stream.WriteAsync(data);
                 await _stream.FlushAsync();
             }
             catch (Exception ex)

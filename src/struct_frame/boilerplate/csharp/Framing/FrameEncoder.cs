@@ -1,8 +1,10 @@
 #nullable enable
 
 using System;
+using StructFrame;
+using StructFrame.Profiles;
 
-namespace StructFrame
+namespace StructFrame.Framing
 {
     /// <summary>
     /// Generic frame encoder for frames with CRC.

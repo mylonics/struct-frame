@@ -1,8 +1,10 @@
 #nullable enable
 
 using System;
+using StructFrame;
+using StructFrame.Framing;
 
-namespace StructFrame
+namespace StructFrame.Profiles
 {
     // ============================================================================
     // Profile Providers - Compile-time profile selection using generics

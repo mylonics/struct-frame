@@ -1,8 +1,10 @@
 #nullable enable
 
 using System;
+using StructFrame;
+using StructFrame.Profiles;
 
-namespace StructFrame
+namespace StructFrame.Framing
 {
     /// <summary>
     /// BufferReader - Iterate through a buffer parsing multiple frames.

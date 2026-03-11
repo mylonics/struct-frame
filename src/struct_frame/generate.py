@@ -180,7 +180,6 @@ def compute_generation_hash(args, packages_dict):
         'sdk': args.sdk,
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
-        'generate_csproj': args.generate_csproj,
         'csharp_namespace': args.csharp_namespace[0],
         'target_framework': args.target_framework[0],
     }
@@ -1055,10 +1054,8 @@ parser.add_argument('--sdk_embedded', action='store_true',
                     help='Include embedded SDK (serial transport only, no ASIO dependencies)')
 parser.add_argument('--equality', action='store_true',
                     help='Generate equality comparison operators/methods for messages')
-parser.add_argument('--generate_csproj', action='store_true',
-                    help='Generate a .csproj file for C# projects (allows immediate dotnet build)')
-parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame.Generated'],
-                    help='Root namespace for generated C# code (default: StructFrame.Generated)')
+parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame'],
+                    help='Root namespace for generated C# code (default: StructFrame)')
 parser.add_argument('--target_framework', nargs=1, type=str, default=['net8.0'],
                     help='Target framework for generated .csproj file (default: net8.0)')
 parser.add_argument('--force', action='store_true',
@@ -1371,32 +1368,42 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
     return out
 
 
-def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False, generate_csproj=False, namespace='StructFrame.Generated', target_framework='net8.0', include_sdk=False):
+def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False, namespace='StructFrame.Generated', target_framework='net8.0'):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, pascalCase(value.name) + ".StructFrame.cs")
-        data = ''.join(FileCSharpGen.generate(value, equality=equality))
-        out[name] = data
+        # Generate per-file output into a package subfolder
+        pkg_folder = os.path.join(path, pascalCase(value.name))
+        per_file = FileCSharpGen.generate_per_file(value, equality=equality)
+        for filename, content in per_file.items():
+            out[os.path.join(pkg_folder, filename)] = content
         
-        # Generate SDK interface if requested
+        # Generate SDK interface if requested (inside package folder)
         if include_sdk_interface:
             from struct_frame.csharp_sdk_interface_gen import generate_csharp_sdk_interface
-            sdk_name = os.path.join(path, pascalCase(value.name) + ".Sdk.cs")
+            sdk_name = os.path.join(pkg_folder, "SdkInterface.cs")
             sdk_data = generate_csharp_sdk_interface(value)
             out[sdk_name] = sdk_data
     
-    # Generate .csproj file if requested
-    if generate_csproj:
-        csproj_name = os.path.join(path, "StructFrameGenerated.csproj")
-        csproj_data = _generateCSharpProjectFile(namespace, target_framework, include_sdk)
-        out[csproj_name] = csproj_data
+    # Always generate .csproj so consumers can use <ProjectReference>
+    csproj_name = os.path.join(path, "StructFrame.csproj")
+    csproj_data = _generateCSharpProjectFile(namespace, target_framework)
+    out[csproj_name] = csproj_data
     
     return out
 
 
-def _generateCSharpProjectFile(namespace, target_framework, include_sdk=False):
-    """Generate a .csproj file for the generated C# code."""
-    # Base project configuration
+def _generateCSharpProjectFile(namespace, target_framework):
+    """Generate a .csproj file for the generated C# code.
+    
+    Produces an SDK-style class library project that auto-includes all .cs files.
+    Consumers can reference this via <ProjectReference> instead of listing
+    individual generated files.
+    
+    SDK interface files (SdkInterface.cs) and the Sdk folder are always
+    excluded from the core library project since they depend on the separate
+    Sdk component. Consumers who need SDK integration can include
+    SdkInterface.cs in their own project alongside the Sdk dependency.
+    """
     project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -1405,25 +1412,14 @@ def _generateCSharpProjectFile(namespace, target_framework, include_sdk=False):
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>{namespace}</RootNamespace>
     <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-'''
-    
-    # Add package references for SDK if included
-    if include_sdk:
-        project_content += '''
+
   <ItemGroup>
-    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <Compile Remove="Sdk\\**" />
+    <Compile Remove="**/SdkInterface.cs" />
   </ItemGroup>
-'''
-    else:
-        # Exclude SDK folder for minimal builds
-        project_content += '''
-  <ItemGroup>
-    <Compile Remove="StructFrameSdk/**" />
-  </ItemGroup>
-'''
-    
-    project_content += '''
+
 </Project>
 '''
     return project_content
@@ -1505,10 +1501,8 @@ def main():
         files.update(generateCSharpFileStrings(args.csharp_path[0], 
                                                include_sdk_interface=(args.sdk or args.sdk_embedded),
                                                equality=args.equality,
-                                               generate_csproj=args.generate_csproj,
                                                namespace=args.csharp_namespace[0],
-                                               target_framework=args.target_framework[0],
-                                               include_sdk=(args.sdk or args.sdk_embedded)))
+                                               target_framework=args.target_framework[0]))
 
     if (args.build_gql):
         for key, value in packages.items():
@@ -1565,6 +1559,11 @@ def main():
         sdk_src = os.path.join(src_dir, "struct_frame_sdk")
         sdk_dst = os.path.join(dst_dir, "struct_frame_sdk")
         
+        # Handle PascalCase naming for C# boilerplate
+        if not os.path.exists(sdk_src):
+            sdk_src = os.path.join(src_dir, "Sdk")
+            sdk_dst = os.path.join(dst_dir, "Sdk")
+        
         if not os.path.exists(sdk_src):
             return
             
@@ -1598,7 +1597,7 @@ def main():
 
     # Copy all boilerplate files (excluding SDK by default)
     # SDK is handled separately below based on --sdk or --sdk_embedded flags
-    exclude_sdk = ['struct_frame_sdk']
+    exclude_sdk = ['struct_frame_sdk', 'Sdk']
     
     if (args.build_c):
         copy_all_files(
