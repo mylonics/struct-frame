@@ -1,72 +1,78 @@
-name: Create Release PR to Main
+# This workflow rebases develop into main directly (no PR, no squash, no merge commits).
+#
+# Automatic mode:
+# - Triggers when a PR is merged to develop and checks if the PR title
+#   contains [release] tag (added by the bump-version workflow).
+# - If found, rebases develop onto main.
+#
+# Manual mode:
+# - Run this workflow manually from GitHub Actions
+# - Rebases develop onto main
+#
+# This workflow works in conjunction with release.yml to provide a streamlined
+# release process.
+#
+# Required secrets:
+# - PAT_GITHUB: GitHub PAT with repo scope. Required so that the push to main
+#   triggers the publish.yml workflow. (Pushes made with GITHUB_TOKEN do not
+#   trigger downstream workflows.)
+
+name: "Auto: Merge to Release Branch"
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches:
       - develop
-    paths:
-      - "pyproject.toml"
+  workflow_dispatch:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
-  create-main-pr:
-    name: Create PR to Main
+  merge_to_release:
+    name: Rebase to Main
+    # For PR events: only run if the PR was actually merged (not just closed)
+    # For workflow_dispatch: always run
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: develop
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_GITHUB }}
 
-      - name: Get version from pyproject.toml
-        id: get_version
+      - name: Determine release type
+        id: release-type
         run: |
-          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Version: $VERSION"
-
-      - name: Check if PR already exists
-        id: check_pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          # Check if there's already an open PR from develop to main
-          EXISTING_PR=$(gh pr list --base main --head develop --state open --json number --jq '.[0].number // empty')
-          if [ -n "$EXISTING_PR" ]; then
-            echo "PR #$EXISTING_PR already exists"
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "pr_number=$EXISTING_PR" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "type=release" >> "$GITHUB_OUTPUT"
+            echo "Manual trigger: release"
           else
-            echo "No existing PR found"
-            echo "exists=false" >> $GITHUB_OUTPUT
+            PR_TITLE="${{ github.event.pull_request.title }}"
+            echo "PR title: $PR_TITLE"
+            if echo "$PR_TITLE" | grep -q '\[release\]'; then
+              echo "type=release" >> "$GITHUB_OUTPUT"
+              echo "Detected release type: release"
+            else
+              echo "type=none" >> "$GITHUB_OUTPUT"
+              echo "No release type found in PR title, skipping."
+            fi
           fi
 
-      - name: Create Pull Request to main
-        if: steps.check_pr.outputs.exists == 'false'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Rebase develop into main
+        if: steps.release-type.outputs.type != 'none'
         run: |
-          VERSION="${{ steps.get_version.outputs.version }}"
-          gh pr create \
-            --base main \
-            --head develop \
-            --title "Release v$VERSION to Production" \
-            --body "## Release v$VERSION
+          VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          echo "Rebasing develop into main (version ${VERSION})"
 
-          This PR was automatically created after the release PR was merged to develop.
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          ### Changes
-          - Version bumped to $VERSION
-          - Changelog updated
+          git checkout main
+          git rebase origin/develop
+          git push --force-with-lease origin main
 
-          ### Instructions
-          1. Review the changes in this PR
-          2. Merge this PR to trigger the publish workflow
-          3. The package will be automatically published to PyPI upon merge"
+          echo "Successfully rebased develop into main"
