@@ -34,8 +34,25 @@ python -m struct_frame [proto_file] [options]
 
 | Flag | Description |
 |------|-------------|
-| `--sdk` | Include full SDK with network transports (C++, Python, TypeScript) |
+| `--sdk` | Include full SDK with transports (C++, Python, TypeScript) |
 | `--sdk_embedded` | Include embedded SDK without external dependencies (C++ only) |
+
+## C# Options
+
+| Flag | Description | Default |
+|------|-------------|--------|
+| `--csharp_namespace NS` | Root namespace for generated C# code | `StructFrame` |
+| `--csharp_sdk` | Include C# transport implementations (Serial, TCP, UDP, WebSocket) | |
+| `--target_framework TFM` | Target framework for generated `.csproj` | `net8.0` |
+
+## Other Options
+
+| Flag | Description |
+|------|-------------|
+| `--equality` | Generate equality comparison operators/methods for messages |
+| `--force` | Force regeneration even if hash matches previous generation |
+| `--hash_path PATH` | Path to store the generation hash file |
+| `--generate_tests` | Generate test code with dummy values for round-trip verification |
 
 ## Examples
 
@@ -88,6 +105,11 @@ python -m struct_frame messages.proto --build_cpp --sdk
 - `<name>.structframe.graphql` - GraphQL schema definitions
 
 ### C#
-- `<name>.structframe.cs` - Message definitions and classes
-- Frame parsing utilities
+- `<PackageName>/Enums/<EnumName>.cs` - Enum definitions (one per enum)
+- `<PackageName>/Messages/<MessageName>.cs` - Message classes (one per message)
+- `<PackageName>/MessageDefinitions.cs` - Message registry
+- `<PackageName>/SdkInterface.cs` - SDK interface (always generated)
+- `Framework/` - Framing, profiles, types, and SDK core
+- `Framework/Sdk/Transports/` - Transport implementations (if `--csharp_sdk` used)
+- `StructFrame.csproj` - Project file (always generated)
 

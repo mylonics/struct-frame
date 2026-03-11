@@ -1240,13 +1240,13 @@ class FileCSharpGen():
             content += footer
             files['PackageInfo.cs'] = content
 
-        # One file per enum
+        # One file per enum (in Enums/ subfolder)
         if package.enums:
             for key, enum in package.enums.items():
                 content = header()
                 content += EnumCSharpGen.generate(enum)
                 content += footer
-                files[os.path.join('enums', f'{enum.name}.cs')] = content
+                files[os.path.join('Enums', f'{enum.name}.cs')] = content
 
         # One file per discriminator enum
         for key, msg in package.messages.items():
@@ -1256,16 +1256,16 @@ class FileCSharpGen():
                     content = header()
                     content += EnumCSharpGen.generate_discriminator_enum(oneof, msg.name)
                     content += footer
-                    files[os.path.join('enums', f'{enum_name}.cs')] = content
+                    files[os.path.join('Enums', f'{enum_name}.cs')] = content
 
-        # One file per message (in messages/ subfolder)
+        # One file per message (in Messages/ subfolder)
         if package.messages:
             for key, msg in package.sortedMessages().items():
                 content = header()
                 content += MessageCSharpGen.generate(msg, package, equality)
                 content += footer
                 # Strip the package prefix from the class name for the filename
-                files[os.path.join('messages', f'{msg.name}.cs')] = content
+                files[os.path.join('Messages', f'{msg.name}.cs')] = content
 
         # MessageDefinitions in its own file (includes timestamp since it's the single aggregation file)
         if package.messages:

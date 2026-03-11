@@ -24,7 +24,7 @@ python -m struct_frame messages.proto --build_c --build_cpp --build_py --build_t
 | `--build_ts` | TypeScript | `<name>.structframe.ts` |
 | `--build_py` | Python | `<name>.py` (in `struct_frame/generated/`) |
 | `--build_js` | JavaScript | `<name>.structframe.js` |
-| `--build_csharp` | C# | `<name>.structframe.cs` |
+| `--build_csharp` | C# | `<PackageName>/Messages/*.cs`, `<PackageName>/Enums/*.cs` |
 | `--build_gql` | GraphQL | `<name>.structframe.graphql` |
 
 ## Output Paths

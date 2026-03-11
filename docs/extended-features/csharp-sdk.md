@@ -6,37 +6,73 @@ The C# SDK provides async/await-based transport layers for .NET applications usi
 
 - .NET 7.0+ (required for static abstract interface members)
 - For serial port support: `System.IO.Ports` NuGet package
+- For network transports: `NetCoreServer` NuGet package
 
 ## Installation
 
-Generate with SDK:
+Generate C# code (messages, framing, SDK core, and `.csproj`):
 
 ```bash
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --sdk
+python -m struct_frame messages.proto --build_csharp --csharp_path Generated/
 ```
 
-Generate with auto-generated `.csproj` file for immediate building:
+Generate with transports (includes Serial, TCP, UDP, WebSocket transport implementations):
 
 ```bash
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --generate_csproj
+python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --csharp_sdk
 ```
 
-### .csproj Generation Options
-
-The generator can create a `.csproj` file that allows immediate `dotnet build`:
+### Generation Options
 
 ```bash
-# Basic .csproj generation (excludes SDK, no dependencies needed)
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --generate_csproj
+# With custom namespace (default: StructFrame)
+python -m struct_frame messages.proto --build_csharp --csharp_namespace MyApp.Protocol
 
-# With custom namespace
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --generate_csproj --csharp_namespace MyApp.Protocol
+# With custom target framework (default: net8.0)
+python -m struct_frame messages.proto --build_csharp --target_framework net7.0
 
-# With custom target framework
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --generate_csproj --target_framework net7.0
+# With equality operators
+python -m struct_frame messages.proto --build_csharp --equality
 
-# Full SDK with .csproj (includes System.IO.Ports dependency)
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --sdk --generate_csproj
+# With transports
+python -m struct_frame messages.proto --build_csharp --csharp_sdk
+```
+
+### Generated Output Structure
+
+```
+Generated/
+├── StructFrame.csproj              # Always generated
+├── Framework/                      # Framing & SDK boilerplate
+│   ├── Framing/                    # Frame encoders, parsers, readers, writers
+│   ├── Profiles/                   # Frame profiles (Standard, Sensor, IPC, etc.)
+│   ├── Sdk/                        # SDK core (StructFrameSdk, Transport base)
+│   │   └── Transports/             # Only with --csharp_sdk
+│   │       ├── SerialTransport.cs
+│   │       ├── TcpTransport.cs
+│   │       ├── UdpTransport.cs
+│   │       └── WebSocketTransport.cs
+│   └── Types/                      # Base types (FrameMsgInfo, IStructFrameMessage, etc.)
+└── <PackageName>/                  # One folder per proto package (PascalCase)
+    ├── Enums/                      # One file per enum
+    ├── Messages/                   # One file per message
+    ├── MessageDefinitions.cs       # Message registry
+    └── SdkInterface.cs             # Always generated
+```
+
+### Transport Compilation
+
+When `--csharp_sdk` is used, transport implementations are copied but excluded from compilation by default in the `.csproj`. Enable them at build time:
+
+```bash
+# Serial transport (System.IO.Ports)
+dotnet build -p:IncludeSerialTransport=true
+
+# Network transports: TCP, UDP, WebSocket (NetCoreServer)
+dotnet build -p:IncludeNetCoreServer=true
+
+# Both
+dotnet build -p:IncludeSerialTransport=true -p:IncludeNetCoreServer=true
 ```
 
 ## Basic Usage
@@ -276,6 +312,6 @@ The naming convention is `Send{PayloadType}Via{EnvelopeName}`. This pattern:
 The SDK requires .NET 7.0+ due to the use of C# 11 static abstract interface members:
 
 - .NET 7.0+
-- .NET 8.0+
+- .NET 8.0+ (default target framework)
 - .NET 9.0+
 

@@ -28,7 +28,7 @@ The SDK provides high-level abstractions for message communication, including tr
 | C++ | ✓ | Serial, UDP, TCP, WebSocket (via ASIO) |
 | TypeScript/JavaScript | ✓ | UDP, TCP, WebSocket, Serial |
 | Python | ✓ | Serial, sockets, WebSocket |
-| C# | ✓ | UDP, TCP, Serial |
+| C# | ✓ | Serial, UDP, TCP, WebSocket |
 | C | - | N/A |
 
 ## Generating with SDK
@@ -45,6 +45,9 @@ python -m struct_frame messages.proto --build_ts --sdk
 
 # Python with SDK
 python -m struct_frame messages.proto --build_py --sdk
+
+# C# with transports
+python -m struct_frame messages.proto --build_csharp --csharp_sdk
 ```
 
 ## Language-Specific Guides
