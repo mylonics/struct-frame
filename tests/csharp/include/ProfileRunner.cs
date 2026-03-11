@@ -9,6 +9,8 @@
 
 using System;
 using StructFrame;
+using StructFrame.Framing;
+using StructFrame.Profiles;
 
 namespace StructFrameTests
 {

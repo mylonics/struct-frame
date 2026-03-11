@@ -10,6 +10,8 @@
 
 using System;
 using StructFrame;
+using StructFrame.Framing;
+using StructFrame.Profiles;
 using StructFrame.SerializationTest;
 
 public class TestNegative

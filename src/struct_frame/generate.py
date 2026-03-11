@@ -15,6 +15,7 @@ from struct_frame import FileCppGen
 from struct_frame import FileCSharpGen
 from struct_frame import TestCppGen
 from struct_frame import TestPyGen
+from struct_frame import pascalCase
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -179,7 +180,6 @@ def compute_generation_hash(args, packages_dict):
         'sdk': args.sdk,
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
-        'generate_csproj': args.generate_csproj,
         'csharp_namespace': args.csharp_namespace[0],
         'target_framework': args.target_framework[0],
     }
@@ -1054,10 +1054,8 @@ parser.add_argument('--sdk_embedded', action='store_true',
                     help='Include embedded SDK (serial transport only, no ASIO dependencies)')
 parser.add_argument('--equality', action='store_true',
                     help='Generate equality comparison operators/methods for messages')
-parser.add_argument('--generate_csproj', action='store_true',
-                    help='Generate a .csproj file for C# projects (allows immediate dotnet build)')
-parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame.Generated'],
-                    help='Root namespace for generated C# code (default: StructFrame.Generated)')
+parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame'],
+                    help='Root namespace for generated C# code (default: StructFrame)')
 parser.add_argument('--target_framework', nargs=1, type=str, default=['net8.0'],
                     help='Target framework for generated .csproj file (default: net8.0)')
 parser.add_argument('--force', action='store_true',
@@ -1370,32 +1368,48 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
     return out
 
 
-def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False, generate_csproj=False, namespace='StructFrame.Generated', target_framework='net8.0', include_sdk=False):
+def generateCSharpFileStrings(path, include_sdk_interface=False, equality=False, namespace='StructFrame.Generated', target_framework='net8.0'):
     out = {}
     for key, value in packages.items():
-        name = os.path.join(path, value.name + ".structframe.cs")
-        data = ''.join(FileCSharpGen.generate(value, equality=equality))
-        out[name] = data
+        # Generate per-file output into a package subfolder
+        pkg_folder = os.path.join(path, pascalCase(value.name))
+        per_file = FileCSharpGen.generate_per_file(value, equality=equality)
+        for filename, content in per_file.items():
+            out[os.path.join(pkg_folder, filename)] = content
         
-        # Generate SDK interface if requested
+        # Generate SDK interface if requested (inside package folder)
         if include_sdk_interface:
             from struct_frame.csharp_sdk_interface_gen import generate_csharp_sdk_interface
-            sdk_name = os.path.join(path, value.name + ".sdk.cs")
+            sdk_name = os.path.join(pkg_folder, "SdkInterface.cs")
             sdk_data = generate_csharp_sdk_interface(value)
             out[sdk_name] = sdk_data
     
-    # Generate .csproj file if requested
-    if generate_csproj:
-        csproj_name = os.path.join(path, "StructFrameGenerated.csproj")
-        csproj_data = _generateCSharpProjectFile(namespace, target_framework, include_sdk)
-        out[csproj_name] = csproj_data
+    # Always generate .csproj so consumers can use <ProjectReference>
+    csproj_name = os.path.join(path, "StructFrame.csproj")
+    csproj_data = _generateCSharpProjectFile(namespace, target_framework)
+    out[csproj_name] = csproj_data
     
     return out
 
 
-def _generateCSharpProjectFile(namespace, target_framework, include_sdk=False):
-    """Generate a .csproj file for the generated C# code."""
-    # Base project configuration
+def _generateCSharpProjectFile(namespace, target_framework):
+    """Generate a .csproj file for the generated C# code.
+    
+    Produces an SDK-style class library project that auto-includes all .cs files.
+    Consumers can reference this via <ProjectReference> instead of listing
+    individual generated files.
+    
+    The Framework folder (Types, Framing, Profiles, Sdk core) and all generated
+    message/SdkInterface files are always included.
+    
+    Transport implementations under Framework/Sdk/Transports/ are excluded by
+    default. Enable them individually:
+    
+      dotnet build -p:IncludeSerialTransport=true    # Serial (System.IO.Ports)
+      dotnet build -p:IncludeNetCoreServer=true      # TCP, UDP, WebSocket (NetCoreServer)
+    
+    Both flags can be combined.
+    """
     project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
@@ -1404,25 +1418,35 @@ def _generateCSharpProjectFile(namespace, target_framework, include_sdk=False):
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>{namespace}</RootNamespace>
     <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IncludeSerialTransport Condition="'$(IncludeSerialTransport)' == ''">false</IncludeSerialTransport>
+    <IncludeNetCoreServer Condition="'$(IncludeNetCoreServer)' == ''">false</IncludeNetCoreServer>
   </PropertyGroup>
-'''
-    
-    # Add package references for SDK if included
-    if include_sdk:
-        project_content += '''
+
+  <!-- Define NETCORESERVER_AVAILABLE when NetCoreServer is enabled -->
+  <PropertyGroup Condition="'$(IncludeNetCoreServer)' == 'true'">
+    <DefineConstants>$(DefineConstants);NETCORESERVER_AVAILABLE</DefineConstants>
+  </PropertyGroup>
+
+  <!-- Exclude all transports by default -->
   <ItemGroup>
-    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <Compile Remove="Framework\\Sdk\\Transports\\**" />
   </ItemGroup>
-'''
-    else:
-        # Exclude SDK folder for minimal builds
-        project_content += '''
-  <ItemGroup>
-    <Compile Remove="StructFrameSdk/**" />
+
+  <!-- Serial transport: SerialTransport.cs + System.IO.Ports package -->
+  <ItemGroup Condition="'$(IncludeSerialTransport)' == 'true'">
+    <Compile Include="Framework\\Sdk\\Transports\\SerialTransport.cs" />
+    <PackageReference Include="System.IO.Ports" Version="8.*" />
   </ItemGroup>
-'''
-    
-    project_content += '''
+
+  <!-- Network transports: TCP, UDP, WebSocket + NetCoreServer package -->
+  <ItemGroup Condition="'$(IncludeNetCoreServer)' == 'true'">
+    <Compile Include="Framework\\Sdk\\Transports\\TcpTransport.cs" />
+    <Compile Include="Framework\\Sdk\\Transports\\UdpTransport.cs" />
+    <Compile Include="Framework\\Sdk\\Transports\\WebSocketTransport.cs" />
+    <PackageReference Include="NetCoreServer" Version="8.*" />
+  </ItemGroup>
+
 </Project>
 '''
     return project_content
@@ -1504,10 +1528,8 @@ def main():
         files.update(generateCSharpFileStrings(args.csharp_path[0], 
                                                include_sdk_interface=(args.sdk or args.sdk_embedded),
                                                equality=args.equality,
-                                               generate_csproj=args.generate_csproj,
                                                namespace=args.csharp_namespace[0],
-                                               target_framework=args.target_framework[0],
-                                               include_sdk=(args.sdk or args.sdk_embedded)))
+                                               target_framework=args.target_framework[0]))
 
     if (args.build_gql):
         for key, value in packages.items():
@@ -1564,6 +1586,11 @@ def main():
         sdk_src = os.path.join(src_dir, "struct_frame_sdk")
         sdk_dst = os.path.join(dst_dir, "struct_frame_sdk")
         
+        # Handle PascalCase naming for C# boilerplate
+        if not os.path.exists(sdk_src):
+            sdk_src = os.path.join(src_dir, "Sdk")
+            sdk_dst = os.path.join(dst_dir, "Sdk")
+        
         if not os.path.exists(sdk_src):
             return
             
@@ -1597,7 +1624,7 @@ def main():
 
     # Copy all boilerplate files (excluding SDK by default)
     # SDK is handled separately below based on --sdk or --sdk_embedded flags
-    exclude_sdk = ['struct_frame_sdk']
+    exclude_sdk = ['struct_frame_sdk', 'Sdk']
     
     if (args.build_c):
         copy_all_files(
@@ -1625,9 +1652,13 @@ def main():
             args.cpp_path[0], exclude_sdk)
 
     if (args.build_csharp):
+        # C# boilerplate uses Framework/ structure — everything is always copied.
+        # The .csproj controls conditional compilation of transport implementations:
+        #   -p:IncludeSerialTransport=true   → Serial (System.IO.Ports)
+        #   -p:IncludeNetCoreServer=true     → TCP, UDP, WebSocket (NetCoreServer)
         copy_all_files(
             os.path.join(dir_path, "boilerplate/csharp"),
-            args.csharp_path[0], exclude_sdk)
+            args.csharp_path[0])
     
     # Copy SDK files if requested
     if args.sdk or args.sdk_embedded:
@@ -1658,11 +1689,6 @@ def main():
             copy_sdk_files(
                 os.path.join(dir_path, "boilerplate/cpp"),
                 args.cpp_path[0], embedded_only, include_asio=include_asio)
-        
-        if args.build_csharp:
-            copy_sdk_files(
-                os.path.join(dir_path, "boilerplate/csharp"),
-                args.csharp_path[0], embedded_only)
 
     # No boilerplate for GraphQL currently
 

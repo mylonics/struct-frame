@@ -1,7 +1,7 @@
 // Payload Types - Message structure configurations (C#)
 // This file mirrors the C++ payload_types.hpp structure
 
-namespace StructFrame.PayloadTypes
+namespace StructFrame.Profiles
 {
     /// <summary>
     /// Payload type enumeration
@@ -24,15 +24,15 @@ namespace StructFrame.PayloadTypes
     /// </summary>
     public readonly struct PayloadConfig
     {
-        public readonly PayloadType PayloadType;
-        public readonly bool HasCrc;
-        public readonly byte CrcBytes;      // 0 or 2
-        public readonly bool HasLength;
-        public readonly byte LengthBytes;   // 0, 1, or 2
-        public readonly bool HasSeq;
-        public readonly bool HasSysId;
-        public readonly bool HasCompId;
-        public readonly bool HasPkgId;
+        public PayloadType PayloadType { get; }
+        public bool HasCrc { get; }
+        public byte CrcBytes { get; }      // 0 or 2
+        public bool HasLength { get; }
+        public byte LengthBytes { get; }   // 0, 1, or 2
+        public bool HasSeq { get; }
+        public bool HasSysId { get; }
+        public bool HasCompId { get; }
+        public bool HasPkgId { get; }
 
         public PayloadConfig(PayloadType payloadType, bool hasCrc, byte crcBytes,
                             bool hasLength, byte lengthBytes, bool hasSeq,

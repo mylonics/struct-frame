@@ -9,6 +9,8 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using StructFrame.Framing;
+using StructFrame.Profiles;
 
 namespace StructFrame.Sdk
 {
@@ -82,7 +84,7 @@ namespace StructFrame.Sdk
         {
             Transport = transport ?? throw new ArgumentNullException(nameof(transport));
             GetMessageInfo = getMessageInfo ?? throw new ArgumentNullException(nameof(getMessageInfo));
-            Profile = profile ?? Profiles.Standard;
+            Profile = profile ?? StructFrame.Profiles.Profiles.Standard;
             BufferSize = bufferSize;
             Debug = debug;
             StrictOrdering = strictOrdering;
@@ -117,9 +119,10 @@ namespace StructFrame.Sdk
     }
 
     /// <summary>
-    /// Main SDK Client - uses FrameProfiles infrastructure for encoding/parsing
+    /// Main SDK Client - uses FrameProfiles infrastructure for encoding/parsing.
+    /// Implements IDisposable to clean up internal resources.
     /// </summary>
-    public class StructFrameSdk
+    public class StructFrameSdk : IDisposable
     {
         private readonly ITransport _transport;
         private readonly ProfileConfig _profile;
@@ -191,10 +194,15 @@ namespace StructFrame.Sdk
         /// <summary>
         /// Connect to the transport. When strict ordering is enabled,
         /// starts the background send queue consumer.
+        /// If the transport is already connected, skips the transport connect
+        /// and only starts the send queue.
         /// </summary>
         public async Task ConnectAsync()
         {
-            await _transport.ConnectAsync();
+            if (!_transport.IsConnected)
+            {
+                await _transport.ConnectAsync();
+            }
             if (_strictOrdering) StartSendQueue();
             Log("Connected");
         }
@@ -389,6 +397,33 @@ namespace StructFrame.Sdk
             if (_debug)
             {
                 Console.WriteLine($"[StructFrameSdk] {message}");
+            }
+        }
+
+        private bool _disposed;
+
+        /// <summary>
+        /// Releases resources used by the SDK.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Releases the unmanaged resources and optionally releases the managed resources.
+        /// </summary>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_disposed)
+            {
+                if (disposing)
+                {
+                    StopSendQueue();
+                    _sendQueueCts?.Dispose();
+                }
+                _disposed = true;
             }
         }
     }
