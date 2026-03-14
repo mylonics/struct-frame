@@ -506,7 +506,7 @@ class MessageCSharpGen():
                 if oneof.discriminator_type == "msgid":
                     result += f'        public ushort {pascalCase(oneof.name)}Discriminator {{ get; set; }}\n'
                 else:  # field_order
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
                     result += f'        public {enum_name} {pascalCase(oneof.name)}Discriminator {{ get; set; }}\n'
             for field_name, field in oneof.fields.items():
                 result += f'        // Union member: {field_name}\n'
@@ -640,7 +640,7 @@ class MessageCSharpGen():
                     result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
                     offset += 2
                 else:  # field_order
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
                     result += f'            msg.{pascalCase(oneof_name)}Discriminator = ({enum_name})data[{offset}];\n'
                     result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
                     offset += 1
@@ -661,7 +661,7 @@ class MessageCSharpGen():
                         result += f'                msg.{field_var} = {type_name}.Deserialize(data[{offset}..({offset} + {type_name}.MaxSize)]);\n'
                         result += '            }\n'
                 else:  # field_order
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
                     first = True
                     for idx, field_name in enumerate(oneof.field_order):
                         field = oneof.fields[field_name]
@@ -1096,7 +1096,7 @@ class MessageCSharpGen():
         # Get enum name for field_order discriminators
         enum_name = None
         if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
         
         result += '        // ========================================\n'
         result += '        // Envelope message helper methods\n'
@@ -1250,11 +1250,12 @@ class FileCSharpGen():
 
         # One file per discriminator enum
         for key, msg in package.messages.items():
+            struct_name = '%s%s' % (pascalCase(msg.package), msg.name)
             for oneof_name, oneof in msg.oneofs.items():
                 if oneof.auto_discriminator and oneof.discriminator_type == 'field_order':
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, struct_name)
                     content = header()
-                    content += EnumCSharpGen.generate_discriminator_enum(oneof, msg.name)
+                    content += EnumCSharpGen.generate_discriminator_enum(oneof, struct_name)
                     content += footer
                     files[os.path.join('Enums', f'{enum_name}.cs')] = content
 
@@ -1537,12 +1538,13 @@ class FileCSharpGen():
         # Generate discriminator enums for field_order oneofs
         discriminator_enums_generated = False
         for key, msg in package.messages.items():
+            struct_name = '%s%s' % (pascalCase(msg.package), msg.name)
             for oneof_name, oneof in msg.oneofs.items():
                 if oneof.auto_discriminator and oneof.discriminator_type == 'field_order':
                     if not discriminator_enums_generated:
                         yield '    // Discriminator enums\n'
                         discriminator_enums_generated = True
-                    enum_code = EnumCSharpGen.generate_discriminator_enum(oneof, msg.name)
+                    enum_code = EnumCSharpGen.generate_discriminator_enum(oneof, struct_name)
                     yield enum_code + '\n'
 
         if package.messages:

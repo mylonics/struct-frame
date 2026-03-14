@@ -138,6 +138,28 @@ message UnionTestMessage {
 }
 
 // ============================================================================
+// Field-Order Discriminator Test (msgid: 212)
+// ============================================================================
+
+// A message without a msgid (used in field_order discriminator oneof)
+message SimplePayload {
+  uint8 type_code = 1;
+  uint16 value = 2;
+}
+
+// A message using field_order discriminator (SimplePayload has no msgid,
+// so the auto-discriminator falls back to field_order, generating an enum)
+message UnionTestMessageFieldOrder {
+  option msgid = 212;
+
+  // oneof data (auto-discriminator will use field_order since SimplePayload has no msgid)
+  oneof data {
+    BasicTypesMessage basic_payload = 1;
+    SimplePayload simple_payload = 2;
+  }
+}
+
+// ============================================================================
 // Variable Length Message Tests (msgid: 206-208)
 // These messages use option variable = true for variable-length encoding
 // ============================================================================
