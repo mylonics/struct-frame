@@ -158,6 +158,29 @@ EXTENDED_MESSAGE_COUNT = 17
 # Language Definitions
 # =============================================================================
 
+
+def _detect_dotnet_framework() -> str:
+    """Detect the active .NET SDK version and return its target framework moniker.
+
+    Runs ``dotnet --version`` to determine the currently active SDK version and
+    returns the corresponding TFM (e.g. 'net10.0').  Falls back to 'net8.0' if
+    detection fails or if the active SDK is older than .NET 8.
+    """
+    try:
+        result = subprocess.run(
+            ['dotnet', '--version'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            version_str = result.stdout.strip()
+            major = int(version_str.split('.')[0])
+            if major >= 8:
+                return f"net{major}.0"
+    except Exception:
+        pass
+    return "net8.0"
+
+
 @dataclass
 class Language:
     """Language configuration."""
@@ -255,6 +278,7 @@ class TestRunner:
     
     def _init_languages(self) -> Dict[str, Language]:
         """Initialize language configurations."""
+        dotnet_framework = _detect_dotnet_framework()
         return {
             "c": Language(
                 id="c", name="C",
@@ -323,7 +347,7 @@ class TestRunner:
                 compiler_check="dotnet --version",
                 interpreter="dotnet",
                 test_dir="tests/csharp",
-                build_dir="tests/csharp/bin/Release/net10.0",
+                build_dir=f"tests/csharp/bin/Release/{dotnet_framework}",
                 source_ext=".cs",
             ),
         }
@@ -537,8 +561,11 @@ class TestRunner:
                 cmd_parts.extend([lang.gen_flag, "--" + lang.gen_flag.lstrip("-").replace("build_", "") + "_path", str(gen_dir)])
             
             # Add --csharp_sdk flag if C# is being generated (includes transports)
+            # Also pass the detected target framework so the generated .csproj targets
+            # the installed .NET version rather than the hardcoded default.
             if any(l.id == "csharp" for l in active):
                 cmd_parts.append("--csharp_sdk")
+                cmd_parts.extend(["--target_framework", _detect_dotnet_framework()])
             
             env = {"PYTHONPATH": str(self.project_root / "src")}
             success, _, stderr = self.run_cmd(" ".join(cmd_parts), env=env)
@@ -664,10 +691,15 @@ class TestRunner:
         if lang.id == "csharp":
             csproj = test_dir / "StructFrameTests.csproj"
             if csproj.exists():
-                cmd = f'dotnet build "{csproj}" -c Release -o "{build_dir}" --verbosity quiet'
+                # Pass the detected .NET version as BuildTargetFramework so the
+                # test project targets the installed SDK version rather than the
+                # fallback default in the .csproj file.
+                dotnet_framework = _detect_dotnet_framework()
+                cmd = f'dotnet build "{csproj}" -c Release -o "{build_dir}" -p:BuildTargetFramework={dotnet_framework} --verbosity quiet'
                 success, _, _ = self.run_cmd(cmd)
                 
-                # Also verify transport implementations compile
+                # Also verify transport implementations compile (generated .csproj
+                # already has the correct TFM set at generation time).
                 gen_csproj = gen_dir / "StructFrame.csproj"
                 if gen_csproj.exists():
                     transport_build_dir = build_dir / "transport_verify"

@@ -6,6 +6,7 @@ import os
 import shutil
 import hashlib
 import json
+import subprocess
 from struct_frame import FileCGen
 from struct_frame import FileTsGen
 from struct_frame import FileJsGen
@@ -1023,6 +1024,29 @@ required_file = []
 # Track which package imports which other packages: {importing_pkg: [imported_pkg1, imported_pkg2, ...]}
 package_imports = {}
 
+
+def _detect_dotnet_framework() -> str:
+    """Detect the active .NET SDK version and return its target framework moniker.
+
+    Runs ``dotnet --version`` to determine the currently active SDK version and
+    returns the corresponding TFM (e.g. 'net10.0').  Falls back to 'net8.0' if
+    detection fails or if the active SDK is older than .NET 8.
+    """
+    try:
+        result = subprocess.run(
+            ['dotnet', '--version'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            version_str = result.stdout.strip()
+            major = int(version_str.split('.')[0])
+            if major >= 8:
+                return f"net{major}.0"
+    except Exception:
+        pass
+    return "net8.0"
+
+
 parser = argparse.ArgumentParser(
     prog='struct_frame',
     description='Message serialization and header generation program')
@@ -1059,8 +1083,8 @@ parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFra
                     help='Root namespace for generated C# code (default: StructFrame)')
 parser.add_argument('--csharp_sdk', action='store_true',
                     help='Include C# SDK transports (Serial, TCP, UDP, WebSocket)')
-parser.add_argument('--target_framework', nargs=1, type=str, default=['net8.0'],
-                    help='Target framework for generated .csproj file (default: net8.0)')
+parser.add_argument('--target_framework', nargs=1, type=str, default=[_detect_dotnet_framework()],
+                    help='Target framework for generated .csproj file (default: auto-detected installed .NET version, minimum net8.0)')
 parser.add_argument('--force', action='store_true',
                     help='Force regeneration even if hash matches previous generation')
 parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
