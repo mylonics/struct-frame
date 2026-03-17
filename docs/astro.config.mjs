@@ -40,6 +40,11 @@ export default defineConfig({
           ],
         },
       }),
+      // Override social links with the object format required by Starlight 0.32
+      // (mylonics-styles returns an array format which is incompatible)
+      social: {
+        github: 'https://github.com/mylonics/struct-frame',
+      },
       sidebar: [
         {
           label: 'Getting Started',
