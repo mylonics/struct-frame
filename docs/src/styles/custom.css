@@ -4,3 +4,23 @@
  *
  * Add any Struct Frame–specific adjustments here.
  */
+
+/* ── K2D font for Struct Frame branding ──────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=K2D:wght@400&display=swap');
+
+/* Mylonics gray — adapts for dark/light theme */
+:root {
+  --ml-brand-gray: #adb5bd; /* ml-gray-400 — visible on dark backgrounds */
+}
+
+:root[data-theme='light'] {
+  --ml-brand-gray: #555555; /* ml-gray-600 — visible on light backgrounds */
+}
+
+/* Struct Frame brand text — K2D 400-weight with Mylonics gray */
+.site-title span,
+.hero h1 {
+  font-family: 'K2D', sans-serif;
+  font-weight: 400;
+  color: var(--ml-brand-gray);
+}
