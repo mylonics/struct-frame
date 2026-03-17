@@ -1,4 +1,7 @@
-# Development
+---
+title: Development
+description: Development setup, contributing guidelines, and project structure.
+---
 
 ## Setting Up Development Environment
 

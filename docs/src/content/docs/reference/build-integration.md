@@ -1,4 +1,7 @@
-# Build Integration
+---
+title: Build Integration
+description: Integrate code generation into Make, CMake, npm scripts, and MSBuild build systems.
+---
 
 Integrate code generation into your build system so generated code automatically reflects changes to proto files.
 

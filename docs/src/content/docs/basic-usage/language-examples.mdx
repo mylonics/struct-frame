@@ -1,4 +1,9 @@
-# Language Examples
+---
+title: Language Examples
+description: How to use generated code in each language with the standardized serialize/deserialize API.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 This page shows how to use generated code in each language with the standardized serialize/deserialize API.
 
@@ -407,66 +412,81 @@ message SensorData {
 
 Creating messages with arrays works the same way across languages:
 
-=== "C"
-    ```c
-    ExampleSensorData data;
-    data.readings_count = 3;
-    data.readings[0] = 1.1f;
-    data.readings[1] = 2.2f;
-    data.readings[2] = 3.3f;
-    
-    // Serialize/deserialize works the same as simple messages
-    // Just use msg.serialize() / deserialize(data)
-    ```
+<Tabs>
+  <TabItem label="C">
+  ```c
+  ExampleSensorData data;
+  data.readings_count = 3;
+  data.readings[0] = 1.1f;
+  data.readings[1] = 2.2f;
+  data.readings[2] = 3.3f;
 
-=== "C++"
-    ```cpp
-    ExampleSensorData data;
-    data.readings_count = 3;
-    data.readings[0] = 1.1f;
-    data.readings[1] = 2.2f;
-    data.readings[2] = 3.3f;
-    
-    // Serialize/deserialize works the same as simple messages
-    // Just use msg.serialize() / deserialize(data)
-    ```
+  // Serialize/deserialize works the same as simple messages
+  // Just use msg.serialize() / deserialize(data)
+  ```
+  </TabItem>
+</Tabs>
 
-=== "Python"
-    ```python
-    data = ExampleSensorData()
-    data.readings_count = 3
-    data.readings[0] = 1.1
-    data.readings[1] = 2.2
-    data.readings[2] = 3.3
-    
-    # Serialize/deserialize works the same as simple messages
-    # Just use msg.serialize() / deserialize(data)
-    ```
+<Tabs>
+  <TabItem label="C++">
+  ```cpp
+  ExampleSensorData data;
+  data.readings_count = 3;
+  data.readings[0] = 1.1f;
+  data.readings[1] = 2.2f;
+  data.readings[2] = 3.3f;
 
-=== "TypeScript"
-    ```typescript
-    const data = new ExampleSensorData();
-    data.readings_count = 3;
-    data.readings[0] = 1.1;
-    data.readings[1] = 2.2;
-    data.readings[2] = 3.3;
-    
-    // Serialize/deserialize works the same as simple messages
-    // Just use msg.serialize() / deserialize(data)
-    ```
+  // Serialize/deserialize works the same as simple messages
+  // Just use msg.serialize() / deserialize(data)
+  ```
+  </TabItem>
+</Tabs>
 
-=== "C#"
-    ```csharp
-    var data = new ExampleSensorData {
-        ReadingsCount = 3
-    };
-    data.Readings[0] = 1.1f;
-    data.Readings[1] = 2.2f;
-    data.Readings[2] = 3.3f;
-    
-    // Serialize/deserialize works the same as simple messages
-    // Just use msg.Serialize() / Deserialize(data)
-    ```
+<Tabs>
+  <TabItem label="Python">
+  ```python
+  data = ExampleSensorData()
+  data.readings_count = 3
+  data.readings[0] = 1.1
+  data.readings[1] = 2.2
+  data.readings[2] = 3.3
+
+  # Serialize/deserialize works the same as simple messages
+  # Just use msg.serialize() / deserialize(data)
+  ```
+  </TabItem>
+</Tabs>
+
+<Tabs>
+  <TabItem label="TypeScript">
+  ```typescript
+  const data = new ExampleSensorData();
+  data.readings_count = 3;
+  data.readings[0] = 1.1;
+  data.readings[1] = 2.2;
+  data.readings[2] = 3.3;
+
+  // Serialize/deserialize works the same as simple messages
+  // Just use msg.serialize() / deserialize(data)
+  ```
+  </TabItem>
+</Tabs>
+
+<Tabs>
+  <TabItem label="C#">
+  ```csharp
+  var data = new ExampleSensorData {
+      ReadingsCount = 3
+  };
+  data.Readings[0] = 1.1f;
+  data.Readings[1] = 2.2f;
+  data.Readings[2] = 3.3f;
+
+  // Serialize/deserialize works the same as simple messages
+  // Just use msg.Serialize() / Deserialize(data)
+  ```
+  </TabItem>
+</Tabs>
 
 ## Nested Messages
 
@@ -487,57 +507,72 @@ message Vehicle {
 
 Nested messages are accessed naturally in all languages:
 
-=== "C"
-    ```c
-    ExampleVehicle v;
-    v.id = 1;
-    v.pos.lat = 37.7749;
-    v.pos.lon = -122.4194;
-    
-    // Serialize/deserialize works the same - nested messages are handled automatically
-    ```
+<Tabs>
+  <TabItem label="C">
+  ```c
+  ExampleVehicle v;
+  v.id = 1;
+  v.pos.lat = 37.7749;
+  v.pos.lon = -122.4194;
 
-=== "C++"
-    ```cpp
-    ExampleVehicle v;
-    v.id = 1;
-    v.pos.lat = 37.7749;
-    v.pos.lon = -122.4194;
-    
-    // Serialize/deserialize works the same - nested messages are handled automatically
-    ```
+  // Serialize/deserialize works the same - nested messages are handled automatically
+  ```
+  </TabItem>
+</Tabs>
 
-=== "Python"
-    ```python
-    v = ExampleVehicle(id=1)
-    v.pos.lat = 37.7749
-    v.pos.lon = -122.4194
-    
-    # Serialize/deserialize works the same - nested messages are handled automatically
-    ```
+<Tabs>
+  <TabItem label="C++">
+  ```cpp
+  ExampleVehicle v;
+  v.id = 1;
+  v.pos.lat = 37.7749;
+  v.pos.lon = -122.4194;
 
-=== "TypeScript"
-    ```typescript
-    const v = new ExampleVehicle();
-    v.id = 1;
-    v.pos.lat = 37.7749;
-    v.pos.lon = -122.4194;
-    
-    // Serialize/deserialize works the same - nested messages are handled automatically
-    ```
+  // Serialize/deserialize works the same - nested messages are handled automatically
+  ```
+  </TabItem>
+</Tabs>
 
-=== "C#"
-    ```csharp
-    var v = new ExampleVehicle {
-        Id = 1,
-        Pos = new ExamplePosition {
-            Lat = 37.7749,
-            Lon = -122.4194
-        }
-    };
-    
-    // Serialize/deserialize works the same - nested messages are handled automatically
-    ```
+<Tabs>
+  <TabItem label="Python">
+  ```python
+  v = ExampleVehicle(id=1)
+  v.pos.lat = 37.7749
+  v.pos.lon = -122.4194
+
+  # Serialize/deserialize works the same - nested messages are handled automatically
+  ```
+  </TabItem>
+</Tabs>
+
+<Tabs>
+  <TabItem label="TypeScript">
+  ```typescript
+  const v = new ExampleVehicle();
+  v.id = 1;
+  v.pos.lat = 37.7749;
+  v.pos.lon = -122.4194;
+
+  // Serialize/deserialize works the same - nested messages are handled automatically
+  ```
+  </TabItem>
+</Tabs>
+
+<Tabs>
+  <TabItem label="C#">
+  ```csharp
+  var v = new ExampleVehicle {
+      Id = 1,
+      Pos = new ExamplePosition {
+          Lat = 37.7749,
+          Lon = -122.4194
+      }
+  };
+
+  // Serialize/deserialize works the same - nested messages are handled automatically
+  ```
+  </TabItem>
+</Tabs>
 
 ## Key Takeaways
 

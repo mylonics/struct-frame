@@ -23,14 +23,28 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Setup Mylonics Styles
+        uses: mylonics/mylonics-styles@main
         with:
-          python-version: "3.x"
+          path: docs/mylonics-styles
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
 
       - name: Install dependencies
-        run: |
-          pip install "mkdocs-material>=9.7.0,<10.0.0"
+        run: npm install
+        working-directory: docs
 
-      - name: Deploy docs
-        run: mkdocs gh-deploy --force
+      - name: Build documentation
+        run: npm run build
+        working-directory: docs
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/dist

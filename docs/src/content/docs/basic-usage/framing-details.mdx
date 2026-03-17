@@ -1,4 +1,9 @@
-# Framing Details
+---
+title: Framing Details
+description: Technical details of the framing system including frame components, header types, payload types, and parser state machine.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 This page covers the technical details of the framing system.
 
@@ -159,26 +164,32 @@ for byte in incoming_data:
 
 Create custom frame formats by combining header and payload types:
 
-=== "C++"
-    ```cpp
-    // Custom: Tiny header with Extended payload
-    using CustomConfig = FrameConfig<
-        HeaderTiny,
-        PayloadExtended
-    >;
-    
-    FrameEncoderWithCrc<CustomConfig> encoder;
-    BufferParserWithCrc<CustomConfig> parser;
-    ```
+<Tabs>
+  <TabItem label="C++">
+  ```cpp
+  // Custom: Tiny header with Extended payload
+  using CustomConfig = FrameConfig<
+      HeaderTiny,
+      PayloadExtended
+  >;
 
-=== "Python"
-    ```python
-    from struct_frame_parser import create_custom_profile, HeaderType, PayloadType
-    
-    custom = create_custom_profile(
-        "TinyExtended",
-        HeaderType.TINY,
-        PayloadType.EXTENDED
-    )
-    ```
+  FrameEncoderWithCrc<CustomConfig> encoder;
+  BufferParserWithCrc<CustomConfig> parser;
+  ```
+  </TabItem>
+</Tabs>
+
+<Tabs>
+  <TabItem label="Python">
+  ```python
+  from struct_frame_parser import create_custom_profile, HeaderType, PayloadType
+
+  custom = create_custom_profile(
+      "TinyExtended",
+      HeaderType.TINY,
+      PayloadType.EXTENDED
+  )
+  ```
+  </TabItem>
+</Tabs>
 

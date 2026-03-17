@@ -1,4 +1,7 @@
-# Message Definitions
+---
+title: Message Definitions
+description: Define messages in Protocol Buffer .proto files for cross-language serialization code generation.
+---
 
 Messages are defined in Protocol Buffer (.proto) files. Struct Frame uses these definitions to generate serialization code for each target language.
 

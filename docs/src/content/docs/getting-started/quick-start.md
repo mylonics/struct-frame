@@ -1,4 +1,7 @@
-# Quick Start
+---
+title: Quick Start
+description: Create a simple message, generate code, and use it in C++.
+---
 
 This guide shows you how to create a simple message, generate code, and use it in C++.
 
@@ -67,7 +70,6 @@ That's it! The C/C++ implementation uses packed structs that map directly to mem
 
 ## Next Steps
 
-- [Message Definitions](../basic-usage/message-definitions.md) - Learn how to write proto files
-- [Language Examples](../basic-usage/language-examples.md) - See examples for other languages
-- [Framing](../basic-usage/framing.md) - Add framing for reliable communication
-
+- [Message Definitions](/basic-usage/message-definitions/) - Learn how to write proto files
+- [Language Examples](/basic-usage/language-examples/) - See examples for other languages
+- [Framing](/basic-usage/framing/) - Add framing for reliable communication

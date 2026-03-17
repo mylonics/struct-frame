@@ -1,4 +1,7 @@
-# Python SDK
+---
+title: Python SDK
+description: Python SDK with synchronous and asynchronous interfaces for message communication.
+---
 
 The Python SDK provides both synchronous and asynchronous interfaces for message communication.
 
