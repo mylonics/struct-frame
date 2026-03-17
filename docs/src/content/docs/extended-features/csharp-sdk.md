@@ -1,4 +1,7 @@
-# C# SDK
+---
+title: C# SDK
+description: C# SDK with async/await-based transport layers for .NET applications.
+---
 
 The C# SDK provides async/await-based transport layers for .NET applications using C# 11+ static abstract interface members.
 

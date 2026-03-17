@@ -1,0 +1,134 @@
+---
+title: Struct Frame
+description: A cross-platform code generation framework for Protocol Buffer serialization. Generate C, C++, TypeScript, Python, and GraphQL code with framing and parsing utilities for structured message communication.
+template: splash
+hero:
+  tagline: Cross-platform code generation from Protocol Buffer definitions
+  image:
+    html: '<img src="/logo.png" alt="Struct Frame Logo" style="max-width:180px" />'
+  actions:
+    - text: Get Started
+      link: /getting-started/installation/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/mylonics/struct-frame
+      icon: github
+      variant: secondary
+---
+
+import { Card, CardGrid, LinkCard, Tabs, TabItem } from '@astrojs/starlight/components';
+
+## Why Struct Frame
+
+<CardGrid>
+  <Card title="Zero-copy C/C++" icon="rocket">
+    Uses packed structs that map directly to memory. No encoding or decoding step required.
+  </Card>
+  <Card title="Flexible framing" icon="setting">
+    Multiple frame profiles for different scenarios, from zero-overhead trusted links to robust multi-node networks.
+  </Card>
+  <Card title="Nested messages & arrays" icon="list-format">
+    Unlike Mavlink, supports complex message structures with nested messages and variable-length packing for arrays.
+  </Card>
+  <Card title="Cross-platform" icon="puzzle">
+    Generate code for embedded C, server Python, and frontend TypeScript from a single proto definition.
+  </Card>
+</CardGrid>
+
+## Installation
+
+```bash
+pip install struct-frame
+```
+
+## Quick Start
+
+Create a `.proto` file:
+
+```proto
+package example;
+
+message Status {
+  option msgid = 1;
+  uint32 id = 1;
+  float value = 2;
+}
+```
+
+Generate code:
+
+```bash
+# Python
+python -m struct_frame status.proto --build_py --py_path generated/
+
+# C
+python -m struct_frame status.proto --build_c --c_path generated/
+
+# Multiple languages
+python -m struct_frame status.proto --build_c --build_py --build_ts
+```
+
+## Quick Language Reference
+
+<Tabs>
+  <TabItem label="C++">
+  ```cpp
+  #include "example.structframe.hpp"
+
+  // Create a message
+  ExampleStatus msg;
+  msg.id = 42;
+  msg.value = 3.14f;
+
+  // No encoding needed - use directly as bytes
+  uint8_t* data = (uint8_t*)&msg;
+  size_t size = sizeof(ExampleStatus);
+  ```
+  </TabItem>
+  <TabItem label="Python">
+  ```python
+  from struct_frame.generated.example import ExampleStatus
+
+  # Create a message
+  msg = ExampleStatus(id=42, value=3.14)
+
+  # Serialize to bytes
+  data = msg.pack()
+  ```
+  </TabItem>
+  <TabItem label="TypeScript">
+  ```typescript
+  import { ExampleStatus } from './example.structframe';
+
+  // Create a message
+  const msg = new ExampleStatus();
+  msg.id = 42;
+  msg.value = 3.14;
+
+  // Get binary data
+  const data = msg.data();
+  ```
+  </TabItem>
+  <TabItem label="C">
+  ```c
+  #include "example.structframe.h"
+
+  // Create a message
+  ExampleStatus msg = { .id = 42, .value = 3.14f };
+
+  // Use directly as bytes
+  uint8_t* data = (uint8_t*)&msg;
+  size_t size = sizeof(ExampleStatus);
+  ```
+  </TabItem>
+</Tabs>
+
+## Quick Links
+
+<CardGrid>
+  <LinkCard title="Quick Start" href="/getting-started/quick-start/" description="Complete walkthrough with C++ example" />
+  <LinkCard title="Message Definitions" href="/basic-usage/message-definitions/" description="Learn proto file syntax" />
+  <LinkCard title="Language Examples" href="/basic-usage/language-examples/" description="See detailed examples for each language" />
+  <LinkCard title="CLI Reference" href="/reference/cli-reference/" description="All command-line options" />
+</CardGrid>

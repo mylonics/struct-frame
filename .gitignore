@@ -7,8 +7,11 @@ main.exe
 dist/
 __pycache__/
 
-# MkDocs build output
-site/
+# Docs build output (Astro)
+docs/dist/
+docs/.astro/
+docs/node_modules/
+docs/mylonics-styles/
 
 # .NET/C# build outputs
 bin/
@@ -67,4 +70,4 @@ Thumbs.db
 *~
 *.bak
 node_modules/
-package-lock.json
+/package-lock.json

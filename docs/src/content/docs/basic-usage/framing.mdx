@@ -1,4 +1,9 @@
-# Framing
+---
+title: Framing
+description: Wrap messages with headers and checksums for reliable communication over serial links, network sockets, or any byte stream.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 Framing wraps messages with headers and checksums for reliable communication over serial links, network sockets, or any byte stream.
 
@@ -53,40 +58,46 @@ The Standard profile (recommended for most uses):
 
 ## Usage Example
 
-=== "Python"
-    ```python
-    from struct_frame_parser import Parser, HeaderType, PayloadType
-    
-    parser = Parser()
-    
-    # Encode
-    frame = parser.encode_basic(msg_id=42, msg=b"data")
-    
-    # Decode
-    for byte in frame:
-        result = parser.parse_byte(byte)
-        if result.valid:
-            print(f"Message {result.msg_id}: {result.msg_data}")
-    ```
+<Tabs>
+  <TabItem label="Python">
+  ```python
+  from struct_frame_parser import Parser, HeaderType, PayloadType
 
-=== "C++"
-    ```cpp
-    #include "FrameProfiles.hpp"
-    
-    using namespace StructFrame;
-    
-    // Encode
-    uint8_t buffer[1024];
-    ProfileStandardWriter writer(buffer, sizeof(buffer));
-    writer.write(msg);
-    
-    // Decode
-    ProfileStandardAccumulatingReader reader;
-    reader.add_data(buffer, buffer_size);
-    while (auto result = reader.next()) {
-        // Process message - result is valid due to operator bool()
-    }
-    ```
+  parser = Parser()
 
-For more details, see [Framing Details](framing-details.md).
+  # Encode
+  frame = parser.encode_basic(msg_id=42, msg=b"data")
+
+  # Decode
+  for byte in frame:
+      result = parser.parse_byte(byte)
+      if result.valid:
+          print(f"Message {result.msg_id}: {result.msg_data}")
+  ```
+  </TabItem>
+</Tabs>
+
+<Tabs>
+  <TabItem label="C++">
+  ```cpp
+  #include "FrameProfiles.hpp"
+
+  using namespace StructFrame;
+
+  // Encode
+  uint8_t buffer[1024];
+  ProfileStandardWriter writer(buffer, sizeof(buffer));
+  writer.write(msg);
+
+  // Decode
+  ProfileStandardAccumulatingReader reader;
+  reader.add_data(buffer, buffer_size);
+  while (auto result = reader.next()) {
+      // Process message - result is valid due to operator bool()
+  }
+  ```
+  </TabItem>
+</Tabs>
+
+For more details, see [Framing Details](/basic-usage/framing-details/).
 

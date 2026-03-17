@@ -1,4 +1,9 @@
-# Extended Features
+---
+title: Advanced Features
+description: Advanced scenarios including package IDs, minimal frames, large messages, and variable-length encoding.
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
 
 This page covers advanced scenarios for special use cases.
 
@@ -17,7 +22,7 @@ Use Extended or ExtendedMultiSystemStream payload types with package IDs.
 - Without pkgid: 8-bit (0-255)
 - With pkgid: 16-bit = `(package_id << 8) | msg_id`
 
-See [Message Definitions](../basic-usage/message-definitions.md#message-options) for usage details.
+See [Message Definitions](/basic-usage/message-definitions/#message-options) for usage details.
 
 ## Minimal Frames (Bandwidth-Limited Scenarios)
 
@@ -29,28 +34,34 @@ Minimal frames remove length and checksum fields for lowest overhead.
 
 The generator creates a `get_msg_info` function automatically:
 
-=== "Python"
-    ```python
-    from struct_frame.frame_profiles import get_profile, Profile
-    from messages import get_msg_info
-    
-    # Get minimal profile
-    profile = get_profile(Profile.SENSOR)  # TinyMinimal
-    
-    # Parser uses auto-generated get_msg_info
-    parser = profile.create_parser(get_msg_info)
-    ```
+<Tabs>
+  <TabItem label="Python">
+  ```python
+  from struct_frame.frame_profiles import get_profile, Profile
+  from messages import get_msg_info
 
-=== "C++"
-    ```cpp
-    #include "FrameProfiles.hpp"
-    #include "messages.structframe.hpp"
-    
-    // Use sensor profile with minimal frames
-    ProfileSensorAccumulatingReader reader(get_msg_info);
-    ```
+  # Get minimal profile
+  profile = get_profile(Profile.SENSOR)  # TinyMinimal
 
-See [Framing](../basic-usage/framing.md) for more on minimal frames.
+  # Parser uses auto-generated get_msg_info
+  parser = profile.create_parser(get_msg_info)
+  ```
+  </TabItem>
+</Tabs>
+
+<Tabs>
+  <TabItem label="C++">
+  ```cpp
+  #include "FrameProfiles.hpp"
+  #include "messages.structframe.hpp"
+
+  // Use sensor profile with minimal frames
+  ProfileSensorAccumulatingReader reader(get_msg_info);
+  ```
+  </TabItem>
+</Tabs>
+
+See [Framing](/basic-usage/framing/) for more on minimal frames.
 
 ## Large Messages
 
@@ -76,5 +87,5 @@ message LogEntry {
 }
 ```
 
-Only used bytes are transmitted instead of full max_size. See [Message Definitions](../basic-usage/message-definitions.md#message-options) for details.
+Only used bytes are transmitted instead of full max_size. See [Message Definitions](/basic-usage/message-definitions/#message-options) for details.
 

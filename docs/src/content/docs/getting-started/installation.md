@@ -1,4 +1,7 @@
-# Installation
+---
+title: Installation
+description: Install Struct Frame via pip and set up language-specific requirements.
+---
 
 Install via pip:
 

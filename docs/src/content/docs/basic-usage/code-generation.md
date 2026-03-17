@@ -1,4 +1,7 @@
-# Code Generation
+---
+title: Code Generation
+description: Generate serialization code from proto files using the struct-frame command-line tool.
+---
 
 Generate serialization code from proto files using the struct-frame command-line tool.
 
@@ -81,5 +84,5 @@ Each language generates:
 - Frame parsing utilities (if using framing)
 - SDK files (if `--sdk` flag used)
 
-See [CLI Reference](../reference/cli-reference.md) for complete details.
+See [CLI Reference](/reference/cli-reference/) for complete details.
 

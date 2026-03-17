@@ -1,4 +1,7 @@
-# CLI Reference
+---
+title: CLI Reference
+description: Complete reference for all struct-frame command-line flags and options.
+---
 
 ## Basic Usage
 

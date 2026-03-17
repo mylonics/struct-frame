@@ -1,4 +1,7 @@
-# SDK Overview
+---
+title: SDK Overview
+description: High-level SDK abstractions for message communication, including transport layers and message routing.
+---
 
 The SDK provides high-level abstractions for message communication, including transport layers and message routing.
 
@@ -52,8 +55,8 @@ python -m struct_frame messages.proto --build_csharp --csharp_sdk
 
 ## Language-Specific Guides
 
-- [C++ SDK](cpp-sdk.md)
-- [TypeScript/JavaScript SDK](typescript-sdk.md)
-- [Python SDK](python-sdk.md)
-- [C# SDK](csharp-sdk.md)
+- [C++ SDK](/extended-features/cpp-sdk/)
+- [TypeScript/JavaScript SDK](/extended-features/typescript-sdk/)
+- [Python SDK](/extended-features/python-sdk/)
+- [C# SDK](/extended-features/csharp-sdk/)
 

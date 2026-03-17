@@ -1,4 +1,7 @@
-# Testing
+---
+title: Testing
+description: Running and understanding the struct-frame test suite.
+---
 
 ## Running Tests
 

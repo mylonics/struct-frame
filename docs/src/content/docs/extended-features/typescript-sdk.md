@@ -1,4 +1,7 @@
-# TypeScript/JavaScript SDK
+---
+title: TypeScript/JavaScript SDK
+description: Promise-based TypeScript and JavaScript SDK with transport layers for Node.js and browser environments.
+---
 
 The TypeScript/JavaScript SDK provides promise-based transport layers for Node.js and browser environments.
 

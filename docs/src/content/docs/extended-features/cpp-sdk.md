@@ -1,4 +1,7 @@
-# C++ SDK
+---
+title: C++ SDK
+description: C++ SDK with transport layers and message routing using the observer/subscriber pattern.
+---
 
 The C++ SDK provides transport layers and message routing with an observer/subscriber pattern.
 
@@ -95,5 +98,5 @@ ProfileSensorWriter sensor_writer(buffer, sizeof(buffer));
 ProfileSensorAccumulatingReader sensor_reader(get_message_info);
 ```
 
-See [Framing Details](../basic-usage/framing-details.md) for more profiles.
+See [Framing Details](/basic-usage/framing-details/) for more profiles.
 
