@@ -58,9 +58,12 @@ int main() {
 ```cpp
 #include "struct_frame_sdk/serial_transport.hpp"
 
-StructFrame::SerialTransport serial("/dev/ttyUSB0", 115200);
+// SerialTransport requires a platform-specific ISerialPort implementation.
+// Provide your own class that implements the ISerialPort interface
+// (open, close, write, read, is_open methods).
+StructFrame::SerialTransportConfig config;
+StructFrame::SerialTransport serial(&my_serial_port, config);
 serial.connect();
-serial.send(message_id, data, size);
 ```
 
 ### Network (UDP, TCP, WebSocket)
@@ -68,9 +71,15 @@ serial.send(message_id, data, size);
 ```cpp
 #include "struct_frame_sdk/network_transports.hpp"
 
-StructFrame::UDPTransport udp("192.168.1.100", 8080);
+// UDP
+StructFrame::UdpTransportConfig udp_config{.remoteHost = "192.168.1.100", .remotePort = 8080};
+StructFrame::UdpTransport udp(udp_config);
 udp.connect();
-udp.send(message_id, data, size);
+
+// TCP
+StructFrame::TcpTransportConfig tcp_config{.host = "192.168.1.100", .port = 8080};
+StructFrame::TcpTransport tcp(tcp_config);
+tcp.connect();
 ```
 
 ## Frame Profiles

@@ -740,6 +740,8 @@ message RobotState {
 **Generated C++ Code:**
 
 ```cpp
+#pragma pack(push, 1)
+
 // Enum class instead of plain enum
 enum class RobotRobotStatus : uint8_t {
     IDLE = 0,
@@ -747,35 +749,47 @@ enum class RobotRobotStatus : uint8_t {
     ERROR = 2
 };
 
-// Packed struct compatible with C
-struct RobotRobotState {
+// Struct inheriting from MessageBase<Derived, MSG_ID, MAX_SIZE, MAGIC1, MAGIC2>.
+// All template parameters are auto-generated; users do not specify them manually.
+struct RobotRobotState : FrameParsers::MessageBase<RobotRobotState, 10, 9, 0xAB, 0xCD> {
     uint32_t robot_id;
     RobotRobotStatus status;
     float battery_level;
-} __attribute__((packed));
 
-constexpr size_t ROBOT_ROBOT_STATE_MAX_SIZE = 9;
-constexpr size_t ROBOT_ROBOT_STATE_MSG_ID = 10;
+    size_t deserialize(const uint8_t* buffer, size_t buffer_size);
+    size_t deserialize(const FrameParsers::FrameMsgInfo& frame_info);
+    size_t serialize(uint8_t* buffer) const;
+};
 
-// Helper function in namespace
-namespace StructFrame {
+#pragma pack(pop)
+
+namespace FrameParsers {
 inline bool get_message_length(size_t msg_id, size_t* size) {
     switch (msg_id) {
-        case ROBOT_ROBOT_STATE_MSG_ID: 
-            *size = ROBOT_ROBOT_STATE_MAX_SIZE; 
+        case RobotRobotState::MSG_ID:
+            *size = RobotRobotState::MAX_SIZE;
             return true;
         default: break;
     }
     return false;
 }
-}  // namespace StructFrame
+
+inline MessageInfo get_message_info(uint16_t msg_id) {
+    switch (msg_id) {
+        case RobotRobotState::MSG_ID:
+            return MessageInfo{RobotRobotState::MAX_SIZE, RobotRobotState::MAGIC1, RobotRobotState::MAGIC2};
+        default: break;
+    }
+    return MessageInfo{};
+}
+}  // namespace FrameParsers
 ```
 
 **Usage:**
 
 ```cpp
-#include "robot.sf.hpp"
-#include "struct_frame.hpp"
+#include "robot.structframe.hpp"
+#include "frame_profiles.hpp"
 
 // Create and initialize message
 RobotRobotState state{};
@@ -783,28 +797,19 @@ state.robot_id = 123;
 state.status = RobotRobotStatus::MOVING;  // Type-safe enum class
 state.battery_level = 85.5f;
 
-// Encode with modern C++ API
+// Encode with frame profile
 uint8_t buffer[256];
-StructFrame::BasicPacket format;
-StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
+FrameParsers::ProfileStandardWriter writer(buffer, sizeof(buffer));
+writer.write(state);
 
-if (encoder.encode(&format, ROBOT_ROBOT_STATE_MSG_ID, &state, sizeof(state))) {
-    // Frame encoded successfully
-    std::cout << "Encoded " << encoder.size() << " bytes\n";
-}
-
-// Parse with lambda callback
-StructFrame::FrameParser parser(&format, [](size_t msg_id, size_t* size) {
-    return StructFrame::get_message_length(msg_id, size);
-});
-
-// Process received bytes
-for (size_t i = 0; i < encoder.size(); i++) {
-    auto info = parser.parse_byte(buffer[i]);
-    if (info.valid) {
-        auto* msg = reinterpret_cast<RobotRobotState*>(info.msg_location);
-        std::cout << "Robot ID: " << msg->robot_id 
-                  << ", Status: " << static_cast<int>(msg->status) << "\n";
+// Parse byte-by-byte with AccumulatingReader
+FrameParsers::ProfileStandardAccumulatingReader reader;
+for (size_t i = 0; i < writer.size(); i++) {
+    if (auto info = reader.push_byte(buffer[i])) {
+        RobotRobotState msg;
+        msg.deserialize(info);
+        std::cout << "Robot ID: " << msg.robot_id
+                  << ", Status: " << static_cast<int>(msg.status) << "\n";
     }
 }
 ```
