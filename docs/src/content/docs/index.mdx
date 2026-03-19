@@ -94,7 +94,7 @@ python -m struct_frame status.proto --build_c --build_py --build_ts
   msg = ExampleStatus(id=42, value=3.14)
 
   # Serialize to bytes
-  data = msg.pack()
+  data = msg.serialize()
   ```
   </TabItem>
   <TabItem label="TypeScript">

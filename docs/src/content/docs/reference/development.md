@@ -110,10 +110,10 @@ PYTHONPATH=src python src/main.py examples/generic_robot.proto \
 
 ```bash
 # Generate and check for errors
-PYTHONPATH=src python src/main.py examples/array_test.proto --build_py
+PYTHONPATH=src python src/main.py examples/array_test.proto --build_py --py_path generated/py
 
 # Import generated code
-python -c "import sys; sys.path.insert(0, 'generated/py'); import array_test_sf"
+python -c "import sys; sys.path.insert(0, 'generated/py'); from struct_frame.generated.array_test import get_message_info"
 ```
 
 ## Code Style

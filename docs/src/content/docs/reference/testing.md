@@ -57,7 +57,7 @@ sudo apt install gcc
 xcode-select --install
 ```
 
-**C++ tests**: G++ with C++14 support
+**C++ tests**: G++ with C++20 support
 ```bash
 # Ubuntu/Debian
 sudo apt install g++

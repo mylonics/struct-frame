@@ -138,9 +138,7 @@ Frame:   [0x90] [0x71] [0x04] [0x2A] [0x01, 0x02, 0x03, 0x04] [0x7F] [0x8A]
 | Seq | `[SEQ] [LEN] [MSG_ID] [PACKET] [CRC]` | 5 | Packet loss detection |
 | MultiSystemStream | `[SEQ] [SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC]` | 7 | Multi-vehicle streaming |
 
-See [Framing Documentation](docs/framing.md) for the complete frame format reference.
-
-### Parser State Machine
+See [Framing Documentation](https://struct-frame.mylonics.com/basic-usage/framing/) for the complete frame format reference.
 
 The frame parser implements a state machine to handle partial data and synchronization recovery:
 
@@ -189,7 +187,7 @@ gcc examples/main.c -I generated/c -o main
 #### C++
 ```bash
 python -m struct_frame examples/myl_vehicle.proto --build_cpp
-g++ -std=c++17 examples/main.cpp -I generated/cpp -o main
+g++ -std=c++20 examples/main.cpp -I generated/cpp -o main
 ./main
 ```
 
@@ -203,15 +201,15 @@ python -m struct_frame examples/myl_vehicle.proto --build_gql
 
 | Feature | C | C++ | TypeScript | Python | C# | GraphQL | Status |
 |---------|---|-----|------------|--------|----|---------|--------|
-| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
-| **String** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
-| **Enums** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
-| **Enum Classes** | N/A | ✓ | N/A | N/A | ✗ | N/A | Stable |
-| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
-| **Message IDs** | ✓ | ✓ | ✓ | ✓ | ✗ | N/A | Stable |
-| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | ✗ | N/A | Stable |
-| **Flatten** | N/A | N/A | N/A | ✓ | ✗ | ✓ | Partial |
-| **Arrays** | ✓ | ✓ | Partial | ✓ | ✗ | ✓ | Stable |
+| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **String** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enums** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enum Classes** | N/A | ✓ | N/A | N/A | N/A | N/A | Stable |
+| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Message IDs** | ✓ | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
+| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
+| **Flatten** | N/A | N/A | N/A | ✓ | N/A | ✓ | Partial |
+| **Arrays** | ✓ | ✓ | Partial | ✓ | ✓ | ✓ | Stable |
 
 **Legend:**
 - **✓** - Feature works as documented
@@ -279,14 +277,14 @@ message SimpleHeartbeat {
 
 | Feature | C | C++ | TypeScript | Python | C# | Status | Notes |
 |---------|---|-----|------------|--------|----|---------|-------|
-| **Frame Encoding** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | All languages can create frames |
-| **Frame Parsing** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | State machine implementation |
-| **Checksum Validation** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Fletcher-16 algorithm |
-| **Sync Recovery** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Auto-recovery from corruption |
-| **Partial Frame Handling** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Handles chunked data streams |
-| **Message ID Routing** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Automatic message type detection |
-| **Buffer Management** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Fixed-size buffers prevent overflow |
-| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Frames interoperate between languages |
+| **Frame Encoding** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | All languages can create frames |
+| **Frame Parsing** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | State machine implementation |
+| **Checksum Validation** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Fletcher-16 algorithm |
+| **Sync Recovery** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Auto-recovery from corruption |
+| **Partial Frame Handling** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Handles chunked data streams |
+| **Message ID Routing** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Automatic message type detection |
+| **Buffer Management** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Fixed-size buffers prevent overflow |
+| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Frames interoperate between languages |
 
 ### Extended Frame Format Options
 
@@ -304,7 +302,7 @@ Struct Frame supports multiple frame types and payload types for different use c
 - **SysComp**: System/Component IDs for multi-vehicle networks (MAVLink-style)
 - **MultiSystemStream**: Sequence + SysComp for streaming with loss detection
 
-See [Framing Documentation](docs/framing.md) for the complete format reference.
+See [Framing Documentation](https://struct-frame.mylonics.com/basic-usage/framing/) for the complete format reference.
 
 ## Frame Format Examples and Usage
 

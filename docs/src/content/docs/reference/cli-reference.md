@@ -56,6 +56,8 @@ python -m struct_frame [proto_file] [options]
 | `--force` | Force regeneration even if hash matches previous generation |
 | `--hash_path PATH` | Path to store the generation hash file |
 | `--generate_tests` | Generate test code with dummy values for round-trip verification |
+| `--validate` | Validate the proto file without generating code |
+| `--debug` | Enable debug output during code generation |
 
 ## Examples
 
@@ -93,7 +95,7 @@ python -m struct_frame messages.proto --build_cpp --sdk
 ### TypeScript
 - `<name>.structframe.ts` - Message definitions and classes
 - Frame utilities (frame-base.ts, frame-headers.ts, frame-profiles.ts, etc.)
-- `struct_frame_sdk/` - SDK files (if `--sdk` used)
+- `struct-frame-sdk/` - SDK files (if `--sdk` used)
 
 ### Python
 - `struct_frame/generated/<name>.py` - Message definitions and classes
