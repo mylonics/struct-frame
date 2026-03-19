@@ -107,7 +107,7 @@ For Minimal payloads, the parser requires a message length callback to determine
 ## Usage in C++
 
 ```cpp
-#include "FrameProfiles.hpp"
+#include "frame_profiles.hpp"
 
 using namespace FrameParsers;
 
@@ -137,27 +137,31 @@ while (auto result = reader.next()) {
 ## Usage in Python
 
 ```python
-from struct_frame_parser import Parser, HeaderType, PayloadType
-
-# Create parser with specific frame types
-parser = Parser(
-    enabled_headers=[HeaderType.BASIC, HeaderType.TINY],
-    enabled_payloads=[PayloadType.DEFAULT, PayloadType.EXTENDED]
+from frame_profiles import (
+    ProfileStandardWriter,
+    ProfileStandardAccumulatingReader,
 )
+from struct_frame.generated.messages import MyMessage, get_message_info
 
 # Encode
-frame = parser.encode(
-    msg_id=42,
-    msg=b"payload data",
-    header_type=HeaderType.BASIC,
-    payload_type=PayloadType.DEFAULT
-)
+msg = MyMessage(value=42)
+writer = ProfileStandardWriter(1024)
+writer.write(msg)
+frame = writer.data()
 
-# Decode (byte-by-byte)
-for byte in incoming_data:
-    result = parser.parse_byte(byte)
-    if result.valid:
+# Decode (byte-by-byte streaming)
+reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
+for byte in frame:
+    result = reader.push_byte(byte)
+    if result and result.valid:
         handle_message(result)
+
+# Decode (buffer mode)
+reader2 = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
+reader2.add_data(frame)
+result = reader2.next()
+if result and result.valid:
+    handle_message(result)
 ```
 
 ## Custom Profiles
@@ -182,13 +186,12 @@ Create custom frame formats by combining header and payload types:
 <Tabs>
   <TabItem label="Python">
   ```python
-  from struct_frame_parser import create_custom_profile, HeaderType, PayloadType
+  from frame_profiles import ProfileConfig, HEADER_TINY_CONFIG, PAYLOAD_EXTENDED_CONFIG
+  from frame_profiles import BufferWriter, AccumulatingReader
 
-  custom = create_custom_profile(
-      "TinyExtended",
-      HeaderType.TINY,
-      PayloadType.EXTENDED
-  )
+  custom_config = ProfileConfig(HEADER_TINY_CONFIG, PAYLOAD_EXTENDED_CONFIG, name="TinyExtended")
+  writer = BufferWriter(custom_config, 1024)
+  reader = AccumulatingReader(custom_config)
   ```
   </TabItem>
 </Tabs>

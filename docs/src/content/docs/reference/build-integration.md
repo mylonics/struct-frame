@@ -11,13 +11,13 @@ Integrate code generation into your build system so generated code automatically
 PROTO_FILES := $(wildcard proto/*.proto)
 GENERATED_DIR := generated
 
-generated/c/%.sf.h: proto/%.proto
+generated/c/%.structframe.h: proto/%.proto
 	python -m struct_frame $< --build_c --c_path generated/c/
 
-generated/py/%.sf.py: proto/%.proto
+generated/py/struct_frame/generated/%.py: proto/%.proto
 	python -m struct_frame $< --build_py --py_path generated/py/
 
-all: $(PROTO_FILES:proto/%.proto=generated/c/%.sf.h)
+all: $(PROTO_FILES:proto/%.proto=generated/c/%.structframe.h)
 ```
 
 ## CMake (C/C++)
@@ -31,7 +31,7 @@ set(PROTO_FILES
 
 foreach(PROTO_FILE ${PROTO_FILES})
     get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
-    set(GENERATED_HEADER "${CMAKE_BINARY_DIR}/generated/c/${PROTO_NAME}.sf.h")
+    set(GENERATED_HEADER "${CMAKE_BINARY_DIR}/generated/c/${PROTO_NAME}.structframe.h")
     
     add_custom_command(
         OUTPUT ${GENERATED_HEADER}

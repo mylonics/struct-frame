@@ -20,7 +20,7 @@ python -m struct_frame --help
 Depending on which languages you plan to use:
 
 - **C**: GCC or compatible C compiler
-- **C++**: G++ with C++17 support or later
+- **C++**: G++ with C++20 support or later
 - **TypeScript/JavaScript**: Node.js and npm
 - **Python**: Python 3.8 or later (already required for code generation)
 - **C#**: .NET SDK

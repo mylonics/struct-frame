@@ -22,10 +22,15 @@ python tests/run_tests.py [options]
 
 Options:
   --verbose, -v       Show detailed output
-  --skip-lang LANG    Skip a language (c, cpp, py, ts, js, csharp, gql)
-  --only-generate     Generate code only, skip tests
+  --quiet, -q         Suppress failure output
+  --skip-lang LANG    Skip a language (can be repeated)
+  --only-generate     Generate code only, skip compile and test
+  --only-compile      Stop after compilation, don't run tests
   --check-tools       Check tool availability only
-  --clean             Clean generated and compiled files
+  --no-clean          Skip cleaning generated files (faster iteration)
+  --profile NAME      Only test specific profile(s)
+  --no-parallel       Disable parallel compilation
+  --no-color          Disable colored output
 ```
 
 Examples:
@@ -39,6 +44,9 @@ python tests/run_tests.py --check-tools
 
 # Generate code without running tests
 python tests/run_tests.py --only-generate
+
+# Faster iteration (skip cleaning)
+python tests/run_tests.py --no-clean
 ```
 
 ## Test Prerequisites
@@ -57,7 +65,7 @@ sudo apt install gcc
 xcode-select --install
 ```
 
-**C++ tests**: G++ with C++14 support
+**C++ tests**: G++ with C++20 support
 ```bash
 # Ubuntu/Debian
 sudo apt install g++

@@ -43,10 +43,10 @@ python test_all.py
 python tests/run_tests.py --verbose
 
 # Skip specific languages
-python tests/run_tests.py --skip-ts --skip-c --skip-cpp
+python tests/run_tests.py --skip-lang ts --skip-lang c
 
 # Generate code only (no compilation/execution)
-python tests/run_tests.py --generate-only
+python tests/run_tests.py --only-generate
 ```
 
 See `tests/README.md` for detailed test documentation.
@@ -76,7 +76,7 @@ Struct Frame provides high-level SDKs for simplified message communication:
 - **C++**: Header-only with observer/subscriber pattern, ideal for embedded systems
 - **C#**: Async/await-based for .NET Core, Xamarin, and MAUI applications
 
-See the [SDK Overview](https://struct-frame.mylonics.com/user-guide/sdk-overview/) for details.
+See the [SDK Overview](https://struct-frame.mylonics.com/extended-features/sdk-overview/) for details.
 
 ## Framing System
 
@@ -138,9 +138,7 @@ Frame:   [0x90] [0x71] [0x04] [0x2A] [0x01, 0x02, 0x03, 0x04] [0x7F] [0x8A]
 | Seq | `[SEQ] [LEN] [MSG_ID] [PACKET] [CRC]` | 5 | Packet loss detection |
 | MultiSystemStream | `[SEQ] [SYS] [COMP] [LEN] [MSG_ID] [PACKET] [CRC]` | 7 | Multi-vehicle streaming |
 
-See [Framing Documentation](docs/framing.md) for the complete frame format reference.
-
-### Parser State Machine
+See [Framing Documentation](https://struct-frame.mylonics.com/basic-usage/framing/) for the complete frame format reference.
 
 The frame parser implements a state machine to handle partial data and synchronization recovery:
 
@@ -189,7 +187,7 @@ gcc examples/main.c -I generated/c -o main
 #### C++
 ```bash
 python -m struct_frame examples/myl_vehicle.proto --build_cpp
-g++ -std=c++17 examples/main.cpp -I generated/cpp -o main
+g++ -std=c++20 examples/main.cpp -I generated/cpp -o main
 ./main
 ```
 
@@ -203,15 +201,15 @@ python -m struct_frame examples/myl_vehicle.proto --build_gql
 
 | Feature | C | C++ | TypeScript | Python | C# | GraphQL | Status |
 |---------|---|-----|------------|--------|----|---------|--------|
-| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
-| **String** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
-| **Enums** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
-| **Enum Classes** | N/A | ✓ | N/A | N/A | ✗ | N/A | Stable |
-| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ | Stable |
-| **Message IDs** | ✓ | ✓ | ✓ | ✓ | ✗ | N/A | Stable |
-| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | ✗ | N/A | Stable |
-| **Flatten** | N/A | N/A | N/A | ✓ | ✗ | ✓ | Partial |
-| **Arrays** | ✓ | ✓ | Partial | ✓ | ✗ | ✓ | Stable |
+| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **String** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enums** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enum Classes** | N/A | ✓ | N/A | N/A | N/A | N/A | Stable |
+| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Message IDs** | ✓ | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
+| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
+| **Flatten** | N/A | N/A | N/A | ✓ | N/A | ✓ | Partial |
+| **Arrays** | ✓ | ✓ | Partial | ✓ | ✓ | ✓ | Stable |
 
 **Legend:**
 - **✓** - Feature works as documented
@@ -279,14 +277,14 @@ message SimpleHeartbeat {
 
 | Feature | C | C++ | TypeScript | Python | C# | Status | Notes |
 |---------|---|-----|------------|--------|----|---------|-------|
-| **Frame Encoding** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | All languages can create frames |
-| **Frame Parsing** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | State machine implementation |
-| **Checksum Validation** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Fletcher-16 algorithm |
-| **Sync Recovery** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Auto-recovery from corruption |
-| **Partial Frame Handling** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Handles chunked data streams |
-| **Message ID Routing** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Automatic message type detection |
-| **Buffer Management** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Fixed-size buffers prevent overflow |
-| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | ✓ | ✗ | Stable | Frames interoperate between languages |
+| **Frame Encoding** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | All languages can create frames |
+| **Frame Parsing** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | State machine implementation |
+| **Checksum Validation** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Fletcher-16 algorithm |
+| **Sync Recovery** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Auto-recovery from corruption |
+| **Partial Frame Handling** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Handles chunked data streams |
+| **Message ID Routing** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Automatic message type detection |
+| **Buffer Management** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Fixed-size buffers prevent overflow |
+| **Cross-Language Compatibility** | ✓ | ✓ | ✓ | ✓ | ✓ | Stable | Frames interoperate between languages |
 
 ### Extended Frame Format Options
 
@@ -304,7 +302,7 @@ Struct Frame supports multiple frame types and payload types for different use c
 - **SysComp**: System/Component IDs for multi-vehicle networks (MAVLink-style)
 - **MultiSystemStream**: Sequence + SysComp for streaming with loss detection
 
-See [Framing Documentation](docs/framing.md) for the complete format reference.
+See [Framing Documentation](https://struct-frame.mylonics.com/basic-usage/framing/) for the complete format reference.
 
 ## Frame Format Examples and Usage
 
@@ -354,112 +352,110 @@ Result: [0x7E, 0xC9]
 #### Python Frame Handling
 
 ```python
-# Import generated classes  
-from myl_vehicle_sf import VehicleStatus
-from struct_frame_parser import FrameParser, BasicPacket
+import sys
+sys.path.insert(0, 'generated/py/')  # py_path
+
+from struct_frame.generated.myl_vehicle import MylVehicleVehicleStatus, get_message_info
+from frame_profiles import ProfileStandardWriter, ProfileStandardAccumulatingReader
 
 # Create message
-msg = VehicleStatus()
-msg.vehicle_id = 1234
-msg.speed = 65.5  
-msg.engine_on = True
+msg = MylVehicleVehicleStatus(vehicle_id=1234, speed=65.5, engine_on=True)
 
 # Encode to frame
-packet = BasicPacket()
-frame_bytes = packet.encode_msg(msg)
+writer = ProfileStandardWriter(1024)
+writer.write(msg)
+frame_bytes = writer.data()
 print(f"Frame: {[hex(b) for b in frame_bytes]}")
 
-# Parse frame (simulate byte-by-byte reception)
-parser = FrameParser({0x90: BasicPacket()}, {42: VehicleStatus})
+# Parse frame (byte-by-byte)
+reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
 for byte in frame_bytes:
-    result = parser.parse_char(byte)
-    if result:
-        print(f"Parsed: vehicle_id={result.vehicle_id}, speed={result.speed}")
+    result = reader.push_byte(byte)
+    if result and result.valid:
+        parsed = MylVehicleVehicleStatus.deserialize(result)
+        print(f"Parsed: vehicle_id={parsed.vehicle_id}, speed={parsed.speed}")
 ```
 
 #### TypeScript Frame Handling
 
 ```typescript
-import * as mv from './generated/ts/myl_vehicle.sf';
-import { struct_frame_buffer, parse_char } from './generated/ts/struct_frame_parser';
+import { MylVehicleVehicleStatus } from './generated/ts/myl_vehicle.structframe';
+import { ProfileStandardWriter, ProfileStandardAccumulatingReader } from './generated/ts/frame-profiles';
 
 // Create and encode message
-let tx_buffer = new struct_frame_buffer(256);
-let msg = new mv.VehicleStatus();
+const msg = new MylVehicleVehicleStatus();
 msg.vehicle_id = 1234;
 msg.speed = 65.5;
 msg.engine_on = true;
-mv.VehicleStatus_encode(tx_buffer, msg);
 
-// Parse frame  
-let rx_buffer = new struct_frame_buffer(256);
-for (let i = 0; i < tx_buffer.size; i++) {
-  if (parse_char(rx_buffer, tx_buffer.data[i])) {
-    let parsed = mv.VehicleStatus_decode(rx_buffer.msg_data);
+const writer = new ProfileStandardWriter(256);
+writer.write(msg);
+const frameData = writer.data();
+
+// Parse frame
+const reader = new ProfileStandardAccumulatingReader();
+reader.addData(frameData);
+const result = reader.next();
+if (result && result.valid) {
+    const parsed = MylVehicleVehicleStatus.deserialize(result);
     console.log(`Parsed: vehicle_id=${parsed.vehicle_id}, speed=${parsed.speed}`);
-  }
 }
 ```
 
-#### C Frame Handling  
+#### C Frame Handling
 
 ```c
-#include "myl_vehicle.sf.h"
-#include "struct_frame_parser.h"
+#include "myl_vehicle.structframe.h"
+#include "frame_profiles.h"
 
 // Create message
-VehicleStatus msg = {0};
+MylVehicleVehicleStatus msg = {0};
 msg.vehicle_id = 1234;
 msg.speed = 65.5f;
 msg.engine_on = true;
 
 // Encode to frame
 uint8_t frame_buffer[256];
-size_t frame_size = basic_frame_encode(frame_buffer, 42, (uint8_t*)&msg, sizeof(msg));
+ProfileStandardWriter writer = profile_standard_writer_init(frame_buffer, sizeof(frame_buffer));
+profile_standard_writer_write(&writer, MYL_VEHICLE_VEHICLE_STATUS_MSG_ID,
+                               (uint8_t*)&msg, sizeof(msg));
 
-// Parse frame
-packet_state_t parser = {0};
-// ... initialize parser ...
-
-for (size_t i = 0; i < frame_size; i++) {
-  msg_info_t info = parse_char(&parser, frame_buffer[i]);
-  if (info.valid) {
-    VehicleStatus* parsed = (VehicleStatus*)info.msg_loc;
-    printf("Parsed: vehicle_id=%d, speed=%.1f\n", parsed->vehicle_id, parsed->speed);
-  }
+// Parse frame byte-by-byte
+ProfileStandardAccumulatingReader reader = profile_standard_accumulating_reader_init(get_message_info);
+for (size_t i = 0; i < writer.size; i++) {
+    FrameMsgInfo info = profile_standard_accumulating_reader_push_byte(&reader, frame_buffer[i]);
+    if (info.valid) {
+        MylVehicleVehicleStatus* parsed = (MylVehicleVehicleStatus*)info.msg_data;
+        printf("Parsed: vehicle_id=%d, speed=%.1f\n", parsed->vehicle_id, parsed->speed);
+    }
 }
 ```
 
 #### C++ Frame Handling
 
 ```cpp
-#include "myl_vehicle.sf.hpp"
-#include "struct_frame.hpp"
+#include "myl_vehicle.structframe.hpp"
+#include "frame_profiles.hpp"
 
 // Create message
-VehicleStatus msg{};
+MylVehicleVehicleStatus msg{};
 msg.vehicle_id = 1234;
 msg.speed = 65.5f;
 msg.engine_on = true;
 
 // Encode to frame
-uint8_t frame_buffer[256];
-StructFrame::BasicPacket format;
-StructFrame::EncodeBuffer encoder(frame_buffer, sizeof(frame_buffer));
+uint8_t buffer[256];
+FrameParsers::ProfileStandardWriter writer(buffer, sizeof(buffer));
+writer.write(msg);
 
-bool success = encoder.encode(&format, VEHICLE_STATUS_MSG_ID, &msg, sizeof(msg));
-
-// Parse frame using FrameParser
-StructFrame::FrameParser parser(&format, [](size_t msg_id, size_t* size) {
-    return StructFrame::get_message_length(msg_id, size);
-});
-
-for (size_t i = 0; i < encoder.size(); i++) {
-    StructFrame::MessageInfo info = parser.parse_byte(frame_buffer[i]);
-    if (info.valid) {
-        VehicleStatus* parsed = reinterpret_cast<VehicleStatus*>(info.msg_location);
-        std::cout << "Parsed: vehicle_id=" << parsed->vehicle_id 
-                  << ", speed=" << parsed->speed << std::endl;
+// Parse frame byte-by-byte
+FrameParsers::ProfileStandardAccumulatingReader reader;
+for (size_t i = 0; i < writer.size(); i++) {
+    if (auto info = reader.push_byte(buffer[i])) {
+        MylVehicleVehicleStatus parsed;
+        parsed.deserialize(info);
+        std::cout << "Parsed: vehicle_id=" << parsed.vehicle_id
+                  << ", speed=" << parsed.speed << "\n";
     }
 }
 ```
@@ -468,38 +464,44 @@ for (size_t i = 0; i < encoder.size(); i++) {
 
 #### Serial Communication
 ```python
+import sys
 import serial
-from struct_frame_parser import FrameParser
+sys.path.insert(0, 'generated/py/')
+
+from struct_frame.generated.messages import MyMessage, get_message_info
+from frame_profiles import ProfileStandardAccumulatingReader
 
 # Setup serial connection
 ser = serial.Serial('/dev/ttyUSB0', 115200)
-parser = FrameParser(packet_formats, message_definitions)
+reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
 
 # Continuous parsing loop
 while True:
     if ser.in_waiting:
-        byte = ser.read(1)[0] 
-        result = parser.parse_char(byte)
-        if result:
+        data = ser.read(ser.in_waiting)
+        reader.add_data(data)
+        result = reader.next()
+        if result and result.valid:
             handle_message(result)
 ```
 
-#### TCP Socket Communication  
+#### TCP Socket Communication
 ```typescript
 import * as net from 'net';
-import { struct_frame_buffer, parse_char } from './struct_frame_parser';
+import { ProfileStandardAccumulatingReader } from './generated/ts/frame-profiles';
+import { MyMessage } from './generated/ts/messages.structframe';
 
-const client = net.createConnection({port: 8080}, () => {
+const client = net.createConnection({ port: 8080 }, () => {
   console.log('Connected to server');
 });
 
-let rx_buffer = new struct_frame_buffer(1024);
+const reader = new ProfileStandardAccumulatingReader();
 client.on('data', (data: Buffer) => {
-  for (let byte of data) {
-    if (parse_char(rx_buffer, byte)) {
-      // Process complete message
-      handleMessage(rx_buffer.msg_data);
-    }
+  reader.addData(data);
+  let result;
+  while ((result = reader.next()) && result.valid) {
+    const msg = MyMessage.deserialize(result);
+    handleMessage(msg);
   }
 });
 ```
@@ -738,6 +740,8 @@ message RobotState {
 **Generated C++ Code:**
 
 ```cpp
+#pragma pack(push, 1)
+
 // Enum class instead of plain enum
 enum class RobotRobotStatus : uint8_t {
     IDLE = 0,
@@ -745,35 +749,47 @@ enum class RobotRobotStatus : uint8_t {
     ERROR = 2
 };
 
-// Packed struct compatible with C
-struct RobotRobotState {
+// Struct inheriting from MessageBase<Derived, MSG_ID, MAX_SIZE, MAGIC1, MAGIC2>.
+// All template parameters are auto-generated; users do not specify them manually.
+struct RobotRobotState : FrameParsers::MessageBase<RobotRobotState, 10, 9, 0xAB, 0xCD> {
     uint32_t robot_id;
     RobotRobotStatus status;
     float battery_level;
-} __attribute__((packed));
 
-constexpr size_t ROBOT_ROBOT_STATE_MAX_SIZE = 9;
-constexpr size_t ROBOT_ROBOT_STATE_MSG_ID = 10;
+    size_t deserialize(const uint8_t* buffer, size_t buffer_size);
+    size_t deserialize(const FrameParsers::FrameMsgInfo& frame_info);
+    size_t serialize(uint8_t* buffer) const;
+};
 
-// Helper function in namespace
-namespace StructFrame {
+#pragma pack(pop)
+
+namespace FrameParsers {
 inline bool get_message_length(size_t msg_id, size_t* size) {
     switch (msg_id) {
-        case ROBOT_ROBOT_STATE_MSG_ID: 
-            *size = ROBOT_ROBOT_STATE_MAX_SIZE; 
+        case RobotRobotState::MSG_ID:
+            *size = RobotRobotState::MAX_SIZE;
             return true;
         default: break;
     }
     return false;
 }
-}  // namespace StructFrame
+
+inline MessageInfo get_message_info(uint16_t msg_id) {
+    switch (msg_id) {
+        case RobotRobotState::MSG_ID:
+            return MessageInfo{RobotRobotState::MAX_SIZE, RobotRobotState::MAGIC1, RobotRobotState::MAGIC2};
+        default: break;
+    }
+    return MessageInfo{};
+}
+}  // namespace FrameParsers
 ```
 
 **Usage:**
 
 ```cpp
-#include "robot.sf.hpp"
-#include "struct_frame.hpp"
+#include "robot.structframe.hpp"
+#include "frame_profiles.hpp"
 
 // Create and initialize message
 RobotRobotState state{};
@@ -781,28 +797,19 @@ state.robot_id = 123;
 state.status = RobotRobotStatus::MOVING;  // Type-safe enum class
 state.battery_level = 85.5f;
 
-// Encode with modern C++ API
+// Encode with frame profile
 uint8_t buffer[256];
-StructFrame::BasicPacket format;
-StructFrame::EncodeBuffer encoder(buffer, sizeof(buffer));
+FrameParsers::ProfileStandardWriter writer(buffer, sizeof(buffer));
+writer.write(state);
 
-if (encoder.encode(&format, ROBOT_ROBOT_STATE_MSG_ID, &state, sizeof(state))) {
-    // Frame encoded successfully
-    std::cout << "Encoded " << encoder.size() << " bytes\n";
-}
-
-// Parse with lambda callback
-StructFrame::FrameParser parser(&format, [](size_t msg_id, size_t* size) {
-    return StructFrame::get_message_length(msg_id, size);
-});
-
-// Process received bytes
-for (size_t i = 0; i < encoder.size(); i++) {
-    auto info = parser.parse_byte(buffer[i]);
-    if (info.valid) {
-        auto* msg = reinterpret_cast<RobotRobotState*>(info.msg_location);
-        std::cout << "Robot ID: " << msg->robot_id 
-                  << ", Status: " << static_cast<int>(msg->status) << "\n";
+// Parse byte-by-byte with AccumulatingReader
+FrameParsers::ProfileStandardAccumulatingReader reader;
+for (size_t i = 0; i < writer.size(); i++) {
+    if (auto info = reader.push_byte(buffer[i])) {
+        RobotRobotState msg;
+        msg.deserialize(info);
+        std::cout << "Robot ID: " << msg.robot_id
+                  << ", Status: " << static_cast<int>(msg.status) << "\n";
     }
 }
 ```

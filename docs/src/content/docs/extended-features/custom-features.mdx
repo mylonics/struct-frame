@@ -37,14 +37,18 @@ The generator creates a `get_msg_info` function automatically:
 <Tabs>
   <TabItem label="Python">
   ```python
-  from struct_frame.frame_profiles import get_profile, Profile
-  from messages import get_msg_info
+  from frame_profiles import ProfileSensorWriter, ProfileSensorAccumulatingReader
+  from struct_frame.generated.messages import get_message_info
 
-  # Get minimal profile
-  profile = get_profile(Profile.SENSOR)  # TinyMinimal
+  # Encode using sensor profile (Tiny + Minimal)
+  writer = ProfileSensorWriter(1024)
+  writer.write(msg)
+  frame = writer.data()
 
-  # Parser uses auto-generated get_msg_info
-  parser = profile.create_parser(get_msg_info)
+  # Parser requires get_message_info callback for minimal profiles
+  reader = ProfileSensorAccumulatingReader(get_message_info=get_message_info)
+  reader.add_data(frame)
+  result = reader.next()
   ```
   </TabItem>
 </Tabs>
@@ -52,11 +56,11 @@ The generator creates a `get_msg_info` function automatically:
 <Tabs>
   <TabItem label="C++">
   ```cpp
-  #include "FrameProfiles.hpp"
+  #include "frame_profiles.hpp"
   #include "messages.structframe.hpp"
 
-  // Use sensor profile with minimal frames
-  ProfileSensorAccumulatingReader reader(get_msg_info);
+  // Use sensor profile with minimal frames (requires message info callback)
+  ProfileSensorAccumulatingReader reader(get_message_info);
   ```
   </TabItem>
 </Tabs>

@@ -33,8 +33,12 @@ Frame profiles provide complete framing and parsing functionality. This is the *
 ### Python with Profiles
 
 ```python
-from generated.example import ExampleStatus
-from generated.frame_profiles import (
+# Add py_path to sys.path before importing
+import sys
+sys.path.insert(0, 'generated/')  # py_path
+
+from struct_frame.generated.example import ExampleStatus, get_message_info
+from frame_profiles import (
     ProfileStandardWriter, 
     ProfileStandardAccumulatingReader
 )
@@ -48,12 +52,12 @@ bytes_written = writer.write(msg)
 frame_data = writer.data()
 
 # Parse received frames
-reader = ProfileStandardAccumulatingReader()
+reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
 reader.add_data(frame_data)
 
 # Deserialize using FrameMsgInfo
 result = reader.next()
-if result:
+if result and result.valid:
     decoded_msg = ExampleStatus.deserialize(result)  # Pass FrameMsgInfo directly
     print(f"ID: {decoded_msg.id}, Value: {decoded_msg.value}")
 ```
@@ -93,7 +97,7 @@ if (result) {
 
 ```cpp
 #include "example.structframe.hpp"
-#include "FrameProfiles.hpp"
+#include "frame_profiles.hpp"
 
 // Create and serialize a message
 ExampleStatus msg;
@@ -183,7 +187,11 @@ For cases where you need direct access to message bytes without framing:
 ### Python
 
 ```python
-from generated.example import ExampleStatus
+# Add py_path to sys.path before importing
+import sys
+sys.path.insert(0, 'generated/')  # py_path
+
+from struct_frame.generated.example import ExampleStatus
 
 # Create a message
 msg = ExampleStatus(id=42, value=3.14)
@@ -301,13 +309,16 @@ class Program {
 ### Serial Communication (Python)
 
 ```python
+import sys
 import serial
-from generated.example import ExampleStatus
-from generated.frame_profiles import ProfileStandardAccumulatingReader
+sys.path.insert(0, 'generated/')  # py_path
+
+from struct_frame.generated.example import ExampleStatus, get_message_info
+from frame_profiles import ProfileStandardAccumulatingReader
 
 # Setup serial connection
 ser = serial.Serial('/dev/ttyUSB0', 115200)
-reader = ProfileStandardAccumulatingReader()
+reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
 
 while True:
     if ser.in_waiting:
@@ -330,7 +341,7 @@ while True:
 
 ```cpp
 #include "example.structframe.hpp"
-#include "FrameProfiles.hpp"
+#include "frame_profiles.hpp"
 
 // Byte-by-byte streaming parser for UART/serial
 FrameParsers::ProfileStandardAccumulatingReader reader;

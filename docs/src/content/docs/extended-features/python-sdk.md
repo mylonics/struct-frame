@@ -16,38 +16,44 @@ python -m struct_frame messages.proto --build_py --py_path generated/ --sdk
 ## Parser Usage
 
 ```python
-from struct_frame_parser import Parser, HeaderType, PayloadType
-from messages_sf import Status
-
-# Create parser
-parser = Parser()
+from frame_profiles import ProfileStandardWriter, ProfileStandardAccumulatingReader
+from struct_frame.generated.messages import Status, get_message_info
 
 # Encode
-frame = parser.encode_basic(msg_id=1, msg=Status(value=42).to_bytes())
+msg = Status(value=42)
+writer = ProfileStandardWriter(1024)
+writer.write(msg)
+frame = writer.data()
 
 # Decode
+reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
 for byte in frame:
-    result = parser.parse_byte(byte)
-    if result.valid:
-        msg = Status.from_bytes(result.msg_data)
-        print(f"Status: {msg.value}")
+    result = reader.push_byte(byte)
+    if result and result.valid:
+        decoded = Status.deserialize(result)
+        print(f"Status: {decoded.value}")
 ```
 
 ## Message Router
 
 ```python
-from struct_frame_sdk import MessageRouter
-from messages_sf import Status
+from struct_frame_sdk.struct_frame_sdk import StructFrameSdk, StructFrameSdkConfig
+from struct_frame_sdk.tcp_transport import TcpTransport
+from struct_frame.generated.messages import Status
 
-router = MessageRouter()
+# Configure SDK with transport
+config = StructFrameSdkConfig(
+    transport=TcpTransport('192.168.1.100', 8080),
+    frame_parser=...  # frame parser instance
+)
+sdk = StructFrameSdk(config)
 
-# Subscribe to messages
-@router.subscribe(Status)
-def handle_status(msg: Status):
+# Subscribe to messages by ID
+def handle_status(msg: Status, msg_id: int):
     print(f"Status: {msg.value}")
 
-# Process incoming data
-router.process_byte(byte)
+sdk.subscribe(Status.msg_id, handle_status)
+sdk.connect()
 ```
 
 ## Transports
@@ -55,35 +61,43 @@ router.process_byte(byte)
 ### Serial
 
 ```python
-import serial
-from struct_frame_sdk.transports import SerialTransport
+from struct_frame_sdk.serial_transport import SerialTransport, SerialTransportConfig
 
-transport = SerialTransport('/dev/ttyUSB0', 115200)
+config = SerialTransportConfig(port='/dev/ttyUSB0', baudrate=115200)
+transport = SerialTransport(config)
 transport.connect()
-transport.send(msg_id, data)
 ```
 
-### Socket
+### TCP
 
 ```python
-import socket
-from struct_frame_sdk.transports import SocketTransport
+from struct_frame_sdk.tcp_transport import TcpTransport, TcpTransportConfig
 
-transport = SocketTransport('192.168.1.100', 8080)
+config = TcpTransportConfig(host='192.168.1.100', port=8080)
+transport = TcpTransport(config)
 transport.connect()
-transport.send(msg_id, data)
+```
+
+### UDP
+
+```python
+from struct_frame_sdk.udp_transport import UdpTransport, UdpTransportConfig
+
+config = UdpTransportConfig(remote_host='192.168.1.100', remote_port=8080)
+transport = UdpTransport(config)
+transport.connect()
 ```
 
 ## Async Support
 
 ```python
 import asyncio
-from struct_frame_sdk.async_transports import AsyncSerialTransport
+from struct_frame_sdk.async_serial_transport import AsyncSerialTransport, AsyncSerialTransportConfig
 
 async def main():
-    transport = AsyncSerialTransport('/dev/ttyUSB0', 115200)
+    config = AsyncSerialTransportConfig(port='/dev/ttyUSB0', baud_rate=115200)
+    transport = AsyncSerialTransport(config)
     await transport.connect()
-    await transport.send(msg_id, data)
 
 asyncio.run(main())
 ```

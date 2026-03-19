@@ -25,25 +25,29 @@ Minimal footprint for embedded systems. Serial transport only.
 
 ## Observer Pattern
 
-Subscribe to messages using function pointers:
+Subscribe to messages using function pointers or lambdas:
 
 ```cpp
 #include "struct_frame_sdk/sdk_embedded.hpp"
-#include "messages.sf.hpp"
+#include "messages.structframe.hpp"
 
 void handle_status(const StatusMessage& msg, uint8_t msgId) {
     std::cout << "Status: " << msg.value << std::endl;
 }
 
 int main() {
-    // Create SDK
-    StructFrame::SDK sdk;
-    
-    // Subscribe to messages
-    sdk.subscribe<StatusMessage>(handle_status);
-    
-    // Process incoming data
-    sdk.process_byte(byte);
+    // Create SDK with transport and frame parser
+    StructFrame::StructFrameSdkConfig config{
+        .transport = &my_transport,
+        .frameParser = &my_frame_parser,
+    };
+    StructFrame::StructFrameSdk sdk(config);
+
+    // Subscribe to messages by message ID
+    sdk.subscribe<StatusMessage>(StatusMessage::MSG_ID, handle_status);
+
+    // Connect the transport (incoming data is handled via callbacks)
+    sdk.connect();
 }
 ```
 
@@ -52,31 +56,30 @@ int main() {
 ### Serial
 
 ```cpp
-#include "struct_frame_sdk/transports/serial.hpp"
+#include "struct_frame_sdk/serial_transport.hpp"
 
-StructFrame::SerialTransport serial("/dev/ttyUSB0", 115200);
+// SerialTransport requires a platform-specific ISerialPort implementation.
+// Provide your own class that implements the ISerialPort interface
+// (open, close, write, read, is_open methods).
+StructFrame::SerialTransportConfig config;
+StructFrame::SerialTransport serial(&my_serial_port, config);
 serial.connect();
-serial.send(message_id, data, size);
 ```
 
-### UDP
+### Network (UDP, TCP, WebSocket)
 
 ```cpp
-#include "struct_frame_sdk/transports/udp.hpp"
+#include "struct_frame_sdk/network_transports.hpp"
 
-StructFrame::UDPTransport udp("192.168.1.100", 8080);
+// UDP
+StructFrame::UdpTransportConfig udp_config{.remoteHost = "192.168.1.100", .remotePort = 8080};
+StructFrame::UdpTransport udp(udp_config);
 udp.connect();
-udp.send(message_id, data, size);
-```
 
-### TCP
-
-```cpp
-#include "struct_frame_sdk/transports/tcp.hpp"
-
-StructFrame::TCPTransport tcp("192.168.1.100", 8080);
+// TCP
+StructFrame::TcpTransportConfig tcp_config{.host = "192.168.1.100", .port = 8080};
+StructFrame::TcpTransport tcp(tcp_config);
 tcp.connect();
-tcp.send(message_id, data, size);
 ```
 
 ## Frame Profiles
@@ -84,7 +87,7 @@ tcp.send(message_id, data, size);
 Use predefined frame profiles:
 
 ```cpp
-#include "FrameProfiles.hpp"
+#include "frame_profiles.hpp"
 
 using namespace FrameParsers;
 

@@ -61,17 +61,20 @@ The Standard profile (recommended for most uses):
 <Tabs>
   <TabItem label="Python">
   ```python
-  from struct_frame_parser import Parser, HeaderType, PayloadType
-
-  parser = Parser()
+  from frame_profiles import ProfileStandardWriter, ProfileStandardAccumulatingReader
+  from struct_frame.generated.messages import MyMessage, get_message_info
 
   # Encode
-  frame = parser.encode_basic(msg_id=42, msg=b"data")
+  msg = MyMessage(value=42)
+  writer = ProfileStandardWriter(1024)
+  writer.write(msg)
+  frame = writer.data()
 
   # Decode
+  reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
   for byte in frame:
-      result = parser.parse_byte(byte)
-      if result.valid:
+      result = reader.push_byte(byte)
+      if result and result.valid:
           print(f"Message {result.msg_id}: {result.msg_data}")
   ```
   </TabItem>
@@ -80,9 +83,9 @@ The Standard profile (recommended for most uses):
 <Tabs>
   <TabItem label="C++">
   ```cpp
-  #include "FrameProfiles.hpp"
+  #include "frame_profiles.hpp"
 
-  using namespace StructFrame;
+  using namespace FrameParsers;
 
   // Encode
   uint8_t buffer[1024];

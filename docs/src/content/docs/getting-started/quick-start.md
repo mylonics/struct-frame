@@ -62,7 +62,7 @@ int main() {
 
 Compile and run:
 ```bash
-g++ -std=c++17 -I generated/ main.cpp -o main
+g++ -std=c++20 -I generated/ main.cpp -o main
 ./main
 ```
 
