@@ -61,35 +61,43 @@ sdk.connect()
 ### Serial
 
 ```python
-import serial
-from struct_frame_sdk.transports import SerialTransport
+from struct_frame_sdk.serial_transport import SerialTransport, SerialTransportConfig
 
-transport = SerialTransport('/dev/ttyUSB0', 115200)
+config = SerialTransportConfig(port='/dev/ttyUSB0', baudrate=115200)
+transport = SerialTransport(config)
 transport.connect()
-transport.send(msg_id, data)
 ```
 
-### Socket
+### TCP
 
 ```python
-import socket
-from struct_frame_sdk.transports import SocketTransport
+from struct_frame_sdk.tcp_transport import TcpTransport, TcpTransportConfig
 
-transport = SocketTransport('192.168.1.100', 8080)
+config = TcpTransportConfig(host='192.168.1.100', port=8080)
+transport = TcpTransport(config)
 transport.connect()
-transport.send(msg_id, data)
+```
+
+### UDP
+
+```python
+from struct_frame_sdk.udp_transport import UdpTransport, UdpTransportConfig
+
+config = UdpTransportConfig(remote_host='192.168.1.100', remote_port=8080)
+transport = UdpTransport(config)
+transport.connect()
 ```
 
 ## Async Support
 
 ```python
 import asyncio
-from struct_frame_sdk.async_transports import AsyncSerialTransport
+from struct_frame_sdk.async_serial_transport import AsyncSerialTransport, AsyncSerialTransportConfig
 
 async def main():
-    transport = AsyncSerialTransport('/dev/ttyUSB0', 115200)
+    config = AsyncSerialTransportConfig(port='/dev/ttyUSB0', baud_rate=115200)
+    transport = AsyncSerialTransport(config)
     await transport.connect()
-    await transport.send(msg_id, data)
 
 asyncio.run(main())
 ```

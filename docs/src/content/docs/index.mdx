@@ -106,8 +106,8 @@ python -m struct_frame status.proto --build_c --build_py --build_ts
   msg.id = 42;
   msg.value = 3.14;
 
-  // Get binary data
-  const data = msg.data();
+  // Serialize to buffer
+  const data = msg.serialize();
   ```
   </TabItem>
   <TabItem label="C">
