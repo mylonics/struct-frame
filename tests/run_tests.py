@@ -1036,14 +1036,12 @@ class TestRunner:
             cmd = f'"{runner}" {mode} {profile_name} "{output_file}"'
             return self.run_cmd(cmd, cwd=work_dir)
         
-        # Rust: use cargo-built binary (only supports test_standard for now)
+        # Rust: use cargo-built binary
         if lang.id == "rust":
-            if runner_name not in ("test_standard",):
-                return False, "", "Rust: test not supported"
             runner = self.project_root / lang.build_dir / "struct_frame_rust_tests"
             if not runner.exists():
                 return False, "", "Rust runner not found (cargo build needed)"
-            cmd = f'"{runner}" {mode} {profile_name} "{output_file}"'
+            cmd = f'"{runner}" {runner_name} {mode} {profile_name} "{output_file}"'
             return self.run_cmd(cmd, cwd=work_dir)
         
         # C#: run compiled DLL directly (not dotnet run, which causes race conditions)

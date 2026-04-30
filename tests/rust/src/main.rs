@@ -1,18 +1,25 @@
 // Rust test harness for struct-frame generated code
 // Tests cross-platform encoding/decoding compatibility
+//
+// Usage: struct_frame_rust_tests <runner> <mode> <profile> <file>
+//   runner:  test_standard | test_extended | test_variable_flag
+//   mode:    encode | decode | both
+//   profile: standard | sensor | ipc | bulk | network
+//   file:    path to binary output/input file
 
+use struct_frame_sdk::extended_test::*;
 use struct_frame_sdk::get_message_info;
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::{
-    AccumulatingReader,
-    PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG,
-    PROFILE_SENSOR_CONFIG, PROFILE_STANDARD_CONFIG,
-    encode_message_crc, encode_message_minimal,
-    ProfileConfig,
+    encode_message_crc, encode_message_minimal, AccumulatingReader, ProfileConfig,
+    PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG, PROFILE_SENSOR_CONFIG,
+    PROFILE_STANDARD_CONFIG,
 };
 
 const BUFFER_SIZE: usize = 65536;
-const MESSAGE_COUNT: usize = 17;
+const STANDARD_MESSAGE_COUNT: usize = 17;
+const EXTENDED_MESSAGE_COUNT: usize = 17;
+const VARIABLE_FLAG_MESSAGE_COUNT: usize = 2;
 
 // ============================================================================
 // Message creation helpers - mirror standard_messages
@@ -127,7 +134,174 @@ fn create_message_test() -> SerializationTestMessage {
 }
 
 // ============================================================================
-// Expected payload: pack the message and return (msg_id, len)
+// Extended message creation helpers – mirror extended_messages.hpp
+// ============================================================================
+
+fn create_ext_id_1() -> ExtendedTestExtendedIdMessage1 {
+    let mut msg = ExtendedTestExtendedIdMessage1::default();
+    msg.sequence_number = 12345678;
+    let s = b"Test Label Extended 1";
+    msg.label[..s.len()].copy_from_slice(s);
+    msg.value = 3.14159f32;
+    msg.enabled = true;
+    msg
+}
+
+fn create_ext_id_2() -> ExtendedTestExtendedIdMessage2 {
+    let mut msg = ExtendedTestExtendedIdMessage2::default();
+    msg.sensor_id = -42;
+    msg.reading = 2.718281828;
+    msg.status_code = 50000;
+    let desc = b"Extended ID test message 2";
+    msg.description_length = desc.len() as u8;
+    msg.description[..desc.len()].copy_from_slice(desc);
+    msg
+}
+
+fn create_ext_id_3() -> ExtendedTestExtendedIdMessage3 {
+    let mut msg = ExtendedTestExtendedIdMessage3::default();
+    msg.timestamp = 1704067200000000u64;
+    msg.temperature = -40;
+    msg.humidity = 85;
+    let loc = b"Sensor Room A";
+    msg.location[..loc.len()].copy_from_slice(loc);
+    msg
+}
+
+fn create_ext_id_4() -> ExtendedTestExtendedIdMessage4 {
+    let mut msg = ExtendedTestExtendedIdMessage4::default();
+    msg.event_id = 999999;
+    msg.event_type = 42;
+    msg.event_time = 1704067200000i64;
+    let data = b"Event payload with extended message ID";
+    msg.event_data_length = data.len() as u8;
+    msg.event_data[..data.len()].copy_from_slice(data);
+    msg
+}
+
+fn create_ext_id_5() -> ExtendedTestExtendedIdMessage5 {
+    let mut msg = ExtendedTestExtendedIdMessage5::default();
+    msg.x_position = 100.5f32;
+    msg.y_position = -200.25f32;
+    msg.z_position = 50.125f32;
+    msg.frame_number = 1000000;
+    msg
+}
+
+fn create_ext_id_6() -> ExtendedTestExtendedIdMessage6 {
+    let mut msg = ExtendedTestExtendedIdMessage6::default();
+    msg.command_id = -12345;
+    msg.parameter1 = 1000;
+    msg.parameter2 = 2000;
+    msg.acknowledged = false;
+    let name = b"CALIBRATE_SENSOR";
+    msg.command_name[..name.len()].copy_from_slice(name);
+    msg
+}
+
+fn create_ext_id_7() -> ExtendedTestExtendedIdMessage7 {
+    let mut msg = ExtendedTestExtendedIdMessage7::default();
+    msg.counter = 4294967295u32;
+    msg.average = 123.456789;
+    msg.minimum = -999.99f32;
+    msg.maximum = 999.99f32;
+    msg
+}
+
+fn create_ext_id_8() -> ExtendedTestExtendedIdMessage8 {
+    let mut msg = ExtendedTestExtendedIdMessage8::default();
+    msg.level = 255;
+    msg.offset = -32768;
+    msg.duration = 86400000;
+    let tag = b"TEST123";
+    msg.tag[..tag.len()].copy_from_slice(tag);
+    msg
+}
+
+fn create_ext_id_9() -> ExtendedTestExtendedIdMessage9 {
+    let mut msg = ExtendedTestExtendedIdMessage9::default();
+    msg.big_number = -9223372036854775807i64;
+    msg.big_unsigned = 18446744073709551615u64;
+    msg.precision_value = 1.7976931348623157e+308f64;
+    msg
+}
+
+fn create_ext_id_10() -> ExtendedTestExtendedIdMessage10 {
+    let mut msg = ExtendedTestExtendedIdMessage10::default();
+    msg.small_value = 256;
+    let text = b"Boundary Test";
+    msg.short_text[..text.len()].copy_from_slice(text);
+    msg.flag = true;
+    msg
+}
+
+fn create_ext_large_1() -> ExtendedTestLargePayloadMessage1 {
+    let mut msg = ExtendedTestLargePayloadMessage1::default();
+    for i in 0..64usize {
+        msg.sensor_readings[i] = (i + 1) as f32;
+    }
+    msg.reading_count = 64;
+    msg.timestamp = 1704067200000000i64;
+    let name = b"Large Sensor Array Device";
+    msg.device_name[..name.len()].copy_from_slice(name);
+    msg
+}
+
+fn create_ext_large_2() -> ExtendedTestLargePayloadMessage2 {
+    let mut msg = ExtendedTestLargePayloadMessage2::default();
+    for i in 0..256usize {
+        msg.large_data[i] = i as u8;
+    }
+    for i in 256..280usize {
+        msg.large_data[i] = (i - 256) as u8;
+    }
+    msg
+}
+
+fn create_ext_var_single(
+    timestamp: u64,
+    count: u8,
+    crc: u32,
+    start_value: u8,
+) -> ExtendedTestExtendedVariableSingleArray {
+    let mut msg = ExtendedTestExtendedVariableSingleArray::default();
+    msg.timestamp = timestamp;
+    msg.telemetry_data_count = count;
+    for i in 0..count as usize {
+        msg.telemetry_data[i] = ((start_value as usize + i) % 256) as u8;
+    }
+    msg.crc = crc;
+    msg
+}
+
+// ============================================================================
+// Variable-flag message creation helpers – mirror variable_flag_messages.hpp
+// ============================================================================
+
+fn create_non_variable() -> SerializationTestTruncationTestNonVariable {
+    let mut msg = SerializationTestTruncationTestNonVariable::default();
+    msg.sequence_id = 0xDEADBEEF;
+    msg.data_array_count = 67;
+    for i in 0..67u8 {
+        msg.data_array[i as usize] = i;
+    }
+    msg.footer = 0xCAFE;
+    msg
+}
+
+fn create_truncation_variable() -> SerializationTestTruncationTestVariable {
+    let mut msg = SerializationTestTruncationTestVariable::default();
+    msg.sequence_id = 0xDEADBEEF;
+    msg.data_array_count = 67;
+    for i in 0..67u8 {
+        msg.data_array[i as usize] = i;
+    }
+    msg.footer = 0xCAFE;
+    msg
+}
+
+// ============================================================================
+// Expected payload helpers
 // ============================================================================
 
 fn pack_msg<M: struct_frame_sdk::StructFrameMessage>(msg: &M, buf: &mut [u8], use_fixed: bool) -> (u16, usize) {
@@ -138,7 +312,7 @@ fn pack_msg<M: struct_frame_sdk::StructFrameMessage>(msg: &M, buf: &mut [u8], us
     }
 }
 
-fn get_expected_payload(index: usize, buf: &mut [u8], use_fixed: bool) -> (u16, usize) {
+fn get_expected_payload_standard(index: usize, buf: &mut [u8], use_fixed: bool) -> (u16, usize) {
     match index {
         0 => pack_msg(&create_serialization_test(0xDEADBEEF, b"Cross-platform test!", 3.14159, true, &[100, 200, 300]), buf, use_fixed),
         1 => pack_msg(&create_serialization_test(0, b"", 0.0, false, &[]), buf, use_fixed),
@@ -193,11 +367,41 @@ fn get_expected_payload(index: usize, buf: &mut [u8], use_fixed: bool) -> (u16, 
     }
 }
 
+fn get_expected_payload_extended(index: usize, buf: &mut [u8]) -> (u16, usize) {
+    // Extended profiles always have a length field, so always use variable pack()
+    match index {
+        0  => pack_msg(&create_ext_id_1(),  buf, false),
+        1  => pack_msg(&create_ext_id_2(),  buf, false),
+        2  => pack_msg(&create_ext_id_3(),  buf, false),
+        3  => pack_msg(&create_ext_id_4(),  buf, false),
+        4  => pack_msg(&create_ext_id_5(),  buf, false),
+        5  => pack_msg(&create_ext_id_6(),  buf, false),
+        6  => pack_msg(&create_ext_id_7(),  buf, false),
+        7  => pack_msg(&create_ext_id_8(),  buf, false),
+        8  => pack_msg(&create_ext_id_9(),  buf, false),
+        9  => pack_msg(&create_ext_id_10(), buf, false),
+        10 => pack_msg(&create_ext_large_1(), buf, false),
+        11 => pack_msg(&create_ext_large_2(), buf, false),
+        12 => pack_msg(&create_ext_var_single(1, 0,   1, 0),  buf, false),
+        13 => pack_msg(&create_ext_var_single(2, 1,   2, 42), buf, false),
+        14 => pack_msg(&create_ext_var_single(3, 83,  3, 0),  buf, false),
+        15 => pack_msg(&create_ext_var_single(4, 249, 4, 0),  buf, false),
+        _  => pack_msg(&create_ext_var_single(5, 250, 5, 0),  buf, false),
+    }
+}
+
+fn get_expected_payload_variable_flag(index: usize, buf: &mut [u8], use_fixed: bool) -> (u16, usize) {
+    match index {
+        0 => pack_msg(&create_non_variable(),        buf, use_fixed),
+        _ => pack_msg(&create_truncation_variable(), buf, use_fixed),
+    }
+}
+
 // ============================================================================
-// Encode all test messages into the output buffer
+// Encode functions (one per test type)
 // ============================================================================
 
-fn encode_all(config: &ProfileConfig, output: &mut [u8]) -> usize {
+fn encode_standard(config: &ProfileConfig, output: &mut [u8]) -> usize {
     let mut written = 0;
 
     macro_rules! enc {
@@ -273,24 +477,83 @@ fn encode_all(config: &ProfileConfig, output: &mut [u8]) -> usize {
     written
 }
 
+fn encode_extended(config: &ProfileConfig, output: &mut [u8]) -> usize {
+    let mut written = 0;
+
+    macro_rules! enc {
+        ($msg:expr) => {{
+            let frame_len = encode_message_crc(config, &mut output[written..], &$msg, 0);
+            written += frame_len;
+        }};
+    }
+
+    enc!(create_ext_id_1());
+    enc!(create_ext_id_2());
+    enc!(create_ext_id_3());
+    enc!(create_ext_id_4());
+    enc!(create_ext_id_5());
+    enc!(create_ext_id_6());
+    enc!(create_ext_id_7());
+    enc!(create_ext_id_8());
+    enc!(create_ext_id_9());
+    enc!(create_ext_id_10());
+    enc!(create_ext_large_1());
+    enc!(create_ext_large_2());
+    enc!(create_ext_var_single(1, 0,   1, 0));
+    enc!(create_ext_var_single(2, 1,   2, 42));
+    enc!(create_ext_var_single(3, 83,  3, 0));
+    enc!(create_ext_var_single(4, 249, 4, 0));
+    enc!(create_ext_var_single(5, 250, 5, 0));
+
+    written
+}
+
+fn encode_variable_flag(config: &ProfileConfig, output: &mut [u8]) -> usize {
+    let mut written = 0;
+
+    macro_rules! enc {
+        ($msg:expr) => {{
+            let frame_len = if config.payload.has_crc {
+                encode_message_crc(config, &mut output[written..], &$msg, 0)
+            } else {
+                encode_message_minimal(config, &mut output[written..], &$msg)
+            };
+            written += frame_len;
+        }};
+    }
+
+    enc!(create_non_variable());
+    enc!(create_truncation_variable());
+
+    written
+}
+
 // ============================================================================
-// Decode and validate all messages
+// Generic decode-and-validate
 // ============================================================================
 
-fn decode_validate(config: ProfileConfig, data: &[u8], use_fixed: bool) -> usize {
+fn decode_validate_with<F>(
+    config: ProfileConfig,
+    data: &[u8],
+    expected_count: usize,
+    get_expected: F,
+) -> usize
+where
+    F: Fn(usize, &mut [u8]) -> (u16, usize),
+{
     let mut reader = AccumulatingReader::new(config, 65536);
     reader.add_data(data);
 
     let mut count = 0;
-    let mut expected_buf = [0u8; 1024];
+    let mut expected_buf = vec![0u8; 65536];
 
     while let Some(frame) = reader.next(&get_message_info) {
         if !frame.valid { break; }
 
-        let (expected_id, expected_len) = get_expected_payload(count, &mut expected_buf, use_fixed);
+        let (expected_id, expected_len) = get_expected(count, &mut expected_buf);
 
         if frame.msg_id != expected_id {
-            eprintln!("[DECODE] msg {}: expected msg_id={}, got {}", count, expected_id, frame.msg_id);
+            eprintln!("[DECODE] msg {}: expected msg_id=0x{:04x}, got 0x{:04x}", count, expected_id, frame.msg_id);
             break;
         }
 
@@ -308,7 +571,7 @@ fn decode_validate(config: ProfileConfig, data: &[u8], use_fixed: bool) -> usize
         }
 
         count += 1;
-        if count >= MESSAGE_COUNT { break; }
+        if count >= expected_count { break; }
     }
     count
 }
@@ -327,7 +590,7 @@ fn get_profile_config(profile: &str) -> ProfileConfig {
     }
 }
 
-/// Returns true if the profile uses fixed-size encoding (no length field, no CRC).
+/// Returns true if the profile uses fixed-size encoding (no length field).
 fn profile_uses_fixed(config: &ProfileConfig) -> bool {
     !config.payload.has_length
 }
@@ -338,25 +601,65 @@ fn profile_uses_fixed(config: &ProfileConfig) -> bool {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() < 4 {
+    if args.len() < 5 {
         eprintln!("Usage:");
-        eprintln!("  {} encode <profile> <output_file>", args[0]);
-        eprintln!("  {} decode <profile> <input_file>", args[0]);
-        eprintln!("  {} both <profile> <file>", args[0]);
-        eprintln!("\nProfiles: standard, sensor, ipc, bulk, network");
+        eprintln!("  {} <runner> <mode> <profile> <file>", args[0]);
+        eprintln!("\nRunners: test_standard, test_extended, test_variable_flag");
+        eprintln!("Modes:   encode, decode, both");
+        eprintln!("Profiles: standard, sensor, ipc, bulk, network");
         std::process::exit(1);
     }
 
-    let operation = &args[1];
-    let profile = &args[2];
-    let file_path = &args[3];
+    let runner_name = args[1].as_str();
+    let operation   = args[2].as_str();
+    let profile     = args[3].as_str();
+    let file_path   = &args[4];
     let config = get_profile_config(profile);
     let use_fixed = profile_uses_fixed(&config);
 
-    match operation.as_str() {
+    // Select expected message count and encode/decode functions
+    let (message_count, do_encode, do_decode): (
+        usize,
+        Box<dyn Fn(&ProfileConfig, &mut [u8]) -> usize>,
+        Box<dyn Fn(ProfileConfig, &[u8]) -> usize>,
+    ) = match runner_name {
+        "test_standard" => (
+            STANDARD_MESSAGE_COUNT,
+            Box::new(|cfg, buf| encode_standard(cfg, buf)),
+            Box::new(move |cfg, data| {
+                decode_validate_with(cfg, data, STANDARD_MESSAGE_COUNT, move |i, buf| {
+                    get_expected_payload_standard(i, buf, use_fixed)
+                })
+            }),
+        ),
+        "test_extended" => (
+            EXTENDED_MESSAGE_COUNT,
+            Box::new(|cfg, buf| encode_extended(cfg, buf)),
+            Box::new(|cfg, data| {
+                decode_validate_with(cfg, data, EXTENDED_MESSAGE_COUNT, |i, buf| {
+                    get_expected_payload_extended(i, buf)
+                })
+            }),
+        ),
+        "test_variable_flag" => (
+            VARIABLE_FLAG_MESSAGE_COUNT,
+            Box::new(|cfg, buf| encode_variable_flag(cfg, buf)),
+            Box::new(move |cfg, data| {
+                decode_validate_with(cfg, data, VARIABLE_FLAG_MESSAGE_COUNT, move |i, buf| {
+                    get_expected_payload_variable_flag(i, buf, use_fixed)
+                })
+            }),
+        ),
+        _ => {
+            eprintln!("Unknown runner: {}", runner_name);
+            std::process::exit(1);
+        }
+    };
+
+    match operation {
         "encode" => {
             let mut buffer = vec![0u8; BUFFER_SIZE];
-            let written = encode_all(&config, &mut buffer);
+            let written = do_encode(&config, &mut buffer);
             if written == 0 {
                 eprintln!("[ENCODE] FAILED: No bytes written");
                 std::process::exit(1);
@@ -380,9 +683,9 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-            let count = decode_validate(config, &data, use_fixed);
-            if count != MESSAGE_COUNT {
-                eprintln!("[DECODE] FAILED: {}/{} messages validated", count, MESSAGE_COUNT);
+            let count = do_decode(config, &data);
+            if count != message_count {
+                eprintln!("[DECODE] FAILED: {}/{} messages validated", count, message_count);
                 std::process::exit(1);
             }
             println!("[DECODE] SUCCESS: {} messages validated", count);
@@ -390,14 +693,14 @@ fn main() {
         }
         "both" => {
             let mut buffer = vec![0u8; BUFFER_SIZE];
-            let written = encode_all(&config, &mut buffer);
+            let written = do_encode(&config, &mut buffer);
             if written == 0 {
                 eprintln!("[BOTH] FAILED: Encoding error");
                 std::process::exit(1);
             }
-            let count = decode_validate(config, &buffer[..written], use_fixed);
-            if count != MESSAGE_COUNT {
-                eprintln!("[BOTH] FAILED: {}/{} messages validated", count, MESSAGE_COUNT);
+            let count = do_decode(config, &buffer[..written]);
+            if count != message_count {
+                eprintln!("[BOTH] FAILED: {}/{} messages validated", count, message_count);
                 std::process::exit(1);
             }
             println!("[BOTH] SUCCESS: {} messages, {} bytes", count, written);
@@ -409,3 +712,4 @@ fn main() {
         }
     }
 }
+

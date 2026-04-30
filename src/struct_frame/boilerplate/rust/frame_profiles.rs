@@ -76,7 +76,7 @@ pub const PROFILE_IPC_CONFIG: ProfileConfig =
     ProfileConfig::new(HEADER_NONE_CONFIG, PAYLOAD_MINIMAL_CONFIG);
 
 /// Profile Bulk: Basic + Extended
-/// Frame: [0x90] [0x75] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
+/// Frame: [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
 pub const PROFILE_BULK_CONFIG: ProfileConfig =
     ProfileConfig::new(HEADER_BASIC_CONFIG, PAYLOAD_EXTENDED_CONFIG);
 
@@ -391,13 +391,21 @@ pub fn encode_message_crc<M: StructFrameMessage>(
     // Variable messages use pack() (variable-length); profiles with has_length support this.
     // Fixed messages: pack() == pack_max_size().
     let payload_len = msg.pack(&mut payload);
+    // When the profile encodes a pkg_id field, derive it from the high byte of MSG_ID,
+    // mirroring C++: buffer[idx++] = (T::MSG_ID >> 8) & 0xFF.
+    // The caller-supplied pkg_id is only used for profiles without a pkg_id field.
+    let actual_pkg_id = if config.payload.has_pkg_id {
+        (M::MSG_ID >> 8) as u8
+    } else {
+        pkg_id
+    };
     encode_with_crc(
         config,
         buffer,
         0,
         0,
         0,
-        pkg_id,
+        actual_pkg_id,
         (M::MSG_ID & 0xFF) as u8,
         &payload[..payload_len],
         M::MAGIC1,
