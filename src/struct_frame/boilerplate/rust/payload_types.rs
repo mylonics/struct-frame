@@ -2,16 +2,18 @@
 // Mirrors payload_types.h from C boilerplate
 
 /// Payload type identifier (encoded in the start byte)
+/// Values must match C++ PayloadType enum in payload_types.hpp exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PayloadType {
     Minimal = 0,
     Default = 1,
-    SysComp = 2,
-    Seq = 3,
-    MultiSystemStream = 4,
-    Extended = 5,
-    ExtendedMinimal = 6,
+    ExtendedMsgIds = 2,
+    ExtendedLength = 3,
+    Extended = 4,
+    SysComp = 5,
+    Seq = 6,
+    MultiSystemStream = 7,
     ExtendedMultiSystemStream = 8,
 }
 
