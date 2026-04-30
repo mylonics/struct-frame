@@ -13,6 +13,7 @@ from struct_frame import FilePyGen
 from struct_frame import FileGqlGen
 from struct_frame import FileCppGen
 from struct_frame import FileCSharpGen
+from struct_frame import FileRustGen
 from struct_frame import TestCppGen
 from struct_frame import TestPyGen
 from struct_frame import pascalCase
@@ -170,6 +171,7 @@ def compute_generation_hash(args, packages_dict):
         'build_cpp': args.build_cpp,
         'build_csharp': args.build_csharp,
         'build_gql': args.build_gql,
+        'build_rust': args.build_rust,
         'c_path': args.c_path[0] if args.build_c else None,
         'ts_path': args.ts_path[0] if args.build_ts else None,
         'js_path': args.js_path[0] if args.build_js else None,
@@ -177,6 +179,7 @@ def compute_generation_hash(args, packages_dict):
         'cpp_path': args.cpp_path[0] if args.build_cpp else None,
         'csharp_path': args.csharp_path[0] if args.build_csharp else None,
         'gql_path': args.gql_path[0] if args.build_gql else None,
+        'rust_path': args.rust_path[0] if args.build_rust else None,
         'sdk': args.sdk,
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
@@ -269,6 +272,8 @@ def get_hash_file_path(args):
             hash_dir = args.csharp_path[0]
         elif args.build_gql:
             hash_dir = args.gql_path[0]
+        elif args.build_rust:
+            hash_dir = args.rust_path[0]
         else:
             # Fallback to current directory
             hash_dir = "."
@@ -1049,6 +1054,9 @@ parser.add_argument('--csharp_path', nargs=1, type=str,
 parser.add_argument('--build_gql', action='store_true')
 parser.add_argument('--gql_path', nargs=1, type=str,
                     default=['generated/gql/'])
+parser.add_argument('--build_rust', action='store_true')
+parser.add_argument('--rust_path', nargs=1, type=str,
+                    default=['generated/rust/'])
 parser.add_argument('--sdk', action='store_true',
                     help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
 parser.add_argument('--sdk_embedded', action='store_true',
@@ -1375,6 +1383,31 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
     return out
 
 
+def generateRustFileStrings(path, equality=False):
+    out = {}
+    # Collect all packages being generated now
+    new_package_names = []
+    for key, value in packages.items():
+        name = os.path.join(path, value.name + ".structframe.rs")
+        data = ''.join(FileRustGen.generate(value, equality=equality))
+        out[name] = data
+        new_package_names.append(value.name)
+    
+    # Discover ALL .structframe.rs files in the output directory (from previous runs)
+    all_package_names = list(new_package_names)
+    if os.path.exists(path):
+        for fname in sorted(os.listdir(path)):
+            if fname.endswith('.structframe.rs'):
+                pkg_name = fname[:-len('.structframe.rs')]
+                if pkg_name not in all_package_names:
+                    all_package_names.append(pkg_name)
+    
+    # Generate lib.rs and Cargo.toml for the generated crate
+    out[os.path.join(path, "lib.rs")] = FileRustGen.generate_lib_rs(sorted(all_package_names))
+    out[os.path.join(path, "Cargo.toml")] = FileRustGen.generate_cargo_toml()
+    return out
+
+
 def generateCSharpFileStrings(path, include_transports=False, equality=False, namespace='StructFrame.Generated', target_framework='net8.0', legacy_enum_names=False):
     out = {}
     for key, value in packages.items():
@@ -1480,7 +1513,7 @@ def main():
     # If validate mode is specified, skip build argument check and file generation
     if args.validate:
         print("Running in validate mode - no files will be generated")
-    elif (not args.build_c and not args.build_ts and not args.build_js and not args.build_py and not args.build_cpp and not args.build_csharp and not args.build_gql):
+    elif (not args.build_c and not args.build_ts and not args.build_js and not args.build_py and not args.build_cpp and not args.build_csharp and not args.build_gql and not args.build_rust):
         print("Select at least one build argument")
         return
 
@@ -1550,6 +1583,9 @@ def main():
             name = os.path.join(args.gql_path[0], value.name + '.graphql')
             data = ''.join(FileGqlGen.generate(value))
             files[name] = data
+
+    if (args.build_rust):
+        files.update(generateRustFileStrings(args.rust_path[0], equality=args.equality))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)
@@ -1676,6 +1712,12 @@ def main():
         copy_all_files(
             os.path.join(dir_path, "boilerplate/csharp"),
             args.csharp_path[0], exclude_transports)
+
+    if (args.build_rust):
+        # Exclude lib.rs and Cargo.toml from boilerplate copy - they are generated
+        copy_all_files(
+            os.path.join(dir_path, "boilerplate/rust"),
+            args.rust_path[0], exclude_sdk + ['lib.rs', 'Cargo.toml'])
     
     # Copy SDK files if requested
     if args.sdk or args.sdk_embedded:

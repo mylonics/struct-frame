@@ -1,0 +1,1039 @@
+#!/usr/bin/env python3
+# kate: replace-tabs on; indent-width 4;
+"""
+Rust code generator for struct-frame.
+
+This module generates Rust code for struct serialization with explicit
+pack/unpack methods for binary compatibility across platforms.
+"""
+
+from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
+import time
+
+StyleC = NamingStyleC()
+
+# Mapping from proto types to Rust types
+rust_types = {
+    "uint8": "u8",
+    "int8": "i8",
+    "uint16": "u16",
+    "int16": "i16",
+    "uint32": "u32",
+    "int32": "i32",
+    "bool": "bool",
+    "float": "f32",
+    "double": "f64",
+    "uint64": "u64",
+    "int64": "i64",
+    "string": "u8",  # strings are byte arrays in Rust
+}
+
+# Rust reserved keywords that need escaping with r# prefix
+RUST_KEYWORDS = {
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn",
+    "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
+    "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
+    "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "union", "unsafe", "use", "where", "while", "abstract", "become",
+    "box", "do", "final", "macro", "override", "priv", "typeof", "unsized",
+    "virtual", "yield", "try",
+}
+
+def _escape_rust_field_name(name):
+    """Escape field names that conflict with Rust keywords."""
+    if name in RUST_KEYWORDS:
+        return f'r#{name}'
+    return name
+
+# Byte sizes for each proto type
+rust_type_sizes = {
+    "uint8": 1,
+    "int8": 1,
+    "uint16": 2,
+    "int16": 2,
+    "uint32": 4,
+    "int32": 4,
+    "bool": 1,
+    "float": 4,
+    "double": 8,
+    "uint64": 8,
+    "int64": 8,
+}
+
+# Pack/unpack method names (Rust read/write functions)
+rust_pack_fns = {
+    "uint8": ("buf[_pos] = self.{f};", 1),
+    "int8": ("buf[_pos] = self.{f} as u8;", 1),
+    "uint16": ("buf[_pos.._pos+2].copy_from_slice(&self.{f}.to_le_bytes());", 2),
+    "int16": ("buf[_pos.._pos+2].copy_from_slice(&self.{f}.to_le_bytes());", 2),
+    "uint32": ("buf[_pos.._pos+4].copy_from_slice(&self.{f}.to_le_bytes());", 4),
+    "int32": ("buf[_pos.._pos+4].copy_from_slice(&self.{f}.to_le_bytes());", 4),
+    "bool": ("buf[_pos] = if self.{f} { 1 } else { 0 };", 1),
+    "float": ("buf[_pos.._pos+4].copy_from_slice(&self.{f}.to_le_bytes());", 4),
+    "double": ("buf[_pos.._pos+8].copy_from_slice(&self.{f}.to_le_bytes());", 8),
+    "uint64": ("buf[_pos.._pos+8].copy_from_slice(&self.{f}.to_le_bytes());", 8),
+    "int64": ("buf[_pos.._pos+8].copy_from_slice(&self.{f}.to_le_bytes());", 8),
+}
+
+rust_unpack_fns = {
+    "uint8": ("buf[_pos]", 1),
+    "int8": ("buf[_pos] as i8", 1),
+    "uint16": ("u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?)", 2),
+    "int16": ("i16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?)", 2),
+    "uint32": ("u32::from_le_bytes(buf[_pos.._pos+4].try_into().ok()?)", 4),
+    "int32": ("i32::from_le_bytes(buf[_pos.._pos+4].try_into().ok()?)", 4),
+    "bool": ("buf[_pos] != 0", 1),
+    "float": ("f32::from_le_bytes(buf[_pos.._pos+4].try_into().ok()?)", 4),
+    "double": ("f64::from_le_bytes(buf[_pos.._pos+8].try_into().ok()?)", 8),
+    "uint64": ("u64::from_le_bytes(buf[_pos.._pos+8].try_into().ok()?)", 8),
+    "int64": ("i64::from_le_bytes(buf[_pos.._pos+8].try_into().ok()?)", 8),
+}
+
+
+def _rust_struct_name(package, name):
+    """Get Rust struct name: PascalCase(package) + PascalCase(name)"""
+    return '%s%s' % (pascalCase(package), name)
+
+
+def _rust_const_prefix(package, name):
+    """Get constant prefix: UPPER_SNAKE_CASE(package) + '_' + UPPER_SNAKE_CASE(name)"""
+    return '%s_%s' % (CamelToSnakeCase(package).upper(), CamelToSnakeCase(name).upper())
+
+
+class EnumRustGen():
+    @staticmethod
+    def generate(field):
+        result = build_enum_leading_comments(field.comments, comment_prefix='//')
+
+        enum_name = _rust_struct_name(field.package, field.name)
+        result += '#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]\n'
+        result += '#[repr(u8)]\n'
+        result += 'pub enum %s {\n' % enum_name
+
+        enum_entries = list(field.data.items())
+
+        for idx, (entry_key, (value, comments)) in enumerate(enum_entries):
+            if comments:
+                for c in comments:
+                    result += '    //%s\n' % c
+            display_name = StyleC.enum_entry(entry_key)
+            # First variant gets #[default]
+            if idx == 0:
+                result += '    #[default]\n'
+            result += '    %s = %d,\n' % (display_name, value)
+
+        result += '}\n\n'
+
+        # Add from_u8 impl for deserialization
+        result += 'impl %s {\n' % enum_name
+        result += '    pub fn from_u8(v: u8) -> Option<Self> {\n'
+        result += '        match v {\n'
+        for entry_key, (value, _) in field.data.items():
+            display_name = StyleC.enum_entry(entry_key)
+            result += '            %d => Some(Self::%s),\n' % (value, display_name)
+        result += '            _ => None,\n'
+        result += '        }\n'
+        result += '    }\n'
+        result += '}\n'
+
+        return result
+
+
+def _get_field_type(field):
+    """Get Rust type for a field (non-array, non-string)."""
+    type_name = field.fieldType
+    if type_name in rust_types:
+        return rust_types[type_name]
+    # Use type_package if available (for cross-package type references)
+    type_pkg = getattr(field, 'type_package', None) or field.package
+    if field.isEnum:
+        return _rust_struct_name(type_pkg, type_name)
+    return _rust_struct_name(type_pkg, type_name)
+
+
+def _generate_field_decl(field):
+    """Generate a Rust struct field declaration."""
+    var_name = _escape_rust_field_name(field.name)
+    type_name = field.fieldType
+
+    if field.is_array:
+        if type_name == "string":
+            elem_size = field.element_size if field.element_size else 16
+            if field.size_option is not None:
+                # Fixed string array: [[u8; elem_size]; size]
+                return f'    pub {var_name}: [[u8; {elem_size}]; {field.size_option}],  // Fixed string array'
+            elif field.max_size is not None:
+                count_type = "u16" if field.max_size > 255 else "u8"
+                return f'    pub {var_name}_count: {count_type},  // Bounded string array count\n    pub {var_name}: [[u8; {elem_size}]; {field.max_size}],  // Bounded string array: up to {field.max_size} strings'
+        else:
+            base_type = _get_field_type(field)
+            if field.size_option is not None:
+                return f'    pub {var_name}: [{base_type}; {field.size_option}],  // Fixed array'
+            elif field.max_size is not None:
+                count_type = "u16" if field.max_size > 255 else "u8"
+                return f'    pub {var_name}_count: {count_type},  // Bounded array count\n    pub {var_name}: [{base_type}; {field.max_size}],  // Bounded array: up to {field.max_size} elements'
+    elif type_name == "string":
+        if field.size_option is not None:
+            return f'    pub {var_name}: [u8; {field.size_option}],  // Fixed string: {field.size_option} bytes'
+        elif field.max_size is not None:
+            count_type = "u16" if field.max_size > 255 else "u8"
+            return f'    pub {var_name}_length: {count_type},  // Variable string length\n    pub {var_name}: [u8; {field.max_size}],  // Variable string: up to {field.max_size} bytes'
+    else:
+        base_type = _get_field_type(field)
+        return f'    pub {var_name}: {base_type},'
+
+    return f'    pub {var_name}: u8,  // Unknown type'
+
+
+def _generate_pack_field(field, indent='        ', variable=False):
+    """Generate pack code for a single field.
+    
+    When variable=True, bounded arrays and variable strings are packed with
+    only actual elements (variable-length encoding). When variable=False,
+    always packs max_size elements (fixed-size encoding).
+    """
+    var_name = _escape_rust_field_name(field.name)
+    type_name = field.fieldType
+    lines = []
+
+    if field.is_array:
+        if type_name == "string":
+            elem_size = field.element_size if field.element_size else 16
+            if field.size_option is not None:
+                # Fixed string array - same in both modes
+                lines.append(f'{indent}// Fixed string array: {var_name}')
+                lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                lines.append(f'{indent}    buf[_pos.._pos+{elem_size}].copy_from_slice(&self.{var_name}[i]);')
+                lines.append(f'{indent}    _pos += {elem_size};')
+                lines.append(f'{indent}}}')
+            elif field.max_size is not None:
+                count_size = 2 if field.max_size > 255 else 1
+                count_fmt = "u16" if field.max_size > 255 else "u8"
+                loop_limit = f'self.{var_name}_count as usize' if variable else str(field.max_size)
+                lines.append(f'{indent}// Bounded string array: {var_name}')
+                lines.append(f'{indent}buf[_pos.._pos+{count_size}].copy_from_slice(&self.{var_name}_count.to_le_bytes());')
+                lines.append(f'{indent}_pos += {count_size};')
+                lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                lines.append(f'{indent}    buf[_pos.._pos+{elem_size}].copy_from_slice(&self.{var_name}[i]);')
+                lines.append(f'{indent}    _pos += {elem_size};')
+                lines.append(f'{indent}}}')
+        else:
+            if type_name in rust_type_sizes:
+                type_size = rust_type_sizes[type_name]
+                if field.size_option is not None:
+                    # Fixed array - same in both modes
+                    lines.append(f'{indent}// Fixed array: {var_name}')
+                    lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                    if type_name == "bool":
+                        lines.append(f'{indent}    buf[_pos] = if self.{var_name}[i] {{ 1 }} else {{ 0 }};')
+                        lines.append(f'{indent}    _pos += 1;')
+                    elif type_size == 1:
+                        lines.append(f'{indent}    buf[_pos] = self.{var_name}[i] as u8;')
+                        lines.append(f'{indent}    _pos += 1;')
+                    else:
+                        lines.append(f'{indent}    buf[_pos.._pos+{type_size}].copy_from_slice(&self.{var_name}[i].to_le_bytes());')
+                        lines.append(f'{indent}    _pos += {type_size};')
+                    lines.append(f'{indent}}}')
+                elif field.max_size is not None:
+                    count_size = 2 if field.max_size > 255 else 1
+                    loop_limit = f'self.{var_name}_count as usize' if variable else str(field.max_size)
+                    lines.append(f'{indent}// Bounded array: {var_name}')
+                    lines.append(f'{indent}buf[_pos.._pos+{count_size}].copy_from_slice(&self.{var_name}_count.to_le_bytes());')
+                    lines.append(f'{indent}_pos += {count_size};')
+                    lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                    if type_name == "bool":
+                        lines.append(f'{indent}    buf[_pos] = if self.{var_name}[i] {{ 1 }} else {{ 0 }};')
+                        lines.append(f'{indent}    _pos += 1;')
+                    elif type_size == 1:
+                        lines.append(f'{indent}    buf[_pos] = self.{var_name}[i] as u8;')
+                        lines.append(f'{indent}    _pos += 1;')
+                    else:
+                        lines.append(f'{indent}    buf[_pos.._pos+{type_size}].copy_from_slice(&self.{var_name}[i].to_le_bytes());')
+                        lines.append(f'{indent}    _pos += {type_size};')
+                    lines.append(f'{indent}}}')
+            elif field.isEnum:
+                # Enum array (u8)
+                if field.size_option is not None:
+                    lines.append(f'{indent}// Fixed enum array: {var_name}')
+                    lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                    lines.append(f'{indent}    buf[_pos] = self.{var_name}[i] as u8;')
+                    lines.append(f'{indent}    _pos += 1;')
+                    lines.append(f'{indent}}}')
+                elif field.max_size is not None:
+                    count_size = 2 if field.max_size > 255 else 1
+                    loop_limit = f'self.{var_name}_count as usize' if variable else str(field.max_size)
+                    lines.append(f'{indent}// Bounded enum array: {var_name}')
+                    lines.append(f'{indent}buf[_pos.._pos+{count_size}].copy_from_slice(&self.{var_name}_count.to_le_bytes());')
+                    lines.append(f'{indent}_pos += {count_size};')
+                    lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                    lines.append(f'{indent}    buf[_pos] = self.{var_name}[i] as u8;')
+                    lines.append(f'{indent}    _pos += 1;')
+                    lines.append(f'{indent}}}')
+            else:
+                # Nested message array
+                if field.size_option is not None:
+                    lines.append(f'{indent}// Fixed nested message array: {var_name}')
+                    lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                    lines.append(f'{indent}    _pos += self.{var_name}[i].pack(&mut buf[_pos..]);')
+                    lines.append(f'{indent}}}')
+                elif field.max_size is not None:
+                    count_size = 2 if field.max_size > 255 else 1
+                    loop_limit = f'self.{var_name}_count as usize' if variable else str(field.max_size)
+                    lines.append(f'{indent}// Bounded nested message array: {var_name}')
+                    lines.append(f'{indent}buf[_pos.._pos+{count_size}].copy_from_slice(&self.{var_name}_count.to_le_bytes());')
+                    lines.append(f'{indent}_pos += {count_size};')
+                    lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                    lines.append(f'{indent}    _pos += self.{var_name}[i].pack(&mut buf[_pos..]);')
+                    lines.append(f'{indent}}}')
+    elif type_name == "string":
+        if field.size_option is not None:
+            # Fixed string - same in both modes
+            lines.append(f'{indent}// Fixed string: {var_name}')
+            lines.append(f'{indent}buf[_pos.._pos+{field.size_option}].copy_from_slice(&self.{var_name});')
+            lines.append(f'{indent}_pos += {field.size_option};')
+        elif field.max_size is not None:
+            count_size = 2 if field.max_size > 255 else 1
+            lines.append(f'{indent}// Variable string: {var_name}')
+            lines.append(f'{indent}buf[_pos.._pos+{count_size}].copy_from_slice(&self.{var_name}_length.to_le_bytes());')
+            lines.append(f'{indent}_pos += {count_size};')
+            if variable:
+                lines.append(f'{indent}let _str_len = self.{var_name}_length as usize;')
+                lines.append(f'{indent}buf[_pos.._pos+_str_len].copy_from_slice(&self.{var_name}[.._str_len]);')
+                lines.append(f'{indent}_pos += _str_len;')
+            else:
+                lines.append(f'{indent}buf[_pos.._pos+{field.max_size}].copy_from_slice(&self.{var_name});')
+                lines.append(f'{indent}_pos += {field.max_size};')
+    else:
+        if type_name in rust_pack_fns:
+            pack_stmt, type_size = rust_pack_fns[type_name]
+            pack_stmt = pack_stmt.replace('{f}', var_name)
+            lines.append(f'{indent}{pack_stmt}')
+            lines.append(f'{indent}_pos += {type_size};')
+        elif field.isEnum:
+            lines.append(f'{indent}buf[_pos] = self.{var_name} as u8;')
+            lines.append(f'{indent}_pos += 1;')
+        else:
+            # Nested message
+            lines.append(f'{indent}_pos += self.{var_name}.pack(&mut buf[_pos..]);')
+
+    return '\n'.join(lines)
+
+
+def _generate_unpack_field(field, indent='        ', variable=False):
+    """Generate unpack code for a single field.
+    
+    When variable=True, bounded arrays and variable strings are unpacked with
+    only actual elements (variable-length). When variable=False (fixed),
+    always reads max_size elements.
+    """
+    var_name = _escape_rust_field_name(field.name)
+    type_name = field.fieldType
+    lines = []
+
+    if field.is_array:
+        if type_name == "string":
+            elem_size = field.element_size if field.element_size else 16
+            if field.size_option is not None:
+                lines.append(f'{indent}// Fixed string array: {var_name}')
+                lines.append(f'{indent}let mut {var_name}: [[u8; {elem_size}]; {field.size_option}] = [[0u8; {elem_size}]; {field.size_option}];')
+                lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                lines.append(f'{indent}    {var_name}[i].copy_from_slice(&buf[_pos.._pos+{elem_size}]);')
+                lines.append(f'{indent}    _pos += {elem_size};')
+                lines.append(f'{indent}}}')
+            elif field.max_size is not None:
+                count_size = 2 if field.max_size > 255 else 1
+                count_type = "u16" if field.max_size > 255 else "u8"
+                loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
+                lines.append(f'{indent}// Bounded string array: {var_name}')
+                lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+                lines.append(f'{indent}_pos += {count_size};')
+                lines.append(f'{indent}let mut {var_name}: [[u8; {elem_size}]; {field.max_size}] = [[0u8; {elem_size}]; {field.max_size}];')
+                lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                lines.append(f'{indent}    {var_name}[i].copy_from_slice(&buf[_pos.._pos+{elem_size}]);')
+                lines.append(f'{indent}    _pos += {elem_size};')
+                lines.append(f'{indent}}}')
+        else:
+            if type_name in rust_type_sizes:
+                type_size = rust_type_sizes[type_name]
+                rust_t = rust_types[type_name]
+                if field.size_option is not None:
+                    lines.append(f'{indent}// Fixed array: {var_name}')
+                    lines.append(f'{indent}let mut {var_name}: [{rust_t}; {field.size_option}] = [{rust_t}::default(); {field.size_option}];')
+                    lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                    if type_name == "bool":
+                        lines.append(f'{indent}    {var_name}[i] = buf[_pos] != 0;')
+                        lines.append(f'{indent}    _pos += 1;')
+                    elif type_size == 1:
+                        if type_name == "int8":
+                            lines.append(f'{indent}    {var_name}[i] = buf[_pos] as i8;')
+                        else:
+                            lines.append(f'{indent}    {var_name}[i] = buf[_pos];')
+                        lines.append(f'{indent}    _pos += 1;')
+                    else:
+                        lines.append(f'{indent}    {var_name}[i] = {rust_t}::from_le_bytes(buf[_pos.._pos+{type_size}].try_into().ok()?);')
+                        lines.append(f'{indent}    _pos += {type_size};')
+                    lines.append(f'{indent}}}')
+                elif field.max_size is not None:
+                    count_size = 2 if field.max_size > 255 else 1
+                    count_type = "u16" if field.max_size > 255 else "u8"
+                    loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
+                    lines.append(f'{indent}// Bounded array: {var_name}')
+                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+                    lines.append(f'{indent}_pos += {count_size};')
+                    lines.append(f'{indent}let mut {var_name}: [{rust_t}; {field.max_size}] = [{rust_t}::default(); {field.max_size}];')
+                    lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                    if type_name == "bool":
+                        lines.append(f'{indent}    {var_name}[i] = buf[_pos] != 0;')
+                        lines.append(f'{indent}    _pos += 1;')
+                    elif type_size == 1:
+                        if type_name == "int8":
+                            lines.append(f'{indent}    {var_name}[i] = buf[_pos] as i8;')
+                        else:
+                            lines.append(f'{indent}    {var_name}[i] = buf[_pos];')
+                        lines.append(f'{indent}    _pos += 1;')
+                    else:
+                        lines.append(f'{indent}    {var_name}[i] = {rust_t}::from_le_bytes(buf[_pos.._pos+{type_size}].try_into().ok()?);')
+                        lines.append(f'{indent}    _pos += {type_size};')
+                    lines.append(f'{indent}}}')
+            elif field.isEnum:
+                enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+                if field.size_option is not None:
+                    lines.append(f'{indent}// Fixed enum array: {var_name}')
+                    lines.append(f'{indent}let mut {var_name}: [{enum_type}; {field.size_option}] = [{enum_type}::default(); {field.size_option}];')
+                    lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                    lines.append(f'{indent}    {var_name}[i] = {enum_type}::from_u8(buf[_pos]).unwrap_or_default();')
+                    lines.append(f'{indent}    _pos += 1;')
+                    lines.append(f'{indent}}}')
+                elif field.max_size is not None:
+                    count_size = 2 if field.max_size > 255 else 1
+                    count_type = "u16" if field.max_size > 255 else "u8"
+                    loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
+                    lines.append(f'{indent}// Bounded enum array: {var_name}')
+                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+                    lines.append(f'{indent}_pos += {count_size};')
+                    lines.append(f'{indent}let mut {var_name}: [{enum_type}; {field.max_size}] = [{enum_type}::default(); {field.max_size}];')
+                    lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                    lines.append(f'{indent}    {var_name}[i] = {enum_type}::from_u8(buf[_pos]).unwrap_or_default();')
+                    lines.append(f'{indent}    _pos += 1;')
+                    lines.append(f'{indent}}}')
+            else:
+                # Nested message array
+                nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+                if field.size_option is not None:
+                    lines.append(f'{indent}// Fixed nested message array: {var_name}')
+                    lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.size_option}] = [{nested_type}::default(); {field.size_option}];')
+                    lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                    lines.append(f'{indent}    let msg = {nested_type}::unpack(&buf[_pos..])?;')
+                    lines.append(f'{indent}    _pos += {nested_type}::SIZE;')
+                    lines.append(f'{indent}    {var_name}[i] = msg;')
+                    lines.append(f'{indent}}}')
+                elif field.max_size is not None:
+                    count_size = 2 if field.max_size > 255 else 1
+                    count_type = "u16" if field.max_size > 255 else "u8"
+                    loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
+                    lines.append(f'{indent}// Bounded nested message array: {var_name}')
+                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+                    lines.append(f'{indent}_pos += {count_size};')
+                    lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.max_size}] = [{nested_type}::default(); {field.max_size}];')
+                    lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                    lines.append(f'{indent}    let msg = {nested_type}::unpack(&buf[_pos..])?;')
+                    lines.append(f'{indent}    _pos += {nested_type}::SIZE;')
+                    lines.append(f'{indent}    {var_name}[i] = msg;')
+                    lines.append(f'{indent}}}')
+    elif type_name == "string":
+        if field.size_option is not None:
+            lines.append(f'{indent}// Fixed string: {var_name}')
+            lines.append(f'{indent}let mut {var_name} = [0u8; {field.size_option}];')
+            lines.append(f'{indent}let _str_slice = buf.get(_pos.._pos+{field.size_option})?;')
+            lines.append(f'{indent}{var_name}.copy_from_slice(_str_slice);')
+            lines.append(f'{indent}_pos += {field.size_option};')
+        elif field.max_size is not None:
+            count_size = 2 if field.max_size > 255 else 1
+            count_type = "u16" if field.max_size > 255 else "u8"
+            lines.append(f'{indent}// Variable string: {var_name}')
+            lines.append(f'{indent}let _length_bytes = buf.get(_pos.._pos+{count_size})?;')
+            lines.append(f'{indent}let {var_name}_length = {count_type}::from_le_bytes(_length_bytes.try_into().ok()?);')
+            lines.append(f'{indent}_pos += {count_size};')
+            lines.append(f'{indent}let mut {var_name} = [0u8; {field.max_size}];')
+            if variable:
+                lines.append(f'{indent}let _str_len = ({var_name}_length as usize).min({field.max_size});')
+                lines.append(f'{indent}let _str_slice = buf.get(_pos.._pos+_str_len)?;')
+                lines.append(f'{indent}{var_name}[.._str_len].copy_from_slice(_str_slice);')
+                lines.append(f'{indent}_pos += _str_len;')
+            else:
+                lines.append(f'{indent}let _str_slice = buf.get(_pos.._pos+{field.max_size})?;')
+                lines.append(f'{indent}{var_name}.copy_from_slice(_str_slice);')
+                lines.append(f'{indent}_pos += {field.max_size};')
+    else:
+        if type_name in rust_unpack_fns:
+            unpack_expr, type_size = rust_unpack_fns[type_name]
+            lines.append(f'{indent}let {var_name} = {unpack_expr};')
+            lines.append(f'{indent}_pos += {type_size};')
+        elif field.isEnum:
+            enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+            lines.append(f'{indent}let {var_name} = {enum_type}::from_u8(buf[_pos]).unwrap_or_default();')
+            lines.append(f'{indent}_pos += 1;')
+        else:
+            # Nested message
+            nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+            lines.append(f'{indent}let {var_name} = {nested_type}::unpack(&buf[_pos..])?;')
+            lines.append(f'{indent}_pos += {nested_type}::SIZE;')
+
+    return '\n'.join(lines)
+
+
+def _get_field_var_names(field):
+    """Get variable names introduced by _generate_unpack_field for a field.
+    Order must match the declaration order in _generate_unpack_field."""
+    var_name = _escape_rust_field_name(field.name)
+    type_name = field.fieldType
+    names = []
+
+    if field.is_array:
+        if field.max_size is not None:
+            # Bounded arrays declare count first, then the array
+            names.append(f'{var_name}_count')
+        names.append(var_name)
+    elif type_name == "string":
+        if field.max_size is not None:
+            names.append(f'{var_name}_length')
+        names.append(var_name)
+    else:
+        names.append(var_name)
+
+    return names
+
+
+def _msg_is_variable(msg):
+    """Returns True if the message uses variable-length encoding (has option variable = true in proto)."""
+    return getattr(msg, 'variable', False)
+
+
+def _large_array_size(field):
+    """Returns array size if field is a large array needing manual Default, else 0."""
+    if field.is_array:
+        if field.size_option is not None and field.size_option > 32:
+            return field.size_option
+        if field.max_size is not None and field.max_size > 32:
+            return field.max_size
+    if field.fieldType == "string":
+        if field.size_option is not None and field.size_option > 32:
+            return field.size_option
+        if field.max_size is not None and field.max_size > 32:
+            return field.max_size
+    return 0
+
+
+def _needs_manual_default(msg):
+    """Returns True if the message struct has arrays larger than 32 elements."""
+    for field in msg.fields.values():
+        if _large_array_size(field) > 0:
+            return True
+        # Non-array string fields with large max_size or size_option
+        if field.fieldType == "string" and not field.is_array:
+            if field.size_option is not None and field.size_option > 32:
+                return True
+            if field.max_size is not None and field.max_size > 32:
+                return True
+    for oneof in msg.oneofs.values():
+        if oneof.size > 32:
+            return True
+    return False
+
+
+def _rust_zero_literal(type_name):
+    """Get the zero literal for a Rust type."""
+    if type_name in ('float',):
+        return '0.0f32'
+    if type_name in ('double',):
+        return '0.0f64'
+    if type_name == 'bool':
+        return 'false'
+    return '0'
+
+
+def _generate_default_impl(msg, struct_name):
+    """Generate manual Default implementation for structs with large arrays."""
+    result = f'impl Default for {struct_name} {{\n'
+    result += '    fn default() -> Self {\n'
+    result += '        Self {\n'
+    for field in msg.fields.values():
+        var_name = _escape_rust_field_name(field.name)
+        type_name = field.fieldType
+        if field.is_array:
+            if field.size_option is not None:
+                if type_name == "string":
+                    elem_size = field.element_size if field.element_size else 16
+                    result += f'            {var_name}: [[0u8; {elem_size}]; {field.size_option}],\n'
+                elif type_name in rust_types:
+                    zero = _rust_zero_literal(type_name)
+                    result += f'            {var_name}: [{zero}; {field.size_option}],\n'
+                else:
+                    nested_type = _get_field_type(field)
+                    result += f'            {var_name}: core::array::from_fn(|_| {nested_type}::default()),\n'
+            elif field.max_size is not None:
+                result += f'            {var_name}_count: 0,\n'
+                if type_name == "string":
+                    elem_size = field.element_size if field.element_size else 16
+                    result += f'            {var_name}: [[0u8; {elem_size}]; {field.max_size}],\n'
+                elif type_name in rust_types:
+                    zero = _rust_zero_literal(type_name)
+                    result += f'            {var_name}: [{zero}; {field.max_size}],\n'
+                else:
+                    nested_type = _get_field_type(field)
+                    result += f'            {var_name}: core::array::from_fn(|_| {nested_type}::default()),\n'
+        elif type_name == "string":
+            if field.size_option is not None:
+                result += f'            {var_name}: [0u8; {field.size_option}],\n'
+            elif field.max_size is not None:
+                result += f'            {var_name}_length: 0,\n'
+                result += f'            {var_name}: [0u8; {field.max_size}],\n'
+            else:
+                result += f'            {var_name}: Default::default(),\n'
+        else:
+            result += f'            {var_name}: Default::default(),\n'
+    for oneof_name, oneof in msg.oneofs.items():
+        if oneof.auto_discriminator:
+            result += f'            {oneof_name}_discriminator: 0,\n'
+        result += f'            {oneof_name}_bytes: [0u8; {oneof.size}],\n'
+    result += '        }\n'
+    result += '    }\n'
+    result += '}\n\n'
+    return result
+
+
+class MessageRustGen():
+    @staticmethod
+    def generate(msg, package=None, equality=False):
+        """Generate a Rust struct and impl for a message."""
+        struct_name = _rust_struct_name(msg.package, msg.name)
+        const_prefix = _rust_const_prefix(msg.package, msg.name)
+
+        result = ''
+
+        # Comments
+        if msg.comments:
+            for c in msg.comments:
+                result += '//%s\n' % c
+
+        # Derive attributes (Default is manually implemented if large arrays are present)
+        needs_manual_default = _needs_manual_default(msg)
+        if needs_manual_default:
+            result += '#[derive(Debug, Clone)]\n'
+        else:
+            result += '#[derive(Debug, Clone, Default)]\n'
+        result += 'pub struct %s {\n' % struct_name
+
+        # Regular fields
+        for key, field in msg.fields.items():
+            if field.comments:
+                for c in field.comments:
+                    result += '    //%s\n' % c
+            decl = _generate_field_decl(field)
+            result += decl + '\n'
+
+        # Oneof fields: discriminator + raw bytes storage (union semantics)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.comments:
+                for c in oneof.comments:
+                    result += '    //%s\n' % c
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'    pub {oneof_name}_discriminator: u16,  // Auto-generated message ID discriminator\n'
+                else:
+                    result += f'    pub {oneof_name}_discriminator: u8,  // Field order discriminator\n'
+            result += f'    pub {oneof_name}_bytes: [u8; {oneof.size}],  // Union storage: max of all variant sizes\n'
+
+        result += '}\n\n'
+
+        # Manual Default implementation if needed
+        if needs_manual_default:
+            result += _generate_default_impl(msg, struct_name)
+
+        # Constants
+        has_msg_id = msg.id is not None
+        is_variable = _msg_is_variable(msg)
+        if has_msg_id:
+            msg_id_value = msg.id
+            if package and package.package_id is not None:
+                msg_id_value = (package.package_id << 8) | msg.id
+            magic1 = msg.magic_bytes[0] if msg.magic_bytes else 0
+            magic2 = msg.magic_bytes[1] if msg.magic_bytes else 0
+            result += f'pub const {const_prefix}_MSG_ID: u16 = {msg_id_value};\n'
+            result += f'pub const {const_prefix}_MAX_SIZE: usize = {msg.size};\n'
+            result += f'pub const {const_prefix}_MAGIC1: u8 = {magic1};\n'
+            result += f'pub const {const_prefix}_MAGIC2: u8 = {magic2};\n'
+        else:
+            result += f'pub const {const_prefix}_MAX_SIZE: usize = {msg.size};\n'
+
+        result += '\n'
+
+        # impl block
+        result += 'impl %s {\n' % struct_name
+
+        if has_msg_id:
+            result += f'    pub const MSG_ID: u16 = {const_prefix}_MSG_ID;\n'
+            result += f'    pub const MAX_SIZE: usize = {const_prefix}_MAX_SIZE;\n'
+            result += f'    pub const SIZE: usize = {const_prefix}_MAX_SIZE;\n'
+            result += f'    pub const MAGIC1: u8 = {const_prefix}_MAGIC1;\n'
+            result += f'    pub const MAGIC2: u8 = {const_prefix}_MAGIC2;\n'
+            result += f'    pub const IS_VARIABLE: bool = {str(is_variable).lower()};\n'
+        else:
+            result += f'    pub const MAX_SIZE: usize = {const_prefix}_MAX_SIZE;\n'
+            result += f'    pub const SIZE: usize = {const_prefix}_MAX_SIZE;\n'
+
+        # Oneof accessor methods
+        for oneof_name, oneof in msg.oneofs.items():
+            for field_name, field in oneof.fields.items():
+                nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+                result += f'\n    /// Get {field_name} from the {oneof_name} oneof.\n'
+                result += f'    pub fn get_{field_name}(&self) -> Option<{nested_type}> {{\n'
+                result += f'        {nested_type}::unpack(&self.{oneof_name}_bytes)\n'
+                result += f'    }}\n'
+                result += f'\n    /// Set {field_name} in the {oneof_name} oneof.\n'
+                result += f'    pub fn set_{field_name}(&mut self, msg: &{nested_type}) {{\n'
+                if oneof.auto_discriminator:
+                    if oneof.discriminator_type == "msgid":
+                        result += f'        self.{oneof_name}_discriminator = {nested_type}::MSG_ID;\n'
+                    else:
+                        # field_order: find the 1-based index of this field
+                        idx = list(oneof.fields.keys()).index(field_name) + 1
+                        result += f'        self.{oneof_name}_discriminator = {idx};\n'
+                result += f'        let mut tmp = [0u8; {oneof.size}];\n'
+                result += f'        msg.pack_max_size(&mut tmp);\n'
+                result += f'        self.{oneof_name}_bytes.copy_from_slice(&tmp[..{oneof.size}]);\n'
+                result += f'    }}\n'
+
+        # Helper to generate oneof pack code (always fixed-size)
+        def _pack_oneofs(result):
+            for oneof_name, oneof in msg.oneofs.items():
+                if oneof.auto_discriminator:
+                    if oneof.discriminator_type == "msgid":
+                        result += f'        // Oneof {oneof_name} discriminator (msgid)\n'
+                        result += f'        buf[_pos.._pos+2].copy_from_slice(&self.{oneof_name}_discriminator.to_le_bytes());\n'
+                        result += f'        _pos += 2;\n'
+                    else:
+                        result += f'        // Oneof {oneof_name} discriminator (field_order)\n'
+                        result += f'        buf[_pos] = self.{oneof_name}_discriminator;\n'
+                        result += f'        _pos += 1;\n'
+                result += f'        // Oneof {oneof_name} union bytes\n'
+                result += f'        buf[_pos.._pos+{oneof.size}].copy_from_slice(&self.{oneof_name}_bytes);\n'
+                result += f'        _pos += {oneof.size};\n'
+            return result
+
+        # pack method (variable-length for IS_VARIABLE, same as pack_max_size for fixed)
+        result += '\n    /// Serialize the message into a byte buffer. Returns bytes written.\n'
+        if is_variable:
+            result += '    /// For variable messages, only actual data is written (not padded to MAX_SIZE).\n'
+        result += '    pub fn pack(&self, buf: &mut [u8]) -> usize {\n'
+        result += '        let mut _pos = 0usize;\n'
+        for key, field in msg.fields.items():
+            pack_code = _generate_pack_field(field, variable=is_variable)
+            if pack_code:
+                result += pack_code + '\n'
+        result = _pack_oneofs(result)
+        result += '        _pos\n'
+        result += '    }\n'
+
+        # pack_max_size method (always fixed-size, writes MAX_SIZE bytes)
+        result += '\n    /// Serialize the message to exactly MAX_SIZE bytes (fixed-size encoding).\n'
+        result += '    /// Use this for profiles without a length field (sensor, ipc).\n'
+        result += '    pub fn pack_max_size(&self, buf: &mut [u8]) -> usize {\n'
+        result += '        let mut _pos = 0usize;\n'
+        for key, field in msg.fields.items():
+            pack_code = _generate_pack_field(field, variable=False)
+            if pack_code:
+                result += pack_code + '\n'
+        result = _pack_oneofs(result)
+        result += '        _pos\n'
+        result += '    }\n'
+
+        # unpack method - smart dispatch for variable messages
+        result += '\n    /// Deserialize a message from a byte buffer. Returns None if buffer is too small.\n'
+        if is_variable:
+            result += '    /// For variable messages: if buf.len() == MAX_SIZE, uses fixed-size reading;\n'
+            result += '    /// otherwise uses variable-length reading.\n'
+        result += '    pub fn unpack(buf: &[u8]) -> Option<Self> {\n'
+
+        if is_variable:
+            result += '        if buf.len() == Self::MAX_SIZE {\n'
+            result += '            Self::_unpack_fixed(buf)\n'
+            result += '        } else {\n'
+            result += '            Self::_unpack_variable(buf)\n'
+            result += '        }\n'
+            result += '    }\n'
+
+            # Helper to build unpack body
+            def _build_unpack_body(result, variable_mode, indent='        '):
+                field_names = []
+                result += f'{indent}if buf.len() < Self::{"SIZE" if not variable_mode else "MIN_SIZE"} {{ return None; }}\n'
+                result += f'{indent}let mut _pos = 0usize;\n'
+                result += f'{indent}#[allow(unused_variables)]\n'
+                result += f'{indent}let _ = _pos;\n'
+                for key, field in msg.fields.items():
+                    unpack_code = _generate_unpack_field(field, variable=variable_mode)
+                    if unpack_code:
+                        result += unpack_code + '\n'
+                    field_names.extend(_get_field_var_names(field))
+                oneof_var_names = []
+                for oneof_name, oneof in msg.oneofs.items():
+                    if oneof.auto_discriminator:
+                        if oneof.discriminator_type == "msgid":
+                            result += f'{indent}let {oneof_name}_discriminator = u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?);\n'
+                            result += f'{indent}_pos += 2;\n'
+                            oneof_var_names.append(f'{oneof_name}_discriminator')
+                        else:
+                            result += f'{indent}let {oneof_name}_discriminator = buf[_pos];\n'
+                            result += f'{indent}_pos += 1;\n'
+                            oneof_var_names.append(f'{oneof_name}_discriminator')
+                    result += f'{indent}let mut {oneof_name}_bytes = [0u8; {oneof.size}];\n'
+                    result += f'{indent}{oneof_name}_bytes.copy_from_slice(&buf[_pos.._pos+{oneof.size}]);\n'
+                    result += f'{indent}_pos += {oneof.size};\n'
+                    oneof_var_names.append(f'{oneof_name}_bytes')
+                result += f'{indent}Some(Self {{\n'
+                for var in field_names:
+                    result += f'{indent}    {var},\n'
+                for var in oneof_var_names:
+                    result += f'{indent}    {var},\n'
+                result += f'{indent}}})\n'
+                return result
+
+            # MIN_SIZE constant for variable messages
+            result += '\n    /// Calculate minimum serialized size (all variable fields empty).\n'
+            min_size = 0
+            for field in msg.fields.values():
+                if field.is_array:
+                    if field.max_size is not None:
+                        min_size += 2 if field.max_size > 255 else 1  # just the count
+                    elif field.size_option is not None:
+                        ts = rust_type_sizes.get(field.fieldType, 1)
+                        elem_size = field.element_size if (field.fieldType == "string" and field.element_size) else ts
+                        if field.fieldType == "string":
+                            elem_size = field.element_size if field.element_size else 16
+                        min_size += field.size_option * elem_size
+                    else:
+                        min_size += field.size if field.size else 0
+                elif field.fieldType == "string":
+                    if field.max_size is not None and field.size_option is None:
+                        min_size += 2 if field.max_size > 255 else 1  # just the length
+                    elif field.size_option is not None:
+                        min_size += field.size_option
+                    else:
+                        min_size += field.size if field.size else 0
+                else:
+                    min_size += field.size if field.size else 0
+            for oneof in msg.oneofs.values():
+                min_size += oneof.size
+                if oneof.auto_discriminator:
+                    min_size += 2 if oneof.discriminator_type == "msgid" else 1
+            result += f'    pub const MIN_SIZE: usize = {min_size};\n'
+
+            # Fixed unpack (for sensor/ipc profiles where payload is MAX_SIZE)
+            result += '\n    fn _unpack_fixed(buf: &[u8]) -> Option<Self> {\n'
+            result = _build_unpack_body(result, variable_mode=False, indent='        ')
+            result += '    }\n'
+
+            # Variable unpack (for standard/bulk/network profiles where payload is variable)
+            result += '\n    fn _unpack_variable(buf: &[u8]) -> Option<Self> {\n'
+            result = _build_unpack_body(result, variable_mode=True, indent='        ')
+            result += '    }\n'
+        else:
+            # Fixed message: simple unpack
+            result += f'        if buf.len() < Self::SIZE {{ return None; }}\n'
+            result += '        let mut _pos = 0usize;\n'
+            result += '        #[allow(unused_variables)]\n'
+            result += '        let _ = _pos;\n'
+            field_names = []
+            for key, field in msg.fields.items():
+                unpack_code = _generate_unpack_field(field, variable=False)
+                if unpack_code:
+                    result += unpack_code + '\n'
+                field_names.extend(_get_field_var_names(field))
+            oneof_var_names = []
+            for oneof_name, oneof in msg.oneofs.items():
+                if oneof.auto_discriminator:
+                    if oneof.discriminator_type == "msgid":
+                        result += f'        let {oneof_name}_discriminator = u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?);\n'
+                        result += f'        _pos += 2;\n'
+                        oneof_var_names.append(f'{oneof_name}_discriminator')
+                    else:
+                        result += f'        let {oneof_name}_discriminator = buf[_pos];\n'
+                        result += f'        _pos += 1;\n'
+                        oneof_var_names.append(f'{oneof_name}_discriminator')
+                result += f'        let mut {oneof_name}_bytes = [0u8; {oneof.size}];\n'
+                result += f'        {oneof_name}_bytes.copy_from_slice(&buf[_pos.._pos+{oneof.size}]);\n'
+                result += f'        _pos += {oneof.size};\n'
+                oneof_var_names.append(f'{oneof_name}_bytes')
+            result += '        Some(Self {\n'
+            for var in field_names:
+                result += f'            {var},\n'
+            for var in oneof_var_names:
+                result += f'            {var},\n'
+            result += '        })\n'
+            result += '    }\n'
+
+        # message_info method for messages with ID
+        if has_msg_id:
+            result += '\n    /// Get message info (size + magic numbers) for frame parsing.\n'
+            result += '    pub fn message_info() -> crate::frame_base::MessageInfo {\n'
+            result += f'        crate::frame_base::MessageInfo::new(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2)\n'
+            result += '    }\n'
+
+        result += '}\n\n'
+
+        # Implement StructFrameMessage for messages with IDs
+        if has_msg_id:
+            result += f'impl crate::frame_base::StructFrameMessage for {struct_name} {{\n'
+            result += f'    const MSG_ID: u16 = {const_prefix}_MSG_ID;\n'
+            result += f'    const MAX_SIZE: usize = {const_prefix}_MAX_SIZE;\n'
+            result += f'    const MAGIC1: u8 = {const_prefix}_MAGIC1;\n'
+            result += f'    const MAGIC2: u8 = {const_prefix}_MAGIC2;\n'
+            result += f'    const IS_VARIABLE: bool = {str(is_variable).lower()};\n'
+            result += f'    fn pack(&self, buf: &mut [u8]) -> usize {{ Self::pack(self, buf) }}\n'
+            result += f'    fn pack_max_size(&self, buf: &mut [u8]) -> usize {{ Self::pack_max_size(self, buf) }}\n'
+            result += f'    fn unpack(buf: &[u8]) -> Option<Self> {{ Self::unpack(buf) }}\n'
+            result += f'}}\n\n'
+
+        return result
+
+
+class FileCSharpGen():
+    """Placeholder to avoid import errors from tests that reference this."""
+    pass
+
+
+class FileRustGen():
+    """Generator for Rust files from proto definitions."""
+
+    @staticmethod
+    def generate(package, equality=False):
+        """Generate Rust source code for a package."""
+        result = []
+
+        # File header
+        result.append('// Automatically generated struct-frame Rust code\n')
+        result.append(f'// Generated by struct-frame {version} at {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
+        result.append('// DO NOT EDIT - regenerate using struct-frame\n\n')
+
+        # Collect cross-package imports
+        referenced_packages = set()
+        for msg in package.messages.values():
+            for field in msg.fields.values():
+                type_pkg = getattr(field, 'type_package', None)
+                if type_pkg and type_pkg != package.name and not field.isDefaultType:
+                    pkg_mod = type_pkg.replace('-', '_').replace(' ', '_')
+                    referenced_packages.add(pkg_mod)
+            for oneof in msg.oneofs.values():
+                for field in oneof.fields.values():
+                    type_pkg = getattr(field, 'type_package', None)
+                    if type_pkg and type_pkg != package.name and not field.isDefaultType:
+                        pkg_mod = type_pkg.replace('-', '_').replace(' ', '_')
+                        referenced_packages.add(pkg_mod)
+
+        # Standard imports
+        result.append('use crate::frame_base::MessageInfo;\n')
+        for pkg_mod in sorted(referenced_packages):
+            result.append(f'use crate::{pkg_mod}::*;\n')
+        result.append('\n')
+
+        # Package comments
+        if hasattr(package, 'comments') and package.comments:
+            for c in package.comments:
+                result.append('//%s\n' % c)
+            result.append('\n')
+
+        # Generate enums
+        if package.enums:
+            result.append('// ============================================================================\n')
+            result.append('// Enums\n')
+            result.append('// ============================================================================\n\n')
+            for key, enum in package.enums.items():
+                result.append(EnumRustGen.generate(enum))
+                result.append('\n')
+
+        # Generate structs (messages without IDs first, then with IDs)
+        if package.messages:
+            result.append('// ============================================================================\n')
+            result.append('// Message Structs\n')
+            result.append('// ============================================================================\n\n')
+            for key, msg in package.messages.items():
+                result.append(MessageRustGen.generate(msg, package=package, equality=equality))
+
+        # Generate get_message_info function
+        msgs_with_id = [(k, v) for k, v in package.messages.items() if v.id is not None]
+        if msgs_with_id:
+            result.append('// ============================================================================\n')
+            result.append('// Message info lookup\n')
+            result.append('// ============================================================================\n\n')
+            result.append('/// Look up message info (size + magic bytes) by message ID.\n')
+            result.append('pub fn get_message_info(msg_id: u16) -> Option<MessageInfo> {\n')
+            result.append('    match msg_id {\n')
+            for key, msg in msgs_with_id:
+                struct_name = _rust_struct_name(msg.package, msg.name)
+                msg_id_value = msg.id
+                if package.package_id is not None:
+                    msg_id_value = (package.package_id << 8) | msg.id
+                result.append(f'        {msg_id_value} => Some({struct_name}::message_info()),\n')
+            result.append('        _ => None,\n')
+            result.append('    }\n')
+            result.append('}\n')
+        else:
+            result.append('/// Look up message info (size + magic bytes) by message ID.\n')
+            result.append('pub fn get_message_info(_msg_id: u16) -> Option<MessageInfo> {\n')
+            result.append('    None\n')
+            result.append('}\n')
+
+        return result
+
+    @staticmethod
+    def generate_cargo_toml(crate_name='struct_frame_sdk'):
+        """Generate a Cargo.toml for the generated crate."""
+        return f'''[package]
+name = "{crate_name}"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "{crate_name.replace("-", "_")}"
+path = "lib.rs"
+'''
+
+    @staticmethod
+    def generate_lib_rs(package_names):
+        """Generate a lib.rs that mods the boilerplate and all generated packages."""
+        result = '// Auto-generated lib.rs for struct-frame SDK\n'
+        result += '// DO NOT EDIT - regenerate using struct-frame\n\n'
+        result += '#![allow(unused_imports, dead_code, non_camel_case_types)]\n\n'
+        result += '// Boilerplate SDK modules\n'
+        result += 'pub mod frame_base;\n'
+        result += 'pub mod frame_headers;\n'
+        result += 'pub mod payload_types;\n'
+        result += 'pub mod frame_profiles;\n\n'
+        result += '// Re-export main SDK items\n'
+        result += 'pub use frame_base::{fletcher_checksum, FrameChecksum, FrameMsgInfo, MessageInfo, StructFrameMessage};\n'
+        result += 'pub use frame_profiles::{\n'
+        result += '    AccumulatingReader, BufferReader, BufferWriter, ProfileConfig,\n'
+        result += '    PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG,\n'
+        result += '    PROFILE_SENSOR_CONFIG, PROFILE_STANDARD_CONFIG,\n'
+        result += '    encode_message_crc, encode_message_minimal,\n'
+        result += '    new_bulk_reader, new_bulk_writer, new_ipc_reader, new_ipc_writer,\n'
+        result += '    new_network_reader, new_network_writer, new_sensor_reader, new_sensor_writer,\n'
+        result += '    new_standard_reader, new_standard_writer,\n'
+        result += '};\n\n'
+        result += '// Generated message modules\n'
+        for pkg_name in package_names:
+            mod_name = pkg_name.replace('-', '_').replace(' ', '_')
+            file_name = f'{pkg_name}.structframe.rs'
+            result += f'#[path = "{file_name}"]\n'
+            result += f'pub mod {mod_name};\n'
+        result += '\n'
+        result += '// Merged get_message_info that queries all packages\n'
+        result += 'pub fn get_message_info(msg_id: u16) -> Option<MessageInfo> {\n'
+        for pkg_name in package_names:
+            mod_name = pkg_name.replace('-', '_').replace(' ', '_')
+            result += f'    if let Some(info) = {mod_name}::get_message_info(msg_id) {{\n'
+            result += f'        return Some(info);\n'
+            result += f'    }}\n'
+        result += '    None\n'
+        result += '}\n'
+        return result

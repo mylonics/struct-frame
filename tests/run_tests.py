@@ -326,6 +326,17 @@ class TestRunner:
                 build_dir="tests/csharp/bin/Release/net10.0",
                 source_ext=".cs",
             ),
+            "rust": Language(
+                id="rust", name="Rust",
+                gen_flag="--build_rust",
+                gen_output_dir="tests/generated/rust",
+                compiler="cargo",
+                compiler_check="cargo --version",
+                test_dir="tests/rust",
+                build_dir="tests/rust/target/debug",
+                source_ext=".rs",
+                file_prefix="rust",
+            ),
         }
     
     # =========================================================================
@@ -681,6 +692,15 @@ class TestRunner:
                 return success
             return False
         
+        # Rust: build with cargo
+        if lang.id == "rust":
+            test_dir = self.project_root / lang.test_dir
+            if (test_dir / "Cargo.toml").exists():
+                cmd = "cargo build"
+                success, _, _ = self.run_cmd(cmd, cwd=test_dir)
+                return success
+            return False
+        
         return True
     
     # =========================================================================
@@ -1009,11 +1029,19 @@ class TestRunner:
         gen_dir = self.project_root / lang.gen_output_dir
         
         # C/C++: compiled executable
-        if lang.exe_ext:
+        if lang.exe_ext and lang.id not in ("csharp",):
             runner = work_dir / f"{runner_name}{lang.exe_ext}"
             if not runner.exists():
                 return False, "", "Runner not found"
             cmd = f'"{runner}" {mode} {profile_name} "{output_file}"'
+            return self.run_cmd(cmd, cwd=work_dir)
+        
+        # Rust: use cargo-built binary
+        if lang.id == "rust":
+            runner = self.project_root / lang.build_dir / f"struct_frame_rust_tests{lang.exe_ext}"
+            if not runner.exists():
+                return False, "", "Rust runner not found (cargo build needed)"
+            cmd = f'"{runner}" {runner_name} {mode} {profile_name} "{output_file}"'
             return self.run_cmd(cmd, cwd=work_dir)
         
         # C#: run compiled DLL directly (not dotnet run, which causes race conditions)
