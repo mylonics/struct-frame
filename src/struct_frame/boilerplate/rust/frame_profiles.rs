@@ -534,24 +534,95 @@ impl AccumulatingReader {
         self.buffer.extend_from_slice(data);
     }
 
-    /// Get the next complete frame, or None if not enough data yet
-    pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
+    /// Returns true if the buffer starts with the expected start-byte sequence
+    fn starts_with_possible_frame(&self) -> bool {
         if self.buffer.is_empty() {
-            return None;
+            return false;
         }
+        match self.config.header.header_type {
+            HeaderType::None => true,
+            HeaderType::Tiny => {
+                self.buffer[0] == get_tiny_start_byte(self.config.payload.payload_type as u8)
+            }
+            HeaderType::Basic => {
+                self.buffer.len() >= 2
+                    && self.buffer[0] == BASIC_START_BYTE
+                    && self.buffer[1]
+                        == get_basic_second_start_byte(self.config.payload.payload_type as u8)
+            }
+        }
+    }
 
-        let result = if self.config.payload.has_crc {
-            parse_with_crc(&self.config, &self.buffer, get_message_info)
-        } else {
-            parse_minimal(&self.config, &self.buffer, get_message_info)
-        };
+    /// Returns the number of bytes to drain to re-align the buffer to the next
+    /// possible start-byte position (0 means "wait for more data").
+    fn bytes_to_drain_for_resync(&self) -> usize {
+        if self.buffer.is_empty() {
+            return 0;
+        }
+        match self.config.header.header_type {
+            HeaderType::None => 0,
+            HeaderType::Tiny => {
+                let start_byte =
+                    get_tiny_start_byte(self.config.payload.payload_type as u8);
+                // Search from index 1 if index 0 already is the start byte (that parse
+                // failed, so skip past it), otherwise from index 0.
+                let search_from = if self.starts_with_possible_frame() { 1 } else { 0 };
+                if let Some(pos) = self.buffer[search_from..]
+                    .iter()
+                    .position(|&b| b == start_byte)
+                {
+                    search_from + pos
+                } else if self.buffer.last() == Some(&start_byte) {
+                    self.buffer.len().saturating_sub(1)
+                } else {
+                    self.buffer.len()
+                }
+            }
+            HeaderType::Basic => {
+                let second_start =
+                    get_basic_second_start_byte(self.config.payload.payload_type as u8);
+                let search_from = if self.starts_with_possible_frame() { 1 } else { 0 };
+                for idx in search_from..self.buffer.len().saturating_sub(1) {
+                    if self.buffer[idx] == BASIC_START_BYTE
+                        && self.buffer[idx + 1] == second_start
+                    {
+                        return idx;
+                    }
+                }
+                if self.buffer.last() == Some(&BASIC_START_BYTE) {
+                    self.buffer.len().saturating_sub(1)
+                } else {
+                    self.buffer.len()
+                }
+            }
+        }
+    }
 
-        if result.valid {
-            let frame_size = result.frame_size;
-            self.buffer.drain(..frame_size);
-            Some(result)
-        } else {
-            None
+    /// Get the next complete frame, or None if not enough data yet.
+    /// Automatically re-synchronizes past noise or partial frames.
+    pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
+        loop {
+            if self.buffer.is_empty() {
+                return None;
+            }
+
+            let result = if self.config.payload.has_crc {
+                parse_with_crc(&self.config, &self.buffer, get_message_info)
+            } else {
+                parse_minimal(&self.config, &self.buffer, get_message_info)
+            };
+
+            if result.valid {
+                let frame_size = result.frame_size;
+                self.buffer.drain(..frame_size);
+                return Some(result);
+            }
+
+            let bytes_to_drain = self.bytes_to_drain_for_resync();
+            if bytes_to_drain == 0 {
+                return None;
+            }
+            self.buffer.drain(..bytes_to_drain);
         }
     }
 }

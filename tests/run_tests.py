@@ -1038,7 +1038,7 @@ class TestRunner:
         
         # Rust: use cargo-built binary
         if lang.id == "rust":
-            runner = self.project_root / lang.build_dir / "struct_frame_rust_tests"
+            runner = self.project_root / lang.build_dir / f"struct_frame_rust_tests{lang.exe_ext}"
             if not runner.exists():
                 return False, "", "Rust runner not found (cargo build needed)"
             cmd = f'"{runner}" {runner_name} {mode} {profile_name} "{output_file}"'

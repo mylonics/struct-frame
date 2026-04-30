@@ -343,7 +343,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
             elif field.max_size is not None:
                 count_size = 2 if field.max_size > 255 else 1
                 count_type = "u16" if field.max_size > 255 else "u8"
-                loop_limit = f'{var_name}_count as usize' if variable else str(field.max_size)
+                loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
                 lines.append(f'{indent}// Bounded string array: {var_name}')
                 lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
                 lines.append(f'{indent}_pos += {count_size};')
@@ -376,7 +376,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                 elif field.max_size is not None:
                     count_size = 2 if field.max_size > 255 else 1
                     count_type = "u16" if field.max_size > 255 else "u8"
-                    loop_limit = f'{var_name}_count as usize' if variable else str(field.max_size)
+                    loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
                     lines.append(f'{indent}// Bounded array: {var_name}')
                     lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
                     lines.append(f'{indent}_pos += {count_size};')
@@ -407,7 +407,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                 elif field.max_size is not None:
                     count_size = 2 if field.max_size > 255 else 1
                     count_type = "u16" if field.max_size > 255 else "u8"
-                    loop_limit = f'{var_name}_count as usize' if variable else str(field.max_size)
+                    loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
                     lines.append(f'{indent}// Bounded enum array: {var_name}')
                     lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
                     lines.append(f'{indent}_pos += {count_size};')
@@ -430,7 +430,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                 elif field.max_size is not None:
                     count_size = 2 if field.max_size > 255 else 1
                     count_type = "u16" if field.max_size > 255 else "u8"
-                    loop_limit = f'{var_name}_count as usize' if variable else str(field.max_size)
+                    loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
                     lines.append(f'{indent}// Bounded nested message array: {var_name}')
                     lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
                     lines.append(f'{indent}_pos += {count_size};')
@@ -444,21 +444,25 @@ def _generate_unpack_field(field, indent='        ', variable=False):
         if field.size_option is not None:
             lines.append(f'{indent}// Fixed string: {var_name}')
             lines.append(f'{indent}let mut {var_name} = [0u8; {field.size_option}];')
-            lines.append(f'{indent}{var_name}.copy_from_slice(&buf[_pos.._pos+{field.size_option}]);')
+            lines.append(f'{indent}let _str_slice = buf.get(_pos.._pos+{field.size_option})?;')
+            lines.append(f'{indent}{var_name}.copy_from_slice(_str_slice);')
             lines.append(f'{indent}_pos += {field.size_option};')
         elif field.max_size is not None:
             count_size = 2 if field.max_size > 255 else 1
             count_type = "u16" if field.max_size > 255 else "u8"
             lines.append(f'{indent}// Variable string: {var_name}')
-            lines.append(f'{indent}let {var_name}_length = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+            lines.append(f'{indent}let _length_bytes = buf.get(_pos.._pos+{count_size})?;')
+            lines.append(f'{indent}let {var_name}_length = {count_type}::from_le_bytes(_length_bytes.try_into().ok()?);')
             lines.append(f'{indent}_pos += {count_size};')
             lines.append(f'{indent}let mut {var_name} = [0u8; {field.max_size}];')
             if variable:
                 lines.append(f'{indent}let _str_len = ({var_name}_length as usize).min({field.max_size});')
-                lines.append(f'{indent}{var_name}[.._str_len].copy_from_slice(&buf[_pos.._pos+_str_len]);')
+                lines.append(f'{indent}let _str_slice = buf.get(_pos.._pos+_str_len)?;')
+                lines.append(f'{indent}{var_name}[.._str_len].copy_from_slice(_str_slice);')
                 lines.append(f'{indent}_pos += _str_len;')
             else:
-                lines.append(f'{indent}{var_name}.copy_from_slice(&buf[_pos.._pos+{field.max_size}]);')
+                lines.append(f'{indent}let _str_slice = buf.get(_pos.._pos+{field.max_size})?;')
+                lines.append(f'{indent}{var_name}.copy_from_slice(_str_slice);')
                 lines.append(f'{indent}_pos += {field.max_size};')
     else:
         if type_name in rust_unpack_fns:
