@@ -71,3 +71,6 @@ Thumbs.db
 *.bak
 node_modules/
 /package-lock.json
+
+# Rust build artifacts
+tests/rust/target/

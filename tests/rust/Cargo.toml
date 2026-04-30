@@ -1,0 +1,11 @@
+[package]
+name = "struct_frame_rust_tests"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+struct_frame_sdk = { path = "../generated/rust" }
+
+[[bin]]
+name = "struct_frame_rust_tests"
+path = "src/main.rs"
