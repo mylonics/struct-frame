@@ -460,7 +460,7 @@ class FieldCSharpGen():
 
 class MessageCSharpGen():
     @staticmethod
-    def generate(msg, package=None, equality=False):
+    def generate(msg, package=None, equality=False, legacy_enum_names=False):
         leading_comment = msg.comments
 
         result = ''
@@ -506,7 +506,8 @@ class MessageCSharpGen():
                 if oneof.discriminator_type == "msgid":
                     result += f'        public ushort {pascalCase(oneof.name)}Discriminator {{ get; set; }}\n'
                 else:  # field_order
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    enum_base_name = msg.name if legacy_enum_names else structName
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
                     result += f'        public {enum_name} {pascalCase(oneof.name)}Discriminator {{ get; set; }}\n'
             for field_name, field in oneof.fields.items():
                 result += f'        // Union member: {field_name}\n'
@@ -640,7 +641,8 @@ class MessageCSharpGen():
                     result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
                     offset += 2
                 else:  # field_order
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    enum_base_name = msg.name if legacy_enum_names else structName
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
                     result += f'            msg.{pascalCase(oneof_name)}Discriminator = ({enum_name})data[{offset}];\n'
                     result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
                     offset += 1
@@ -661,7 +663,8 @@ class MessageCSharpGen():
                         result += f'                msg.{field_var} = {type_name}.Deserialize(data[{offset}..({offset} + {type_name}.MaxSize)]);\n'
                         result += '            }\n'
                 else:  # field_order
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    enum_base_name = msg.name if legacy_enum_names else structName
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
                     first = True
                     for idx, field_name in enumerate(oneof.field_order):
                         field = oneof.fields[field_name]
@@ -741,7 +744,7 @@ class MessageCSharpGen():
         
         # Generate envelope methods if this is an envelope message
         if msg.is_envelope:
-            result += MessageCSharpGen._generate_envelope_methods(msg, structName, package)
+            result += MessageCSharpGen._generate_envelope_methods(msg, structName, package, legacy_enum_names=legacy_enum_names)
 
         result += '    }\n'
 
@@ -1085,7 +1088,7 @@ class MessageCSharpGen():
         return result
     
     @staticmethod
-    def _generate_envelope_methods(msg, structName, package):
+    def _generate_envelope_methods(msg, structName, package, legacy_enum_names=False):
         """Generate envelope-specific helper methods for wrapping inner messages."""
         result = '\n'
         
@@ -1096,7 +1099,8 @@ class MessageCSharpGen():
         # Get enum name for field_order discriminators
         enum_name = None
         if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+            enum_base_name = msg.name if legacy_enum_names else structName
+            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
         
         result += '        // ========================================\n'
         result += '        // Envelope message helper methods\n'
@@ -1216,7 +1220,7 @@ class FileCSharpGen():
         return '}\n'
 
     @staticmethod
-    def generate_per_file(package, equality=False):
+    def generate_per_file(package, equality=False, legacy_enum_names=False):
         """Generate one file per enum/message/utility class.
         
         Returns a dict of {relative_filename: content_string} where
@@ -1250,11 +1254,13 @@ class FileCSharpGen():
 
         # One file per discriminator enum
         for key, msg in package.messages.items():
+            struct_name = '%s%s' % (pascalCase(msg.package), msg.name)
+            enum_base_name = msg.name if legacy_enum_names else struct_name
             for oneof_name, oneof in msg.oneofs.items():
                 if oneof.auto_discriminator and oneof.discriminator_type == 'field_order':
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, msg.name)
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
                     content = header()
-                    content += EnumCSharpGen.generate_discriminator_enum(oneof, msg.name)
+                    content += EnumCSharpGen.generate_discriminator_enum(oneof, enum_base_name)
                     content += footer
                     files[os.path.join('Enums', f'{enum_name}.cs')] = content
 
@@ -1262,7 +1268,7 @@ class FileCSharpGen():
         if package.messages:
             for key, msg in package.sortedMessages().items():
                 content = header()
-                content += MessageCSharpGen.generate(msg, package, equality)
+                content += MessageCSharpGen.generate(msg, package, equality, legacy_enum_names=legacy_enum_names)
                 content += footer
                 # Strip the package prefix from the class name for the filename
                 files[os.path.join('Messages', f'{msg.name}.cs')] = content
@@ -1270,14 +1276,14 @@ class FileCSharpGen():
         # MessageDefinitions in its own file (includes timestamp since it's the single aggregation file)
         if package.messages:
             content = FileCSharpGen._file_header(package, equality=equality, needs_collections=True, include_timestamp=True)
-            content += FileCSharpGen._generate_message_definitions(package)
+            content += FileCSharpGen._generate_message_definitions(package, legacy_enum_names=legacy_enum_names)
             content += footer
             files['MessageDefinitions.cs'] = content
 
         return files
 
     @staticmethod
-    def _generate_message_definitions(package):
+    def _generate_message_definitions(package, legacy_enum_names=False):
         """Generate the MessageDefinitions static class content."""
         result = ''
         namespace_name_local = pascalCase(package.name)
@@ -1488,7 +1494,7 @@ class FileCSharpGen():
         return result
 
     @staticmethod
-    def generate(package, equality=False):
+    def generate(package, equality=False, legacy_enum_names=False):
         yield '// Automatically generated struct frame code for C#\n'
         yield '// Generated by %s at %s.\n\n' % (version, time.asctime())
 
@@ -1537,18 +1543,20 @@ class FileCSharpGen():
         # Generate discriminator enums for field_order oneofs
         discriminator_enums_generated = False
         for key, msg in package.messages.items():
+            struct_name = '%s%s' % (pascalCase(msg.package), msg.name)
+            enum_base_name = msg.name if legacy_enum_names else struct_name
             for oneof_name, oneof in msg.oneofs.items():
                 if oneof.auto_discriminator and oneof.discriminator_type == 'field_order':
                     if not discriminator_enums_generated:
                         yield '    // Discriminator enums\n'
                         discriminator_enums_generated = True
-                    enum_code = EnumCSharpGen.generate_discriminator_enum(oneof, msg.name)
+                    enum_code = EnumCSharpGen.generate_discriminator_enum(oneof, enum_base_name)
                     yield enum_code + '\n'
 
         if package.messages:
             yield '    // Message definitions\n'
             for key, msg in package.sortedMessages().items():
-                yield MessageCSharpGen.generate(msg, package, equality)
+                yield MessageCSharpGen.generate(msg, package, equality, legacy_enum_names=legacy_enum_names)
             yield '\n'
 
         # Generate helper class with message definitions

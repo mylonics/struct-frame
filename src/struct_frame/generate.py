@@ -1067,6 +1067,10 @@ parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
                     help='Path to store the generation hash file (default: first output path)')
 parser.add_argument('--generate_tests', action='store_true',
                     help='Generate test code with dummy values for all messages (round-trip encode/decode verification)')
+parser.add_argument('--csharp_legacy_enum_names', action='store_true',
+                    help='Use legacy (pre-0.8.0) C# discriminator enum names without the package prefix'
+                         ' (e.g. "DataField" instead of "PkgDataField"). '
+                         'Enable this flag when migrating existing C# code to avoid breaking changes.')
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -1371,12 +1375,12 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
     return out
 
 
-def generateCSharpFileStrings(path, include_transports=False, equality=False, namespace='StructFrame.Generated', target_framework='net8.0'):
+def generateCSharpFileStrings(path, include_transports=False, equality=False, namespace='StructFrame.Generated', target_framework='net8.0', legacy_enum_names=False):
     out = {}
     for key, value in packages.items():
         # Generate per-file output into a package subfolder
         pkg_folder = os.path.join(path, pascalCase(value.name))
-        per_file = FileCSharpGen.generate_per_file(value, equality=equality)
+        per_file = FileCSharpGen.generate_per_file(value, equality=equality, legacy_enum_names=legacy_enum_names)
         for filename, content in per_file.items():
             out[os.path.join(pkg_folder, filename)] = content
         
@@ -1538,7 +1542,8 @@ def main():
                                                include_transports=args.csharp_sdk,
                                                equality=args.equality,
                                                namespace=args.csharp_namespace[0],
-                                               target_framework=args.target_framework[0]))
+                                               target_framework=args.target_framework[0],
+                                               legacy_enum_names=args.csharp_legacy_enum_names))
 
     if (args.build_gql):
         for key, value in packages.items():
