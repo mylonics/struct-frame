@@ -134,7 +134,7 @@ fn create_message_test() -> SerializationTestMessage {
 }
 
 // ============================================================================
-// Extended message creation helpers – mirror extended_messages.hpp
+// Extended message creation helpers -- mirror extended_messages.hpp
 // ============================================================================
 
 fn create_ext_id_1() -> ExtendedTestExtendedIdMessage1 {
@@ -275,7 +275,7 @@ fn create_ext_var_single(
 }
 
 // ============================================================================
-// Variable-flag message creation helpers – mirror variable_flag_messages.hpp
+// Variable-flag message creation helpers -- mirror variable_flag_messages.hpp
 // ============================================================================
 
 fn create_non_variable() -> SerializationTestTruncationTestNonVariable {
