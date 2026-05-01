@@ -550,7 +550,12 @@ class TestRunner:
             # Add --csharp_sdk flag if C# is being generated (includes transports)
             if any(l.id == "csharp" for l in active):
                 cmd_parts.append("--csharp_sdk")
-            
+
+            # Write the LSP catalog to the shared generated/ directory
+            catalog_dir = self.project_root / "tests" / "generated"
+            catalog_dir.mkdir(parents=True, exist_ok=True)
+            cmd_parts.extend(["--catalog_path", str(catalog_dir)])
+
             env = {"PYTHONPATH": str(self.project_root / "src")}
             success, _, stderr = self.run_cmd(" ".join(cmd_parts), env=env)
             

@@ -785,14 +785,14 @@ class FileTsGen():
             else:
                 yield "import { Struct, ExtractType } from './struct-base';\n"
         
-        # Collect cross-package type dependencies
+        # Collect cross-package type dependencies (messages and enums)
         external_types = {}  # {package_name: set of type names}
         if package.messages:
             for key, msg in package.messages.items():
                 for field_name, field in msg.fields.items():
                     type_package = getattr(field, 'type_package', None)
-                    # Only track types from other packages that aren't enums
-                    if type_package and type_package != package.name and not field.isEnum:
+                    # Track all types (including enums) from other packages
+                    if type_package and type_package != package.name:
                         if type_package not in external_types:
                             external_types[type_package] = set()
                         external_types[type_package].add(field.fieldType)

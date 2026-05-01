@@ -324,6 +324,7 @@ class Enum:
         self.comments = comments
         self.package = package
         self.isEnum = True
+        self.source_file = None
 
     def parse(self, enum):
         self.name = enum.name
@@ -445,17 +446,34 @@ class Field:
         global recErrCurrentField
         recErrCurrentField = self.name
         if not self.validated:
-            # First try to find the type in the current package
-            ret = currentPackage.findFieldType(self.fieldType)
-            source_package = currentPackage
-            
-            # If not found in current package, search in all packages
-            if not ret:
-                for pkg_name, pkg in packages.items():
-                    ret = pkg.findFieldType(self.fieldType)
+            # Handle fully-qualified type names like "pkg_name.TypeName"
+            bare_type = self.fieldType
+            qualified_pkg = None
+            if '.' in self.fieldType:
+                parts = self.fieldType.split('.', 1)
+                qualified_pkg = parts[0]
+                bare_type = parts[1]
+
+            if qualified_pkg:
+                # Qualified name: search only in the named package
+                ret = None
+                source_package = None
+                if qualified_pkg in packages:
+                    ret = packages[qualified_pkg].findFieldType(bare_type)
                     if ret:
-                        source_package = pkg
-                        break
+                        source_package = packages[qualified_pkg]
+            else:
+                # First try to find the type in the current package
+                ret = currentPackage.findFieldType(self.fieldType)
+                source_package = currentPackage
+                
+                # If not found in current package, search in all packages
+                if not ret:
+                    for pkg_name, pkg in packages.items():
+                        ret = pkg.findFieldType(self.fieldType)
+                        if ret:
+                            source_package = pkg
+                            break
 
             if ret:
                 if ret.validate(currentPackage, packages, debug):
@@ -464,6 +482,8 @@ class Field:
                     base_size = ret.size
                     # Track which package the type comes from
                     self.type_package = source_package.name
+                    # Normalize fieldType to the bare name (strip package qualifier)
+                    self.fieldType = bare_type
                 else:
                     print(
                         f"Failed to validate Field: {self.name} of Type: {self.fieldType} in Package: {currentPackage.name}")
@@ -734,6 +754,7 @@ class Message:
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
         self.variable = False  # Variable length message encoding
         self.is_envelope = False  # True if this message is an envelope/container for other messages
+        self.source_file = None
 
     def parse(self, msg):
         self.name = msg.name
@@ -933,19 +954,21 @@ class Package:
         self.messages = {}
         self.package_id = None  # Package ID for extended message IDs (0-255)
 
-    def addEnum(self, enum, comments):
+    def addEnum(self, enum, comments, source_file=None):
         self.comments = comments
         if enum.name in self.enums:
             print(f"Enum Redclaration")
             return False
         self.enums[enum.name] = Enum(self.name, comments)
+        self.enums[enum.name].source_file = source_file
         return self.enums[enum.name].parse(enum)
 
-    def addMessage(self, message, comments):
+    def addMessage(self, message, comments, source_file=None):
         if message.name in self.messages:
             print(f"Message Redclaration")
             return False
         self.messages[message.name] = Message(self.name, comments)
+        self.messages[message.name].source_file = source_file
         return self.messages[message.name].parse(message)
 
     def validatePackage(self, allPackages, debug=False):
@@ -1057,6 +1080,8 @@ parser.add_argument('--gql_path', nargs=1, type=str,
 parser.add_argument('--build_rust', action='store_true')
 parser.add_argument('--rust_path', nargs=1, type=str,
                     default=['generated/rust/'])
+parser.add_argument('--catalog_path', nargs=1, type=str, default=['generated/'],
+                    help='Directory for the LSP type catalog file (sf_compile.json)')
 parser.add_argument('--sdk', action='store_true',
                     help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
 parser.add_argument('--sdk_embedded', action='store_true',
@@ -1172,7 +1197,7 @@ def parseFile(filename, base_path=None, importing_package=None):
             if not foundPackage:
                 print(f"Enum found before package declaration in {filename}")
                 return False
-            if not packages[package_name].addEnum(e, comments):
+            if not packages[package_name].addEnum(e, comments, source_file=abs_filename):
                 print(
                     f"Enum Error in Package: {package_name}  FileName: {filename} EnumName: {e.name}")
                 return False
@@ -1182,7 +1207,7 @@ def parseFile(filename, base_path=None, importing_package=None):
             if not foundPackage:
                 print(f"Message found before package declaration in {filename}")
                 return False
-            if not packages[package_name].addMessage(e, comments):
+            if not packages[package_name].addMessage(e, comments, source_file=abs_filename):
                 print(
                     f"Message Error in Package: {package_name}  FileName: {filename} MessageName: {e.name}")
                 return False
@@ -1311,11 +1336,172 @@ def printPackages():
         print(value)
 
 
+def topological_sort_packages(pkgs, pkg_imports):
+    """Return package names in dependency-first topological order (Kahn's BFS).
+
+    Packages with no dependencies come first so that an aggregate include file
+    can list them in the order a compiler needs to see them.
+
+    Args:
+        pkgs:        dict {pkg_name: Package}
+        pkg_imports: dict {pkg_name: [imported_pkg_name, ...]}
+
+    Returns:
+        list of package names in topological order
+    """
+    from collections import deque
+
+    # Build in-degree count and adjacency list (dependency → dependant)
+    in_degree = {name: 0 for name in pkgs}
+    dependants = {name: [] for name in pkgs}
+
+    for pkg_name, deps in pkg_imports.items():
+        if pkg_name not in pkgs:
+            continue
+        for dep in deps:
+            if dep not in pkgs:
+                continue
+            in_degree[pkg_name] += 1
+            dependants[dep].append(pkg_name)
+
+    # Start with packages that have no dependencies
+    queue = deque(name for name, deg in in_degree.items() if deg == 0)
+    # Sort for determinism when multiple packages have the same degree
+    queue = deque(sorted(queue))
+    result = []
+
+    while queue:
+        pkg_name = queue.popleft()
+        result.append(pkg_name)
+        for dep in sorted(dependants[pkg_name]):
+            in_degree[dep] -= 1
+            if in_degree[dep] == 0:
+                queue.append(dep)
+
+    # Append any remaining packages (handles cycles or disconnected nodes)
+    for name in sorted(pkgs):
+        if name not in result:
+            result.append(name)
+
+    return result
+
+
+def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
+    """Generate a single JSON catalog file for language-server navigation.
+
+    Produces one language-agnostic ``sf_compile.json`` that lists
+    every message, nested message, and enum defined across all packages,
+    together with the source ``.proto`` file and the generated file path in
+    each enabled language.
+
+    Args:
+        catalog_path: Directory where ``sf_compile.json`` will be written.
+        build_flags:  dict {lang: bool}  e.g. {'c': True, 'cpp': False, ...}
+        paths:        dict {lang: str}   absolute output directory for each language
+
+    Returns:
+        dict {filename: content}
+    """
+    if build_flags is None:
+        build_flags = {}
+    if paths is None:
+        paths = {}
+
+    abs_catalog = os.path.abspath(catalog_path)
+
+    def _relpath(abs_file):
+        """Return a forward-slash relative path from catalog_path to abs_file."""
+        try:
+            rel = os.path.relpath(abs_file, abs_catalog)
+        except ValueError:
+            # Different drives on Windows — fall back to absolute path
+            rel = abs_file
+        return rel.replace(os.sep, '/')
+
+    def _pkg_generated_files(pkg_name):
+        """Return {lang: relative_path} for package-level generated files."""
+        result = {}
+        if build_flags.get('c'):
+            result['c'] = _relpath(os.path.join(os.path.abspath(paths['c']),
+                                                 f'{pkg_name}.structframe.h'))
+        if build_flags.get('cpp'):
+            result['cpp'] = _relpath(os.path.join(os.path.abspath(paths['cpp']),
+                                                   f'{pkg_name}.structframe.hpp'))
+        if build_flags.get('ts'):
+            result['ts'] = _relpath(os.path.join(os.path.abspath(paths['ts']),
+                                                  f'{pkg_name}.structframe.ts'))
+        if build_flags.get('js'):
+            result['js'] = _relpath(os.path.join(os.path.abspath(paths['js']),
+                                                  f'{pkg_name}.structframe.js'))
+        if build_flags.get('py'):
+            result['py'] = _relpath(os.path.join(os.path.abspath(paths['py']),
+                                                  'struct_frame', 'generated',
+                                                  f'{pkg_name}.py'))
+        if build_flags.get('gql'):
+            result['gql'] = _relpath(os.path.join(os.path.abspath(paths['gql']),
+                                                   f'{pkg_name}.graphql'))
+        if build_flags.get('rust'):
+            result['rust'] = _relpath(os.path.join(os.path.abspath(paths['rust']),
+                                                    f'{pkg_name}.structframe.rs'))
+        return result
+
+    ordered = topological_sort_packages(packages, package_imports)
+
+    messages = []
+    nested_messages = []
+    enums = []
+
+    for pkg_name in ordered:
+        if pkg_name not in packages:
+            continue
+        pkg = packages[pkg_name]
+        pkg_files = _pkg_generated_files(pkg_name)
+        pkg_pascal = pascalCase(pkg_name)
+
+        for msg_name, msg in pkg.messages.items():
+            gen_files = dict(pkg_files)
+            # C#: one file per message — {PascalPkg}/Messages/{MsgName}.cs
+            if build_flags.get('csharp'):
+                gen_files['csharp'] = _relpath(
+                    os.path.join(os.path.abspath(paths['csharp']),
+                                 pkg_pascal, 'Messages', f'{msg_name}.cs'))
+            messages.append({
+                "name": msg_name,
+                "package": pkg_name,
+                "source_file": os.path.basename(msg.source_file) if msg.source_file else None,
+                "generated_files": gen_files,
+            })
+
+        for enum_name, enum in pkg.enums.items():
+            gen_files = dict(pkg_files)
+            # C#: one file per enum — {PascalPkg}/Enums/{EnumName}.cs
+            if build_flags.get('csharp'):
+                gen_files['csharp'] = _relpath(
+                    os.path.join(os.path.abspath(paths['csharp']),
+                                 pkg_pascal, 'Enums', f'{enum_name}.cs'))
+            enums.append({
+                "name": enum_name,
+                "package": pkg_name,
+                "source_file": os.path.basename(enum.source_file) if enum.source_file else None,
+                "generated_files": gen_files,
+            })
+
+    catalog = {
+        "messages": messages,
+        "nested_messages": nested_messages,
+        "enums": enums,
+    }
+
+    catalog_file = os.path.join(catalog_path, "sf_compile.json")
+    return {catalog_file: json.dumps(catalog, indent=2) + "\n"}
+
+
 def generateCFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.h")
-        data = ''.join(FileCGen.generate(value, equality=equality))
+        imported = package_imports.get(value.name, [])
+        data = ''.join(FileCGen.generate(value, imported_packages=imported, equality=equality))
         out[name] = data
 
     return out
@@ -1356,7 +1542,8 @@ def generatePyFileStrings(path, equality=False, generate_tests=False):
     # Generate message files in the generated package
     for key, value in packages.items():
         name = os.path.join(generated_path, value.name + ".py")
-        data = ''.join(FilePyGen.generate(value, equality=equality))
+        imported = package_imports.get(value.name, [])
+        data = ''.join(FilePyGen.generate(value, imported_packages=imported, equality=equality))
         out[name] = data
         
         # Generate test file if requested
@@ -1372,7 +1559,8 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.hpp")
-        data = ''.join(FileCppGen.generate(value, equality=equality))
+        imported = package_imports.get(value.name, [])
+        data = ''.join(FileCppGen.generate(value, imported_packages=imported, equality=equality))
         out[name] = data
         
         # Generate test file if requested
@@ -1586,6 +1774,29 @@ def main():
 
     if (args.build_rust):
         files.update(generateRustFileStrings(args.rust_path[0], equality=args.equality))
+
+    # Generate LSP type catalog (single language-agnostic JSON file)
+    lsp_build_flags = {
+        'c':      args.build_c,
+        'cpp':    args.build_cpp,
+        'ts':     args.build_ts,
+        'js':     args.build_js,
+        'py':     args.build_py,
+        'gql':    args.build_gql,
+        'csharp': args.build_csharp,
+        'rust':   args.build_rust,
+    }
+    lsp_paths = {
+        'c':      args.c_path[0],
+        'cpp':    args.cpp_path[0],
+        'ts':     args.ts_path[0],
+        'js':     args.js_path[0],
+        'py':     args.py_path[0],
+        'gql':    args.gql_path[0],
+        'csharp': args.csharp_path[0],
+        'rust':   args.rust_path[0],
+    }
+    files.update(generate_lsp_file_strings(args.catalog_path[0], lsp_build_flags, lsp_paths))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)
