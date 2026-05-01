@@ -17,6 +17,7 @@ from struct_frame import FileRustGen
 from struct_frame import TestCppGen
 from struct_frame import TestPyGen
 from struct_frame import pascalCase
+from struct_frame import CamelToSnakeCase
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -1391,8 +1392,8 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
 
     Produces one language-agnostic ``sf_compile.json`` that lists
     every message, nested message, and enum defined across all packages,
-    together with the source ``.proto`` file and the generated file path in
-    each enabled language.
+    together with the source ``.proto`` file, generated file path, and
+    language-specific element name for each enabled language.
 
     Args:
         catalog_path: Directory where ``sf_compile.json`` will be written.
@@ -1445,10 +1446,57 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                                                     f'{pkg_name}.structframe.rs'))
         return result
 
+    def _lang_symbol_info(lang, pkg, symbol_name):
+        """Return language-specific namespace, element, and qualified element."""
+        pkg_name = pkg.name
+        pkg_pascal = pascalCase(pkg_name)
+
+        if lang == 'c':
+            element = f'{pkg_pascal}{symbol_name}'
+            return None, element, element
+
+        if lang == 'cpp':
+            # C++ uses package namespaces only when package IDs are enabled.
+            if pkg.package_id is not None:
+                namespace = CamelToSnakeCase(pkg_name)
+                element = symbol_name
+                return namespace, element, f'{namespace}::{element}'
+            element = f'{pkg_pascal}{symbol_name}'
+            return None, element, element
+
+        if lang in ('ts', 'js', 'py', 'rust', 'gql'):
+            element = f'{pkg_pascal}{symbol_name}'
+            if lang == 'py':
+                namespace = f'struct_frame.generated.{pkg_name}'
+                return namespace, element, f'{namespace}.{element}'
+            if lang == 'rust':
+                namespace = pkg_name
+                return namespace, element, f'{namespace}::{element}'
+            return None, element, element
+
+        if lang == 'csharp':
+            namespace = f'StructFrame.{pkg_pascal}'
+            element = f'{pkg_pascal}{symbol_name}'
+            return namespace, element, f'{namespace}.{element}'
+
+        return None, symbol_name, symbol_name
+
+    def _generated_file_entries(pkg, symbol_name, base_generated_files):
+        """Return {lang: {path, namespace, element, qualified_element}} catalog entries."""
+        entries = {}
+        for lang, rel_path in base_generated_files.items():
+            namespace, element, qualified_element = _lang_symbol_info(lang, pkg, symbol_name)
+            entries[lang] = {
+                "path": rel_path,
+                "namespace": namespace,
+                "element": element,
+                "qualified_element": qualified_element,
+            }
+        return entries
+
     ordered = topological_sort_packages(packages, package_imports)
 
     messages = []
-    nested_messages = []
     enums = []
 
     for pkg_name in ordered:
@@ -1469,7 +1517,9 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                 "name": msg_name,
                 "package": pkg_name,
                 "source_file": os.path.basename(msg.source_file) if msg.source_file else None,
-                "generated_files": gen_files,
+                "generated_files": _generated_file_entries(
+                    pkg, msg_name, gen_files
+                ),
             })
 
         for enum_name, enum in pkg.enums.items():
@@ -1483,12 +1533,13 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                 "name": enum_name,
                 "package": pkg_name,
                 "source_file": os.path.basename(enum.source_file) if enum.source_file else None,
-                "generated_files": gen_files,
+                "generated_files": _generated_file_entries(
+                    pkg, enum_name, gen_files
+                ),
             })
 
     catalog = {
         "messages": messages,
-        "nested_messages": nested_messages,
         "enums": enums,
     }
 
