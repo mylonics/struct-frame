@@ -324,6 +324,7 @@ class Enum:
         self.comments = comments
         self.package = package
         self.isEnum = True
+        self.source_file = None
 
     def parse(self, enum):
         self.name = enum.name
@@ -753,6 +754,7 @@ class Message:
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
         self.variable = False  # Variable length message encoding
         self.is_envelope = False  # True if this message is an envelope/container for other messages
+        self.source_file = None
 
     def parse(self, msg):
         self.name = msg.name
@@ -952,19 +954,21 @@ class Package:
         self.messages = {}
         self.package_id = None  # Package ID for extended message IDs (0-255)
 
-    def addEnum(self, enum, comments):
+    def addEnum(self, enum, comments, source_file=None):
         self.comments = comments
         if enum.name in self.enums:
             print(f"Enum Redclaration")
             return False
         self.enums[enum.name] = Enum(self.name, comments)
+        self.enums[enum.name].source_file = source_file
         return self.enums[enum.name].parse(enum)
 
-    def addMessage(self, message, comments):
+    def addMessage(self, message, comments, source_file=None):
         if message.name in self.messages:
             print(f"Message Redclaration")
             return False
         self.messages[message.name] = Message(self.name, comments)
+        self.messages[message.name].source_file = source_file
         return self.messages[message.name].parse(message)
 
     def validatePackage(self, allPackages, debug=False):
@@ -1076,6 +1080,8 @@ parser.add_argument('--gql_path', nargs=1, type=str,
 parser.add_argument('--build_rust', action='store_true')
 parser.add_argument('--rust_path', nargs=1, type=str,
                     default=['generated/rust/'])
+parser.add_argument('--catalog_path', nargs=1, type=str, default=['generated/'],
+                    help='Directory for the LSP type catalog file (sf_compile.json)')
 parser.add_argument('--sdk', action='store_true',
                     help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
 parser.add_argument('--sdk_embedded', action='store_true',
@@ -1191,7 +1197,7 @@ def parseFile(filename, base_path=None, importing_package=None):
             if not foundPackage:
                 print(f"Enum found before package declaration in {filename}")
                 return False
-            if not packages[package_name].addEnum(e, comments):
+            if not packages[package_name].addEnum(e, comments, source_file=abs_filename):
                 print(
                     f"Enum Error in Package: {package_name}  FileName: {filename} EnumName: {e.name}")
                 return False
@@ -1201,7 +1207,7 @@ def parseFile(filename, base_path=None, importing_package=None):
             if not foundPackage:
                 print(f"Message found before package declaration in {filename}")
                 return False
-            if not packages[package_name].addMessage(e, comments):
+            if not packages[package_name].addMessage(e, comments, source_file=abs_filename):
                 print(
                     f"Message Error in Package: {package_name}  FileName: {filename} MessageName: {e.name}")
                 return False
@@ -1380,88 +1386,114 @@ def topological_sort_packages(pkgs, pkg_imports):
     return result
 
 
-def generate_lsp_file_strings(build_flags, paths):
-    """Generate per-language aggregate include files for language server navigation.
+def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
+    """Generate a single JSON catalog file for language-server navigation.
 
-    Produces a single file per enabled language that lists (in dependency order)
-    all generated package files.  IDEs / language servers can point at this one
-    file to discover every type in the project without having to enumerate
-    individual package files.
+    Produces one language-agnostic ``sf_compile.json`` that lists
+    every message, nested message, and enum defined across all packages,
+    together with the source ``.proto`` file and the generated file path in
+    each enabled language.
 
     Args:
-        build_flags: dict {lang: bool}  e.g. {'c': True, 'cpp': False, ...}
-        paths:       dict {lang: str}   output directory for each language
+        catalog_path: Directory where ``sf_compile.json`` will be written.
+        build_flags:  dict {lang: bool}  e.g. {'c': True, 'cpp': False, ...}
+        paths:        dict {lang: str}   absolute output directory for each language
 
     Returns:
         dict {filename: content}
     """
+    if build_flags is None:
+        build_flags = {}
+    if paths is None:
+        paths = {}
+
+    abs_catalog = os.path.abspath(catalog_path)
+
+    def _relpath(abs_file):
+        """Return a forward-slash relative path from catalog_path to abs_file."""
+        try:
+            rel = os.path.relpath(abs_file, abs_catalog)
+        except ValueError:
+            # Different drives on Windows — fall back to absolute path
+            rel = abs_file
+        return rel.replace(os.sep, '/')
+
+    def _pkg_generated_files(pkg_name):
+        """Return {lang: relative_path} for package-level generated files."""
+        result = {}
+        if build_flags.get('c'):
+            result['c'] = _relpath(os.path.join(os.path.abspath(paths['c']),
+                                                 f'{pkg_name}.structframe.h'))
+        if build_flags.get('cpp'):
+            result['cpp'] = _relpath(os.path.join(os.path.abspath(paths['cpp']),
+                                                   f'{pkg_name}.structframe.hpp'))
+        if build_flags.get('ts'):
+            result['ts'] = _relpath(os.path.join(os.path.abspath(paths['ts']),
+                                                  f'{pkg_name}.structframe.ts'))
+        if build_flags.get('js'):
+            result['js'] = _relpath(os.path.join(os.path.abspath(paths['js']),
+                                                  f'{pkg_name}.structframe.js'))
+        if build_flags.get('py'):
+            result['py'] = _relpath(os.path.join(os.path.abspath(paths['py']),
+                                                  'struct_frame', 'generated',
+                                                  f'{pkg_name}.py'))
+        if build_flags.get('gql'):
+            result['gql'] = _relpath(os.path.join(os.path.abspath(paths['gql']),
+                                                   f'{pkg_name}.graphql'))
+        if build_flags.get('rust'):
+            result['rust'] = _relpath(os.path.join(os.path.abspath(paths['rust']),
+                                                    f'{pkg_name}.structframe.rs'))
+        return result
+
     ordered = topological_sort_packages(packages, package_imports)
-    out = {}
 
-    if build_flags.get('c'):
-        lines = ['/* struct-frame LSP aggregate — include this file to expose all generated types */\n',
-                 '/* Packages are listed in dependency order (dependencies first). */\n\n']
-        for pkg_name in ordered:
-            lines.append('#include "%s.structframe.h"\n' % pkg_name)
-        out[os.path.join(paths['c'], 'structframe_all.h')] = ''.join(lines)
+    messages = []
+    nested_messages = []
+    enums = []
 
-    if build_flags.get('cpp'):
-        lines = ['/* struct-frame LSP aggregate — include this file to expose all generated types */\n',
-                 '/* Packages are listed in dependency order (dependencies first). */\n\n',
-                 '#pragma once\n']
-        for pkg_name in ordered:
-            lines.append('#include "%s.structframe.hpp"\n' % pkg_name)
-        out[os.path.join(paths['cpp'], 'structframe_all.hpp')] = ''.join(lines)
+    for pkg_name in ordered:
+        if pkg_name not in packages:
+            continue
+        pkg = packages[pkg_name]
+        pkg_files = _pkg_generated_files(pkg_name)
+        pkg_pascal = pascalCase(pkg_name)
 
-    if build_flags.get('ts'):
-        lines = ['/* struct-frame LSP aggregate — import this file to expose all generated types */\n\n']
-        for pkg_name in ordered:
-            lines.append("export * from './%s.structframe';\n" % pkg_name)
-        out[os.path.join(paths['ts'], 'structframe_all.ts')] = ''.join(lines)
+        for msg_name, msg in pkg.messages.items():
+            gen_files = dict(pkg_files)
+            # C#: one file per message — {PascalPkg}/Messages/{MsgName}.cs
+            if build_flags.get('csharp'):
+                gen_files['csharp'] = _relpath(
+                    os.path.join(os.path.abspath(paths['csharp']),
+                                 pkg_pascal, 'Messages', f'{msg_name}.cs'))
+            messages.append({
+                "name": msg_name,
+                "package": pkg_name,
+                "source_file": os.path.basename(msg.source_file) if msg.source_file else None,
+                "generated_files": gen_files,
+            })
 
-    if build_flags.get('js'):
-        lines = ['"use strict";\n',
-                 '/* struct-frame LSP aggregate — require this file to expose all generated types */\n\n']
-        for pkg_name in ordered:
-            lines.append("Object.assign(module.exports, require('./%s.structframe'));\n" % pkg_name)
-        out[os.path.join(paths['js'], 'structframe_all.js')] = ''.join(lines)
+        for enum_name, enum in pkg.enums.items():
+            gen_files = dict(pkg_files)
+            # C#: one file per enum — {PascalPkg}/Enums/{EnumName}.cs
+            if build_flags.get('csharp'):
+                gen_files['csharp'] = _relpath(
+                    os.path.join(os.path.abspath(paths['csharp']),
+                                 pkg_pascal, 'Enums', f'{enum_name}.cs'))
+            enums.append({
+                "name": enum_name,
+                "package": pkg_name,
+                "source_file": os.path.basename(enum.source_file) if enum.source_file else None,
+                "generated_files": gen_files,
+            })
 
-    if build_flags.get('py'):
-        generated_path = os.path.join(paths['py'], 'struct_frame', 'generated')
-        lines = ['# struct-frame LSP aggregate — import this module to expose all generated types\n',
-                 '# Packages are listed in dependency order (dependencies first).\n\n']
-        for pkg_name in ordered:
-            lines.append('from .%s import *  # noqa: F401,F403\n' % pkg_name)
-        out[os.path.join(generated_path, '__all_types__.py')] = ''.join(lines)
+    catalog = {
+        "messages": messages,
+        "nested_messages": nested_messages,
+        "enums": enums,
+    }
 
-    if build_flags.get('gql'):
-        lines = ['# struct-frame LSP aggregate — lists all generated GraphQL schema files\n',
-                 '# in dependency order (dependencies first).\n\n']
-        for pkg_name in ordered:
-            lines.append('# %s.graphql\n' % pkg_name)
-        out[os.path.join(paths['gql'], 'structframe_all.graphql.txt')] = ''.join(lines)
-
-    if build_flags.get('csharp'):
-        pkg_folder_names = [pascalCase(packages[n].name) for n in ordered if n in packages]
-        lines = ['<!-- struct-frame LSP aggregate: lists all generated C# package folders -->\n',
-                 '<!-- Add this Directory.Build.props next to your .csproj for auto-discovery -->\n',
-                 '<Project>\n',
-                 '  <ItemGroup>\n']
-        for folder in pkg_folder_names:
-            lines.append('    <!-- %s/ -->\n' % folder)
-        lines.append('  </ItemGroup>\n')
-        lines.append('</Project>\n')
-        out[os.path.join(paths['csharp'], 'structframe_all.props')] = ''.join(lines)
-
-    if build_flags.get('rust'):
-        lines = ['// struct-frame LSP aggregate — packages in dependency order\n',
-                 '// This file is informational; the generated lib.rs already re-exports all modules.\n\n']
-        for pkg_name in ordered:
-            mod_name = pkg_name.replace('-', '_').replace(' ', '_')
-            lines.append('// pub use %s::*;\n' % mod_name)
-        out[os.path.join(paths['rust'], 'structframe_all.rs')] = ''.join(lines)
-
-    return out
+    catalog_file = os.path.join(catalog_path, "sf_compile.json")
+    return {catalog_file: json.dumps(catalog, indent=2) + "\n"}
 
 
 def generateCFileStrings(path, equality=False):
@@ -1743,7 +1775,7 @@ def main():
     if (args.build_rust):
         files.update(generateRustFileStrings(args.rust_path[0], equality=args.equality))
 
-    # Generate LSP aggregate files (one per enabled language)
+    # Generate LSP type catalog (single language-agnostic JSON file)
     lsp_build_flags = {
         'c':      args.build_c,
         'cpp':    args.build_cpp,
@@ -1764,7 +1796,7 @@ def main():
         'csharp': args.csharp_path[0],
         'rust':   args.rust_path[0],
     }
-    files.update(generate_lsp_file_strings(lsp_build_flags, lsp_paths))
+    files.update(generate_lsp_file_strings(args.catalog_path[0], lsp_build_flags, lsp_paths))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)
