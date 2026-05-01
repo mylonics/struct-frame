@@ -239,7 +239,15 @@ starlight-tabs:where(.astro-esqgolmp){display:block}.tablist-wrapper:where(.astr
 
 
 
-<table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody><tr><td><code dir="auto">--equality</code></td><td>Generate equality comparison operators/methods for messages</td></tr><tr><td><code dir="auto">--force</code></td><td>Force regeneration even if hash matches previous generation</td></tr><tr><td><code dir="auto">--hash_path PATH</code></td><td>Path to store the generation hash file</td></tr><tr><td><code dir="auto">--generate_tests</code></td><td>Generate test code with dummy values for round-trip verification</td></tr></tbody></table>
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Flag</th><th>Description</th></tr></thead><tbody><tr><td><code dir="auto">--equality</code></td><td>Generate equality comparison operators/methods for messages</td></tr><tr><td><code dir="auto">--force</code></td><td>Force regeneration even if hash matches previous generation</td></tr><tr><td><code dir="auto">--hash_path PATH</code></td><td>Path to store the generation hash file</td></tr><tr><td><code dir="auto">--generate_tests</code></td><td>Generate test code with dummy values for round-trip verification</td></tr><tr><td><code dir="auto">--validate</code></td><td>Validate the proto file without generating code</td></tr><tr><td><code dir="auto">--debug</code></td><td>Enable debug output during code generation</td></tr></tbody></table>
 <h2 id="examples">Examples</h2>
 <p>Generate C code:</p>
 <div class="expressive-code"><figure class="frame is-terminal not-content"><figcaption class="header"><span class="title"></span><span class="sr-only">Terminal window</span></figcaption><pre data-language="bash"><code><div class="ec-line"><div class="code"><span style="--0:#82AAFF;--1:#3B61B0">python</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">-m</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#ECC48D;--1:#3B61B0">struct_frame</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#ECC48D;--1:#3B61B0">messages.proto</span><span style="--0:#D6DEEB;--1:#403F53"> </span><span style="--0:#82AAFF;--1:#3B61B0">--build_c</span></div></div></code></pre><div class="copy"><button title="Copy to clipboard" data-copied="Copied!" data-code="python -m struct_frame messages.proto --build_c"><div></div></button></div></figure></div>
@@ -265,7 +273,7 @@ starlight-tabs:where(.astro-esqgolmp){display:block}.tablist-wrapper:where(.astr
 <ul>
 <li><code dir="auto">&#x3C;name>.structframe.ts</code> - Message definitions and classes</li>
 <li>Frame utilities (frame-base.ts, frame-headers.ts, frame-profiles.ts, etc.)</li>
-<li><code dir="auto">struct_frame_sdk/</code> - SDK files (if <code dir="auto">--sdk</code> used)</li>
+<li><code dir="auto">struct-frame-sdk/</code> - SDK files (if <code dir="auto">--sdk</code> used)</li>
 </ul>
 <h3 id="python">Python</h3>
 <ul>
