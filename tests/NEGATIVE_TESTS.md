@@ -10,51 +10,61 @@ Negative tests are critical for ensuring robust error handling. They verify that
 - Handles invalid start bytes
 - Manages zero-length or malformed buffers
 - Properly validates data integrity
+- Handles frames split across multiple buffer chunks
 
 ## Test Files
 
+All seven language implementations share **10 identical test scenarios** (same names, same behaviour):
+
 ### C Tests (`tests/c/test_negative.c`)
-- **6 test cases** covering error scenarios
-- Tests buffer reader and accumulating reader APIs
-- Uses ProfileStandard configuration
+- **10 test cases** covering all uniform error scenarios
+- Tests buffer reader and accumulating reader (buffer mode) APIs
+- Uses ProfileStandard and ProfileBulk configurations
 
 ### C++ Tests (`tests/cpp/test_negative.cpp`)
-- **9 test cases** covering various error scenarios
+- **11 test cases** (includes an extra `Invalid start byte detection` alias)
 - Tests both BufferReader and AccumulatingReader APIs
 - Tests multiple frame profiles (Standard, Bulk)
 
 ### Python Tests (`tests/py/test_negative.py`)
-- **8 test cases** covering similar error scenarios
+- **10 test cases** covering all uniform error scenarios
 - Tests both buffer and streaming modes
 - Uses ProfileStandardReader and ProfileStandardAccumulatingReader
 
 ### TypeScript Tests (`tests/ts/test_negative.ts`)
-- **8 test cases** covering error scenarios
+- **10 test cases** covering all uniform error scenarios
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Bulk)
 
 ### JavaScript Tests (`tests/js/test_negative.js`)
-- **8 test cases** identical to TypeScript
+- **10 test cases** identical to TypeScript
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Bulk)
 
 ### C# Tests (`tests/csharp/TestNegative.cs`)
-- **8 test cases** covering error scenarios
+- **10 test cases** covering all uniform error scenarios
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Bulk)
 
-## Test Scenarios
+### Rust Tests (`tests/rust/src/test_negative.rs`)
+- **10 test cases** covering all uniform error scenarios
+- Tests BufferReader and AccumulatingReader APIs
+- Tests multiple profiles (Standard, Bulk)
 
-All implementations test the following scenarios:
+## Uniform Test Scenarios
 
-1. **Corrupted CRC Detection**: Verifies parser rejects frames with invalid checksums
-2. **Truncated Frame Detection**: Tests handling of incomplete frames
-3. **Invalid Start Bytes**: Ensures parser rejects frames with wrong start markers
-4. **Zero-Length Buffer**: Tests edge case of empty input
-5. **Corrupted Length Field**: Verifies length validation
-6. **Streaming Corrupted CRC**: Tests CRC validation in byte-by-byte streaming mode
-7. **Streaming Garbage Data**: Verifies parser handles random invalid bytes
-8. **Bulk/Multiple Profile Tests**: Tests error handling across different frame profiles
+All seven languages implement the following 10 scenarios with identical names:
+
+1. **Bulk profile: Corrupted CRC** – validates error detection on the Bulk (extended-header) profile
+2. **Corrupted CRC detection** – verifies parser rejects frames with flipped CRC bytes
+3. **Corrupted length field detection** – ensures length validation catches oversized claims
+4. **Invalid start bytes detection** – ensures parser rejects frames with wrong start markers
+5. **Multiple frames: Corrupted middle frame** – validates that the second of three consecutive frames is rejected when its CRC is flipped
+6. **Partial frame across buffer boundary** – verifies `AccumulatingReader` reassembles a frame that was fed in two `add_data` chunks
+7. **Streaming: Corrupted CRC detection** – tests CRC validation in byte-by-byte / accumulating mode
+8. **Streaming: Garbage data handling** – verifies parser handles random invalid bytes without crashing
+9. **Truncated frame detection** – tests handling of incomplete frames
+10. **Zero-length buffer handling** – tests edge case of empty input
 
 ## Running the Tests
 
@@ -105,39 +115,41 @@ node tests/js/test_negative.js
 dotnet run --project tests/csharp/StructFrameTests.csproj -- --runner test_negative
 ```
 
+**Rust:**
+```bash
+# Build
+cd tests/rust && cargo build
+
+# Run
+./tests/rust/target/debug/test_negative
+```
+
 ## Expected Results
 
 All negative tests should **PASS**, which means:
 - Invalid input is correctly detected and rejected
-- Parser returns `valid=false` for corrupted/malformed data
+- Parser returns `valid=false` (or `None` in Rust/Python) for corrupted/malformed data
 - No crashes or undefined behavior occurs
 - Error handling is consistent across implementations
 
 ## Test Output Format
 
-Each test prints:
-- Test name and status (PASS/FAIL)
-- Summary of tests run, passed, and failed
-- Exit code 0 if all tests pass, 1 if any fail
-
-Example output:
+Each test prints a matrix with one row per scenario:
 ```
 ========================================
-NEGATIVE TESTS - C++ Parser
+NEGATIVE TESTS - <Language> Parser
 ========================================
 
-Testing error handling for invalid frames:
+Test Results Matrix:
 
-  [TEST] Corrupted CRC detection... PASS
-  [TEST] Truncated frame detection... PASS
-  ...
+Test Name                                          Result
+================================================== ======
+Bulk profile: Corrupted CRC                          PASS
+Corrupted CRC detection                              PASS
+...
 
 ========================================
-RESULTS
-========================================
-Tests run:    9
-Tests passed: 9
-Tests failed: 0
+Summary: 10/10 tests passed
 ========================================
 ```
 
@@ -151,7 +163,7 @@ The negative tests are automatically integrated into the main test suite:
 
 ## Adding New Negative Tests
 
-To add a new negative test scenario:
+To add a new negative test scenario, add it to **all seven** language files:
 
 1. **C**: Add a new test function following the pattern in `test_negative.c`
 2. **C++**: Add a new test function following the pattern in `test_negative.cpp`
@@ -159,10 +171,27 @@ To add a new negative test scenario:
 4. **TypeScript**: Add a new test function following the pattern in `test_negative.ts`
 5. **JavaScript**: Add a new test function following the pattern in `test_negative.js`
 6. **C#**: Add a new test method following the pattern in `TestNegative.cs`
+7. **Rust**: Add a new test function following the pattern in `test_negative.rs`
 
-Update the test count in the main function and run to verify.
+Add the test name to the list in `main()` / `Main()` in each file, keeping the list alphabetically sorted.
 
 ### Test Function Templates
+
+**Rust:**
+```rust
+fn test_new_scenario() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer.write_crc(&msg, 0);
+
+    let mut data = writer.data().to_vec();
+    // corrupt data in specific way ...
+
+    let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data);
+    let result = reader.next(&get_message_info);
+    result.is_none() // Expect parsing to fail
+}
+```
 
 **C++:**
 ```cpp
@@ -238,4 +267,3 @@ private static bool TestNewScenario()
     return !result.valid;
 }
 ```
-

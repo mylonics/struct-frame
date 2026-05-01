@@ -350,6 +350,47 @@ bool test_bulk_profile_corrupted_crc(void) {
   return !result.valid;  // Expect failure
 }
 
+/**
+ * Test: AccumulatingReader handles a frame fed in two separate chunks
+ */
+bool test_partial_frame_boundary(void) {
+  uint8_t buffer[1024];
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+  
+  // Encode a valid frame
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
+  
+  uint8_t payload[256];
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+  
+  size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  
+  if (frame_size < 10) return false;
+  
+  size_t mid = frame_size / 2;
+  uint8_t internal_buffer[1024];
+  
+  // Create accumulating reader (buffer mode)
+  accumulating_reader_t reader;
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), get_message_info);
+  
+  // Feed first half via add_data, then call next() to save partial data
+  accumulating_reader_add_data(&reader, buffer, mid);
+  accumulating_reader_next(&reader);  // Should return invalid but save partial data
+  
+  // Feed second half - adds to internal_buffer completing the frame
+  accumulating_reader_add_data(&reader, buffer + mid, frame_size - mid);
+  
+  // Call next() once all data is present - should successfully decode the frame
+  frame_msg_info_t result = accumulating_reader_next(&reader);
+  return result.valid;  // Expect success after accumulating both halves
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)(void);
 
@@ -371,6 +412,7 @@ int main(void) {
     {"Corrupted length field detection", test_corrupted_length},
     {"Invalid start bytes detection", test_invalid_start_bytes},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
+    {"Partial frame across buffer boundary", test_partial_frame_boundary},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage},
     {"Truncated frame detection", test_truncated_frame},

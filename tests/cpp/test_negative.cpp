@@ -257,6 +257,36 @@ bool test_bulk_profile_corrupted_crc() {
   return !result.valid;  // Expect parsing to fail
 }
 
+/**
+ * Test: AccumulatingReader handles a frame fed in two separate add_data chunks
+ */
+bool test_partial_frame_boundary() {
+  // Encode a valid message
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  
+  auto msg = StandardMessages::get_message(0);
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg);
+  
+  size_t frame_size = writer.size();
+  if (frame_size < 10) return false;
+  
+  size_t mid = frame_size / 2;
+  
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  
+  // Feed first half, then call next() to save partial data to internal buffer
+  reader.add_data(buffer.data(), mid);
+  reader.next();  // Should return invalid but save partial data internally
+  
+  // Feed second half - adds to internal buffer completing the frame
+  reader.add_data(buffer.data() + mid, frame_size - mid);
+  
+  // Call next() once all data is present - should successfully decode the frame
+  auto result = reader.next();
+  return result.valid;  // Expect success after accumulating both halves
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)();
 
@@ -279,6 +309,7 @@ int main() {
     {"Invalid start byte detection", test_invalid_start_byte},
     {"Invalid start bytes detection", test_invalid_start_bytes},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
+    {"Partial frame across buffer boundary", test_partial_frame_boundary},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage_data},
     {"Truncated frame detection", test_truncated_frame},

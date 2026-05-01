@@ -288,6 +288,41 @@ public class TestNegative
             return !result2.Valid;  // Second should be invalid
         }
 
+        /**
+         * Test: AccumulatingReader handles a frame fed in two separate AddData chunks
+         */
+        private static bool TestPartialFrameBoundary()
+        {
+            var msg = CreateTestMessage();
+            
+            byte[] buffer = new byte[1024];
+            var writer = new ProfileStandardWriter();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            var frameSize = writer.Size;
+            
+            if (frameSize < 10) return false;
+            
+            int mid = frameSize / 2;
+            
+            var reader = new ProfileStandardAccumulatingReader(1024, MessageDefinitions.GetMessageInfo);
+            
+            // Feed first half via AddData, then call Next() to save partial data to internal buffer
+            byte[] firstHalf = new byte[mid];
+            Array.Copy(buffer, 0, firstHalf, 0, mid);
+            reader.AddData(firstHalf);
+            reader.Next();  // Should return invalid but save partial data internally
+            
+            // Feed second half - adds to internal buffer completing the frame
+            byte[] secondHalf = new byte[frameSize - mid];
+            Array.Copy(buffer, mid, secondHalf, 0, frameSize - mid);
+            reader.AddData(secondHalf);
+            
+            // Call Next() once all data is present - should successfully decode the frame
+            var result = reader.Next();
+            return result.Valid;  // Expect success after accumulating both halves
+        }
+
         public static int Main(string[] args)
         {
             Console.WriteLine("\n========================================");
@@ -302,6 +337,7 @@ public class TestNegative
                 ("Corrupted length field detection", TestCorruptedLength),
                 ("Invalid start bytes detection", TestInvalidStartBytes),
                 ("Multiple frames: Corrupted middle frame", TestMultipleCorruptedFrames),
+                ("Partial frame across buffer boundary", TestPartialFrameBoundary),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
                 ("Streaming: Garbage data handling", TestStreamingGarbage),
                 ("Truncated frame detection", TestTruncatedFrame),

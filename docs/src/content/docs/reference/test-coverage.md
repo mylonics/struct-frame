@@ -203,28 +203,31 @@ Cross-platform testing is driven by the `CrossPlatformMatrixPlugin` in `tests/pl
 
 ## 5. Error Handling / Negative Tests
 
-Test files: `tests/{c,cpp,py,ts,js,csharp}/test_negative.*`
+Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`
 
 See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.
 
-| Error Scenario | C | C++ | Python | TS | JS | C# | Rust |
-|---------------|---|-----|--------|----|----|----|------|
-| Corrupted CRC (flip bytes) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Truncated frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Invalid start bytes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Zero-length / empty buffer | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Multiple invalid frames before valid | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Invalid message ID | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Malformed length field | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| Partial frame across buffer boundary | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+Each language's `test_negative.*` file runs 10 uniform scenarios. The test names printed at
+runtime are the canonical identifiers used across all languages:
+
+| Error Scenario (test name) | C | C++ | Python | TS | JS | C# | Rust |
+|---------------------------|---|-----|--------|----|----|----|------|
+| Bulk profile: Corrupted CRC | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Corrupted CRC detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Corrupted length field detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Invalid start bytes detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Multiple frames: Corrupted middle frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Partial frame across buffer boundary | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Streaming: Corrupted CRC detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Streaming: Garbage data handling | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Truncated frame detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Zero-length buffer handling | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Invalid message ID rejection | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Minimal profile (no CRC) error path | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Network profile (SysId/CompId filtering) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-> **Gap (High):** Rust has **no** negative / error-path tests at all.
->
-> **Gap (Medium):** C lacks several error scenarios covered by other languages.
->
-> **Gap (Medium):** No language tests error handling for Minimal-profile frames (Sensor/IPC) or Network-profile address filtering.
+> **Gap (Low):** Invalid message ID rejection, Minimal-profile error paths, and
+> Network-profile address filtering are not yet covered by any language.
 
 ---
 

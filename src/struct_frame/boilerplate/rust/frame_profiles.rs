@@ -564,6 +564,25 @@ impl AccumulatingReader {
             HeaderType::Tiny => {
                 let start_byte =
                     get_tiny_start_byte(self.config.payload.payload_type as u8);
+                // If buffer starts with valid start byte, check if we might just
+                // need more data before deciding to drain.
+                if self.starts_with_possible_frame() && self.config.payload.has_length {
+                    let header_size = 1 + self.config.payload.header_size();
+                    let footer_size = self.config.footer_size();
+                    if self.buffer.len() < header_size {
+                        return 0; // Too early to determine frame size - wait for more data
+                    }
+                    let len_offset = 1usize; // after 1 start byte
+                    let msg_len = if self.config.payload.length_bytes == 1 {
+                        self.buffer[len_offset] as usize
+                    } else {
+                        (self.buffer[len_offset] as usize)
+                            | ((self.buffer[len_offset + 1] as usize) << 8)
+                    };
+                    if self.buffer.len() < header_size + msg_len + footer_size {
+                        return 0; // Not enough data for full frame - wait for more
+                    }
+                }
                 // Search from index 1 if index 0 already is the start byte (that parse
                 // failed, so skip past it), otherwise from index 0.
                 let search_from = if self.starts_with_possible_frame() { 1 } else { 0 };
@@ -581,6 +600,25 @@ impl AccumulatingReader {
             HeaderType::Basic => {
                 let second_start =
                     get_basic_second_start_byte(self.config.payload.payload_type as u8);
+                // If buffer starts with valid start bytes, check if we might just
+                // need more data before deciding to drain.
+                if self.starts_with_possible_frame() && self.config.payload.has_length {
+                    let header_size = 2 + self.config.payload.header_size();
+                    let footer_size = self.config.footer_size();
+                    if self.buffer.len() < header_size {
+                        return 0; // Too early to determine frame size - wait for more data
+                    }
+                    let len_offset = 2usize; // after 2 start bytes
+                    let msg_len = if self.config.payload.length_bytes == 1 {
+                        self.buffer[len_offset] as usize
+                    } else {
+                        (self.buffer[len_offset] as usize)
+                            | ((self.buffer[len_offset + 1] as usize) << 8)
+                    };
+                    if self.buffer.len() < header_size + msg_len + footer_size {
+                        return 0; // Not enough data for full frame - wait for more
+                    }
+                }
                 let search_from = if self.starts_with_possible_frame() { 1 } else { 0 };
                 for idx in search_from..self.buffer.len().saturating_sub(1) {
                     if self.buffer[idx] == BASIC_START_BYTE

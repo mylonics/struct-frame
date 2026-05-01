@@ -347,6 +347,49 @@ def test_bulk_profile_corrupted_crc():
     
     return not result.valid  # Expect failure
 
+def test_partial_frame_boundary():
+    """Test: AccumulatingReader handles a frame fed in two separate add_data chunks"""
+    msg = BasicTypesMessage()
+    msg.small_int = 42
+    msg.medium_int = 1000
+    msg.regular_int = 100000
+    msg.large_int = 1000000000
+    msg.small_uint = 200
+    msg.medium_uint = 50000
+    msg.regular_uint = 3000000000
+    msg.large_uint = 9000000000000000000
+    msg.single_precision = 3.14159
+    msg.double_precision = 2.71828
+    msg.flag = True
+    msg.device_id = b"DEVICE123"
+    msg.description = b"Test device"
+    
+    # Encode message
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytes(writer.data())
+    frame_size = writer.size()
+    
+    if frame_size < 10:
+        return False
+    
+    mid = frame_size // 2
+    
+    # Create accumulating reader (buffer mode)
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    
+    # Feed first half via add_data, then call next() to save partial data to internal buffer
+    reader.add_data(buffer[:mid])
+    reader.next()  # Should return invalid but save partial data internally
+    
+    # Feed second half - adds to internal buffer completing the frame
+    reader.add_data(buffer[mid:frame_size])
+    
+    # Call next() once all data is present - should successfully decode the frame
+    result = reader.next()
+    return result.valid  # Expect success after accumulating both halves
+
+
 def main():
     print("\n========================================")
     print("NEGATIVE TESTS - Python Parser")
@@ -359,6 +402,7 @@ def main():
         ("Corrupted length field detection", test_corrupted_length),
         ("Invalid start bytes detection", test_invalid_start_bytes),
         ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
+        ("Partial frame across buffer boundary", test_partial_frame_boundary),
         ("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling", test_streaming_garbage),
         ("Truncated frame detection", test_truncated_frame),

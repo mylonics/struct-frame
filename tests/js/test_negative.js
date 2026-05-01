@@ -256,6 +256,35 @@ function testMultipleCorruptedFrames() {
   return !result2.valid;  // Second should be invalid
 }
 
+/**
+ * Test: AccumulatingReader handles a frame fed in two separate addData chunks
+ */
+function testPartialFrameBoundary() {
+  const msg = createTestMessage();
+  
+  const writer = new ProfileStandardWriter(1024);
+  writer.write(msg);
+  const buffer = writer.data();
+  const frameSize = writer.size;
+  
+  if (frameSize < 10) return false;
+  
+  const mid = Math.floor(frameSize / 2);
+  
+  const reader = new ProfileStandardAccumulatingReader(get_message_info, 1024);
+  
+  // Feed first half via addData, then call next() to save partial data to internal buffer
+  reader.addData(buffer.subarray(0, mid));
+  reader.next();  // Should return invalid but save partial data internally
+  
+  // Feed second half - adds to internal buffer completing the frame
+  reader.addData(buffer.subarray(mid, frameSize));
+  
+  // Call next() once all data is present - should successfully decode the frame
+  const result = reader.next();
+  return result.valid;  // Expect success after accumulating both halves
+}
+
 function main() {
   console.log('\n========================================');
   console.log('NEGATIVE TESTS - JavaScript Parser');
@@ -268,6 +297,7 @@ function main() {
     ['Corrupted length field detection', testCorruptedLength],
     ['Invalid start bytes detection', testInvalidStartBytes],
     ['Multiple frames: Corrupted middle frame', testMultipleCorruptedFrames],
+    ['Partial frame across buffer boundary', testPartialFrameBoundary],
     ['Streaming: Corrupted CRC detection', testStreamingCorruptedCrc],
     ['Streaming: Garbage data handling', testStreamingGarbage],
     ['Truncated frame detection', testTruncatedFrame],
