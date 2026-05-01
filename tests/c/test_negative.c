@@ -351,6 +351,100 @@ bool test_bulk_profile_corrupted_crc(void) {
 }
 
 /**
+ * Test: Parser rejects frame with unknown message ID (CRC fails with wrong magic values)
+ * ProfileStandard layout: [0x90][0x71][LEN][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ */
+bool test_invalid_msg_id(void) {
+  uint8_t buffer[1024];
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
+
+  uint8_t payload[256];
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+
+  size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  if (frame_size < 5) return false;
+
+  /* Corrupt the msg_id byte (byte 3 for ProfileStandard: [start1][start2][len][msg_id]...) */
+  /* 0xFF is not a known message ID → get_message_info returns {0,0,0} magic → CRC fails */
+  buffer[3] = 0xFF;
+
+  buffer_reader_t reader;
+  buffer_reader_init(&reader, &PROFILE_STANDARD_CONFIG, buffer, frame_size, get_message_info);
+  frame_msg_info_t result = buffer_reader_next(&reader);
+  return !result.valid;  /* Expect failure: CRC mismatch due to wrong magic values */
+}
+
+/**
+ * Test: Minimal profile (no CRC) rejects a truncated frame
+ * ProfileSensor layout: [0x70][MSG_ID][PAYLOAD...]  (no CRC, no length field)
+ * Parser uses get_message_info to determine expected payload size.
+ */
+bool test_minimal_profile_truncated_frame(void) {
+  uint8_t buffer[1024];
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+
+  /* Encode a ProfileSensor frame manually: [0x70][msg_id][payload...] */
+  uint8_t payload[256];
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+
+  buffer[0] = 0x70;  /* Tiny start byte for MINIMAL payload type */
+  buffer[1] = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID & 0xFF;
+  memcpy(buffer + 2, payload, payload_size);
+  size_t frame_size = 2 + payload_size;
+
+  if (frame_size <= 5) return false;
+
+  /* Provide fewer bytes than the full frame to trigger truncation error */
+  size_t truncated = frame_size - 5;
+
+  buffer_reader_t reader;
+  buffer_reader_init(&reader, &PROFILE_SENSOR_CONFIG, buffer, truncated, get_message_info);
+  frame_msg_info_t result = buffer_reader_next(&reader);
+  return !result.valid;  /* Expect failure: buffer too small for expected payload */
+}
+
+/**
+ * Test: Network profile validates sys_id/comp_id as part of CRC-protected header
+ * ProfileNetwork layout: [0x90][0x78][SEQ][SYS_ID][COMP_ID][LEN_LO][LEN_HI][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ * Since sys_id (byte 3) is within the CRC region, corrupting it causes CRC failure.
+ */
+bool test_network_sysid_compid(void) {
+  uint8_t buffer[1024];
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_NETWORK_CONFIG, buffer, sizeof(buffer));
+
+  uint8_t payload[256];
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+
+  /* Encode with seq=1, sys_id=5, comp_id=10, pkg_id=0 */
+  size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                                          payload, payload_size, 1, 5, 10, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  if (frame_size < 10) return false;
+
+  /* Corrupt sys_id (byte 3: [start1][start2][seq][sys_id]...)
+   * sys_id is inside the CRC-protected region so this will cause CRC failure */
+  buffer[3] ^= 0xFF;
+
+  buffer_reader_t reader;
+  buffer_reader_init(&reader, &PROFILE_NETWORK_CONFIG, buffer, frame_size, get_message_info);
+  frame_msg_info_t result = buffer_reader_next(&reader);
+  return !result.valid;  /* Expect failure: corrupted sys_id invalidates CRC */
+}
+
+/**
  * Test: AccumulatingReader handles a frame fed in two separate chunks
  */
 bool test_partial_frame_boundary(void) {
@@ -410,8 +504,11 @@ int main(void) {
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},
     {"Corrupted CRC detection", test_corrupted_crc},
     {"Corrupted length field detection", test_corrupted_length},
+    {"Invalid message ID rejection", test_invalid_msg_id},
     {"Invalid start bytes detection", test_invalid_start_bytes},
+    {"Minimal profile: Truncated frame", test_minimal_profile_truncated_frame},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
+    {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage},

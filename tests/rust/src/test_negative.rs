@@ -9,8 +9,9 @@
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::get_message_info;
 use struct_frame_sdk::{
-    encode_message_crc, AccumulatingReader, BufferWriter, BufferReader,
-    PROFILE_STANDARD_CONFIG, PROFILE_BULK_CONFIG,
+    encode_message_crc, encode_message_minimal, encode_with_crc,
+    AccumulatingReader, BufferWriter, BufferReader,
+    PROFILE_STANDARD_CONFIG, PROFILE_BULK_CONFIG, PROFILE_SENSOR_CONFIG, PROFILE_NETWORK_CONFIG,
 };
 
 // ============================================================================
@@ -255,6 +256,84 @@ fn test_partial_frame_boundary() -> bool {
     result.is_some() // Expect success after accumulating both halves
 }
 
+/// Test: Parser rejects frame with unknown message ID (CRC fails with wrong magic values).
+/// ProfileStandard layout: [0x90][0x71][LEN][MSG_ID][PAYLOAD...][CRC1][CRC2]
+/// Corrupting byte 3 (msg_id) to 0xFF causes get_message_info to return None → CRC uses {0,0} → fails.
+fn test_invalid_msg_id() -> bool {
+    let msg = create_test_message();
+
+    let mut buf = vec![0u8; 1024];
+    let frame_size = encode_message_crc(&PROFILE_STANDARD_CONFIG, &mut buf, &msg, 0);
+    if frame_size < 5 {
+        return false;
+    }
+
+    // Corrupt the msg_id byte (byte 3: [start1][start2][len][msg_id]...)
+    // 0xFF is not a known message ID → get_message_info returns None → CRC uses {0,0} → fails
+    buf[3] = 0xFF;
+
+    let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, buf[..frame_size].to_vec());
+    let result = reader.next(&get_message_info);
+    result.is_none() // Expect failure: CRC mismatch due to wrong magic values
+}
+
+/// Test: Minimal profile (no CRC) rejects a truncated frame.
+/// ProfileSensor layout: [0x70][MSG_ID][PAYLOAD...]  (no CRC, no length field)
+/// Parser uses get_message_info to determine expected payload size; truncated buffer → rejected.
+fn test_minimal_profile_truncated_frame() -> bool {
+    let msg = create_test_message();
+
+    let mut buf = vec![0u8; 1024];
+    let frame_size = encode_message_minimal(&PROFILE_SENSOR_CONFIG, &mut buf, &msg);
+    if frame_size <= 5 {
+        return false;
+    }
+
+    // Provide fewer bytes than the full frame to trigger truncation error
+    let truncated = frame_size - 5;
+    let mut reader = BufferReader::new(PROFILE_SENSOR_CONFIG, buf[..truncated].to_vec());
+    let result = reader.next(&get_message_info);
+    result.is_none() // Expect failure: buffer too small for expected payload
+}
+
+/// Test: Network profile validates sys_id/comp_id as part of CRC-protected header.
+/// ProfileNetwork layout: [0x90][0x78][SEQ][SYS_ID][COMP_ID][LEN_LO][LEN_HI][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+/// sys_id is at byte 3 (within CRC region); corrupting it causes CRC failure.
+fn test_network_sysid_compid() -> bool {
+    let msg = create_test_message();
+
+    // Build the payload manually
+    let mut payload = vec![0u8; SerializationTestBasicTypesMessage::MAX_SIZE];
+    let payload_len = msg.pack(&mut payload);
+
+    let mut buf = vec![0u8; 1024];
+    // Encode with seq=1, sys_id=5, comp_id=10
+    let frame_size = encode_with_crc(
+        &PROFILE_NETWORK_CONFIG,
+        &mut buf,
+        1,   // seq
+        5,   // sys_id
+        10,  // comp_id
+        (SerializationTestBasicTypesMessage::MSG_ID >> 8) as u8, // pkg_id
+        (SerializationTestBasicTypesMessage::MSG_ID & 0xFF) as u8, // msg_id
+        &payload[..payload_len],
+        SerializationTestBasicTypesMessage::MAGIC1,
+        SerializationTestBasicTypesMessage::MAGIC2,
+    );
+
+    if frame_size < 10 {
+        return false;
+    }
+
+    // Corrupt sys_id (byte 3: [start1][start2][seq][sys_id]...)
+    // sys_id is inside the CRC-protected region so CRC will fail
+    buf[3] ^= 0xFF;
+
+    let mut reader = BufferReader::new(PROFILE_NETWORK_CONFIG, buf[..frame_size].to_vec());
+    let result = reader.next(&get_message_info);
+    result.is_none() // Expect failure: corrupted sys_id invalidates CRC
+}
+
 // ============================================================================
 // Test runner
 // ============================================================================
@@ -278,8 +357,11 @@ fn main() {
         ("Bulk profile: Corrupted CRC",              test_bulk_profile_corrupted_crc),
         ("Corrupted CRC detection",                  test_corrupted_crc),
         ("Corrupted length field detection",         test_corrupted_length),
+        ("Invalid message ID rejection",             test_invalid_msg_id),
         ("Invalid start bytes detection",            test_invalid_start_bytes),
+        ("Minimal profile: Truncated frame",         test_minimal_profile_truncated_frame),
         ("Multiple frames: Corrupted middle frame",  test_multiple_corrupted_frames),
+        ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary",     test_partial_frame_boundary),
         ("Streaming: Corrupted CRC detection",       test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling",         test_streaming_garbage),

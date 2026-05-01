@@ -207,7 +207,7 @@ Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`
 
 See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.
 
-Each language's `test_negative.*` file runs 10 uniform scenarios. The test names printed at
+Each language's `test_negative.*` file runs 13 uniform scenarios. The test names printed at
 runtime are the canonical identifiers used across all languages:
 
 | Error Scenario (test name) | C | C++ | Python | TS | JS | C# | Rust |
@@ -215,19 +215,16 @@ runtime are the canonical identifiers used across all languages:
 | Bulk profile: Corrupted CRC | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Corrupted CRC detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Corrupted length field detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Invalid message ID rejection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Invalid start bytes detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Minimal profile: Truncated frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Multiple frames: Corrupted middle frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Network profile: SysId/CompId corruption | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Partial frame across buffer boundary | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Streaming: Corrupted CRC detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Streaming: Garbage data handling | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Truncated frame detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Zero-length buffer handling | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Invalid message ID rejection | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Minimal profile (no CRC) error path | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Network profile (SysId/CompId filtering) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-> **Gap (Low):** Invalid message ID rejection, Minimal-profile error paths, and
-> Network-profile address filtering are not yet covered by any language.
 
 ---
 
@@ -332,35 +329,29 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 ### High Priority
 
-1. **Rust negative / error-path tests** — `tests/rust/` has no `test_negative` equivalent. Every error scenario documented in `tests/NEGATIVE_TESTS.md` is missing for Rust.
+1. **Generator validation tests** — All generator-level error rules (duplicate IDs, missing size options, invalid envelope definitions, etc.) are untested. A Python-based unit test file (`tests/py/test_generator.py` or similar) should cover these.
 
-2. **Generator validation tests** — All generator-level error rules (duplicate IDs, missing size options, invalid envelope definitions, etc.) are untested. A Python-based unit test file (`tests/py/test_generator.py` or similar) should cover these.
-
-3. **High-level SDK tests** — `StructFrameSdk`, transport classes, and message routing have no automated tests in any language. Integration tests with mock transports are needed.
+2. **High-level SDK tests** — `StructFrameSdk`, transport classes, and message routing have no automated tests in any language. Integration tests with mock transports are needed.
 
 ### Medium Priority
 
-4. **Variable-flag edge cases** — `VariableMultipleArrays` and `VariableMixedFields` messages are defined in the proto but not exercised by `test_variable_flag.*` in any language.
+3. **Variable-flag edge cases** — `VariableMultipleArrays` and `VariableMixedFields` messages are defined in the proto but not exercised by `test_variable_flag.*` in any language.
 
-5. **Enum-to-string conversion** — Not tested for any language despite generated helpers existing.
+4. **Enum-to-string conversion** — Not tested for any language despite generated helpers existing.
 
-6. **`discriminator = none` and multi-oneof** — No test verifies the `none` discriminator or messages with more than one `oneof` field.
+5. **`discriminator = none` and multi-oneof** — No test verifies the `none` discriminator or messages with more than one `oneof` field.
 
-7. **Envelope messages in Rust** — Rust lacks `test_extended` coverage of envelope messages.
+6. **Envelope messages in Rust** — Rust lacks `test_extended` coverage of envelope messages.
 
-8. **C negative test gaps** — `tests/c/test_negative.c` covers only 6 scenarios vs 9 in C++. Missing: multiple invalid frames, invalid msg ID, malformed length, partial buffer boundary.
-
-9. **Minimal-profile error paths** — No language tests error handling for Sensor/IPC profiles (which have no CRC or length field).
-
-10. **Circular import detection** — Not validated by any test.
+7. **Circular import detection** — Not validated by any test.
 
 ### Low Priority
 
-11. **`discriminator = none` serialization** — Oneof with no discriminator not tested anywhere.
+8. **`discriminator = none` serialization** — Oneof with no discriminator not tested anywhere.
 
-12. **`AccumulatingReader` byte-stream mode in C and Rust** — Only buffer-mode `add_data()` is tested; byte-by-byte `push_byte()` not exercised.
+9. **`AccumulatingReader` byte-stream mode in C and Rust** — Only buffer-mode `add_data()` is tested; byte-by-byte `push_byte()` not exercised.
 
-13. **Performance benchmarks** — Throughput benchmarks only exist for C++; other languages have no baseline.
+10. **Performance benchmarks** — Throughput benchmarks only exist for C++; other languages have no baseline.
 
 14. **Wireshark dissector** — No automated test for the Lua dissector.
 

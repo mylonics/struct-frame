@@ -22,7 +22,11 @@ from frame_profiles import (
     ProfileStandardReader,
     ProfileStandardAccumulatingReader,
     ProfileBulkWriter,
-    ProfileBulkReader
+    ProfileBulkReader,
+    ProfileSensorWriter,
+    ProfileSensorReader,
+    ProfileNetworkWriter,
+    ProfileNetworkReader,
 )
 
 # Test result tracking
@@ -390,6 +394,95 @@ def test_partial_frame_boundary():
     return result.valid  # Expect success after accumulating both halves
 
 
+def _make_test_msg():
+    """Helper: create a standard test message"""
+    msg = BasicTypesMessage()
+    msg.small_int = 42
+    msg.medium_int = 1000
+    msg.regular_int = 100000
+    msg.large_int = 1000000000
+    msg.small_uint = 200
+    msg.medium_uint = 50000
+    msg.regular_uint = 3000000000
+    msg.large_uint = 9000000000000000000
+    msg.single_precision = 3.14159
+    msg.double_precision = 2.71828
+    msg.flag = True
+    msg.device_id = b"DEVICE123"
+    msg.description = b"Test device"
+    return msg
+
+
+def test_invalid_msg_id():
+    """Test: Parser rejects frame with unknown message ID (CRC fails with wrong magic values).
+    ProfileStandard layout: [0x90][0x71][LEN][MSG_ID][PAYLOAD...][CRC1][CRC2]
+    Corrupting byte 3 (msg_id) to 0xFF causes get_message_info to return {0,0,0} magic,
+    so the CRC check fails.
+    """
+    msg = _make_test_msg()
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    if frame_size < 5:
+        return False
+
+    # Corrupt the msg_id byte (byte 3: [start1][start2][len][msg_id]...)
+    # 0xFF is not a known message ID → get_message_info returns {0,0,0} magic → CRC fails
+    buffer[3] = 0xFF
+
+    reader = ProfileStandardReader(buffer=bytes(buffer[:frame_size]), get_message_info=get_message_info)
+    result = reader.next()
+    return not result.valid  # Expect failure: CRC mismatch due to wrong magic values
+
+
+def test_minimal_profile_truncated_frame():
+    """Test: Minimal profile (no CRC) rejects a truncated frame.
+    ProfileSensor layout: [0x70][MSG_ID][PAYLOAD...]  (no CRC, no length field)
+    Parser uses get_message_info to determine expected payload size; truncated buffer → rejected.
+    """
+    msg = _make_test_msg()
+    writer = ProfileSensorWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytes(writer.data())
+    frame_size = writer.size()
+
+    if frame_size <= 5:
+        return False
+
+    # Provide fewer bytes than the full frame to trigger truncation error
+    truncated = frame_size - 5
+
+    reader = ProfileSensorReader(buffer=buffer[:truncated], get_message_info=get_message_info)
+    result = reader.next()
+    return not result.valid  # Expect failure: buffer too small for expected payload
+
+
+def test_network_sysid_compid():
+    """Test: Network profile validates sys_id/comp_id as part of CRC-protected header.
+    ProfileNetwork layout: [0x90][0x78][SEQ][SYS_ID][COMP_ID][LEN_LO][LEN_HI][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+    sys_id is at byte 3 (within CRC region); corrupting it causes CRC failure.
+    """
+    msg = _make_test_msg()
+    writer = ProfileNetworkWriter(capacity=1024)
+    # Encode with seq=1, sys_id=5, comp_id=10
+    writer.write(msg, seq=1, sys_id=5, comp_id=10)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    if frame_size < 10:
+        return False
+
+    # Corrupt sys_id (byte 3: [start1][start2][seq][sys_id]...)
+    # sys_id is inside the CRC-protected region so CRC will fail
+    buffer[3] ^= 0xFF
+
+    reader = ProfileNetworkReader(buffer=bytes(buffer[:frame_size]), get_message_info=get_message_info)
+    result = reader.next()
+    return not result.valid  # Expect failure: corrupted sys_id invalidates CRC
+
+
 def main():
     print("\n========================================")
     print("NEGATIVE TESTS - Python Parser")
@@ -400,8 +493,11 @@ def main():
         ("Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc),
         ("Corrupted CRC detection", test_corrupted_crc),
         ("Corrupted length field detection", test_corrupted_length),
+        ("Invalid message ID rejection", test_invalid_msg_id),
         ("Invalid start bytes detection", test_invalid_start_bytes),
+        ("Minimal profile: Truncated frame", test_minimal_profile_truncated_frame),
         ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
+        ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary", test_partial_frame_boundary),
         ("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling", test_streaming_garbage),

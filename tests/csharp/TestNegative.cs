@@ -323,6 +323,72 @@ public class TestNegative
             return result.Valid;  // Expect success after accumulating both halves
         }
 
+        private static bool TestInvalidMsgId()
+        {
+            var msg = CreateTestMessage();
+
+            byte[] buffer = new byte[1024];
+            var writer = new ProfileStandardWriter();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            var frameSize = writer.Size;
+
+            if (frameSize < 5) return false;
+
+            // Corrupt the msg_id byte (byte 3: [start1][start2][len][msg_id]...)
+            // 0xFF is not a known message ID → GetMessageInfo returns null magic → CRC fails
+            buffer[3] = 0xFF;
+
+            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, frameSize);
+            var result = reader.Next();
+            return !result.Valid;  // Expect failure: CRC mismatch due to wrong magic values
+        }
+
+        private static bool TestMinimalProfileTruncatedFrame()
+        {
+            var msg = CreateTestMessage();
+
+            byte[] buffer = new byte[1024];
+            var writer = new ProfileSensorWriter();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            var frameSize = writer.Size;
+
+            if (frameSize <= 5) return false;
+
+            // Provide fewer bytes than the full frame to trigger truncation error
+            int truncatedSize = frameSize - 5;
+
+            var reader = new ProfileSensorReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, truncatedSize);
+            var result = reader.Next();
+            return !result.Valid;  // Expect failure: buffer too small for expected payload
+        }
+
+        private static bool TestNetworkSysIdCompId()
+        {
+            var msg = CreateTestMessage();
+
+            byte[] buffer = new byte[1024];
+            var writer = new ProfileNetworkWriter();
+            writer.SetBuffer(buffer);
+            // Encode with seq=1, sysId=5, compId=10
+            writer.Write(msg, seq: 1, sysId: 5, compId: 10);
+            var frameSize = writer.Size;
+
+            if (frameSize < 10) return false;
+
+            // Corrupt sys_id (byte 3: [start1][start2][seq][sys_id]...)
+            // sys_id is inside the CRC-protected region so CRC will fail
+            buffer[3] ^= 0xFF;
+
+            var reader = new ProfileNetworkReader(MessageDefinitions.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, frameSize);
+            var result = reader.Next();
+            return !result.Valid;  // Expect failure: corrupted sys_id invalidates CRC
+        }
+
         public static int Main(string[] args)
         {
             Console.WriteLine("\n========================================");
@@ -335,8 +401,11 @@ public class TestNegative
                 ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
                 ("Corrupted CRC detection", TestCorruptedCrc),
                 ("Corrupted length field detection", TestCorruptedLength),
+                ("Invalid message ID rejection", TestInvalidMsgId),
                 ("Invalid start bytes detection", TestInvalidStartBytes),
+                ("Minimal profile: Truncated frame", TestMinimalProfileTruncatedFrame),
                 ("Multiple frames: Corrupted middle frame", TestMultipleCorruptedFrames),
+                ("Network profile: SysId/CompId corruption", TestNetworkSysIdCompId),
                 ("Partial frame across buffer boundary", TestPartialFrameBoundary),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
                 ("Streaming: Garbage data handling", TestStreamingGarbage),

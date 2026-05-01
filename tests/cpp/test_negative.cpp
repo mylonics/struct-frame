@@ -258,6 +258,89 @@ bool test_bulk_profile_corrupted_crc() {
 }
 
 /**
+ * Test: Parser rejects frame with unknown message ID (CRC fails with wrong magic values)
+ * ProfileStandard layout: [0x90][0x71][LEN][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ */
+bool test_invalid_msg_id() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+
+  auto msg = StandardMessages::get_message(0);
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg);
+
+  size_t frame_size = writer.size();
+  if (frame_size < 5) return false;
+
+  // Corrupt the msg_id byte (byte 3 for ProfileStandard: [start1][start2][len][msg_id]...)
+  // 0xFF is not a known message ID so get_message_info returns {0,0,0} magic → CRC fails
+  buffer[3] = 0xFF;
+
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+      buffer.data(), frame_size, get_message_info);
+  auto result = reader.next();
+  return !result.valid;  // Expect parsing to fail (CRC mismatch due to wrong magic values)
+}
+
+/**
+ * Test: Minimal profile (no CRC) rejects a truncated frame
+ * ProfileSensor layout: [0x70][MSG_ID][PAYLOAD...]  (no CRC, no length field)
+ * Parser uses get_message_info to determine expected payload size.
+ */
+bool test_minimal_profile_truncated_frame() {
+  uint8_t raw[1024];
+
+  // Encode a valid ProfileSensor frame manually (no CRC, no length)
+  auto msg = StandardMessages::get_message(0);
+  size_t frame_size = 0;
+  std::visit([&raw, &frame_size](auto&& m) {
+    // ProfileSensor: [tiny_start] [msg_id] [payload...]
+    uint8_t payload[512];
+    std::memcpy(payload, m.data(), std::decay_t<decltype(m)>::MAX_SIZE);
+    size_t plen = std::decay_t<decltype(m)>::MAX_SIZE;
+    raw[0] = 0x70;  // Tiny start byte for MINIMAL payload type
+    raw[1] = static_cast<uint8_t>(std::decay_t<decltype(m)>::MSG_ID & 0xFF);
+    std::memcpy(raw + 2, payload, plen);
+    frame_size = 2 + plen;
+  }, msg);
+
+  if (frame_size <= 5) return false;
+
+  // Truncate: provide fewer bytes than the full frame
+  size_t truncated = frame_size - 5;
+
+  BufferReader<ProfileSensorConfig, decltype(&get_message_info)> reader(
+      raw, truncated, get_message_info);
+  auto result = reader.next();
+  return !result.valid;  // Expect failure: buffer too small for expected payload
+}
+
+/**
+ * Test: Network profile validates sys_id/comp_id as part of CRC-protected header
+ * ProfileNetwork layout: [0x90][0x78][SEQ][SYS_ID][COMP_ID][LEN_LO][LEN_HI][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ * Since sys_id (byte 3) is within the CRC region, corrupting it causes CRC failure.
+ */
+bool test_network_sysid_compid() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileNetworkConfig> writer(buffer.data(), buffer.size());
+
+  // Encode with specific sys_id=5, comp_id=10
+  auto msg = StandardMessages::get_message(0);
+  std::visit([&writer](auto&& m) { writer.write(m, 1, 5, 10); }, msg);
+
+  size_t frame_size = writer.size();
+  if (frame_size < 10) return false;
+
+  // Corrupt sys_id byte (byte 3: [start1][start2][seq][sys_id]...)
+  // This is inside the CRC-protected region, so CRC will fail
+  buffer[3] ^= 0xFF;
+
+  BufferReader<ProfileNetworkConfig, decltype(&get_message_info)> reader(
+      buffer.data(), frame_size, get_message_info);
+  auto result = reader.next();
+  return !result.valid;  // Expect failure: corrupted sys_id invalidates CRC
+}
+
+/**
  * Test: AccumulatingReader handles a frame fed in two separate add_data chunks
  */
 bool test_partial_frame_boundary() {
@@ -306,9 +389,12 @@ int main() {
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},
     {"Corrupted CRC detection", test_corrupted_crc},
     {"Corrupted length field detection", test_corrupted_length},
+    {"Invalid message ID rejection", test_invalid_msg_id},
     {"Invalid start byte detection", test_invalid_start_byte},
     {"Invalid start bytes detection", test_invalid_start_bytes},
+    {"Minimal profile: Truncated frame", test_minimal_profile_truncated_frame},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
+    {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage_data},
