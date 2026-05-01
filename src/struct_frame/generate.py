@@ -445,17 +445,34 @@ class Field:
         global recErrCurrentField
         recErrCurrentField = self.name
         if not self.validated:
-            # First try to find the type in the current package
-            ret = currentPackage.findFieldType(self.fieldType)
-            source_package = currentPackage
-            
-            # If not found in current package, search in all packages
-            if not ret:
-                for pkg_name, pkg in packages.items():
-                    ret = pkg.findFieldType(self.fieldType)
+            # Handle fully-qualified type names like "pkg_name.TypeName"
+            bare_type = self.fieldType
+            qualified_pkg = None
+            if '.' in self.fieldType:
+                parts = self.fieldType.split('.', 1)
+                qualified_pkg = parts[0]
+                bare_type = parts[1]
+
+            if qualified_pkg:
+                # Qualified name: search only in the named package
+                ret = None
+                source_package = None
+                if qualified_pkg in packages:
+                    ret = packages[qualified_pkg].findFieldType(bare_type)
                     if ret:
-                        source_package = pkg
-                        break
+                        source_package = packages[qualified_pkg]
+            else:
+                # First try to find the type in the current package
+                ret = currentPackage.findFieldType(self.fieldType)
+                source_package = currentPackage
+                
+                # If not found in current package, search in all packages
+                if not ret:
+                    for pkg_name, pkg in packages.items():
+                        ret = pkg.findFieldType(self.fieldType)
+                        if ret:
+                            source_package = pkg
+                            break
 
             if ret:
                 if ret.validate(currentPackage, packages, debug):
@@ -464,6 +481,8 @@ class Field:
                     base_size = ret.size
                     # Track which package the type comes from
                     self.type_package = source_package.name
+                    # Normalize fieldType to the bare name (strip package qualifier)
+                    self.fieldType = bare_type
                 else:
                     print(
                         f"Failed to validate Field: {self.name} of Type: {self.fieldType} in Package: {currentPackage.name}")
@@ -1315,7 +1334,8 @@ def generateCFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.h")
-        data = ''.join(FileCGen.generate(value, equality=equality))
+        imported = package_imports.get(value.name, [])
+        data = ''.join(FileCGen.generate(value, imported_packages=imported, equality=equality))
         out[name] = data
 
     return out
@@ -1356,7 +1376,8 @@ def generatePyFileStrings(path, equality=False, generate_tests=False):
     # Generate message files in the generated package
     for key, value in packages.items():
         name = os.path.join(generated_path, value.name + ".py")
-        data = ''.join(FilePyGen.generate(value, equality=equality))
+        imported = package_imports.get(value.name, [])
+        data = ''.join(FilePyGen.generate(value, imported_packages=imported, equality=equality))
         out[name] = data
         
         # Generate test file if requested
@@ -1372,7 +1393,8 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.hpp")
-        data = ''.join(FileCppGen.generate(value, equality=equality))
+        imported = package_imports.get(value.name, [])
+        data = ''.join(FileCppGen.generate(value, imported_packages=imported, equality=equality))
         out[name] = data
         
         # Generate test file if requested
