@@ -1330,6 +1330,140 @@ def printPackages():
         print(value)
 
 
+def topological_sort_packages(pkgs, pkg_imports):
+    """Return package names in dependency-first topological order (Kahn's BFS).
+
+    Packages with no dependencies come first so that an aggregate include file
+    can list them in the order a compiler needs to see them.
+
+    Args:
+        pkgs:        dict {pkg_name: Package}
+        pkg_imports: dict {pkg_name: [imported_pkg_name, ...]}
+
+    Returns:
+        list of package names in topological order
+    """
+    from collections import deque
+
+    # Build in-degree count and adjacency list (dependency → dependant)
+    in_degree = {name: 0 for name in pkgs}
+    dependants = {name: [] for name in pkgs}
+
+    for pkg_name, deps in pkg_imports.items():
+        if pkg_name not in pkgs:
+            continue
+        for dep in deps:
+            if dep not in pkgs:
+                continue
+            in_degree[pkg_name] += 1
+            dependants[dep].append(pkg_name)
+
+    # Start with packages that have no dependencies
+    queue = deque(name for name, deg in in_degree.items() if deg == 0)
+    # Sort for determinism when multiple packages have the same degree
+    queue = deque(sorted(queue))
+    result = []
+
+    while queue:
+        pkg_name = queue.popleft()
+        result.append(pkg_name)
+        for dep in sorted(dependants[pkg_name]):
+            in_degree[dep] -= 1
+            if in_degree[dep] == 0:
+                queue.append(dep)
+
+    # Append any remaining packages (handles cycles or disconnected nodes)
+    for name in sorted(pkgs):
+        if name not in result:
+            result.append(name)
+
+    return result
+
+
+def generate_lsp_file_strings(build_flags, paths):
+    """Generate per-language aggregate include files for language server navigation.
+
+    Produces a single file per enabled language that lists (in dependency order)
+    all generated package files.  IDEs / language servers can point at this one
+    file to discover every type in the project without having to enumerate
+    individual package files.
+
+    Args:
+        build_flags: dict {lang: bool}  e.g. {'c': True, 'cpp': False, ...}
+        paths:       dict {lang: str}   output directory for each language
+
+    Returns:
+        dict {filename: content}
+    """
+    ordered = topological_sort_packages(packages, package_imports)
+    out = {}
+
+    if build_flags.get('c'):
+        lines = ['/* struct-frame LSP aggregate — include this file to expose all generated types */\n',
+                 '/* Packages are listed in dependency order (dependencies first). */\n\n']
+        for pkg_name in ordered:
+            lines.append('#include "%s.structframe.h"\n' % pkg_name)
+        out[os.path.join(paths['c'], 'structframe_all.h')] = ''.join(lines)
+
+    if build_flags.get('cpp'):
+        lines = ['/* struct-frame LSP aggregate — include this file to expose all generated types */\n',
+                 '/* Packages are listed in dependency order (dependencies first). */\n\n',
+                 '#pragma once\n']
+        for pkg_name in ordered:
+            lines.append('#include "%s.structframe.hpp"\n' % pkg_name)
+        out[os.path.join(paths['cpp'], 'structframe_all.hpp')] = ''.join(lines)
+
+    if build_flags.get('ts'):
+        lines = ['/* struct-frame LSP aggregate — import this file to expose all generated types */\n\n']
+        for pkg_name in ordered:
+            lines.append("export * from './%s.structframe';\n" % pkg_name)
+        out[os.path.join(paths['ts'], 'structframe_all.ts')] = ''.join(lines)
+
+    if build_flags.get('js'):
+        lines = ['"use strict";\n',
+                 '/* struct-frame LSP aggregate — require this file to expose all generated types */\n\n']
+        for pkg_name in ordered:
+            lines.append("Object.assign(module.exports, require('./%s.structframe'));\n" % pkg_name)
+        out[os.path.join(paths['js'], 'structframe_all.js')] = ''.join(lines)
+
+    if build_flags.get('py'):
+        generated_path = os.path.join(paths['py'], 'struct_frame', 'generated')
+        lines = ['# struct-frame LSP aggregate — import this module to expose all generated types\n',
+                 '# Packages are listed in dependency order (dependencies first).\n\n']
+        for pkg_name in ordered:
+            lines.append('from .%s import *  # noqa: F401,F403\n' % pkg_name)
+        out[os.path.join(generated_path, '__all_types__.py')] = ''.join(lines)
+
+    if build_flags.get('gql'):
+        lines = ['# struct-frame LSP aggregate — lists all generated GraphQL schema files\n',
+                 '# in dependency order (dependencies first).\n\n']
+        for pkg_name in ordered:
+            lines.append('# %s.graphql\n' % pkg_name)
+        out[os.path.join(paths['gql'], 'structframe_all.graphql.txt')] = ''.join(lines)
+
+    if build_flags.get('csharp'):
+        pkg_folder_names = [pascalCase(packages[n].name) for n in ordered if n in packages]
+        lines = ['<!-- struct-frame LSP aggregate: lists all generated C# package folders -->\n',
+                 '<!-- Add this Directory.Build.props next to your .csproj for auto-discovery -->\n',
+                 '<Project>\n',
+                 '  <ItemGroup>\n']
+        for folder in pkg_folder_names:
+            lines.append('    <!-- %s/ -->\n' % folder)
+        lines.append('  </ItemGroup>\n')
+        lines.append('</Project>\n')
+        out[os.path.join(paths['csharp'], 'structframe_all.props')] = ''.join(lines)
+
+    if build_flags.get('rust'):
+        lines = ['// struct-frame LSP aggregate — packages in dependency order\n',
+                 '// This file is informational; the generated lib.rs already re-exports all modules.\n\n']
+        for pkg_name in ordered:
+            mod_name = pkg_name.replace('-', '_').replace(' ', '_')
+            lines.append('// pub use %s::*;\n' % mod_name)
+        out[os.path.join(paths['rust'], 'structframe_all.rs')] = ''.join(lines)
+
+    return out
+
+
 def generateCFileStrings(path, equality=False):
     out = {}
     for key, value in packages.items():
@@ -1608,6 +1742,29 @@ def main():
 
     if (args.build_rust):
         files.update(generateRustFileStrings(args.rust_path[0], equality=args.equality))
+
+    # Generate LSP aggregate files (one per enabled language)
+    lsp_build_flags = {
+        'c':      args.build_c,
+        'cpp':    args.build_cpp,
+        'ts':     args.build_ts,
+        'js':     args.build_js,
+        'py':     args.build_py,
+        'gql':    args.build_gql,
+        'csharp': args.build_csharp,
+        'rust':   args.build_rust,
+    }
+    lsp_paths = {
+        'c':      args.c_path[0],
+        'cpp':    args.cpp_path[0],
+        'ts':     args.ts_path[0],
+        'js':     args.js_path[0],
+        'py':     args.py_path[0],
+        'gql':    args.gql_path[0],
+        'csharp': args.csharp_path[0],
+        'rust':   args.rust_path[0],
+    }
+    files.update(generate_lsp_file_strings(lsp_build_flags, lsp_paths))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)
