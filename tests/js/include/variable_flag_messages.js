@@ -8,10 +8,14 @@
 const {
   SerializationTestTruncationTestNonVariable,
   SerializationTestTruncationTestVariable,
+  SerializationTestNestedPayload,
+  SerializationTestNestedVariableMessage,
+  SerializationTestVariableMultipleArrays,
+  SerializationTestVariableMixedFields,
 } = require('../../generated/js/serialization_test.structframe');
 
 // Message count
-const MESSAGE_COUNT = 2;
+const MESSAGE_COUNT = 5;
 
 
 // ============================================================================
@@ -38,6 +42,46 @@ function createVariable1_3Filled() {
   });
 }
 
+function createNestedVariable() {
+  const nestedPayload = new SerializationTestNestedPayload({
+    id: 7,
+    label_length: 5,
+    label_data: 'Hello',
+    samples_count: 3,
+    samples_data: [10, 20, 30],
+  });
+  return new SerializationTestNestedVariableMessage({
+    sequence: 0x12345678,
+    payload: [nestedPayload],
+    description_length: 20,
+    description_data: 'nested variable test',
+  });
+}
+
+function createMultipleArrays() {
+  return new SerializationTestVariableMultipleArrays({
+    type: 5,
+    readings_count: 3,
+    readings_data: [100, 200, 300],
+    values_count: 2,
+    values_data: [1.5, 2.5],
+    label_length: 17,
+    label_data: 'multi arrays test',
+  });
+}
+
+function createMixedFields() {
+  return new SerializationTestVariableMixedFields({
+    fixed_id: 0xABCD1234,
+    fixed_value: 3.14,
+    fixed_name: 'DeviceName',
+    variable_data_count: 5,
+    variable_data_data: [1000, 2000, 3000, 4000, 5000],
+    variable_desc_length: 17,
+    variable_desc_data: 'mixed fields test',
+  });
+}
+
 
 // ============================================================================
 // getMessage(index) - unified interface matching C++ MessageProvider pattern
@@ -46,8 +90,14 @@ function createVariable1_3Filled() {
 function getMessage(index) {
   if (index === 0) {
     return createNonVariable1_3Filled();
-  } else {
+  } else if (index === 1) {
     return createVariable1_3Filled();
+  } else if (index === 2) {
+    return createNestedVariable();
+  } else if (index === 3) {
+    return createMultipleArrays();
+  } else {
+    return createMixedFields();
   }
 }
 

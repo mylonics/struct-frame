@@ -459,6 +459,8 @@ class MessageJsClassGen():
                 
                 write_method = WRITE_METHODS.get(field_type if not field.isEnum else "uint8", "_writeUInt8")
                 write_method_name = write_method.replace("_write", "write")
+                # Node.js Buffer uses writeFloatLE / writeDoubleLE (not writeFloat32LE / writeFloat64LE)
+                write_method_name = write_method_name.replace("writeFloat32LE", "writeFloatLE").replace("writeFloat64LE", "writeDoubleLE")
                 result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
                 result += f'      buffer.{write_method_name}(this.{name}_data[i], offset);\n'
                 result += f'      offset += {element_size};\n'

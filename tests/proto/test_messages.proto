@@ -234,3 +234,28 @@ message Message {
   string module = 2 [max_size=16];
   string msg = 3 [max_size=255];
 }
+
+// ============================================================================
+// Nested Variable Message Tests (msgid: 220)
+// These messages exercise the nested-struct + variable-length code path:
+//   a nested struct containing variable-length fields (string and array),
+//   embedded in a parent message that is also marked option variable = true.
+// ============================================================================
+
+// Nested struct with variable-length fields (no msgid — used only as a sub-message)
+message NestedPayload {
+  uint8 id = 1;
+  string label = 2 [max_size=32];        // variable string inside nested struct
+  repeated uint16 samples = 3 [max_size=16]; // variable array inside nested struct
+}
+
+// Parent message with option variable = true containing a nested struct that has
+// variable-length fields, plus a top-level variable string.
+message NestedVariableMessage {
+  option msgid = 220;
+  option variable = true;
+
+  uint32 sequence = 1;
+  NestedPayload payload = 2;             // nested struct with variable fields
+  string description = 3 [max_size=64];
+}

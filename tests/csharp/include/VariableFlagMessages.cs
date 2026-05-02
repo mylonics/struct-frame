@@ -18,7 +18,7 @@ namespace StructFrameTests
     public static class VariableFlagMessages
     {
         // Message count
-        public const int MESSAGE_COUNT = 2;
+        public const int MESSAGE_COUNT = 5;
 
         // ============================================================================
         // Helper functions to create messages (like C++ create_* functions)
@@ -48,6 +48,72 @@ namespace StructFrameTests
             return msg;
         }
 
+        private static SerializationTestNestedVariableMessage CreateNestedVariable()
+        {
+            var payload = new SerializationTestNestedPayload();
+            payload.Id = 7;
+            payload.LabelLength = 5;
+            payload.LabelData = new byte[32];
+            var labelBytes = System.Text.Encoding.ASCII.GetBytes("Hello");
+            Array.Copy(labelBytes, payload.LabelData, labelBytes.Length);
+            payload.SamplesCount = 3;
+            payload.SamplesData = new ushort[16];
+            payload.SamplesData[0] = 10;
+            payload.SamplesData[1] = 20;
+            payload.SamplesData[2] = 30;
+
+            var msg = new SerializationTestNestedVariableMessage();
+            msg.Sequence = 0x12345678;
+            msg.Payload = payload;
+            msg.DescriptionLength = 20;
+            msg.DescriptionData = new byte[64];
+            var descBytes = System.Text.Encoding.ASCII.GetBytes("nested variable test");
+            Array.Copy(descBytes, msg.DescriptionData, descBytes.Length);
+            return msg;
+        }
+
+        private static SerializationTestVariableMultipleArrays CreateMultipleArrays()
+        {
+            var msg = new SerializationTestVariableMultipleArrays();
+            msg.Type = 5;
+            msg.ReadingsCount = 3;
+            msg.ReadingsData = new int[50];
+            msg.ReadingsData[0] = 100;
+            msg.ReadingsData[1] = 200;
+            msg.ReadingsData[2] = 300;
+            msg.ValuesCount = 2;
+            msg.ValuesData = new float[25];
+            msg.ValuesData[0] = 1.5f;
+            msg.ValuesData[1] = 2.5f;
+            msg.LabelLength = 17;
+            msg.LabelData = new byte[64];
+            var lbl = System.Text.Encoding.ASCII.GetBytes("multi arrays test");
+            Array.Copy(lbl, msg.LabelData, lbl.Length);
+            return msg;
+        }
+
+        private static SerializationTestVariableMixedFields CreateMixedFields()
+        {
+            var msg = new SerializationTestVariableMixedFields();
+            msg.FixedId = 0xABCD1234;
+            msg.FixedValue = 3.14f;
+            msg.FixedName = new byte[16];
+            var nameBytes = System.Text.Encoding.ASCII.GetBytes("DeviceName");
+            Array.Copy(nameBytes, msg.FixedName, nameBytes.Length);
+            msg.VariableDataCount = 5;
+            msg.VariableDataData = new ushort[100];
+            msg.VariableDataData[0] = 1000;
+            msg.VariableDataData[1] = 2000;
+            msg.VariableDataData[2] = 3000;
+            msg.VariableDataData[3] = 4000;
+            msg.VariableDataData[4] = 5000;
+            msg.VariableDescLength = 17;
+            msg.VariableDescData = new byte[128];
+            var vdBytes = System.Text.Encoding.ASCII.GetBytes("mixed fields test");
+            Array.Copy(vdBytes, msg.VariableDescData, vdBytes.Length);
+            return msg;
+        }
+
         // ============================================================================
         // GetMessage(index) - unified interface matching C++ MessageProvider pattern
         // ============================================================================
@@ -56,8 +122,14 @@ namespace StructFrameTests
         {
             if (index == 0)
                 return CreateNonVariable1_3Filled();
-            else
+            else if (index == 1)
                 return CreateVariable1_3Filled();
+            else if (index == 2)
+                return CreateNestedVariable();
+            else if (index == 3)
+                return CreateMultipleArrays();
+            else
+                return CreateMixedFields();
         }
 
         // ============================================================================
@@ -79,6 +151,12 @@ namespace StructFrameTests
                 decoded = SerializationTestTruncationTestNonVariable.Deserialize(info);
             else if (info.MsgId == SerializationTestTruncationTestVariable.MsgId)
                 decoded = SerializationTestTruncationTestVariable.Deserialize(info);
+            else if (info.MsgId == SerializationTestNestedVariableMessage.MsgId)
+                decoded = SerializationTestNestedVariableMessage.Deserialize(info);
+            else if (info.MsgId == SerializationTestVariableMultipleArrays.MsgId)
+                decoded = SerializationTestVariableMultipleArrays.Deserialize(info);
+            else if (info.MsgId == SerializationTestVariableMixedFields.MsgId)
+                decoded = SerializationTestVariableMixedFields.Deserialize(info);
 
             if (decoded == null) return false;
 
