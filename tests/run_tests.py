@@ -671,7 +671,16 @@ class TestRunner:
         if lang.id == "ts":
             tsconfig = test_dir / "tsconfig.json"
             if tsconfig.exists():
-                cmd = f'npx tsc --project "{tsconfig}"'
+                # Ensure local node_modules are installed so the project's own
+                # TypeScript version (not a globally installed one) is used.
+                pkg_json = test_dir / "package.json"
+                node_modules = test_dir / "node_modules"
+                if pkg_json.exists() and not node_modules.exists():
+                    self.run_cmd("npm install --no-audit", cwd=test_dir, timeout=120)
+                # Prefer the locally-installed tsc (respects the project's TS version)
+                local_tsc = test_dir / "node_modules" / ".bin" / "tsc"
+                tsc_cmd = f'"{local_tsc}"' if local_tsc.exists() else "npx tsc"
+                cmd = f'{tsc_cmd} --project "{tsconfig}"'
                 success, _, _ = self.run_cmd(cmd, cwd=test_dir)
                 return success
             return False
@@ -1150,21 +1159,22 @@ class TestRunner:
                                       "Binary output does not match reference")
         
         # Verify truncation by checking frame sizes
-        # The encoded file should contain 2 frames:
-        # Frame 1: Non-variable message (should be full size with 200-byte array allocation)
-        # Frame 2: Variable message (should be truncated to only 67 bytes used)
+        # The encoded file contains 5 frames (ProfileBulk, bulk profile, 8 bytes overhead each):
+        #   Frame 1: TruncationTestNonVariable   — NOT truncated: 207 + 8 = 215 bytes (full 200-byte array)
+        #   Frame 2: TruncationTestVariable      — TRUNCATED:     74 + 8 =  82 bytes (67 bytes used)
+        #   Frame 3: NestedVariableMessage       — TRUNCATED:     92 + 8 = 100 bytes
+        #   Frame 4: VariableMultipleArrays      — TRUNCATED:     41 + 8 =  49 bytes (3+2 elems used)
+        #   Frame 5: VariableMixedFields         — TRUNCATED:     53 + 8 =  61 bytes (5 elems used)
+        # Total with truncation:  ~507 bytes
+        # Total without truncation: 215+215+144+376+362 = ~1312 bytes
         if reference_data and all_match:
             print(f"\n  {Colors.bold('Analyzing frame sizes for truncation...')}")
-            # This is a basic check - we expect the total size to be smaller than
-            # if both messages were non-variable
-            # Non-variable message size estimate: ~210 bytes (header + 4 + 200 + 2 + frame overhead)
-            # Variable message size estimate: ~80 bytes (header + 4 + 67 + 2 + frame overhead)
-            # Total should be roughly 290 bytes vs 420 bytes if both were non-variable
-            
+            # We expect the total size to be much smaller than the sum of all MAX_SIZE frames.
+            # With truncation: ~507 bytes.  Without truncation: ~1312 bytes.
             total_size = len(reference_data)
-            max_expected_if_no_truncation = 450  # Conservative upper bound if no truncation
-            expected_with_truncation = 350  # Rough estimate with truncation
-            
+            max_expected_if_no_truncation = 1312  # Sum of all 5 frames at MAX_SIZE + overhead
+            expected_with_truncation = 700        # Conservative upper bound with truncation
+
             if total_size < expected_with_truncation:
                 print(f"  {Colors.ok_tag()} Truncation verified: Total size {total_size} bytes < {expected_with_truncation} bytes")
                 print(f"      (Expected ~{max_expected_if_no_truncation} bytes if no truncation occurred)")
@@ -1605,10 +1615,10 @@ class TestRunner:
             elif profiling_only:
                 print(f"\n{Colors.yellow('[SKIP]')} Extended tests (--profiling)")
 
-            # Phase 7: Variable tests (only ProfileBulk, 2 messages)
+            # Phase 7: Variable tests (only ProfileBulk, 5 messages)
             if not profiling_only:
                 with self.timed_phase("Variable Tests"):
-                    self.run_tests("variable", [("bulk", "ProfileBulk")], 2, "test_variable_flag")
+                    self.run_tests("variable", [("bulk", "ProfileBulk")], 5, "test_variable_flag")
                     # Verify truncation by checking binary file sizes
                     self.verify_variable_truncation()
             else:
