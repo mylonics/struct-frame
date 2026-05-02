@@ -1301,6 +1301,16 @@ class TestRunner:
                 else:
                     success, stdout, stderr = self.run_cmd(f'"{test_exe}" --runner test_negative', timeout=30)
             
+            elif lang.id == "rust":
+                # Rust: run compiled test_negative binary
+                build_dir = self.project_root / lang.build_dir
+                test_exe = build_dir / f"test_negative{lang.exe_ext}"
+                
+                if not test_exe.exists():
+                    continue
+                
+                success, stdout, stderr = self.run_cmd(str(test_exe), timeout=30)
+            
             else:
                 continue
             

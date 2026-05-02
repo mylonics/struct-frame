@@ -9,3 +9,7 @@ struct_frame_sdk = { path = "../generated/rust" }
 [[bin]]
 name = "struct_frame_rust_tests"
 path = "src/main.rs"
+
+[[bin]]
+name = "test_negative"
+path = "src/test_negative.rs"
