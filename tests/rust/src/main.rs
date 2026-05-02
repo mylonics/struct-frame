@@ -19,7 +19,7 @@ use struct_frame_sdk::{
 const BUFFER_SIZE: usize = 65536;
 const STANDARD_MESSAGE_COUNT: usize = 17;
 const EXTENDED_MESSAGE_COUNT: usize = 17;
-const VARIABLE_FLAG_MESSAGE_COUNT: usize = 2;
+const VARIABLE_FLAG_MESSAGE_COUNT: usize = 3;
 
 // ============================================================================
 // Message creation helpers - mirror standard_messages
@@ -300,6 +300,27 @@ fn create_truncation_variable() -> SerializationTestTruncationTestVariable {
     msg
 }
 
+fn create_nested_variable() -> SerializationTestNestedVariableMessage {
+    let mut msg = SerializationTestNestedVariableMessage::default();
+    msg.sequence = 0x12345678;
+
+    // Nested payload: id=7, label="Hello" (5 chars), samples=[10,20,30] (3 elements)
+    msg.payload.id = 7;
+    msg.payload.label_length = 5;
+    msg.payload.label[..5].copy_from_slice(b"Hello");
+    msg.payload.samples_count = 3;
+    msg.payload.samples[0] = 10;
+    msg.payload.samples[1] = 20;
+    msg.payload.samples[2] = 30;
+
+    // Top-level variable string
+    let desc = b"nested variable test";
+    msg.description_length = desc.len() as u8;
+    msg.description[..desc.len()].copy_from_slice(desc);
+
+    msg
+}
+
 // ============================================================================
 // Expected payload helpers
 // ============================================================================
@@ -393,7 +414,8 @@ fn get_expected_payload_extended(index: usize, buf: &mut [u8]) -> (u16, usize) {
 fn get_expected_payload_variable_flag(index: usize, buf: &mut [u8], use_fixed: bool) -> (u16, usize) {
     match index {
         0 => pack_msg(&create_non_variable(),        buf, use_fixed),
-        _ => pack_msg(&create_truncation_variable(), buf, use_fixed),
+        1 => pack_msg(&create_truncation_variable(), buf, use_fixed),
+        _ => pack_msg(&create_nested_variable(),     buf, use_fixed),
     }
 }
 
@@ -524,6 +546,7 @@ fn encode_variable_flag(config: &ProfileConfig, output: &mut [u8]) -> usize {
 
     enc!(create_non_variable());
     enc!(create_truncation_variable());
+    enc!(create_nested_variable());
 
     written
 }

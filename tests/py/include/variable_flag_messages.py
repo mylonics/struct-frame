@@ -16,6 +16,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generate
 from struct_frame.generated.serialization_test import (
     SerializationTestTruncationTestNonVariable,
     SerializationTestTruncationTestVariable,
+    SerializationTestNestedPayload,
+    SerializationTestNestedVariableMessage,
     get_message_info,
 )
 
@@ -23,10 +25,11 @@ from struct_frame.generated.serialization_test import (
 MessageType = Union[
     SerializationTestTruncationTestNonVariable,
     SerializationTestTruncationTestVariable,
+    SerializationTestNestedVariableMessage,
 ]
 
 # Message count
-MESSAGE_COUNT = 2
+MESSAGE_COUNT = 3
 
 
 # ============================================================================
@@ -51,6 +54,20 @@ def create_variable_1_3_filled() -> SerializationTestTruncationTestVariable:
     )
 
 
+def create_nested_variable() -> SerializationTestNestedVariableMessage:
+    """Create nested variable message with partially-filled nested struct fields."""
+    payload = SerializationTestNestedPayload(
+        id=7,
+        label=b'Hello',
+        samples=[10, 20, 30]
+    )
+    return SerializationTestNestedVariableMessage(
+        sequence=0x12345678,
+        payload=payload,
+        description=b'nested variable test'
+    )
+
+
 # ============================================================================
 # get_message(index) - unified interface matching C++ MessageProvider pattern
 # ============================================================================
@@ -59,8 +76,10 @@ def get_message(index: int) -> MessageType:
     """Get message by index."""
     if index == 0:
         return create_non_variable_1_3_filled()
-    else:  # index == 1
+    elif index == 1:
         return create_variable_1_3_filled()
+    else:  # index == 2
+        return create_nested_variable()
 
 
 # ============================================================================

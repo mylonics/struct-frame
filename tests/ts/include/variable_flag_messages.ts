@@ -8,6 +8,8 @@
 import {
   SerializationTestTruncationTestNonVariable,
   SerializationTestTruncationTestVariable,
+  SerializationTestNestedPayload,
+  SerializationTestNestedVariableMessage,
 } from '../../generated/ts/serialization_test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
@@ -15,10 +17,11 @@ import { FrameMsgInfo } from '../../generated/ts/frame-base';
 // Type alias for message union (like C++ MessageVariant)
 export type MessageType =
   | SerializationTestTruncationTestNonVariable
-  | SerializationTestTruncationTestVariable;
+  | SerializationTestTruncationTestVariable
+  | SerializationTestNestedVariableMessage;
 
 // Message count
-export const MESSAGE_COUNT = 2;
+export const MESSAGE_COUNT = 3;
 
 
 // ============================================================================
@@ -45,6 +48,22 @@ function createVariable1_3Filled(): SerializationTestTruncationTestVariable {
   });
 }
 
+function createNestedVariable(): SerializationTestNestedVariableMessage {
+  const nestedPayload = new SerializationTestNestedPayload({
+    id: 7,
+    label_length: 5,
+    label_data: 'Hello',
+    samples_count: 3,
+    samples_data: [10, 20, 30],
+  });
+  return new SerializationTestNestedVariableMessage({
+    sequence: 0x12345678,
+    payload: [nestedPayload],
+    description_length: 20,
+    description_data: 'nested variable test',
+  });
+}
+
 
 // ============================================================================
 // getMessage(index) - unified interface matching C++ MessageProvider pattern
@@ -53,8 +72,10 @@ function createVariable1_3Filled(): SerializationTestTruncationTestVariable {
 export function getMessage(index: number): MessageType {
   if (index === 0) {
     return createNonVariable1_3Filled();
-  } else {
+  } else if (index === 1) {
     return createVariable1_3Filled();
+  } else {
+    return createNestedVariable();
   }
 }
 

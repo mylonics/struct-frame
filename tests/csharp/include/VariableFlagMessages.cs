@@ -18,7 +18,7 @@ namespace StructFrameTests
     public static class VariableFlagMessages
     {
         // Message count
-        public const int MESSAGE_COUNT = 2;
+        public const int MESSAGE_COUNT = 3;
 
         // ============================================================================
         // Helper functions to create messages (like C++ create_* functions)
@@ -48,6 +48,30 @@ namespace StructFrameTests
             return msg;
         }
 
+        private static SerializationTestNestedVariableMessage CreateNestedVariable()
+        {
+            var payload = new SerializationTestNestedPayload();
+            payload.Id = 7;
+            payload.LabelLength = 5;
+            payload.LabelData = new byte[32];
+            var labelBytes = System.Text.Encoding.ASCII.GetBytes("Hello");
+            Array.Copy(labelBytes, payload.LabelData, labelBytes.Length);
+            payload.SamplesCount = 3;
+            payload.SamplesData = new ushort[16];
+            payload.SamplesData[0] = 10;
+            payload.SamplesData[1] = 20;
+            payload.SamplesData[2] = 30;
+
+            var msg = new SerializationTestNestedVariableMessage();
+            msg.Sequence = 0x12345678;
+            msg.Payload = payload;
+            msg.DescriptionLength = 20;
+            msg.DescriptionData = new byte[64];
+            var descBytes = System.Text.Encoding.ASCII.GetBytes("nested variable test");
+            Array.Copy(descBytes, msg.DescriptionData, descBytes.Length);
+            return msg;
+        }
+
         // ============================================================================
         // GetMessage(index) - unified interface matching C++ MessageProvider pattern
         // ============================================================================
@@ -56,8 +80,10 @@ namespace StructFrameTests
         {
             if (index == 0)
                 return CreateNonVariable1_3Filled();
-            else
+            else if (index == 1)
                 return CreateVariable1_3Filled();
+            else
+                return CreateNestedVariable();
         }
 
         // ============================================================================
@@ -79,6 +105,8 @@ namespace StructFrameTests
                 decoded = SerializationTestTruncationTestNonVariable.Deserialize(info);
             else if (info.MsgId == SerializationTestTruncationTestVariable.MsgId)
                 decoded = SerializationTestTruncationTestVariable.Deserialize(info);
+            else if (info.MsgId == SerializationTestNestedVariableMessage.MsgId)
+                decoded = SerializationTestNestedVariableMessage.Deserialize(info);
 
             if (decoded == null) return false;
 

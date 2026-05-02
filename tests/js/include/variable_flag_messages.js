@@ -8,10 +8,12 @@
 const {
   SerializationTestTruncationTestNonVariable,
   SerializationTestTruncationTestVariable,
+  SerializationTestNestedPayload,
+  SerializationTestNestedVariableMessage,
 } = require('../../generated/js/serialization_test.structframe');
 
 // Message count
-const MESSAGE_COUNT = 2;
+const MESSAGE_COUNT = 3;
 
 
 // ============================================================================
@@ -38,6 +40,22 @@ function createVariable1_3Filled() {
   });
 }
 
+function createNestedVariable() {
+  const nestedPayload = new SerializationTestNestedPayload({
+    id: 7,
+    label_length: 5,
+    label_data: 'Hello',
+    samples_count: 3,
+    samples_data: [10, 20, 30],
+  });
+  return new SerializationTestNestedVariableMessage({
+    sequence: 0x12345678,
+    payload: [nestedPayload],
+    description_length: 20,
+    description_data: 'nested variable test',
+  });
+}
+
 
 // ============================================================================
 // getMessage(index) - unified interface matching C++ MessageProvider pattern
@@ -46,8 +64,10 @@ function createVariable1_3Filled() {
 function getMessage(index) {
   if (index === 0) {
     return createNonVariable1_3Filled();
-  } else {
+  } else if (index === 1) {
     return createVariable1_3Filled();
+  } else {
+    return createNestedVariable();
   }
 }
 

@@ -17,16 +17,18 @@
  * Message count and order
  * ============================================================================ */
 
-#define VAR_FLAG_MESSAGE_COUNT 2
+#define VAR_FLAG_MESSAGE_COUNT 3
 
 /* Index tracking for encoding/validation */
 static size_t var_non_var_idx = 0;
 static size_t var_var_idx = 0;
+static size_t var_nested_idx = 0;
 
 /* Message ID order array */
 static const uint16_t var_flag_msg_id_order[VAR_FLAG_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_TRUNCATION_TEST_NON_VARIABLE_MSG_ID, /* 0: Non-variable message */
     SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MSG_ID,     /* 1: Variable message */
+    SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MSG_ID,      /* 2: Nested variable message */
 };
 
 static inline const uint16_t* var_flag_get_msg_id_order(void) { return var_flag_msg_id_order; }
@@ -65,6 +67,28 @@ static inline SerializationTestTruncationTestVariable create_variable_1_3_filled
   return msg;
 }
 
+static inline SerializationTestNestedVariableMessage create_nested_variable(void) {
+  SerializationTestNestedVariableMessage msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.sequence = 0x12345678;
+
+  /* Nested payload: id=7, label="Hello" (5 chars), samples=[10,20,30] (3 elements) */
+  msg.payload.id = 7;
+  msg.payload.label.length = 5;
+  memcpy(msg.payload.label.data, "Hello", 5);
+  msg.payload.samples.count = 3;
+  msg.payload.samples.data[0] = 10;
+  msg.payload.samples.data[1] = 20;
+  msg.payload.samples.data[2] = 30;
+
+  /* Top-level variable string */
+  const char* desc = "nested variable test";
+  msg.description.length = (uint8_t)strlen(desc);
+  memcpy(msg.description.data, desc, msg.description.length);
+
+  return msg;
+}
+
 /* ============================================================================
  * Typed message arrays
  * ============================================================================ */
@@ -84,6 +108,16 @@ static inline const SerializationTestTruncationTestVariable* get_variable_messag
   static bool initialized = false;
   if (!initialized) {
     messages[0] = create_variable_1_3_filled();
+    initialized = true;
+  }
+  return messages;
+}
+
+static inline const SerializationTestNestedVariableMessage* get_nested_variable_messages(void) {
+  static SerializationTestNestedVariableMessage messages[1];
+  static bool initialized = false;
+  if (!initialized) {
+    messages[0] = create_nested_variable();
     initialized = true;
   }
   return messages;
@@ -122,6 +156,25 @@ static inline size_t var_flag_encode_message(buffer_writer_t* writer, size_t ind
                                          SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC2);
     printf("MSG2: %zu bytes (payload=%zu, TRUNCATED)\n", written, sizeof(*msg));
     return written;
+  } else if (msg_id == SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MSG_ID) {
+    const SerializationTestNestedVariableMessage* msg = &get_nested_variable_messages()[var_nested_idx++];
+    /* Nested variable message: use serialize_variable if profile has length field */
+    #ifdef SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_IS_VARIABLE
+    if (writer->config->payload.has_length) {
+      static uint8_t pack_buffer[SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAX_SIZE];
+      size_t packed_size = SerializationTestNestedVariableMessage_serialize_variable(msg, pack_buffer);
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0,
+                                           0, SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC1,
+                                           SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC2);
+      printf("MSG3: %zu bytes (payload=%zu, TRUNCATED nested)\n", written, packed_size);
+      return written;
+    }
+    #endif
+    size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
+                                         0, SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC1,
+                                         SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC2);
+    printf("MSG3: %zu bytes (payload=%zu, TRUNCATED nested)\n", written, sizeof(*msg));
+    return written;
   }
 
   return 0;
@@ -144,6 +197,11 @@ static inline bool var_flag_validate_message(uint16_t msg_id, const uint8_t* dat
     SerializationTestTruncationTestVariable decoded;
     if (SerializationTestTruncationTestVariable_deserialize(data, size, &decoded) == 0) return false;
     return SerializationTestTruncationTestVariable_equals(&decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MSG_ID) {
+    const SerializationTestNestedVariableMessage* expected = &get_nested_variable_messages()[var_nested_idx++];
+    SerializationTestNestedVariableMessage decoded;
+    if (SerializationTestNestedVariableMessage_deserialize(data, size, &decoded) == 0) return false;
+    return SerializationTestNestedVariableMessage_equals(&decoded, expected);
   }
 
   return false;
@@ -156,6 +214,7 @@ static inline bool var_flag_validate_message(uint16_t msg_id, const uint8_t* dat
 static inline void var_flag_reset_state(void) {
   var_non_var_idx = 0;
   var_var_idx = 0;
+  var_nested_idx = 0;
 }
 
 /* ============================================================================

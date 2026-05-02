@@ -163,6 +163,7 @@ Tests `option variable = true` truncation behaviour with `profile_bulk`.
 |---------|---|-----|--------|----|----|----|------|
 | `variable = true` truncation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Single bounded array truncation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Nested variable struct (variable parent + nested struct with variable fields) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Multiple bounded arrays truncation | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Mixed fixed + variable fields | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
