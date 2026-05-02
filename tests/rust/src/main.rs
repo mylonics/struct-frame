@@ -19,7 +19,7 @@ use struct_frame_sdk::{
 const BUFFER_SIZE: usize = 65536;
 const STANDARD_MESSAGE_COUNT: usize = 17;
 const EXTENDED_MESSAGE_COUNT: usize = 17;
-const VARIABLE_FLAG_MESSAGE_COUNT: usize = 3;
+const VARIABLE_FLAG_MESSAGE_COUNT: usize = 5;
 
 // ============================================================================
 // Message creation helpers - mirror standard_messages
@@ -321,6 +321,47 @@ fn create_nested_variable() -> SerializationTestNestedVariableMessage {
     msg
 }
 
+fn create_multiple_arrays() -> SerializationTestVariableMultipleArrays {
+    let mut msg = SerializationTestVariableMultipleArrays::default();
+    msg.r#type = 5;
+
+    msg.readings_count = 3;
+    msg.readings[0] = 100;
+    msg.readings[1] = 200;
+    msg.readings[2] = 300;
+
+    msg.values_count = 2;
+    msg.values[0] = 1.5f32;
+    msg.values[1] = 2.5f32;
+
+    let lbl = b"multi arrays test";
+    msg.label_length = lbl.len() as u8;
+    msg.label[..lbl.len()].copy_from_slice(lbl);
+
+    msg
+}
+
+fn create_mixed_fields() -> SerializationTestVariableMixedFields {
+    let mut msg = SerializationTestVariableMixedFields::default();
+    msg.fixed_id = 0xABCD1234;
+    msg.fixed_value = 3.14f32;
+    let name = b"DeviceName";
+    msg.fixed_name[..name.len()].copy_from_slice(name);
+
+    msg.variable_data_count = 5;
+    msg.variable_data[0] = 1000;
+    msg.variable_data[1] = 2000;
+    msg.variable_data[2] = 3000;
+    msg.variable_data[3] = 4000;
+    msg.variable_data[4] = 5000;
+
+    let vd = b"mixed fields test";
+    msg.variable_desc_length = vd.len() as u8;
+    msg.variable_desc[..vd.len()].copy_from_slice(vd);
+
+    msg
+}
+
 // ============================================================================
 // Expected payload helpers
 // ============================================================================
@@ -415,7 +456,9 @@ fn get_expected_payload_variable_flag(index: usize, buf: &mut [u8], use_fixed: b
     match index {
         0 => pack_msg(&create_non_variable(),        buf, use_fixed),
         1 => pack_msg(&create_truncation_variable(), buf, use_fixed),
-        _ => pack_msg(&create_nested_variable(),     buf, use_fixed),
+        2 => pack_msg(&create_nested_variable(),     buf, use_fixed),
+        3 => pack_msg(&create_multiple_arrays(),     buf, use_fixed),
+        _ => pack_msg(&create_mixed_fields(),        buf, use_fixed),
     }
 }
 
@@ -547,6 +590,8 @@ fn encode_variable_flag(config: &ProfileConfig, output: &mut [u8]) -> usize {
     enc!(create_non_variable());
     enc!(create_truncation_variable());
     enc!(create_nested_variable());
+    enc!(create_multiple_arrays());
+    enc!(create_mixed_fields());
 
     written
 }

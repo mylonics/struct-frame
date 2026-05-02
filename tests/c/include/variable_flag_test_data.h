@@ -17,18 +17,22 @@
  * Message count and order
  * ============================================================================ */
 
-#define VAR_FLAG_MESSAGE_COUNT 3
+#define VAR_FLAG_MESSAGE_COUNT 5
 
 /* Index tracking for encoding/validation */
 static size_t var_non_var_idx = 0;
 static size_t var_var_idx = 0;
 static size_t var_nested_idx = 0;
+static size_t var_multiple_idx = 0;
+static size_t var_mixed_idx = 0;
 
 /* Message ID order array */
 static const uint16_t var_flag_msg_id_order[VAR_FLAG_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_TRUNCATION_TEST_NON_VARIABLE_MSG_ID, /* 0: Non-variable message */
     SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MSG_ID,     /* 1: Variable message */
     SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MSG_ID,      /* 2: Nested variable message */
+    SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MSG_ID,     /* 3: Multiple bounded arrays */
+    SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MSG_ID,        /* 4: Mixed fixed + variable fields */
 };
 
 static inline const uint16_t* var_flag_get_msg_id_order(void) { return var_flag_msg_id_order; }
@@ -89,6 +93,53 @@ static inline SerializationTestNestedVariableMessage create_nested_variable(void
   return msg;
 }
 
+static inline SerializationTestVariableMultipleArrays create_multiple_arrays(void) {
+  SerializationTestVariableMultipleArrays msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.type = 5;
+
+  /* readings: 3 out of 50 elements */
+  msg.readings.count = 3;
+  msg.readings.data[0] = 100;
+  msg.readings.data[1] = 200;
+  msg.readings.data[2] = 300;
+
+  /* values: 2 out of 25 elements */
+  msg.values.count = 2;
+  msg.values.data[0] = 1.5f;
+  msg.values.data[1] = 2.5f;
+
+  /* label: 17 out of 64 chars */
+  const char* lbl = "multi arrays test";
+  msg.label.length = (uint8_t)strlen(lbl);
+  memcpy(msg.label.data, lbl, msg.label.length);
+
+  return msg;
+}
+
+static inline SerializationTestVariableMixedFields create_mixed_fields(void) {
+  SerializationTestVariableMixedFields msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.fixed_id = 0xABCD1234;
+  msg.fixed_value = 3.14f;
+  memcpy(msg.fixed_name, "DeviceName", 10); /* 10 chars in 16-byte fixed field */
+
+  /* variable_data: 5 out of 100 elements */
+  msg.variable_data.count = 5;
+  msg.variable_data.data[0] = 1000;
+  msg.variable_data.data[1] = 2000;
+  msg.variable_data.data[2] = 3000;
+  msg.variable_data.data[3] = 4000;
+  msg.variable_data.data[4] = 5000;
+
+  /* variable_desc: 17 out of 128 chars */
+  const char* vd = "mixed fields test";
+  msg.variable_desc.length = (uint8_t)strlen(vd);
+  memcpy(msg.variable_desc.data, vd, msg.variable_desc.length);
+
+  return msg;
+}
+
 /* ============================================================================
  * Typed message arrays
  * ============================================================================ */
@@ -118,6 +169,26 @@ static inline const SerializationTestNestedVariableMessage* get_nested_variable_
   static bool initialized = false;
   if (!initialized) {
     messages[0] = create_nested_variable();
+    initialized = true;
+  }
+  return messages;
+}
+
+static inline const SerializationTestVariableMultipleArrays* get_multiple_arrays_messages(void) {
+  static SerializationTestVariableMultipleArrays messages[1];
+  static bool initialized = false;
+  if (!initialized) {
+    messages[0] = create_multiple_arrays();
+    initialized = true;
+  }
+  return messages;
+}
+
+static inline const SerializationTestVariableMixedFields* get_mixed_fields_messages(void) {
+  static SerializationTestVariableMixedFields messages[1];
+  static bool initialized = false;
+  if (!initialized) {
+    messages[0] = create_mixed_fields();
     initialized = true;
   }
   return messages;
@@ -175,6 +246,42 @@ static inline size_t var_flag_encode_message(buffer_writer_t* writer, size_t ind
                                          SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC2);
     printf("MSG3: %zu bytes (payload=%zu, TRUNCATED nested)\n", written, sizeof(*msg));
     return written;
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MSG_ID) {
+    const SerializationTestVariableMultipleArrays* msg = &get_multiple_arrays_messages()[var_multiple_idx++];
+    #ifdef SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_IS_VARIABLE
+    if (writer->config->payload.has_length) {
+      static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAX_SIZE];
+      size_t packed_size = SerializationTestVariableMultipleArrays_serialize_variable(msg, pack_buffer);
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0,
+                                           0, SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC1,
+                                           SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC2);
+      printf("MSG4: %zu bytes (payload=%zu, TRUNCATED multiple arrays)\n", written, packed_size);
+      return written;
+    }
+    #endif
+    size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
+                                         0, SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC1,
+                                         SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC2);
+    printf("MSG4: %zu bytes (payload=%zu, TRUNCATED multiple arrays)\n", written, sizeof(*msg));
+    return written;
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MSG_ID) {
+    const SerializationTestVariableMixedFields* msg = &get_mixed_fields_messages()[var_mixed_idx++];
+    #ifdef SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_IS_VARIABLE
+    if (writer->config->payload.has_length) {
+      static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAX_SIZE];
+      size_t packed_size = SerializationTestVariableMixedFields_serialize_variable(msg, pack_buffer);
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0,
+                                           0, SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC1,
+                                           SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC2);
+      printf("MSG5: %zu bytes (payload=%zu, TRUNCATED mixed fields)\n", written, packed_size);
+      return written;
+    }
+    #endif
+    size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
+                                         0, SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC1,
+                                         SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC2);
+    printf("MSG5: %zu bytes (payload=%zu, TRUNCATED mixed fields)\n", written, sizeof(*msg));
+    return written;
   }
 
   return 0;
@@ -202,6 +309,16 @@ static inline bool var_flag_validate_message(uint16_t msg_id, const uint8_t* dat
     SerializationTestNestedVariableMessage decoded;
     if (SerializationTestNestedVariableMessage_deserialize(data, size, &decoded) == 0) return false;
     return SerializationTestNestedVariableMessage_equals(&decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MSG_ID) {
+    const SerializationTestVariableMultipleArrays* expected = &get_multiple_arrays_messages()[var_multiple_idx++];
+    SerializationTestVariableMultipleArrays decoded;
+    if (SerializationTestVariableMultipleArrays_deserialize(data, size, &decoded) == 0) return false;
+    return SerializationTestVariableMultipleArrays_equals(&decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MSG_ID) {
+    const SerializationTestVariableMixedFields* expected = &get_mixed_fields_messages()[var_mixed_idx++];
+    SerializationTestVariableMixedFields decoded;
+    if (SerializationTestVariableMixedFields_deserialize(data, size, &decoded) == 0) return false;
+    return SerializationTestVariableMixedFields_equals(&decoded, expected);
   }
 
   return false;
@@ -215,6 +332,8 @@ static inline void var_flag_reset_state(void) {
   var_non_var_idx = 0;
   var_var_idx = 0;
   var_nested_idx = 0;
+  var_multiple_idx = 0;
+  var_mixed_idx = 0;
 }
 
 /* ============================================================================

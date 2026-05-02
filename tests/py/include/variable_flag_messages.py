@@ -18,6 +18,8 @@ from struct_frame.generated.serialization_test import (
     SerializationTestTruncationTestVariable,
     SerializationTestNestedPayload,
     SerializationTestNestedVariableMessage,
+    SerializationTestVariableMultipleArrays,
+    SerializationTestVariableMixedFields,
     get_message_info,
 )
 
@@ -26,10 +28,12 @@ MessageType = Union[
     SerializationTestTruncationTestNonVariable,
     SerializationTestTruncationTestVariable,
     SerializationTestNestedVariableMessage,
+    SerializationTestVariableMultipleArrays,
+    SerializationTestVariableMixedFields,
 ]
 
 # Message count
-MESSAGE_COUNT = 3
+MESSAGE_COUNT = 5
 
 
 # ============================================================================
@@ -68,6 +72,27 @@ def create_nested_variable() -> SerializationTestNestedVariableMessage:
     )
 
 
+def create_multiple_arrays() -> SerializationTestVariableMultipleArrays:
+    """Create multiple-arrays message with partially-filled arrays."""
+    return SerializationTestVariableMultipleArrays(
+        type=5,
+        readings=[100, 200, 300],
+        values=[1.5, 2.5],
+        label=b'multi arrays test'
+    )
+
+
+def create_mixed_fields() -> SerializationTestVariableMixedFields:
+    """Create mixed-fields message: fixed fields + partial variable array and string."""
+    return SerializationTestVariableMixedFields(
+        fixed_id=0xABCD1234,
+        fixed_value=3.14,
+        fixed_name=b'DeviceName',
+        variable_data=[1000, 2000, 3000, 4000, 5000],
+        variable_desc=b'mixed fields test'
+    )
+
+
 # ============================================================================
 # get_message(index) - unified interface matching C++ MessageProvider pattern
 # ============================================================================
@@ -78,8 +103,12 @@ def get_message(index: int) -> MessageType:
         return create_non_variable_1_3_filled()
     elif index == 1:
         return create_variable_1_3_filled()
-    else:  # index == 2
+    elif index == 2:
         return create_nested_variable()
+    elif index == 3:
+        return create_multiple_arrays()
+    else:  # index == 4
+        return create_mixed_fields()
 
 
 # ============================================================================

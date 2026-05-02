@@ -164,12 +164,10 @@ Tests `option variable = true` truncation behaviour with `profile_bulk`.
 | `variable = true` truncation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Single bounded array truncation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Nested variable struct (variable parent + nested struct with variable fields) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Multiple bounded arrays truncation | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Mixed fixed + variable fields | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Multiple bounded arrays truncation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Mixed fixed + variable fields | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_variable_flag.*`
-
-> **Gap (Medium):** `VariableMultipleArrays` and `VariableMixedFields` message types defined in the proto are not exercised by any test.
 
 ### 3.4 Profiling / Performance Tests
 
