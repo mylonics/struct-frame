@@ -1,5 +1,5 @@
 /**
- * Variable flag test message definitions (C#).
+ * Variable flag test SerializationTestMessage definitions (C#).
  * Provides GetMessage(index) function for variable flag truncation testing.
  *
  * This file matches the C++ variable_flag_messages.hpp structure.
@@ -12,8 +12,8 @@ using StructFrame.SerializationTest;
 namespace StructFrameTests
 {
     /// <summary>
-    /// Message provider struct for variable flag test messages.
-    /// Provides MESSAGE_COUNT and GetMessage(index) function matching C++ pattern.
+    /// SerializationTestMessage provider struct for variable flag test messages.
+    /// Provides SerializationTestMessage_COUNT and GetMessage(index) function matching C++ pattern.
     /// </summary>
     public static class VariableFlagMessages
     {
@@ -24,9 +24,9 @@ namespace StructFrameTests
         // Helper functions to create messages (like C++ create_* functions)
         // ============================================================================
 
-        private static SerializationTestTruncationTestNonVariable CreateNonVariable1_3Filled()
+        private static TruncationTestNonVariable CreateNonVariable1_3Filled()
         {
-            var msg = new SerializationTestTruncationTestNonVariable();
+            var msg = new TruncationTestNonVariable();
             msg.SequenceId = 0xDEADBEEF;
             msg.DataArrayCount = 67;
             msg.DataArrayData = new byte[200];
@@ -36,9 +36,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestTruncationTestVariable CreateVariable1_3Filled()
+        private static TruncationTestVariable CreateVariable1_3Filled()
         {
-            var msg = new SerializationTestTruncationTestVariable();
+            var msg = new TruncationTestVariable();
             msg.SequenceId = 0xDEADBEEF;
             msg.DataArrayCount = 67;
             msg.DataArrayData = new byte[200];
@@ -48,9 +48,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestNestedVariableMessage CreateNestedVariable()
+        private static NestedVariableMessage CreateNestedVariable()
         {
-            var payload = new SerializationTestNestedPayload();
+            var payload = new NestedPayload();
             payload.Id = 7;
             payload.LabelLength = 5;
             payload.LabelData = new byte[32];
@@ -62,7 +62,7 @@ namespace StructFrameTests
             payload.SamplesData[1] = 20;
             payload.SamplesData[2] = 30;
 
-            var msg = new SerializationTestNestedVariableMessage();
+            var msg = new NestedVariableMessage();
             msg.Sequence = 0x12345678;
             msg.Payload = payload;
             msg.DescriptionLength = 20;
@@ -72,9 +72,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestVariableMultipleArrays CreateMultipleArrays()
+        private static VariableMultipleArrays CreateMultipleArrays()
         {
-            var msg = new SerializationTestVariableMultipleArrays();
+            var msg = new VariableMultipleArrays();
             msg.Type = 5;
             msg.ReadingsCount = 3;
             msg.ReadingsData = new int[50];
@@ -92,9 +92,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestVariableMixedFields CreateMixedFields()
+        private static VariableMixedFields CreateMixedFields()
         {
-            var msg = new SerializationTestVariableMixedFields();
+            var msg = new VariableMixedFields();
             msg.FixedId = 0xABCD1234;
             msg.FixedValue = 3.14f;
             msg.FixedName = new byte[16];
@@ -133,7 +133,7 @@ namespace StructFrameTests
         }
 
         // ============================================================================
-        // CheckMessage(index, info) - validates decoded message matches expected
+        // CheckMessage(index, info) - validates decoded SerializationTestMessage matches expected
         // This is the callback passed to ProfileRunner.Parse()
         // ============================================================================
 
@@ -147,16 +147,16 @@ namespace StructFrameTests
 
             // Deserialize based on msg_id
             IStructFrameMessage decoded = null;
-            if (info.MsgId == SerializationTestTruncationTestNonVariable.MsgId)
-                decoded = SerializationTestTruncationTestNonVariable.Deserialize(info);
-            else if (info.MsgId == SerializationTestTruncationTestVariable.MsgId)
-                decoded = SerializationTestTruncationTestVariable.Deserialize(info);
-            else if (info.MsgId == SerializationTestNestedVariableMessage.MsgId)
-                decoded = SerializationTestNestedVariableMessage.Deserialize(info);
-            else if (info.MsgId == SerializationTestVariableMultipleArrays.MsgId)
-                decoded = SerializationTestVariableMultipleArrays.Deserialize(info);
-            else if (info.MsgId == SerializationTestVariableMixedFields.MsgId)
-                decoded = SerializationTestVariableMixedFields.Deserialize(info);
+            if (info.MsgId == TruncationTestNonVariable.MsgId)
+                decoded = TruncationTestNonVariable.Deserialize(info);
+            else if (info.MsgId == TruncationTestVariable.MsgId)
+                decoded = TruncationTestVariable.Deserialize(info);
+            else if (info.MsgId == NestedVariableMessage.MsgId)
+                decoded = NestedVariableMessage.Deserialize(info);
+            else if (info.MsgId == VariableMultipleArrays.MsgId)
+                decoded = VariableMultipleArrays.Deserialize(info);
+            else if (info.MsgId == VariableMixedFields.MsgId)
+                decoded = VariableMixedFields.Deserialize(info);
 
             if (decoded == null) return false;
 

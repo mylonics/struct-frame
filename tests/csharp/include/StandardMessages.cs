@@ -1,5 +1,5 @@
 /**
- * Standard test message definitions (C#).
+ * Standard test SerializationTestMessage definitions (C#).
  * Provides GetMessage(index) function for test messages.
  *
  * This file matches the C++ standard_messages.hpp structure.
@@ -13,8 +13,8 @@ using StructFrame.SerializationTest;
 namespace StructFrameTests
 {
     /// <summary>
-    /// Message provider struct for standard test messages.
-    /// Provides MESSAGE_COUNT and GetMessage(index) function matching C++ pattern.
+    /// SerializationTestMessage provider struct for standard test messages.
+    /// Provides SerializationTestMessage_COUNT and GetMessage(index) function matching C++ pattern.
     /// </summary>
     public static class StandardMessages
     {
@@ -25,10 +25,10 @@ namespace StructFrameTests
         // Helper functions to create messages (like C++ create_* functions)
         // ============================================================================
 
-        private static SerializationTestSerializationTestMessage CreateSerializationTest(
+        private static SerializationTestMessage CreateSerializationTest(
             uint magic, string str, float flt, bool bl, int[] arr)
         {
-            var msg = new SerializationTestSerializationTestMessage();
+            var msg = new SerializationTestMessage();
             msg.MagicNumber = magic;
             msg.TestFloat = flt;
             msg.TestBool = bl;
@@ -46,12 +46,12 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestBasicTypesMessage CreateBasicTypes(
+        private static BasicTypesMessage CreateBasicTypes(
             sbyte si, short mi, int ri, long li,
             byte su, ushort mu, uint ru, ulong lu,
             float sp, double dp, bool fl, string dev, string desc)
         {
-            var msg = new SerializationTestBasicTypesMessage();
+            var msg = new BasicTypesMessage();
             msg.SmallInt = si;
             msg.MediumInt = mi;
             msg.RegularInt = ri;
@@ -76,12 +76,12 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestUnionTestMessage CreateUnionWithArray()
+        private static UnionTestMessage CreateUnionWithArray()
         {
-            var msg = new SerializationTestUnionTestMessage();
-            msg.PayloadDiscriminator = SerializationTestComprehensiveArrayMessage.MsgId;
+            var msg = new UnionTestMessage();
+            msg.PayloadDiscriminator = ComprehensiveArrayMessage.MsgId;
 
-            var arr = new SerializationTestComprehensiveArrayMessage();
+            var arr = new ComprehensiveArrayMessage();
             
             arr.FixedInts = new int[] { 10, 20, 30 };
             arr.FixedFloats = new float[] { 1.5f, 2.5f };
@@ -106,33 +106,33 @@ namespace StructFrameTests
             var test = Encoding.UTF8.GetBytes("Test");
             Array.Copy(test, 0, arr.BoundedStringsData, 0, Math.Min(test.Length, 12));
             
-            arr.FixedStatuses = new byte[] { (byte)SerializationTestStatus.ACTIVE, (byte)SerializationTestStatus.ERROR };
+            arr.FixedStatuses = new byte[] { (byte)Status.ACTIVE, (byte)Status.ERROR };
             
             arr.BoundedStatusesCount = 1;
-            arr.BoundedStatusesData = new byte[] { (byte)SerializationTestStatus.INACTIVE, 0 };
+            arr.BoundedStatusesData = new byte[] { (byte)Status.INACTIVE, 0 };
             
-            arr.FixedSensors = new SerializationTestSensor[1];
-            arr.FixedSensors[0] = new SerializationTestSensor
+            arr.FixedSensors = new Sensor[1];
+            arr.FixedSensors[0] = new Sensor
             {
                 Id = 1,
                 Value = 25.5f,
-                Status = SerializationTestStatus.ACTIVE,
+                Status = Status.ACTIVE,
                 Name = new byte[16]
             };
             var sensorName = Encoding.UTF8.GetBytes("TempSensor");
             Array.Copy(sensorName, arr.FixedSensors[0].Name, Math.Min(sensorName.Length, 16));
             
             arr.BoundedSensorsCount = 0;
-            arr.BoundedSensorsData = new SerializationTestSensor[1];
+            arr.BoundedSensorsData = new Sensor[1];
 
             msg.ArrayPayload = arr;
             return msg;
         }
 
-        private static SerializationTestUnionTestMessage CreateUnionWithTest()
+        private static UnionTestMessage CreateUnionWithTest()
         {
-            var msg = new SerializationTestUnionTestMessage();
-            msg.PayloadDiscriminator = SerializationTestSerializationTestMessage.MsgId;
+            var msg = new UnionTestMessage();
+            msg.PayloadDiscriminator = SerializationTestMessage.MsgId;
 
             msg.TestPayload = CreateSerializationTest(
                 0x12345678,
@@ -145,9 +145,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestVariableSingleArray CreateVariableSingleArrayEmpty()
+        private static VariableSingleArray CreateVariableSingleArrayEmpty()
         {
-            var msg = new SerializationTestVariableSingleArray();
+            var msg = new VariableSingleArray();
             msg.MessageId = 0x00000001;
             msg.PayloadCount = 0;
             msg.PayloadData = new byte[200];
@@ -155,9 +155,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestVariableSingleArray CreateVariableSingleArraySingle()
+        private static VariableSingleArray CreateVariableSingleArraySingle()
         {
-            var msg = new SerializationTestVariableSingleArray();
+            var msg = new VariableSingleArray();
             msg.MessageId = 0x00000002;
             msg.PayloadCount = 1;
             msg.PayloadData = new byte[200];
@@ -166,9 +166,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestVariableSingleArray CreateVariableSingleArrayThird()
+        private static VariableSingleArray CreateVariableSingleArrayThird()
         {
-            var msg = new SerializationTestVariableSingleArray();
+            var msg = new VariableSingleArray();
             msg.MessageId = 0x00000003;
             msg.PayloadCount = 67;
             msg.PayloadData = new byte[200];
@@ -178,9 +178,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestVariableSingleArray CreateVariableSingleArrayAlmost()
+        private static VariableSingleArray CreateVariableSingleArrayAlmost()
         {
-            var msg = new SerializationTestVariableSingleArray();
+            var msg = new VariableSingleArray();
             msg.MessageId = 0x00000004;
             msg.PayloadCount = 199;
             msg.PayloadData = new byte[200];
@@ -190,9 +190,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestVariableSingleArray CreateVariableSingleArrayFull()
+        private static VariableSingleArray CreateVariableSingleArrayFull()
         {
-            var msg = new SerializationTestVariableSingleArray();
+            var msg = new VariableSingleArray();
             msg.MessageId = 0x00000005;
             msg.PayloadCount = 200;
             msg.PayloadData = new byte[200];
@@ -202,10 +202,10 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static SerializationTestMessage CreateMessageTest()
+        private static Message CreateMessageTest()
         {
-            var msg = new SerializationTestMessage();
-            msg.Severity = SerializationTestMsgSeverity.SEV_MSG;
+            var msg = new Message();
+            msg.Severity = MsgSeverity.SEV_MSG;
             var module = "test";
             msg.ModuleLength = (byte)module.Length;
             msg.ModuleData = Encoding.UTF8.GetBytes(module);
@@ -244,7 +244,7 @@ namespace StructFrameTests
         }
 
         // ============================================================================
-        // CheckMessage(index, info) - validates decoded message matches expected
+        // CheckMessage(index, info) - validates decoded SerializationTestMessage matches expected
         // This is the callback passed to ProfileRunner.Parse()
         // ============================================================================
 
@@ -258,16 +258,18 @@ namespace StructFrameTests
 
             // Deserialize based on msg_id
             IStructFrameMessage decoded = null;
-            if (info.MsgId == SerializationTestSerializationTestMessage.MsgId)
-                decoded = SerializationTestSerializationTestMessage.Deserialize(info);
-            else if (info.MsgId == SerializationTestBasicTypesMessage.MsgId)
-                decoded = SerializationTestBasicTypesMessage.Deserialize(info);
-            else if (info.MsgId == SerializationTestUnionTestMessage.MsgId)
-                decoded = SerializationTestUnionTestMessage.Deserialize(info);
-            else if (info.MsgId == SerializationTestVariableSingleArray.MsgId)
-                decoded = SerializationTestVariableSingleArray.Deserialize(info);
+            if (info.MsgId == SerializationTestMessage.MsgId)
+                decoded = SerializationTestMessage.Deserialize(info);
+            else if (info.MsgId == BasicTypesMessage.MsgId)
+                decoded = BasicTypesMessage.Deserialize(info);
+            else if (info.MsgId == UnionTestMessage.MsgId)
+                decoded = UnionTestMessage.Deserialize(info);
+            else if (info.MsgId == VariableSingleArray.MsgId)
+                decoded = VariableSingleArray.Deserialize(info);
             else if (info.MsgId == SerializationTestMessage.MsgId)
                 decoded = SerializationTestMessage.Deserialize(info);
+            else if (info.MsgId == Message.MsgId)
+                decoded = Message.Deserialize(info);
 
             if (decoded == null) return false;
 

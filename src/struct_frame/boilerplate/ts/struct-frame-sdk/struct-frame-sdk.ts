@@ -12,7 +12,7 @@ export type MessageHandler<T = any> = (message: T, msgId: number) => void;
 /**
  * Frame parser interface - must be implemented by generated frame parsers
  */
-export interface IFrameParser {
+export interface FrameParser {
   /**
    * Parse incoming data and extract message
    */
@@ -27,7 +27,7 @@ export interface IFrameParser {
 /**
  * Message codec interface - deserializes raw bytes into message objects
  */
-export interface IMessageCodec<T = any> {
+export interface MessageCodec<T = any> {
   /**
    * Get message ID for this codec
    */
@@ -46,7 +46,7 @@ export interface StructFrameSdkConfig {
   /** Transport layer */
   transport: ITransport;
   /** Frame parser */
-  frameParser: IFrameParser;
+  frameParser: FrameParser;
   /** Enable debug logging */
   debug?: boolean;
 }
@@ -56,10 +56,10 @@ export interface StructFrameSdkConfig {
  */
 export class StructFrameSdk {
   private transport: ITransport;
-  private frameParser: IFrameParser;
+  private frameParser: FrameParser;
   private debug: boolean;
   private messageHandlers: Map<number, MessageHandler[]> = new Map();
-  private messageCodecs: Map<number, IMessageCodec> = new Map();
+  private messageCodecs: Map<number, MessageCodec> = new Map();
   private buffer: Uint8Array = new Uint8Array(0);
 
   constructor(config: StructFrameSdkConfig) {
@@ -92,7 +92,7 @@ export class StructFrameSdk {
   /**
    * Register a message codec for automatic deserialization
    */
-  registerCodec<T>(codec: IMessageCodec<T>): void {
+  registerCodec<T>(codec: MessageCodec<T>): void {
     this.messageCodecs.set(codec.getMsgId(), codec);
   }
 
@@ -130,9 +130,9 @@ export class StructFrameSdk {
   /**
    * Send a message object (requires pack() method)
    */
-  async send<T extends { pack(): Uint8Array; msg_id: number }>(message: T): Promise<void> {
+  async send<T extends { pack(): Uint8Array; msgId: number }>(message: T): Promise<void> {
     const data = message.pack();
-    await this.sendRaw(message.msg_id, data);
+    await this.sendRaw(message.msgId, data);
   }
 
   /**
@@ -163,28 +163,28 @@ export class StructFrameSdk {
       }
 
       // Valid message found
-      this.log(`Received message ID ${result.msg_id}, ${result.msg_len} bytes`);
+      this.log(`Received message ID ${result.msgId}, ${result.msgLen} bytes`);
       
       // Notify handlers
-      const handlers = this.messageHandlers.get(result.msg_id);
+      const handlers = this.messageHandlers.get(result.msgId);
       if (handlers && handlers.length > 0) {
         // Try to deserialize with registered codec
-        let message: any = result.msg_data;
-        const codec = this.messageCodecs.get(result.msg_id);
+        let message: any = result.msgData;
+        const codec = this.messageCodecs.get(result.msgId);
         if (codec) {
           try {
-            message = codec.deserialize(result.msg_data);
+            message = codec.deserialize(result.msgData);
           } catch (error) {
-            this.log(`Failed to deserialize message ID ${result.msg_id}: ${error}`);
+            this.log(`Failed to deserialize message ID ${result.msgId}: ${error}`);
           }
         }
 
         // Call all handlers
         handlers.forEach(handler => {
           try {
-            handler(message, result.msg_id);
+            handler(message, result.msgId);
           } catch (error) {
-            this.log(`Handler error for message ID ${result.msg_id}: ${error}`);
+            this.log(`Handler error for message ID ${result.msgId}: ${error}`);
           }
         });
       }
@@ -201,7 +201,7 @@ export class StructFrameSdk {
     // For TinyDefault format: 1 start byte + 1 length + 1 msg_id + payload + 2 crc = 5 + payload
     // Using conservative estimate of 10 bytes overhead to handle various frame formats
     // TODO: Query frame parser for exact overhead to avoid buffering issues
-    return result.msg_len + 10;
+    return result.msgLen + 10;
   }
 
   private handleError(error: Error): void {

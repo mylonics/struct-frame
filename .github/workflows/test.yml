@@ -57,6 +57,9 @@ jobs:
       - name: Run test suite
         run: python test_all.py
 
+      - name: Check generated-file determinism
+        run: python tests/check_determinism.py --verbose
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

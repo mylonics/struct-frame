@@ -21,30 +21,30 @@ import {
 } from '../generated/ts/frame-profiles';
 
 import {
-  SerializationTestBasicTypesMessage,
-  get_message_info
-} from '../generated/ts/serialization_test.structframe';
+  BasicTypesMessage,
+  getMessageInfo
+} from '../generated/ts/serialization-test.structframe';
 
 // Test result tracking
 let testsRun = 0;
 let testsPassed = 0;
 let testsFailed = 0;
 
-function createTestMessage(): SerializationTestBasicTypesMessage {
-  const msg = new SerializationTestBasicTypesMessage();
-  msg.small_int = 42;
-  msg.medium_int = 1000;
-  msg.regular_int = 100000;
-  msg.large_int = BigInt(1000000000);
-  msg.small_uint = 200;
-  msg.medium_uint = 50000;
-  msg.regular_uint = 3000000000;
-  msg.large_uint = BigInt('9000000000000000000');
-  msg.single_precision = 3.14159;
-  msg.double_precision = 2.71828;
+function createTestMessage(): BasicTypesMessage {
+  const msg = new BasicTypesMessage();
+  msg.smallInt = 42;
+  msg.mediumInt = 1000;
+  msg.regularInt = 100000;
+  msg.largeInt = BigInt(1000000000);
+  msg.smallUint = 200;
+  msg.mediumUint = 50000;
+  msg.regularUint = 3000000000;
+  msg.largeUint = BigInt('9000000000000000000');
+  msg.singlePrecision = 3.14159;
+  msg.doublePrecision = 2.71828;
   msg.flag = true;
-  msg.device_id = 'DEVICE123';
-  msg.description_data = 'Test device';
+  msg.deviceId = 'DEVICE123';
+  msg.descriptionData = 'Test device';
   return msg;
 }
 
@@ -66,7 +66,7 @@ function testCorruptedCrc(): boolean {
   buffer[bytesWritten - 2] ^= 0xFF;
   
   // Try to parse - should fail
-  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), get_message_info);
+  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -89,7 +89,7 @@ function testTruncatedFrame(): boolean {
   const truncatedSize = bytesWritten - 5;
   
   // Try to parse - should fail
-  const reader = new ProfileStandardReader(buffer.subarray(0, truncatedSize), get_message_info);
+  const reader = new ProfileStandardReader(buffer.subarray(0, truncatedSize), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -113,7 +113,7 @@ function testInvalidStartBytes(): boolean {
   buffer[1] = 0xAD;
   
   // Try to parse - should fail
-  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), get_message_info);
+  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -125,7 +125,7 @@ function testInvalidStartBytes(): boolean {
 function testZeroLengthBuffer(): boolean {
   const buffer = new Uint8Array(0);
   
-  const reader = new ProfileStandardReader(buffer, get_message_info);
+  const reader = new ProfileStandardReader(buffer, getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -148,7 +148,7 @@ function testCorruptedLength(): boolean {
   buffer[2] = 0xFF;
   
   // Try to parse - should fail
-  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), get_message_info);
+  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -171,7 +171,7 @@ function testStreamingCorruptedCrc(): boolean {
   buffer[bytesWritten - 1] ^= 0xFF;
   
   // Try streaming parse
-  const reader = new ProfileStandardAccumulatingReader(get_message_info, 1024);
+  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
   
   // Feed byte by byte
   for (let i = 0; i < bytesWritten; i++) {
@@ -186,7 +186,7 @@ function testStreamingCorruptedCrc(): boolean {
  * Test: Streaming parser handles garbage data
  */
 function testStreamingGarbage(): boolean {
-  const reader = new ProfileStandardAccumulatingReader(get_message_info, 1024);
+  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
   
   // Feed garbage bytes
   const garbage = new Uint8Array([0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A]);
@@ -217,7 +217,7 @@ function testBulkProfileCorruptedCrc(): boolean {
   buffer[bytesWritten - 2] ^= 0xFF;
   
   // Try to parse - should fail
-  const reader = new ProfileBulkReader(buffer.subarray(0, bytesWritten), get_message_info);
+  const reader = new ProfileBulkReader(buffer.subarray(0, bytesWritten), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -231,17 +231,17 @@ function testMultipleCorruptedFrames(): boolean {
   const writer = new ProfileStandardWriter(4096);
   
   const msg1 = createTestMessage();
-  msg1.small_int = 1;
+  msg1.smallInt = 1;
   writer.write(msg1);
   const bytes1End = writer.size;
   
   const msg2 = createTestMessage();
-  msg2.small_int = 2;
+  msg2.smallInt = 2;
   writer.write(msg2);
   const bytes2End = writer.size;
   
   const msg3 = createTestMessage();
-  msg3.small_int = 3;
+  msg3.smallInt = 3;
   writer.write(msg3);
   
   const buffer = writer.data();
@@ -251,7 +251,7 @@ function testMultipleCorruptedFrames(): boolean {
   buffer[bytes2End - 1] ^= 0xFF;
   
   // Parse all frames
-  const reader = new ProfileStandardReader(buffer.subarray(0, totalBytes), get_message_info);
+  const reader = new ProfileStandardReader(buffer.subarray(0, totalBytes), getMessageInfo);
   
   const result1 = reader.next();
   if (!result1.valid) return false;  // First should be valid
@@ -275,7 +275,7 @@ function testPartialFrameBoundary(): boolean {
   
   const mid = Math.floor(frameSize / 2);
   
-  const reader = new ProfileStandardAccumulatingReader(get_message_info, 1024);
+  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
   
   // Feed first half via addData, then call next() to save partial data to internal buffer
   reader.addData(buffer.subarray(0, mid));
@@ -292,7 +292,7 @@ function testPartialFrameBoundary(): boolean {
 /**
  * Test: Parser rejects frame with unknown message ID (CRC fails with wrong magic values).
  * ProfileStandard layout: [0x90][0x71][LEN][MSG_ID][PAYLOAD...][CRC1][CRC2]
- * Corrupting byte 3 (msg_id) to 0xFF causes get_message_info to return {0,0,0} magic.
+ * Corrupting byte 3 (msg_id) to 0xFF causes getMessageInfo to return {0,0,0} magic.
  */
 function testInvalidMsgId(): boolean {
   const msg = createTestMessage();
@@ -304,10 +304,10 @@ function testInvalidMsgId(): boolean {
   if (frameSize < 5) return false;
 
   // Corrupt the msg_id byte (byte 3: [start1][start2][len][msg_id]...)
-  // 0xFF is not a known message ID → get_message_info returns {0,0,0} magic → CRC fails
+  // 0xFF is not a known message ID → getMessageInfo returns {0,0,0} magic → CRC fails
   buffer[3] = 0xFF;
 
-  const reader = new ProfileStandardReader(buffer.subarray(0, frameSize), get_message_info);
+  const reader = new ProfileStandardReader(buffer.subarray(0, frameSize), getMessageInfo);
   const result = reader.next();
   return !result.valid;  // Expect failure: CRC mismatch due to wrong magic values
 }
@@ -315,7 +315,7 @@ function testInvalidMsgId(): boolean {
 /**
  * Test: Minimal profile (no CRC) rejects a truncated frame.
  * ProfileSensor layout: [0x70][MSG_ID][PAYLOAD...]  (no CRC, no length field)
- * Parser uses get_message_info to determine expected payload size; truncated buffer → rejected.
+ * Parser uses getMessageInfo to determine expected payload size; truncated buffer → rejected.
  */
 function testMinimalProfileTruncatedFrame(): boolean {
   const msg = createTestMessage();
@@ -328,7 +328,7 @@ function testMinimalProfileTruncatedFrame(): boolean {
 
   // Provide fewer bytes than the full frame to trigger truncation error
   const truncated = frameSize - 5;
-  const reader = new ProfileSensorReader(buffer.subarray(0, truncated), get_message_info);
+  const reader = new ProfileSensorReader(buffer.subarray(0, truncated), getMessageInfo);
   const result = reader.next();
   return !result.valid;  // Expect failure: buffer too small for expected payload
 }
@@ -352,7 +352,7 @@ function testNetworkSysIdCompId(): boolean {
   // sys_id is inside the CRC-protected region so CRC will fail
   buffer[3] ^= 0xFF;
 
-  const reader = new ProfileNetworkReader(buffer.subarray(0, frameSize), get_message_info);
+  const reader = new ProfileNetworkReader(buffer.subarray(0, frameSize), getMessageInfo);
   const result = reader.next();
   return !result.valid;  // Expect failure: corrupted sys_id invalidates CRC
 }

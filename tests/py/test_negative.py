@@ -16,7 +16,7 @@ import os
 # Add paths
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'generated', 'py'))
 
-from struct_frame.generated.serialization_test import SerializationTestBasicTypesMessage as BasicTypesMessage, get_message_info
+from struct_frame.generated.serialization_test import BasicTypesMessage as BasicTypesMessage, get_message_info
 from frame_profiles import (
     ProfileStandardWriter,
     ProfileStandardReader,

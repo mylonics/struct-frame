@@ -5,8 +5,8 @@
 
 #include <cstdint>
 
-namespace FrameParsers {
-namespace FrameHeaders {
+namespace structframe {
+namespace headers {
 
 /* Header type enumeration */
 enum class HeaderType : uint8_t {
@@ -79,5 +79,5 @@ constexpr HeaderConfig HEADER_MAVLINK_V2_CONFIG = {
     false                                      /* encodes_payload_type */
 };
 
-}  // namespace FrameHeaders
-}  // namespace FrameParsers
+}  // namespace headers
+}  // namespace structframe

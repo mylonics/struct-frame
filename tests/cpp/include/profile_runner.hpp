@@ -7,7 +7,7 @@
 #include "../../generated/cpp/frame_profiles.hpp"
 
 // Function pointer type for get_message_info
-using GetMessageInfoFn = FrameParsers::MessageInfo (*)(uint16_t);
+using GetMessageInfoFn = structframe::MessageInfo (*)(uint16_t);
 
 // ProfileRunner - Low-level encoding and decoding for a specific MessageProvider and Config
 //
@@ -24,7 +24,7 @@ class ProfileRunner {
   // Encode all messages to buffer using BufferWriter
   // Returns total bytes written
   static size_t encode(uint8_t* buffer, size_t buffer_size) {
-    using Writer = FrameParsers::BufferWriter<Config>;
+    using Writer = structframe::BufferWriter<Config>;
     Writer writer(buffer, buffer_size);
 
     for (size_t i = 0; i < MessageProvider::MESSAGE_COUNT; i++) {
@@ -38,7 +38,7 @@ class ProfileRunner {
   // Parse all messages from buffer using AccumulatingReader
   // Returns the number of messages that matched (MESSAGE_COUNT if all pass)
   static size_t parse(const uint8_t* buffer, size_t buffer_size) {
-    using Reader = FrameParsers::AccumulatingReader<Config, BUFFER_SIZE, GetMessageInfoFn>;
+    using Reader = structframe::AccumulatingReader<Config, BUFFER_SIZE, GetMessageInfoFn>;
 
     Reader reader(GetMsgInfo);
     reader.add_data(buffer, buffer_size);

@@ -14,22 +14,22 @@ from typing import Union
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
 
 from struct_frame.generated.serialization_test import (
-    SerializationTestTruncationTestNonVariable,
-    SerializationTestTruncationTestVariable,
-    SerializationTestNestedPayload,
-    SerializationTestNestedVariableMessage,
-    SerializationTestVariableMultipleArrays,
-    SerializationTestVariableMixedFields,
+    TruncationTestNonVariable,
+    TruncationTestVariable,
+    NestedPayload,
+    NestedVariableMessage,
+    VariableMultipleArrays,
+    VariableMixedFields,
     get_message_info,
 )
 
 # Type alias for message union (like C++ MessageVariant)
 MessageType = Union[
-    SerializationTestTruncationTestNonVariable,
-    SerializationTestTruncationTestVariable,
-    SerializationTestNestedVariableMessage,
-    SerializationTestVariableMultipleArrays,
-    SerializationTestVariableMixedFields,
+    TruncationTestNonVariable,
+    TruncationTestVariable,
+    NestedVariableMessage,
+    VariableMultipleArrays,
+    VariableMixedFields,
 ]
 
 # Message count
@@ -40,41 +40,41 @@ MESSAGE_COUNT = 5
 # Helper functions to create messages (like C++ create_* functions)
 # ============================================================================
 
-def create_non_variable_1_3_filled() -> SerializationTestTruncationTestNonVariable:
+def create_non_variable_1_3_filled() -> TruncationTestNonVariable:
     """Create non-variable message with 1/3 filled array (67 out of 200 bytes)."""
-    return SerializationTestTruncationTestNonVariable(
+    return TruncationTestNonVariable(
         sequence_id=0xDEADBEEF,
         data_array=list(range(67)),
         footer=0xCAFE
     )
 
 
-def create_variable_1_3_filled() -> SerializationTestTruncationTestVariable:
+def create_variable_1_3_filled() -> TruncationTestVariable:
     """Create variable message with 1/3 filled array (67 out of 200 bytes)."""
-    return SerializationTestTruncationTestVariable(
+    return TruncationTestVariable(
         sequence_id=0xDEADBEEF,
         data_array=list(range(67)),
         footer=0xCAFE
     )
 
 
-def create_nested_variable() -> SerializationTestNestedVariableMessage:
+def create_nested_variable() -> NestedVariableMessage:
     """Create nested variable message with partially-filled nested struct fields."""
-    payload = SerializationTestNestedPayload(
+    payload = NestedPayload(
         id=7,
         label=b'Hello',
         samples=[10, 20, 30]
     )
-    return SerializationTestNestedVariableMessage(
+    return NestedVariableMessage(
         sequence=0x12345678,
         payload=payload,
         description=b'nested variable test'
     )
 
 
-def create_multiple_arrays() -> SerializationTestVariableMultipleArrays:
+def create_multiple_arrays() -> VariableMultipleArrays:
     """Create multiple-arrays message with partially-filled arrays."""
-    return SerializationTestVariableMultipleArrays(
+    return VariableMultipleArrays(
         type=5,
         readings=[100, 200, 300],
         values=[1.5, 2.5],
@@ -82,9 +82,9 @@ def create_multiple_arrays() -> SerializationTestVariableMultipleArrays:
     )
 
 
-def create_mixed_fields() -> SerializationTestVariableMixedFields:
+def create_mixed_fields() -> VariableMixedFields:
     """Create mixed-fields message: fixed fields + partial variable array and string."""
-    return SerializationTestVariableMixedFields(
+    return VariableMixedFields(
         fixed_id=0xABCD1234,
         fixed_value=3.14,
         fixed_name=b'DeviceName',

@@ -8,7 +8,6 @@
 //   file:    path to binary output/input file
 
 use struct_frame_sdk::extended_test::*;
-use struct_frame_sdk::get_message_info;
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::{
     encode_message_crc, encode_message_minimal, AccumulatingReader, ProfileConfig,
@@ -31,8 +30,8 @@ fn create_serialization_test(
     flt: f32,
     bl: bool,
     arr: &[i32],
-) -> SerializationTestSerializationTestMessage {
-    let mut msg = SerializationTestSerializationTestMessage::default();
+) -> SerializationTestMessage {
+    let mut msg = SerializationTestMessage::default();
     msg.magic_number = magic;
     let len = s.len().min(msg.test_string.len());
     msg.test_string_length = len as u8;
@@ -52,8 +51,8 @@ fn create_basic_types(
     su: u8, mu: u16, ru: u32, lu: u64,
     sp: f32, dp: f64, fl: bool,
     dev: &[u8], desc: &[u8],
-) -> SerializationTestBasicTypesMessage {
-    let mut msg = SerializationTestBasicTypesMessage::default();
+) -> BasicTypesMessage {
+    let mut msg = BasicTypesMessage::default();
     msg.small_int = si;
     msg.medium_int = mi;
     msg.regular_int = ri;
@@ -73,9 +72,9 @@ fn create_basic_types(
     msg
 }
 
-fn create_union_with_array() -> SerializationTestUnionTestMessage {
-    let mut msg = SerializationTestUnionTestMessage::default();
-    let mut arr = SerializationTestComprehensiveArrayMessage::default();
+fn create_union_with_array() -> UnionTestMessage {
+    let mut msg = UnionTestMessage::default();
+    let mut arr = ComprehensiveArrayMessage::default();
     arr.fixed_ints[0] = 10; arr.fixed_ints[1] = 20; arr.fixed_ints[2] = 30;
     arr.fixed_floats[0] = 1.5; arr.fixed_floats[1] = 2.5;
     arr.fixed_bools[0] = true; arr.fixed_bools[1] = false;
@@ -91,13 +90,13 @@ fn create_union_with_array() -> SerializationTestUnionTestMessage {
     arr.bounded_strings_count = 1;
     let t = b"Test";
     arr.bounded_strings[0][..t.len()].copy_from_slice(t);
-    arr.fixed_statuses[0] = SerializationTestStatus::ACTIVE;
-    arr.fixed_statuses[1] = SerializationTestStatus::ERROR;
+    arr.fixed_statuses[0] = Status::ACTIVE;
+    arr.fixed_statuses[1] = Status::ERROR;
     arr.bounded_statuses_count = 1;
-    arr.bounded_statuses[0] = SerializationTestStatus::INACTIVE;
+    arr.bounded_statuses[0] = Status::INACTIVE;
     arr.fixed_sensors[0].id = 1;
     arr.fixed_sensors[0].value = 25.5;
-    arr.fixed_sensors[0].status = SerializationTestStatus::ACTIVE;
+    arr.fixed_sensors[0].status = Status::ACTIVE;
     let ts = b"TempSensor";
     arr.fixed_sensors[0].name[..ts.len()].copy_from_slice(ts);
     arr.bounded_sensors_count = 0;
@@ -105,9 +104,9 @@ fn create_union_with_array() -> SerializationTestUnionTestMessage {
     msg
 }
 
-fn create_union_with_test() -> SerializationTestUnionTestMessage {
-    let mut msg = SerializationTestUnionTestMessage::default();
-    let mut test = SerializationTestSerializationTestMessage::default();
+fn create_union_with_test() -> UnionTestMessage {
+    let mut msg = UnionTestMessage::default();
+    let mut test = SerializationTestMessage::default();
     test.magic_number = 0x12345678;
     let s = b"Union test message";
     test.test_string_length = s.len() as u8;
@@ -121,9 +120,9 @@ fn create_union_with_test() -> SerializationTestUnionTestMessage {
     msg
 }
 
-fn create_message_test() -> SerializationTestMessage {
-    let mut msg = SerializationTestMessage::default();
-    msg.severity = SerializationTestMsgSeverity::SEV_MSG;
+fn create_message_test() -> Message {
+    let mut msg = Message::default();
+    msg.severity = MsgSeverity::SEV_MSG;
     let m = b"test";
     msg.module_length = m.len() as u8;
     msg.module[..m.len()].copy_from_slice(m);
@@ -137,8 +136,8 @@ fn create_message_test() -> SerializationTestMessage {
 // Extended message creation helpers -- mirror extended_messages.hpp
 // ============================================================================
 
-fn create_ext_id_1() -> ExtendedTestExtendedIdMessage1 {
-    let mut msg = ExtendedTestExtendedIdMessage1::default();
+fn create_ext_id_1() -> ExtendedIdMessage1 {
+    let mut msg = ExtendedIdMessage1::default();
     msg.sequence_number = 12345678;
     let s = b"Test Label Extended 1";
     msg.label[..s.len()].copy_from_slice(s);
@@ -147,8 +146,8 @@ fn create_ext_id_1() -> ExtendedTestExtendedIdMessage1 {
     msg
 }
 
-fn create_ext_id_2() -> ExtendedTestExtendedIdMessage2 {
-    let mut msg = ExtendedTestExtendedIdMessage2::default();
+fn create_ext_id_2() -> ExtendedIdMessage2 {
+    let mut msg = ExtendedIdMessage2::default();
     msg.sensor_id = -42;
     msg.reading = 2.718281828;
     msg.status_code = 50000;
@@ -158,8 +157,8 @@ fn create_ext_id_2() -> ExtendedTestExtendedIdMessage2 {
     msg
 }
 
-fn create_ext_id_3() -> ExtendedTestExtendedIdMessage3 {
-    let mut msg = ExtendedTestExtendedIdMessage3::default();
+fn create_ext_id_3() -> ExtendedIdMessage3 {
+    let mut msg = ExtendedIdMessage3::default();
     msg.timestamp = 1704067200000000u64;
     msg.temperature = -40;
     msg.humidity = 85;
@@ -168,8 +167,8 @@ fn create_ext_id_3() -> ExtendedTestExtendedIdMessage3 {
     msg
 }
 
-fn create_ext_id_4() -> ExtendedTestExtendedIdMessage4 {
-    let mut msg = ExtendedTestExtendedIdMessage4::default();
+fn create_ext_id_4() -> ExtendedIdMessage4 {
+    let mut msg = ExtendedIdMessage4::default();
     msg.event_id = 999999;
     msg.event_type = 42;
     msg.event_time = 1704067200000i64;
@@ -179,8 +178,8 @@ fn create_ext_id_4() -> ExtendedTestExtendedIdMessage4 {
     msg
 }
 
-fn create_ext_id_5() -> ExtendedTestExtendedIdMessage5 {
-    let mut msg = ExtendedTestExtendedIdMessage5::default();
+fn create_ext_id_5() -> ExtendedIdMessage5 {
+    let mut msg = ExtendedIdMessage5::default();
     msg.x_position = 100.5f32;
     msg.y_position = -200.25f32;
     msg.z_position = 50.125f32;
@@ -188,8 +187,8 @@ fn create_ext_id_5() -> ExtendedTestExtendedIdMessage5 {
     msg
 }
 
-fn create_ext_id_6() -> ExtendedTestExtendedIdMessage6 {
-    let mut msg = ExtendedTestExtendedIdMessage6::default();
+fn create_ext_id_6() -> ExtendedIdMessage6 {
+    let mut msg = ExtendedIdMessage6::default();
     msg.command_id = -12345;
     msg.parameter1 = 1000;
     msg.parameter2 = 2000;
@@ -199,8 +198,8 @@ fn create_ext_id_6() -> ExtendedTestExtendedIdMessage6 {
     msg
 }
 
-fn create_ext_id_7() -> ExtendedTestExtendedIdMessage7 {
-    let mut msg = ExtendedTestExtendedIdMessage7::default();
+fn create_ext_id_7() -> ExtendedIdMessage7 {
+    let mut msg = ExtendedIdMessage7::default();
     msg.counter = 4294967295u32;
     msg.average = 123.456789;
     msg.minimum = -999.99f32;
@@ -208,8 +207,8 @@ fn create_ext_id_7() -> ExtendedTestExtendedIdMessage7 {
     msg
 }
 
-fn create_ext_id_8() -> ExtendedTestExtendedIdMessage8 {
-    let mut msg = ExtendedTestExtendedIdMessage8::default();
+fn create_ext_id_8() -> ExtendedIdMessage8 {
+    let mut msg = ExtendedIdMessage8::default();
     msg.level = 255;
     msg.offset = -32768;
     msg.duration = 86400000;
@@ -218,16 +217,16 @@ fn create_ext_id_8() -> ExtendedTestExtendedIdMessage8 {
     msg
 }
 
-fn create_ext_id_9() -> ExtendedTestExtendedIdMessage9 {
-    let mut msg = ExtendedTestExtendedIdMessage9::default();
+fn create_ext_id_9() -> ExtendedIdMessage9 {
+    let mut msg = ExtendedIdMessage9::default();
     msg.big_number = -9223372036854775807i64;
     msg.big_unsigned = 18446744073709551615u64;
     msg.precision_value = 1.7976931348623157e+308f64;
     msg
 }
 
-fn create_ext_id_10() -> ExtendedTestExtendedIdMessage10 {
-    let mut msg = ExtendedTestExtendedIdMessage10::default();
+fn create_ext_id_10() -> ExtendedIdMessage10 {
+    let mut msg = ExtendedIdMessage10::default();
     msg.small_value = 256;
     let text = b"Boundary Test";
     msg.short_text[..text.len()].copy_from_slice(text);
@@ -235,8 +234,8 @@ fn create_ext_id_10() -> ExtendedTestExtendedIdMessage10 {
     msg
 }
 
-fn create_ext_large_1() -> ExtendedTestLargePayloadMessage1 {
-    let mut msg = ExtendedTestLargePayloadMessage1::default();
+fn create_ext_large_1() -> LargePayloadMessage1 {
+    let mut msg = LargePayloadMessage1::default();
     for i in 0..64usize {
         msg.sensor_readings[i] = (i + 1) as f32;
     }
@@ -247,8 +246,8 @@ fn create_ext_large_1() -> ExtendedTestLargePayloadMessage1 {
     msg
 }
 
-fn create_ext_large_2() -> ExtendedTestLargePayloadMessage2 {
-    let mut msg = ExtendedTestLargePayloadMessage2::default();
+fn create_ext_large_2() -> LargePayloadMessage2 {
+    let mut msg = LargePayloadMessage2::default();
     for i in 0..256usize {
         msg.large_data[i] = i as u8;
     }
@@ -263,8 +262,8 @@ fn create_ext_var_single(
     count: u8,
     crc: u32,
     start_value: u8,
-) -> ExtendedTestExtendedVariableSingleArray {
-    let mut msg = ExtendedTestExtendedVariableSingleArray::default();
+) -> ExtendedVariableSingleArray {
+    let mut msg = ExtendedVariableSingleArray::default();
     msg.timestamp = timestamp;
     msg.telemetry_data_count = count;
     for i in 0..count as usize {
@@ -278,8 +277,8 @@ fn create_ext_var_single(
 // Variable-flag message creation helpers -- mirror variable_flag_messages.hpp
 // ============================================================================
 
-fn create_non_variable() -> SerializationTestTruncationTestNonVariable {
-    let mut msg = SerializationTestTruncationTestNonVariable::default();
+fn create_non_variable() -> TruncationTestNonVariable {
+    let mut msg = TruncationTestNonVariable::default();
     msg.sequence_id = 0xDEADBEEF;
     msg.data_array_count = 67;
     for i in 0..67u8 {
@@ -289,8 +288,8 @@ fn create_non_variable() -> SerializationTestTruncationTestNonVariable {
     msg
 }
 
-fn create_truncation_variable() -> SerializationTestTruncationTestVariable {
-    let mut msg = SerializationTestTruncationTestVariable::default();
+fn create_truncation_variable() -> TruncationTestVariable {
+    let mut msg = TruncationTestVariable::default();
     msg.sequence_id = 0xDEADBEEF;
     msg.data_array_count = 67;
     for i in 0..67u8 {
@@ -300,8 +299,8 @@ fn create_truncation_variable() -> SerializationTestTruncationTestVariable {
     msg
 }
 
-fn create_nested_variable() -> SerializationTestNestedVariableMessage {
-    let mut msg = SerializationTestNestedVariableMessage::default();
+fn create_nested_variable() -> NestedVariableMessage {
+    let mut msg = NestedVariableMessage::default();
     msg.sequence = 0x12345678;
 
     // Nested payload: id=7, label="Hello" (5 chars), samples=[10,20,30] (3 elements)
@@ -321,8 +320,8 @@ fn create_nested_variable() -> SerializationTestNestedVariableMessage {
     msg
 }
 
-fn create_multiple_arrays() -> SerializationTestVariableMultipleArrays {
-    let mut msg = SerializationTestVariableMultipleArrays::default();
+fn create_multiple_arrays() -> VariableMultipleArrays {
+    let mut msg = VariableMultipleArrays::default();
     msg.r#type = 5;
 
     msg.readings_count = 3;
@@ -341,8 +340,8 @@ fn create_multiple_arrays() -> SerializationTestVariableMultipleArrays {
     msg
 }
 
-fn create_mixed_fields() -> SerializationTestVariableMixedFields {
-    let mut msg = SerializationTestVariableMixedFields::default();
+fn create_mixed_fields() -> VariableMixedFields {
+    let mut msg = VariableMixedFields::default();
     msg.fixed_id = 0xABCD1234;
     msg.fixed_value = 3.14f32;
     let name = b"DeviceName";
@@ -392,17 +391,17 @@ fn get_expected_payload_standard(index: usize, buf: &mut [u8], use_fixed: bool) 
         8 => pack_msg(&create_union_with_array(), buf, use_fixed),
         9 => pack_msg(&create_union_with_test(), buf, use_fixed),
         11 => {
-            let mut m = SerializationTestVariableSingleArray::default();
+            let mut m = VariableSingleArray::default();
             m.message_id = 0x00000001; m.payload_count = 0; m.checksum = 0x0001;
             pack_msg(&m, buf, use_fixed)
         }
         12 => {
-            let mut m = SerializationTestVariableSingleArray::default();
+            let mut m = VariableSingleArray::default();
             m.message_id = 0x00000002; m.payload_count = 1; m.payload[0] = 42; m.checksum = 0x0002;
             pack_msg(&m, buf, use_fixed)
         }
         13 => {
-            let mut m = SerializationTestVariableSingleArray::default();
+            let mut m = VariableSingleArray::default();
             m.message_id = 0x00000003;
             m.payload_count = 67;
             for i in 0..67 { m.payload[i] = i as u8; }
@@ -410,7 +409,7 @@ fn get_expected_payload_standard(index: usize, buf: &mut [u8], use_fixed: bool) 
             pack_msg(&m, buf, use_fixed)
         }
         14 => {
-            let mut m = SerializationTestVariableSingleArray::default();
+            let mut m = VariableSingleArray::default();
             m.message_id = 0x00000004;
             m.payload_count = 199;
             for i in 0..199 { m.payload[i] = i as u8; }
@@ -418,7 +417,7 @@ fn get_expected_payload_standard(index: usize, buf: &mut [u8], use_fixed: bool) 
             pack_msg(&m, buf, use_fixed)
         }
         15 => {
-            let mut m = SerializationTestVariableSingleArray::default();
+            let mut m = VariableSingleArray::default();
             m.message_id = 0x00000005;
             m.payload_count = 200;
             for i in 0..200 { m.payload[i] = (i % 256) as u8; }
@@ -503,17 +502,17 @@ fn encode_standard(config: &ProfileConfig, output: &mut [u8]) -> usize {
         -273.15, -9999.999999, false, b"NEG-TEST", b"Negative and max values"));
 
     {
-        let mut m = SerializationTestVariableSingleArray::default();
+        let mut m = VariableSingleArray::default();
         m.message_id = 0x00000001; m.payload_count = 0; m.checksum = 0x0001;
         enc!(m);
     }
     {
-        let mut m = SerializationTestVariableSingleArray::default();
+        let mut m = VariableSingleArray::default();
         m.message_id = 0x00000002; m.payload_count = 1; m.payload[0] = 42; m.checksum = 0x0002;
         enc!(m);
     }
     {
-        let mut m = SerializationTestVariableSingleArray::default();
+        let mut m = VariableSingleArray::default();
         m.message_id = 0x00000003;
         m.payload_count = 67;
         for i in 0..67 { m.payload[i] = i as u8; }
@@ -521,7 +520,7 @@ fn encode_standard(config: &ProfileConfig, output: &mut [u8]) -> usize {
         enc!(m);
     }
     {
-        let mut m = SerializationTestVariableSingleArray::default();
+        let mut m = VariableSingleArray::default();
         m.message_id = 0x00000004;
         m.payload_count = 199;
         for i in 0..199 { m.payload[i] = i as u8; }
@@ -529,7 +528,7 @@ fn encode_standard(config: &ProfileConfig, output: &mut [u8]) -> usize {
         enc!(m);
     }
     {
-        let mut m = SerializationTestVariableSingleArray::default();
+        let mut m = VariableSingleArray::default();
         m.message_id = 0x00000005;
         m.payload_count = 200;
         for i in 0..200 { m.payload[i] = (i % 256) as u8; }
@@ -600,14 +599,16 @@ fn encode_variable_flag(config: &ProfileConfig, output: &mut [u8]) -> usize {
 // Generic decode-and-validate
 // ============================================================================
 
-fn decode_validate_with<F>(
+fn decode_validate_with<F, G>(
     config: ProfileConfig,
     data: &[u8],
     expected_count: usize,
     get_expected: F,
+    msg_info_fn: G,
 ) -> usize
 where
     F: Fn(usize, &mut [u8]) -> (u16, usize),
+    G: Fn(u16) -> Option<struct_frame_sdk::MessageInfo>,
 {
     let mut reader = AccumulatingReader::new(config, 65536);
     reader.add_data(data);
@@ -615,7 +616,7 @@ where
     let mut count = 0;
     let mut expected_buf = vec![0u8; 65536];
 
-    while let Some(frame) = reader.next(&get_message_info) {
+    while let Some(frame) = reader.next(&msg_info_fn) {
         if !frame.valid { break; }
 
         let (expected_id, expected_len) = get_expected(count, &mut expected_buf);
@@ -697,7 +698,7 @@ fn main() {
             Box::new(move |cfg, data| {
                 decode_validate_with(cfg, data, STANDARD_MESSAGE_COUNT, move |i, buf| {
                     get_expected_payload_standard(i, buf, use_fixed)
-                })
+                }, struct_frame_sdk::serialization_test::get_message_info)
             }),
         ),
         "test_extended" => (
@@ -706,7 +707,7 @@ fn main() {
             Box::new(|cfg, data| {
                 decode_validate_with(cfg, data, EXTENDED_MESSAGE_COUNT, |i, buf| {
                     get_expected_payload_extended(i, buf)
-                })
+                }, struct_frame_sdk::extended_test::get_message_info)
             }),
         ),
         "test_variable_flag" => (
@@ -715,7 +716,7 @@ fn main() {
             Box::new(move |cfg, data| {
                 decode_validate_with(cfg, data, VARIABLE_FLAG_MESSAGE_COUNT, move |i, buf| {
                     get_expected_payload_variable_flag(i, buf, use_fixed)
-                })
+                }, struct_frame_sdk::serialization_test::get_message_info)
             }),
         ),
         _ => {

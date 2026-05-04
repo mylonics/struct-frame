@@ -32,6 +32,7 @@ The SDK provides high-level abstractions for message communication, including tr
 | TypeScript/JavaScript | ✓ | UDP, TCP, WebSocket, Serial |
 | Python | ✓ | Serial, sockets, WebSocket |
 | C# | ✓ | Serial, UDP, TCP, WebSocket |
+| Rust | ✓ (frame SDK) | N/A — frame encoding/parsing only; no transport layer |
 | C | - | N/A |
 
 ## Generating with SDK
@@ -59,4 +60,5 @@ python -m struct_frame messages.proto --build_csharp --csharp_sdk
 - [TypeScript/JavaScript SDK](/extended-features/typescript-sdk/)
 - [Python SDK](/extended-features/python-sdk/)
 - [C# SDK](/extended-features/csharp-sdk/)
+- [Rust SDK](/extended-features/rust-sdk/)
 

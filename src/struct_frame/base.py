@@ -7,7 +7,11 @@ language-specific code generators.
 
 import re
 
-version = "0.0.1"
+try:
+    from importlib.metadata import version as _pkg_version
+    version = _pkg_version("struct-frame")
+except Exception:
+    version = "0.0.1"
 
 
 class NamingStyle:
@@ -90,13 +94,7 @@ class NamingStyleC(NamingStyle):
         return word.lower()
 
 
-def camelCase(st):
-    """Convert string to camelCase (first letter lowercase)."""
-    output = ''.join(x for x in st.title() if x.isalnum())
-    return output[0].lower() + output[1:]
-
-
-def pascalCase(st):
+def pascal_case(st):
     """Convert string to PascalCase (first letter uppercase)."""
     return ''.join(x for x in st.title() if x.isalnum())
 
@@ -104,7 +102,7 @@ def pascalCase(st):
 pattern = re.compile(r'(?<!^)(?=[A-Z])')
 
 
-def CamelToSnakeCase(data):
+def camel_to_snake_case(data):
     """Convert CamelCase or PascalCase to snake_case."""
     return pattern.sub('_', data).lower()
 

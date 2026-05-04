@@ -6,24 +6,24 @@
  */
 
 import {
-  SerializationTestSerializationTestMessage,
-  SerializationTestBasicTypesMessage,
-  SerializationTestUnionTestMessage,
-  SerializationTestComprehensiveArrayMessage,
-  SerializationTestVariableSingleArray,
   SerializationTestMessage,
-  SerializationTestMsgSeverity,
-} from '../../generated/ts/serialization_test.structframe';
+  BasicTypesMessage,
+  UnionTestMessage,
+  ComprehensiveArrayMessage,
+  VariableSingleArray,
+  Message,
+  MsgSeverity,
+} from '../../generated/ts/serialization-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
 
 // Type alias for message union (like C++ MessageVariant)
 export type MessageType = 
-  | SerializationTestSerializationTestMessage
-  | SerializationTestBasicTypesMessage
-  | SerializationTestUnionTestMessage
-  | SerializationTestVariableSingleArray
-  | SerializationTestMessage;
+  | SerializationTestMessage
+  | BasicTypesMessage
+  | UnionTestMessage
+  | VariableSingleArray
+  | Message;
 
 // Message count
 export const MESSAGE_COUNT = 17;
@@ -33,141 +33,141 @@ export const MESSAGE_COUNT = 17;
 // Helper functions to create messages (like C++ create_* functions)
 // ============================================================================
 
-function createSerializationTest(magic: number, str: string, flt: number, bl: boolean, arr: number[]): SerializationTestSerializationTestMessage {
-  return new SerializationTestSerializationTestMessage({
-    magic_number: magic,
-    test_string_length: str.length,
-    test_string_data: str,
-    test_float: flt,
-    test_bool: bl,
-    test_array_count: arr.length,
-    test_array_data: arr,
+function createSerializationTest(magic: number, str: string, flt: number, bl: boolean, arr: number[]): SerializationTestMessage {
+  return new SerializationTestMessage({
+    magicNumber: magic,
+    testStringLength: str.length,
+    testStringData: str,
+    testFloat: flt,
+    testBool: bl,
+    testArrayCount: arr.length,
+    testArrayData: arr,
   });
 }
 
 function createBasicTypes(si: number, mi: number, ri: number, li: bigint, su: number, mu: number, ru: number, lu: bigint,
-                          sp: number, dp: number, fl: boolean, dev: string, desc: string): SerializationTestBasicTypesMessage {
-  return new SerializationTestBasicTypesMessage({
-    small_int: si,
-    medium_int: mi,
-    regular_int: ri,
-    large_int: li,
-    small_uint: su,
-    medium_uint: mu,
-    regular_uint: ru,
-    large_uint: lu,
-    single_precision: sp,
-    double_precision: dp,
+                          sp: number, dp: number, fl: boolean, dev: string, desc: string): BasicTypesMessage {
+  return new BasicTypesMessage({
+    smallInt: si,
+    mediumInt: mi,
+    regularInt: ri,
+    largeInt: li,
+    smallUint: su,
+    mediumUint: mu,
+    regularUint: ru,
+    largeUint: lu,
+    singlePrecision: sp,
+    doublePrecision: dp,
     flag: fl,
-    device_id: dev,
-    description_length: desc.length,
-    description_data: desc,
+    deviceId: dev,
+    descriptionLength: desc.length,
+    descriptionData: desc,
   });
 }
 
-function createUnionWithArray(): SerializationTestUnionTestMessage {
-  const msg = new SerializationTestUnionTestMessage();
-  msg.payload_discriminator = SerializationTestComprehensiveArrayMessage._msgid!;
+function createUnionWithArray(): UnionTestMessage {
+  const msg = new UnionTestMessage();
+  msg.payloadDiscriminator = ComprehensiveArrayMessage._msgid!;
 
-  const innerMsg = new SerializationTestComprehensiveArrayMessage({
-    fixed_ints: [10, 20, 30],
-    fixed_floats: [1.5, 2.5],
-    fixed_bools: [1, 0, 1, 0],
-    bounded_uints_count: 2,
-    bounded_uints_data: [100, 200],
-    bounded_doubles_count: 1,
-    bounded_doubles_data: [3.14159],
-    fixed_strings: ['Hello', 'World'],
-    bounded_strings_count: 1,
-    bounded_strings_data: ['Test'],
-    fixed_statuses: [1, 2],
-    bounded_statuses_count: 1,
-    bounded_statuses_data: [0],
-    fixed_sensors: [
+  const innerMsg = new ComprehensiveArrayMessage({
+    fixedInts: [10, 20, 30],
+    fixedFloats: [1.5, 2.5],
+    fixedBools: [1, 0, 1, 0],
+    boundedUintsCount: 2,
+    boundedUintsData: [100, 200],
+    boundedDoublesCount: 1,
+    boundedDoublesData: [3.14159],
+    fixedStrings: ['Hello', 'World'],
+    boundedStringsCount: 1,
+    boundedStringsData: ['Test'],
+    fixedStatuses: [1, 2],
+    boundedStatusesCount: 1,
+    boundedStatusesData: [0],
+    fixedSensors: [
       { id: 1, value: 25.5, status: 1, name: 'TempSensor' },
       { id: 0, value: 0, status: 0, name: '' },
     ],
-    bounded_sensors_count: 0,
-    bounded_sensors_data: [],
+    boundedSensorsCount: 0,
+    boundedSensorsData: [],
   });
 
-  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestComprehensiveArrayMessage._size);
+  innerMsg._buffer.copy(msg._buffer, 2, 0, ComprehensiveArrayMessage._size);
   return msg;
 }
 
-function createUnionWithTest(): SerializationTestUnionTestMessage {
-  const msg = new SerializationTestUnionTestMessage();
-  msg.payload_discriminator = SerializationTestSerializationTestMessage._msgid!;
+function createUnionWithTest(): UnionTestMessage {
+  const msg = new UnionTestMessage();
+  msg.payloadDiscriminator = SerializationTestMessage._msgid!;
 
-  const innerMsg = new SerializationTestSerializationTestMessage({
-    magic_number: 0x12345678,
-    test_string_length: 'Union test message'.length,
-    test_string_data: 'Union test message',
-    test_float: 99.99,
-    test_bool: true,
-    test_array_count: 5,
-    test_array_data: [1, 2, 3, 4, 5],
+  const innerMsg = new SerializationTestMessage({
+    magicNumber: 0x12345678,
+    testStringLength: 'Union test message'.length,
+    testStringData: 'Union test message',
+    testFloat: 99.99,
+    testBool: true,
+    testArrayCount: 5,
+    testArrayData: [1, 2, 3, 4, 5],
   });
 
-  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestSerializationTestMessage._size);
+  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestMessage._size);
   return msg;
 }
 
-function createVariableSingleArrayEmpty(): SerializationTestVariableSingleArray {
-  return new SerializationTestVariableSingleArray({
-    message_id: 0x00000001,
-    payload_count: 0,
-    payload_data: [],
+function createVariableSingleArrayEmpty(): VariableSingleArray {
+  return new VariableSingleArray({
+    messageId: 0x00000001,
+    payloadCount: 0,
+    payloadData: [],
     checksum: 0x0001,
   });
 }
 
-function createVariableSingleArraySingle(): SerializationTestVariableSingleArray {
-  return new SerializationTestVariableSingleArray({
-    message_id: 0x00000002,
-    payload_count: 1,
-    payload_data: [42],
+function createVariableSingleArraySingle(): VariableSingleArray {
+  return new VariableSingleArray({
+    messageId: 0x00000002,
+    payloadCount: 1,
+    payloadData: [42],
     checksum: 0x0002,
   });
 }
 
-function createVariableSingleArrayThird(): SerializationTestVariableSingleArray {
+function createVariableSingleArrayThird(): VariableSingleArray {
   const thirdFilled = Array.from({ length: 67 }, (_, i) => i);
-  return new SerializationTestVariableSingleArray({
-    message_id: 0x00000003,
-    payload_count: 67,
-    payload_data: thirdFilled,
+  return new VariableSingleArray({
+    messageId: 0x00000003,
+    payloadCount: 67,
+    payloadData: thirdFilled,
     checksum: 0x0003,
   });
 }
 
-function createVariableSingleArrayAlmost(): SerializationTestVariableSingleArray {
+function createVariableSingleArrayAlmost(): VariableSingleArray {
   const almostFull = Array.from({ length: 199 }, (_, i) => i);
-  return new SerializationTestVariableSingleArray({
-    message_id: 0x00000004,
-    payload_count: 199,
-    payload_data: almostFull,
+  return new VariableSingleArray({
+    messageId: 0x00000004,
+    payloadCount: 199,
+    payloadData: almostFull,
     checksum: 0x0004,
   });
 }
 
-function createVariableSingleArrayFull(): SerializationTestVariableSingleArray {
+function createVariableSingleArrayFull(): VariableSingleArray {
   const full = Array.from({ length: 200 }, (_, i) => i);
-  return new SerializationTestVariableSingleArray({
-    message_id: 0x00000005,
-    payload_count: 200,
-    payload_data: full,
+  return new VariableSingleArray({
+    messageId: 0x00000005,
+    payloadCount: 200,
+    payloadData: full,
     checksum: 0x0005,
   });
 }
 
-function createMessageTest(): SerializationTestMessage {
-  return new SerializationTestMessage({
-    severity: SerializationTestMsgSeverity.SEV_MSG,
-    module_length: 4,
-    module_data: 'test',
-    msg_length: 13,
-    msg_data: 'A really good',
+function createMessageTest(): Message {
+  return new Message({
+    severity: MsgSeverity.SevMsg,
+    moduleLength: 4,
+    moduleData: 'test',
+    msgLength: 13,
+    msgData: 'A really good',
   });
 }
 
@@ -209,7 +209,7 @@ export function checkMessage(index: number, info: FrameMsgInfo): boolean {
   const msgClass = expected.constructor as any;
 
   // Check msg_id matches
-  if (info.msg_id !== msgClass._msgid) return false;
+  if (info.msgId !== msgClass._msgid) return false;
 
   // Deserialize and compare
   const decoded = msgClass.deserialize(info);

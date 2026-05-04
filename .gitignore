@@ -74,3 +74,5 @@ node_modules/
 
 # Rust build artifacts
 tests/rust/target/
+
+docs/theme_overrides/

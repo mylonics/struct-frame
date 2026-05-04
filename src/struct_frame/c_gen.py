@@ -7,10 +7,10 @@ This module generates C code for struct serialization with manual Pack/Unpack
 functions for binary compatibility across platforms.
 """
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
 import time
 
-StyleC = NamingStyleC()
+_style_c = NamingStyleC()
 
 c_types = {"uint8": "uint8_t",
            "int8": "int8_t",
@@ -32,42 +32,42 @@ class EnumCGen():
     def generate(field):
         result = build_enum_leading_comments(field.comments)
 
-        enumName = '%s%s' % (pascalCase(field.package), field.name)
-        result += 'typedef enum %s {\n' % (enumName)
+        enum_name = '%s%s' % (pascal_case(field.package), field.name)
+        result += 'typedef enum %s {\n' % (enum_name)
 
         # C uses ENUM_NAME_VALUE format with prefix
-        enum_prefix = CamelToSnakeCase(field.name).upper()
+        enum_prefix = camel_to_snake_case(field.name).upper()
         
         def c_value_generator(name, entry_name, value, comma):
             return "    %s_%s = %d%s" % (enum_prefix, entry_name, value, comma)
 
         enum_values = build_enum_values(
-            field, StyleC,
+            field, _style_c,
             skip_trailing_comma=True,
             value_generator=c_value_generator
         )
 
         result += '\n'.join(enum_values)
-        result += '\n} %s;\n' % (enumName)
+        result += '\n} %s;\n' % (enum_name)
 
-        result += 'typedef uint8_t %s_t;' % (enumName)
+        result += 'typedef uint8_t %s_t;' % (enum_name)
 
         # Add module-prefixed enum constants for compatibility
         result += '\n\n/* Enum constants with module prefix */\n'
-        module_prefix = CamelToSnakeCase(field.package).upper()
+        module_prefix = camel_to_snake_case(field.package).upper()
         for d in field.data:
             # Use the already correct enum constant name
-            enum_constant = f"{enum_prefix}_{StyleC.enum_entry(d)}"
+            enum_constant = f"{enum_prefix}_{_style_c.enum_entry(d)}"
             module_constant = f"{module_prefix}_{enum_constant}"
             result += f'#define {module_constant:<35} {enum_constant}\n'
 
         # Add enum-to-string helper function
-        result += f'\n\n/* Convert {enumName} to string */\n'
-        result += f'static inline const char* {enumName}_to_string({enumName} value) {{\n'
+        result += f'\n\n/* Convert {enum_name} to string */\n'
+        result += f'static inline const char* {enum_name}_to_string({enum_name} value) {{\n'
         result += '    switch (value) {\n'
         for d in field.data:
-            enum_constant = f"{enum_prefix}_{StyleC.enum_entry(d)}"
-            result += f'        case {enum_constant}: return "{StyleC.enum_entry(d)}";\n'
+            enum_constant = f"{enum_prefix}_{_style_c.enum_entry(d)}"
+            result += f'        case {enum_constant}: return "{_style_c.enum_entry(d)}";\n'
         result += '        default: return "UNKNOWN";\n'
         result += '    }\n'
         result += '}\n'
@@ -80,21 +80,21 @@ class FieldCGen():
     def generate(field):
         result = ''
         var_name = field.name
-        type_name = field.fieldType
+        type_name = field.field_type
 
         # Handle basic type resolution
         if type_name in c_types:
             base_type = c_types[type_name]
         else:
             pkg_prefix = field.type_package if field.type_package else field.package
-            if field.isEnum:
-                base_type = '%s%s_t' % (pascalCase(pkg_prefix), type_name)
+            if field.is_enum:
+                base_type = '%s%s_t' % (pascal_case(pkg_prefix), type_name)
             else:
-                base_type = '%s%s' % (pascalCase(pkg_prefix), type_name)
+                base_type = '%s%s' % (pascal_case(pkg_prefix), type_name)
 
         # Handle arrays
         if field.is_array:
-            if field.fieldType == "string":
+            if field.field_type == "string":
                 # String arrays need both array size and individual string size
                 if field.size_option is not None:
                     # Fixed string array: size_option strings, each element_size chars
@@ -126,7 +126,7 @@ class FieldCGen():
             result += f"    {declaration}{comment}"
 
         # Handle regular strings
-        elif field.fieldType == "string":
+        elif field.field_type == "string":
             if field.size_option is not None:
                 # Fixed string: exactly size_option characters
                 declaration = f"char {var_name}[{field.size_option}];"
@@ -164,16 +164,16 @@ class OneOfCGen():
             return ''
         
         result = ''
-        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
         
         result += f'/* Discriminator enum for {msg_name}::{oneof.name} oneof */\n'
         result += f'typedef enum {enum_name} {{\n'
-        result += f'    {CamelToSnakeCase(msg_name).upper()}_{CamelToSnakeCase(oneof.name).upper()}_FIELD_NONE = 0,\n'
+        result += f'    {camel_to_snake_case(msg_name).upper()}_{camel_to_snake_case(oneof.name).upper()}_FIELD_NONE = 0,\n'
         
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             field_order = idx + 1
             # Use SCREAMING_SNAKE_CASE for enum values with message prefix
-            enum_value = f'{CamelToSnakeCase(msg_name).upper()}_{CamelToSnakeCase(oneof.name).upper()}_FIELD_{CamelToSnakeCase(field_name).upper()}'
+            enum_value = f'{camel_to_snake_case(msg_name).upper()}_{camel_to_snake_case(oneof.name).upper()}_FIELD_{camel_to_snake_case(field_name).upper()}'
             result += f'    {enum_value} = {field_order},\n'
         
         result += f'}} {enum_name};\n\n'
@@ -182,7 +182,7 @@ class OneOfCGen():
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascalCase(oneof.name)}Field'
+        return f'{msg_name}{pascal_case(oneof.name)}Field'
     
     @staticmethod
     def generate(oneof, package=None, msg_name=None):
@@ -224,11 +224,11 @@ class MessageCGen():
     def _generate_field_comparison(field):
         """Generate comparison code for a single field in C."""
         var_name = field.name
-        type_name = field.fieldType
+        type_name = field.field_type
         
         # Handle arrays
         if field.is_array:
-            if field.fieldType == "string":
+            if field.field_type == "string":
                 if field.size_option is not None:
                     # Fixed string array: memcmp
                     return f'(memcmp(a->{var_name}, b->{var_name}, sizeof(a->{var_name})) == 0)'
@@ -249,7 +249,7 @@ class MessageCGen():
                     return f'(memcmp(a->{var_name}, b->{var_name}, sizeof(a->{var_name})) == 0)'
         
         # Handle regular strings
-        elif field.fieldType == "string":
+        elif field.field_type == "string":
             if field.size_option is not None:
                 # Fixed string: strncmp
                 return f'(strncmp(a->{var_name}, b->{var_name}, {field.size_option}) == 0)'
@@ -290,7 +290,7 @@ class MessageCGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        structName = '%s%s' % (pascalCase(msg.package), msg.name)
+        structName = '%s%s' % (pascal_case(msg.package), msg.name)
         result += 'typedef struct %s {' % structName
 
         result += '\n'
@@ -317,8 +317,8 @@ class MessageCGen():
         result += '\n}'
         result += ' %s;\n\n' % structName
 
-        defineName = '%s_%s' % (CamelToSnakeCase(
-            msg.package).upper(), CamelToSnakeCase(msg.name).upper())
+        defineName = '%s_%s' % (camel_to_snake_case(
+            msg.package).upper(), camel_to_snake_case(msg.name).upper())
         result += '#define %s_MAX_SIZE %d\n' % (defineName, size)
         
         # Add MIN_SIZE for variable messages
@@ -395,20 +395,20 @@ class MessageCGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 # Variable array: count byte + actual data
-                if field.fieldType == "string":
+                if field.field_type == "string":
                     element_size = field.element_size if field.element_size else 1
                     result += f'    size += 1 + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
                 else:
                     element_size = field.size // field.max_size if field.max_size else 1
                     # Recalculate element size from the actual type
                     type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                    if field.fieldType in type_sizes:
-                        element_size = type_sizes[field.fieldType]
+                    if field.field_type in type_sizes:
+                        element_size = type_sizes[field.field_type]
                     else:
                         # For nested messages, we need the actual size
                         element_size = (field.size - 1) // field.max_size
                     result += f'    size += 1 + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
-            elif field.fieldType == "string" and field.max_size is not None:
+            elif field.field_type == "string" and field.max_size is not None:
                 # Variable string: length byte + actual data
                 result += f'    size += 1 + msg->{var_name}.length;  // {var_name}: length + data\n'
             else:
@@ -433,7 +433,7 @@ class MessageCGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 # Variable array
-                if field.fieldType == "string":
+                if field.field_type == "string":
                     element_size = field.element_size if field.element_size else 1
                     result += f'    // {var_name}: variable string array\n'
                     result += f'    buffer[offset++] = msg->{var_name}.count;\n'
@@ -441,15 +441,15 @@ class MessageCGen():
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
                 else:
                     type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                    if field.fieldType in type_sizes:
-                        element_size = type_sizes[field.fieldType]
+                    if field.field_type in type_sizes:
+                        element_size = type_sizes[field.field_type]
                     else:
                         element_size = (field.size - 1) // field.max_size
                     result += f'    // {var_name}: variable array\n'
                     result += f'    buffer[offset++] = msg->{var_name}.count;\n'
                     result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
-            elif field.fieldType == "string" and field.max_size is not None:
+            elif field.field_type == "string" and field.max_size is not None:
                 # Variable string
                 result += f'    // {var_name}: variable string\n'
                 result += f'    buffer[offset++] = msg->{var_name}.length;\n'
@@ -480,7 +480,7 @@ class MessageCGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 # Variable array
-                if field.fieldType == "string":
+                if field.field_type == "string":
                     element_size = field.element_size if field.element_size else 1
                     result += f'    // {var_name}: variable string array\n'
                     result += f'    if (offset >= buffer_size) return 0;\n'
@@ -491,8 +491,8 @@ class MessageCGen():
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
                 else:
                     type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                    if field.fieldType in type_sizes:
-                        element_size = type_sizes[field.fieldType]
+                    if field.field_type in type_sizes:
+                        element_size = type_sizes[field.field_type]
                     else:
                         element_size = (field.size - 1) // field.max_size
                     result += f'    // {var_name}: variable array\n'
@@ -502,7 +502,7 @@ class MessageCGen():
                     result += f'    if (offset + msg->{var_name}.count * {element_size} > buffer_size) return 0;\n'
                     result += f'    memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
-            elif field.fieldType == "string" and field.max_size is not None:
+            elif field.field_type == "string" and field.max_size is not None:
                 # Variable string
                 result += f'    // {var_name}: variable string\n'
                 result += f'    if (offset >= buffer_size) return 0;\n'
@@ -635,10 +635,9 @@ class FileCGen():
     @staticmethod
     def generate(package, imported_packages=None, equality=False):
         yield '/* Automatically generated struct frame header */\n'
-        yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
+        yield '/* Generated by struct-frame %s. */\n\n' % version
 
         yield '#pragma once\n'
-        yield '#pragma pack(1)\n'
         yield '#include <stdbool.h>\n'
         yield '#include <stdint.h>\n'
         yield '#include "frame_base.h"  // For message_info_t\n'
@@ -654,10 +653,13 @@ class FileCGen():
                 yield '#include "%s.structframe.h"\n' % pkg_name
         
         yield '\n'
+        yield '#ifdef __cplusplus\n'
+        yield 'extern "C" {\n'
+        yield '#endif\n\n'
 
         # Add package ID constant if present
         if package.package_id is not None:
-            pkg_name_upper = CamelToSnakeCase(package.name).upper()
+            pkg_name_upper = camel_to_snake_case(package.name).upper()
             yield f'/* Package ID for extended message IDs */\n'
             yield f'#define {pkg_name_upper}_PACKAGE_ID {package.package_id}\n\n'
 
@@ -671,7 +673,7 @@ class FileCGen():
         # Generate discriminator enums for field_order oneofs (must come before struct definitions)
         has_discriminator_enums = False
         for key, msg in package.messages.items():
-            structName = '%s%s' % (pascalCase(msg.package), msg.name)
+            structName = '%s%s' % (pascal_case(msg.package), msg.name)
             for oneof_name, oneof in msg.oneofs.items():
                 enum_code = OneOfCGen.generate_discriminator_enum(oneof, structName, package)
                 if enum_code:
@@ -682,20 +684,22 @@ class FileCGen():
 
         if package.messages:
             yield '/* Struct definitions */\n'
-            # Need to sort messages to make sure dependecies are properly met
+            yield '#pragma pack(push, 1)\n'
+            # Need to sort messages to make sure dependencies are properly met
 
             for key, msg in package.sortedMessages().items():
                 yield MessageCGen.generate(msg, package, equality) + '\n'
+            yield '#pragma pack(pop)\n'
             yield '\n'
 
         # Add default initializers if needed
         # if package.messages:
         #    yield '/* Initializer values for message structs */\n'
         #    for key, msg in package.messages.items():
-        #        identifier = '%s_%s_init_default' % (package.name, StyleC.struct_name(msg.name))
+        #        identifier = '%s_%s_init_default' % (package.name, _style_c.struct_name(msg.name))
         #        yield '#define %-40s %s\n' % (identifier, MessageCGen.get_initializer(msg, False))
         #    for key, msg in package.messages.items():
-        #        identifier = '%s_%s_init_zero' % (package.name, StyleC.struct_name(msg.name))
+        #        identifier = '%s_%s_init_zero' % (package.name, _style_c.struct_name(msg.name))
         #        yield '#define %-40s %s\n' % (identifier, msg.get_initializer(True))
         #    yield '\n'
 
@@ -713,7 +717,7 @@ class FileCGen():
                 yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
                 yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
                 yield '    \n'
-                pkg_name_upper = CamelToSnakeCase(package.name).upper()
+                pkg_name_upper = camel_to_snake_case(package.name).upper()
                 yield f'    /* Check if this is our package */\n'
                 yield f'    if (pkg_id != {pkg_name_upper}_PACKAGE_ID) {{\n'
                 yield f'        return false;\n'
@@ -732,8 +736,8 @@ class FileCGen():
                 yield '    switch (msg_id) {\n'
             
             for key, msg in package.sortedMessages().items():
-                name = '%s_%s' % (CamelToSnakeCase(
-                    msg.package).upper(), CamelToSnakeCase(msg.name).upper())
+                name = '%s_%s' % (camel_to_snake_case(
+                    msg.package).upper(), camel_to_snake_case(msg.name).upper())
                 if msg.id:
                     if package.package_id is not None:
                         # When using package ID, compare against local message ID
@@ -758,3 +762,7 @@ class FileCGen():
             yield '    }\n'
             yield '    return false;\n'
             yield '}\n'
+
+        yield '\n#ifdef __cplusplus\n'
+        yield '}\n'
+        yield '#endif\n'

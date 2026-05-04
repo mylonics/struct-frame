@@ -6,38 +6,38 @@
  */
 
 import {
-  ExtendedTestExtendedIdMessage1,
-  ExtendedTestExtendedIdMessage2,
-  ExtendedTestExtendedIdMessage3,
-  ExtendedTestExtendedIdMessage4,
-  ExtendedTestExtendedIdMessage5,
-  ExtendedTestExtendedIdMessage6,
-  ExtendedTestExtendedIdMessage7,
-  ExtendedTestExtendedIdMessage8,
-  ExtendedTestExtendedIdMessage9,
-  ExtendedTestExtendedIdMessage10,
-  ExtendedTestLargePayloadMessage1,
-  ExtendedTestLargePayloadMessage2,
-  ExtendedTestExtendedVariableSingleArray,
-} from '../../generated/ts/extended_test.structframe';
+  ExtendedIdMessage1,
+  ExtendedIdMessage2,
+  ExtendedIdMessage3,
+  ExtendedIdMessage4,
+  ExtendedIdMessage5,
+  ExtendedIdMessage6,
+  ExtendedIdMessage7,
+  ExtendedIdMessage8,
+  ExtendedIdMessage9,
+  ExtendedIdMessage10,
+  LargePayloadMessage1,
+  LargePayloadMessage2,
+  ExtendedVariableSingleArray,
+} from '../../generated/ts/extended-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
 
 // Type alias for message union (like C++ MessageVariant)
 export type MessageType =
-  | ExtendedTestExtendedIdMessage1
-  | ExtendedTestExtendedIdMessage2
-  | ExtendedTestExtendedIdMessage3
-  | ExtendedTestExtendedIdMessage4
-  | ExtendedTestExtendedIdMessage5
-  | ExtendedTestExtendedIdMessage6
-  | ExtendedTestExtendedIdMessage7
-  | ExtendedTestExtendedIdMessage8
-  | ExtendedTestExtendedIdMessage9
-  | ExtendedTestExtendedIdMessage10
-  | ExtendedTestLargePayloadMessage1
-  | ExtendedTestLargePayloadMessage2
-  | ExtendedTestExtendedVariableSingleArray;
+  | ExtendedIdMessage1
+  | ExtendedIdMessage2
+  | ExtendedIdMessage3
+  | ExtendedIdMessage4
+  | ExtendedIdMessage5
+  | ExtendedIdMessage6
+  | ExtendedIdMessage7
+  | ExtendedIdMessage8
+  | ExtendedIdMessage9
+  | ExtendedIdMessage10
+  | LargePayloadMessage1
+  | LargePayloadMessage2
+  | ExtendedVariableSingleArray;
 
 // Message count
 export const MESSAGE_COUNT = 17;
@@ -47,27 +47,27 @@ export const MESSAGE_COUNT = 17;
 // Helper functions to create messages (like C++ create_* functions)
 // ============================================================================
 
-function createExtId1(): ExtendedTestExtendedIdMessage1 {
-  return new ExtendedTestExtendedIdMessage1({
-    sequence_number: 12345678,
+function createExtId1(): ExtendedIdMessage1 {
+  return new ExtendedIdMessage1({
+    sequenceNumber: 12345678,
     label: 'Test Label Extended 1',
     value: 3.14159,
     enabled: true,
   });
 }
 
-function createExtId2(): ExtendedTestExtendedIdMessage2 {
-  return new ExtendedTestExtendedIdMessage2({
-    sensor_id: -42,
+function createExtId2(): ExtendedIdMessage2 {
+  return new ExtendedIdMessage2({
+    sensorId: -42,
     reading: 2.718281828,
-    status_code: 50000,
-    description_length: 'Extended ID test message 2'.length,
-    description_data: 'Extended ID test message 2',
+    statusCode: 50000,
+    descriptionLength: 'Extended ID test message 2'.length,
+    descriptionData: 'Extended ID test message 2',
   });
 }
 
-function createExtId3(): ExtendedTestExtendedIdMessage3 {
-  return new ExtendedTestExtendedIdMessage3({
+function createExtId3(): ExtendedIdMessage3 {
+  return new ExtendedIdMessage3({
     timestamp: 1704067200000000n,
     temperature: -40,
     humidity: 85,
@@ -75,37 +75,37 @@ function createExtId3(): ExtendedTestExtendedIdMessage3 {
   });
 }
 
-function createExtId4(): ExtendedTestExtendedIdMessage4 {
-  return new ExtendedTestExtendedIdMessage4({
-    event_id: 999999,
-    event_type: 42,
-    event_time: 1704067200000n,
-    event_data_length: 'Event payload with extended message ID'.length,
-    event_data_data: 'Event payload with extended message ID',
+function createExtId4(): ExtendedIdMessage4 {
+  return new ExtendedIdMessage4({
+    eventId: 999999,
+    eventType: 42,
+    eventTime: 1704067200000n,
+    eventDataLength: 'Event payload with extended message ID'.length,
+    eventDataData: 'Event payload with extended message ID',
   });
 }
 
-function createExtId5(): ExtendedTestExtendedIdMessage5 {
-  return new ExtendedTestExtendedIdMessage5({
-    x_position: 100.5,
-    y_position: -200.25,
-    z_position: 50.125,
-    frame_number: 1000000,
+function createExtId5(): ExtendedIdMessage5 {
+  return new ExtendedIdMessage5({
+    xPosition: 100.5,
+    yPosition: -200.25,
+    zPosition: 50.125,
+    frameNumber: 1000000,
   });
 }
 
-function createExtId6(): ExtendedTestExtendedIdMessage6 {
-  return new ExtendedTestExtendedIdMessage6({
-    command_id: -12345,
+function createExtId6(): ExtendedIdMessage6 {
+  return new ExtendedIdMessage6({
+    commandId: -12345,
     parameter1: 1000,
     parameter2: 2000,
     acknowledged: false,
-    command_name: 'CALIBRATE_SENSOR',
+    commandName: 'CALIBRATE_SENSOR',
   });
 }
 
-function createExtId7(): ExtendedTestExtendedIdMessage7 {
-  return new ExtendedTestExtendedIdMessage7({
+function createExtId7(): ExtendedIdMessage7 {
+  return new ExtendedIdMessage7({
     counter: 4294967295,
     average: 123.456789,
     minimum: -999.99,
@@ -113,8 +113,8 @@ function createExtId7(): ExtendedTestExtendedIdMessage7 {
   });
 }
 
-function createExtId8(): ExtendedTestExtendedIdMessage8 {
-  return new ExtendedTestExtendedIdMessage8({
+function createExtId8(): ExtendedIdMessage8 {
+  return new ExtendedIdMessage8({
     level: 255,
     offset: -32768,
     duration: 86400000,
@@ -122,36 +122,36 @@ function createExtId8(): ExtendedTestExtendedIdMessage8 {
   });
 }
 
-function createExtId9(): ExtendedTestExtendedIdMessage9 {
-  return new ExtendedTestExtendedIdMessage9({
-    big_number: -9223372036854775807n,
-    big_unsigned: 18446744073709551615n,
-    precision_value: 1.7976931348623157e+308,
+function createExtId9(): ExtendedIdMessage9 {
+  return new ExtendedIdMessage9({
+    bigNumber: -9223372036854775807n,
+    bigUnsigned: 18446744073709551615n,
+    precisionValue: 1.7976931348623157e+308,
   });
 }
 
-function createExtId10(): ExtendedTestExtendedIdMessage10 {
-  return new ExtendedTestExtendedIdMessage10({
-    small_value: 256,
-    short_text: 'Boundary Test',
+function createExtId10(): ExtendedIdMessage10 {
+  return new ExtendedIdMessage10({
+    smallValue: 256,
+    shortText: 'Boundary Test',
     flag: true,
   });
 }
 
-function createLarge1(): ExtendedTestLargePayloadMessage1 {
+function createLarge1(): LargePayloadMessage1 {
   const sensorReadings: number[] = [];
   for (let i = 0; i < 64; i++) {
     sensorReadings.push(i + 1);
   }
-  return new ExtendedTestLargePayloadMessage1({
-    sensor_readings: sensorReadings,
-    reading_count: 64,
+  return new LargePayloadMessage1({
+    sensorReadings: sensorReadings,
+    readingCount: 64,
     timestamp: 1704067200000000n,
-    device_name: 'Large Sensor Array Device',
+    deviceName: 'Large Sensor Array Device',
   });
 }
 
-function createLarge2(): ExtendedTestLargePayloadMessage2 {
+function createLarge2(): LargePayloadMessage2 {
   const largeData: number[] = [];
   for (let i = 0; i < 256; i++) {
     largeData.push(i);
@@ -159,52 +159,52 @@ function createLarge2(): ExtendedTestLargePayloadMessage2 {
   for (let i = 256; i < 280; i++) {
     largeData.push(i - 256);
   }
-  return new ExtendedTestLargePayloadMessage2({
-    large_data: largeData,
+  return new LargePayloadMessage2({
+    largeData: largeData,
   });
 }
 
-function createExtVarSingleEmpty(): ExtendedTestExtendedVariableSingleArray {
-  return new ExtendedTestExtendedVariableSingleArray({
+function createExtVarSingleEmpty(): ExtendedVariableSingleArray {
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000001n,
-    telemetry_data_count: 0,
-    telemetry_data_data: [],
+    telemetryDataCount: 0,
+    telemetryDataData: [],
     crc: 0x00000001,
   });
 }
 
-function createExtVarSingleSingle(): ExtendedTestExtendedVariableSingleArray {
-  return new ExtendedTestExtendedVariableSingleArray({
+function createExtVarSingleSingle(): ExtendedVariableSingleArray {
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000002n,
-    telemetry_data_count: 1,
-    telemetry_data_data: [42],
+    telemetryDataCount: 1,
+    telemetryDataData: [42],
     crc: 0x00000002,
   });
 }
 
-function createExtVarSingleThird(): ExtendedTestExtendedVariableSingleArray {
-  return new ExtendedTestExtendedVariableSingleArray({
+function createExtVarSingleThird(): ExtendedVariableSingleArray {
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000003n,
-    telemetry_data_count: 83,
-    telemetry_data_data: Array.from({ length: 83 }, (_, i) => i),
+    telemetryDataCount: 83,
+    telemetryDataData: Array.from({ length: 83 }, (_, i) => i),
     crc: 0x00000003,
   });
 }
 
-function createExtVarSingleAlmost(): ExtendedTestExtendedVariableSingleArray {
-  return new ExtendedTestExtendedVariableSingleArray({
+function createExtVarSingleAlmost(): ExtendedVariableSingleArray {
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000004n,
-    telemetry_data_count: 249,
-    telemetry_data_data: Array.from({ length: 249 }, (_, i) => i % 256),
+    telemetryDataCount: 249,
+    telemetryDataData: Array.from({ length: 249 }, (_, i) => i % 256),
     crc: 0x00000004,
   });
 }
 
-function createExtVarSingleFull(): ExtendedTestExtendedVariableSingleArray {
-  return new ExtendedTestExtendedVariableSingleArray({
+function createExtVarSingleFull(): ExtendedVariableSingleArray {
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000005n,
-    telemetry_data_count: 250,
-    telemetry_data_data: Array.from({ length: 250 }, (_, i) => i % 256),
+    telemetryDataCount: 250,
+    telemetryDataData: Array.from({ length: 250 }, (_, i) => i % 256),
     crc: 0x00000005,
   });
 }
@@ -247,7 +247,7 @@ export function checkMessage(index: number, info: FrameMsgInfo): boolean {
   const msgClass = expected.constructor as any;
 
   // Check msg_id matches
-  if (info.msg_id !== msgClass._msgid) return false;
+  if (info.msgId !== msgClass._msgid) return false;
 
   // Deserialize and compare
   const decoded = msgClass.deserialize(info);

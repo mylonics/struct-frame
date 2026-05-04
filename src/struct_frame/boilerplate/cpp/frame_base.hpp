@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cstring>
 
-namespace FrameParsers {
+namespace structframe {
 
 // Message info structure for unified callback
 struct MessageInfo {
@@ -191,4 +191,4 @@ inline size_t encode_payload_minimal(uint8_t* output, uint8_t msg_id, const uint
   return idx;
 }
 
-}  // namespace FrameParsers
+}  // namespace structframe

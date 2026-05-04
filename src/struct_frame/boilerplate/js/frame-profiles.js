@@ -105,7 +105,7 @@ const ProfileStandardConfig = createProfileConfig(
 /**
  * Profile Sensor: Tiny + Minimal
  * Frame: [0x70] [MSG_ID] [PAYLOAD]
- * 2 bytes overhead, no length field (requires get_msg_length callback)
+ * 2 bytes overhead, no length field (requires getMsgLength callback)
  */
 const ProfileSensorConfig = createProfileConfig(
   'ProfileSensor',
@@ -116,7 +116,7 @@ const ProfileSensorConfig = createProfileConfig(
 /**
  * Profile IPC: None + Minimal
  * Frame: [MSG_ID] [PAYLOAD]
- * 1 byte overhead, no start bytes (requires get_msg_length callback)
+ * 1 byte overhead, no start bytes (requires getMsgLength callback)
  */
 const ProfileIPCConfig = createProfileConfig(
   'ProfileIPC',
@@ -333,9 +333,9 @@ function parseFrameWithCrc(config, buffer, getMessageInfo) {
 
   // Extract message data
   result.valid = true;
-  result.msg_id = msgId;
-  result.msg_len = msgLen;
-  result.msg_data = buffer.slice(headerSize, headerSize + msgLen);
+  result.msgId = msgId;
+  result.msgLen = msgLen;
+  result.msgData = buffer.slice(headerSize, headerSize + msgLen);
 
   return result;
 }
@@ -385,9 +385,9 @@ function parseFrameMinimal(config, buffer, getMessageInfo) {
 
   // Extract message data
   result.valid = true;
-  result.msg_id = msgId;
-  result.msg_len = msgLen;
-  result.msg_data = buffer.slice(headerSize, headerSize + msgLen);
+  result.msgId = msgId;
+  result.msgLen = msgLen;
+  result.msgData = buffer.slice(headerSize, headerSize + msgLen);
 
   return result;
 }
@@ -403,7 +403,7 @@ function parseFrameMinimal(config, buffer, getMessageInfo) {
  *   const reader = new BufferReader(ProfileStandardConfig, buffer);
  *   let result = reader.next();
  *   while (result.valid) {
- *       // Process result.msg_id, result.msg_data, result.msg_len
+ *       // Process result.msgId, result.msgData, result.msgLen
  *       result = reader.next();
  *   }
  *
@@ -448,7 +448,7 @@ class BufferReader {
     }
 
     if (result.valid) {
-      const frameSize = profileHeaderSize(this.config) + result.msg_len + profileFooterSize(this.config);
+      const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
       this._offset += frameSize;
     } else {
       // No more valid frames - stop parsing
@@ -650,7 +650,7 @@ class AccumulatingReader {
       const result = this._parseBuffer(internalBytes);
 
       if (result.valid) {
-        const frameSize = profileHeaderSize(this.config) + result.msg_len + profileFooterSize(this.config);
+        const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
         const partialLen = this.internalDataLen > this.currentSize ? this.internalDataLen - this.currentSize : 0;
         const bytesFromCurrent = frameSize > partialLen ? frameSize - partialLen : 0;
         this.currentOffset = bytesFromCurrent;
@@ -673,7 +673,7 @@ class AccumulatingReader {
     const result = this._parseBuffer(remaining);
 
     if (result.valid) {
-      const frameSize = profileHeaderSize(this.config) + result.msg_len + profileFooterSize(this.config);
+      const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
       this.currentOffset += frameSize;
       return result;
     }
@@ -787,9 +787,9 @@ class AccumulatingReader {
             if (msgLen === 0) {
               const result = createFrameMsgInfo();
               result.valid = true;
-              result.msg_id = msgId;
-              result.msg_len = 0;
-              result.msg_data = new Uint8Array(0);
+              result.msgId = msgId;
+              result.msgLen = 0;
+              result.msgData = new Uint8Array(0);
               this._state = AccumulatingReaderState.LOOKING_FOR_START1;
               this.internalDataLen = 0;
               this.expectedFrameSize = 0;
@@ -872,9 +872,9 @@ class AccumulatingReader {
         if (msgLen === 0) {
           const result = createFrameMsgInfo();
           result.valid = true;
-          result.msg_id = msgId;
-          result.msg_len = 0;
-          result.msg_data = new Uint8Array(0);
+          result.msgId = msgId;
+          result.msgLen = 0;
+          result.msgData = new Uint8Array(0);
           this._state = AccumulatingReaderState.LOOKING_FOR_START1;
           this.internalDataLen = 0;
           this.expectedFrameSize = 0;

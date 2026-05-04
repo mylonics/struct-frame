@@ -29,7 +29,7 @@ This document maps every user-facing feature area to its documentation status, i
 | `--build_js` | ✅ [CLI Reference](/reference/cli-reference/) | ⚠️ | JS has no dedicated language guide beyond the CLI table | Medium |
 | `--build_csharp` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
 | `--build_gql` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No GraphQL usage guide or example | Medium |
-| `--build_rust` | ❌ | ❌ | Rust generator exists (`rust_gen.py`) but is undocumented | **High** |
+| `--build_rust` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ [Rust SDK](/extended-features/rust-sdk/) | — | — |
 
 ### 1.2 Output Path Options
 
@@ -42,8 +42,8 @@ This document maps every user-facing feature area to its documentation status, i
 | `--js_path` | ✅ | ⚠️ | No dedicated JS guide | Medium |
 | `--gql_path` | ✅ | ❌ | No GraphQL guide | Medium |
 | `--csharp_path` | ✅ | ✅ | — | — |
-| `--rust_path` | ❌ | ❌ | Rust undocumented | **High** |
-| `--catalog_path` | ❌ | ❌ | LSP catalog feature not documented | Low |
+| `--rust_path` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ [Rust SDK](/extended-features/rust-sdk/) | — | — |
+| `--catalog_path` | ✅ [CLI Reference](/reference/cli-reference/) | 📄 | `sf_compile.json` catalog mentioned; full schema not documented | Low |
 
 ### 1.3 SDK & Advanced Flags
 
@@ -169,7 +169,7 @@ This document maps every user-facing feature area to its documentation status, i
 | `ProfileStandardAccumulatingReader` | C++ | ✅ | ✅ | — | — |
 | `ProfileStandardAccumulatingReader` | Python | ✅ | ✅ | — | — |
 | `ProfileStandardAccumulatingReader` | TypeScript | ✅ | ✅ | — | — |
-| `AccumulatingReader` | Rust | ❌ | ❌ | Rust SDK undocumented | **High** |
+| `AccumulatingReader` | Rust | ✅ [Rust SDK](/extended-features/rust-sdk/) | ✅ | — | — |
 | `FrameDecoder` / parsers | C# | ⚠️ | ❌ | Types exist but not shown by name | Medium |
 
 ### 4.3 High-Level SDK
@@ -197,9 +197,9 @@ This document maps every user-facing feature area to its documentation status, i
 
 | Feature | C | C++ | Python | TypeScript | JavaScript | C# | GraphQL | Rust | Gap | Priority |
 |---------|---|-----|--------|------------|------------|-----|---------|------|-----|----------|
-| Message struct/class | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | Rust not documented | **High** |
-| Serialize / encode | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ❌ | Rust not documented | **High** |
-| Deserialize / decode | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ❌ | Rust not documented | **High** |
+| Message struct/class | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — | — |
+| Serialize / encode | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ✅ | — | — |
+| Deserialize / decode | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ✅ | — | — |
 | Enum to string | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ❌ | Rust not documented | Medium |
 | Equality operators (`--equality`) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | N/A | ❌ | No docs for any language | Medium |
 | `get_message_info` function | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | ❌ | Rust not documented | Medium |
@@ -221,7 +221,7 @@ This document maps every user-facing feature area to its documentation status, i
 
 | Topic | Docs | Examples | Gap | Priority |
 |-------|------|----------|-----|----------|
-| CLI reference | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | `--build_rust` flag missing from table | **High** |
+| CLI reference | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
 | Build integration | ✅ [Build Integration](/reference/build-integration/) | ✅ | — | — |
 | Development guide | ✅ [Development](/reference/development/) | ✅ | — | — |
 | Testing guide | ✅ [Testing](/reference/testing/) | ✅ | — | — |
@@ -233,40 +233,38 @@ This document maps every user-facing feature area to its documentation status, i
 
 ### High Priority
 
-1. **Rust code generator** — `--build_rust` / `--rust_path` flags and the generated Rust SDK are completely absent from documentation. The generator (`src/struct_frame/rust_gen.py`) and boilerplate (`src/struct_frame/boilerplate/rust/`) exist and are tested. Add a *Rust SDK* page under `extended-features/` and add `--build_rust` to the CLI reference table.
+1. **JavaScript guide** — JS generation is documented only via the CLI table; there is no language usage guide comparable to the Python/TypeScript pages.
 
-2. **`--build_rust` missing from CLI reference table** — The flag is accepted by the parser (`generate.py`) but omitted from [`/reference/cli-reference/`](/reference/cli-reference/).
+2. **GraphQL guide** — No usage guide or example for `--build_gql` / GraphQL schema output.
 
 ### Medium Priority
 
-3. **JavaScript guide** — JS generation is documented only via the CLI table; there is no language usage guide comparable to the Python/TypeScript pages.
+3. **`--csharp_legacy_enum_names`** — Migration flag not documented anywhere.
 
-4. **GraphQL guide** — No usage guide or example for `--build_gql` / GraphQL schema output.
+4. **`--generate_tests` output format** — Flag is listed but the format of the generated test code is not explained.
 
-5. **`--csharp_legacy_enum_names`** — Migration flag added in v0.8.0; not documented anywhere.
+5. **`BufferParserWithCrc` / `BufferParserMinimal`** — These lower-level C++ parser classes are not described by name or exemplified.
 
-6. **`--generate_tests` output format** — Flag is listed but the format of the generated test code is not explained.
+6. **Network profile end-to-end example** — The SysId/CompId/Seq fields in `ExtendedMultiSystemStream` payloads are not exemplified in a multi-node scenario.
 
-7. **`BufferParserWithCrc` / `BufferParserMinimal`** — These lower-level C++ parser classes are not described by name or exemplified.
+7. **`flatten` option cross-language** — Currently noted as Python/GraphQL only; should clarify which languages support it.
 
-8. **Network profile end-to-end example** — The SysId/CompId/Seq fields in `ExtendedMultiSystemStream` payloads are not exemplified in a multi-node scenario.
+8. **Equality operators** — `--equality` flag is listed but generated code examples are not shown for any language.
 
-9. **`flatten` option cross-language** — Currently noted as Python/GraphQL only; should clarify which languages support it.
-
-10. **Equality operators** — `--equality` flag is listed but generated code examples are not shown for any language.
+9. **Rust `enum_to_string` / `get_message_info`** — Minor Rust coverage gaps; core encode/decode is documented.
 
 ### Low Priority
 
-11. **Custom payload variants** — `SysComp`, `Seq`, and other non-profile payload types in `payload_types.hpp` are not documented.
+10. **Custom payload variants** — `SysComp`, `Seq`, and other non-profile payload types in `payload_types.hpp` are not documented.
 
-12. **`--catalog_path` / LSP catalog** — The `sf_compile.json` catalog feature for LSP tooling support is undocumented.
+11. **`sf_compile.json` full schema** — The `--catalog_path` flag is now documented in the CLI reference but the full JSON schema is not described.
 
-13. **Wireshark dissector** — The `wireshark/struct_frame.lua` dissector is present but not linked from the docs site.
+12. **Wireshark dissector** — The `wireshark/struct_frame.lua` dissector is present but not linked from the docs site.
 
-14. **Fletcher-16 walkthrough** — Algorithm is named but no byte-level walkthrough is provided.
+13. **Fletcher-16 walkthrough** — Algorithm is named but no byte-level walkthrough is provided.
 
-15. **`--equality`, `--force`, `--hash_path`, `--validate`, `--debug`, `--target_framework`** — Each of these flags lacks a code example showing the effect.
+14. **`--equality`, `--force`, `--hash_path`, `--validate`, `--debug`, `--target_framework`** — Each of these flags lacks a code example showing the effect.
 
 ---
 
-*Last updated: 2026-05-01. Update this document whenever a gap is closed or a new feature is added.*
+*Last updated: 2026-05-04. Update this document whenever a gap is closed or a new feature is added.*

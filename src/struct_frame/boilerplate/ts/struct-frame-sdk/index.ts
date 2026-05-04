@@ -10,6 +10,6 @@ export {
   StructFrameSdk,
   StructFrameSdkConfig,
   MessageHandler,
-  IFrameParser,
-  IMessageCodec,
+  FrameParser,
+  MessageCodec,
 } from './struct-frame-sdk';

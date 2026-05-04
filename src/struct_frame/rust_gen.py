@@ -7,10 +7,10 @@ This module generates Rust code for struct serialization with explicit
 pack/unpack methods for binary compatibility across platforms.
 """
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
 import time
 
-StyleC = NamingStyleC()
+_style_c = NamingStyleC()
 
 # Mapping from proto types to Rust types
 rust_types = {
@@ -91,13 +91,13 @@ rust_unpack_fns = {
 
 
 def _rust_struct_name(package, name):
-    """Get Rust struct name: PascalCase(package) + PascalCase(name)"""
-    return '%s%s' % (pascalCase(package), name)
+    """Get Rust struct name: just the name (no package prefix; use module for namespacing)"""
+    return name
 
 
 def _rust_const_prefix(package, name):
     """Get constant prefix: UPPER_SNAKE_CASE(package) + '_' + UPPER_SNAKE_CASE(name)"""
-    return '%s_%s' % (CamelToSnakeCase(package).upper(), CamelToSnakeCase(name).upper())
+    return '%s_%s' % (camel_to_snake_case(package).upper(), camel_to_snake_case(name).upper())
 
 
 class EnumRustGen():
@@ -116,7 +116,7 @@ class EnumRustGen():
             if comments:
                 for c in comments:
                     result += '    //%s\n' % c
-            display_name = StyleC.enum_entry(entry_key)
+            display_name = _style_c.enum_entry(entry_key)
             # First variant gets #[default]
             if idx == 0:
                 result += '    #[default]\n'
@@ -129,7 +129,7 @@ class EnumRustGen():
         result += '    pub fn from_u8(v: u8) -> Option<Self> {\n'
         result += '        match v {\n'
         for entry_key, (value, _) in field.data.items():
-            display_name = StyleC.enum_entry(entry_key)
+            display_name = _style_c.enum_entry(entry_key)
             result += '            %d => Some(Self::%s),\n' % (value, display_name)
         result += '            _ => None,\n'
         result += '        }\n'
@@ -141,12 +141,12 @@ class EnumRustGen():
 
 def _get_field_type(field):
     """Get Rust type for a field (non-array, non-string)."""
-    type_name = field.fieldType
+    type_name = field.field_type
     if type_name in rust_types:
         return rust_types[type_name]
     # Use type_package if available (for cross-package type references)
     type_pkg = getattr(field, 'type_package', None) or field.package
-    if field.isEnum:
+    if field.is_enum:
         return _rust_struct_name(type_pkg, type_name)
     return _rust_struct_name(type_pkg, type_name)
 
@@ -154,7 +154,7 @@ def _get_field_type(field):
 def _generate_field_decl(field):
     """Generate a Rust struct field declaration."""
     var_name = _escape_rust_field_name(field.name)
-    type_name = field.fieldType
+    type_name = field.field_type
 
     if field.is_array:
         if type_name == "string":
@@ -193,7 +193,7 @@ def _generate_pack_field(field, indent='        ', variable=False):
     always packs max_size elements (fixed-size encoding).
     """
     var_name = _escape_rust_field_name(field.name)
-    type_name = field.fieldType
+    type_name = field.field_type
     lines = []
 
     if field.is_array:
@@ -251,7 +251,7 @@ def _generate_pack_field(field, indent='        ', variable=False):
                         lines.append(f'{indent}    buf[_pos.._pos+{type_size}].copy_from_slice(&self.{var_name}[i].to_le_bytes());')
                         lines.append(f'{indent}    _pos += {type_size};')
                     lines.append(f'{indent}}}')
-            elif field.isEnum:
+            elif field.is_enum:
                 # Enum array (u8)
                 if field.size_option is not None:
                     lines.append(f'{indent}// Fixed enum array: {var_name}')
@@ -309,7 +309,7 @@ def _generate_pack_field(field, indent='        ', variable=False):
             pack_stmt = pack_stmt.replace('{f}', var_name)
             lines.append(f'{indent}{pack_stmt}')
             lines.append(f'{indent}_pos += {type_size};')
-        elif field.isEnum:
+        elif field.is_enum:
             lines.append(f'{indent}buf[_pos] = self.{var_name} as u8;')
             lines.append(f'{indent}_pos += 1;')
         else:
@@ -327,7 +327,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
     always reads max_size elements.
     """
     var_name = _escape_rust_field_name(field.name)
-    type_name = field.fieldType
+    type_name = field.field_type
     lines = []
 
     if field.is_array:
@@ -395,8 +395,8 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                         lines.append(f'{indent}    {var_name}[i] = {rust_t}::from_le_bytes(buf[_pos.._pos+{type_size}].try_into().ok()?);')
                         lines.append(f'{indent}    _pos += {type_size};')
                     lines.append(f'{indent}}}')
-            elif field.isEnum:
-                enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+            elif field.is_enum:
+                enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
                 if field.size_option is not None:
                     lines.append(f'{indent}// Fixed enum array: {var_name}')
                     lines.append(f'{indent}let mut {var_name}: [{enum_type}; {field.size_option}] = [{enum_type}::default(); {field.size_option}];')
@@ -418,7 +418,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                     lines.append(f'{indent}}}')
             else:
                 # Nested message array
-                nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+                nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
                 if field.size_option is not None:
                     lines.append(f'{indent}// Fixed nested message array: {var_name}')
                     lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.size_option}] = [{nested_type}::default(); {field.size_option}];')
@@ -469,13 +469,13 @@ def _generate_unpack_field(field, indent='        ', variable=False):
             unpack_expr, type_size = rust_unpack_fns[type_name]
             lines.append(f'{indent}let {var_name} = {unpack_expr};')
             lines.append(f'{indent}_pos += {type_size};')
-        elif field.isEnum:
-            enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+        elif field.is_enum:
+            enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
             lines.append(f'{indent}let {var_name} = {enum_type}::from_u8(buf[_pos]).unwrap_or_default();')
             lines.append(f'{indent}_pos += 1;')
         else:
             # Nested message
-            nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+            nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
             lines.append(f'{indent}let {var_name} = {nested_type}::unpack(&buf[_pos..])?;')
             lines.append(f'{indent}_pos += {nested_type}::SIZE;')
 
@@ -486,7 +486,7 @@ def _get_field_var_names(field):
     """Get variable names introduced by _generate_unpack_field for a field.
     Order must match the declaration order in _generate_unpack_field."""
     var_name = _escape_rust_field_name(field.name)
-    type_name = field.fieldType
+    type_name = field.field_type
     names = []
 
     if field.is_array:
@@ -516,7 +516,7 @@ def _large_array_size(field):
             return field.size_option
         if field.max_size is not None and field.max_size > 32:
             return field.max_size
-    if field.fieldType == "string":
+    if field.field_type == "string":
         if field.size_option is not None and field.size_option > 32:
             return field.size_option
         if field.max_size is not None and field.max_size > 32:
@@ -530,7 +530,7 @@ def _needs_manual_default(msg):
         if _large_array_size(field) > 0:
             return True
         # Non-array string fields with large max_size or size_option
-        if field.fieldType == "string" and not field.is_array:
+        if field.field_type == "string" and not field.is_array:
             if field.size_option is not None and field.size_option > 32:
                 return True
             if field.max_size is not None and field.max_size > 32:
@@ -559,7 +559,7 @@ def _generate_default_impl(msg, struct_name):
     result += '        Self {\n'
     for field in msg.fields.values():
         var_name = _escape_rust_field_name(field.name)
-        type_name = field.fieldType
+        type_name = field.field_type
         if field.is_array:
             if field.size_option is not None:
                 if type_name == "string":
@@ -685,7 +685,7 @@ class MessageRustGen():
         # Oneof accessor methods
         for oneof_name, oneof in msg.oneofs.items():
             for field_name, field in oneof.fields.items():
-                nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.fieldType)
+                nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
                 result += f'\n    /// Get {field_name} from the {oneof_name} oneof.\n'
                 result += f'    pub fn get_{field_name}(&self) -> Option<{nested_type}> {{\n'
                 result += f'        {nested_type}::unpack(&self.{oneof_name}_bytes)\n'
@@ -806,14 +806,14 @@ class MessageRustGen():
                     if field.max_size is not None:
                         min_size += 2 if field.max_size > 255 else 1  # just the count
                     elif field.size_option is not None:
-                        ts = rust_type_sizes.get(field.fieldType, 1)
-                        elem_size = field.element_size if (field.fieldType == "string" and field.element_size) else ts
-                        if field.fieldType == "string":
+                        ts = rust_type_sizes.get(field.field_type, 1)
+                        elem_size = field.element_size if (field.field_type == "string" and field.element_size) else ts
+                        if field.field_type == "string":
                             elem_size = field.element_size if field.element_size else 16
                         min_size += field.size_option * elem_size
                     else:
                         min_size += field.size if field.size else 0
-                elif field.fieldType == "string":
+                elif field.field_type == "string":
                     if field.max_size is not None and field.size_option is None:
                         min_size += 2 if field.max_size > 255 else 1  # just the length
                     elif field.size_option is not None:
@@ -912,7 +912,7 @@ class FileRustGen():
 
         # File header
         result.append('// Automatically generated struct-frame Rust code\n')
-        result.append(f'// Generated by struct-frame {version} at {time.strftime("%Y-%m-%d %H:%M:%S")}\n')
+        result.append(f'// Generated by struct-frame {version}\n')
         result.append('// DO NOT EDIT - regenerate using struct-frame\n\n')
 
         # Collect cross-package imports
@@ -920,13 +920,13 @@ class FileRustGen():
         for msg in package.messages.values():
             for field in msg.fields.values():
                 type_pkg = getattr(field, 'type_package', None)
-                if type_pkg and type_pkg != package.name and not field.isDefaultType:
+                if type_pkg and type_pkg != package.name and not field.is_default_type:
                     pkg_mod = type_pkg.replace('-', '_').replace(' ', '_')
                     referenced_packages.add(pkg_mod)
             for oneof in msg.oneofs.values():
                 for field in oneof.fields.values():
                     type_pkg = getattr(field, 'type_package', None)
-                    if type_pkg and type_pkg != package.name and not field.isDefaultType:
+                    if type_pkg and type_pkg != package.name and not field.is_default_type:
                         pkg_mod = type_pkg.replace('-', '_').replace(' ', '_')
                         referenced_packages.add(pkg_mod)
 
@@ -1009,7 +1009,8 @@ path = "lib.rs"
         result += 'pub mod frame_headers;\n'
         result += 'pub mod payload_types;\n'
         result += 'pub mod frame_profiles;\n\n'
-        result += '// Re-export main SDK items\n'
+        result += '// Re-export main SDK items at the crate root for backward compatibility.\n'
+        result += '// Prefer `use your_crate::prelude::*;` in new code.\n'
         result += 'pub use frame_base::{fletcher_checksum, FrameChecksum, FrameMsgInfo, MessageInfo, StructFrameMessage};\n'
         result += 'pub use frame_profiles::{\n'
         result += '    AccumulatingReader, BufferReader, BufferWriter, ProfileConfig,\n'
@@ -1020,6 +1021,22 @@ path = "lib.rs"
         result += '    new_network_reader, new_network_writer, new_sensor_reader, new_sensor_writer,\n'
         result += '    new_standard_reader, new_standard_writer,\n'
         result += '};\n\n'
+        result += '/// Convenience prelude — preferred import for new code.\n'
+        result += '/// ```rust\n'
+        result += '/// use your_crate::prelude::*;\n'
+        result += '/// ```\n'
+        result += 'pub mod prelude {\n'
+        result += '    pub use crate::frame_base::{fletcher_checksum, FrameChecksum, FrameMsgInfo, MessageInfo, StructFrameMessage};\n'
+        result += '    pub use crate::frame_profiles::{\n'
+        result += '        AccumulatingReader, BufferReader, BufferWriter, ProfileConfig,\n'
+        result += '        PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG,\n'
+        result += '        PROFILE_SENSOR_CONFIG, PROFILE_STANDARD_CONFIG,\n'
+        result += '        encode_message_crc, encode_message_minimal, encode_with_crc, encode_minimal,\n'
+        result += '        new_bulk_reader, new_bulk_writer, new_ipc_reader, new_ipc_writer,\n'
+        result += '        new_network_reader, new_network_writer, new_sensor_reader, new_sensor_writer,\n'
+        result += '        new_standard_reader, new_standard_writer,\n'
+        result += '    };\n'
+        result += '}\n\n'
         result += '// Generated message modules\n'
         for pkg_name in package_names:
             mod_name = pkg_name.replace('-', '_').replace(' ', '_')

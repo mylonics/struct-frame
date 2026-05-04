@@ -6,23 +6,23 @@
  */
 
 import {
-  SerializationTestTruncationTestNonVariable,
-  SerializationTestTruncationTestVariable,
-  SerializationTestNestedPayload,
-  SerializationTestNestedVariableMessage,
-  SerializationTestVariableMultipleArrays,
-  SerializationTestVariableMixedFields,
-} from '../../generated/ts/serialization_test.structframe';
+  TruncationTestNonVariable,
+  TruncationTestVariable,
+  NestedPayload,
+  NestedVariableMessage,
+  VariableMultipleArrays,
+  VariableMixedFields,
+} from '../../generated/ts/serialization-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
 
 // Type alias for message union (like C++ MessageVariant)
 export type MessageType =
-  | SerializationTestTruncationTestNonVariable
-  | SerializationTestTruncationTestVariable
-  | SerializationTestNestedVariableMessage
-  | SerializationTestVariableMultipleArrays
-  | SerializationTestVariableMixedFields;
+  | TruncationTestNonVariable
+  | TruncationTestVariable
+  | NestedVariableMessage
+  | VariableMultipleArrays
+  | VariableMixedFields;
 
 // Message count
 export const MESSAGE_COUNT = 5;
@@ -32,63 +32,63 @@ export const MESSAGE_COUNT = 5;
 // Helper functions to create messages (like C++ create_* functions)
 // ============================================================================
 
-function createNonVariable1_3Filled(): SerializationTestTruncationTestNonVariable {
+function createNonVariable1_3Filled(): TruncationTestNonVariable {
   const dataArray = Array.from({ length: 67 }, (_, i) => i);
-  return new SerializationTestTruncationTestNonVariable({
-    sequence_id: 0xDEADBEEF,
-    data_array_count: 67,
-    data_array_data: dataArray,
+  return new TruncationTestNonVariable({
+    sequenceId: 0xDEADBEEF,
+    dataArrayCount: 67,
+    dataArrayData: dataArray,
     footer: 0xCAFE,
   });
 }
 
-function createVariable1_3Filled(): SerializationTestTruncationTestVariable {
+function createVariable1_3Filled(): TruncationTestVariable {
   const dataArray = Array.from({ length: 67 }, (_, i) => i);
-  return new SerializationTestTruncationTestVariable({
-    sequence_id: 0xDEADBEEF,
-    data_array_count: 67,
-    data_array_data: dataArray,
+  return new TruncationTestVariable({
+    sequenceId: 0xDEADBEEF,
+    dataArrayCount: 67,
+    dataArrayData: dataArray,
     footer: 0xCAFE,
   });
 }
 
-function createNestedVariable(): SerializationTestNestedVariableMessage {
-  const nestedPayload = new SerializationTestNestedPayload({
+function createNestedVariable(): NestedVariableMessage {
+  const nestedPayload = new NestedPayload({
     id: 7,
-    label_length: 5,
-    label_data: 'Hello',
-    samples_count: 3,
-    samples_data: [10, 20, 30],
+    labelLength: 5,
+    labelData: 'Hello',
+    samplesCount: 3,
+    samplesData: [10, 20, 30],
   });
-  return new SerializationTestNestedVariableMessage({
+  return new NestedVariableMessage({
     sequence: 0x12345678,
     payload: [nestedPayload],
-    description_length: 20,
-    description_data: 'nested variable test',
+    descriptionLength: 20,
+    descriptionData: 'nested variable test',
   });
 }
 
-function createMultipleArrays(): SerializationTestVariableMultipleArrays {
-  return new SerializationTestVariableMultipleArrays({
+function createMultipleArrays(): VariableMultipleArrays {
+  return new VariableMultipleArrays({
     type: 5,
-    readings_count: 3,
-    readings_data: [100, 200, 300],
-    values_count: 2,
-    values_data: [1.5, 2.5],
-    label_length: 17,
-    label_data: 'multi arrays test',
+    readingsCount: 3,
+    readingsData: [100, 200, 300],
+    valuesCount: 2,
+    valuesData: [1.5, 2.5],
+    labelLength: 17,
+    labelData: 'multi arrays test',
   });
 }
 
-function createMixedFields(): SerializationTestVariableMixedFields {
-  return new SerializationTestVariableMixedFields({
-    fixed_id: 0xABCD1234,
-    fixed_value: 3.14,
-    fixed_name: 'DeviceName',
-    variable_data_count: 5,
-    variable_data_data: [1000, 2000, 3000, 4000, 5000],
-    variable_desc_length: 17,
-    variable_desc_data: 'mixed fields test',
+function createMixedFields(): VariableMixedFields {
+  return new VariableMixedFields({
+    fixedId: 0xABCD1234,
+    fixedValue: 3.14,
+    fixedName: 'DeviceName',
+    variableDataCount: 5,
+    variableDataData: [1000, 2000, 3000, 4000, 5000],
+    variableDescLength: 17,
+    variableDescData: 'mixed fields test',
   });
 }
 
@@ -122,7 +122,7 @@ export function checkMessage(index: number, info: FrameMsgInfo): boolean {
   const msgClass = expected.constructor as any;
 
   // Check msg_id matches
-  if (info.msg_id !== msgClass._msgid) return false;
+  if (info.msgId !== msgClass._msgid) return false;
 
   // Deserialize and compare
   const decoded = msgClass.deserialize(info);

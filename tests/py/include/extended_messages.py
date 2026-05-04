@@ -14,37 +14,37 @@ from typing import Union
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
 
 from struct_frame.generated.extended_test import (
-    ExtendedTestExtendedIdMessage1,
-    ExtendedTestExtendedIdMessage2,
-    ExtendedTestExtendedIdMessage3,
-    ExtendedTestExtendedIdMessage4,
-    ExtendedTestExtendedIdMessage5,
-    ExtendedTestExtendedIdMessage6,
-    ExtendedTestExtendedIdMessage7,
-    ExtendedTestExtendedIdMessage8,
-    ExtendedTestExtendedIdMessage9,
-    ExtendedTestExtendedIdMessage10,
-    ExtendedTestLargePayloadMessage1,
-    ExtendedTestLargePayloadMessage2,
-    ExtendedTestExtendedVariableSingleArray,
+    ExtendedIdMessage1,
+    ExtendedIdMessage2,
+    ExtendedIdMessage3,
+    ExtendedIdMessage4,
+    ExtendedIdMessage5,
+    ExtendedIdMessage6,
+    ExtendedIdMessage7,
+    ExtendedIdMessage8,
+    ExtendedIdMessage9,
+    ExtendedIdMessage10,
+    LargePayloadMessage1,
+    LargePayloadMessage2,
+    ExtendedVariableSingleArray,
     get_message_info,
 )
 
 # Type alias for message union (like C++ MessageVariant)
 MessageType = Union[
-    ExtendedTestExtendedIdMessage1,
-    ExtendedTestExtendedIdMessage2,
-    ExtendedTestExtendedIdMessage3,
-    ExtendedTestExtendedIdMessage4,
-    ExtendedTestExtendedIdMessage5,
-    ExtendedTestExtendedIdMessage6,
-    ExtendedTestExtendedIdMessage7,
-    ExtendedTestExtendedIdMessage8,
-    ExtendedTestExtendedIdMessage9,
-    ExtendedTestExtendedIdMessage10,
-    ExtendedTestLargePayloadMessage1,
-    ExtendedTestLargePayloadMessage2,
-    ExtendedTestExtendedVariableSingleArray,
+    ExtendedIdMessage1,
+    ExtendedIdMessage2,
+    ExtendedIdMessage3,
+    ExtendedIdMessage4,
+    ExtendedIdMessage5,
+    ExtendedIdMessage6,
+    ExtendedIdMessage7,
+    ExtendedIdMessage8,
+    ExtendedIdMessage9,
+    ExtendedIdMessage10,
+    LargePayloadMessage1,
+    LargePayloadMessage2,
+    ExtendedVariableSingleArray,
 ]
 
 # Message count
@@ -55,8 +55,8 @@ MESSAGE_COUNT = 17
 # Helper functions to create messages (like C++ create_* functions)
 # ============================================================================
 
-def create_ext_id_1() -> ExtendedTestExtendedIdMessage1:
-    return ExtendedTestExtendedIdMessage1(
+def create_ext_id_1() -> ExtendedIdMessage1:
+    return ExtendedIdMessage1(
         sequence_number=12345678,
         label=b"Test Label Extended 1",
         value=3.14159,
@@ -64,8 +64,8 @@ def create_ext_id_1() -> ExtendedTestExtendedIdMessage1:
     )
 
 
-def create_ext_id_2() -> ExtendedTestExtendedIdMessage2:
-    return ExtendedTestExtendedIdMessage2(
+def create_ext_id_2() -> ExtendedIdMessage2:
+    return ExtendedIdMessage2(
         sensor_id=-42,
         reading=2.718281828,
         status_code=50000,
@@ -73,8 +73,8 @@ def create_ext_id_2() -> ExtendedTestExtendedIdMessage2:
     )
 
 
-def create_ext_id_3() -> ExtendedTestExtendedIdMessage3:
-    return ExtendedTestExtendedIdMessage3(
+def create_ext_id_3() -> ExtendedIdMessage3:
+    return ExtendedIdMessage3(
         timestamp=1704067200000000,
         temperature=-40,
         humidity=85,
@@ -82,8 +82,8 @@ def create_ext_id_3() -> ExtendedTestExtendedIdMessage3:
     )
 
 
-def create_ext_id_4() -> ExtendedTestExtendedIdMessage4:
-    return ExtendedTestExtendedIdMessage4(
+def create_ext_id_4() -> ExtendedIdMessage4:
+    return ExtendedIdMessage4(
         event_id=999999,
         event_type=42,
         event_time=1704067200000,
@@ -91,8 +91,8 @@ def create_ext_id_4() -> ExtendedTestExtendedIdMessage4:
     )
 
 
-def create_ext_id_5() -> ExtendedTestExtendedIdMessage5:
-    return ExtendedTestExtendedIdMessage5(
+def create_ext_id_5() -> ExtendedIdMessage5:
+    return ExtendedIdMessage5(
         x_position=100.5,
         y_position=-200.25,
         z_position=50.125,
@@ -100,8 +100,8 @@ def create_ext_id_5() -> ExtendedTestExtendedIdMessage5:
     )
 
 
-def create_ext_id_6() -> ExtendedTestExtendedIdMessage6:
-    return ExtendedTestExtendedIdMessage6(
+def create_ext_id_6() -> ExtendedIdMessage6:
+    return ExtendedIdMessage6(
         command_id=-12345,
         parameter1=1000,
         parameter2=2000,
@@ -110,8 +110,8 @@ def create_ext_id_6() -> ExtendedTestExtendedIdMessage6:
     )
 
 
-def create_ext_id_7() -> ExtendedTestExtendedIdMessage7:
-    return ExtendedTestExtendedIdMessage7(
+def create_ext_id_7() -> ExtendedIdMessage7:
+    return ExtendedIdMessage7(
         counter=4294967295,
         average=123.456789,
         minimum=-999.99,
@@ -119,8 +119,8 @@ def create_ext_id_7() -> ExtendedTestExtendedIdMessage7:
     )
 
 
-def create_ext_id_8() -> ExtendedTestExtendedIdMessage8:
-    return ExtendedTestExtendedIdMessage8(
+def create_ext_id_8() -> ExtendedIdMessage8:
+    return ExtendedIdMessage8(
         level=255,
         offset=-32768,
         duration=86400000,
@@ -128,25 +128,25 @@ def create_ext_id_8() -> ExtendedTestExtendedIdMessage8:
     )
 
 
-def create_ext_id_9() -> ExtendedTestExtendedIdMessage9:
-    return ExtendedTestExtendedIdMessage9(
+def create_ext_id_9() -> ExtendedIdMessage9:
+    return ExtendedIdMessage9(
         big_number=-9223372036854775807,
         big_unsigned=18446744073709551615,
         precision_value=1.7976931348623157e+308
     )
 
 
-def create_ext_id_10() -> ExtendedTestExtendedIdMessage10:
-    return ExtendedTestExtendedIdMessage10(
+def create_ext_id_10() -> ExtendedIdMessage10:
+    return ExtendedIdMessage10(
         small_value=256,
         short_text=b"Boundary Test",
         flag=True
     )
 
 
-def create_large_1() -> ExtendedTestLargePayloadMessage1:
+def create_large_1() -> LargePayloadMessage1:
     sensor_readings = [float(i + 1) for i in range(64)]
-    return ExtendedTestLargePayloadMessage1(
+    return LargePayloadMessage1(
         sensor_readings=sensor_readings,
         reading_count=64,
         timestamp=1704067200000000,
@@ -154,39 +154,39 @@ def create_large_1() -> ExtendedTestLargePayloadMessage1:
     )
 
 
-def create_large_2() -> ExtendedTestLargePayloadMessage2:
+def create_large_2() -> LargePayloadMessage2:
     large_data = bytes([(i % 256) for i in range(280)])
-    return ExtendedTestLargePayloadMessage2(
+    return LargePayloadMessage2(
         large_data=large_data
     )
 
 
-def create_ext_var_single_empty() -> ExtendedTestExtendedVariableSingleArray:
-    return ExtendedTestExtendedVariableSingleArray(
+def create_ext_var_single_empty() -> ExtendedVariableSingleArray:
+    return ExtendedVariableSingleArray(
         timestamp=0x0000000000000001, telemetry_data=[], crc=0x00000001
     )
 
 
-def create_ext_var_single_single() -> ExtendedTestExtendedVariableSingleArray:
-    return ExtendedTestExtendedVariableSingleArray(
+def create_ext_var_single_single() -> ExtendedVariableSingleArray:
+    return ExtendedVariableSingleArray(
         timestamp=0x0000000000000002, telemetry_data=[42], crc=0x00000002
     )
 
 
-def create_ext_var_single_third() -> ExtendedTestExtendedVariableSingleArray:
-    return ExtendedTestExtendedVariableSingleArray(
+def create_ext_var_single_third() -> ExtendedVariableSingleArray:
+    return ExtendedVariableSingleArray(
         timestamp=0x0000000000000003, telemetry_data=list(range(83)), crc=0x00000003
     )
 
 
-def create_ext_var_single_almost() -> ExtendedTestExtendedVariableSingleArray:
-    return ExtendedTestExtendedVariableSingleArray(
+def create_ext_var_single_almost() -> ExtendedVariableSingleArray:
+    return ExtendedVariableSingleArray(
         timestamp=0x0000000000000004, telemetry_data=list(range(249)), crc=0x00000004
     )
 
 
-def create_ext_var_single_full() -> ExtendedTestExtendedVariableSingleArray:
-    return ExtendedTestExtendedVariableSingleArray(
+def create_ext_var_single_full() -> ExtendedVariableSingleArray:
+    return ExtendedVariableSingleArray(
         timestamp=0x0000000000000005, telemetry_data=list(range(250)), crc=0x00000005
     )
 

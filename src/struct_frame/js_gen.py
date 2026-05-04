@@ -8,12 +8,13 @@ It reuses the shared TypeScript/JavaScript base module for common logic
 but outputs JavaScript syntax (CommonJS) instead of TypeScript.
 """
 
-from struct_frame import version, NamingStyleC, pascalCase, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, pascal_case, build_enum_leading_comments, build_enum_values
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
     BaseFieldGen,
     BaseEnumGen,
+    to_camel_case,
     # New class-based generation utilities
     TYPE_SIZES,
     READ_METHODS,
@@ -25,7 +26,7 @@ from struct_frame.ts_js_base import (
 )
 import time
 
-StyleC = NamingStyleC()
+_style_c = NamingStyleC()
 
 # Use shared type mappings
 js_types = common_types
@@ -34,19 +35,19 @@ js_typed_array_methods = common_typed_array_methods
 
 class EnumJsGen():
     @staticmethod
-    def generate(field, packageName):
+    def generate(field, package_name):
         result = build_enum_leading_comments(field.comments)
 
-        # Use PascalCase for both package and enum name (JavaScript convention)
-        enum_name = '%s%s' % (packageName, field.name)
+        # Use short name without package prefix
+        enum_name = field.name
         result += 'const %s = Object.freeze({\n' % enum_name
 
         def js_comment_formatter(comments):
             return ['  ' + c for c in comments]
 
         enum_values = build_enum_values(
-            field, StyleC,
-            value_format='  {name}: {value}{comma}',
+            field, _style_c,
+            value_generator=lambda d, _, val, comma: f'  {pascal_case(d)}: {val}{comma}',
             comment_formatter=js_comment_formatter,
             skip_trailing_comma=True
         )
@@ -63,7 +64,7 @@ class EnumJsGen():
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
             return ''
         
-        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
         result = f'/** Discriminator enum for {msg_name}.{oneof.name} oneof */\n'
         result += f'const {enum_name} = Object.freeze({{\n'
         result += f'  None: 0,\n'
@@ -71,7 +72,7 @@ class EnumJsGen():
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             field_order = idx + 1
             # Use PascalCase for JavaScript enum values
-            enum_value = pascalCase(field_name)
+            enum_value = pascal_case(field_name)
             comma = ',' if idx < len(oneof.fields) - 1 else ''
             result += f'  {enum_value}: {field_order}{comma}\n'
         
@@ -82,17 +83,17 @@ class EnumJsGen():
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascalCase(oneof.name)}Field'
+        return f'{msg_name}{pascal_case(oneof.name)}Field'
 
 
 class FieldJsGen():
     """JavaScript field generator using shared base logic."""
 
     @staticmethod
-    def generate(field, packageName):
+    def generate(field, package_name):
         """Generate JavaScript field definition using shared base."""
         return BaseFieldGen.generate(
-            field, packageName, js_types, js_typed_array_methods
+            field, package_name, js_types, js_typed_array_methods
         )
 
 
@@ -103,7 +104,7 @@ class FieldJsGen():
 
 class MessageJsGen():
     @staticmethod
-    def generate(msg, packageName, package=None):
+    def generate(msg, package_name, package=None):
         leading_comment = msg.comments
 
         result = ''
@@ -111,7 +112,7 @@ class MessageJsGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s%s' % (packageName, msg.name)
+        package_msg_name = '%s%s' % (package_name, msg.name)
 
         result += "const %s = new Struct('%s')" % (
             package_msg_name, package_msg_name)
@@ -131,7 +132,7 @@ class MessageJsGen():
             size = msg.size
 
         # Generate regular fields
-        result += '\n'.join([FieldJsGen.generate(f, packageName)
+        result += '\n'.join([FieldJsGen.generate(f, package_name)
                             for key, f in msg.fields.items()])
         
         # Generate oneofs - add discriminator and allocate union size
@@ -139,13 +140,13 @@ class MessageJsGen():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
                     # Use UInt16LE since message IDs can be up to 65535
-                    result += f"\n    .UInt16LE('{oneof.name}_discriminator')"
+                    result += f"\n    .UInt16LE('{to_camel_case(oneof.name)}Discriminator')"
                 else:  # field_order
                     # Use UInt8 since field order is 1-based index
-                    result += f"\n    .UInt8('{oneof.name}_discriminator')"
+                    result += f"\n    .UInt8('{to_camel_case(oneof.name)}Discriminator')"
             # Allocate space for the union (largest member size)
             # Use a byte array to represent the union storage
-            result += f"\n    .ByteArray('{oneof.name}_data', {oneof.size})"
+            result += f"\n    .ByteArray('{to_camel_case(oneof.name)}Data', {oneof.size})"
         
         result += '\n    .compile();\n'
         result += 'module.exports.%s = %s;\n' % (package_msg_name, package_msg_name)
@@ -167,7 +168,7 @@ class MessageJsClassGen():
     """Generate JavaScript message classes that extend MessageBase."""
     
     @staticmethod
-    def generate(msg, packageName, package, packages, equality=False):
+    def generate(msg, package_name, package, packages, equality=False):
         """Generate a class-based message definition."""
         leading_comment = msg.comments
         result = ''
@@ -175,7 +176,7 @@ class MessageJsClassGen():
             for c in msg.comments:
                 result = '%s\n' % c
 
-        package_msg_name = '%s%s' % (packageName, msg.name)
+        package_msg_name = msg.name
         
         # Calculate field layout with offsets
         fields = calculate_field_layout(msg, package, packages)
@@ -241,7 +242,7 @@ class MessageJsClassGen():
         
         # Generate envelope methods if this is an envelope message
         if msg.is_envelope:
-            result += MessageJsClassGen._generate_envelope_methods(msg, package_msg_name, packageName, packages)
+            result += MessageJsClassGen._generate_envelope_methods(msg, package_msg_name, package_name, packages)
         
         # Static getSize method
         result += f'  static getSize() {{\n'
@@ -266,9 +267,9 @@ class MessageJsClassGen():
         result += f'   * @returns {{{package_msg_name}}} New instance with deserialized data\n'
         result += f'   */\n'
         result += f'  static deserialize(buffer) {{\n'
-        result += f'    // Check if buffer is FrameMsgInfo (has msg_data property)\n'
-        result += f'    if (buffer && typeof buffer === "object" && "msg_data" in buffer) {{\n'
-        result += f'      buffer = Buffer.from(buffer.msg_data);\n'
+        result += f'    // Check if buffer is FrameMsgInfo (has msgData property)\n'
+        result += f'    if (buffer && typeof buffer === "object" && "msgData" in buffer) {{\n'
+        result += f'      buffer = Buffer.from(buffer.msgData);\n'
         result += f'    }} else if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {{\n'
         result += f'      buffer = Buffer.from(buffer);\n'
         result += f'    }}\n'
@@ -296,7 +297,7 @@ class MessageJsClassGen():
         return result
     
     @staticmethod
-    def _generate_envelope_methods(msg, package_msg_name, packageName, packages):
+    def _generate_envelope_methods(msg, package_msg_name, package_name, packages):
         """Generate envelope-specific helper methods for wrapping inner messages."""
         result = ''
         
@@ -312,15 +313,14 @@ class MessageJsClassGen():
         payload_types = []
         payload_fields = []  # (field_name, payload_type)
         for field_name, field in oneof.fields.items():
-            type_pkg = field.type_package if field.type_package else field.package
-            payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+            payload_type = field.field_type
             payload_types.append(payload_type)
             payload_fields.append((field_name, payload_type))
         
         # Generate parameter list for envelope fields (non-oneof fields)
         field_params = []
         for f_name, f in msg.fields.items():
-            field_params.append(f.name)
+            field_params.append(to_camel_case(f.name))
         
         # Build parameter list: payload first, then optional envelope fields
         all_params_list = ['payload'] + field_params
@@ -329,7 +329,7 @@ class MessageJsClassGen():
         result += f'   * Create a {package_msg_name} envelope wrapping a payload message.\n'
         result += f'   * @param {{{" | ".join(payload_types)}}} payload The message to wrap\n'
         for f_name, f in msg.fields.items():
-            result += f'   * @param {{*}} [{f.name}] Envelope field value\n'
+            result += f'   * @param {{*}} [{to_camel_case(f.name)}] Envelope field value\n'
         result += f'   * @returns {{{package_msg_name}}} A fully initialized {package_msg_name} envelope\n'
         result += f'   */\n'
         result += f'  static wrap({", ".join(all_params_list)}) {{\n'
@@ -337,25 +337,26 @@ class MessageJsClassGen():
         
         # Initialize envelope fields
         for f_name, f in msg.fields.items():
-            result += f'    if ({f.name} !== undefined) envelope.{f.name} = {f.name};\n'
+            camel_fname = to_camel_case(f.name)
+            result += f'    if ({camel_fname} !== undefined) envelope.{camel_fname} = {camel_fname};\n'
         
         # Set the discriminator to the payload's message ID or field order
         if oneof.auto_discriminator:
             if oneof.discriminator_type == "msgid":
-                result += f'    envelope.{oneof_name}_discriminator = payload.constructor._msgid;\n'
+                result += f'    envelope.{to_camel_case(oneof_name)}Discriminator = payload.constructor._msgid;\n'
             else:  # field_order - use enum values
                 enum_name = EnumJsGen.get_discriminator_enum_name(oneof, package_msg_name)
                 result += f'    // Set discriminator based on payload type\n'
                 for idx, (field_name, payload_type) in enumerate(payload_fields):
-                    enum_value = pascalCase(field_name)
+                    enum_value = pascal_case(field_name)
                     if idx == 0:
-                        result += f'    if (payload instanceof {payload_type}) envelope.{oneof_name}_discriminator = {enum_name}.{enum_value};\n'
+                        result += f'    if (payload instanceof {payload_type}) envelope.{to_camel_case(oneof_name)}Discriminator = {enum_name}.{enum_value};\n'
                     else:
-                        result += f'    else if (payload instanceof {payload_type}) envelope.{oneof_name}_discriminator = {enum_name}.{enum_value};\n'
+                        result += f'    else if (payload instanceof {payload_type}) envelope.{to_camel_case(oneof_name)}Discriminator = {enum_name}.{enum_value};\n'
         
         # Copy the payload into the union data area
         result += f'    // Copy payload into union data area\n'
-        result += f'    payload._buffer.copy(envelope._buffer, envelope._getUnionOffset("{oneof_name}"), 0, payload._buffer.length);\n'
+        result += f'    payload._buffer.copy(envelope._buffer, envelope._getUnionOffset("{to_camel_case(oneof_name)}"), 0, payload._buffer.length);\n'
         result += f'    return envelope;\n'
         result += f'  }}\n'
         
@@ -367,7 +368,7 @@ class MessageJsClassGen():
                 result += f'   * @returns {{number}} The message ID of the payload in the {oneof_name} union\n'
                 result += f'   */\n'
                 result += f'  getPayloadMessageId() {{\n'
-                result += f'    return this.{oneof_name}_discriminator;\n'
+                result += f'    return this.{to_camel_case(oneof_name)}Discriminator;\n'
                 result += f'  }}\n'
             else:  # field_order - return enum value
                 enum_name = EnumJsGen.get_discriminator_enum_name(oneof, package_msg_name)
@@ -376,7 +377,7 @@ class MessageJsClassGen():
                 result += f'   * @returns {{{enum_name}}} The {enum_name} enum value for the active payload\n'
                 result += f'   */\n'
                 result += f'  getPayloadField() {{\n'
-                result += f'    return this.{oneof_name}_discriminator;\n'
+                result += f'    return this.{to_camel_case(oneof_name)}Discriminator;\n'
                 result += f'  }}\n'
         
         # Generate helper to get the union offset (needed for envelope operations)
@@ -388,7 +389,7 @@ class MessageJsClassGen():
                 offset += 2  # uint16 discriminator size
             else:  # field_order
                 offset += 1  # uint8 discriminator size
-        result += f'    if (name === "{oneof_name}") return {offset}; // After discriminator\n'
+        result += f'    if (name === "{to_camel_case(oneof_name)}") return {offset}; // After discriminator\n'
         result += f'    return 0;\n'
         result += f'  }}\n'
         
@@ -417,16 +418,16 @@ class MessageJsClassGen():
         result += f'    let size = 0;\n'
         
         for key, field in msg.fields.items():
-            name = field.name
+            name = to_camel_case(field.name)
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field.fieldType == "string":
+                if field.field_type == "string":
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
-                result += f'    size += 1 + (this.{name}_count * {element_size}); // {name}\n'
-            elif field.fieldType == "string" and field.max_size is not None:
-                result += f'    size += 1 + this.{name}_length; // {name}\n'
+                    element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
+                result += f'    size += 1 + (this.{name}Count * {element_size}); // {name}\n'
+            elif field.field_type == "string" and field.max_size is not None:
+                result += f'    size += 1 + this.{name}Length; // {name}\n'
             else:
                 result += f'    size += {field.size}; // {name}\n'
         
@@ -445,8 +446,8 @@ class MessageJsClassGen():
         
         msg_offset = 0
         for key, field in msg.fields.items():
-            name = field.name
-            field_type = field.fieldType
+            name = to_camel_case(field.name)
+            field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if field_type == "string":
@@ -454,20 +455,20 @@ class MessageJsClassGen():
                 else:
                     element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
                 result += f'    // {name}: variable array\n'
-                result += f'    const {name}Count = this.{name}_count;\n'
+                result += f'    const {name}Count = this.{name}Count;\n'
                 result += f'    buffer.writeUInt8({name}Count, offset++);\n'
                 
-                write_method = WRITE_METHODS.get(field_type if not field.isEnum else "uint8", "_writeUInt8")
+                write_method = WRITE_METHODS.get(field_type if not field.is_enum else "uint8", "_writeUInt8")
                 write_method_name = write_method.replace("_write", "write")
                 # Node.js Buffer uses writeFloatLE / writeDoubleLE (not writeFloat32LE / writeFloat64LE)
                 write_method_name = write_method_name.replace("writeFloat32LE", "writeFloatLE").replace("writeFloat64LE", "writeDoubleLE")
                 result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                result += f'      buffer.{write_method_name}(this.{name}_data[i], offset);\n'
+                result += f'      buffer.{write_method_name}(this.{name}Data[i], offset);\n'
                 result += f'      offset += {element_size};\n'
                 result += f'    }}\n'
             elif field_type == "string" and field.max_size is not None:
                 result += f'    // {name}: variable string\n'
-                result += f'    const {name}Len = this.{name}_length;\n'
+                result += f'    const {name}Len = this.{name}Length;\n'
                 result += f'    buffer.writeUInt8({name}Len, offset++);\n'
                 result += f'    this._buffer.copy(buffer, offset, {msg_offset + 1}, {msg_offset + 1} + {name}Len);\n'
                 result += f'    offset += {name}Len;\n'
@@ -493,8 +494,8 @@ class MessageJsClassGen():
         
         msg_offset = 0
         for key, field in msg.fields.items():
-            name = field.name
-            field_type = field.fieldType
+            name = to_camel_case(field.name)
+            field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if field_type == "string":
@@ -675,7 +676,7 @@ class FileJsGen():
     @staticmethod
     def generate(package, use_class_based=False, packages=None, equality=False):
         yield '/* Automatically generated struct frame header */\n'
-        yield '/* Generated by %s at %s. */\n\n' % (version, time.asctime())
+        yield '/* Generated by struct-frame %s. */\n\n' % version
         yield '"use strict";\n\n'
 
         # Only import MessageBase/Struct if there are messages
@@ -695,15 +696,12 @@ class FileJsGen():
                     if type_package and type_package != package.name:
                         if type_package not in external_types:
                             external_types[type_package] = set()
-                        external_types[type_package].add(field.fieldType)
+                        external_types[type_package].add(field.field_type)
         
         # Generate require statements for cross-package types
         for ext_package, type_names in sorted(external_types.items()):
-            # Convert package name to PascalCase for JavaScript conventions
-            ext_package_pascal = pascalCase(ext_package)
             for t in sorted(type_names):
-                type_var = '%s%s' % (ext_package_pascal, t)
-                yield "const { %s } = require('./%s.structframe');\n" % (type_var, ext_package)
+                yield "const { %s } = require('./%s.structframe');\n" % (t, ext_package.replace('_', '-'))
         
         if external_types:
             yield "\n"
@@ -717,7 +715,7 @@ class FileJsGen():
         # include additional header files here if available in the future
 
         # Convert package name to PascalCase for JavaScript naming conventions
-        package_name_pascal = pascalCase(package.name)
+        package_name_pascal = pascal_case(package.name)
         
         if package.enums:
             yield '/* Enum definitions */\n'
@@ -727,7 +725,7 @@ class FileJsGen():
         # Generate discriminator enums for field_order oneofs (must come before message definitions)
         has_discriminator_enums = False
         for key, msg in package.messages.items():
-            structName = f'{package_name_pascal}{msg.name}'
+            structName = msg.name
             for oneof_name, oneof in msg.oneofs.items():
                 enum_code = EnumJsGen.generate_discriminator_enum(oneof, structName)
                 if enum_code:
@@ -748,23 +746,23 @@ class FileJsGen():
             yield '\n'
 
         if package.messages:
-            # Only generate get_message_info if there are messages with IDs
+            # Only generate getMessageInfo if there are messages with IDs
             messages_with_id = [
                 msg for key, msg in package.sortedMessages().items() if msg.id]
             if messages_with_id:
-                # Generate unified get_message_info function
+                # Generate unified getMessageInfo function
                 # Returns { size, magic1, magic2 } for a given message ID
                 if package.package_id is not None:
                     # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
                     yield '/**\n'
                     yield ' * Get message info (size and magic numbers) for a message ID.\n'
-                    yield ' * @param {number} msg_id - 16-bit message ID (pkg_id << 8 | local_msg_id)\n'
+                    yield ' * @param {number} msgId - 16-bit message ID (pkg_id << 8 | local_msg_id)\n'
                     yield ' * @returns {{size: number, magic1: number, magic2: number}|undefined}\n'
                     yield ' */\n'
-                    yield 'function get_message_info(msg_id) {\n'
+                    yield 'function getMessageInfo(msgId) {\n'
                     yield '  // Extract package ID and message ID from 16-bit message ID\n'
-                    yield '  const pkg_id = (msg_id >> 8) & 0xFF;\n'
-                    yield '  const local_msg_id = msg_id & 0xFF;\n'
+                    yield '  const pkg_id = (msgId >> 8) & 0xFF;\n'
+                    yield '  const local_msg_id = msgId & 0xFF;\n'
                     yield '  \n'
                     yield '  // Check if this is our package\n'
                     yield '  if (pkg_id !== PACKAGE_ID) {\n'
@@ -776,14 +774,14 @@ class FileJsGen():
                     # Flat namespace mode: 8-bit message ID
                     yield '/**\n'
                     yield ' * Get message info (size and magic numbers) for a message ID.\n'
-                    yield ' * @param {number} msg_id - Message ID\n'
+                    yield ' * @param {number} msgId - Message ID\n'
                     yield ' * @returns {{size: number, magic1: number, magic2: number}|undefined}\n'
                     yield ' */\n'
-                    yield 'function get_message_info(msg_id) {\n'
-                    yield '  switch (msg_id) {\n'
+                    yield 'function getMessageInfo(msgId) {\n'
+                    yield '  switch (msgId) {\n'
                 
                 for msg in messages_with_id:
-                    package_msg_name = '%s%s' % (package_name_pascal, msg.name)
+                    package_msg_name = msg.name
                     yield '    case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2 };\n' % (
                         package_msg_name, package_msg_name, package_msg_name, package_msg_name)
 
@@ -791,5 +789,5 @@ class FileJsGen():
                 yield '  }\n'
                 yield '  return undefined;\n'
                 yield '}\n'
-                yield 'module.exports.get_message_info = get_message_info;\n'
+                yield 'module.exports.getMessageInfo = getMessageInfo;\n'
             yield '\n'

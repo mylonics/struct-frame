@@ -19,11 +19,11 @@ template <typename MessageProvider, GetMessageInfoFn GetMsgInfo, const char* Tes
 class TestHarness {
  public:
   // Profile runners for each frame profile
-  using Standard = ProfileRunner<MessageProvider, FrameParsers::ProfileStandardConfig, GetMsgInfo>;
-  using Sensor = ProfileRunner<MessageProvider, FrameParsers::ProfileSensorConfig, GetMsgInfo>;
-  using IPC = ProfileRunner<MessageProvider, FrameParsers::ProfileIPCConfig, GetMsgInfo>;
-  using Bulk = ProfileRunner<MessageProvider, FrameParsers::ProfileBulkConfig, GetMsgInfo>;
-  using Network = ProfileRunner<MessageProvider, FrameParsers::ProfileNetworkConfig, GetMsgInfo>;
+  using Standard = ProfileRunner<MessageProvider, structframe::ProfileStandardConfig, GetMsgInfo>;
+  using Sensor = ProfileRunner<MessageProvider, structframe::ProfileSensorConfig, GetMsgInfo>;
+  using IPC = ProfileRunner<MessageProvider, structframe::ProfileIPCConfig, GetMsgInfo>;
+  using Bulk = ProfileRunner<MessageProvider, structframe::ProfileBulkConfig, GetMsgInfo>;
+  using Network = ProfileRunner<MessageProvider, structframe::ProfileNetworkConfig, GetMsgInfo>;
 
   static constexpr size_t BUFFER_SIZE = 16384;
 

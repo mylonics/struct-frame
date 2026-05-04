@@ -65,6 +65,10 @@ class TestRunner
         {
             return TestNegative.Main(filteredArgs);
         }
+        else if (testSuite == "test_envelope_sdk")
+        {
+            return TestEnvelopeSdk.Main(filteredArgs);
+        }
         else
         {
             return TestStandard.Main(filteredArgs);

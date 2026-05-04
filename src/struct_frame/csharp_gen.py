@@ -7,11 +7,11 @@ This module generates C# code for struct serialization using
 classes with manual Pack/Unpack methods for binary compatibility.
 """
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
 import os
 import time
 
-StyleC = NamingStyleC()
+_style_c = NamingStyleC()
 
 # Mapping from proto types to C# types
 csharp_types = {
@@ -76,8 +76,8 @@ class EnumCSharpGen():
         if field.comments:
             result += format_xml_summary(field.comments, indent='    ')
 
-        enumName = '%s%s' % (pascalCase(field.package), field.name)
-        result += '    public enum %s : byte\n' % enumName
+        enum_name = field.name
+        result += '    public enum %s : byte\n' % enum_name
         result += '    {\n'
 
         def csharp_comment_formatter(comments):
@@ -90,7 +90,7 @@ class EnumCSharpGen():
             return lines
 
         enum_values = build_enum_values(
-            field, StyleC,
+            field, _style_c,
             value_format='        {name} = {value}{comma}',
             comment_formatter=csharp_comment_formatter,
             skip_trailing_comma=True
@@ -107,7 +107,7 @@ class EnumCSharpGen():
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
             return ''
         
-        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
         result = f'    /// <summary>Discriminator enum for {msg_name}.{oneof.name} oneof</summary>\n'
         result += f'    public enum {enum_name} : byte\n'
         result += f'    {{\n'
@@ -116,7 +116,7 @@ class EnumCSharpGen():
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             field_order = idx + 1
             # Use PascalCase for C# enum values
-            enum_value = pascalCase(field_name)
+            enum_value = pascal_case(field_name)
             comma = ',' if idx < len(oneof.fields) - 1 else ''
             result += f'        {enum_value} = {field_order}{comma}\n'
         
@@ -126,7 +126,7 @@ class EnumCSharpGen():
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascalCase(oneof.name)}Field'
+        return f'{msg_name}{pascal_case(oneof.name)}Field'
 
 
 class FieldCSharpGen():
@@ -134,8 +134,8 @@ class FieldCSharpGen():
     def generate_field_declaration(field):
         """Generate C# field declaration"""
         result = ''
-        var_name = pascalCase(field.name)
-        type_name = field.fieldType
+        var_name = pascal_case(field.name)
+        type_name = field.field_type
 
         # Add leading comments
         leading_comment = field.comments
@@ -146,13 +146,13 @@ class FieldCSharpGen():
         if type_name in csharp_types:
             base_type = csharp_types[type_name]
         else:
-            # Use the package where the type is defined
+            # Use the type name directly — namespace/using directives handle scoping
             type_pkg = field.type_package if field.type_package else field.package
-            base_type = '%s%s' % (pascalCase(type_pkg), type_name)
+            base_type = type_name
 
         # Handle arrays
         if field.is_array:
-            if field.fieldType == "string":
+            if field.field_type == "string":
                 # String arrays
                 if field.size_option is not None:
                     # Fixed string array
@@ -166,7 +166,7 @@ class FieldCSharpGen():
                 # Non-string arrays
                 if field.size_option is not None:
                     # Fixed array
-                    if field.isEnum:
+                    if field.is_enum:
                         result += f'        public byte[] {var_name} {{ get; set; }} = null!;  // Fixed array of {base_type}: {field.size_option} elements\n'
                     else:
                         result += f'        public {base_type}[] {var_name} {{ get; set; }} = null!;  // Fixed array: {field.size_option} elements\n'
@@ -174,13 +174,13 @@ class FieldCSharpGen():
                     # Variable array
                     count_type = "ushort" if field.max_size > 255 else "byte"
                     result += f'        public {count_type} {var_name}Count {{ get; set; }}\n'
-                    if field.isEnum:
+                    if field.is_enum:
                         result += f'        public byte[] {var_name}Data {{ get; set; }} = null!;  // Variable array of {base_type}: up to {field.max_size} elements\n'
                     else:
                         result += f'        public {base_type}[] {var_name}Data {{ get; set; }} = null!;  // Variable array: up to {field.max_size} elements\n'
 
         # Handle regular strings
-        elif field.fieldType == "string":
+        elif field.field_type == "string":
             if field.size_option is not None:
                 # Fixed string
                 result += f'        public byte[] {var_name} {{ get; set; }} = null!;  // Fixed string: exactly {field.size_option} chars\n'
@@ -192,7 +192,7 @@ class FieldCSharpGen():
 
         # Handle regular fields
         else:
-            if type_name not in csharp_types and not field.isEnum:
+            if type_name not in csharp_types and not field.is_enum:
                 # Nested struct - reference type needs null-forgiving operator
                 result += f'        public {base_type} {var_name} {{ get; set; }} = null!;\n'
             else:
@@ -222,8 +222,8 @@ class FieldCSharpGen():
             List of C# code lines for serializing this field
         """
         lines = []
-        var_name = pascalCase(field.name)
-        type_name = field.fieldType
+        var_name = pascal_case(field.name)
+        type_name = field.field_type
         
         # Local helper to format offset expressions
         def fmt_offset(off):
@@ -233,7 +233,7 @@ class FieldCSharpGen():
 
         # IMPORTANT: Check is_array FIRST to handle arrays of primitives correctly
         if field.is_array:
-            if field.fieldType == "string":
+            if field.field_type == "string":
                 if field.size_option is not None:
                     # Fixed string array
                     total_size = field.size_option * field.element_size
@@ -244,14 +244,14 @@ class FieldCSharpGen():
                     lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name}Count;')
                     lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {fmt_offset(base_offset + 1)}, Math.Min({var_name}Data.Length, {total_size}));')
             else:
-                element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.fieldType, 1)
+                element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.field_type, 1)
                 array_size = field.size_option if field.size_option else field.max_size
                 total_data_size = field.size - (1 if field.max_size else 0)  # subtract count byte if variable
                 if field.size_option is not None:
                     # Fixed array
-                    if field.isEnum:
+                    if field.is_enum:
                         lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length, {field.size_option}));')
-                    elif field.fieldType in csharp_type_sizes:
+                    elif field.field_type in csharp_type_sizes:
                         # Primitive array - use Buffer.BlockCopy
                         lines.append(f'            if ({var_name} != null)')
                         lines.append(f'                Buffer.BlockCopy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length * {element_size}, {total_data_size}));')
@@ -270,9 +270,9 @@ class FieldCSharpGen():
                         lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 2), {var_name}Count);')
                     else:
                         lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name}Count;')
-                    if field.isEnum:
+                    if field.is_enum:
                         lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {fmt_offset(base_offset + count_size)}, Math.Min({var_name}Data.Length, {field.max_size}));')
-                    elif field.fieldType in csharp_type_sizes:
+                    elif field.field_type in csharp_type_sizes:
                         # Primitive array
                         lines.append(f'            if ({var_name}Data != null)')
                         lines.append(f'                Buffer.BlockCopy({var_name}Data, 0, buffer, {fmt_offset(base_offset + count_size)}, Math.Min({var_name}Data.Length * {element_size}, {total_data_size}));')
@@ -309,7 +309,7 @@ class FieldCSharpGen():
                 lines.append(f'            BinaryPrimitives.WriteDoubleLittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 8), {var_name});')
             elif type_name == "bool":
                 lines.append(f'            buffer[{fmt_offset(base_offset)}] = (byte)({var_name} ? 1 : 0);')
-        elif field.fieldType == "string":
+        elif field.field_type == "string":
             if field.size_option is not None:
                 # Fixed string
                 lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length, {field.size_option}));')
@@ -321,13 +321,13 @@ class FieldCSharpGen():
                 else:
                     lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name}Length;')
                 lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {fmt_offset(base_offset + length_size)}, Math.Min({var_name}Data.Length, {field.max_size}));')
-        elif field.isEnum:
+        elif field.is_enum:
             # Single enum field - enums are byte values
             lines.append(f'            buffer[{fmt_offset(base_offset)}] = (byte){var_name};')
         else:
             # Nested struct - use SerializeTo for efficiency
             type_pkg = field.type_package if field.type_package else field.package
-            nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
+            nested_type = type_name
             if use_offset_param:
                 lines.append(f'            if ({var_name} != null) {var_name}.SerializeTo(buffer, {fmt_offset(base_offset)});')
             else:
@@ -339,12 +339,12 @@ class FieldCSharpGen():
     def generate_unpack_code(field, offset):
         """Generate code to unpack this field from a byte array"""
         lines = []
-        var_name = pascalCase(field.name)
-        type_name = field.fieldType
+        var_name = pascal_case(field.name)
+        type_name = field.field_type
 
         # IMPORTANT: Check is_array FIRST to handle arrays of primitives correctly
         if field.is_array:
-            if field.fieldType == "string":
+            if field.field_type == "string":
                 if field.size_option is not None:
                     # Fixed string array
                     total_size = field.size_option * field.element_size
@@ -357,21 +357,21 @@ class FieldCSharpGen():
                     lines.append(f'            msg.{var_name}Data = new byte[{total_size}];')
                     lines.append(f'            Array.Copy(data, {offset + 1}, msg.{var_name}Data, 0, {total_size});')
             else:
-                element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.fieldType, 1)
+                element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.field_type, 1)
                 if field.size_option is not None:
                     # Fixed array
-                    if field.isEnum:
+                    if field.is_enum:
                         lines.append(f'            msg.{var_name} = new byte[{field.size_option}];')
                         lines.append(f'            Array.Copy(data, {offset}, msg.{var_name}, 0, {field.size_option});')
-                    elif field.fieldType in csharp_type_sizes:
-                        base_type = csharp_types.get(field.fieldType, field.fieldType)
+                    elif field.field_type in csharp_type_sizes:
+                        base_type = csharp_types.get(field.field_type, field.field_type)
                         total_data_size = field.size
                         lines.append(f'            msg.{var_name} = new {base_type}[{field.size_option}];')
                         lines.append(f'            Buffer.BlockCopy(data, {offset}, msg.{var_name}, 0, {total_data_size});')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
-                        nested_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+                        nested_type = field.field_type
                         element_size = field.element_size if field.element_size else (field.size // field.size_option)
                         lines.append(f'            msg.{var_name} = new {nested_type}[{field.size_option}];')
                         lines.append(f'            for (int i = 0; i < {field.size_option}; i++)')
@@ -386,18 +386,18 @@ class FieldCSharpGen():
                         lines.append(f'            msg.{var_name}Count = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
                     else:
                         lines.append(f'            msg.{var_name}Count = data[{offset}];')
-                    if field.isEnum:
+                    if field.is_enum:
                         lines.append(f'            msg.{var_name}Data = new byte[{field.max_size}];')
                         lines.append(f'            Array.Copy(data, {offset + count_size}, msg.{var_name}Data, 0, {field.max_size});')
-                    elif field.fieldType in csharp_type_sizes:
-                        base_type = csharp_types.get(field.fieldType, field.fieldType)
+                    elif field.field_type in csharp_type_sizes:
+                        base_type = csharp_types.get(field.field_type, field.field_type)
                         total_data_size = field.size - count_size  # subtract count bytes
                         lines.append(f'            msg.{var_name}Data = new {base_type}[{field.max_size}];')
                         lines.append(f'            Buffer.BlockCopy(data, {offset + count_size}, msg.{var_name}Data, 0, {total_data_size});')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
-                        nested_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+                        nested_type = field.field_type
                         element_size = field.element_size if field.element_size else ((field.size - count_size) // field.max_size)
                         lines.append(f'            msg.{var_name}Data = new {nested_type}[{field.max_size}];')
                         lines.append(f'            for (int i = 0; i < {field.max_size}; i++)')
@@ -429,7 +429,7 @@ class FieldCSharpGen():
                 lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(new ReadOnlySpan<byte>(data, {offset}, 8));')
             elif type_name == "bool":
                 lines.append(f'            msg.{var_name} = data[{offset}] != 0;')
-        elif field.fieldType == "string":
+        elif field.field_type == "string":
             if field.size_option is not None:
                 # Fixed string
                 lines.append(f'            msg.{var_name} = new byte[{field.size_option}];')
@@ -443,15 +443,15 @@ class FieldCSharpGen():
                     lines.append(f'            msg.{var_name}Length = data[{offset}];')
                 lines.append(f'            msg.{var_name}Data = new byte[{field.max_size}];')
                 lines.append(f'            Array.Copy(data, {offset + length_size}, msg.{var_name}Data, 0, {field.max_size});')
-        elif field.isEnum:
+        elif field.is_enum:
             # Single enum field - enums are byte values, cast to enum type
             type_pkg = field.type_package if field.type_package else field.package
-            enum_type = '%s%s' % (pascalCase(type_pkg), type_name)
+            enum_type = type_name
             lines.append(f'            msg.{var_name} = ({enum_type})data[{offset}];')
         else:
             # Nested struct
             type_pkg = field.type_package if field.type_package else field.package
-            nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
+            nested_type = type_name
             struct_size = field.size
             lines.append(f'            msg.{var_name} = {nested_type}.Deserialize(data[{offset}..({offset} + {struct_size})]);')
 
@@ -460,14 +460,14 @@ class FieldCSharpGen():
 
 class MessageCSharpGen():
     @staticmethod
-    def generate(msg, package=None, equality=False, legacy_enum_names=False):
+    def generate(msg, package=None, equality=False):
         leading_comment = msg.comments
 
         result = ''
         if leading_comment:
             result += format_xml_summary(leading_comment, indent='    ')
 
-        structName = '%s%s' % (pascalCase(msg.package), msg.name)
+        structName = msg.name
 
         # Add IEquatable<T> interface if equality is requested
         if equality:
@@ -504,11 +504,11 @@ class MessageCSharpGen():
         for key, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
-                    result += f'        public ushort {pascalCase(oneof.name)}Discriminator {{ get; set; }}\n'
+                    result += f'        public ushort {pascal_case(oneof.name)}Discriminator {{ get; set; }}\n'
                 else:  # field_order
-                    enum_base_name = msg.name if legacy_enum_names else structName
+                    enum_base_name = structName
                     enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
-                    result += f'        public {enum_name} {pascalCase(oneof.name)}Discriminator {{ get; set; }}\n'
+                    result += f'        public {enum_name} {pascal_case(oneof.name)}Discriminator {{ get; set; }}\n'
             for field_name, field in oneof.fields.items():
                 result += f'        // Union member: {field_name}\n'
                 result += FieldCSharpGen.generate_field_declaration(field)
@@ -566,17 +566,17 @@ class MessageCSharpGen():
             if oneof.auto_discriminator:
                 result += f'            // Oneof {oneof_name} discriminator\n'
                 if oneof.discriminator_type == "msgid":
-                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset + {offset}), {pascalCase(oneof_name)}Discriminator);\n'
+                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset + {offset}), {pascal_case(oneof_name)}Discriminator);\n'
                     offset += 2
                 else:  # field_order
-                    result += f'            buffer[offset + {offset}] = (byte){pascalCase(oneof_name)}Discriminator;\n'
+                    result += f'            buffer[offset + {offset}] = (byte){pascal_case(oneof_name)}Discriminator;\n'
                     offset += 1
             
             result += f'            // Oneof {oneof_name} payload (union size: {oneof.size})\n'
             first = True
             for field_name, field in oneof.fields.items():
-                type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
-                field_var = pascalCase(field_name)
+                type_name = field.field_type
+                field_var = pascal_case(field_name)
                 if first:
                     result += f'            if ({field_var} != null)\n'
                     first = False
@@ -637,14 +637,14 @@ class MessageCSharpGen():
             if oneof.auto_discriminator:
                 result += f'            // Oneof {oneof_name} discriminator\n'
                 if oneof.discriminator_type == "msgid":
-                    result += f'            msg.{pascalCase(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan({offset}));\n'
-                    result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
+                    result += f'            msg.{pascal_case(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan({offset}));\n'
+                    result += f'            var {oneof_name}_discriminator = msg.{pascal_case(oneof_name)}Discriminator;\n'
                     offset += 2
                 else:  # field_order
-                    enum_base_name = msg.name if legacy_enum_names else structName
+                    enum_base_name = structName
                     enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
-                    result += f'            msg.{pascalCase(oneof_name)}Discriminator = ({enum_name})data[{offset}];\n'
-                    result += f'            var {oneof_name}_discriminator = msg.{pascalCase(oneof_name)}Discriminator;\n'
+                    result += f'            msg.{pascal_case(oneof_name)}Discriminator = ({enum_name})data[{offset}];\n'
+                    result += f'            var {oneof_name}_discriminator = msg.{pascal_case(oneof_name)}Discriminator;\n'
                     offset += 1
             
             result += f'            // Oneof {oneof_name} payload (union size: {oneof.size})\n'
@@ -652,8 +652,8 @@ class MessageCSharpGen():
                 if oneof.discriminator_type == "msgid":
                     first = True
                     for field_name, field in oneof.fields.items():
-                        type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
-                        field_var = pascalCase(field_name)
+                        type_name = field.field_type
+                        field_var = pascal_case(field_name)
                         if first:
                             result += f'            if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
                             first = False
@@ -663,18 +663,18 @@ class MessageCSharpGen():
                         result += f'                msg.{field_var} = {type_name}.Deserialize(data[{offset}..({offset} + {type_name}.MaxSize)]);\n'
                         result += '            }\n'
                 else:  # field_order
-                    enum_base_name = msg.name if legacy_enum_names else structName
+                    enum_base_name = structName
                     enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
                     first = True
                     for idx, field_name in enumerate(oneof.field_order):
                         field = oneof.fields[field_name]
-                        enum_entry = pascalCase(field_name)
-                        field_var = pascalCase(field_name)
-                        if field.isDefaultType or field.isEnum:
+                        enum_entry = pascal_case(field_name)
+                        field_var = pascal_case(field_name)
+                        if field.is_default_type or field.is_enum:
                             # Primitive or enum - we need to handle this differently
                             pass  # Handled below in else case
                         else:
-                            type_name = '%s%s' % (pascalCase(field.package), field.fieldType)
+                            type_name = field.field_type
                             if first:
                                 result += f'            if ({oneof_name}_discriminator == {enum_name}.{enum_entry})\n'
                                 first = False
@@ -744,7 +744,7 @@ class MessageCSharpGen():
         
         # Generate envelope methods if this is an envelope message
         if msg.is_envelope:
-            result += MessageCSharpGen._generate_envelope_methods(msg, structName, package, legacy_enum_names=legacy_enum_names)
+            result += MessageCSharpGen._generate_envelope_methods(msg, structName, package)
 
         result += '    }\n'
 
@@ -764,15 +764,15 @@ class MessageCSharpGen():
         result += '            int size = 0;\n'
         
         for key, f in msg.fields.items():
-            var_name = pascalCase(f.name)
+            var_name = pascal_case(f.name)
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if f.fieldType == "string":
+                if f.field_type == "string":
                     element_size = f.element_size if f.element_size else 1
                 else:
-                    element_size = type_sizes.get(f.fieldType, (f.size - 1) // f.max_size)
+                    element_size = type_sizes.get(f.field_type, (f.size - 1) // f.max_size)
                 result += f'            size += 1 + ({var_name}Count * {element_size}); // {f.name}\n'
-            elif f.fieldType == "string" and f.max_size is not None:
+            elif f.field_type == "string" and f.max_size is not None:
                 result += f'            size += 1 + {var_name}Length; // {f.name}\n'
             else:
                 result += f'            size += {f.size}; // {f.name}\n'
@@ -792,8 +792,8 @@ class MessageCSharpGen():
         result += '            int offset = 0;\n'
         
         for key, f in msg.fields.items():
-            var_name = pascalCase(f.name)
-            type_name = f.fieldType
+            var_name = pascal_case(f.name)
+            type_name = f.field_type
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if type_name == "string":
@@ -806,7 +806,7 @@ class MessageCSharpGen():
                     result += f'            if ({var_name}Data != null)\n'
                     result += f'                Buffer.BlockCopy({var_name}Data, 0, buffer, offset, {var_name}Count * {element_size});\n'
                     result += f'            offset += {var_name}Count * {element_size};\n'
-                elif f.isEnum:
+                elif f.is_enum:
                     result += f'            if ({var_name}Data != null)\n'
                     result += f'                Array.Copy({var_name}Data, 0, buffer, offset, {var_name}Count);\n'
                     result += f'            offset += {var_name}Count;\n'
@@ -852,7 +852,7 @@ class MessageCSharpGen():
                     result += f'            if ({var_name} != null)\n'
                     result += f'                Array.Copy({var_name}, 0, buffer, offset, Math.Min({var_name}.Length, {f.size}));\n'
                     result += f'            offset += {f.size};\n'
-                elif f.isEnum:
+                elif f.is_enum:
                     result += f'            buffer[offset++] = (byte){var_name};\n'
                 else:
                     # Nested struct
@@ -873,8 +873,8 @@ class MessageCSharpGen():
         result += '            int offset = 0;\n'
         
         for key, f in msg.fields.items():
-            var_name = pascalCase(f.name)
-            type_name = f.fieldType
+            var_name = pascal_case(f.name)
+            type_name = f.field_type
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if type_name == "string":
@@ -893,13 +893,13 @@ class MessageCSharpGen():
                     result += f'            msg.{var_name}Data = new {base_type}[{f.max_size}];\n'
                     result += f'            Buffer.BlockCopy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Count * {element_size});\n'
                     result += f'            offset += msg.{var_name}Count * {element_size};\n'
-                elif f.isEnum:
+                elif f.is_enum:
                     result += f'            msg.{var_name}Data = new byte[{f.max_size}];\n'
                     result += f'            Array.Copy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Count);\n'
                     result += f'            offset += msg.{var_name}Count;\n'
                 else:
                     type_pkg = f.type_package if f.type_package else f.package
-                    nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
+                    nested_type = type_name
                     result += f'            msg.{var_name}Data = new {nested_type}[{f.max_size}];\n'
                     result += f'            for (int i = 0; i < msg.{var_name}Count; i++)\n'
                     result += f'                msg.{var_name}Data[i] = {nested_type}.Deserialize(data[(offset + i * {element_size})..(offset + (i + 1) * {element_size})]);\n'
@@ -944,13 +944,13 @@ class MessageCSharpGen():
                     result += f'            msg.{var_name} = new byte[{f.size}];\n'
                     result += f'            Array.Copy(data, offset, msg.{var_name}, 0, {f.size});\n'
                     result += f'            offset += {f.size};\n'
-                elif f.isEnum:
+                elif f.is_enum:
                     type_pkg = f.type_package if f.type_package else f.package
-                    enum_type = '%s%s' % (pascalCase(type_pkg), type_name)
+                    enum_type = type_name
                     result += f'            msg.{var_name} = ({enum_type})data[offset++];\n'
                 else:
                     type_pkg = f.type_package if f.type_package else f.package
-                    nested_type = '%s%s' % (pascalCase(type_pkg), type_name)
+                    nested_type = type_name
                     result += f'            msg.{var_name} = {nested_type}.Deserialize(data[offset..(offset + {nested_type}.MaxSize)]); offset += {nested_type}.MaxSize;\n'
         
         result += '            return msg;\n'
@@ -974,7 +974,7 @@ class MessageCSharpGen():
         
         comparisons = []
         for key, f in msg.fields.items():
-            field_name = pascalCase(f.name)
+            field_name = pascal_case(f.name)
             
             # Handle arrays
             if f.is_array:
@@ -987,7 +987,7 @@ class MessageCSharpGen():
                     comparisons.append(f'{field_name}Data.SequenceEqual(other.{field_name}Data)')
             
             # Handle strings
-            elif f.fieldType == "string":
+            elif f.field_type == "string":
                 if f.size_option is not None:
                     # Fixed string - use SequenceEqual
                     comparisons.append(f'{field_name}.SequenceEqual(other.{field_name})')
@@ -997,11 +997,11 @@ class MessageCSharpGen():
                     comparisons.append(f'{field_name}Data.SequenceEqual(other.{field_name}Data)')
             
             # Handle enums (value types)
-            elif f.isEnum:
+            elif f.is_enum:
                 comparisons.append(f'{field_name} == other.{field_name}')
             
             # Handle nested messages
-            elif f.fieldType not in csharp_types:
+            elif f.field_type not in csharp_types:
                 comparisons.append(f'({field_name}?.Equals(other.{field_name}) ?? other.{field_name} is null)')
             
             # Handle primitives
@@ -1011,9 +1011,9 @@ class MessageCSharpGen():
         # Add oneof fields
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
-                comparisons.append(f'{pascalCase(oneof_name)}Discriminator == other.{pascalCase(oneof_name)}Discriminator')
+                comparisons.append(f'{pascal_case(oneof_name)}Discriminator == other.{pascal_case(oneof_name)}Discriminator')
             for field_name, field in oneof.fields.items():
-                field_var = pascalCase(field_name)
+                field_var = pascal_case(field_name)
                 comparisons.append(f'({field_var}?.Equals(other.{field_var}) ?? other.{field_var} is null)')
         
         if comparisons:
@@ -1040,7 +1040,7 @@ class MessageCSharpGen():
         result += '        {\n'
         result += '            var hash = new HashCode();\n'
         for key, f in msg.fields.items():
-            field_name = pascalCase(f.name)
+            field_name = pascal_case(f.name)
             if f.is_array:
                 if f.size_option is not None:
                     # Fixed array
@@ -1049,7 +1049,7 @@ class MessageCSharpGen():
                     # Variable array
                     result += f'            hash.Add({field_name}Count);\n'
                     result += f'            foreach (var b in {field_name}Data) hash.Add(b);\n'
-            elif f.fieldType == "string":
+            elif f.field_type == "string":
                 if f.size_option is not None:
                     # Fixed string
                     result += f'            foreach (var b in {field_name}) hash.Add(b);\n'
@@ -1061,9 +1061,9 @@ class MessageCSharpGen():
                 result += f'            hash.Add({field_name});\n'
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
-                result += f'            hash.Add({pascalCase(oneof_name)}Discriminator);\n'
+                result += f'            hash.Add({pascal_case(oneof_name)}Discriminator);\n'
             for field_name, field in oneof.fields.items():
-                result += f'            hash.Add({pascalCase(field_name)});\n'
+                result += f'            hash.Add({pascal_case(field_name)});\n'
         result += '            return hash.ToHashCode();\n'
         result += '        }\n\n'
         
@@ -1088,7 +1088,7 @@ class MessageCSharpGen():
         return result
     
     @staticmethod
-    def _generate_envelope_methods(msg, structName, package, legacy_enum_names=False):
+    def _generate_envelope_methods(msg, structName, package):
         """Generate envelope-specific helper methods for wrapping inner messages."""
         result = '\n'
         
@@ -1099,7 +1099,7 @@ class MessageCSharpGen():
         # Get enum name for field_order discriminators
         enum_name = None
         if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-            enum_base_name = msg.name if legacy_enum_names else structName
+            enum_base_name = structName
             enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
         
         result += '        // ========================================\n'
@@ -1110,16 +1110,16 @@ class MessageCSharpGen():
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             # Get the payload type name
             type_pkg = field.type_package if field.type_package else field.package
-            payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+            payload_type = field.field_type
             
             # Generate parameter list for envelope fields (non-oneof fields)
             field_params = []
             for f_name, f in msg.fields.items():
-                csharp_type = csharp_types.get(f.fieldType)
+                csharp_type = csharp_types.get(f.field_type)
                 if csharp_type is None:
                     type_pkg = f.type_package if f.type_package else f.package
-                    csharp_type = '%s%s' % (pascalCase(type_pkg), f.fieldType)
-                if f.is_array or f.fieldType == "string":
+                    csharp_type = f.field_type
+                if f.is_array or f.field_type == "string":
                     # Arrays and strings are complex types
                     continue  # Skip for simplicity, user can set these after wrap
                 field_params.append(f'{csharp_type} {f.name}')
@@ -1133,7 +1133,7 @@ class MessageCSharpGen():
             result += '        /// </summary>\n'
             result += f'        /// <param name="payload">The {payload_type} message to wrap</param>\n'
             for f_name, f in msg.fields.items():
-                if f.is_array or f.fieldType == "string":
+                if f.is_array or f.field_type == "string":
                     continue
                 result += f'        /// <param name="{f.name}">Envelope field value</param>\n'
             result += f'        /// <returns>A fully initialized {structName} envelope</returns>\n'
@@ -1143,20 +1143,20 @@ class MessageCSharpGen():
             
             # Initialize envelope fields
             for f_name, f in msg.fields.items():
-                if f.is_array or f.fieldType == "string":
+                if f.is_array or f.field_type == "string":
                     continue
-                result += f'            envelope.{pascalCase(f.name)} = {f.name};\n'
+                result += f'            envelope.{pascal_case(f.name)} = {f.name};\n'
             
             # Set the discriminator to the payload's message ID or field order
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
-                    result += f'            envelope.{pascalCase(oneof_name)}Discriminator = {payload_type}.MsgId;\n'
+                    result += f'            envelope.{pascal_case(oneof_name)}Discriminator = {payload_type}.MsgId;\n'
                 else:  # field_order
-                    enum_entry = pascalCase(field_name)
-                    result += f'            envelope.{pascalCase(oneof_name)}Discriminator = {enum_name}.{enum_entry};\n'
+                    enum_entry = pascal_case(field_name)
+                    result += f'            envelope.{pascal_case(oneof_name)}Discriminator = {enum_name}.{enum_entry};\n'
             
             # Serialize payload and copy to the oneof field
-            result += f'            envelope.{pascalCase(field_name)} = payload;\n'
+            result += f'            envelope.{pascal_case(field_name)} = payload;\n'
             result += '            return envelope;\n'
             result += '        }\n'
         
@@ -1173,7 +1173,7 @@ class MessageCSharpGen():
                 result += f'        /// <returns>The field discriminator of the payload in the {oneof_name} union</returns>\n'
                 result += f'        public {enum_name} GetPayloadFieldDiscriminator()\n'
             result += '        {\n'
-            result += f'            return {pascalCase(oneof_name)}Discriminator;\n'
+            result += f'            return {pascal_case(oneof_name)}Discriminator;\n'
             result += '        }\n'
         
         return result
@@ -1184,10 +1184,7 @@ class FileCSharpGen():
     def _file_header(package, equality=False, needs_collections=False, include_timestamp=False):
         """Generate the standard file header (auto-gen comment, usings, namespace open)."""
         result = '// Automatically generated struct frame code for C#\n'
-        if include_timestamp:
-            result += '// Generated by %s at %s.\n\n' % (version, time.asctime())
-        else:
-            result += '// Generated by %s.\n\n' % (version,)
+        result += '// Generated by struct-frame %s.\n\n' % version
         result += '#nullable enable\n\n'
         result += 'using System;\n'
         if needs_collections:
@@ -1207,10 +1204,10 @@ class FileCSharpGen():
 
         if referenced_packages:
             for ref_pkg in sorted(referenced_packages):
-                result += f'using StructFrame.{pascalCase(ref_pkg)};\n'
+                result += f'using StructFrame.{pascal_case(ref_pkg)};\n'
 
         result += '\n'
-        namespace_name = pascalCase(package.name)
+        namespace_name = pascal_case(package.name)
         result += 'namespace StructFrame.%s\n' % namespace_name
         result += '{\n'
         return result
@@ -1220,7 +1217,7 @@ class FileCSharpGen():
         return '}\n'
 
     @staticmethod
-    def generate_per_file(package, equality=False, legacy_enum_names=False):
+    def generate_per_file(package, equality=False):
         """Generate one file per enum/message/utility class.
         
         Returns a dict of {relative_filename: content_string} where
@@ -1254,8 +1251,8 @@ class FileCSharpGen():
 
         # One file per discriminator enum
         for key, msg in package.messages.items():
-            struct_name = '%s%s' % (pascalCase(msg.package), msg.name)
-            enum_base_name = msg.name if legacy_enum_names else struct_name
+            struct_name = msg.name
+            enum_base_name = struct_name
             for oneof_name, oneof in msg.oneofs.items():
                 if oneof.auto_discriminator and oneof.discriminator_type == 'field_order':
                     enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, enum_base_name)
@@ -1268,7 +1265,7 @@ class FileCSharpGen():
         if package.messages:
             for key, msg in package.sortedMessages().items():
                 content = header()
-                content += MessageCSharpGen.generate(msg, package, equality, legacy_enum_names=legacy_enum_names)
+                content += MessageCSharpGen.generate(msg, package, equality)
                 content += footer
                 # Strip the package prefix from the class name for the filename
                 files[os.path.join('Messages', f'{msg.name}.cs')] = content
@@ -1276,17 +1273,17 @@ class FileCSharpGen():
         # MessageDefinitions in its own file (includes timestamp since it's the single aggregation file)
         if package.messages:
             content = FileCSharpGen._file_header(package, equality=equality, needs_collections=True, include_timestamp=True)
-            content += FileCSharpGen._generate_message_definitions(package, legacy_enum_names=legacy_enum_names)
+            content += FileCSharpGen._generate_message_definitions(package)
             content += footer
             files['MessageDefinitions.cs'] = content
 
         return files
 
     @staticmethod
-    def _generate_message_definitions(package, legacy_enum_names=False):
+    def _generate_message_definitions(package):
         """Generate the MessageDefinitions static class content."""
         result = ''
-        namespace_name_local = pascalCase(package.name)
+        namespace_name_local = pascal_case(package.name)
         result += '    /// <summary>\n'
         result += '    /// Message registry and utilities for automatic message lookup and deserialization.\n'
         result += '    /// </summary>\n'
@@ -1316,7 +1313,7 @@ class FileCSharpGen():
 
         for key, msg in package.sortedMessages().items():
             if msg.id:
-                structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                structName = msg.name
                 magic1 = '0'
                 magic2 = '0'
                 if msg.magic_bytes:
@@ -1339,7 +1336,7 @@ class FileCSharpGen():
 
         for key, msg in package.sortedMessages().items():
             if msg.id:
-                structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                structName = msg.name
                 if package.package_id is not None:
                     combined_msg_id = (package.package_id << 8) | msg.id
                     result += f'            {{ "{msg.name}", _registryById[{combined_msg_id}] }},\n'
@@ -1357,7 +1354,7 @@ class FileCSharpGen():
 
         for key, msg in package.sortedMessages().items():
             if msg.id:
-                structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                structName = msg.name
                 if package.package_id is not None:
                     combined_msg_id = (package.package_id << 8) | msg.id
                     result += f'            {{ typeof({structName}), _registryById[{combined_msg_id}] }},\n'
@@ -1394,7 +1391,7 @@ class FileCSharpGen():
 
         for key, msg in package.sortedMessages().items():
             if msg.id:
-                structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                structName = msg.name
                 magic1 = '0'
                 magic2 = '0'
                 if msg.magic_bytes:
@@ -1494,9 +1491,9 @@ class FileCSharpGen():
         return result
 
     @staticmethod
-    def generate(package, equality=False, legacy_enum_names=False):
+    def generate(package, equality=False):
         yield '// Automatically generated struct frame code for C#\n'
-        yield '// Generated by %s at %s.\n\n' % (version, time.asctime())
+        yield '// Generated by struct-frame %s.\n\n' % version
 
         yield '#nullable enable\n\n'
         yield 'using System;\n'
@@ -1519,11 +1516,11 @@ class FileCSharpGen():
         # Add using directives for referenced packages
         if referenced_packages:
             for ref_pkg in sorted(referenced_packages):
-                yield f'using StructFrame.{pascalCase(ref_pkg)};\n'
+                yield f'using StructFrame.{pascal_case(ref_pkg)};\n'
         
         yield '\n'
 
-        namespace_name = pascalCase(package.name)
+        namespace_name = pascal_case(package.name)
         yield 'namespace StructFrame.%s\n' % namespace_name
         yield '{\n'
 
@@ -1543,8 +1540,8 @@ class FileCSharpGen():
         # Generate discriminator enums for field_order oneofs
         discriminator_enums_generated = False
         for key, msg in package.messages.items():
-            struct_name = '%s%s' % (pascalCase(msg.package), msg.name)
-            enum_base_name = msg.name if legacy_enum_names else struct_name
+            struct_name = msg.name
+            enum_base_name = struct_name
             for oneof_name, oneof in msg.oneofs.items():
                 if oneof.auto_discriminator and oneof.discriminator_type == 'field_order':
                     if not discriminator_enums_generated:
@@ -1556,7 +1553,7 @@ class FileCSharpGen():
         if package.messages:
             yield '    // Message definitions\n'
             for key, msg in package.sortedMessages().items():
-                yield MessageCSharpGen.generate(msg, package, equality, legacy_enum_names=legacy_enum_names)
+                yield MessageCSharpGen.generate(msg, package, equality)
             yield '\n'
 
         # Generate helper class with message definitions
