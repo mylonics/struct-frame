@@ -62,15 +62,15 @@ pub struct ExampleStatus {
 ### StructFrameMessage Trait
 
 ```rust
-pub trait StructFrameMessage: Default {
-    const MSG_ID: u8;
+pub trait StructFrameMessage {
+    const MSG_ID: u16;
     const MAX_SIZE: usize;
     const MAGIC1: u8;
     const MAGIC2: u8;
     const IS_VARIABLE: bool;
 
     fn pack(&self, buffer: &mut [u8]) -> usize;
-    fn pack_max_size(buffer: &mut [u8]) -> usize;
+    fn pack_max_size(&self, buffer: &mut [u8]) -> usize;
     fn unpack(buffer: &[u8]) -> Option<Self> where Self: Sized;
 }
 ```
@@ -145,7 +145,7 @@ reader.add_data(&received_bytes);
 // Drain all complete messages
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        i if i == ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
         _ => None,
     }
 };
@@ -166,7 +166,7 @@ Useful when receiving from a serial port or UART one byte at a time:
 let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        i if i == ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
         _ => None,
     }
 };
@@ -192,7 +192,7 @@ use struct_frame_sdk::{BufferReader, MessageInfo, PROFILE_STANDARD_CONFIG};
 
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        i if i == ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
         _ => None,
     }
 };
@@ -201,7 +201,7 @@ let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data.to_vec());
 while let Some(info) = reader.next(&get_info) {
     if info.valid {
         match info.msg_id {
-            i if i == ExampleStatus::MSG_ID => {
+            ExampleStatus::MSG_ID => {
                 if let Some(msg) = ExampleStatus::unpack(&info.payload) {
                     // handle
                 }
@@ -239,18 +239,18 @@ use struct_frame_sdk::example::{ExampleStatus, ExampleCommand};
 
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        i if i == ExampleStatus::MSG_ID  => Some(ExampleStatus::message_info()),
-        i if i == ExampleCommand::MSG_ID => Some(ExampleCommand::message_info()),
+        ExampleStatus::MSG_ID  => Some(ExampleStatus::message_info()),
+        ExampleCommand::MSG_ID => Some(ExampleCommand::message_info()),
         _ => None,
     }
 };
 while let Some(info) = reader.next(&get_info) {
     if !info.valid { continue; }
     match info.msg_id {
-        i if i == ExampleStatus::MSG_ID  => {
+        ExampleStatus::MSG_ID  => {
             if let Some(msg) = ExampleStatus::unpack(&info.payload) { handle_status(msg); }
         }
-        i if i == ExampleCommand::MSG_ID => {
+        ExampleCommand::MSG_ID => {
             if let Some(msg) = ExampleCommand::unpack(&info.payload) { handle_command(msg); }
         }
         _ => { /* unknown message */ }
