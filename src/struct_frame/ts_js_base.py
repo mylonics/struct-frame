@@ -109,13 +109,13 @@ class BaseFieldGen:
             return comment + count_line + "    .%s('%sData', %d)" % (array_method, var_name, field.max_size)
 
     @staticmethod
-    def _resolve_array_type(field, package_name, types_dict, typed_array_methods_dict, isEnum):
+    def _resolve_array_type(field, package_name, types_dict, typed_array_methods_dict, is_enum):
         """Resolve base type and array method for an array field."""
         type_name = field.field_type
         if type_name in types_dict:
             base_type = types_dict[type_name]
             array_method = typed_array_methods_dict.get(type_name, 'StructArray')
-        elif isEnum:
+        elif is_enum:
             base_type = 'UInt8'
             array_method = 'UInt8Array'
         else:
@@ -139,7 +139,7 @@ class BaseFieldGen:
             String containing the field definition code
         """
         result = ''
-        isEnum = field.is_enum if hasattr(field, 'is_enum') else False
+        is_enum = field.is_enum if hasattr(field, 'is_enum') else False
         var_name = to_camel_case(field.name)
         type_name = field.field_type
 
@@ -149,7 +149,7 @@ class BaseFieldGen:
                 result = BaseFieldGen._generate_string_array(field, var_name)
             else:
                 base_type, array_method = BaseFieldGen._resolve_array_type(
-                    field, package_name, types_dict, typed_array_methods_dict, isEnum)
+                    field, package_name, types_dict, typed_array_methods_dict, is_enum)
                 result = BaseFieldGen._generate_typed_array(field, var_name, base_type, array_method)
         else:
             # Non-array fields
@@ -169,7 +169,7 @@ class BaseFieldGen:
                 if type_name in types_dict:
                     # Built-in primitive type - use method directly
                     type_name = types_dict[type_name]
-                    if isEnum:
+                    if is_enum:
                         result += "    .UInt8('%s')" % var_name
                     else:
                         result += "    .%s('%s')" % (type_name, var_name)
@@ -178,7 +178,7 @@ class BaseFieldGen:
                     type_package = getattr(field, 'type_package', None) or package_name
                     # Use type name directly without case conversion to match how exports are generated
                     struct_name = '%s_%s' % (type_package, type_name)
-                    if isEnum:
+                    if is_enum:
                         result += "    .UInt8('%s')" % var_name
                     else:
                         # Single nested struct uses StructArray with count=1
