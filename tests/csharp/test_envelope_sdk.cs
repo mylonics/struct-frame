@@ -4,7 +4,7 @@
  * Regression test for the enum naming bug in SdkInterface.cs where the
  * discriminator enum was referenced without the package prefix (e.g.
  * "RawDataEnvelopePayloadField") instead of the correct full name
- * (e.g. "EnvelopeTestRawDataEnvelopePayloadField"), causing CS0266
+ * (e.g. "RawDataEnvelopePayloadField"), causing CS0266
  * implicit conversion errors when building the SDK interface.
  *
  * This test verifies:
@@ -43,14 +43,14 @@ public class TestEnvelopeSdk
    */
   private static void TestDiscriminatorEnumValues()
   {
-    // EnvelopeTestRawDataEnvelopePayloadField is the correct full name.
+    // RawDataEnvelopePayloadField is the correct full name.
     // If SdkInterface.cs used the wrong name, the generated library would
     // fail to build and this test file would never reach execution.
-    Expect((byte)EnvelopeTestRawDataEnvelopePayloadField.None == 0,
+    Expect((byte)RawDataEnvelopePayloadField.None == 0,
            "Discriminator None == 0");
-    Expect((byte)EnvelopeTestRawDataEnvelopePayloadField.Sample == 1,
+    Expect((byte)RawDataEnvelopePayloadField.Sample == 1,
            "Discriminator Sample == 1 (first field in oneof)");
-    Expect((byte)EnvelopeTestRawDataEnvelopePayloadField.Config == 2,
+    Expect((byte)RawDataEnvelopePayloadField.Config == 2,
            "Discriminator Config == 2 (second field in oneof)");
   }
 
@@ -60,27 +60,27 @@ public class TestEnvelopeSdk
    */
   private static void TestRoundTripSamplePayload()
   {
-    var sample = new EnvelopeTestRawSamplePayload
+    var sample = new RawSamplePayload
     {
       Channel = 3,
       Value = 1.23f,
       Flags = 0xAB
     };
 
-    var envelope = new EnvelopeTestRawDataEnvelope
+    var envelope = new RawDataEnvelope
     {
       Priority = 5,
       TimestampUs = 1000000,
-      PayloadDiscriminator = EnvelopeTestRawDataEnvelopePayloadField.Sample,
+      PayloadDiscriminator = RawDataEnvelopePayloadField.Sample,
       Sample = sample
     };
 
     byte[] bytes = envelope.Serialize();
-    var decoded = EnvelopeTestRawDataEnvelope.Deserialize(bytes);
+    var decoded = RawDataEnvelope.Deserialize(bytes);
 
     Expect(decoded.Priority == 5, "RoundTrip Sample: Priority");
     Expect(decoded.TimestampUs == 1000000, "RoundTrip Sample: TimestampUs");
-    Expect(decoded.PayloadDiscriminator == EnvelopeTestRawDataEnvelopePayloadField.Sample,
+    Expect(decoded.PayloadDiscriminator == RawDataEnvelopePayloadField.Sample,
            "RoundTrip Sample: Discriminator == Sample");
     Expect(decoded.Sample != null, "RoundTrip Sample: Sample field not null");
     if (decoded.Sample != null)
@@ -96,26 +96,26 @@ public class TestEnvelopeSdk
    */
   private static void TestRoundTripConfigPayload()
   {
-    var config = new EnvelopeTestRawConfigPayload
+    var config = new RawConfigPayload
     {
       SettingId = 7,
       SettingValue = 4096
     };
 
-    var envelope = new EnvelopeTestRawDataEnvelope
+    var envelope = new RawDataEnvelope
     {
       Priority = 1,
       TimestampUs = 500,
-      PayloadDiscriminator = EnvelopeTestRawDataEnvelopePayloadField.Config,
+      PayloadDiscriminator = RawDataEnvelopePayloadField.Config,
       Config = config
     };
 
     byte[] bytes = envelope.Serialize();
-    var decoded = EnvelopeTestRawDataEnvelope.Deserialize(bytes);
+    var decoded = RawDataEnvelope.Deserialize(bytes);
 
     Expect(decoded.Priority == 1, "RoundTrip Config: Priority");
     Expect(decoded.TimestampUs == 500, "RoundTrip Config: TimestampUs");
-    Expect(decoded.PayloadDiscriminator == EnvelopeTestRawDataEnvelopePayloadField.Config,
+    Expect(decoded.PayloadDiscriminator == RawDataEnvelopePayloadField.Config,
            "RoundTrip Config: Discriminator == Config");
     Expect(decoded.Config != null, "RoundTrip Config: Config field not null");
     if (decoded.Config != null)

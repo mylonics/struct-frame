@@ -8,7 +8,6 @@
 //   file:    path to binary output/input file
 
 use struct_frame_sdk::extended_test::*;
-use struct_frame_sdk::get_message_info;
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::{
     encode_message_crc, encode_message_minimal, AccumulatingReader, ProfileConfig,
@@ -600,14 +599,16 @@ fn encode_variable_flag(config: &ProfileConfig, output: &mut [u8]) -> usize {
 // Generic decode-and-validate
 // ============================================================================
 
-fn decode_validate_with<F>(
+fn decode_validate_with<F, G>(
     config: ProfileConfig,
     data: &[u8],
     expected_count: usize,
     get_expected: F,
+    msg_info_fn: G,
 ) -> usize
 where
     F: Fn(usize, &mut [u8]) -> (u16, usize),
+    G: Fn(u16) -> Option<struct_frame_sdk::MessageInfo>,
 {
     let mut reader = AccumulatingReader::new(config, 65536);
     reader.add_data(data);
@@ -615,7 +616,7 @@ where
     let mut count = 0;
     let mut expected_buf = vec![0u8; 65536];
 
-    while let Some(frame) = reader.next(&get_message_info) {
+    while let Some(frame) = reader.next(&msg_info_fn) {
         if !frame.valid { break; }
 
         let (expected_id, expected_len) = get_expected(count, &mut expected_buf);
@@ -697,7 +698,7 @@ fn main() {
             Box::new(move |cfg, data| {
                 decode_validate_with(cfg, data, STANDARD_MESSAGE_COUNT, move |i, buf| {
                     get_expected_payload_standard(i, buf, use_fixed)
-                })
+                }, struct_frame_sdk::serialization_test::get_message_info)
             }),
         ),
         "test_extended" => (
@@ -706,7 +707,7 @@ fn main() {
             Box::new(|cfg, data| {
                 decode_validate_with(cfg, data, EXTENDED_MESSAGE_COUNT, |i, buf| {
                     get_expected_payload_extended(i, buf)
-                })
+                }, struct_frame_sdk::extended_test::get_message_info)
             }),
         ),
         "test_variable_flag" => (
@@ -715,7 +716,7 @@ fn main() {
             Box::new(move |cfg, data| {
                 decode_validate_with(cfg, data, VARIABLE_FLAG_MESSAGE_COUNT, move |i, buf| {
                     get_expected_payload_variable_flag(i, buf, use_fixed)
-                })
+                }, struct_frame_sdk::serialization_test::get_message_info)
             }),
         ),
         _ => {

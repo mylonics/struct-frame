@@ -20,9 +20,9 @@ public class TestNegative
     private static int testsPassed = 0;
     private static int testsFailed = 0;
 
-    private static SerializationTestBasicTypesMessage CreateTestMessage()
+    private static BasicTypesMessage CreateTestMessage()
         {
-            var msg = new SerializationTestBasicTypesMessage
+            var msg = new BasicTypesMessage
             {
                 SmallInt = 42,
                 MediumInt = 1000,

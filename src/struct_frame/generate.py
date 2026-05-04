@@ -6,6 +6,7 @@ import os
 import shutil
 import hashlib
 import json
+import time
 from struct_frame import FileCGen
 from struct_frame import FileTsGen
 from struct_frame import FileJsGen
@@ -1963,8 +1964,17 @@ def main():
         if dirname and not os.path.exists(dirname):
             os.makedirs(dirname)
 
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(filedata)
+        # Retry on transient PermissionError (e.g. Windows file lock from
+        # the .NET build server or an IDE holding the .csproj open briefly).
+        for _attempt in range(5):
+            try:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(filedata)
+                break
+            except PermissionError:
+                if _attempt == 4:
+                    raise
+                time.sleep(0.5)
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
 

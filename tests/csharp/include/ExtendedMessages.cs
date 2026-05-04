@@ -25,9 +25,9 @@ namespace StructFrameTests
         // Helper functions to create messages (like C++ create_* functions)
         // ============================================================================
 
-        private static ExtendedTestExtendedIdMessage1 CreateExtId1()
+        private static ExtendedIdMessage1 CreateExtId1()
         {
-            var msg = new ExtendedTestExtendedIdMessage1();
+            var msg = new ExtendedIdMessage1();
             msg.SequenceNumber = 12345678;
             var label = Encoding.UTF8.GetBytes("Test Label Extended 1");
             msg.Label = new byte[32];
@@ -37,9 +37,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage2 CreateExtId2()
+        private static ExtendedIdMessage2 CreateExtId2()
         {
-            var msg = new ExtendedTestExtendedIdMessage2();
+            var msg = new ExtendedIdMessage2();
             msg.SensorId = -42;
             msg.Reading = 2.718281828;
             msg.StatusCode = 50000;
@@ -50,9 +50,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage3 CreateExtId3()
+        private static ExtendedIdMessage3 CreateExtId3()
         {
-            var msg = new ExtendedTestExtendedIdMessage3();
+            var msg = new ExtendedIdMessage3();
             msg.Timestamp = 1704067200000000UL;
             msg.Temperature = -40;
             msg.Humidity = 85;
@@ -62,9 +62,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage4 CreateExtId4()
+        private static ExtendedIdMessage4 CreateExtId4()
         {
-            var msg = new ExtendedTestExtendedIdMessage4();
+            var msg = new ExtendedIdMessage4();
             msg.EventId = 999999;
             msg.EventType = 42;
             msg.EventTime = 1704067200000L;
@@ -75,9 +75,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage5 CreateExtId5()
+        private static ExtendedIdMessage5 CreateExtId5()
         {
-            var msg = new ExtendedTestExtendedIdMessage5();
+            var msg = new ExtendedIdMessage5();
             msg.XPosition = 100.5f;
             msg.YPosition = -200.25f;
             msg.ZPosition = 50.125f;
@@ -85,9 +85,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage6 CreateExtId6()
+        private static ExtendedIdMessage6 CreateExtId6()
         {
-            var msg = new ExtendedTestExtendedIdMessage6();
+            var msg = new ExtendedIdMessage6();
             msg.CommandId = -12345;
             msg.Parameter1 = 1000;
             msg.Parameter2 = 2000;
@@ -98,9 +98,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage7 CreateExtId7()
+        private static ExtendedIdMessage7 CreateExtId7()
         {
-            var msg = new ExtendedTestExtendedIdMessage7();
+            var msg = new ExtendedIdMessage7();
             msg.Counter = 4294967295;
             msg.Average = 123.456789;
             msg.Minimum = -999.99f;
@@ -108,9 +108,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage8 CreateExtId8()
+        private static ExtendedIdMessage8 CreateExtId8()
         {
-            var msg = new ExtendedTestExtendedIdMessage8();
+            var msg = new ExtendedIdMessage8();
             msg.Level = 255;
             msg.Offset = -32768;
             msg.Duration = 86400000;
@@ -120,18 +120,18 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage9 CreateExtId9()
+        private static ExtendedIdMessage9 CreateExtId9()
         {
-            var msg = new ExtendedTestExtendedIdMessage9();
+            var msg = new ExtendedIdMessage9();
             msg.BigNumber = -9223372036854775807L;
             msg.BigUnsigned = 18446744073709551615UL;
             msg.PrecisionValue = 1.7976931348623157e+308;
             return msg;
         }
 
-        private static ExtendedTestExtendedIdMessage10 CreateExtId10()
+        private static ExtendedIdMessage10 CreateExtId10()
         {
-            var msg = new ExtendedTestExtendedIdMessage10();
+            var msg = new ExtendedIdMessage10();
             msg.SmallValue = 256;
             var text = Encoding.UTF8.GetBytes("Boundary Test");
             msg.ShortText = new byte[16];
@@ -140,9 +140,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestLargePayloadMessage1 CreateLarge1()
+        private static LargePayloadMessage1 CreateLarge1()
         {
-            var msg = new ExtendedTestLargePayloadMessage1();
+            var msg = new LargePayloadMessage1();
             msg.SensorReadings = new float[64];
             for (int i = 0; i < 64; i++)
                 msg.SensorReadings[i] = (float)(i + 1);
@@ -154,9 +154,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestLargePayloadMessage2 CreateLarge2()
+        private static LargePayloadMessage2 CreateLarge2()
         {
-            var msg = new ExtendedTestLargePayloadMessage2();
+            var msg = new LargePayloadMessage2();
             msg.LargeData = new byte[280];
             for (int i = 0; i < 256; i++)
                 msg.LargeData[i] = (byte)i;
@@ -165,9 +165,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedVariableSingleArray CreateExtVarSingleEmpty()
+        private static ExtendedVariableSingleArray CreateExtVarSingleEmpty()
         {
-            var msg = new ExtendedTestExtendedVariableSingleArray();
+            var msg = new ExtendedVariableSingleArray();
             msg.Timestamp = 0x0000000000000001UL;
             msg.TelemetryDataCount = 0;
             msg.TelemetryDataData = new byte[250];
@@ -175,9 +175,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedVariableSingleArray CreateExtVarSingleSingle()
+        private static ExtendedVariableSingleArray CreateExtVarSingleSingle()
         {
-            var msg = new ExtendedTestExtendedVariableSingleArray();
+            var msg = new ExtendedVariableSingleArray();
             msg.Timestamp = 0x0000000000000002UL;
             msg.TelemetryDataCount = 1;
             msg.TelemetryDataData = new byte[250];
@@ -186,9 +186,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedVariableSingleArray CreateExtVarSingleThird()
+        private static ExtendedVariableSingleArray CreateExtVarSingleThird()
         {
-            var msg = new ExtendedTestExtendedVariableSingleArray();
+            var msg = new ExtendedVariableSingleArray();
             msg.Timestamp = 0x0000000000000003UL;
             msg.TelemetryDataCount = 83;
             msg.TelemetryDataData = new byte[250];
@@ -198,9 +198,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedVariableSingleArray CreateExtVarSingleAlmost()
+        private static ExtendedVariableSingleArray CreateExtVarSingleAlmost()
         {
-            var msg = new ExtendedTestExtendedVariableSingleArray();
+            var msg = new ExtendedVariableSingleArray();
             msg.Timestamp = 0x0000000000000004UL;
             msg.TelemetryDataCount = 249;
             msg.TelemetryDataData = new byte[250];
@@ -210,9 +210,9 @@ namespace StructFrameTests
             return msg;
         }
 
-        private static ExtendedTestExtendedVariableSingleArray CreateExtVarSingleFull()
+        private static ExtendedVariableSingleArray CreateExtVarSingleFull()
         {
-            var msg = new ExtendedTestExtendedVariableSingleArray();
+            var msg = new ExtendedVariableSingleArray();
             msg.Timestamp = 0x0000000000000005UL;
             msg.TelemetryDataCount = 250;
             msg.TelemetryDataData = new byte[250];
@@ -265,32 +265,32 @@ namespace StructFrameTests
 
             // Deserialize based on msg_id
             IStructFrameMessage decoded = null;
-            if (info.MsgId == ExtendedTestExtendedIdMessage1.MsgId)
-                decoded = ExtendedTestExtendedIdMessage1.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage2.MsgId)
-                decoded = ExtendedTestExtendedIdMessage2.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage3.MsgId)
-                decoded = ExtendedTestExtendedIdMessage3.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage4.MsgId)
-                decoded = ExtendedTestExtendedIdMessage4.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage5.MsgId)
-                decoded = ExtendedTestExtendedIdMessage5.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage6.MsgId)
-                decoded = ExtendedTestExtendedIdMessage6.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage7.MsgId)
-                decoded = ExtendedTestExtendedIdMessage7.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage8.MsgId)
-                decoded = ExtendedTestExtendedIdMessage8.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage9.MsgId)
-                decoded = ExtendedTestExtendedIdMessage9.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedIdMessage10.MsgId)
-                decoded = ExtendedTestExtendedIdMessage10.Deserialize(info);
-            else if (info.MsgId == ExtendedTestLargePayloadMessage1.MsgId)
-                decoded = ExtendedTestLargePayloadMessage1.Deserialize(info);
-            else if (info.MsgId == ExtendedTestLargePayloadMessage2.MsgId)
-                decoded = ExtendedTestLargePayloadMessage2.Deserialize(info);
-            else if (info.MsgId == ExtendedTestExtendedVariableSingleArray.MsgId)
-                decoded = ExtendedTestExtendedVariableSingleArray.Deserialize(info);
+            if (info.MsgId == ExtendedIdMessage1.MsgId)
+                decoded = ExtendedIdMessage1.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage2.MsgId)
+                decoded = ExtendedIdMessage2.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage3.MsgId)
+                decoded = ExtendedIdMessage3.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage4.MsgId)
+                decoded = ExtendedIdMessage4.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage5.MsgId)
+                decoded = ExtendedIdMessage5.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage6.MsgId)
+                decoded = ExtendedIdMessage6.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage7.MsgId)
+                decoded = ExtendedIdMessage7.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage8.MsgId)
+                decoded = ExtendedIdMessage8.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage9.MsgId)
+                decoded = ExtendedIdMessage9.Deserialize(info);
+            else if (info.MsgId == ExtendedIdMessage10.MsgId)
+                decoded = ExtendedIdMessage10.Deserialize(info);
+            else if (info.MsgId == LargePayloadMessage1.MsgId)
+                decoded = LargePayloadMessage1.Deserialize(info);
+            else if (info.MsgId == LargePayloadMessage2.MsgId)
+                decoded = LargePayloadMessage2.Deserialize(info);
+            else if (info.MsgId == ExtendedVariableSingleArray.MsgId)
+                decoded = ExtendedVariableSingleArray.Deserialize(info);
 
             if (decoded == null) return false;
 

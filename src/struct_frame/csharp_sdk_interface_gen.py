@@ -27,9 +27,9 @@ def get_csharp_field_type(field, package_name):
         type_pkg = getattr(field, 'type_package', None) if hasattr(field, 'type_package') else None
         type_pkg = type_pkg if type_pkg else getattr(field, 'package', package_name)
         if field.is_enum:
-            base_type = f'{pascal_case(type_pkg)}{type_name}'
+            base_type = type_name
         else:
-            base_type = f'{pascal_case(type_pkg)}{type_name}'
+            base_type = type_name
     
     # Handle arrays
     if field.is_array:
@@ -132,7 +132,7 @@ class SdkInterfaceGen:
     @staticmethod
     def _generate_subscribe_method(msg, package_name):
         """Generate subscribe method for a single message"""
-        struct_name = f'{pascal_case(package_name)}{msg.name}'
+        struct_name = msg.name
         method_name = f'Subscribe{msg.name}'
         
         yield '        /// <summary>\n'
@@ -149,7 +149,7 @@ class SdkInterfaceGen:
     @staticmethod
     def _generate_send_methods(msg, package_name):
         """Generate send methods for a single message"""
-        struct_name = f'{pascal_case(package_name)}{msg.name}'
+        struct_name = msg.name
         method_name = f'Send{msg.name}'
         
         # Method 1: Send with struct reference
@@ -234,18 +234,16 @@ class SdkInterfaceGen:
         """Generate the private helper method for sending messages via an envelope"""
         from struct_frame.csharp_gen import EnumCSharpGen, csharp_types
         
-        envelope_type = f'{pascal_case(package_name)}{envelope_msg.name}'
+        envelope_type = envelope_msg.name
         
         # Get the single oneof (envelope validation ensures exactly one exists)
         oneof_name = list(envelope_msg.oneofs.keys())[0]
         oneof = envelope_msg.oneofs[oneof_name]
         
         # Get enum name for field_order discriminators
-        # Must use the full struct name (package prefix + message name) to match
-        # the generated enum definition in the messages file.
         enum_name = None
         if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, f'{pascal_case(package_name)}{envelope_msg.name}')
+            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, envelope_msg.name)
         
         # Collect envelope fields (non-oneof, non-complex fields)
         envelope_fields = []
@@ -255,7 +253,7 @@ class SdkInterfaceGen:
             csharp_type = csharp_types.get(f.field_type)
             if csharp_type is None:
                 type_pkg = f.type_package if f.type_package else f.package
-                csharp_type = f'{pascal_case(type_pkg)}{f.field_type}'
+                csharp_type = f.field_type
             envelope_fields.append((f_name, f, csharp_type))
         
         # Helper 1: Basic helper with default envelope field values
@@ -324,18 +322,16 @@ class SdkInterfaceGen:
         from struct_frame.csharp_gen import EnumCSharpGen, csharp_types
         
         package_name = package.name
-        envelope_type = f'{pascal_case(package_name)}{envelope_msg.name}'
+        envelope_type = envelope_msg.name
         
         # Get the single oneof
         oneof_name = list(envelope_msg.oneofs.keys())[0]
         oneof = envelope_msg.oneofs[oneof_name]
         
         # Get enum name for field_order discriminators
-        # Must use the full struct name (package prefix + message name) to match
-        # the generated enum definition in the messages file.
         enum_name = None
         if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, f'{pascal_case(package_name)}{envelope_msg.name}')
+            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, envelope_msg.name)
         
         # Collect envelope fields (non-oneof, non-complex fields) for the overload
         envelope_fields = []
@@ -345,14 +341,14 @@ class SdkInterfaceGen:
             csharp_type = csharp_types.get(f.field_type)
             if csharp_type is None:
                 type_pkg = f.type_package if f.type_package else f.package
-                csharp_type = f'{pascal_case(type_pkg)}{f.field_type}'
+                csharp_type = f.field_type
             envelope_fields.append((f_name, f, csharp_type))
         
         # Generate a send method for each payload type in the oneof
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             # Get the payload type name
             type_pkg = field.type_package if field.type_package else field.package
-            payload_type = f'{pascal_case(type_pkg)}{field.field_type}'
+            payload_type = field.field_type
             
             # Method name like Send{PayloadType}Via{EnvelopeName}
             method_name = f'Send{field.field_type}Via{envelope_msg.name}'
