@@ -20,6 +20,7 @@ python -m struct_frame [proto_file] [options]
 | `--build_js` | Generate JavaScript code |
 | `--build_gql` | Generate GraphQL schema |
 | `--build_csharp` | Generate C# code |
+| `--build_rust` | Generate Rust code |
 
 ## Output Path Options
 
@@ -32,6 +33,7 @@ python -m struct_frame [proto_file] [options]
 | `--js_path PATH` | Output directory for JavaScript | `generated/js/` |
 | `--gql_path PATH` | Output directory for GraphQL | `generated/gql/` |
 | `--csharp_path PATH` | Output directory for C# | `generated/csharp/` |
+| `--rust_path PATH` | Output directory for Rust | `generated/rust/` |
 
 ## SDK Options
 
@@ -58,6 +60,7 @@ python -m struct_frame [proto_file] [options]
 | `--generate_tests` | Generate test code with dummy values for round-trip verification |
 | `--validate` | Validate the proto file without generating code |
 | `--debug` | Enable debug output during code generation |
+| `--catalog_path PATH` | Directory for the LSP type catalog file (`sf_compile.json`); default `generated/` |
 
 ## Examples
 
@@ -117,4 +120,10 @@ python -m struct_frame messages.proto --build_cpp --sdk
 - `Framework/` - Framing, profiles, types, and SDK core
 - `Framework/Sdk/Transports/` - Transport implementations (if `--csharp_sdk` used)
 - `StructFrame.csproj` - Project file (always generated)
+
+### Rust
+- `<name>.structframe.rs` - Message structs with `StructFrameMessage` trait impl
+- `Cargo.toml` - Crate manifest (always generated)
+- `lib.rs` - Crate root re-exporting all modules (always generated)
+- Frame SDK files: `frame_base.rs`, `frame_headers.rs`, `payload_types.rs`, `frame_profiles.rs`
 

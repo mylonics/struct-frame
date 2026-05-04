@@ -89,6 +89,7 @@ export default defineConfig({
             },
             { label: 'Python SDK', slug: 'extended-features/python-sdk' },
             { label: 'C# SDK', slug: 'extended-features/csharp-sdk' },
+            { label: 'Rust SDK', slug: 'extended-features/rust-sdk' },
             {
               label: 'Advanced Features',
               slug: 'extended-features/custom-features',

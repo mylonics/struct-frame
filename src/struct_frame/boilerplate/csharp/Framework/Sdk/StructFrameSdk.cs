@@ -360,7 +360,7 @@ namespace StructFrame.Sdk
             }
 
             // Drain remaining queued messages and cancel them
-            while (_sendQueue.Reader.TryRead(out var queued))
+            while (_sendQueue!.Reader.TryRead(out var queued))
             {
                 queued.Completion.TrySetCanceled();
             }
@@ -372,7 +372,7 @@ namespace StructFrame.Sdk
         {
             try
             {
-                await foreach (var queued in _sendQueue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                await foreach (var queued in _sendQueue!.Reader.ReadAllAsync(ct).ConfigureAwait(false))
                 {
                     try
                     {
