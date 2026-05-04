@@ -89,7 +89,7 @@ def _generate(tmpdir: Path, project_root: Path, verbose: bool) -> bool:
             # Derive the --<lang>_path flag: strip leading "--build_" → "<lang>_path"
             path_flag = "--" + gen_flag.lstrip("-").replace("build_", "") + "_path"
             cmd += [gen_flag, path_flag, str(out)]
-        cmd += ["--csharp_sdk", "--catalog_path", str(tmpdir)]
+        cmd += ["--catalog_path", str(tmpdir)]
 
         if verbose:
             print(f"  Generating {proto_file}…")

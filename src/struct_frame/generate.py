@@ -187,8 +187,6 @@ def compute_generation_hash(args, packages_dict):
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
         'csharp_namespace': args.csharp_namespace[0],
-        'csharp_sdk': args.csharp_sdk,
-        'target_framework': args.target_framework[0],
     }
     hasher.update(
         f"cli:{json.dumps(cli_params, sort_keys=True)}\n".encode('utf-8'))
@@ -1108,10 +1106,6 @@ parser.add_argument('--equality', action='store_true',
                     help='Generate equality comparison operators/methods for messages')
 parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame'],
                     help='Root namespace for generated C# code (default: StructFrame)')
-parser.add_argument('--csharp_sdk', action='store_true',
-                    help='Include C# SDK transports (Serial, TCP, UDP, WebSocket)')
-parser.add_argument('--target_framework', nargs=1, type=str, default=['net8.0'],
-                    help='Target framework for generated .csproj file (default: net8.0)')
 parser.add_argument('--force', action='store_true',
                     help='Force regeneration even if hash matches previous generation')
 parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
@@ -1719,7 +1713,7 @@ def generateRustFileStrings(path, equality=False):
     return out
 
 
-def generateCSharpFileStrings(path, include_transports=False, equality=False, namespace='StructFrame.Generated', target_framework='net8.0'):
+def generateCSharpFileStrings(path, equality=False, namespace='StructFrame.Generated'):
     out = {}
     for key, value in packages.items():
         # Generate per-file output into a package subfolder
@@ -1736,14 +1730,13 @@ def generateCSharpFileStrings(path, include_transports=False, equality=False, na
 
     # Always generate .csproj so consumers can use <ProjectReference>
     csproj_name = os.path.join(path, "StructFrame.csproj")
-    csproj_data = _generateCSharpProjectFile(
-        namespace, target_framework, include_transports=include_transports)
+    csproj_data = _generateCSharpProjectFile(namespace)
     out[csproj_name] = csproj_data
 
     return out
 
 
-def _generateCSharpProjectFile(namespace, target_framework, include_transports=False):
+def _generateCSharpProjectFile(namespace):
     """Generate a .csproj file for the generated C# code.
 
     Produces an SDK-style class library project that auto-includes all .cs files.
@@ -1751,29 +1744,70 @@ def _generateCSharpProjectFile(namespace, target_framework, include_transports=F
     individual generated files.
 
     The Framework folder (Types, Framing, Profiles, Sdk core) and all generated
-    message/SdkInterface files are always included.
-
-    When --csharp_sdk is used, the Transports/ folder is
-    copied and transport implementations are included in the .csproj with
-    conditional compilation. Enable them individually at build time:
+    message/SdkInterface files are always included. The Transports/ folder is
+    always copied; transport implementations are excluded from compilation by
+    default and enabled individually at build time:
 
       dotnet build -p:IncludeSerialTransport=true    # Serial (System.IO.Ports)
       dotnet build -p:IncludeNetCoreServer=true      # TCP, UDP, WebSocket (NetCoreServer)
 
-    Both flags can be combined.
+    Both flags can be combined. The target framework defaults to net8.0 and can
+    be overridden via a Directory.Build.props file in the consuming project:
+
+      <Project>
+        <PropertyGroup>
+          <TargetFramework>net6.0</TargetFramework>
+        </PropertyGroup>
+      </Project>
     """
-    transport_props = ''
-    transport_sections = ''
-    if include_transports:
-        transport_props = f'''
+    project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Core library settings -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>{namespace}</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IncludeSerialTransport Condition="'$(IncludeSerialTransport)' == ''">false</IncludeSerialTransport>
-    <IncludeNetCoreServer Condition="'$(IncludeNetCoreServer)' == ''">false</IncludeNetCoreServer>'''
-        transport_sections = f'''
+    <IncludeNetCoreServer Condition="'$(IncludeNetCoreServer)' == ''">false</IncludeNetCoreServer>
+  </PropertyGroup>
+
+  <!-- NuGet package metadata
+       Override these at pack time:  dotnet pack -p:Version=1.2.3 -p:PackageId=MyMessages
+       Or set them in a Directory.Build.props in the consuming repository. -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId Condition="'$(PackageId)' == ''">{namespace}</PackageId>
+    <Version Condition="'$(Version)' == ''">1.0.0</Version>
+    <Authors Condition="'$(Authors)' == ''">{namespace}</Authors>
+    <Description Condition="'$(Description)' == ''">Generated message serialization library produced by struct-frame.</Description>
+    <PackageTags Condition="'$(PackageTags)' == ''">struct-frame;serialization;generated</PackageTags>
+    <PackageLicenseExpression Condition="'$(PackageLicenseExpression)' == ''">MIT</PackageLicenseExpression>
+    <RepositoryType Condition="'$(RepositoryType)' == ''">git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- Reproducible builds and symbol packages -->
+  <PropertyGroup>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+  </PropertyGroup>
 
   <!-- Define NETCORESERVER_AVAILABLE when NetCoreServer is enabled -->
   <PropertyGroup Condition="'$(IncludeNetCoreServer)' == 'true'">
     <DefineConstants>$(DefineConstants);NETCORESERVER_AVAILABLE</DefineConstants>
   </PropertyGroup>
+
+  <!-- Source Link: enables IDE/debugger to navigate to source at the exact commit.
+       Set $(RepositoryUrl) (e.g. https://github.com/org/repo) to activate. -->
+  <ItemGroup Condition="'$(RepositoryUrl)' != '' and '$(RepositoryType)' == 'git'">
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.*" PrivateAssets="All" />
+  </ItemGroup>
 
   <!-- Exclude all transports by default -->
   <ItemGroup>
@@ -1792,18 +1826,7 @@ def _generateCSharpProjectFile(namespace, target_framework, include_transports=F
     <Compile Include="Framework\\Sdk\\Transports\\UdpTransport.cs" />
     <Compile Include="Framework\\Sdk\\Transports\\WebSocketTransport.cs" />
     <PackageReference Include="NetCoreServer" Version="8.*" />
-  </ItemGroup>'''
-
-    project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>{target_framework}</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>{namespace}</RootNamespace>
-    <LangVersion>latest</LangVersion>
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>{transport_props}
-  </PropertyGroup>{transport_sections}
+  </ItemGroup>
 
 </Project>
 '''
@@ -1890,10 +1913,8 @@ def main():
 
     if (args.build_csharp):
         files.update(generateCSharpFileStrings(args.csharp_path[0],
-                                               include_transports=args.csharp_sdk,
                                                equality=args.equality,
-                                               namespace=args.csharp_namespace[0],
-                                               target_framework=args.target_framework[0]))
+                                               namespace=args.csharp_namespace[0]))
 
     if (args.build_gql):
         from struct_frame.gql_gen import _PACKAGE_DIRECTIVE_DEF
@@ -2088,14 +2109,13 @@ def main():
 
     if (args.build_csharp):
         # C# boilerplate uses Framework/ structure.
-        # Exclude Transports/ by default — only include when --csharp_sdk is used.
-        # The .csproj controls conditional compilation of transport implementations:
+        # Transports/ is always copied; the .csproj controls conditional
+        # compilation of transport implementations at build time:
         #   -p:IncludeSerialTransport=true   → Serial (System.IO.Ports)
         #   -p:IncludeNetCoreServer=true     → TCP, UDP, WebSocket (NetCoreServer)
-        exclude_transports = [] if args.csharp_sdk else ['Transports']
         copy_all_files(
             os.path.join(dir_path, "boilerplate/csharp"),
-            args.csharp_path[0], exclude_transports)
+            args.csharp_path[0], [])
 
     if (args.build_rust):
         # Exclude lib.rs and Cargo.toml from boilerplate copy - they are generated
