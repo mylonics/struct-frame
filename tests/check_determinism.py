@@ -25,6 +25,7 @@ PROTO_FILES = [
     "test_messages.proto",
     "pkg_test_messages.proto",
     "extended_messages.proto",
+    "envelope_messages.proto",
 ]
 
 # Language id  → (gen_flag, subdir)
