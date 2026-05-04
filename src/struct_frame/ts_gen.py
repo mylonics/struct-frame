@@ -7,13 +7,14 @@ This module generates TypeScript code for struct serialization using
 ES6 module syntax (import/export).
 """
 
-from struct_frame import version, NamingStyleC, pascalCase, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, pascal_case, build_enum_leading_comments, build_enum_values
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
     ts_array_types,
     BaseFieldGen,
     BaseEnumGen,
+    to_camel_case,
     # New class-based generation utilities
     TYPE_SIZES,
     TS_TYPE_ANNOTATIONS,
@@ -27,7 +28,7 @@ from struct_frame.ts_js_base import (
 )
 import time
 
-StyleC = NamingStyleC()
+_style_c = NamingStyleC()
 
 # Use shared type mappings
 ts_types = common_types
@@ -36,7 +37,7 @@ ts_typed_array_methods = common_typed_array_methods
 
 class EnumTsGen():
     @staticmethod
-    def generate(field, packageName):
+    def generate(field, package_name):
         result = build_enum_leading_comments(field.comments)
 
         # Use short name without package prefix (TypeScript convention)
@@ -44,8 +45,8 @@ class EnumTsGen():
         result += ' {\n'
 
         enum_values = build_enum_values(
-            field, StyleC,
-            value_format='{indent}{name} = {value}{comma}',
+            field, _style_c,
+            value_generator=lambda d, _, val, comma: f'    {pascal_case(d)} = {val}{comma}',
             skip_trailing_comma=True
         )
 
@@ -60,7 +61,7 @@ class EnumTsGen():
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
             return ''
         
-        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
         result = f'/** Discriminator enum for {msg_name}.{oneof.name} oneof */\n'
         result += f'export enum {enum_name} {{\n'
         result += f'    None = 0,\n'
@@ -68,7 +69,7 @@ class EnumTsGen():
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             field_order = idx + 1
             # Use PascalCase for TypeScript enum values
-            enum_value = pascalCase(field_name)
+            enum_value = pascal_case(field_name)
             comma = ',' if idx < len(oneof.fields) - 1 else ''
             result += f'    {enum_value} = {field_order}{comma}\n'
         
@@ -78,17 +79,17 @@ class EnumTsGen():
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascalCase(oneof.name)}Field'
+        return f'{msg_name}{pascal_case(oneof.name)}Field'
 
 
 class FieldTsGen():
     """TypeScript field generator using shared base logic."""
 
     @staticmethod
-    def generate(field, packageName):
+    def generate(field, package_name):
         """Generate TypeScript field definition using shared base."""
         return BaseFieldGen.generate(
-            field, packageName, ts_types, ts_typed_array_methods
+            field, package_name, ts_types, ts_typed_array_methods
         )
 
 
@@ -99,7 +100,7 @@ class FieldTsGen():
 
 class MessageTsGen():
     @staticmethod
-    def generate(msg, packageName, package=None):
+    def generate(msg, package_name, package=None):
         leading_comment = msg.comments
 
         result = ''
@@ -131,7 +132,7 @@ class MessageTsGen():
             size = msg.size
 
         # Generate regular fields
-        result += '\n'.join([FieldTsGen.generate(f, packageName)
+        result += '\n'.join([FieldTsGen.generate(f, package_name)
                             for key, f in msg.fields.items()])
         
         # Generate oneofs - add discriminator and allocate union size
@@ -139,13 +140,13 @@ class MessageTsGen():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
                     # Use UInt16LE since message IDs can be up to 65535
-                    result += f'\n    .UInt16LE(\'{oneof.name}_discriminator\')'
+                    result += f'\n    .UInt16LE(\'{to_camel_case(oneof.name)}Discriminator\')'
                 else:  # field_order
                     # Use UInt8 since field order is 1-based index
-                    result += f'\n    .UInt8(\'{oneof.name}_discriminator\')'
+                    result += f'\n    .UInt8(\'{to_camel_case(oneof.name)}Discriminator\')'
             # Allocate space for the union (largest member size)
             # Use a byte array to represent the union storage
-            result += f'\n    .ByteArray(\'{oneof.name}_data\', {oneof.size})'
+            result += f'\n    .ByteArray(\'{to_camel_case(oneof.name)}Data\', {oneof.size})'
         
         result += '\n    .compile();\n'
         return result + '\n'
@@ -165,7 +166,7 @@ class MessageTsClassGen():
     """Generate TypeScript message classes that extend MessageBase."""
     
     @staticmethod
-    def generate(msg, packageName, package, packages, equality=False):
+    def generate(msg, package_name, package, packages, equality=False):
         """Generate a class-based message definition."""
         leading_comment = msg.comments
         result = ''
@@ -244,7 +245,7 @@ class MessageTsClassGen():
         
         # Generate envelope methods if this is an envelope message
         if msg.is_envelope:
-            result += MessageTsClassGen._generate_envelope_methods(msg, package_msg_name, packageName, packages)
+            result += MessageTsClassGen._generate_envelope_methods(msg, package_msg_name, package_name, packages)
         
         # Static getSize method
         result += f'  static getSize(): number {{\n'
@@ -268,9 +269,9 @@ class MessageTsClassGen():
         result += f'   * @returns New instance with deserialized data\n'
         result += f'   */\n'
         result += f'  static deserialize(buffer: Buffer | any): {package_msg_name} {{\n'
-        result += f'    // Check if buffer is FrameMsgInfo (has msg_data property)\n'
-        result += f'    if (buffer && typeof buffer === "object" && "msg_data" in buffer) {{\n'
-        result += f'      buffer = Buffer.from(buffer.msg_data);\n'
+        result += f'    // Check if buffer is FrameMsgInfo (has msgData property)\n'
+        result += f'    if (buffer && typeof buffer === "object" && "msgData" in buffer) {{\n'
+        result += f'      buffer = Buffer.from(buffer.msgData);\n'
         result += f'    }} else if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {{\n'
         result += f'      buffer = Buffer.from(buffer);\n'
         result += f'    }}\n'
@@ -298,7 +299,7 @@ class MessageTsClassGen():
         return result
     
     @staticmethod
-    def _generate_envelope_methods(msg, package_msg_name, packageName, packages):
+    def _generate_envelope_methods(msg, package_msg_name, package_name, packages):
         """Generate envelope-specific helper methods for wrapping inner messages."""
         result = ''
         
@@ -313,7 +314,7 @@ class MessageTsClassGen():
         # Build list of valid payload types
         payload_types = []
         for field_name, field in oneof.fields.items():
-            payload_type = field.fieldType
+            payload_type = field.field_type
             payload_types.append((field_name, payload_type))
         
         # Create union type for valid payloads
@@ -323,14 +324,14 @@ class MessageTsClassGen():
         field_params = []
         for f_name, f in msg.fields.items():
             # Lookup type annotation once and reuse
-            base_ts_type = TS_TYPE_ANNOTATIONS.get(f.fieldType, 'number')
-            if f.fieldType == "string":
+            base_ts_type = TS_TYPE_ANNOTATIONS.get(f.field_type, 'number')
+            if f.field_type == "string":
                 ts_type = "string"
             elif f.is_array:
                 ts_type = f'{base_ts_type}[]'
             else:
                 ts_type = base_ts_type
-            field_params.append(f'{f.name}?: {ts_type}')
+            field_params.append(f'{to_camel_case(f.name)}?: {ts_type}')
         
         # Build parameter list: payload first, then optional envelope fields
         all_params_list = [f'payload: {payload_union}'] + field_params
@@ -339,7 +340,7 @@ class MessageTsClassGen():
         result += f'   * Create a {package_msg_name} envelope wrapping a payload message.\n'
         result += f'   * @param payload The message to wrap (must be one of: {payload_union})\n'
         for f_name, f in msg.fields.items():
-            result += f'   * @param {f.name} Envelope field value\n'
+            result += f'   * @param {to_camel_case(f.name)} Envelope field value\n'
         result += f'   * @returns A fully initialized {package_msg_name} envelope\n'
         result += f'   */\n'
         result += f'  static wrap({", ".join(all_params_list)}): {package_msg_name} {{\n'
@@ -347,25 +348,26 @@ class MessageTsClassGen():
         
         # Initialize envelope fields
         for f_name, f in msg.fields.items():
-            result += f'    if ({f.name} !== undefined) envelope.{f.name} = {f.name};\n'
+            camel_fname = to_camel_case(f.name)
+            result += f'    if ({camel_fname} !== undefined) envelope.{camel_fname} = {camel_fname};\n'
         
         # Set the discriminator to the payload's message ID or field order
         if oneof.auto_discriminator:
             if oneof.discriminator_type == "msgid":
-                result += f'    envelope.{oneof_name}_discriminator = (payload.constructor as any)._msgid;\n'
+                result += f'    envelope.{to_camel_case(oneof_name)}Discriminator = (payload.constructor as any)._msgid;\n'
             else:  # field_order - use enum values
                 enum_name = EnumTsGen.get_discriminator_enum_name(oneof, package_msg_name)
                 result += f'    // Set discriminator based on payload type\n'
                 for idx, (field_name, payload_type) in enumerate(payload_types):
-                    enum_value = pascalCase(field_name)
+                    enum_value = pascal_case(field_name)
                     if idx == 0:
-                        result += f'    if (payload instanceof {payload_type}) envelope.{oneof_name}_discriminator = {enum_name}.{enum_value};\n'
+                        result += f'    if (payload instanceof {payload_type}) envelope.{to_camel_case(oneof_name)}Discriminator = {enum_name}.{enum_value};\n'
                     else:
-                        result += f'    else if (payload instanceof {payload_type}) envelope.{oneof_name}_discriminator = {enum_name}.{enum_value};\n'
+                        result += f'    else if (payload instanceof {payload_type}) envelope.{to_camel_case(oneof_name)}Discriminator = {enum_name}.{enum_value};\n'
         
         # Copy the payload into the union data area
         result += f'    // Copy payload into union data area\n'
-        result += f'    payload._buffer.copy(envelope._buffer, envelope._getUnionOffset("{oneof_name}"), 0, payload._buffer.length);\n'
+        result += f'    payload._buffer.copy(envelope._buffer, envelope._getUnionOffset("{to_camel_case(oneof_name)}"), 0, payload._buffer.length);\n'
         result += f'    return envelope;\n'
         result += f'  }}\n'
         
@@ -377,7 +379,7 @@ class MessageTsClassGen():
                 result += f'   * @returns The message ID of the payload in the {oneof_name} union\n'
                 result += f'   */\n'
                 result += f'  getPayloadMessageId(): number {{\n'
-                result += f'    return this.{oneof_name}_discriminator;\n'
+                result += f'    return this.{to_camel_case(oneof_name)}Discriminator;\n'
                 result += f'  }}\n'
             else:  # field_order - return enum type
                 enum_name = EnumTsGen.get_discriminator_enum_name(oneof, package_msg_name)
@@ -386,7 +388,7 @@ class MessageTsClassGen():
                 result += f'   * @returns The {enum_name} enum value for the active payload\n'
                 result += f'   */\n'
                 result += f'  getPayloadField(): {enum_name} {{\n'
-                result += f'    return this.{oneof_name}_discriminator;\n'
+                result += f'    return this.{to_camel_case(oneof_name)}Discriminator;\n'
                 result += f'  }}\n'
         
         # Generate helper to get the union offset (needed for envelope operations)
@@ -398,7 +400,7 @@ class MessageTsClassGen():
                 offset += 2  # uint16 discriminator size
             else:  # field_order
                 offset += 1  # uint8 discriminator size
-        result += f'    if (name === "{oneof_name}") return {offset}; // After discriminator\n'
+        result += f'    if (name === "{to_camel_case(oneof_name)}") return {offset}; // After discriminator\n'
         result += f'    return 0;\n'
         result += f'  }}\n'
         
@@ -427,20 +429,20 @@ class MessageTsClassGen():
         result += f'    let size = 0;\n'
         
         for key, field in msg.fields.items():
-            name = field.name
+            name = to_camel_case(field.name)
             if field.is_array and field.max_size is not None:
                 # Variable array - TypeScript uses name_count
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 count_size = 2 if field.max_size > 255 else 1
-                if field.fieldType == "string":
+                if field.field_type == "string":
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field.fieldType, (field.size - count_size) // field.max_size)
-                result += f'    size += {count_size} + (this.{name}_count * {element_size}); // {name}\n'
-            elif field.fieldType == "string" and field.max_size is not None:
+                    element_size = type_sizes.get(field.field_type, (field.size - count_size) // field.max_size)
+                result += f'    size += {count_size} + (this.{name}Count * {element_size}); // {name}\n'
+            elif field.field_type == "string" and field.max_size is not None:
                 # Variable string - TypeScript uses name_length
                 length_size = 2 if field.max_size > 255 else 1
-                result += f'    size += {length_size} + this.{name}_length; // {name}\n'
+                result += f'    size += {length_size} + this.{name}Length; // {name}\n'
             else:
                 result += f'    size += {field.size}; // {name}\n'
         
@@ -459,8 +461,8 @@ class MessageTsClassGen():
         
         msg_offset = 0
         for key, field in msg.fields.items():
-            name = field.name
-            field_type = field.fieldType
+            name = to_camel_case(field.name)
+            field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 # Variable array - TypeScript uses name_count and name_data
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
@@ -470,19 +472,19 @@ class MessageTsClassGen():
                     element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
                 max_len = field.max_size
                 result += f'    // {name}: variable array\n'
-                result += f'    const {name}Count = this.{name}_count;\n'
+                result += f'    const {name}Count = this.{name}Count;\n'
                 result += f'    buffer.writeUInt8({name}Count, offset++);\n'
                 
-                if field_type not in type_sizes and field_type != "string" and not field.isEnum:
+                if field_type not in type_sizes and field_type != "string" and not field.is_enum:
                     # Nested struct array
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                    result += f'      const nested = this.{name}_data[i];\n'
+                    result += f'      const nested = this.{name}Data[i];\n'
                     result += f'      nested._buffer.copy(buffer, offset);\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
                 elif field_type == "string":
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                    result += f'      const str = this.{name}_data[i] || \'\';\n'
+                    result += f'      const str = this.{name}Data[i] || \'\';\n'
                     result += f'      buffer.write(str.slice(0, {element_size}), offset);\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
@@ -496,16 +498,16 @@ class MessageTsClassGen():
                         "float": "writeFloatLE", "double": "writeDoubleLE",
                         "bool": "writeUInt8",
                     }
-                    write_method_name = buffer_write_methods.get(field_type if not field.isEnum else "uint8", "writeUInt8")
+                    write_method_name = buffer_write_methods.get(field_type if not field.is_enum else "uint8", "writeUInt8")
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                    result += f'      buffer.{write_method_name}(this.{name}_data[i], offset);\n'
+                    result += f'      buffer.{write_method_name}(this.{name}Data[i], offset);\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
             elif field_type == "string" and field.max_size is not None:
                 # Variable string - copy from internal buffer (string is stored there)
                 max_len = field.max_size
                 result += f'    // {name}: variable string\n'
-                result += f'    const {name}Len = this.{name}_length;\n'
+                result += f'    const {name}Len = this.{name}Length;\n'
                 result += f'    buffer.writeUInt8({name}Len, offset++);\n'
                 # Copy string data from internal buffer
                 result += f'    this._buffer.copy(buffer, offset, {msg_offset + 1}, {msg_offset + 1} + {name}Len);\n'
@@ -533,8 +535,8 @@ class MessageTsClassGen():
         
         msg_offset = 0
         for key, field in msg.fields.items():
-            name = field.name
-            field_type = field.fieldType
+            name = to_camel_case(field.name)
+            field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
@@ -546,9 +548,9 @@ class MessageTsClassGen():
                 result += f'    // {name}: variable array\n'
                 result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {max_len});\n'
                 
-                if field_type not in type_sizes and field_type != "string" and not field.isEnum:
+                if field_type not in type_sizes and field_type != "string" and not field.is_enum:
                     # Nested struct array - need to set the internal buffer array elements
-                    nested_type = '%s%s' % (pascalCase(field.package), field_type)
+                    nested_type = '%s%s' % (pascal_case(field.package), field_type)
                     result += f'    // Write count to internal buffer\n'
                     result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
@@ -794,7 +796,7 @@ class FileTsGen():
                     if type_package and type_package != package.name:
                         if type_package not in external_types:
                             external_types[type_package] = set()
-                        external_types[type_package].add(field.fieldType)
+                        external_types[type_package].add(field.field_type)
         
         # Generate import statements for cross-package types
         for ext_package, type_names in sorted(external_types.items()):
@@ -811,7 +813,7 @@ class FileTsGen():
         # include additional header files here if available in the future
 
         # Convert package name to PascalCase for TypeScript naming conventions
-        package_name_pascal = pascalCase(package.name)
+        package_name_pascal = pascal_case(package.name)
         
         if package.enums:
             yield '/* Enum definitions */\n'
@@ -842,7 +844,7 @@ class FileTsGen():
             yield '\n'
 
         if package.messages:
-            # Only generate get_message_info if there are messages with IDs
+            # Only generate getMessageInfo if there are messages with IDs
             messages_with_id = [
                 msg for key, msg in package.sortedMessages().items() if msg.id]
             if messages_with_id:
@@ -851,10 +853,10 @@ class FileTsGen():
                 
                 if package.package_id is not None:
                     # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
-                    yield 'export function get_message_info(msg_id: number): MessageInfo | undefined {\n'
+                    yield 'export function getMessageInfo(msgId: number): MessageInfo | undefined {\n'
                     yield '    // Extract package ID and message ID from 16-bit message ID\n'
-                    yield '    const pkg_id = (msg_id >> 8) & 0xFF;\n'
-                    yield '    const local_msg_id = msg_id & 0xFF;\n'
+                    yield '    const pkg_id = (msgId >> 8) & 0xFF;\n'
+                    yield '    const local_msg_id = msgId & 0xFF;\n'
                     yield '    \n'
                     yield '    // Check if this is our package\n'
                     yield '    if (pkg_id !== PACKAGE_ID) {\n'
@@ -864,8 +866,8 @@ class FileTsGen():
                     yield '    switch (local_msg_id) {\n'
                 else:
                     # Flat namespace mode: 8-bit message ID
-                    yield 'export function get_message_info(msg_id: number): MessageInfo | undefined {\n'
-                    yield '    switch (msg_id) {\n'
+                    yield 'export function getMessageInfo(msgId: number): MessageInfo | undefined {\n'
+                    yield '    switch (msgId) {\n'
                 
                 for msg in messages_with_id:
                     package_msg_name = msg.name

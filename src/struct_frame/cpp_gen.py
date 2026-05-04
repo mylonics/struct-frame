@@ -7,10 +7,10 @@ This module generates C++ code for struct serialization with template-based
 Pack/Unpack methods and optional namespace support.
 """
 
-from struct_frame import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
 import time
 
-StyleC = NamingStyleC()
+_style_c = NamingStyleC()
 
 cpp_types = {"uint8": "uint8_t",
              "int8": "int8_t",
@@ -34,14 +34,14 @@ class EnumCppGen():
 
         # When using namespaces, don't prefix with package name
         if use_namespace:
-            enumName = field.name
+            enum_name = field.name
         else:
-            enumName = '%s%s' % (pascalCase(field.package), field.name)
+            enum_name = '%s%s' % (pascal_case(field.package), field.name)
         # Use enum class for C++
-        result += 'enum class %s : uint8_t {\n' % (enumName)
+        result += 'enum class %s : uint8_t {\n' % (enum_name)
 
         enum_values = build_enum_values(
-            field, StyleC,
+            field, _style_c,
             value_format='{indent}{name} = {value}{comma}',
             skip_trailing_comma=True
         )
@@ -50,11 +50,11 @@ class EnumCppGen():
         result += '\n};\n'
 
         # Add enum-to-string helper function
-        result += f'\n/* Convert {enumName} to string */\n'
-        result += f'inline const char* {enumName}_to_string({enumName} value) {{\n'
+        result += f'\n/* Convert {enum_name} to string */\n'
+        result += f'inline const char* {enum_name}_to_string({enum_name} value) {{\n'
         result += '    switch (value) {\n'
         for d in field.data:
-            result += f'        case {enumName}::{StyleC.enum_entry(d)}: return "{StyleC.enum_entry(d)}";\n'
+            result += f'        case {enum_name}::{_style_c.enum_entry(d)}: return "{_style_c.enum_entry(d)}";\n'
         result += '        default: return "UNKNOWN";\n'
         result += '    }\n'
         result += '}\n'
@@ -67,7 +67,7 @@ class FieldCppGen():
     def generate(field, use_namespace=False):
         result = ''
         var_name = field.name
-        type_name = field.fieldType
+        type_name = field.field_type
 
         # Handle basic type resolution
         if type_name in cpp_types:
@@ -77,17 +77,17 @@ class FieldCppGen():
                 # When using namespaces, use namespace-qualified name for cross-package types
                 type_pkg = field.type_package if field.type_package else field.package
                 if type_pkg != field.package:
-                    base_type = '%s::%s' % (CamelToSnakeCase(type_pkg), type_name)
+                    base_type = '%s::%s' % (camel_to_snake_case(type_pkg), type_name)
                 else:
                     base_type = type_name
             else:
                 # Flat namespace mode: prefix with the type's defining package name
                 pkg_prefix = field.type_package if field.type_package else field.package
-                base_type = '%s%s' % (pascalCase(pkg_prefix), type_name)
+                base_type = '%s%s' % (pascal_case(pkg_prefix), type_name)
 
         # Handle arrays
         if field.is_array:
-            if field.fieldType == "string":
+            if field.field_type == "string":
                 # String arrays need both array size and individual string size
                 if field.size_option is not None:
                     # Fixed string array: size_option strings, each element_size chars
@@ -119,7 +119,7 @@ class FieldCppGen():
             result += f"    {declaration}{comment}"
 
         # Handle regular strings
-        elif field.fieldType == "string":
+        elif field.field_type == "string":
             if field.size_option is not None:
                 # Fixed string: exactly size_option characters
                 declaration = f"char {var_name}[{field.size_option}];"
@@ -157,7 +157,7 @@ class OneOfCppGen():
             return ''
         
         result = ''
-        enum_name = f'{msg_name}{pascalCase(oneof.name)}Field'
+        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
         
         result += f'/* Discriminator enum for {msg_name}::{oneof.name} oneof */\n'
         result += f'enum class {enum_name} : uint8_t {{\n'
@@ -166,7 +166,7 @@ class OneOfCppGen():
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             field_order = idx + 1
             # Use SCREAMING_SNAKE_CASE for enum values
-            enum_value = CamelToSnakeCase(field_name).upper()
+            enum_value = camel_to_snake_case(field_name).upper()
             result += f'    {enum_value} = {field_order},\n'
         
         result += f'}};\n\n'
@@ -175,7 +175,7 @@ class OneOfCppGen():
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascalCase(oneof.name)}Field'
+        return f'{msg_name}{pascal_case(oneof.name)}Field'
     
     @staticmethod
     def generate(oneof, use_namespace=False, package=None, msg_name=None):
@@ -231,7 +231,7 @@ class MessageCppGen():
     def _generate_field_comparison(field, use_namespace=False):
         """Generate comparison code for a single field."""
         var_name = field.name
-        type_name = field.fieldType
+        type_name = field.field_type
         has_fixed_size = field.size_option is not None
         has_max_size = field.max_size is not None
         
@@ -242,7 +242,7 @@ class MessageCppGen():
             return MessageCppGen._mem_compare_expr(var_name)
         
         # String fields need special handling
-        if field.fieldType == "string":
+        if field.field_type == "string":
             if has_fixed_size:
                 return f'(std::strncmp({var_name}, other.{var_name}, {field.size_option}) == 0)'
             if has_max_size:
@@ -250,7 +250,7 @@ class MessageCppGen():
             return f'(std::strcmp({var_name}, other.{var_name}) == 0)'
         
         # Enums and primitives use direct equality
-        if field.isEnum or type_name in cpp_types:
+        if field.is_enum or type_name in cpp_types:
             return f'({var_name} == other.{var_name})'
         
         # Nested structs use memcmp
@@ -282,11 +282,11 @@ class MessageCppGen():
         # When using namespaces, don't prefix struct name
         if use_namespace:
             structName = msg.name
-            defineName = CamelToSnakeCase(msg.name).upper()
+            defineName = camel_to_snake_case(msg.name).upper()
         else:
-            structName = '%s%s' % (pascalCase(msg.package), msg.name)
-            defineName = '%s_%s' % (CamelToSnakeCase(
-                msg.package).upper(), CamelToSnakeCase(msg.name).upper())
+            structName = '%s%s' % (pascal_case(msg.package), msg.name)
+            defineName = '%s_%s' % (camel_to_snake_case(
+                msg.package).upper(), camel_to_snake_case(msg.name).upper())
 
         size = 1
         if not msg.fields and not msg.oneofs:
@@ -404,12 +404,12 @@ class MessageCppGen():
             if field.is_array and field.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field.fieldType == "string":
+                if field.field_type == "string":
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
                 result += f'        size += 1 + ({var_name}.count * {element_size});  // {var_name}\n'
-            elif field.fieldType == "string" and field.max_size is not None:
+            elif field.field_type == "string" and field.max_size is not None:
                 # Variable string
                 result += f'        size += 1 + {var_name}.length;  // {var_name}\n'
             else:
@@ -431,14 +431,14 @@ class MessageCppGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field.fieldType == "string":
+                if field.field_type == "string":
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
                 result += f'        buffer[offset++] = {var_name}.count;\n'
                 result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.count * {element_size});\n'
                 result += f'        offset += {var_name}.count * {element_size};\n'
-            elif field.fieldType == "string" and field.max_size is not None:
+            elif field.field_type == "string" and field.max_size is not None:
                 result += f'        buffer[offset++] = {var_name}.length;\n'
                 result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.length);\n'
                 result += f'        offset += {var_name}.length;\n'
@@ -464,17 +464,17 @@ class MessageCppGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field.fieldType == "string":
+                if field.field_type == "string":
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field.fieldType, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
                 result += f'        if (offset >= buffer_size) return 0;\n'
                 result += f'        {var_name}.count = buffer[offset++];\n'
                 result += f'        if ({var_name}.count > {field.max_size}) {var_name}.count = {field.max_size};\n'
                 result += f'        if (offset + {var_name}.count * {element_size} > buffer_size) return 0;\n'
                 result += f'        std::memcpy({var_name}.data, buffer + offset, {var_name}.count * {element_size});\n'
                 result += f'        offset += {var_name}.count * {element_size};\n'
-            elif field.fieldType == "string" and field.max_size is not None:
+            elif field.field_type == "string" and field.max_size is not None:
                 result += f'        if (offset >= buffer_size) return 0;\n'
                 result += f'        {var_name}.length = buffer[offset++];\n'
                 result += f'        if ({var_name}.length > {field.max_size}) {var_name}.length = {field.max_size};\n'
@@ -571,10 +571,10 @@ class MessageCppGen():
         payload_msg_ids = []
         for field_name, field in oneof.fields.items():
             if use_namespace:
-                payload_type = field.fieldType
+                payload_type = field.field_type
             else:
                 type_pkg = field.type_package if field.type_package else field.package
-                payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+                payload_type = '%s%s' % (pascal_case(type_pkg), field.field_type)
             payload_types.append((field_name, payload_type))
             if oneof.discriminator_type == "msgid":
                 payload_msg_ids.append(f'{payload_type}::MSG_ID')
@@ -583,15 +583,15 @@ class MessageCppGen():
         param_list = []
         init_list = []
         for f_name, f in msg.fields.items():
-            if f.fieldType in cpp_types:
-                cpp_type = cpp_types[f.fieldType]
+            if f.field_type in cpp_types:
+                cpp_type = cpp_types[f.field_type]
             else:
                 if use_namespace:
-                    cpp_type = f.fieldType
+                    cpp_type = f.field_type
                 else:
-                    cpp_type = '%s%s' % (pascalCase(f.package), f.fieldType)
+                    cpp_type = '%s%s' % (pascal_case(f.package), f.field_type)
             
-            if f.is_array or f.fieldType == "string":
+            if f.is_array or f.field_type == "string":
                 pass  # Skip arrays/strings for simplicity
             else:
                 param_list.append(f'{cpp_type} {f.name}')
@@ -605,7 +605,7 @@ class MessageCppGen():
             result += f'     * @tparam T The payload message type (must be one of the valid types)\n'
             result += f'     * @param payload The message to wrap\n'
             for f_name, f in msg.fields.items():
-                if f.is_array or f.fieldType == "string":
+                if f.is_array or f.field_type == "string":
                     continue
                 result += f'     * @param {f.name} Envelope field value\n'
             result += f'     * @return A fully initialized {structName} envelope\n'
@@ -654,14 +654,14 @@ class MessageCppGen():
             # Generate separate wrap methods for each payload type
             for idx, (field_name, payload_type) in enumerate(payload_types):
                 field_order = idx + 1  # 1-based index
-                enum_value = CamelToSnakeCase(field_name).upper()
+                enum_value = camel_to_snake_case(field_name).upper()
                 all_wrap_params = param_list + [f'const {payload_type}& payload']
                 
                 result += f'\n    /**\n'
                 result += f'     * Create a {structName} envelope wrapping a {payload_type} payload.\n'
                 result += f'     * @param payload The {payload_type} message to wrap\n'
                 for f_name, f in msg.fields.items():
-                    if f.is_array or f.fieldType == "string":
+                    if f.is_array or f.field_type == "string":
                         continue
                     result += f'     * @param {f.name} Envelope field value\n'
                 result += f'     * @return A fully initialized {structName} envelope\n'
@@ -724,7 +724,7 @@ class FileCppGen():
         use_namespace = True
 
         # Convert package name to valid C++ namespace (snake_case)
-        namespace_name = CamelToSnakeCase(package.name)
+        namespace_name = camel_to_snake_case(package.name)
         yield f'namespace structframe {{\n'
         yield f'namespace {namespace_name} {{\n\n'
 
@@ -845,7 +845,7 @@ class TestCppGen():
     @staticmethod
     def _get_dummy_value(field, use_namespace=False, index=0):
         """Generate a dummy value for a field based on its type."""
-        type_name = field.fieldType
+        type_name = field.field_type
         
         # Basic type dummy values - values are computed as Python integers and formatted into C++ literals
         base_uint64 = 9876543210
@@ -870,16 +870,16 @@ class TestCppGen():
             return type_values[type_name]
         elif type_name == "string":
             return f'"test_{index}"'
-        elif field.isEnum:
+        elif field.is_enum:
             # Return the first enum value - this is a safe default
             if use_namespace:
                 type_pkg = field.type_package if field.type_package else field.package
                 if type_pkg != field.package:
-                    return f"static_cast<{CamelToSnakeCase(type_pkg)}::{type_name}>(0)"
+                    return f"static_cast<{camel_to_snake_case(type_pkg)}::{type_name}>(0)"
                 return f"static_cast<{type_name}>(0)"
             else:
                 pkg_prefix = field.type_package if field.type_package else field.package
-                return f"static_cast<{pascalCase(pkg_prefix)}{type_name}>(0)"
+                return f"static_cast<{pascal_case(pkg_prefix)}{type_name}>(0)"
         else:
             # Nested struct - return empty braces for aggregate init
             return "{}"
@@ -888,7 +888,7 @@ class TestCppGen():
     def _generate_field_init(field, use_namespace=False, prefix="msg", index=0):
         """Generate initialization code for a field."""
         var_name = field.name
-        type_name = field.fieldType
+        type_name = field.field_type
         result = ""
         
         # Handle arrays
@@ -939,7 +939,7 @@ class TestCppGen():
         
         # Always use namespaces (matching main generator)
         use_namespace = True
-        namespace_name = CamelToSnakeCase(package.name)
+        namespace_name = camel_to_snake_case(package.name)
         
         # Include the message definitions
         yield f'#include "{package.name}.structframe.hpp"\n'
@@ -961,11 +961,11 @@ class TestCppGen():
                 structName = msg.name
                 fullStructName = msg.name
             else:
-                structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                structName = '%s%s' % (pascal_case(msg.package), msg.name)
                 fullStructName = structName
             
             yield f'/* Create a test instance of {structName} */\n'
-            yield f'inline {fullStructName} create_test_{CamelToSnakeCase(msg.name)}() {{\n'
+            yield f'inline {fullStructName} create_test_{camel_to_snake_case(msg.name)}() {{\n'
             yield f'    {fullStructName} msg{{}};\n'
             
             # Generate field initializations (skip oneofs for simplicity)
@@ -990,14 +990,14 @@ class TestCppGen():
             if use_namespace:
                 structName = msg.name
             else:
-                structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                structName = '%s%s' % (pascal_case(msg.package), msg.name)
             
-            func_name = f'test_{CamelToSnakeCase(msg.name)}'
+            func_name = f'test_{camel_to_snake_case(msg.name)}'
             yield f'/* Test round-trip encode/decode for {structName} */\n'
             yield f'template <typename Config>\n'
             yield f'inline TestResult {func_name}() {{\n'
             yield f'    uint8_t buffer[1024];\n'
-            yield f'    auto msg = create_test_{CamelToSnakeCase(msg.name)}();\n'
+            yield f'    auto msg = create_test_{camel_to_snake_case(msg.name)}();\n'
             yield f'    \n'
             if use_namespace:
                 yield f'    bool passed = structframe::ProfilingTests::verify_roundtrip<{structName}, Config>(\n'
@@ -1019,7 +1019,7 @@ class TestCppGen():
         yield '    size_t passed = 0;\n'
         yield '    TestResult results[] = {\n'
         for key, msg in testable_messages:
-            func_name = f'test_{CamelToSnakeCase(msg.name)}'
+            func_name = f'test_{camel_to_snake_case(msg.name)}'
             yield f'        {func_name}<Config>(),\n'
         yield '    };\n'
         yield '    \n'
@@ -1060,10 +1060,10 @@ class TestCppGen():
             if use_namespace:
                 structName = msg.name
             else:
-                structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                structName = '%s%s' % (pascal_case(msg.package), msg.name)
             
             yield f'    {{\n'
-            yield f'        auto msg = create_test_{CamelToSnakeCase(msg.name)}();\n'
+            yield f'        auto msg = create_test_{camel_to_snake_case(msg.name)}();\n'
             yield f'        auto result = structframe::ProfilingTests::run_packed_profiling<{structName}, Config>(\n'
             yield f'            msg, buffer, sizeof(buffer), get_message_info);\n'
             yield f'        \n'

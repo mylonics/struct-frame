@@ -40,9 +40,9 @@ private:
             remote_endpoint_,
             [this](const asio::error_code& error, std::size_t bytes_transferred) {
                 if (!error && bytes_transferred > 0) {
-                    handleData(receive_buffer_.data(), bytes_transferred);
+                    HandleData(receive_buffer_.data(), bytes_transferred);
                 } else if (error) {
-                    handleError("UDP receive error: " + error.message());
+                    HandleError("UDP receive error: " + error.message());
                 }
                 if (connected_) {
                     startReceive();
@@ -64,7 +64,7 @@ public:
         }
     }
 
-    void connect() override {
+    void Connect() override {
         try {
             // Resolve remote endpoint
             asio::ip::udp::resolver resolver(io_context_);
@@ -89,12 +89,12 @@ public:
                 io_context_.run();
             });
         } catch (const std::exception& e) {
-            handleError("UDP connect error: " + std::string(e.what()));
+            HandleError("UDP connect error: " + std::string(e.what()));
             throw;
         }
     }
 
-    void disconnect() override {
+    void Disconnect() override {
         connected_ = false;
         io_context_.stop();
         if (socket_.is_open()) {
@@ -106,16 +106,16 @@ public:
         io_context_.restart();
     }
 
-    void send(const uint8_t* data, size_t length) override {
+    void Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !socket_.is_open()) {
-            handleError("UDP socket not connected");
+            HandleError("UDP socket not connected");
             return;
         }
 
         try {
             socket_.send_to(asio::buffer(data, length), remote_endpoint_);
         } catch (const std::exception& e) {
-            handleError("UDP send error: " + std::string(e.what()));
+            HandleError("UDP send error: " + std::string(e.what()));
         }
     }
 };
@@ -145,15 +145,15 @@ private:
             asio::buffer(receive_buffer_),
             [this](const asio::error_code& error, std::size_t bytes_transferred) {
                 if (!error && bytes_transferred > 0) {
-                    handleData(receive_buffer_.data(), bytes_transferred);
+                    HandleData(receive_buffer_.data(), bytes_transferred);
                     if (connected_) {
                         startReceive();
                     }
                 } else if (error) {
                     if (error == asio::error::eof) {
-                        handleClose();
+                        HandleClose();
                     } else {
-                        handleError("TCP receive error: " + error.message());
+                        HandleError("TCP receive error: " + error.message());
                     }
                 }
             }
@@ -173,14 +173,14 @@ public:
         }
     }
 
-    void connect() override {
+    void Connect() override {
         try {
             // Resolve endpoint
             asio::ip::tcp::resolver resolver(io_context_);
             auto endpoints = resolver.resolve(tcp_config_.host, std::to_string(tcp_config_.port));
 
             // Connect
-            asio::connect(socket_, endpoints);
+            asio::Connect(socket_, endpoints);
             connected_ = true;
 
             // Start receiving
@@ -191,12 +191,12 @@ public:
                 io_context_.run();
             });
         } catch (const std::exception& e) {
-            handleError("TCP connect error: " + std::string(e.what()));
+            HandleError("TCP connect error: " + std::string(e.what()));
             throw;
         }
     }
 
-    void disconnect() override {
+    void Disconnect() override {
         connected_ = false;
         io_context_.stop();
         if (socket_.is_open()) {
@@ -210,16 +210,16 @@ public:
         io_context_.restart();
     }
 
-    void send(const uint8_t* data, size_t length) override {
+    void Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !socket_.is_open()) {
-            handleError("TCP socket not connected");
+            HandleError("TCP socket not connected");
             return;
         }
 
         try {
             asio::write(socket_, asio::buffer(data, length));
         } catch (const std::exception& e) {
-            handleError("TCP send error: " + std::string(e.what()));
+            HandleError("TCP send error: " + std::string(e.what()));
         }
     }
 };
@@ -249,12 +249,12 @@ private:
             asio::buffer(receive_buffer_),
             [this](const asio::error_code& error, std::size_t bytes_transferred) {
                 if (!error && bytes_transferred > 0) {
-                    handleData(receive_buffer_.data(), bytes_transferred);
+                    HandleData(receive_buffer_.data(), bytes_transferred);
                     if (connected_) {
                         startReceive();
                     }
                 } else if (error) {
-                    handleError("Serial receive error: " + error.message());
+                    HandleError("Serial receive error: " + error.message());
                 }
             }
         );
@@ -273,7 +273,7 @@ public:
         }
     }
 
-    void connect() override {
+    void Connect() override {
         try {
             // Open serial port
             serial_port_.open(serial_config_.port);
@@ -295,12 +295,12 @@ public:
                 io_context_.run();
             });
         } catch (const std::exception& e) {
-            handleError("Serial connect error: " + std::string(e.what()));
+            HandleError("Serial connect error: " + std::string(e.what()));
             throw;
         }
     }
 
-    void disconnect() override {
+    void Disconnect() override {
         connected_ = false;
         io_context_.stop();
         if (serial_port_.is_open()) {
@@ -312,16 +312,16 @@ public:
         io_context_.restart();
     }
 
-    void send(const uint8_t* data, size_t length) override {
+    void Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !serial_port_.is_open()) {
-            handleError("Serial port not connected");
+            HandleError("Serial port not connected");
             return;
         }
 
         try {
             asio::write(serial_port_, asio::buffer(data, length));
         } catch (const std::exception& e) {
-            handleError("Serial send error: " + std::string(e.what()));
+            HandleError("Serial send error: " + std::string(e.what()));
         }
     }
 };

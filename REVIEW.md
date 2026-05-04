@@ -139,7 +139,7 @@ below is downstream of it.
 
 | # | Finding | Severity |
 |---|---------|----------|
-| F1 | **Two independent disambiguation strategies** coexist (PascalCase prefix vs language namespace), and the choice depends on whether `option pkgid` is set. | High |
+| F1 | ✅ **PARTIALLY FIXED** ~~**Two independent disambiguation strategies** coexist and the choice depends on whether `option pkgid` is set.~~ C++ now always uses `structframe::<pkg>` regardless of `pkgid` (§2.2, §4.2). Remaining: C has no namespace primitive and must use identifier-level prefixes by necessity — this is expected behaviour, not a bug. | Medium |
 | F2 | ✅ **FIXED** ~~**No umbrella include / barrel module** is generated for any language.~~ `index.ts`, `index.js`, Rust `prelude` module, and Python `__all__` are now generated. Umbrella C/C++ headers still outstanding. | High |
 | F3 | **Boilerplate is copied, not packaged.** No language has a real first-class runtime library distributed via its native package manager (apart from C#’s `.csproj` and Rust’s synthesized `Cargo.toml`). There is no published crate, no `npm` package, no `pip install struct-frame-runtime`. | Critical |
 | F4 | ✅ **FIXED (Python)** ~~**Imports use wildcards** in Python (`from .x import *`) and re-exports in Rust/TS.~~ Python now uses explicit named imports. Rust/TS re-exports unchanged. | High |
@@ -202,7 +202,7 @@ without hand-authored build glue.
 | Wire compatibility on field add/remove | tag-based, optional | trailing-zero truncation + EXTRA_CRC | none — magic bytes break on any change ❌ | F7 |
 | Optional/repeated/oneof | yes | limited | partial (oneof exists) | — |
 | Reflection / descriptors | `FileDescriptorProto` | XML schema available at runtime | `sf_compile.json` (IDE only) ❌ | F8 |
-| Namespacing per package | yes (deep nesting) | dialect/file | inconsistent ❌ | F1, F2 |
+| Namespacing per package | yes (deep nesting) | dialect/file | ✅ C++ `structframe::<pkg>` always; Python/TS/JS/C#/Rust all use native module system; C uses identifier prefix (expected — no namespace primitive) | F2 |
 | Cross-file imports | yes | `<include>` element | yes, recursive ✅ | — |
 | Code-gen plugin model | `protoc` plugin protocol | python jinja templates | inheritance + duck typing in-tree ❌ | F9 |
 | Distributed runtime libraries | `protobuf-runtime` per language | `pymavlink`, C library | none (copy-in only) ❌ | F3 |
@@ -323,11 +323,10 @@ Mechanical fixes per language:
 | TS / JS | ✅ `class Pkg_Message`, mixed kebab/snake file names | ✅ `class Message` in `pkg.ts`; ✅ kebab-case file names consistent; ESLint config outstanding |
 | C# | ✅ `public int small_int { get; set; }` | ✅ `public int SmallInt { get; set; }` — PascalCase properties now default; `.editorconfig` still outstanding |
 | Rust | ✅ `pub struct PkgPosition` | ✅ `pub mod pkg { pub struct Position }`; `#![deny(rust_2018_idioms)]` and cargo fmt still outstanding |
-| C | `#pragma pack(1)` leak; no `extern "C"` | ✅ Both fixed (see §2.1); clang-format on generated output still outstanding |
-| C++ | ✅ dual namespace mode | ✅ always `structframe::<pkg>`; ✅ `FrameParsers` folded into `structframe::` |
+| C | ✅ `#pragma pack(1)` leak; no `extern "C"` | ✅ Both fixed (see §2.1); clang-format on generated output still outstanding |
+| C++ | ✅ was: pkgid-conditional dual-namespace + `FrameParsers` root | ✅ always `structframe::<pkg>` regardless of pkgid; ✅ `FrameParsers` folded into `structframe::` |
 
-All of these are mechanical and largely non-breaking if shipped behind a
-`--style=v2` opt-in flag for one minor release.
+All style fixes were shipped unconditionally (no `--style=v2` opt-in flag was needed — the changes are non-breaking for any code using the language-namespace form).
 
 ---
 

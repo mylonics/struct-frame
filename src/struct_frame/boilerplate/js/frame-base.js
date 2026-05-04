@@ -28,9 +28,9 @@ function fletcherChecksum(buffer, start = 0, end = undefined, init1 = 0, init2 =
 function createFrameMsgInfo() {
     return {
         valid: false,
-        msg_id: 0,
-        msg_len: 0,
-        msg_data: new Uint8Array(0)
+        msgId: 0,
+        msgLen: 0,
+        msgData: new Uint8Array(0)
     };
 }
 
@@ -60,9 +60,9 @@ function validatePayloadWithCrc(buffer, headerSize, lengthBytes, crcStartOffset)
 
     if (ck[0] === buffer[buffer.length - 2] && ck[1] === buffer[buffer.length - 1]) {
         result.valid = true;
-        result.msg_id = buffer[headerSize - 1]; // msg_id is last byte of header
-        result.msg_len = msgLength;
-        result.msg_data = new Uint8Array(Array.prototype.slice.call(buffer, headerSize, buffer.length - footerSize));
+        result.msgId = buffer[headerSize - 1]; // msg_id is last byte of header
+        result.msgLen = msgLength;
+        result.msgData = new Uint8Array(Array.prototype.slice.call(buffer, headerSize, buffer.length - footerSize));
     }
 
     return result;
@@ -79,9 +79,9 @@ function validatePayloadMinimal(buffer, headerSize) {
     }
 
     result.valid = true;
-    result.msg_id = buffer[headerSize - 1]; // msg_id is last byte of header
-    result.msg_len = buffer.length - headerSize;
-    result.msg_data = new Uint8Array(Array.prototype.slice.call(buffer, headerSize));
+    result.msgId = buffer[headerSize - 1]; // msg_id is last byte of header
+    result.msgLen = buffer.length - headerSize;
+    result.msgData = new Uint8Array(Array.prototype.slice.call(buffer, headerSize));
 
     return result;
 }
@@ -143,15 +143,15 @@ const GenericParserState = {
  * This class eliminates the need for separate parser classes per format.
  */
 class GenericFrameParser {
-    constructor(config, get_msg_length = undefined) {
+    constructor(config, getMsgLength = undefined) {
         this.config = config;
-        this.get_msg_length = get_msg_length;
+        this.getMsgLength = getMsgLength;
         this.state = this._getInitialState();
         this.buffer = [];
-        this.packet_size = 0;
-        this.msg_id = 0;
-        this.msg_length = 0;
-        this.length_lo = 0;
+        this.packetSize = 0;
+        this.msgId = 0;
+        this.msgLength = 0;
+        this.lengthLo = 0;
     }
 
     _getInitialState() {
@@ -165,13 +165,13 @@ class GenericFrameParser {
     reset() {
         this.state = this._getInitialState();
         this.buffer = [];
-        this.packet_size = 0;
-        this.msg_id = 0;
-        this.msg_length = 0;
-        this.length_lo = 0;
+        this.packetSize = 0;
+        this.msgId = 0;
+        this.msgLength = 0;
+        this.lengthLo = 0;
     }
 
-    parse_byte(byte) {
+    parseByte(byte) {
         const result = createFrameMsgInfo();
         const startBytes = this.config.startBytes;
         const overhead = this.config.headerSize + this.config.footerSize;
@@ -202,13 +202,13 @@ class GenericFrameParser {
 
             case GenericParserState.GETTING_MSG_ID:
                 this.buffer.push(byte);
-                this.msg_id = byte;
+                this.msgId = byte;
                 if (this.config.hasLength) {
                     this.state = GenericParserState.GETTING_LENGTH;
-                } else if (this.get_msg_length) {
-                    const msgLen = this.get_msg_length(byte);
+                } else if (this.getMsgLength) {
+                    const msgLen = this.getMsgLength(byte);
                     if (msgLen !== undefined) {
-                        this.packet_size = overhead + msgLen;
+                        this.packetSize = overhead + msgLen;
                         this.state = GenericParserState.GETTING_PAYLOAD;
                     } else {
                         this.state = this._getInitialState();
@@ -221,16 +221,16 @@ class GenericFrameParser {
             case GenericParserState.GETTING_LENGTH:
                 this.buffer.push(byte);
                 if (this.config.lengthBytes === 1) {
-                    this.msg_length = byte;
-                    this.packet_size = overhead + this.msg_length;
+                    this.msgLength = byte;
+                    this.packetSize = overhead + this.msgLength;
                     this.state = GenericParserState.GETTING_PAYLOAD;
                 } else {
                     // 2-byte length
                     if (this.buffer.length === startBytes.length + 2) {
-                        this.length_lo = byte;
+                        this.lengthLo = byte;
                     } else {
-                        this.msg_length = this.length_lo | (byte << 8);
-                        this.packet_size = overhead + this.msg_length;
+                        this.msgLength = this.lengthLo | (byte << 8);
+                        this.packetSize = overhead + this.msgLength;
                         this.state = GenericParserState.GETTING_PAYLOAD;
                     }
                 }
@@ -238,22 +238,22 @@ class GenericFrameParser {
 
             case GenericParserState.GETTING_PAYLOAD:
                 this.buffer.push(byte);
-                if (this.buffer.length >= this.packet_size) {
+                if (this.buffer.length >= this.packetSize) {
                     if (this.config.hasCrc) {
                         const validationResult = validatePayloadWithCrc(
                             this.buffer, this.config.headerSize, this.config.lengthBytes, startBytes.length);
                         if (validationResult.valid) {
                             result.valid = validationResult.valid;
-                            result.msg_id = validationResult.msg_id;
-                            result.msg_len = validationResult.msg_len;
-                            result.msg_data = validationResult.msg_data;
+                            result.msgId = validationResult.msgId;
+                            result.msgLen = validationResult.msgLen;
+                            result.msgData = validationResult.msgData;
                         }
                     } else {
                         const validationResult = validatePayloadMinimal(this.buffer, this.config.headerSize);
                         result.valid = validationResult.valid;
-                        result.msg_id = validationResult.msg_id;
-                        result.msg_len = validationResult.msg_len;
-                        result.msg_data = validationResult.msg_data;
+                        result.msgId = validationResult.msgId;
+                        result.msgLen = validationResult.msgLen;
+                        result.msgData = validationResult.msgData;
                     }
                     this.state = this._getInitialState();
                 }
@@ -266,7 +266,7 @@ class GenericFrameParser {
     /**
      * Encode a message using this format (static method)
      */
-    static encode(config, msg_id, msg) {
+    static encode(config, msgId, msg) {
         const output = [];
 
         // Add start bytes
@@ -276,9 +276,9 @@ class GenericFrameParser {
 
         // Use appropriate payload encoding
         if (config.hasCrc) {
-            encodePayloadWithCrc(output, msg_id, msg, config.lengthBytes, config.startBytes.length);
+            encodePayloadWithCrc(output, msgId, msg, config.lengthBytes, config.startBytes.length);
         } else {
-            encodePayloadMinimal(output, msg_id, msg);
+            encodePayloadMinimal(output, msgId, msg);
         }
 
         return new Uint8Array(output);
@@ -287,7 +287,7 @@ class GenericFrameParser {
     /**
      * Validate a complete packet buffer using this format (static method)
      */
-    static validate_packet(config, buffer) {
+    static validateFrame(config, buffer) {
         const overhead = config.headerSize + config.footerSize;
 
         if (buffer.length < overhead) {
@@ -317,16 +317,16 @@ class GenericFrameParser {
 function createFrameParserClass(config) {
     // Create a class that extends GenericFrameParser with the config baked in
     class ConfiguredFrameParser extends GenericFrameParser {
-        constructor(get_msg_length = undefined) {
-            super(config, get_msg_length);
+        constructor(getMsgLength = undefined) {
+            super(config, getMsgLength);
         }
 
-        static encode(msg_id, msg) {
-            return GenericFrameParser.encode(config, msg_id, msg);
+        static encode(msgId, msg) {
+            return GenericFrameParser.encode(config, msgId, msg);
         }
 
-        static validate_packet(buffer) {
-            return GenericFrameParser.validate_packet(config, buffer);
+        static validatePacket(buffer) {
+            return GenericFrameParser.validateFrame(config, buffer);
         }
     }
 

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from .transport import ITransport
 
 
-class IFrameParser(Protocol):
+class FrameParser(Protocol):
     """Frame parser interface - must be implemented by generated frame parsers"""
 
     def parse(self, data: bytes):
@@ -21,7 +21,7 @@ class IFrameParser(Protocol):
         ...
 
 
-class IMessageCodec(Protocol):
+class MessageCodec(Protocol):
     """Message codec interface - deserializes raw bytes into message objects"""
 
     @property
@@ -29,7 +29,7 @@ class IMessageCodec(Protocol):
         """Get message ID for this codec"""
         ...
 
-    def create_unpack(self, data: bytes) -> Any:
+    def deserialize(self, data: bytes) -> Any:
         """Deserialize bytes into message object"""
         ...
 
@@ -41,7 +41,7 @@ MessageHandler = Callable[[Any, int], None]
 class StructFrameSdkConfig:
     """Struct Frame SDK Configuration"""
     transport: ITransport
-    frame_parser: IFrameParser
+    frame_parser: FrameParser
     debug: bool = False
 
 
@@ -53,7 +53,7 @@ class StructFrameSdk:
         self.frame_parser = config.frame_parser
         self.debug = config.debug
         self.message_handlers: Dict[int, List[MessageHandler]] = {}
-        self.message_codecs: Dict[int, IMessageCodec] = {}
+        self.message_codecs: Dict[int, MessageCodec] = {}
         self.buffer = b''
 
         # Set up transport callbacks
@@ -71,7 +71,7 @@ class StructFrameSdk:
         self.transport.disconnect()
         self._log('Disconnected')
 
-    def register_codec(self, codec: IMessageCodec) -> None:
+    def register_codec(self, codec: MessageCodec) -> None:
         """Register a message codec for automatic deserialization"""
         self.message_codecs[codec.msg_id] = codec
 
@@ -136,7 +136,7 @@ class StructFrameSdk:
                 codec = self.message_codecs.get(result.msg_id)
                 if codec:
                     try:
-                        message = codec.create_unpack(result.msg_data)
+                        message = codec.deserialize(result.msg_data)
                     except Exception as e:
                         self._log(f'Failed to deserialize message ID {result.msg_id}: {e}')
 

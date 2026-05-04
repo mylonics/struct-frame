@@ -3,10 +3,10 @@
  */
 
 import { MESSAGE_COUNT, getMessage, checkMessage } from './include/variable_flag_messages';
-import { get_message_info } from '../generated/ts/serialization-test.structframe';
+import { getMessageInfo } from '../generated/ts/serialization-test.structframe';
 import { run } from './include/test_harness';
 
 const TEST_NAME = 'VariableFlagMessages';
 const PROFILES = 'bulk';
 
-process.exit(run(MESSAGE_COUNT, getMessage, checkMessage, get_message_info, TEST_NAME, PROFILES));
+process.exit(run(MESSAGE_COUNT, getMessage, checkMessage, getMessageInfo, TEST_NAME, PROFILES));

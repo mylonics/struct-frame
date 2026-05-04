@@ -7,9 +7,16 @@ This module provides common functionality used by both ts_gen.py and js_gen.py
 to reduce code duplication and ensure consistent behavior.
 """
 
-from struct_frame import NamingStyleC, pascalCase
+from struct_frame import NamingStyleC, pascal_case
 
-StyleC = NamingStyleC()
+_style_c = NamingStyleC()
+
+
+def to_camel_case(name: str) -> str:
+    """Convert snake_case to camelCase for TypeScript/JavaScript identifiers."""
+    parts = name.split('_')
+    return parts[0] + ''.join(p.capitalize() for p in parts[1:])
+
 
 # Common type mappings shared by TypeScript and JavaScript generators
 # Maps proto types to struct method names
@@ -79,8 +86,8 @@ class BaseFieldGen:
             count_method = "UInt16LE" if field.max_size > 255 else "UInt8"
             return (
                 "    // Variable string array: up to %d strings, each max %d chars\n"
-                "    .%s('%s_count')\n"
-                "    .StructArray('%s_data', %d, new Struct().String('value', %d).compile())"
+                "    .%s('%sCount')\n"
+                "    .StructArray('%sData', %d, new Struct().String('value', %d).compile())"
             ) % (field.max_size, field.element_size, count_method, var_name, var_name, field.max_size, field.element_size)
 
     @staticmethod
@@ -96,15 +103,15 @@ class BaseFieldGen:
             # Variable size array
             count_method = "UInt16LE" if field.max_size > 255 else "UInt8"
             comment = '    // Variable array: up to %d elements\n' % field.max_size
-            count_line = "    .%s('%s_count')\n" % (count_method, var_name)
+            count_line = "    .%s('%sCount')\n" % (count_method, var_name)
             if array_method == 'StructArray':
-                return comment + count_line + "    .%s('%s_data', %d, %s)" % (array_method, var_name, field.max_size, base_type)
-            return comment + count_line + "    .%s('%s_data', %d)" % (array_method, var_name, field.max_size)
+                return comment + count_line + "    .%s('%sData', %d, %s)" % (array_method, var_name, field.max_size, base_type)
+            return comment + count_line + "    .%s('%sData', %d)" % (array_method, var_name, field.max_size)
 
     @staticmethod
-    def _resolve_array_type(field, packageName, types_dict, typed_array_methods_dict, isEnum):
+    def _resolve_array_type(field, package_name, types_dict, typed_array_methods_dict, isEnum):
         """Resolve base type and array method for an array field."""
-        type_name = field.fieldType
+        type_name = field.field_type
         if type_name in types_dict:
             base_type = types_dict[type_name]
             array_method = typed_array_methods_dict.get(type_name, 'StructArray')
@@ -112,19 +119,19 @@ class BaseFieldGen:
             base_type = 'UInt8'
             array_method = 'UInt8Array'
         else:
-            type_package = getattr(field, 'type_package', None) or packageName
+            type_package = getattr(field, 'type_package', None) or package_name
             base_type = '%s_%s' % (type_package, type_name)
             array_method = 'StructArray'
         return base_type, array_method
 
     @staticmethod
-    def generate(field, packageName, types_dict, typed_array_methods_dict):
+    def generate(field, package_name, types_dict, typed_array_methods_dict):
         """
         Generate field definition code.
 
         Args:
             field: Field object containing field metadata
-            packageName: Package name prefix
+            package_name: Package name prefix
             types_dict: Dictionary mapping proto types to struct method names
             typed_array_methods_dict: Dictionary mapping proto types to typed array method names
 
@@ -132,29 +139,29 @@ class BaseFieldGen:
             String containing the field definition code
         """
         result = ''
-        isEnum = field.isEnum if hasattr(field, 'isEnum') else False
-        var_name = StyleC.var_name(field.name)
-        type_name = field.fieldType
+        isEnum = field.is_enum if hasattr(field, 'isEnum') else False
+        var_name = to_camel_case(field.name)
+        type_name = field.field_type
 
         # Handle arrays
         if field.is_array:
-            if field.fieldType == "string":
+            if field.field_type == "string":
                 result = BaseFieldGen._generate_string_array(field, var_name)
             else:
                 base_type, array_method = BaseFieldGen._resolve_array_type(
-                    field, packageName, types_dict, typed_array_methods_dict, isEnum)
+                    field, package_name, types_dict, typed_array_methods_dict, isEnum)
                 result = BaseFieldGen._generate_typed_array(field, var_name, base_type, array_method)
         else:
             # Non-array fields
-            if field.fieldType == "string":
+            if field.field_type == "string":
                 if hasattr(field, 'size_option') and field.size_option is not None:
                     result += '    // Fixed string: exactly %d chars\n' % field.size_option
                     result += "    .String('%s', %d)" % (var_name, field.size_option)
                 elif hasattr(field, 'max_size') and field.max_size is not None:
                     length_method = "UInt16LE" if field.max_size > 255 else "UInt8"
                     result += '    // Variable string: up to %d chars\n' % field.max_size
-                    result += "    .%s('%s_length')\n" % (length_method, var_name)
-                    result += "    .String('%s_data', %d)" % (var_name, field.max_size)
+                    result += "    .%s('%sLength')\n" % (length_method, var_name)
+                    result += "    .String('%sData', %d)" % (var_name, field.max_size)
                 else:
                     result += "    .String('%s')" % var_name
             else:
@@ -168,7 +175,7 @@ class BaseFieldGen:
                         result += "    .%s('%s')" % (type_name, var_name)
                 else:
                     # Custom message type - use StructArray with length 1
-                    type_package = getattr(field, 'type_package', None) or packageName
+                    type_package = getattr(field, 'type_package', None) or package_name
                     # Use type name directly without case conversion to match how exports are generated
                     struct_name = '%s_%s' % (type_package, type_name)
                     if isEnum:
@@ -208,7 +215,7 @@ class BaseEnumGen:
             value = field.data[d][0]
             is_last = (index == enum_length - 1)
             enum_values_data.append({
-                'name': StyleC.enum_entry(d),
+                'name': _style_c.enum_entry(d),
                 'value': value,
                 'comments': leading_comment,
                 'is_last': is_last
@@ -371,9 +378,9 @@ def calculate_field_layout(msg, package, packages):
     
     # Process regular fields
     for key, field in msg.fields.items():
-        var_name = StyleC.var_name(field.name)
-        field_type = field.fieldType
-        is_enum = field.isEnum
+        var_name = to_camel_case(field.name)
+        field_type = field.field_type
+        is_enum = field.is_enum
         comments = field.comments
         
         if field.is_array:
@@ -401,8 +408,8 @@ def calculate_field_layout(msg, package, packages):
                     elem_size = field.element_size
                     max_count = field.max_size
                     # Count field
-                    count_name = f"{var_name}_count"
-                    data_name = f"{var_name}_data"
+                    count_name = f"{var_name}Count"
+                    data_name = f"{var_name}Data"
                     count_type = "uint16" if max_count > 255 else "uint8"
                     count_size = 2 if max_count > 255 else 1
                     fields.append(FieldInfo(
@@ -460,8 +467,8 @@ def calculate_field_layout(msg, package, packages):
                 else:
                     # Variable array
                     max_count = field.max_size
-                    count_name = f"{var_name}_count"
-                    data_name = f"{var_name}_data"
+                    count_name = f"{var_name}Count"
+                    data_name = f"{var_name}Data"
                     count_type = "uint16" if max_count > 255 else "uint8"
                     count_size = 2 if max_count > 255 else 1
                     # Count field
@@ -506,8 +513,8 @@ def calculate_field_layout(msg, package, packages):
             elif field.max_size is not None:
                 # Variable string - has length + data
                 max_len = field.max_size
-                length_name = f"{var_name}_length"
-                data_name = f"{var_name}_data"
+                length_name = f"{var_name}Length"
+                data_name = f"{var_name}Data"
                 length_type = "uint16" if max_len > 255 else "uint8"
                 length_size = 2 if max_len > 255 else 1
                 # Length field
@@ -577,7 +584,7 @@ def calculate_field_layout(msg, package, packages):
         oneof_name = oneof.name
         if oneof.auto_discriminator:
             # Discriminator field
-            discrim_name = f"{oneof_name}_discriminator"
+            discrim_name = f"{to_camel_case(oneof_name)}Discriminator"
             if oneof.discriminator_type == "msgid":
                 # UInt16LE for message ID discriminator
                 fields.append(FieldInfo(
@@ -597,7 +604,7 @@ def calculate_field_layout(msg, package, packages):
                 ))
                 offset += 1
         # Union data (byte array)
-        data_name = f"{oneof_name}_data"
+        data_name = f"{to_camel_case(oneof_name)}Data"
         fields.append(FieldInfo(
             name=data_name,
             offset=offset,
@@ -615,12 +622,12 @@ def calculate_field_layout(msg, package, packages):
 def _find_message_type(type_name, package, packages):
     """Find a message type by name in packages."""
     # First check current package
-    msg = package.findFieldType(type_name)
+    msg = package.find_field_type(type_name)
     if msg:
         return msg
     # Then check all packages
     for pkg_name, pkg in packages.items():
-        msg = pkg.findFieldType(type_name)
+        msg = pkg.find_field_type(type_name)
         if msg:
             return msg
     return None
@@ -628,4 +635,4 @@ def _find_message_type(type_name, package, packages):
 
 def _get_nested_type_name(field, package):
     """Get the nested type name (short form, without package prefix)."""
-    return field.fieldType
+    return field.field_type

@@ -9,7 +9,7 @@ interface wraps a StructFrameSdk instance and provides convenience methods
 for each message in the package.
 """
 
-from struct_frame import version, pascalCase
+from struct_frame import version, pascal_case
 import time
 
 
@@ -17,7 +17,7 @@ def get_csharp_field_type(field, package_name):
     """Get the C# type for a field"""
     from struct_frame.csharp_gen import csharp_types
     
-    type_name = field.fieldType
+    type_name = field.field_type
     
     # Handle basic type resolution
     if type_name in csharp_types:
@@ -26,24 +26,24 @@ def get_csharp_field_type(field, package_name):
         # Use the package where the type is defined
         type_pkg = getattr(field, 'type_package', None) if hasattr(field, 'type_package') else None
         type_pkg = type_pkg if type_pkg else getattr(field, 'package', package_name)
-        if field.isEnum:
-            base_type = f'{pascalCase(type_pkg)}{type_name}'
+        if field.is_enum:
+            base_type = f'{pascal_case(type_pkg)}{type_name}'
         else:
-            base_type = f'{pascalCase(type_pkg)}{type_name}'
+            base_type = f'{pascal_case(type_pkg)}{type_name}'
     
     # Handle arrays
     if field.is_array:
-        if field.fieldType == "string":
+        if field.field_type == "string":
             # String arrays are byte[] in C#
             return "byte[]"
         else:
-            if field.isEnum:
+            if field.is_enum:
                 return "byte[]"
             else:
                 return f"{base_type}[]"
     
     # Handle regular strings
-    elif field.fieldType == "string":
+    elif field.field_type == "string":
         return "byte[]"
     
     # Handle regular fields
@@ -75,12 +75,12 @@ class SdkInterfaceGen:
         # Add using directives for referenced packages
         if referenced_packages:
             for ref_pkg in sorted(referenced_packages):
-                yield f'using StructFrame.{pascalCase(ref_pkg)};\n'
+                yield f'using StructFrame.{pascal_case(ref_pkg)};\n'
         
-        yield f'using StructFrame.{pascalCase(package.name)};\n'
+        yield f'using StructFrame.{pascal_case(package.name)};\n'
         yield '\n'
         
-        namespace_name = pascalCase(package.name)
+        namespace_name = pascal_case(package.name)
         yield f'namespace StructFrame.{namespace_name}.Sdk\n'
         yield '{\n'
         
@@ -132,7 +132,7 @@ class SdkInterfaceGen:
     @staticmethod
     def _generate_subscribe_method(msg, package_name):
         """Generate subscribe method for a single message"""
-        struct_name = f'{pascalCase(package_name)}{msg.name}'
+        struct_name = f'{pascal_case(package_name)}{msg.name}'
         method_name = f'Subscribe{msg.name}'
         
         yield '        /// <summary>\n'
@@ -149,7 +149,7 @@ class SdkInterfaceGen:
     @staticmethod
     def _generate_send_methods(msg, package_name):
         """Generate send methods for a single message"""
-        struct_name = f'{pascalCase(package_name)}{msg.name}'
+        struct_name = f'{pascal_case(package_name)}{msg.name}'
         method_name = f'Send{msg.name}'
         
         # Method 1: Send with struct reference
@@ -176,7 +176,7 @@ class SdkInterfaceGen:
             params = []
             for field_name, field in msg.fields.items():
                 csharp_type = get_csharp_field_type(field, package_name)
-                param_name = pascalCase(field.name).lower()
+                param_name = pascal_case(field.name).lower()
                 
                 # Add parameter with comment
                 yield f'        /// <param name="{param_name}">{field.name}</param>\n'
@@ -189,12 +189,12 @@ class SdkInterfaceGen:
             
             # Assign each field
             for field_name, field in msg.fields.items():
-                param_name = pascalCase(field.name).lower()
-                struct_field_name = pascalCase(field.name)
+                param_name = pascal_case(field.name).lower()
+                struct_field_name = pascal_case(field.name)
                 
                 # Handle different field types
                 if field.is_array:
-                    if field.fieldType == "string":
+                    if field.field_type == "string":
                         # String arrays
                         if field.size_option is not None:
                             # Fixed string array
@@ -212,7 +212,7 @@ class SdkInterfaceGen:
                             # Variable array
                             yield f'            message.{struct_field_name}Count = (byte)Math.Min({param_name}.Length, {field.max_size});\n'
                             yield f'            message.{struct_field_name}Data = {param_name};\n'
-                elif field.fieldType == "string":
+                elif field.field_type == "string":
                     # Regular strings
                     if field.size_option is not None:
                         # Fixed string
@@ -234,26 +234,28 @@ class SdkInterfaceGen:
         """Generate the private helper method for sending messages via an envelope"""
         from struct_frame.csharp_gen import EnumCSharpGen, csharp_types
         
-        envelope_type = f'{pascalCase(package_name)}{envelope_msg.name}'
+        envelope_type = f'{pascal_case(package_name)}{envelope_msg.name}'
         
         # Get the single oneof (envelope validation ensures exactly one exists)
         oneof_name = list(envelope_msg.oneofs.keys())[0]
         oneof = envelope_msg.oneofs[oneof_name]
         
         # Get enum name for field_order discriminators
+        # Must use the full struct name (package prefix + message name) to match
+        # the generated enum definition in the messages file.
         enum_name = None
         if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, envelope_msg.name)
+            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, f'{pascal_case(package_name)}{envelope_msg.name}')
         
         # Collect envelope fields (non-oneof, non-complex fields)
         envelope_fields = []
         for f_name, f in envelope_msg.fields.items():
-            if f.is_array or f.fieldType == "string":
+            if f.is_array or f.field_type == "string":
                 continue
-            csharp_type = csharp_types.get(f.fieldType)
+            csharp_type = csharp_types.get(f.field_type)
             if csharp_type is None:
                 type_pkg = f.type_package if f.type_package else f.package
-                csharp_type = f'{pascalCase(type_pkg)}{f.fieldType}'
+                csharp_type = f'{pascal_case(type_pkg)}{f.field_type}'
             envelope_fields.append((f_name, f, csharp_type))
         
         # Helper 1: Basic helper with default envelope field values
@@ -273,16 +275,16 @@ class SdkInterfaceGen:
         # Initialize envelope fields with defaults
         for f_name, f, csharp_type in envelope_fields:
             # Set reasonable defaults for common envelope field patterns
-            field_name = pascalCase(f_name)
+            field_name = pascal_case(f_name)
             if 'immediate' in f_name.lower() or 'run' in f_name.lower():
                 yield f'            envelope.{field_name} = true;\n'
         
         # Set the discriminator based on discriminator type
         if oneof.auto_discriminator:
             if oneof.discriminator_type == "msgid":
-                yield f'            envelope.{pascalCase(oneof_name)}Discriminator = message.GetMsgId();\n'
+                yield f'            envelope.{pascal_case(oneof_name)}Discriminator = message.GetMsgId();\n'
             else:  # field_order
-                yield f'            envelope.{pascalCase(oneof_name)}Discriminator = discriminator;\n'
+                yield f'            envelope.{pascal_case(oneof_name)}Discriminator = discriminator;\n'
         
         yield '            setField(envelope, message);\n'
         yield '            await _sdk.SendAsync(envelope, seq, sysId, compId);\n'
@@ -307,9 +309,9 @@ class SdkInterfaceGen:
             # Set the discriminator based on discriminator type
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
-                    yield f'            envelope.{pascalCase(oneof_name)}Discriminator = message.GetMsgId();\n'
+                    yield f'            envelope.{pascal_case(oneof_name)}Discriminator = message.GetMsgId();\n'
                 else:  # field_order
-                    yield f'            envelope.{pascalCase(oneof_name)}Discriminator = discriminator;\n'
+                    yield f'            envelope.{pascal_case(oneof_name)}Discriminator = discriminator;\n'
             
             yield '            setField(envelope, message);\n'
             yield '            await _sdk.SendAsync(envelope, seq, sysId, compId);\n'
@@ -322,43 +324,45 @@ class SdkInterfaceGen:
         from struct_frame.csharp_gen import EnumCSharpGen, csharp_types
         
         package_name = package.name
-        envelope_type = f'{pascalCase(package_name)}{envelope_msg.name}'
+        envelope_type = f'{pascal_case(package_name)}{envelope_msg.name}'
         
         # Get the single oneof
         oneof_name = list(envelope_msg.oneofs.keys())[0]
         oneof = envelope_msg.oneofs[oneof_name]
         
         # Get enum name for field_order discriminators
+        # Must use the full struct name (package prefix + message name) to match
+        # the generated enum definition in the messages file.
         enum_name = None
         if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, envelope_msg.name)
+            enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, f'{pascal_case(package_name)}{envelope_msg.name}')
         
         # Collect envelope fields (non-oneof, non-complex fields) for the overload
         envelope_fields = []
         for f_name, f in envelope_msg.fields.items():
-            if f.is_array or f.fieldType == "string":
+            if f.is_array or f.field_type == "string":
                 continue
-            csharp_type = csharp_types.get(f.fieldType)
+            csharp_type = csharp_types.get(f.field_type)
             if csharp_type is None:
                 type_pkg = f.type_package if f.type_package else f.package
-                csharp_type = f'{pascalCase(type_pkg)}{f.fieldType}'
+                csharp_type = f'{pascal_case(type_pkg)}{f.field_type}'
             envelope_fields.append((f_name, f, csharp_type))
         
         # Generate a send method for each payload type in the oneof
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             # Get the payload type name
             type_pkg = field.type_package if field.type_package else field.package
-            payload_type = f'{pascalCase(type_pkg)}{field.fieldType}'
+            payload_type = f'{pascal_case(type_pkg)}{field.field_type}'
             
             # Method name like Send{PayloadType}Via{EnvelopeName}
-            method_name = f'Send{field.fieldType}Via{envelope_msg.name}'
+            method_name = f'Send{field.field_type}Via{envelope_msg.name}'
             
             # Try to find the payload message definition to get its fields
             payload_msg = None
             payload_fields = []
             # Look in the same package first
-            if field.fieldType in package.messages:
-                payload_msg = package.messages[field.fieldType]
+            if field.field_type in package.messages:
+                payload_msg = package.messages[field.field_type]
             
             if payload_msg and payload_msg.fields:
                 for pf_name, pf in payload_msg.fields.items():
@@ -368,9 +372,9 @@ class SdkInterfaceGen:
             # Method 1: Overload with message object and envelope fields as parameters
             if envelope_fields:
                 yield '        /// <summary>\n'
-                yield f'        /// Send {field.fieldType} message wrapped in a {envelope_msg.name} envelope with custom envelope field values\n'
+                yield f'        /// Send {field.field_type} message wrapped in a {envelope_msg.name} envelope with custom envelope field values\n'
                 yield '        /// </summary>\n'
-                yield f'        /// <param name="message">The {field.fieldType} message to send</param>\n'
+                yield f'        /// <param name="message">The {field.field_type} message to send</param>\n'
                 for f_name, f, csharp_type in envelope_fields:
                     yield f'        /// <param name="{f_name}">{envelope_msg.name} envelope field: {f_name}</param>\n'
                 yield '        /// <param name="seq">Sequence number (optional)</param>\n'
@@ -383,13 +387,13 @@ class SdkInterfaceGen:
                 yield '        {\n'
                 
                 # Build the configure action
-                field_assignments = '; '.join([f'env.{pascalCase(f_name)} = {f_name}' for f_name, f, csharp_type in envelope_fields])
+                field_assignments = '; '.join([f'env.{pascal_case(f_name)} = {f_name}' for f_name, f, csharp_type in envelope_fields])
                 
                 if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-                    enum_entry = pascalCase(field_name)
-                    yield f'            await SendAs{envelope_msg.name}(message, (env, msg) => env.{pascalCase(field_name)} = msg, {enum_name}.{enum_entry}, env => {{ {field_assignments}; }}, seq, sysId, compId);\n'
+                    enum_entry = pascal_case(field_name)
+                    yield f'            await SendAs{envelope_msg.name}(message, (env, msg) => env.{pascal_case(field_name)} = msg, {enum_name}.{enum_entry}, env => {{ {field_assignments}; }}, seq, sysId, compId);\n'
                 else:
-                    yield f'            await SendAs{envelope_msg.name}(message, (env, msg) => env.{pascalCase(field_name)} = msg, env => {{ {field_assignments}; }}, seq, sysId, compId);\n'
+                    yield f'            await SendAs{envelope_msg.name}(message, (env, msg) => env.{pascal_case(field_name)} = msg, env => {{ {field_assignments}; }}, seq, sysId, compId);\n'
                 
                 yield '        }\n'
                 yield '\n'
@@ -397,13 +401,13 @@ class SdkInterfaceGen:
             # Method 2: Overload with individual payload fields AND envelope fields as parameters
             if payload_fields and envelope_fields:
                 yield '        /// <summary>\n'
-                yield f'        /// Send {field.fieldType} message wrapped in a {envelope_msg.name} envelope with individual field values\n'
+                yield f'        /// Send {field.field_type} message wrapped in a {envelope_msg.name} envelope with individual field values\n'
                 yield '        /// </summary>\n'
                 
                 # Document payload fields
                 for pf_name, pf, pf_csharp_type in payload_fields:
-                    param_name = pascalCase(pf_name).lower()
-                    yield f'        /// <param name="{param_name}">{field.fieldType} field: {pf_name}</param>\n'
+                    param_name = pascal_case(pf_name).lower()
+                    yield f'        /// <param name="{param_name}">{field.field_type} field: {pf_name}</param>\n'
                 
                 # Document envelope fields
                 for f_name, f, csharp_type in envelope_fields:
@@ -414,7 +418,7 @@ class SdkInterfaceGen:
                 yield '        /// <param name="compId">Component ID (optional)</param>\n'
                 
                 # Build parameter list: payload fields first, then envelope fields
-                payload_params = ', '.join([f'{pf_csharp_type} {pascalCase(pf_name).lower()}' for pf_name, pf, pf_csharp_type in payload_fields])
+                payload_params = ', '.join([f'{pf_csharp_type} {pascal_case(pf_name).lower()}' for pf_name, pf, pf_csharp_type in payload_fields])
                 env_params = ', '.join([f'{csharp_type} {f_name}' for f_name, f, csharp_type in envelope_fields])
                 yield f'        public async Task {method_name}({payload_params}, {env_params}, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
                 yield '        {\n'
@@ -422,12 +426,12 @@ class SdkInterfaceGen:
                 
                 # Assign each payload field
                 for pf_name, pf, pf_csharp_type in payload_fields:
-                    param_name = pascalCase(pf_name).lower()
-                    struct_field_name = pascalCase(pf_name)
+                    param_name = pascal_case(pf_name).lower()
+                    struct_field_name = pascal_case(pf_name)
                     
                     # Handle different field types
                     if pf.is_array:
-                        if pf.fieldType == "string":
+                        if pf.field_type == "string":
                             if pf.size_option is not None:
                                 yield f'            message.{struct_field_name} = {param_name};\n'
                             elif pf.max_size is not None:
@@ -439,7 +443,7 @@ class SdkInterfaceGen:
                             elif pf.max_size is not None:
                                 yield f'            message.{struct_field_name}Count = (byte)Math.Min({param_name}.Length, {pf.max_size});\n'
                                 yield f'            message.{struct_field_name}Data = {param_name};\n'
-                    elif pf.fieldType == "string":
+                    elif pf.field_type == "string":
                         if pf.size_option is not None:
                             yield f'            message.{struct_field_name} = {param_name};\n'
                         elif pf.max_size is not None:

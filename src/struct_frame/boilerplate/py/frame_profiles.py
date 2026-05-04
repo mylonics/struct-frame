@@ -121,19 +121,19 @@ class ProfileConfig:
         return self.payload.has_crc
     
     @property
-    def has_pkg_id(self) -> bool:
+    def has_package_id(self) -> bool:
         return self.payload.has_package_id
     
     @property
-    def has_seq(self) -> bool:
+    def has_sequence(self) -> bool:
         return self.payload.has_sequence
     
     @property
-    def has_sys_id(self) -> bool:
+    def has_system_id(self) -> bool:
         return self.payload.has_system_id
     
     @property
-    def has_comp_id(self) -> bool:
+    def has_component_id(self) -> bool:
         return self.payload.has_component_id
     
     # Combined sizes
@@ -328,11 +328,11 @@ def _frame_format_encode_with_crc(
     crc_start = len(output)  # CRC calculation starts after start bytes
     
     # Write optional fields before length
-    if config.has_seq:
+    if config.has_sequence:
         output.append(seq & 0xFF)
-    if config.has_sys_id:
+    if config.has_system_id:
         output.append(sys_id & 0xFF)
-    if config.has_comp_id:
+    if config.has_component_id:
         output.append(comp_id & 0xFF)
     
     # Write length field
@@ -344,7 +344,7 @@ def _frame_format_encode_with_crc(
             output.append((payload_size >> 8) & 0xFF)
     
     # Write package ID and message ID
-    if config.has_pkg_id:
+    if config.has_package_id:
         # Extract package ID from upper 8 bits and message ID from lower 8 bits
         pkg_id = (msg_id >> 8) & 0xFF
         local_msg_id = msg_id & 0xFF
@@ -457,13 +457,13 @@ def _frame_format_parse_with_crc(
     seq = 0
     sys_id = 0
     comp_id = 0
-    if config.has_seq:
+    if config.has_sequence:
         seq = buffer[idx]
         idx += 1
-    if config.has_sys_id:
+    if config.has_system_id:
         sys_id = buffer[idx]
         idx += 1
-    if config.has_comp_id:
+    if config.has_component_id:
         comp_id = buffer[idx]
         idx += 1
     
@@ -479,7 +479,7 @@ def _frame_format_parse_with_crc(
     
     # Read package ID and message ID
     pkg_id = 0
-    if config.has_pkg_id:
+    if config.has_package_id:
         # Read package ID and message ID as separate bytes
         pkg_id = buffer[idx]
         idx += 1
@@ -1182,11 +1182,11 @@ class AccumulatingReader:
                 len_offset = self._config.num_start_bytes
                 
                 # Skip seq, sys_id, comp_id if present
-                if self._config.has_seq:
+                if self._config.has_sequence:
                     len_offset += 1
-                if self._config.has_sys_id:
+                if self._config.has_system_id:
                     len_offset += 1
-                if self._config.has_comp_id:
+                if self._config.has_component_id:
                     len_offset += 1
                 
                 payload_len = 0

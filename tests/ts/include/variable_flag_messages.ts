@@ -35,9 +35,9 @@ export const MESSAGE_COUNT = 5;
 function createNonVariable1_3Filled(): TruncationTestNonVariable {
   const dataArray = Array.from({ length: 67 }, (_, i) => i);
   return new TruncationTestNonVariable({
-    sequence_id: 0xDEADBEEF,
-    data_array_count: 67,
-    data_array_data: dataArray,
+    sequenceId: 0xDEADBEEF,
+    dataArrayCount: 67,
+    dataArrayData: dataArray,
     footer: 0xCAFE,
   });
 }
@@ -45,9 +45,9 @@ function createNonVariable1_3Filled(): TruncationTestNonVariable {
 function createVariable1_3Filled(): TruncationTestVariable {
   const dataArray = Array.from({ length: 67 }, (_, i) => i);
   return new TruncationTestVariable({
-    sequence_id: 0xDEADBEEF,
-    data_array_count: 67,
-    data_array_data: dataArray,
+    sequenceId: 0xDEADBEEF,
+    dataArrayCount: 67,
+    dataArrayData: dataArray,
     footer: 0xCAFE,
   });
 }
@@ -55,40 +55,40 @@ function createVariable1_3Filled(): TruncationTestVariable {
 function createNestedVariable(): NestedVariableMessage {
   const nestedPayload = new NestedPayload({
     id: 7,
-    label_length: 5,
-    label_data: 'Hello',
-    samples_count: 3,
-    samples_data: [10, 20, 30],
+    labelLength: 5,
+    labelData: 'Hello',
+    samplesCount: 3,
+    samplesData: [10, 20, 30],
   });
   return new NestedVariableMessage({
     sequence: 0x12345678,
     payload: [nestedPayload],
-    description_length: 20,
-    description_data: 'nested variable test',
+    descriptionLength: 20,
+    descriptionData: 'nested variable test',
   });
 }
 
 function createMultipleArrays(): VariableMultipleArrays {
   return new VariableMultipleArrays({
     type: 5,
-    readings_count: 3,
-    readings_data: [100, 200, 300],
-    values_count: 2,
-    values_data: [1.5, 2.5],
-    label_length: 17,
-    label_data: 'multi arrays test',
+    readingsCount: 3,
+    readingsData: [100, 200, 300],
+    valuesCount: 2,
+    valuesData: [1.5, 2.5],
+    labelLength: 17,
+    labelData: 'multi arrays test',
   });
 }
 
 function createMixedFields(): VariableMixedFields {
   return new VariableMixedFields({
-    fixed_id: 0xABCD1234,
-    fixed_value: 3.14,
-    fixed_name: 'DeviceName',
-    variable_data_count: 5,
-    variable_data_data: [1000, 2000, 3000, 4000, 5000],
-    variable_desc_length: 17,
-    variable_desc_data: 'mixed fields test',
+    fixedId: 0xABCD1234,
+    fixedValue: 3.14,
+    fixedName: 'DeviceName',
+    variableDataCount: 5,
+    variableDataData: [1000, 2000, 3000, 4000, 5000],
+    variableDescLength: 17,
+    variableDescData: 'mixed fields test',
   });
 }
 
@@ -122,7 +122,7 @@ export function checkMessage(index: number, info: FrameMsgInfo): boolean {
   const msgClass = expected.constructor as any;
 
   // Check msg_id matches
-  if (info.msg_id !== msgClass._msgid) return false;
+  if (info.msgId !== msgClass._msgid) return false;
 
   // Deserialize and compare
   const decoded = msgClass.deserialize(info);

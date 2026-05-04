@@ -125,3 +125,39 @@ message ResponseEnvelope {
     SensorResponse sensor = 8;
   }
 }
+
+// ============================================================================
+// Field-Order Discriminator Envelope Test
+// These inner types intentionally have NO msgid, so the auto-discriminator
+// falls back to field_order - this exercises the SDK interface enum naming fix.
+// ============================================================================
+
+// Payload type without msgid - forces field_order discriminator
+message RawSamplePayload {
+  uint8 channel = 1;
+  float value = 2;
+  uint8 flags = 3;
+}
+
+// Config payload without msgid - forces field_order discriminator
+message RawConfigPayload {
+  uint8 setting_id = 1;
+  uint16 setting_value = 2;
+}
+
+// Envelope wrapping payloads that have no msgid.
+// Since neither RawSamplePayload nor RawConfigPayload has a msgid,
+// the auto-discriminator uses field_order, generating a discriminator enum.
+// This is the scenario that exposed the enum naming bug in SdkInterface.cs.
+message RawDataEnvelope {
+  option msgid = 300;
+  option is_envelope = true;
+
+  uint8 priority = 1;
+  uint32 timestamp_us = 2;
+
+  oneof payload {
+    RawSamplePayload sample = 3;
+    RawConfigPayload config = 4;
+  }
+}

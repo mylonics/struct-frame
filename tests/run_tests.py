@@ -137,6 +137,7 @@ PROTO_FILES = [
     "test_messages.proto",
     "pkg_test_messages.proto",
     "extended_messages.proto",
+    "envelope_messages.proto",
 ]
 
 # Frame format profiles to test
@@ -1424,6 +1425,40 @@ class TestRunner:
         
         return all_success
 
+    def run_envelope_sdk_test(self) -> bool:
+        """Run the envelope SDK interface test (field_order discriminator naming)."""
+        self.print_section("ENVELOPE SDK TESTS")
+
+        csharp = self.languages.get("csharp")
+        if not csharp or not self.results["compilation"].get("csharp", False):
+            print("  Skipping envelope SDK test (C# not available / compilation failed)")
+            return True
+
+        build_dir = self.project_root / csharp.build_dir
+        test_exe = build_dir / "StructFrameTests.exe"
+        if not test_exe.exists():
+            test_exe = build_dir / "StructFrameTests.dll"
+            if not test_exe.exists():
+                print("  Skipping envelope SDK test (C# binary not found)")
+                return True
+            cmd = f'dotnet "{test_exe}" --runner test_envelope_sdk'
+        else:
+            cmd = f'"{test_exe}" --runner test_envelope_sdk'
+
+        success, stdout, stderr = self.run_cmd(cmd, timeout=30)
+        if stdout:
+            for line in stdout.splitlines():
+                print(f"  {line}")
+
+        status = Colors.pass_text() if success else Colors.fail_text()
+        print(f"\n  C# EnvelopeSdk: {status}")
+
+        if not success:
+            self.add_failure("envelope_sdk", "C#", None, "Envelope SDK test failed")
+
+        self.results.setdefault("envelope_sdk", {})["csharp"] = success
+        return success
+
     
     
     # =========================================================================
@@ -1647,8 +1682,15 @@ class TestRunner:
                     self.run_negative_tests()
             else:
                 print(f"\n{Colors.yellow('[SKIP]')} Negative tests (--profiling)")
+
+            # Phase 10: Envelope SDK tests (C# field_order discriminator naming)
+            if not profiling_only:
+                with self.timed_phase("Envelope SDK Tests"):
+                    self.run_envelope_sdk_test()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Envelope SDK tests (--profiling)")
             
-            # Phase 10: Standalone tests
+            # Phase 11: Standalone tests
             if not profiling_only:
                 with self.timed_phase("Standalone Tests"):
                     self.run_standalone_tests()

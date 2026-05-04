@@ -20,8 +20,8 @@ from .async_serial_transport import AsyncSerialTransport, AsyncSerialTransportCo
 from .struct_frame_sdk import (
     StructFrameSdk,
     StructFrameSdkConfig,
-    IFrameParser,
-    IMessageCodec,
+    FrameParser,
+    MessageCodec,
     MessageHandler,
 )
 from .async_struct_frame_sdk import (
@@ -59,7 +59,7 @@ __all__ = [
     'AsyncStructFrameSdk',
     'AsyncStructFrameSdkConfig',
     # Common
-    'IFrameParser',
-    'IMessageCodec',
+    'FrameParser',
+    'MessageCodec',
     'MessageHandler',
 ]

@@ -16,9 +16,9 @@ namespace sdk {
 /**
  * Frame parser interface - must be implemented by generated frame parsers
  */
-class IFrameParser {
+class frame_parser {
 public:
-    virtual ~IFrameParser() = default;
+    virtual ~frame_parser() = default;
 
     /**
      * Parse incoming data and extract message
@@ -43,14 +43,14 @@ public:
  * Message codec interface - deserializes raw bytes into message objects
  */
 template<typename TMessage>
-class IMessageCodec {
+class MessageCodec {
 public:
-    virtual ~IMessageCodec() = default;
+    virtual ~MessageCodec() = default;
 
     /**
      * Get message ID for this codec
      */
-    virtual uint8_t getMsgId() const = 0;
+    virtual uint8_t GetMsgId() const = 0;
 
     /**
      * Deserialize bytes into message object
@@ -62,10 +62,10 @@ public:
  * Struct Frame SDK Configuration
  */
 struct StructFrameSdkConfig {
-    ITransport* transport;
-    IFrameParser* frameParser;
+    Transport* transport;
+    frame_parser* frame_parser;
     bool debug = false;
-    size_t maxBufferSize = 8192;
+    size_t max_buffer_size = 8192;
 };
 
 /**
@@ -73,18 +73,18 @@ struct StructFrameSdkConfig {
  */
 class StructFrameSdk {
 private:
-    ITransport* transport_;
-    IFrameParser* frameParser_;
+    Transport* transport_;
+    frame_parser* frame_parser_;
     bool debug_;
     std::vector<uint8_t> buffer_;
-    size_t maxBufferSize_;
+    size_t max_buffer_size_;
 
     // Type-erased observable map for different message types
     std::map<uint8_t, void*> observables_;
 
-    void handleIncomingData(const uint8_t* data, size_t length) {
+    void HandleIncomingData(const uint8_t* data, size_t length) {
         // Append to buffer
-        if (buffer_.size() + length > maxBufferSize_) {
+        if (buffer_.size() + length > max_buffer_size_) {
             log("Buffer overflow, clearing buffer");
             buffer_.clear();
         }
@@ -92,12 +92,12 @@ private:
         buffer_.insert(buffer_.end(), data, data + length);
 
         // Try to parse messages from buffer
-        parseBuffer();
+        ParseBuffer();
     }
 
-    void parseBuffer() {
+    void ParseBuffer() {
         while (!buffer_.empty()) {
-            auto result = frameParser_->parse(buffer_.data(), buffer_.size());
+            auto result = frame_parser_->parse(buffer_.data(), buffer_.size());
 
             if (!result.valid) {
                 // No valid frame found
@@ -108,16 +108,16 @@ private:
             log("Received message ID " + std::to_string(result.msg_id) +
                 ", " + std::to_string(result.msg_len) + " bytes");
 
-            // Notify observers (user must call notifyObservers with proper type)
-            // This is handled by the typed notifyObservers method
+            // Notify observers (user must call NotifyObservers with proper type)
+            // This is handled by the typed NotifyObservers method
 
             // Remove parsed data from buffer
-            size_t frameSize = calculateFrameSize(result);
+            size_t frameSize = CalculateFrameSize(result);
             buffer_.erase(buffer_.begin(), buffer_.begin() + frameSize);
         }
     }
 
-    size_t calculateFrameSize(const structframe::FrameMsgInfo& result) const {
+    size_t CalculateFrameSize(const structframe::FrameMsgInfo& result) const {
         // Calculate total frame size including headers and footers
         // Frame overhead by format:
         // - BasicDefault: 2 start + 1 length + 1 msg_id + payload + 2 crc = 6 + payload
@@ -127,12 +127,12 @@ private:
         return result.msg_len + 10;
     }
 
-    void handleError(const std::string& error) {
+    void HandleError(const std::string& error) {
         log("Transport error: ");
         log(error);
     }
 
-    void handleClose() {
+    void HandleClose() {
         log("Transport closed");
         buffer_.clear();
     }
@@ -152,34 +152,34 @@ private:
     }
 
     // Static callback wrappers for transport
-    static void dataCallbackWrapper(const uint8_t* data, size_t length, void* user_data) {
+    static void DataCallbackWrapper(const uint8_t* data, size_t length, void* user_data) {
         auto* self = static_cast<StructFrameSdk*>(user_data);
-        self->handleIncomingData(data, length);
+        self->HandleIncomingData(data, length);
     }
 
-    static void errorCallbackWrapper(const char* error, void* user_data) {
+    static void ErrorCallbackWrapper(const char* error, void* user_data) {
         auto* self = static_cast<StructFrameSdk*>(user_data);
-        self->handleError(error);
+        self->HandleError(error);
     }
 
-    static void closeCallbackWrapper(void* user_data) {
+    static void CloseCallbackWrapper(void* user_data) {
         auto* self = static_cast<StructFrameSdk*>(user_data);
-        self->handleClose();
+        self->HandleClose();
     }
 
 public:
     StructFrameSdk(const StructFrameSdkConfig& config)
         : transport_(config.transport),
-          frameParser_(config.frameParser),
+          frame_parser_(config.frame_parser),
           debug_(config.debug),
-          maxBufferSize_(config.maxBufferSize) {
+          max_buffer_size_(config.max_buffer_size) {
 
-        buffer_.reserve(maxBufferSize_);
+        buffer_.reserve(max_buffer_size_);
 
         // Set up transport callbacks using static wrappers
-        transport_->onData(dataCallbackWrapper, this);
-        transport_->onError(errorCallbackWrapper, this);
-        transport_->onClose(closeCallbackWrapper, this);
+        transport_->OnData(DataCallbackWrapper, this);
+        transport_->OnError(ErrorCallbackWrapper, this);
+        transport_->OnClose(CloseCallbackWrapper, this);
     }
 
     ~StructFrameSdk() {
@@ -192,16 +192,16 @@ public:
     /**
      * Connect to the transport
      */
-    void connect() {
-        transport_->connect();
+    void Connect() {
+        transport_->Connect();
         log("Connected");
     }
 
     /**
      * Disconnect from the transport
      */
-    void disconnect() {
-        transport_->disconnect();
+    void Disconnect() {
+        transport_->Disconnect();
         log("Disconnected");
     }
 
@@ -212,7 +212,7 @@ public:
      * @param msgId The message ID
      */
     template<typename TMessage, size_t MaxObservers = 16>
-    Observable<TMessage, MaxObservers>* getObservable(uint8_t msgId) {
+    Observable<TMessage, MaxObservers>* GetObservable(uint8_t msgId) {
         auto it = observables_.find(msgId);
         if (it == observables_.end()) {
             auto* observable = new Observable<TMessage, MaxObservers>();
@@ -232,7 +232,7 @@ public:
      */
     template<typename TMessage, size_t MaxObservers = 16>
     Subscription<TMessage, MaxObservers> subscribe(uint8_t msgId, IObserver<TMessage>* observer) {
-        auto* observable = getObservable<TMessage, MaxObservers>(msgId);
+        auto* observable = GetObservable<TMessage, MaxObservers>(msgId);
         observable->subscribe(observer);
         log("Subscribed to message ID " + std::to_string(msgId));
         return Subscription<TMessage, MaxObservers>(observable, observer);
@@ -250,7 +250,7 @@ public:
     template<typename TMessage, typename Callable, size_t MaxObservers = 16>
     Subscription<TMessage, MaxObservers> subscribe(uint8_t msgId, Callable callback) {
         auto* observer = new CallableObserver<TMessage, Callable>(callback);
-        auto* observable = getObservable<TMessage, MaxObservers>(msgId);
+        auto* observable = GetObservable<TMessage, MaxObservers>(msgId);
         observable->subscribe(observer);
         log("Subscribed to message ID " + std::to_string(msgId));
         return Subscription<TMessage, MaxObservers>(observable, observer);
@@ -264,7 +264,7 @@ public:
      * @param message The parsed message
      */
     template<typename TMessage, size_t MaxObservers = 16>
-    void notifyObservers(uint8_t msgId, const TMessage& message) {
+    void NotifyObservers(uint8_t msgId, const TMessage& message) {
         auto it = observables_.find(msgId);
         if (it != observables_.end()) {
             auto* observable = static_cast<Observable<TMessage, MaxObservers>*>(it->second);
@@ -278,13 +278,13 @@ public:
      * @param data Message payload
      * @param dataLen Payload length
      */
-    void sendRaw(uint8_t msgId, const uint8_t* data, size_t dataLen) {
+    void SendRaw(uint8_t msgId, const uint8_t* data, size_t dataLen) {
         // Frame the message
         std::vector<uint8_t> framedData(dataLen + 20);  // Extra space for framing
-        size_t framedLen = frameParser_->frame(msgId, data, dataLen,
+        size_t framedLen = frame_parser_->frame(msgId, data, dataLen,
                                               framedData.data(), framedData.size());
 
-        transport_->send(framedData.data(), framedLen);
+        transport_->Send(framedData.data(), framedLen);
         log("Sent message ID " + std::to_string(msgId) + ", " +
             std::to_string(dataLen) + " bytes");
     }
@@ -295,19 +295,19 @@ public:
      * @param message The message to send
      */
     template<typename TMessage>
-    void send(const TMessage& message) {
+    void Send(const TMessage& message) {
         // Assuming message has pack method and msg_id member
         std::vector<uint8_t> packed(message.msg_size);
         // User would call message.pack(packed.data()) or similar
         // This is placeholder - actual implementation depends on generated code
-        sendRaw(message.msg_id, packed.data(), packed.size());
+        SendRaw(message.msg_id, packed.data(), packed.size());
     }
 
     /**
      * Check if connected
      */
-    bool isConnected() const {
-        return transport_->isConnected();
+    bool IsConnected() const {
+        return transport_->IsConnected();
     }
 };
 

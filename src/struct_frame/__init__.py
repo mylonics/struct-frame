@@ -1,4 +1,4 @@
-from .base import version, NamingStyleC, CamelToSnakeCase, pascalCase, build_enum_leading_comments, build_enum_values
+from .base import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
 
 from .c_gen import FileCGen
 from .ts_gen import FileTsGen
@@ -12,4 +12,4 @@ from .rust_gen import FileRustGen
 from .generate import main
 
 __all__ = ["main", "FileCGen", "FileTsGen", "FileJsGen", "FilePyGen", "TestPyGen", "FileGqlGen", "FileCppGen", "TestCppGen", "FileCSharpGen", "FileRustGen", "version",
-           "NamingStyleC", "CamelToSnakeCase", "pascalCase", "build_enum_leading_comments", "build_enum_values"]
+           "NamingStyleC", "camel_to_snake_case", "pascal_case", "build_enum_leading_comments", "build_enum_values"]
