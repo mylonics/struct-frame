@@ -139,7 +139,7 @@ class BaseFieldGen:
             String containing the field definition code
         """
         result = ''
-        isEnum = field.is_enum if hasattr(field, 'isEnum') else False
+        isEnum = field.is_enum if hasattr(field, 'is_enum') else False
         var_name = to_camel_case(field.name)
         type_name = field.field_type
 

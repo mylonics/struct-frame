@@ -60,7 +60,7 @@ public:
 
     ~UdpTransport() {
         if (connected_) {
-            disconnect();
+            Disconnect();
         }
     }
 
@@ -169,7 +169,7 @@ public:
 
     ~TcpTransport() {
         if (connected_) {
-            disconnect();
+            Disconnect();
         }
     }
 
@@ -180,7 +180,7 @@ public:
             auto endpoints = resolver.resolve(tcp_config_.host, std::to_string(tcp_config_.port));
 
             // Connect
-            asio::Connect(socket_, endpoints);
+            asio::connect(socket_, endpoints);
             connected_ = true;
 
             // Start receiving
@@ -269,7 +269,7 @@ public:
 
     ~AsioSerialTransport() {
         if (connected_) {
-            disconnect();
+            Disconnect();
         }
     }
 

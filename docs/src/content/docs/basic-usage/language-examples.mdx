@@ -185,7 +185,7 @@ if (result) {
 ```rust
 use struct_frame_sdk::example::ExampleStatus;
 use struct_frame_sdk::{
-    encode_message_crc, AccumulatingReader,
+    encode_message_crc, AccumulatingReader, MessageInfo,
     PROFILE_STANDARD_CONFIG,
 };
 
@@ -194,18 +194,26 @@ let msg = ExampleStatus { id: 42, value: 3.14 };
 
 // Encode with frame profile
 let mut buffer = [0u8; 1024];
-let written = encode_message_crc(&msg, &mut buffer, &PROFILE_STANDARD_CONFIG);
+let written = encode_message_crc(&PROFILE_STANDARD_CONFIG, &mut buffer, &msg, 0);
 let frame_data = &buffer[..written];
 
 // Parse received frames
-let mut reader = AccumulatingReader::new(&PROFILE_STANDARD_CONFIG);
+let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
 reader.add_data(frame_data);
 
+let get_info = |id: u16| -> Option<MessageInfo> {
+    match id {
+        i if i == ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        _ => None,
+    }
+};
+
 // Deserialize using FrameMsgInfo
-while let Some(info) = reader.next() {
+while let Some(info) = reader.next(&get_info) {
     if info.valid {
-        let decoded_msg = ExampleStatus::unpack(info.payload);
-        println!("ID: {}, Value: {}", decoded_msg.id, decoded_msg.value);
+        if let Some(decoded_msg) = ExampleStatus::unpack(&info.payload) {
+            println!("ID: {}, Value: {}", decoded_msg.id, decoded_msg.value);
+        }
     }
 }
 ```

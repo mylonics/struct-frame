@@ -70,8 +70,8 @@ pub trait StructFrameMessage: Default {
     const IS_VARIABLE: bool;
 
     fn pack(&self, buffer: &mut [u8]) -> usize;
-    fn pack_max_size() -> usize;
-    fn unpack(buffer: &[u8]) -> Self;
+    fn pack_max_size(buffer: &mut [u8]) -> usize;
+    fn unpack(buffer: &[u8]) -> Option<Self> where Self: Sized;
 }
 ```
 
@@ -100,7 +100,7 @@ use struct_frame_sdk::{encode_message_crc, PROFILE_STANDARD_CONFIG};
 let msg = ExampleStatus { id: 42, value: 3.14 };
 
 let mut buffer = [0u8; 1024];
-let written = encode_message_crc(&msg, &mut buffer, &PROFILE_STANDARD_CONFIG);
+let written = encode_message_crc(&PROFILE_STANDARD_CONFIG, &mut buffer, &msg, 0);
 
 // buffer[..written] contains the complete framed message
 send_bytes(&buffer[..written]);
@@ -111,7 +111,7 @@ send_bytes(&buffer[..written]);
 ```rust
 use struct_frame_sdk::{encode_message_minimal, PROFILE_IPC_CONFIG};
 
-let written = encode_message_minimal(&msg, &mut buffer, &PROFILE_IPC_CONFIG);
+let written = encode_message_minimal(&PROFILE_IPC_CONFIG, &mut buffer, &msg);
 ```
 
 ### Encoding Multiple Messages with BufferWriter
@@ -119,12 +119,11 @@ let written = encode_message_minimal(&msg, &mut buffer, &PROFILE_IPC_CONFIG);
 ```rust
 use struct_frame_sdk::{BufferWriter, PROFILE_STANDARD_CONFIG};
 
-let mut out = [0u8; 4096];
-let mut writer = BufferWriter::new(&mut out, &PROFILE_STANDARD_CONFIG);
+let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 4096);
 
-writer.write_crc(&msg1);
-writer.write_crc(&msg2);
-writer.write_crc(&msg3);
+writer.write_crc(&msg1, 0);
+writer.write_crc(&msg2, 0);
+writer.write_crc(&msg3, 0);
 
 send_bytes(writer.data());
 ```
@@ -136,18 +135,25 @@ send_bytes(writer.data());
 `AccumulatingReader` handles partial frames across buffer boundaries:
 
 ```rust
-use struct_frame_sdk::{AccumulatingReader, PROFILE_STANDARD_CONFIG};
+use struct_frame_sdk::{AccumulatingReader, MessageInfo, PROFILE_STANDARD_CONFIG};
 
-let mut reader = AccumulatingReader::new(&PROFILE_STANDARD_CONFIG);
+let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
 
 // Feed received data (may contain partial or multiple frames)
 reader.add_data(&received_bytes);
 
 // Drain all complete messages
-while let Some(info) = reader.next() {
+let get_info = |id: u16| -> Option<MessageInfo> {
+    match id {
+        i if i == ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        _ => None,
+    }
+};
+while let Some(info) = reader.next(&get_info) {
     if info.valid {
-        let msg = ExampleStatus::unpack(info.payload);
-        println!("ID: {}, Value: {}", msg.id, msg.value);
+        if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+            println!("ID: {}, Value: {}", msg.id, msg.value);
+        }
     }
 }
 ```
@@ -157,13 +163,21 @@ while let Some(info) = reader.next() {
 Useful when receiving from a serial port or UART one byte at a time:
 
 ```rust
-let mut reader = AccumulatingReader::new(&PROFILE_STANDARD_CONFIG);
+let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
+let get_info = |id: u16| -> Option<MessageInfo> {
+    match id {
+        i if i == ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        _ => None,
+    }
+};
 
 for byte in uart.bytes() {
-    if let Some(info) = reader.push_byte(byte?) {
+    reader.add_data(&[byte?]);
+    if let Some(info) = reader.next(&get_info) {
         if info.valid {
-            let msg = ExampleStatus::unpack(info.payload);
-            // handle message
+            if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+                // handle message
+            }
         }
     }
 }
@@ -174,16 +188,23 @@ for byte in uart.bytes() {
 For pre-loaded buffers containing multiple complete frames:
 
 ```rust
-use struct_frame_sdk::{BufferReader, PROFILE_STANDARD_CONFIG};
+use struct_frame_sdk::{BufferReader, MessageInfo, PROFILE_STANDARD_CONFIG};
 
-let mut reader = BufferReader::new(&data, &PROFILE_STANDARD_CONFIG);
+let get_info = |id: u16| -> Option<MessageInfo> {
+    match id {
+        i if i == ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        _ => None,
+    }
+};
+let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data.to_vec());
 
-while let Some(info) = reader.next() {
+while let Some(info) = reader.next(&get_info) {
     if info.valid {
         match info.msg_id {
-            ExampleStatus::MSG_ID => {
-                let msg = ExampleStatus::unpack(info.payload);
-                // handle
+            i if i == ExampleStatus::MSG_ID => {
+                if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+                    // handle
+                }
             }
             _ => {}
         }
@@ -193,19 +214,19 @@ while let Some(info) = reader.next() {
 
 ## FrameMsgInfo
 
-`AccumulatingReader::next()` and `BufferReader::next()` return a `FrameMsgInfo`:
+`AccumulatingReader::next(&get_info)` and `BufferReader::next(&get_info)` return a `FrameMsgInfo`:
 
 ```rust
-pub struct FrameMsgInfo<'a> {
+pub struct FrameMsgInfo {
     pub valid: bool,       // CRC check passed (always true for minimal profiles)
-    pub msg_id: u8,        // Message identifier
-    pub msg_len: u16,      // Payload length in bytes
+    pub msg_id: u16,       // Message identifier
+    pub msg_len: usize,    // Payload length in bytes
     pub frame_size: usize, // Total frame size including headers + footer
     pub package_id: u8,    // Package identifier (0 if not present)
     pub sequence: u8,      // Sequence counter (0 if not present)
     pub system_id: u8,     // System ID (Network profile only)
     pub component_id: u8,  // Component ID (Network profile only)
-    pub payload: &'a [u8], // Raw message bytes; pass to M::unpack()
+    pub payload: Vec<u8>,  // Raw message bytes; pass to M::unpack()
 }
 ```
 
@@ -216,12 +237,23 @@ When a buffer may contain different message types, match on `msg_id`:
 ```rust
 use struct_frame_sdk::example::{ExampleStatus, ExampleCommand};
 
-while let Some(info) = reader.next() {
+let get_info = |id: u16| -> Option<MessageInfo> {
+    match id {
+        i if i == ExampleStatus::MSG_ID  => Some(ExampleStatus::message_info()),
+        i if i == ExampleCommand::MSG_ID => Some(ExampleCommand::message_info()),
+        _ => None,
+    }
+};
+while let Some(info) = reader.next(&get_info) {
     if !info.valid { continue; }
     match info.msg_id {
-        ExampleStatus::MSG_ID  => handle_status(ExampleStatus::unpack(info.payload)),
-        ExampleCommand::MSG_ID => handle_command(ExampleCommand::unpack(info.payload)),
-        _                      => { /* unknown message */ }
+        i if i == ExampleStatus::MSG_ID  => {
+            if let Some(msg) = ExampleStatus::unpack(&info.payload) { handle_status(msg); }
+        }
+        i if i == ExampleCommand::MSG_ID => {
+            if let Some(msg) = ExampleCommand::unpack(&info.payload) { handle_command(msg); }
+        }
+        _ => { /* unknown message */ }
     }
 }
 ```
