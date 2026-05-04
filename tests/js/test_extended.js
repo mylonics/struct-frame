@@ -3,7 +3,7 @@
  */
 
 const { MESSAGE_COUNT, getMessage, checkMessage } = require('./include/extended_messages');
-const { get_message_info } = require('../generated/js/extended_test.structframe');
+const { get_message_info } = require('../generated/js/extended-test.structframe');
 const { run } = require('./include/test_harness');
 
 const TEST_NAME = 'ExtendedMessages';

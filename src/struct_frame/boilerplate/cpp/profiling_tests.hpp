@@ -42,7 +42,7 @@
 #include "frame_base.hpp"
 #include "frame_profiles.hpp"
 
-namespace FrameParsers {
+namespace structframe {
 namespace ProfilingTests {
 
 // Number of iterations for profiling tests
@@ -519,4 +519,4 @@ PackedVsUnpackedResult run_packed_vs_unpacked_profiling(
 }
 
 }  // namespace ProfilingTests
-}  // namespace FrameParsers
+}  // namespace structframe

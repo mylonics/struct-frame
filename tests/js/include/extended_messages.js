@@ -6,20 +6,20 @@
  */
 
 const {
-  ExtendedTestExtendedIdMessage1,
-  ExtendedTestExtendedIdMessage2,
-  ExtendedTestExtendedIdMessage3,
-  ExtendedTestExtendedIdMessage4,
-  ExtendedTestExtendedIdMessage5,
-  ExtendedTestExtendedIdMessage6,
-  ExtendedTestExtendedIdMessage7,
-  ExtendedTestExtendedIdMessage8,
-  ExtendedTestExtendedIdMessage9,
-  ExtendedTestExtendedIdMessage10,
-  ExtendedTestLargePayloadMessage1,
-  ExtendedTestLargePayloadMessage2,
-  ExtendedTestExtendedVariableSingleArray,
-} = require('../../generated/js/extended_test.structframe');
+  ExtendedIdMessage1,
+  ExtendedIdMessage2,
+  ExtendedIdMessage3,
+  ExtendedIdMessage4,
+  ExtendedIdMessage5,
+  ExtendedIdMessage6,
+  ExtendedIdMessage7,
+  ExtendedIdMessage8,
+  ExtendedIdMessage9,
+  ExtendedIdMessage10,
+  LargePayloadMessage1,
+  LargePayloadMessage2,
+  ExtendedVariableSingleArray,
+} = require('../../generated/js/extended-test.structframe');
 
 // Message count
 const MESSAGE_COUNT = 17;
@@ -30,7 +30,7 @@ const MESSAGE_COUNT = 17;
 // ============================================================================
 
 function createExtId1() {
-  return new ExtendedTestExtendedIdMessage1({
+  return new ExtendedIdMessage1({
     sequence_number: 12345678,
     label: 'Test Label Extended 1',
     value: 3.14159,
@@ -39,7 +39,7 @@ function createExtId1() {
 }
 
 function createExtId2() {
-  return new ExtendedTestExtendedIdMessage2({
+  return new ExtendedIdMessage2({
     sensor_id: -42,
     reading: 2.718281828,
     status_code: 50000,
@@ -49,7 +49,7 @@ function createExtId2() {
 }
 
 function createExtId3() {
-  return new ExtendedTestExtendedIdMessage3({
+  return new ExtendedIdMessage3({
     timestamp: 1704067200000000n,
     temperature: -40,
     humidity: 85,
@@ -58,7 +58,7 @@ function createExtId3() {
 }
 
 function createExtId4() {
-  return new ExtendedTestExtendedIdMessage4({
+  return new ExtendedIdMessage4({
     event_id: 999999,
     event_type: 42,
     event_time: 1704067200000n,
@@ -68,7 +68,7 @@ function createExtId4() {
 }
 
 function createExtId5() {
-  return new ExtendedTestExtendedIdMessage5({
+  return new ExtendedIdMessage5({
     x_position: 100.5,
     y_position: -200.25,
     z_position: 50.125,
@@ -77,7 +77,7 @@ function createExtId5() {
 }
 
 function createExtId6() {
-  return new ExtendedTestExtendedIdMessage6({
+  return new ExtendedIdMessage6({
     command_id: -12345,
     parameter1: 1000,
     parameter2: 2000,
@@ -87,7 +87,7 @@ function createExtId6() {
 }
 
 function createExtId7() {
-  return new ExtendedTestExtendedIdMessage7({
+  return new ExtendedIdMessage7({
     counter: 4294967295,
     average: 123.456789,
     minimum: -999.99,
@@ -96,7 +96,7 @@ function createExtId7() {
 }
 
 function createExtId8() {
-  return new ExtendedTestExtendedIdMessage8({
+  return new ExtendedIdMessage8({
     level: 255,
     offset: -32768,
     duration: 86400000,
@@ -105,7 +105,7 @@ function createExtId8() {
 }
 
 function createExtId9() {
-  return new ExtendedTestExtendedIdMessage9({
+  return new ExtendedIdMessage9({
     big_number: -9223372036854775807n,
     big_unsigned: 18446744073709551615n,
     precision_value: 1.7976931348623157e+308,
@@ -113,7 +113,7 @@ function createExtId9() {
 }
 
 function createExtId10() {
-  return new ExtendedTestExtendedIdMessage10({
+  return new ExtendedIdMessage10({
     small_value: 256,
     short_text: 'Boundary Test',
     flag: true,
@@ -125,7 +125,7 @@ function createLarge1() {
   for (let i = 0; i < 64; i++) {
     sensorReadings.push(i + 1);
   }
-  return new ExtendedTestLargePayloadMessage1({
+  return new LargePayloadMessage1({
     sensor_readings: sensorReadings,
     reading_count: 64,
     timestamp: 1704067200000000n,
@@ -141,13 +141,13 @@ function createLarge2() {
   for (let i = 256; i < 280; i++) {
     largeData.push(i - 256);
   }
-  return new ExtendedTestLargePayloadMessage2({
+  return new LargePayloadMessage2({
     large_data: largeData,
   });
 }
 
 function createExtVarSingleEmpty() {
-  return new ExtendedTestExtendedVariableSingleArray({
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000001n,
     telemetry_data_count: 0,
     telemetry_data_data: [],
@@ -156,7 +156,7 @@ function createExtVarSingleEmpty() {
 }
 
 function createExtVarSingleSingle() {
-  return new ExtendedTestExtendedVariableSingleArray({
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000002n,
     telemetry_data_count: 1,
     telemetry_data_data: [42],
@@ -165,7 +165,7 @@ function createExtVarSingleSingle() {
 }
 
 function createExtVarSingleThird() {
-  return new ExtendedTestExtendedVariableSingleArray({
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000003n,
     telemetry_data_count: 83,
     telemetry_data_data: Array.from({ length: 83 }, (_, i) => i),
@@ -174,7 +174,7 @@ function createExtVarSingleThird() {
 }
 
 function createExtVarSingleAlmost() {
-  return new ExtendedTestExtendedVariableSingleArray({
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000004n,
     telemetry_data_count: 249,
     telemetry_data_data: Array.from({ length: 249 }, (_, i) => i % 256),
@@ -183,7 +183,7 @@ function createExtVarSingleAlmost() {
 }
 
 function createExtVarSingleFull() {
-  return new ExtendedTestExtendedVariableSingleArray({
+  return new ExtendedVariableSingleArray({
     timestamp: 0x0000000000000005n,
     telemetry_data_count: 250,
     telemetry_data_data: Array.from({ length: 250 }, (_, i) => i % 256),

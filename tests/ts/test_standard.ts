@@ -3,7 +3,7 @@
  */
 
 import { MESSAGE_COUNT, getMessage, checkMessage } from './include/standard_messages';
-import { get_message_info } from '../generated/ts/serialization_test.structframe';
+import { get_message_info } from '../generated/ts/serialization-test.structframe';
 import { run } from './include/test_harness';
 
 const TEST_NAME = 'StandardMessages';

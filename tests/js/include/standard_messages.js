@@ -6,14 +6,14 @@
  */
 
 const {
-  SerializationTestSerializationTestMessage,
-  SerializationTestBasicTypesMessage,
-  SerializationTestUnionTestMessage,
-  SerializationTestComprehensiveArrayMessage,
-  SerializationTestVariableSingleArray,
   SerializationTestMessage,
-  SerializationTestMsgSeverity,
-} = require('../../generated/js/serialization_test.structframe');
+  BasicTypesMessage,
+  UnionTestMessage,
+  ComprehensiveArrayMessage,
+  VariableSingleArray,
+  Message,
+  MsgSeverity,
+} = require('../../generated/js/serialization-test.structframe');
 
 // Message count
 const MESSAGE_COUNT = 17;
@@ -24,7 +24,7 @@ const MESSAGE_COUNT = 17;
 // ============================================================================
 
 function createSerializationTest(magic, str, flt, bl, arr) {
-  return new SerializationTestSerializationTestMessage({
+  return new SerializationTestMessage({
     magic_number: magic,
     test_string_length: str.length,
     test_string_data: str,
@@ -36,7 +36,7 @@ function createSerializationTest(magic, str, flt, bl, arr) {
 }
 
 function createBasicTypes(si, mi, ri, li, su, mu, ru, lu, sp, dp, fl, dev, desc) {
-  return new SerializationTestBasicTypesMessage({
+  return new BasicTypesMessage({
     small_int: si,
     medium_int: mi,
     regular_int: ri,
@@ -55,10 +55,10 @@ function createBasicTypes(si, mi, ri, li, su, mu, ru, lu, sp, dp, fl, dev, desc)
 }
 
 function createUnionWithArray() {
-  const msg = new SerializationTestUnionTestMessage();
-  msg.payload_discriminator = SerializationTestComprehensiveArrayMessage._msgid;
+  const msg = new UnionTestMessage();
+  msg.payload_discriminator = ComprehensiveArrayMessage._msgid;
 
-  const innerMsg = new SerializationTestComprehensiveArrayMessage({
+  const innerMsg = new ComprehensiveArrayMessage({
     fixed_ints: [10, 20, 30],
     fixed_floats: [1.5, 2.5],
     fixed_bools: [1, 0, 1, 0],
@@ -80,15 +80,15 @@ function createUnionWithArray() {
     bounded_sensors_data: [],
   });
 
-  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestComprehensiveArrayMessage._size);
+  innerMsg._buffer.copy(msg._buffer, 2, 0, ComprehensiveArrayMessage._size);
   return msg;
 }
 
 function createUnionWithTest() {
-  const msg = new SerializationTestUnionTestMessage();
-  msg.payload_discriminator = SerializationTestSerializationTestMessage._msgid;
+  const msg = new UnionTestMessage();
+  msg.payload_discriminator = SerializationTestMessage._msgid;
 
-  const innerMsg = new SerializationTestSerializationTestMessage({
+  const innerMsg = new SerializationTestMessage({
     magic_number: 0x12345678,
     test_string_length: 'Union test message'.length,
     test_string_data: 'Union test message',
@@ -98,12 +98,12 @@ function createUnionWithTest() {
     test_array_data: [1, 2, 3, 4, 5],
   });
 
-  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestSerializationTestMessage._size);
+  innerMsg._buffer.copy(msg._buffer, 2, 0, SerializationTestMessage._size);
   return msg;
 }
 
 function createVariableSingleArrayEmpty() {
-  return new SerializationTestVariableSingleArray({
+  return new VariableSingleArray({
     message_id: 0x00000001,
     payload_count: 0,
     payload_data: [],
@@ -112,7 +112,7 @@ function createVariableSingleArrayEmpty() {
 }
 
 function createVariableSingleArraySingle() {
-  return new SerializationTestVariableSingleArray({
+  return new VariableSingleArray({
     message_id: 0x00000002,
     payload_count: 1,
     payload_data: [42],
@@ -122,7 +122,7 @@ function createVariableSingleArraySingle() {
 
 function createVariableSingleArrayThird() {
   const thirdFilled = Array.from({ length: 67 }, (_, i) => i);
-  return new SerializationTestVariableSingleArray({
+  return new VariableSingleArray({
     message_id: 0x00000003,
     payload_count: 67,
     payload_data: thirdFilled,
@@ -132,7 +132,7 @@ function createVariableSingleArrayThird() {
 
 function createVariableSingleArrayAlmost() {
   const almostFull = Array.from({ length: 199 }, (_, i) => i);
-  return new SerializationTestVariableSingleArray({
+  return new VariableSingleArray({
     message_id: 0x00000004,
     payload_count: 199,
     payload_data: almostFull,
@@ -142,7 +142,7 @@ function createVariableSingleArrayAlmost() {
 
 function createVariableSingleArrayFull() {
   const full = Array.from({ length: 200 }, (_, i) => i);
-  return new SerializationTestVariableSingleArray({
+  return new VariableSingleArray({
     message_id: 0x00000005,
     payload_count: 200,
     payload_data: full,
@@ -151,8 +151,8 @@ function createVariableSingleArrayFull() {
 }
 
 function createMessageTest() {
-  return new SerializationTestMessage({
-    severity: SerializationTestMsgSeverity.SEV_MSG,
+  return new Message({
+    severity: MsgSeverity.SEV_MSG,
     module_length: 4,
     module_data: 'test',
     msg_length: 13,

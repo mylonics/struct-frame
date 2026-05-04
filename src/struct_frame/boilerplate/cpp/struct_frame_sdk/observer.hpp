@@ -4,7 +4,8 @@
 
 #pragma once
 
-namespace StructFrame {
+namespace structframe {
+namespace sdk {
 
 // Forward declarations
 template <typename TMessage, size_t MaxObservers = 16>
@@ -228,4 +229,5 @@ class Subscription {
   IObserver<TMessage>* observer_;
 };
 
-}  // namespace StructFrame
+}  // namespace sdk
+}  // namespace structframe

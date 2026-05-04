@@ -7,7 +7,8 @@
 #include <vector>
 #include <cstdint>
 
-namespace StructFrame {
+namespace structframe {
+namespace sdk {
 
 /**
  * Transport configuration base
@@ -152,4 +153,5 @@ public:
     }
 };
 
-} // namespace StructFrame
+} // namespace sdk
+} // namespace structframe

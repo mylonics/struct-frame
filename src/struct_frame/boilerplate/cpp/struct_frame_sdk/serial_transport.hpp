@@ -6,7 +6,8 @@
 #include "transport.hpp"
 #include <cstring>
 
-namespace StructFrame {
+namespace structframe {
+namespace sdk {
 
 /**
  * Generic serial interface that can be implemented for any platform
@@ -196,4 +197,5 @@ public:
 };
 #endif // EXAMPLE_IMPLEMENTATION
 
-} // namespace StructFrame
+} // namespace sdk
+} // namespace structframe

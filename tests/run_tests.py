@@ -15,6 +15,7 @@ Usage:
 """
 
 import argparse
+import io
 import os
 import re
 import shutil
@@ -25,6 +26,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+# Ensure stdout uses UTF-8 on Windows (avoids UnicodeEncodeError for ✓/✗)
+if hasattr(sys.stdout, 'buffer') and (sys.stdout.encoding or '').lower() not in ('utf-8', 'utf8'):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
 
 # =============================================================================
@@ -335,6 +340,7 @@ class TestRunner:
                 test_dir="tests/rust",
                 build_dir="tests/rust/target/debug",
                 source_ext=".rs",
+                exe_ext=".exe" if sys.platform == "win32" else "",
                 file_prefix="rust",
             ),
         }
@@ -1043,7 +1049,7 @@ class TestRunner:
         gen_dir = self.project_root / lang.gen_output_dir
         
         # C/C++: compiled executable
-        if lang.exe_ext and lang.id not in ("csharp",):
+        if lang.exe_ext and lang.id not in ("csharp", "rust"):
             runner = work_dir / f"{runner_name}{lang.exe_ext}"
             if not runner.exists():
                 return False, "", "Runner not found"
@@ -1361,7 +1367,7 @@ class TestRunner:
         
         # Display cross-tabulation matrix
         if test_results and all_test_names:
-            print("\nNegative Test Results (tests × languages):\n")
+            print("\nNegative Test Results (tests x languages):\n")
             
             # Get sorted language IDs and test names
             lang_ids = sorted([lang.id for lang in self.get_testable_languages() if lang.id in test_results])
@@ -1391,14 +1397,16 @@ class TestRunner:
                 row = f"{test_name:<{test_name_width}}"
                 for lang_id in lang_ids:
                     result = test_results.get(lang_id, {}).get(test_name, "-")
-                    # Use checkmark/X for pass/fail
+                    # Build padded cell: pad first, then apply color so ANSI
+                    # codes don't break alignment
                     if result == "PASS":
-                        result_str = Colors.green("✓")
+                        cell = f"{'OK':^{lang_col_width}}"
+                        row += " " + Colors.green(cell)
                     elif result == "FAIL":
-                        result_str = Colors.red("✗")
+                        cell = f"{'NO':^{lang_col_width}}"
+                        row += " " + Colors.red(cell)
                     else:
-                        result_str = "-"
-                    row += f" {result_str:^{lang_col_width}}"
+                        row += f" {'--':^{lang_col_width}}"
                 print(row)
             
             # Print summary row
@@ -1409,7 +1417,8 @@ class TestRunner:
                 lang_tests = test_results.get(lang_id, {})
                 total = len(lang_tests)
                 passed = sum(1 for r in lang_tests.values() if r == "PASS")
-                summary_row += f" {passed}/{total:<{lang_col_width-2}}"
+                cell = f"{passed}/{total}"
+                summary_row += f" {cell:^{lang_col_width}}"
             print(summary_row)
             print()
         
@@ -1469,18 +1478,22 @@ class TestRunner:
             return Colors.red(f"{passed}/{total}")
         
         # Print breakdown
-        print(f"\n  Code Generation:       {colorize_count(gen_passed, gen_total)}")
-        print(f"  Compilation:           {colorize_count(comp_passed, comp_total)}")
-        print(f"  Standard Encode:       {colorize_count(std_encode_passed, std_encode_total)}")
-        print(f"  Standard Validate:     {colorize_count(std_validate_passed, std_validate_total)}")
-        print(f"  Standard Decode:       {colorize_count(std_decode_passed, std_decode_total)}")
-        print(f"  Extended Encode:       {colorize_count(ext_encode_passed, ext_encode_total)}")
-        print(f"  Extended Validate:     {colorize_count(ext_validate_passed, ext_validate_total)}")
-        print(f"  Extended Decode:       {colorize_count(ext_decode_passed, ext_decode_total)}")
-        print(f"  Variable Flag Encode:  {colorize_count(var_encode_passed, var_encode_total)}")
-        print(f"  Variable Flag Validate:{colorize_count(var_validate_passed, var_validate_total)}")
-        print(f"  Variable Flag Decode:  {colorize_count(var_decode_passed, var_decode_total)}")
-        print(f"  Negative Tests:        {colorize_count(neg_passed, neg_total)}")
+        label_w = 24
+        def fmt(label: str, p: int, t: int) -> str:
+            return f"  {(label + ':'):<{label_w}} {colorize_count(p, t)}"
+        print()
+        print(fmt('Code Generation',        gen_passed,          gen_total))
+        print(fmt('Compilation',            comp_passed,         comp_total))
+        print(fmt('Standard Encode',        std_encode_passed,   std_encode_total))
+        print(fmt('Standard Validate',      std_validate_passed, std_validate_total))
+        print(fmt('Standard Decode',        std_decode_passed,   std_decode_total))
+        print(fmt('Extended Encode',        ext_encode_passed,   ext_encode_total))
+        print(fmt('Extended Validate',      ext_validate_passed, ext_validate_total))
+        print(fmt('Extended Decode',        ext_decode_passed,   ext_decode_total))
+        print(fmt('Variable Flag Encode',   var_encode_passed,   var_encode_total))
+        print(fmt('Variable Flag Validate', var_validate_passed, var_validate_total))
+        print(fmt('Variable Flag Decode',   var_decode_passed,   var_decode_total))
+        print(fmt('Negative Tests',         neg_passed,          neg_total))
         
         total = (gen_total + comp_total + 
                  std_encode_total + std_validate_total + std_decode_total + 

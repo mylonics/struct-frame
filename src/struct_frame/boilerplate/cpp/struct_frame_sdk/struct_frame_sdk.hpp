@@ -10,7 +10,8 @@
 #include <cstdint>
 #include <cstring>
 
-namespace StructFrame {
+namespace structframe {
+namespace sdk {
 
 /**
  * Frame parser interface - must be implemented by generated frame parsers
@@ -23,7 +24,7 @@ public:
      * Parse incoming data and extract message
      * Returns frame message info with valid flag
      */
-    virtual FrameParsers::FrameMsgInfo parse(const uint8_t* data, size_t length) = 0;
+    virtual structframe::FrameMsgInfo parse(const uint8_t* data, size_t length) = 0;
 
     /**
      * Frame a message for sending
@@ -116,7 +117,7 @@ private:
         }
     }
 
-    size_t calculateFrameSize(const FrameParsers::FrameMsgInfo& result) const {
+    size_t calculateFrameSize(const structframe::FrameMsgInfo& result) const {
         // Calculate total frame size including headers and footers
         // Frame overhead by format:
         // - BasicDefault: 2 start + 1 length + 1 msg_id + payload + 2 crc = 6 + payload
@@ -310,4 +311,5 @@ public:
     }
 };
 
-} // namespace StructFrame
+} // namespace sdk
+} // namespace structframe

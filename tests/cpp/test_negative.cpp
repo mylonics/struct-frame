@@ -16,7 +16,7 @@
 #include "include/standard_messages.hpp"
 #include "../../generated/cpp/frame_profiles.hpp"
 
-using namespace FrameParsers;
+using namespace structframe;
 
 // Test result tracking
 static int tests_run = 0;

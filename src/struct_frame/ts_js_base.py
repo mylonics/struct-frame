@@ -627,8 +627,5 @@ def _find_message_type(type_name, package, packages):
 
 
 def _get_nested_type_name(field, package):
-    """Get the fully qualified nested type name with PascalCase package name."""
-    type_package = getattr(field, 'type_package', None) or package.name
-    # Convert package name to PascalCase for TypeScript/JavaScript conventions
-    type_package_pascal = pascalCase(type_package)
-    return f"{type_package_pascal}{field.fieldType}"
+    """Get the nested type name (short form, without package prefix)."""
+    return field.fieldType

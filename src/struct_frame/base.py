@@ -7,7 +7,11 @@ language-specific code generators.
 
 import re
 
-version = "0.0.1"
+try:
+    from importlib.metadata import version as _pkg_version
+    version = _pkg_version("struct-frame")
+except Exception:
+    version = "0.0.1"
 
 
 class NamingStyle:

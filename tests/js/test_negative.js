@@ -21,9 +21,9 @@ const {
 } = require('../generated/js/frame-profiles');
 
 const {
-  SerializationTestBasicTypesMessage,
+  BasicTypesMessage,
   get_message_info
-} = require('../generated/js/serialization_test.structframe');
+} = require('../generated/js/serialization-test.structframe');
 
 // Test result tracking
 let testsRun = 0;
@@ -31,7 +31,7 @@ let testsPassed = 0;
 let testsFailed = 0;
 
 function createTestMessage() {
-  const msg = new SerializationTestBasicTypesMessage();
+  const msg = new BasicTypesMessage();
   msg.small_int = 42;
   msg.medium_int = 1000;
   msg.regular_int = 100000;

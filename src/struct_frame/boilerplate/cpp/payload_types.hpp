@@ -5,8 +5,8 @@
 
 #include <cstdint>
 
-namespace FrameParsers {
-namespace PayloadTypes {
+namespace structframe {
+namespace payloads {
 
 /* Payload type enumeration */
 enum class PayloadType : uint8_t {
@@ -173,5 +173,5 @@ constexpr PayloadConfig PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG = {
     true  /* has pkg_id */
 };
 
-}  // namespace PayloadTypes
-}  // namespace FrameParsers
+}  // namespace payloads
+}  // namespace structframe

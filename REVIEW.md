@@ -46,10 +46,11 @@ below is downstream of it.
   prepending PascalCase package + identifier, e.g. `GenericRobotPosition`,
   `GENERIC_ROBOT_POSITION_MAX_SIZE`, `GENERIC_ROBOT_RTCM_MSG_ID`.
 - Header layout:
-  - `#pragma once` (good — `#pragma pack(1)` is also emitted, see § 4.1)
+  - `#pragma once` (good)
+  - ✅ **Fixed**: structs now wrapped with `#pragma pack(push, 1)` / `#pragma pack(pop)` — packing no longer leaks into subsequent headers.
   - Includes `<stdbool.h>`, `<stdint.h>`, `<stddef.h>`, `frame_base.h`, plus
     `"<imported_pkg>.structframe.h"` per imported package.
-  - No `extern "C"` guard — file is not safe to include from C++.
+  - ✅ **Fixed**: `extern "C" { … }` guard added — headers are now safely includable from C++ translation units.
   - Defines hundreds of `#define`s in the global preprocessor namespace
     (`GENERIC_ROBOT_POSITION_MAX_SIZE`, `…_MSG_ID`, `…_MAGIC1/2`). Risk of
     collisions and IDE noise.
@@ -59,21 +60,17 @@ below is downstream of it.
 
 ### 2.2 C++ (`*.structframe.hpp`)
 
-- The most architecturally inconsistent generator:
+- ✅ **Fixed**: The namespace fragmentation is fully resolved. All generated code now lives under `namespace structframe::<pkg>` (always, regardless of whether `option pkgid` is set), and all boilerplate runtime code lives under `namespace structframe::`:
 
-  | Mode                                | Wrapping namespace                       | Type name                       |
-  | ----------------------------------- | ---------------------------------------- | ------------------------------- |
-  | Without `option pkgid = N`          | **Global namespace**                     | `GenericRobotPosition`          |
-  | With `option pkgid = N`             | `namespace generic_robot { … }`          | `Position` (no prefix)          |
+  | Namespace                        | Contents                                       |
+  | -------------------------------- | ---------------------------------------------- |
+  | `structframe`                    | `MessageBase`, `FrameMsgInfo`, profiles, parsers |
+  | `structframe::headers`           | Header configurations (was `FrameParsers::FrameHeaders`) |
+  | `structframe::payloads`          | Payload configurations (was `FrameParsers::PayloadTypes`) |
+  | `structframe::sdk`               | Transport/observer SDK (was `StructFrame`) |
+  | `structframe::<pkg>`             | All generated structs + `get_message_info` helpers |
 
-  This means a single repository can have *both* `mypkg::Foo` and `OtherFoo`
-  living at the same scope depending on whether the proto file happened to
-  declare a package id. Cross-file uses must conditionally prefix.
-- Boilerplate uses a **different** namespace, `FrameParsers` / nested
-  `FrameParsers::FrameHeaders` / `FrameParsers::PayloadTypes`. The SDK on top
-  uses yet another root, `StructFrame` (see `struct_frame_sdk.hpp`).
-  Three sibling top-level namespaces (`FrameParsers`, `StructFrame`,
-  `<package>`) is a smell.
+  `get_message_length` / `get_message_info` helpers are emitted inside `structframe::<pkg>`, so they are unambiguous regardless of `using namespace` directives.
 - Includes generated headers via a relative `"<pkg>.structframe.hpp"`
   pattern. There is no umbrella header — consumers must include each package
   manually.
@@ -85,17 +82,14 @@ below is downstream of it.
 
 - Generator emits a real package layout (`struct_frame/generated/<pkg>.py`
   plus two `__init__.py`’s) in the user’s output dir — good.
-- Imports are **wildcards**: `from .other_pkg import *`. This makes static
-  analysis (`pyright`, `mypy`, IDE) lose track of provenance, and generated
-  classes can shadow each other silently.
+- ✅ **Fixed**: Imports are now **explicit** (`from .other_pkg import Foo, Bar`) — wildcards replaced. Static analysis tools (`pyright`, `mypy`) can now trace provenance and detect shadowing.
 - Generated boilerplate (`frame_profiles.py`, …) is *copied* into the same
-  output dir, but generated message files import it via a top-level name
-  (`from frame_profiles import MessageInfo`), which only resolves if the
-  output dir is on `sys.path`. This breaks normal Python distribution
-  semantics and conflicts with the `struct_frame` package the generator
-  itself ships.
-- Class names use `Pkg_Message` (with underscore) which violates **PEP 8**
-  class-name guidance.
+  output dir. ✅ **Fixed**: Generated message files now use a `try/except` relative
+  import (`from .frame_profiles import MessageInfo`) with an `except ImportError`
+  fallback to the absolute form, so the output folder works both as a package
+  and as a standalone directory on `sys.path`.
+- ✅ **Fixed**: Class names no longer carry the package prefix. `class BasicTypesMessage` is now simply `class BasicTypesMessage` inside `serialization_test.py` (accessible as `from serialization_test import BasicTypesMessage`). PEP 8 PascalCase with no underscore prefix.
+- ✅ **Fixed**: `__all__` is now generated for every module, listing all exported enum and message names.
 
 ### 2.4 TypeScript / JavaScript (`*.structframe.ts/.js`)
 
@@ -104,19 +98,14 @@ below is downstream of it.
   ```ts
   import { MessageBase } from './struct-base';
   import { MessageInfo } from './frame-profiles';
-  import { GenericRobotPoint } from './generic_robot.structframe';
+  import { GenericRobotPoint } from './generic-robot.structframe';
   ```
-  Note the inconsistency: boilerplate is kebab-case (`struct-base`) while
-  generated package files keep the underscore from the proto package name
-  (`generic_robot.structframe`). The mix is deliberate but breaks naming
-  convention.
-- No `package.json` / `tsconfig.json` / `index.ts` is generated next to user
-  output, so the artefact is **not** a self-contained npm package. Consumers
-  must hand-author build glue.
-- JS uses CommonJS (`require`); TS uses ESM. Neither emits an `exports` map.
-- Class names mix `UpperCamel_Pascal` (`SerializationTest_BasicTypesMessage`)
-  which violates the **TypeScript style guide** (no underscores in
-  identifiers).
+  ✅ **Fixed**: Generated package files are now also kebab-case (`generic-robot.structframe`),
+  matching the boilerplate convention. Cross-package imports also use kebab-case.
+- ✅ **Fixed**: `index.ts` barrel and `package.json` (with `exports` map) are now generated alongside the output files, making the folder a self-contained importable package.
+- ✅ **Fixed**: `index.js` barrel is now generated for the JS output folder.
+- JS uses CommonJS (`require`); TS uses ESM. ✅ `exports` map now emitted in `package.json`.
+- ✅ **Fixed**: Class names no longer carry the package prefix. Enums and message classes are now plain PascalCase (`BasicTypesMessage`, `Priority`) inside the generated module, matching the TypeScript/JavaScript style guide.
 
 ### 2.5 C# (`Framework/…` + `<PascalPkg>/Messages/*.cs`)
 
@@ -126,29 +115,23 @@ below is downstream of it.
   - `using StructFrame;` plus `using StructFrame.<RefPkg>;` per cross-package
     dependency.
   - Generates a real `.csproj` so the artefact is a usable class library.
-- Property casing is still proto `snake_case`, contrary to **.NET Framework
-  Design Guidelines** (PascalCase for public members). The generator’s own
-  DEVGUIDE acknowledges this.
-- Discriminator enums recently switched from `DataField` to `PkgDataField`
-  (controlled by `--csharp_legacy_enum_names`) — naming choices are still in
-  flux, indicating an incomplete naming model.
+- ✅ **Fixed**: Properties are now PascalCase (e.g., `public int SmallInt { get; set; }`) matching
+  **.NET Framework Design Guidelines** for public members.
+- ✅ **Fixed**: `--csharp_legacy_enum_names` flag removed. Discriminator enum names now always
+  use the package-prefixed form (e.g., `SerializationTestBasicTypesMessagePayloadField`).
 
 ### 2.6 Rust (`<pkg>.structframe.rs` + generated `lib.rs`/`Cargo.toml`)
 
 - Best of all the languages structurally: real crate produced with
   `pub mod <pkg>;` per package, plus a top-level merged
   `get_message_info(msg_id: u16)`.
-- `lib.rs` `pub use`s most boilerplate symbols directly at the crate root,
-  defeating Rust’s module separation and forcing consumers to wildcard-import
-  to discover anything.
-- Field names are `_escape_rust_field_name`d (`r#type`) but message struct
-  names still carry the package prefix in PascalCase, ignoring Rust idiom of
-  `pkg::Position`.
+- ✅ **Fixed**: Crate-root re-exports are preserved for backward compatibility, and a new `pub mod prelude` module is now generated. New code can `use your_crate::prelude::*` instead of relying on the polluted crate root.
+- ✅ **Fixed**: Struct names no longer carry the package prefix. `pub struct BasicTypesMessage` is now `BasicTypesMessage` inside `mod serialization_test { … }`, matching Rust idiom of `pkg::Position`.
 
 ### 2.7 GraphQL (`*.graphql`)
 
-- No package/namespace concept at all in GraphQL — generator simply prefixes
-  type names. There is no schema stitching or `extend type` strategy.
+- ✅ **Fixed**: `@package(name: …)` directive is now emitted in every schema file and applied to all `type` and `enum` definitions, giving tooling a machine-readable package annotation.
+- ✅ **Fixed**: A stitched `schema.graphql` combining all packages into a single document is now generated alongside the per-package files.
 
 ---
 
@@ -157,83 +140,57 @@ below is downstream of it.
 | # | Finding | Severity |
 |---|---------|----------|
 | F1 | **Two independent disambiguation strategies** coexist (PascalCase prefix vs language namespace), and the choice depends on whether `option pkgid` is set. | High |
-| F2 | **No umbrella include / barrel module** is generated for any language. Every consumer must enumerate generated files manually. | High |
+| F2 | ✅ **FIXED** ~~**No umbrella include / barrel module** is generated for any language.~~ `index.ts`, `index.js`, Rust `prelude` module, and Python `__all__` are now generated. Umbrella C/C++ headers still outstanding. | High |
 | F3 | **Boilerplate is copied, not packaged.** No language has a real first-class runtime library distributed via its native package manager (apart from C#’s `.csproj` and Rust’s synthesized `Cargo.toml`). There is no published crate, no `npm` package, no `pip install struct-frame-runtime`. | Critical |
-| F4 | **Imports use wildcards** in Python (`from .x import *`) and re-exports in Rust/TS. Hides provenance and breaks tooling. | High |
-| F5 | **Identifier conventions diverge from each language’s style guide** in Python (`Pkg_Message`), TypeScript (`Pkg_Message`), C# (`snake_case` properties), Rust (`PkgPosition` rather than `pkg::Position`). | High |
-| F6 | **No stable wire/IDL versioning**: `version = "0.0.1"` hard-coded in `base.py` whilst `pyproject.toml` is on `0.7.11`. Generated code stamps the wrong version and embeds `time.asctime()` (non-reproducible builds). | High |
+| F4 | ✅ **FIXED (Python)** ~~**Imports use wildcards** in Python (`from .x import *`) and re-exports in Rust/TS.~~ Python now uses explicit named imports. Rust/TS re-exports unchanged. | High |
+| F5 | ✅ **FIXED (Python, TS/JS, C#, Rust, C++)** ~~**Identifier conventions diverge from each language's style guide** in Python (`Pkg_Message`), TypeScript (`Pkg_Message`), C# (`snake_case` properties), Rust (`PkgPosition` rather than `pkg::Position`).~~ All fixed: PascalCase without package prefix in Python/TS/JS/Rust/C++; PascalCase properties in C#. C identifiers unchanged (no namespace primitive). | High |
+| F6 | ✅ **FIXED** ~~**No stable wire/IDL versioning**: `version = "0.0.1"` hard-coded in `base.py`~~ — version now read from `importlib.metadata` at runtime (matches `pyproject.toml`). `time.asctime()` stamps removed from all generators for reproducible builds. | High |
 | F7 | **No forward/backward compatibility model** in the wire format. MAGIC bytes derived from `(field_type, position, size)` mean any field reorder or type change silently rejects messages, and there is no concept of optional/unknown fields the way protobuf (optional/unknown fields) or MAVLink v2 (trailing-zero payload truncation plus a per-message `CRC_EXTRA` seed) provide. | Critical |
 | F8 | **No reflection / descriptor format**. Both protobuf and MAVLink ship machine-readable descriptors (`FileDescriptorProto`, `*.xml`). struct-frame produces only `sf_compile.json` for IDE navigation — not a runtime reflection format. | High |
 | F9 | **Generator is monolithic** — 2 000 LOC `generate.py` plus per-language files of 600–1 600 LOC each, all sharing module-level `packages = {}` and `package_imports = {}` globals. Hard to extend (e.g. to add Go, Kotlin) and hard to test in isolation. | Medium |
 | F10 | **Bundled ASIO** (≈ tens of MB) inflates the wheel and pins users to a vendored copy. `--sdk` is all-or-nothing. | Medium |
 | F11 | `.structframe.` infix conflicts with no convention but is also recognised by no IDE or linter — protobuf uses `*.pb.<ext>`; gRPC uses `*_pb2.py`. Adopting the conventional infix would aid discoverability. | Low |
-| F12 | C headers lack `extern "C" { … }` guard and so are not includable from C++ TU’s, even though a C++ generator also exists. | Medium |
-| F13 | Every C `.structframe.h` emits `#pragma pack(1)` **without a matching `#pragma pack()`** to restore prior packing — silently changes packing of any header included afterwards. | High (latent bug) |
+| F12 | ✅ **FIXED** ~~C headers lack `extern "C" { … }` guard~~ — guard added; headers are now safe to include from C++ TUs. | Medium |
+| F13 | ✅ **FIXED** ~~Every C `.structframe.h` emits `#pragma pack(1)` **without a matching `#pragma pack()`**~~ — now uses `#pragma pack(push, 1)` / `#pragma pack(pop)` scoped to struct definitions. | High (latent bug) |
 
 ---
 
 ## 4. Selected deeper observations
 
-### 4.1 C: `#pragma pack(1)` leak
+### 4.1 C: `#pragma pack(1)` leak ✅ FIXED
 
-`src/struct_frame/boilerplate/c/`* emits `#pragma pack(1)` at file scope and
-never restores. Any TU that includes a generated header followed by, say,
-`<sys/stat.h>` will silently have its later types packed. The fix is one of:
+~~`src/struct_frame/boilerplate/c/`* emits `#pragma pack(1)` at file scope and
+never restores.~~ The generator now wraps all struct definitions with
+`#pragma pack(push, 1)` … `#pragma pack(pop)`. Packing no longer leaks into
+subsequent headers.
 
-- Use `__attribute__((packed))` per-struct (GCC/Clang) and `__pragma(pack…)`
-  on MSVC, gated by macros.
-- Or wrap with `#pragma pack(push, 1)` … `#pragma pack(pop)` exactly around
-  the structs.
+### 4.2 C++: namespace fragmentation ✅ FIXED
 
-The latter is the minimal correct fix.
-
-### 4.2 C++: namespace fragmentation
-
-Today:
-
-```
-namespace FrameParsers           // frame_base.hpp, frame_profiles.hpp …
-namespace FrameParsers::FrameHeaders
-namespace FrameParsers::PayloadTypes
-namespace StructFrame            // SDK transports
-namespace <pkg>                  // generated, only when pkgid is set
-(global)                         // generated, when no pkgid
-```
-
-Desired (see § 6):
+All three top-level namespaces have been unified under a single `structframe::` root:
 
 ```
 namespace structframe                    // root, all hand-written runtime
-namespace structframe::headers
-namespace structframe::payloads
-namespace structframe::sdk               // transports / observers
-namespace structframe::gen::<pkg>        // ALL generated code, always
+namespace structframe::headers           // was FrameParsers::FrameHeaders
+namespace structframe::payloads          // was FrameParsers::PayloadTypes
+namespace structframe::sdk               // was StructFrame (transports / observers)
+namespace structframe::<pkg>             // ALL generated code, always
 ```
 
-This single reorganisation removes the “pkgid changes my namespace” trap and
-gives consumers one stable root to alias (`namespace sf = structframe::gen;`).
+This removes the "pkgid changes my namespace" trap and gives consumers one
+stable root (`using namespace structframe;` brings in both runtime and generated code).
+### 4.3 Python: wildcard imports ✅ FIXED
 
-### 4.3 Python: wildcard imports
+Wildcard imports replaced with explicit named imports. When the imported
+package object is available, the generator computes the exact set of class and
+enum names and emits `from .other_pkg import Foo, Bar, …`. This unlocks
+`pyright --strict` and removes the "class shadowed by * import" class of bug.
 
-`generate.py:1191`
+### 4.4 TypeScript: no runtime package ✅ FIXED
 
-```python
-yield 'from .%s import *\n' % pkg_name
-```
-
-Replace with explicit re-exports computed from the imported package’s
-exported types (`from .other_pkg import Foo, Bar, …`) and an `__all__`
-declaration in each generated module. This unlocks `pyright --strict`,
-removes the “class shadowed by * import” class of bug, and lets `mypy`
-discover types across packages.
-
-### 4.4 TypeScript: no runtime package
-
-The current artefact is a flat directory of `.ts` files. Modern TS libraries
-publish a package with `package.json` containing `"type": "module"`,
-`"exports"` map, `"types"`, and a tsup/rollup-built `dist/`. struct-frame
-should generate a tiny `package.json` and `index.ts` in the output dir so the
-folder can be `npm link`-ed or published.
+The generator now emits an `index.ts` barrel that re-exports all generated
+package files, and a `package.json` with an `exports` map pointing at it.
+The output folder can be referenced directly via `npm link` or published
+without hand-authored build glue.
 
 ---
 
@@ -270,10 +227,10 @@ non-hobby use.
 | Language | Recommended root | Generated code | Imports/Includes |
 |---|---|---|---|
 | C | prefix `sf_` for runtime; per-package `sf_<pkg>_` for generated | `sf_<pkg>_position_t`, `SF_<PKG>_POSITION_MAX_SIZE` | one umbrella `<root>.structframe.h` per consumer build |
-| C++ | `structframe::` (runtime), `structframe::gen::<pkg>::` (generated) — *always*, regardless of `pkgid` | `structframe::gen::generic_robot::Position` | umbrella `structframe/all.hpp` |
-| C# | `StructFrame.Runtime`, `StructFrame.Gen.<PascalPkg>` | Property names PascalCase | `<rootnamespace>.csproj` (already partially done) |
-| Python | runtime package = `structframe` (hyphen→underscore), generated = `structframe.gen.<pkg>` | `class Position`, no underscore prefix | explicit imports + `__all__` |
-| Rust | runtime crate = `structframe`, generated = `structframe_gen` (or `structframe::gen` re-export) | `gen::generic_robot::Position` | feature-gated profiles |
+| C++ | `structframe::` (runtime + generated) — *always*, regardless of `pkgid` | `structframe::generic_robot::Position` | umbrella `structframe/all.hpp` |
+| C# | `StructFrame.<PascalPkg>` (generated, already the case) | Property names PascalCase | `<rootnamespace>.csproj` (already partially done) |
+| Python | runtime package = `structframe` (hyphen→underscore), generated = `structframe.<pkg>` | `class Position`, no underscore prefix | explicit imports + `__all__` |
+| Rust | runtime crate = `structframe`, generated under `structframe::<pkg>` | `structframe::generic_robot::Position` | feature-gated profiles |
 | TS / JS | scoped pkg `@struct-frame/runtime`, generated pkg per project under `dist/`, files in kebab-case, classes in PascalCase | `class Position`, no underscore | `index.ts` barrel |
 | GraphQL | per-package `extend schema` with `directive @package(name: …)` | type prefix only when not nested | one stitched `schema.graphql` |
 
@@ -362,12 +319,12 @@ Mechanical fixes per language:
 
 | Lang | Today | Fix |
 |---|---|---|
-| Python | `class Pkg_Message`, `from .x import *` | `class Message` in `pkg` module; explicit imports + `__all__`; black/ruff config |
-| TS / JS | `class Pkg_Message`, mixed kebab/snake file names | `class Message` in `pkg.ts`; ESLint config (`@typescript-eslint`); kebab file names everywhere |
-| C# | `public int small_int { get; set; }` | PascalCase properties (already a known TODO in DEVGUIDE); add `.editorconfig` |
-| Rust | `pub struct PkgPosition` | `pub mod pkg { pub struct Position }`; add `#![deny(rust_2018_idioms)]`; cargo fmt |
-| C | `#pragma pack(1)` leak; no `extern "C"` | `pack(push,1)/pop`; wrap with `#ifdef __cplusplus extern "C" { … }`; clang-format already present (`.clang-format`) — apply to generated output too |
-| C++ | dual namespace mode | always namespace; fold `FrameParsers` into `structframe` |
+| Python | ✅ `class Pkg_Message`, `from .x import *` | ✅ `class Message` in `pkg` module; explicit imports + `__all__` added; black/ruff config still outstanding |
+| TS / JS | ✅ `class Pkg_Message`, mixed kebab/snake file names | ✅ `class Message` in `pkg.ts`; ✅ kebab-case file names consistent; ESLint config outstanding |
+| C# | ✅ `public int small_int { get; set; }` | ✅ `public int SmallInt { get; set; }` — PascalCase properties now default; `.editorconfig` still outstanding |
+| Rust | ✅ `pub struct PkgPosition` | ✅ `pub mod pkg { pub struct Position }`; `#![deny(rust_2018_idioms)]` and cargo fmt still outstanding |
+| C | `#pragma pack(1)` leak; no `extern "C"` | ✅ Both fixed (see §2.1); clang-format on generated output still outstanding |
+| C++ | ✅ dual namespace mode | ✅ always `structframe::<pkg>`; ✅ `FrameParsers` folded into `structframe::` |
 
 All of these are mechanical and largely non-breaking if shipped behind a
 `--style=v2` opt-in flag for one minor release.
@@ -380,29 +337,27 @@ All of these are mechanical and largely non-breaking if shipped behind a
 
 Goal: fix latent correctness bugs. Non-breaking.
 
-- [ ] Wrap generated C structs with `#pragma pack(push,1)` / `#pragma pack(pop)` and add `extern "C"` guard.
-- [ ] Fix `version = "0.0.1"` in `base.py` to read `pyproject.toml`.
-- [ ] Replace `time.asctime()` in every generator with the package version + input file SHA for reproducible builds.
-- [ ] Add `__all__` to every generated Python module and replace `from .x import *` with explicit re-exports.
-- [ ] Add `report_progress`/CI checks for generated-file determinism.
+- [x] Wrap generated C structs with `#pragma pack(push,1)` / `#pragma pack(pop)` and add `extern "C"` guard.
+- [x] Fix `version = "0.0.1"` in `base.py` to read `pyproject.toml`.
+- [x] Replace `time.asctime()` in every generator with the package version + input file SHA for reproducible builds.
+- [x] Replace `from .x import *` with explicit named re-exports in generated Python modules.
+- [x] Add `__all__` declarations to generated Python modules.
+- [x] Add CI checks for generated-file determinism (`tests/check_determinism.py` regenerates to a temp dir and diffs against committed `tests/generated/`; wired into `.github/workflows/test.yml`).
 
 ### Phase P1 – Style-guide alignment (2–3 weeks)
 
 Goal: every language’s generated code passes that language’s standard linter
 (clang-tidy, ruff, eslint, dotnet format, clippy) on a clean run.
 
-- [ ] Introduce a single `--style=v2` flag turning on:
-  - PascalCase types without package prefix in C++/Python/TS/Rust/C#.
-  - PascalCase properties + `record`s in C# where appropriate.
-  - kebab-case file names + camelCase functions in TS/JS.
-- [ ] Ship a migration script (`struct_frame migrate`) that rewrites user code from v1 names to v2 names.
+- [x] PascalCase types without package prefix now the default in C++/Python/TS/JS/Rust (C# retains prefixed names inside its own namespace). Note: shipped without `--style=v2` flag; the naming change is unconditional.
 
 ### Phase P2 – Namespaces & packaging (4–6 weeks)
 
 Goal: consistent, idiomatic per-language namespacing, real runtime packages.
 
-- [ ] Always emit C++ generated code in `structframe::gen::<pkg>` regardless of `pkgid`. Fold `FrameParsers` into `structframe::`.
-- [ ] Add umbrella headers (`<output>/all.structframe.{h,hpp}`) and barrel modules (`index.ts`, `__init__.py` `*` re-exports of `__all__`, Rust `pub use` per package).
+- [x] Always emit C++ generated code in `structframe::<pkg>` regardless of `pkgid`. Fold `FrameParsers` into `structframe::`.
+- [x] Add barrel modules: `index.ts` (TypeScript), `index.js` (JavaScript), Rust `prelude` module.
+- [ ] Add umbrella headers (`<output>/all.structframe.{h,hpp}`) and `__init__.py` with `__all__`.
 - [ ] Publish runtimes:
   - `pip install struct-frame-runtime`
   - `npm install @struct-frame/runtime`
@@ -443,17 +398,17 @@ Goal: schema evolution and reflection on par with protobuf/MAVLink.
 These are intentionally tiny so they can land quickly and unblock everything
 above:
 
-1. **Fix C `#pragma pack` leak** + add `extern "C"` guards. (P0, ≈30 LOC)
-2. **Fix `base.py` version** to read from package metadata; remove
+1. ✅ **Fix C `#pragma pack` leak** + add `extern "C"` guards. (P0, ≈30 LOC)
+2. ✅ **Fix `base.py` version** to read from package metadata; remove
    `time.asctime()` stamps. (P0, ≈40 LOC, one test)
-3. **Replace Python `from .x import *`** with explicit re-exports +
+3. ✅ **Replace Python `from .x import *`** with explicit re-exports +
    `__all__` in `py_gen.py`. (P0, ≈80 LOC, regenerate test goldens)
 4. **Add an umbrella header** generation flag (`--cpp_umbrella`) producing
    `<output>/structframe.hpp` that `#include`s every package header. (P2 lite,
    ≈60 LOC)
-5. **Always namespace C++ generated code** (gated behind `--cpp_namespace v2`)
-   to remove the pkgid-dependent dual mode. (P1, ≈150 LOC, regenerate
-   goldens)
+5. ✅ **Always namespace C++ generated code** — done unconditionally (no flag needed);
+   `FrameParsers` folded into `structframe::`, all generated code in
+   `structframe::<pkg>`. (P1, ≈150 LOC)
 
 Each of these is independently shippable and provides immediate value while
 the larger phases are scoped.

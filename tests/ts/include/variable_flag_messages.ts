@@ -6,23 +6,23 @@
  */
 
 import {
-  SerializationTestTruncationTestNonVariable,
-  SerializationTestTruncationTestVariable,
-  SerializationTestNestedPayload,
-  SerializationTestNestedVariableMessage,
-  SerializationTestVariableMultipleArrays,
-  SerializationTestVariableMixedFields,
-} from '../../generated/ts/serialization_test.structframe';
+  TruncationTestNonVariable,
+  TruncationTestVariable,
+  NestedPayload,
+  NestedVariableMessage,
+  VariableMultipleArrays,
+  VariableMixedFields,
+} from '../../generated/ts/serialization-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
 
 // Type alias for message union (like C++ MessageVariant)
 export type MessageType =
-  | SerializationTestTruncationTestNonVariable
-  | SerializationTestTruncationTestVariable
-  | SerializationTestNestedVariableMessage
-  | SerializationTestVariableMultipleArrays
-  | SerializationTestVariableMixedFields;
+  | TruncationTestNonVariable
+  | TruncationTestVariable
+  | NestedVariableMessage
+  | VariableMultipleArrays
+  | VariableMixedFields;
 
 // Message count
 export const MESSAGE_COUNT = 5;
@@ -32,9 +32,9 @@ export const MESSAGE_COUNT = 5;
 // Helper functions to create messages (like C++ create_* functions)
 // ============================================================================
 
-function createNonVariable1_3Filled(): SerializationTestTruncationTestNonVariable {
+function createNonVariable1_3Filled(): TruncationTestNonVariable {
   const dataArray = Array.from({ length: 67 }, (_, i) => i);
-  return new SerializationTestTruncationTestNonVariable({
+  return new TruncationTestNonVariable({
     sequence_id: 0xDEADBEEF,
     data_array_count: 67,
     data_array_data: dataArray,
@@ -42,9 +42,9 @@ function createNonVariable1_3Filled(): SerializationTestTruncationTestNonVariabl
   });
 }
 
-function createVariable1_3Filled(): SerializationTestTruncationTestVariable {
+function createVariable1_3Filled(): TruncationTestVariable {
   const dataArray = Array.from({ length: 67 }, (_, i) => i);
-  return new SerializationTestTruncationTestVariable({
+  return new TruncationTestVariable({
     sequence_id: 0xDEADBEEF,
     data_array_count: 67,
     data_array_data: dataArray,
@@ -52,15 +52,15 @@ function createVariable1_3Filled(): SerializationTestTruncationTestVariable {
   });
 }
 
-function createNestedVariable(): SerializationTestNestedVariableMessage {
-  const nestedPayload = new SerializationTestNestedPayload({
+function createNestedVariable(): NestedVariableMessage {
+  const nestedPayload = new NestedPayload({
     id: 7,
     label_length: 5,
     label_data: 'Hello',
     samples_count: 3,
     samples_data: [10, 20, 30],
   });
-  return new SerializationTestNestedVariableMessage({
+  return new NestedVariableMessage({
     sequence: 0x12345678,
     payload: [nestedPayload],
     description_length: 20,
@@ -68,8 +68,8 @@ function createNestedVariable(): SerializationTestNestedVariableMessage {
   });
 }
 
-function createMultipleArrays(): SerializationTestVariableMultipleArrays {
-  return new SerializationTestVariableMultipleArrays({
+function createMultipleArrays(): VariableMultipleArrays {
+  return new VariableMultipleArrays({
     type: 5,
     readings_count: 3,
     readings_data: [100, 200, 300],
@@ -80,8 +80,8 @@ function createMultipleArrays(): SerializationTestVariableMultipleArrays {
   });
 }
 
-function createMixedFields(): SerializationTestVariableMixedFields {
-  return new SerializationTestVariableMixedFields({
+function createMixedFields(): VariableMixedFields {
+  return new VariableMixedFields({
     fixed_id: 0xABCD1234,
     fixed_value: 3.14,
     fixed_name: 'DeviceName',

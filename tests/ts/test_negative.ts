@@ -21,17 +21,17 @@ import {
 } from '../generated/ts/frame-profiles';
 
 import {
-  SerializationTestBasicTypesMessage,
+  BasicTypesMessage,
   get_message_info
-} from '../generated/ts/serialization_test.structframe';
+} from '../generated/ts/serialization-test.structframe';
 
 // Test result tracking
 let testsRun = 0;
 let testsPassed = 0;
 let testsFailed = 0;
 
-function createTestMessage(): SerializationTestBasicTypesMessage {
-  const msg = new SerializationTestBasicTypesMessage();
+function createTestMessage(): BasicTypesMessage {
+  const msg = new BasicTypesMessage();
   msg.small_int = 42;
   msg.medium_int = 1000;
   msg.regular_int = 100000;

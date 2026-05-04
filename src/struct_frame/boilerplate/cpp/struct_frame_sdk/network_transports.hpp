@@ -9,7 +9,8 @@
 #include <thread>
 #include <memory>
 
-namespace StructFrame {
+namespace structframe {
+namespace sdk {
 
 /**
  * UDP Transport configuration
@@ -325,4 +326,5 @@ public:
     }
 };
 
-} // namespace StructFrame
+} // namespace sdk
+} // namespace structframe

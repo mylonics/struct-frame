@@ -6,13 +6,13 @@
  */
 
 const {
-  SerializationTestTruncationTestNonVariable,
-  SerializationTestTruncationTestVariable,
-  SerializationTestNestedPayload,
-  SerializationTestNestedVariableMessage,
-  SerializationTestVariableMultipleArrays,
-  SerializationTestVariableMixedFields,
-} = require('../../generated/js/serialization_test.structframe');
+  TruncationTestNonVariable,
+  TruncationTestVariable,
+  NestedPayload,
+  NestedVariableMessage,
+  VariableMultipleArrays,
+  VariableMixedFields,
+} = require('../../generated/js/serialization-test.structframe');
 
 // Message count
 const MESSAGE_COUNT = 5;
@@ -24,7 +24,7 @@ const MESSAGE_COUNT = 5;
 
 function createNonVariable1_3Filled() {
   const dataArray = Array.from({ length: 67 }, (_, i) => i);
-  return new SerializationTestTruncationTestNonVariable({
+  return new TruncationTestNonVariable({
     sequence_id: 0xDEADBEEF,
     data_array_count: 67,
     data_array_data: dataArray,
@@ -34,7 +34,7 @@ function createNonVariable1_3Filled() {
 
 function createVariable1_3Filled() {
   const dataArray = Array.from({ length: 67 }, (_, i) => i);
-  return new SerializationTestTruncationTestVariable({
+  return new TruncationTestVariable({
     sequence_id: 0xDEADBEEF,
     data_array_count: 67,
     data_array_data: dataArray,
@@ -43,14 +43,14 @@ function createVariable1_3Filled() {
 }
 
 function createNestedVariable() {
-  const nestedPayload = new SerializationTestNestedPayload({
+  const nestedPayload = new NestedPayload({
     id: 7,
     label_length: 5,
     label_data: 'Hello',
     samples_count: 3,
     samples_data: [10, 20, 30],
   });
-  return new SerializationTestNestedVariableMessage({
+  return new NestedVariableMessage({
     sequence: 0x12345678,
     payload: [nestedPayload],
     description_length: 20,
@@ -59,7 +59,7 @@ function createNestedVariable() {
 }
 
 function createMultipleArrays() {
-  return new SerializationTestVariableMultipleArrays({
+  return new VariableMultipleArrays({
     type: 5,
     readings_count: 3,
     readings_data: [100, 200, 300],
@@ -71,7 +71,7 @@ function createMultipleArrays() {
 }
 
 function createMixedFields() {
-  return new SerializationTestVariableMixedFields({
+  return new VariableMixedFields({
     fixed_id: 0xABCD1234,
     fixed_value: 3.14,
     fixed_name: 'DeviceName',

@@ -4,6 +4,7 @@
 #include <variant>
 
 #include "../../generated/cpp/serialization_test.structframe.hpp"
+using namespace structframe::serialization_test;
 
 // Message provider struct for use with TestRunner template
 // Tests variable flag truncation behavior:
@@ -15,17 +16,17 @@
 struct VariableFlagMessages {
   // Variant type for message return
   using MessageVariant =
-      std::variant<SerializationTestTruncationTestNonVariable, SerializationTestTruncationTestVariable,
-                   SerializationTestNestedVariableMessage, SerializationTestVariableMultipleArrays,
-                   SerializationTestVariableMixedFields>;
+      std::variant<TruncationTestNonVariable, TruncationTestVariable,
+                   NestedVariableMessage, VariableMultipleArrays,
+                   VariableMixedFields>;
 
   // Total number of messages
   static constexpr size_t MESSAGE_COUNT = 5;
 
   // Create non-variable message with 1/3 filled array (67 out of 200 bytes)
   // This message will NOT truncate - full 200 bytes are always serialized
-  static SerializationTestTruncationTestNonVariable create_non_variable() {
-    SerializationTestTruncationTestNonVariable msg{};
+  static TruncationTestNonVariable create_non_variable() {
+    TruncationTestNonVariable msg{};
     msg.sequence_id = 0xDEADBEEF;
 
     // Fill 1/3 of the array (67 out of 200 elements)
@@ -40,8 +41,8 @@ struct VariableFlagMessages {
 
   // Create variable message with 1/3 filled array (67 out of 200 bytes)
   // This message WILL truncate - only 67 bytes are serialized due to variable flag
-  static SerializationTestTruncationTestVariable create_variable() {
-    SerializationTestTruncationTestVariable msg{};
+  static TruncationTestVariable create_variable() {
+    TruncationTestVariable msg{};
     msg.sequence_id = 0xDEADBEEF;
 
     // Fill 1/3 of the array (67 out of 200 elements)
@@ -56,8 +57,8 @@ struct VariableFlagMessages {
 
   // Create nested variable message: parent with option variable = true, nested struct with
   // variable-length fields (variable string + variable array)
-  static SerializationTestNestedVariableMessage create_nested_variable() {
-    SerializationTestNestedVariableMessage msg{};
+  static NestedVariableMessage create_nested_variable() {
+    NestedVariableMessage msg{};
     msg.sequence = 0x12345678;
 
     // Nested payload: id=7, label="Hello" (5 chars), samples=[10,20,30] (3 elements)
@@ -79,8 +80,8 @@ struct VariableFlagMessages {
 
   // Create multiple-arrays message: type=5, readings=[100,200,300] (3/50),
   // values=[1.5f,2.5f] (2/25), label="multi arrays test" (17/64)
-  static SerializationTestVariableMultipleArrays create_multiple_arrays() {
-    SerializationTestVariableMultipleArrays msg{};
+  static VariableMultipleArrays create_multiple_arrays() {
+    VariableMultipleArrays msg{};
     msg.type = 5;
 
     msg.readings.count = 3;
@@ -100,8 +101,8 @@ struct VariableFlagMessages {
   }
 
   // Create mixed-fields message: fixed fields + partial variable array + partial variable string
-  static SerializationTestVariableMixedFields create_mixed_fields() {
-    SerializationTestVariableMixedFields msg{};
+  static VariableMixedFields create_mixed_fields() {
+    VariableMixedFields msg{};
     msg.fixed_id = 0xABCD1234;
     msg.fixed_value = 3.14f;
     std::memcpy(msg.fixed_name, "DeviceName", 10);  // 10 chars in 16-byte fixed field

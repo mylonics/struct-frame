@@ -4,21 +4,22 @@
 #include <variant>
 
 #include "../../generated/cpp/serialization_test.structframe.hpp"
+using namespace structframe::serialization_test;
 
 // Message provider struct for use with TestRunner template
 struct StandardMessages {
   // Variant type for message return - includes all message types from standard_test_data
   using MessageVariant =
-      std::variant<SerializationTestSerializationTestMessage, SerializationTestBasicTypesMessage,
-                   SerializationTestUnionTestMessage, SerializationTestVariableSingleArray, SerializationTestMessage>;
+      std::variant<SerializationTestMessage, BasicTypesMessage,
+                   UnionTestMessage, VariableSingleArray, Message>;
 
   // Total number of messages (matches MESSAGE_COUNT from standard_test_data)
   static constexpr size_t MESSAGE_COUNT = 17;
 
   // Helper functions to create messages (same as standard_test_data)
-  static SerializationTestSerializationTestMessage create_serialization_test(
+  static SerializationTestMessage create_serialization_test(
       uint32_t magic, const char* str, float flt, bool bl, const std::initializer_list<int32_t>& arr) {
-    SerializationTestSerializationTestMessage msg{};
+    SerializationTestMessage msg{};
     msg.magic_number = magic;
     msg.test_string.length = static_cast<uint8_t>(std::strlen(str));
     std::strcpy(msg.test_string.data, str);
@@ -33,11 +34,11 @@ struct StandardMessages {
     return msg;
   }
 
-  static SerializationTestBasicTypesMessage create_basic_types(int8_t si, int16_t mi, int32_t ri, int64_t li,
+  static BasicTypesMessage create_basic_types(int8_t si, int16_t mi, int32_t ri, int64_t li,
                                                                uint8_t su, uint16_t mu, uint32_t ru, uint64_t lu,
                                                                float sp, double dp, bool fl, const char* dev,
                                                                const char* desc) {
-    SerializationTestBasicTypesMessage msg{};
+    BasicTypesMessage msg{};
     msg.small_int = si;
     msg.medium_int = mi;
     msg.regular_int = ri;
@@ -57,9 +58,9 @@ struct StandardMessages {
     return msg;
   }
 
-  static SerializationTestUnionTestMessage create_union_with_array() {
-    SerializationTestUnionTestMessage msg{};
-    msg.payload_discriminator = SerializationTestComprehensiveArrayMessage::MSG_ID;
+  static UnionTestMessage create_union_with_array() {
+    UnionTestMessage msg{};
+    msg.payload_discriminator = ComprehensiveArrayMessage::MSG_ID;
 
     auto& arr = msg.payload.array_payload;
 
@@ -88,15 +89,15 @@ struct StandardMessages {
     std::strcpy(arr.bounded_strings.data[0], "Test");
     arr.bounded_strings.count = 1;
 
-    arr.fixed_statuses[0] = SerializationTestStatus::ACTIVE;
-    arr.fixed_statuses[1] = SerializationTestStatus::ERROR;
+    arr.fixed_statuses[0] = Status::ACTIVE;
+    arr.fixed_statuses[1] = Status::ERROR;
 
-    arr.bounded_statuses.data[0] = SerializationTestStatus::INACTIVE;
+    arr.bounded_statuses.data[0] = Status::INACTIVE;
     arr.bounded_statuses.count = 1;
 
     arr.fixed_sensors[0].id = 1;
     arr.fixed_sensors[0].value = 25.5f;
-    arr.fixed_sensors[0].status = SerializationTestStatus::ACTIVE;
+    arr.fixed_sensors[0].status = Status::ACTIVE;
     std::strcpy(arr.fixed_sensors[0].name, "TempSensor");
 
     arr.bounded_sensors.count = 0;
@@ -104,9 +105,9 @@ struct StandardMessages {
     return msg;
   }
 
-  static SerializationTestUnionTestMessage create_union_with_test() {
-    SerializationTestUnionTestMessage msg{};
-    msg.payload_discriminator = SerializationTestSerializationTestMessage::MSG_ID;
+  static UnionTestMessage create_union_with_test() {
+    UnionTestMessage msg{};
+    msg.payload_discriminator = SerializationTestMessage::MSG_ID;
 
     auto& test = msg.payload.test_payload;
     test.magic_number = 0x12345678;
@@ -125,16 +126,16 @@ struct StandardMessages {
     return msg;
   }
 
-  static SerializationTestVariableSingleArray create_variable_single_array_empty() {
-    SerializationTestVariableSingleArray msg{};
+  static VariableSingleArray create_variable_single_array_empty() {
+    VariableSingleArray msg{};
     msg.message_id = 0x00000001;
     msg.payload.count = 0;
     msg.checksum = 0x0001;
     return msg;
   }
 
-  static SerializationTestVariableSingleArray create_variable_single_array_single() {
-    SerializationTestVariableSingleArray msg{};
+  static VariableSingleArray create_variable_single_array_single() {
+    VariableSingleArray msg{};
     msg.message_id = 0x00000002;
     msg.payload.data[0] = 42;
     msg.payload.count = 1;
@@ -142,8 +143,8 @@ struct StandardMessages {
     return msg;
   }
 
-  static SerializationTestVariableSingleArray create_variable_single_array_third() {
-    SerializationTestVariableSingleArray msg{};
+  static VariableSingleArray create_variable_single_array_third() {
+    VariableSingleArray msg{};
     msg.message_id = 0x00000003;
     for (uint8_t i = 0; i < 67; i++) {
       msg.payload.data[i] = i;
@@ -153,8 +154,8 @@ struct StandardMessages {
     return msg;
   }
 
-  static SerializationTestVariableSingleArray create_variable_single_array_almost() {
-    SerializationTestVariableSingleArray msg{};
+  static VariableSingleArray create_variable_single_array_almost() {
+    VariableSingleArray msg{};
     msg.message_id = 0x00000004;
     for (uint8_t i = 0; i < 199; i++) {
       msg.payload.data[i] = i;
@@ -164,8 +165,8 @@ struct StandardMessages {
     return msg;
   }
 
-  static SerializationTestVariableSingleArray create_variable_single_array_full() {
-    SerializationTestVariableSingleArray msg{};
+  static VariableSingleArray create_variable_single_array_full() {
+    VariableSingleArray msg{};
     msg.message_id = 0x00000005;
     for (int i = 0; i < 200; i++) {
       msg.payload.data[i] = static_cast<uint8_t>(i);
@@ -175,9 +176,9 @@ struct StandardMessages {
     return msg;
   }
 
-  static SerializationTestMessage create_message_test() {
-    SerializationTestMessage msg{};
-    msg.severity = SerializationTestMsgSeverity::SEV_MSG;
+  static Message create_message_test() {
+    Message msg{};
+    msg.severity = MsgSeverity::SEV_MSG;
     msg.module.length = 4;
     std::strcpy(msg.module.data, "test");
     msg.msg.length = 13;

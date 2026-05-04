@@ -59,7 +59,7 @@ class EnumPyGen():
     def generate(field):
         result = build_enum_leading_comments(field.comments, comment_prefix='#')
 
-        enumName = '%s%s' % (pascalCase(field.package), field.name)
+        enumName = field.name
         result += 'class %s(Enum):\n' % (enumName)
 
         def py_comment_formatter(comments):
@@ -114,7 +114,7 @@ class FieldPyGen():
         else:
             # Nested message
             pkg_prefix = field.type_package if field.type_package else field.package
-            base_hint = '%s%s' % (pascalCase(pkg_prefix), type_name)
+            base_hint = type_name
         
         # Handle arrays
         if field.is_array:
@@ -151,7 +151,7 @@ class FieldPyGen():
         
         if field.isEnum:
             pkg_prefix = field.type_package if field.type_package else field.package
-            enum_class_name = '%s%s' % (pascalCase(pkg_prefix), field.fieldType)
+            enum_class_name = field.fieldType
             result += f'  # Enum: {enum_class_name}'
         
         leading_comment = field.comments
@@ -313,7 +313,7 @@ class MessagePyGen():
                                 result += f'            data += struct.pack("<{base_fmt}", val)\n'
                         else:
                             # Fixed array of nested messages
-                            type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                            type_name = f.fieldType
                             result += f'        # Fixed nested message array: {f.name}\n'
                             result += f'        for i in range({f.size_option}):\n'
                             result += f'            if i < len(self.{f.name}):\n'
@@ -343,7 +343,7 @@ class MessagePyGen():
                             result += f'                data += self.{f.name}[i].serialize()\n'
                             result += f'            else:\n'
                             # Need to create empty instance
-                            type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                            type_name = f.fieldType
                             result += f'                data += {type_name}().serialize()\n'
             else:
                 # Regular field
@@ -462,7 +462,7 @@ class MessagePyGen():
                             result += f'            fields["{f.name}"].append(val)\n'
                         else:
                             # Fixed array of nested messages
-                            type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                            type_name = f.fieldType
                             result += f'        # Fixed nested message array: {f.name}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.size_option}):\n'
@@ -492,7 +492,7 @@ class MessagePyGen():
                             result += f'                fields["{f.name}"].append(val)\n'
                         else:
                             # Nested messages
-                            type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                            type_name = f.fieldType
                             result += f'        # Bounded nested message array: {f.name}\n'
                             result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
                             result += f'        offset += {count_size}\n'
@@ -516,7 +516,7 @@ class MessagePyGen():
                     result += f'        offset += {size}\n'
                 else:
                     # Nested message
-                    type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                    type_name = f.fieldType
                     result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                     result += f'        offset += {type_name}.msg_size\n'
         
@@ -544,7 +544,7 @@ class MessagePyGen():
                 if oneof.discriminator_type == "msgid":
                     result += f'        # Determine which field is active based on message ID\n'
                     for field_name, field in oneof.fields.items():
-                        type_name = '%s%s' % (pascalCase(field.type_package if field.type_package else field.package), field.fieldType)
+                        type_name = field.fieldType
                         result += f'        if discriminator == {type_name}.msg_id:\n'
                         result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                         result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
@@ -561,7 +561,7 @@ class MessagePyGen():
                             result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
                         else:
                             # Nested message
-                            type_name = '%s%s' % (pascalCase(field.type_package if field.type_package else field.package), field.fieldType)
+                            type_name = field.fieldType
                             result += f'        if discriminator == {field_idx}:\n'
                             result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
                             result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
@@ -588,7 +588,7 @@ class MessagePyGen():
             for c in msg.comments:
                 result = '#%s\n' % c
 
-        structName = '%s%s' % (pascalCase(msg.package), msg.name)
+        structName = msg.name
         result += 'class %s:\n' % structName
         # Add both old and new naming for compatibility
         result += '    msg_size = %s\n' % msg.size
@@ -651,7 +651,7 @@ class MessagePyGen():
                 result += f'        self.{f.name} = {f.name} if {f.name} is not None else 0\n'
             else:
                 # Nested message
-                type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                type_name = f.fieldType
                 result += f'        self.{f.name} = {f.name} if {f.name} is not None else {type_name}()\n'
 
         # Initialize oneofs
@@ -875,7 +875,7 @@ class MessagePyGen():
                     result += f'            data += struct.pack("<{fmt}", val)\n'
                 else:
                     # Nested message fixed array
-                    type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                    type_name = f.fieldType
                     result += f'        # {f.name}: fixed nested message array\n'
                     result += f'        for i in range({f.size_option}):\n'
                     result += f'            if i < len(self.{f.name}):\n'
@@ -939,7 +939,7 @@ class MessagePyGen():
                     result += f'            fields["{f.name}"].append(val)\n'
                 else:
                     # Nested message array
-                    type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                    type_name = f.fieldType
                     element_size = (f.size - 1) // f.max_size
                     result += f'        # {f.name}: variable nested message array\n'
                     result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
@@ -982,7 +982,7 @@ class MessagePyGen():
                     result += f'            fields["{f.name}"].append(val)\n'
                 else:
                     # Nested message fixed array
-                    type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                    type_name = f.fieldType
                     result += f'        # {f.name}: fixed nested message array\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range({f.size_option}):\n'
@@ -1001,7 +1001,7 @@ class MessagePyGen():
                 result += f'        offset += 1\n'
             else:
                 # Nested message
-                type_name = '%s%s' % (pascalCase(f.package), f.fieldType)
+                type_name = f.fieldType
                 result += f'        # {f.name}: nested message\n'
                 result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                 result += f'        offset += {type_name}.MAX_SIZE\n'
@@ -1028,7 +1028,7 @@ class MessagePyGen():
         payload_field_map = []
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             type_pkg = field.type_package if field.type_package else field.package
-            payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+            payload_type = field.fieldType
             payload_types.append(f'"{payload_type}"')
             payload_field_map.append((payload_type, field_name, idx + 1))  # 1-based index
         
@@ -1119,7 +1119,7 @@ class MessagePyGen():
             payload_types_for_hint = []
             for field_name, field in oneof.fields.items():
                 type_pkg = field.type_package if field.type_package else field.package
-                payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+                payload_type = field.fieldType
                 payload_types_for_hint.append(f'"{payload_type}"')
             union_type = f'Union[{", ".join(payload_types_for_hint)}, None]'
             
@@ -1135,7 +1135,7 @@ class MessagePyGen():
             enum_name = EnumPyGen.get_discriminator_enum_name(oneof, structName) if oneof.discriminator_type == "field_order" else None
             for idx, (field_name, field) in enumerate(oneof.fields.items()):
                 type_pkg = field.type_package if field.type_package else field.package
-                payload_type = '%s%s' % (pascalCase(type_pkg), field.fieldType)
+                payload_type = field.fieldType
                 field_order = idx + 1
                 
                 if oneof.discriminator_type == "msgid":
@@ -1177,17 +1177,29 @@ class MessagePyGen():
 
 class FilePyGen():
     @staticmethod
-    def generate(package, imported_packages=None, equality=False):
+    def generate(package, imported_packages=None, imported_package_objects=None, equality=False):
         yield '# Automatically generated struct frame header \n'
-        yield '# Generated by %s at %s. \n\n' % (version, time.asctime())
+        yield '# Generated by struct-frame %s.\n\n' % version
 
         yield 'import struct\n'
         yield 'from enum import Enum\n'
         yield 'from typing import List, Union\n'
 
-        # Import from generated files for each proto-imported package (enables language server navigation)
+        # Import from generated files for each proto-imported package.
+        # Use explicit names when the package object is available so that
+        # static analysis tools (pyright, mypy) can trace provenance.
         if imported_packages:
             for pkg_name in imported_packages:
+                pkg_obj = (imported_package_objects or {}).get(pkg_name)
+                if pkg_obj:
+                    exported_names = []
+                    for e_name in pkg_obj.enums:
+                        exported_names.append(e_name)
+                    for m_name in pkg_obj.messages:
+                        exported_names.append(m_name)
+                    if exported_names:
+                        yield 'from .%s import %s\n' % (pkg_name, ', '.join(sorted(exported_names)))
+                        continue
                 yield 'from .%s import *\n' % pkg_name
         
         yield '\n'
@@ -1209,7 +1221,7 @@ class FilePyGen():
         # Generate discriminator enums for field_order oneofs (must come before message definitions)
         has_discriminator_enums = False
         for key, msg in package.messages.items():
-            structName = '%s%s' % (pascalCase(msg.package), msg.name)
+            structName = msg.name
             for oneof_name, oneof in msg.oneofs.items():
                 enum_code = EnumPyGen.generate_discriminator_enum(oneof, structName)
                 if enum_code:
@@ -1225,6 +1237,25 @@ class FilePyGen():
                 yield MessagePyGen.generate(msg, equality) + '\n'
             yield '\n'
 
+        # Generate __all__ to declare exported public names
+        all_names = []
+        for key in package.enums:
+            all_names.append(key)
+        # Discriminator enums from oneofs
+        for key, msg in package.messages.items():
+            for oneof_name, oneof in msg.oneofs.items():
+                if getattr(oneof, 'discriminator_type', None) == 'field_order':
+                    disc_name = EnumPyGen.get_discriminator_enum_name(oneof, msg.name)
+                    if disc_name:
+                        all_names.append(disc_name)
+        for key in package.messages:
+            all_names.append(key)
+        if all_names:
+            yield '__all__ = [\n'
+            for name in sorted(set(all_names)):
+                yield "    '%s',\n" % name
+            yield ']\n\n'
+
         if package.messages:
             if package.package_id is not None:
                 # When using package ID, use 16-bit message IDs
@@ -1233,7 +1264,7 @@ class FilePyGen():
                 yield '%s_definitions = {\n' % package.name
                 for key, msg in package.sortedMessages().items():
                     if msg.id != None:
-                        structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                        structName = msg.name
                         # Encode package ID in upper byte
                         encoded_id = (package.package_id << 8) | msg.id
                         yield f'    {encoded_id}: {structName},  # pkg_id={package.package_id}, msg_id={msg.id}\n'
@@ -1263,7 +1294,10 @@ class FilePyGen():
                 yield f'    Returns:\n'
                 yield f'        MessageInfo(size, magic1, magic2) or None if message not found\n'
                 yield f'    """\n'
-                yield f'    from frame_profiles import MessageInfo\n'
+                yield f'    try:\n'
+                yield f'        from .frame_profiles import MessageInfo\n'
+                yield f'    except ImportError:\n'
+                yield f'        from frame_profiles import MessageInfo\n'
                 yield f'    msg_class = get_message_class(msg_id)\n'
                 yield f'    if not msg_class:\n'
                 yield f'        return None\n'
@@ -1275,7 +1309,7 @@ class FilePyGen():
                 yield '%s_definitions = {\n' % package.name
                 for key, msg in package.sortedMessages().items():
                     if msg.id != None:
-                        structName = '%s%s' % (pascalCase(msg.package), msg.name)
+                        structName = msg.name
                         yield '    %s: %s,\n' % (msg.id, structName)
                 yield '}\n\n'
                 
@@ -1300,7 +1334,10 @@ class FilePyGen():
                 yield f'    Returns:\n'
                 yield f'        MessageInfo(size, magic1, magic2) or None if message not found\n'
                 yield f'    """\n'
-                yield f'    from frame_profiles import MessageInfo\n'
+                yield f'    try:\n'
+                yield f'        from .frame_profiles import MessageInfo\n'
+                yield f'    except ImportError:\n'
+                yield f'        from frame_profiles import MessageInfo\n'
                 yield f'    msg_class = get_message_class(msg_id)\n'
                 yield f'    if not msg_class:\n'
                 yield f'        return None\n'
@@ -1342,7 +1379,7 @@ class TestPyGen():
         else:
             # Nested struct
             pkg_prefix = field.type_package if field.type_package else field.package
-            nested_struct_name = f'{pascalCase(pkg_prefix)}{type_name}'
+            nested_struct_name = type_name
             return f'{nested_struct_name}()'
     
     @staticmethod
@@ -1385,7 +1422,7 @@ class TestPyGen():
         yield '"""\n'
         yield 'Automatically generated test code for struct-frame messages.\n'
         yield 'This file provides round-trip encode/decode verification tests.\n'
-        yield f'Generated by {version} at {time.asctime()}.\n'
+        yield f'Generated by struct-frame {version}.\n'
         yield '"""\n\n'
         
         yield 'import sys\n'
@@ -1405,7 +1442,7 @@ class TestPyGen():
         
         # Generate message creation functions
         for key, msg in testable_messages:
-            struct_name = f'{pascalCase(msg.package)}{msg.name}'
+            struct_name = msg.name
             func_name = f'create_test_{CamelToSnakeCase(msg.name)}'
             
             yield f'def {func_name}() -> {struct_name}:\n'
@@ -1454,7 +1491,7 @@ class TestPyGen():
         
         # Generate per-message test functions
         for key, msg in testable_messages:
-            struct_name = f'{pascalCase(msg.package)}{msg.name}'
+            struct_name = msg.name
             func_name = f'test_{CamelToSnakeCase(msg.name)}'
             create_func = f'create_test_{CamelToSnakeCase(msg.name)}'
             

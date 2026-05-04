@@ -47,7 +47,7 @@ int main() {
             using T = std::decay_t<decltype(msg)>;
             
             // Encode the message
-            size_t written = FrameParsers::FrameEncoderWithCrc<FrameParsers::ProfileStandardConfig>::encode(
+            size_t written = structframe::FrameEncoderWithCrc<structframe::ProfileStandardConfig>::encode(
                 buffer, BUFFER_SIZE, msg);
             
             if (written == 0) {
@@ -56,8 +56,8 @@ int main() {
             }
             
             // Parse the frame
-            auto frame_info = FrameParsers::BufferParserWithCrc<FrameParsers::ProfileStandardConfig>::parse(
-                buffer, written, FrameParsers::get_message_info);
+            auto frame_info = structframe::BufferParserWithCrc<structframe::ProfileStandardConfig>::parse(
+                buffer, written, structframe::serialization_test::get_message_info);
             
             if (!frame_info.valid) {
                 printf("  [%zu] FAIL: Parse failed for message type\n", i);

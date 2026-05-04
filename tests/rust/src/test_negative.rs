@@ -18,8 +18,8 @@ use struct_frame_sdk::{
 // Helper: create a test message
 // ============================================================================
 
-fn create_test_message() -> SerializationTestBasicTypesMessage {
-    let mut msg = SerializationTestBasicTypesMessage::default();
+fn create_test_message() -> BasicTypesMessage {
+    let mut msg = BasicTypesMessage::default();
     msg.small_int = 42;
     msg.medium_int = 1000;
     msg.regular_int = 100000;
@@ -303,7 +303,7 @@ fn test_network_sysid_compid() -> bool {
     let msg = create_test_message();
 
     // Build the payload manually
-    let mut payload = vec![0u8; SerializationTestBasicTypesMessage::MAX_SIZE];
+    let mut payload = vec![0u8; BasicTypesMessage::MAX_SIZE];
     let payload_len = msg.pack(&mut payload);
 
     let mut buf = vec![0u8; 1024];
@@ -314,11 +314,11 @@ fn test_network_sysid_compid() -> bool {
         1,   // seq
         5,   // sys_id
         10,  // comp_id
-        (SerializationTestBasicTypesMessage::MSG_ID >> 8) as u8, // pkg_id
-        (SerializationTestBasicTypesMessage::MSG_ID & 0xFF) as u8, // msg_id
+        (BasicTypesMessage::MSG_ID >> 8) as u8, // pkg_id
+        (BasicTypesMessage::MSG_ID & 0xFF) as u8, // msg_id
         &payload[..payload_len],
-        SerializationTestBasicTypesMessage::MAGIC1,
-        SerializationTestBasicTypesMessage::MAGIC2,
+        BasicTypesMessage::MAGIC1,
+        BasicTypesMessage::MAGIC2,
     );
 
     if frame_size < 10 {

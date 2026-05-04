@@ -26,7 +26,7 @@
 #include "frame_headers.hpp"
 #include "payload_types.hpp"
 
-namespace FrameParsers {
+namespace structframe {
 
 /*===========================================================================
  * Profile Configuration - Composed from Header + Payload configs
@@ -39,7 +39,7 @@ namespace FrameParsers {
  * Usage:
  *   using MyProfile = ProfileConfig<HEADER_BASIC_CONFIG, PAYLOAD_DEFAULT_CONFIG>;
  */
-template <FrameHeaders::HeaderConfig Header, PayloadTypes::PayloadConfig Payload>
+template <headers::HeaderConfig Header, payloads::PayloadConfig Payload>
 struct ProfileConfig {
   /* Header configuration */
   static constexpr auto header = Header;
@@ -66,7 +66,7 @@ struct ProfileConfig {
   /* Compute start byte2 dynamically for headers that encode payload type */
   static constexpr uint8_t computed_start_byte2() {
     if constexpr (Header.encodes_payload_type && Header.num_start_bytes == 2) {
-      return FrameHeaders::PAYLOAD_TYPE_BASE + static_cast<uint8_t>(Payload.payload_type);
+      return headers::PAYLOAD_TYPE_BASE + static_cast<uint8_t>(Payload.payload_type);
     } else {
       return Header.start_byte2;
     }
@@ -75,7 +75,7 @@ struct ProfileConfig {
   /* Compute start byte1 dynamically for Tiny header (single byte encodes payload type) */
   static constexpr uint8_t computed_start_byte1() {
     if constexpr (Header.encodes_payload_type && Header.num_start_bytes == 1) {
-      return FrameHeaders::PAYLOAD_TYPE_BASE + static_cast<uint8_t>(Payload.payload_type);
+      return headers::PAYLOAD_TYPE_BASE + static_cast<uint8_t>(Payload.payload_type);
     } else {
       return Header.start_byte1;
     }
@@ -389,24 +389,24 @@ class BufferParserMinimal {
 
 // Profile Standard: Basic + Default
 // Frame: [0x90] [0x71] [LEN] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-using ProfileStandardConfig = ProfileConfig<FrameHeaders::HEADER_BASIC_CONFIG, PayloadTypes::PAYLOAD_DEFAULT_CONFIG>;
+using ProfileStandardConfig = ProfileConfig<headers::HEADER_BASIC_CONFIG, payloads::PAYLOAD_DEFAULT_CONFIG>;
 
 // Profile Sensor: Tiny + Minimal
 // Frame: [0x70] [MSG_ID] [PAYLOAD]
-using ProfileSensorConfig = ProfileConfig<FrameHeaders::HEADER_TINY_CONFIG, PayloadTypes::PAYLOAD_MINIMAL_CONFIG>;
+using ProfileSensorConfig = ProfileConfig<headers::HEADER_TINY_CONFIG, payloads::PAYLOAD_MINIMAL_CONFIG>;
 
 // Profile IPC: None + Minimal
 // Frame: [MSG_ID] [PAYLOAD]
-using ProfileIPCConfig = ProfileConfig<FrameHeaders::HEADER_NONE_CONFIG, PayloadTypes::PAYLOAD_MINIMAL_CONFIG>;
+using ProfileIPCConfig = ProfileConfig<headers::HEADER_NONE_CONFIG, payloads::PAYLOAD_MINIMAL_CONFIG>;
 
 // Profile Bulk: Basic + Extended
 // Frame: [0x90] [0x74] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
-using ProfileBulkConfig = ProfileConfig<FrameHeaders::HEADER_BASIC_CONFIG, PayloadTypes::PAYLOAD_EXTENDED_CONFIG>;
+using ProfileBulkConfig = ProfileConfig<headers::HEADER_BASIC_CONFIG, payloads::PAYLOAD_EXTENDED_CONFIG>;
 
 // Profile Network: Basic + ExtendedMultiSystemStream
 // Frame: [0x90] [0x78] [SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD] [CRC1] [CRC2]
 using ProfileNetworkConfig =
-    ProfileConfig<FrameHeaders::HEADER_BASIC_CONFIG, PayloadTypes::PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG>;
+    ProfileConfig<headers::HEADER_BASIC_CONFIG, payloads::PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG>;
 
 /*===========================================================================
  * Buffer Reader/Writer Classes
@@ -1104,4 +1104,4 @@ using ProfileIPCAccumulatingReader = AccumulatingReader<ProfileIPCConfig>;
 using ProfileBulkAccumulatingReader = AccumulatingReader<ProfileBulkConfig>;
 using ProfileNetworkAccumulatingReader = AccumulatingReader<ProfileNetworkConfig>;
 
-}  // namespace FrameParsers
+}  // namespace structframe

@@ -55,7 +55,7 @@ inline void mem_copy(void* dest, const void* src, size_t size) {
 // Wire format size: 40 bytes (1+4+2+4+4+8+1+16)
 // =============================================================================
 #pragma pack(push, 1)
-struct TestMessagePacked : public FrameParsers::MessageBase<TestMessagePacked, 0x01, 40, 0xAA, 0x55> {
+struct TestMessagePacked : public structframe::MessageBase<TestMessagePacked, 0x01, 40, 0xAA, 0x55> {
   uint8_t msg_type;
   uint32_t sequence;
   int16_t sensor_value;
@@ -71,7 +71,7 @@ struct TestMessagePacked : public FrameParsers::MessageBase<TestMessagePacked, 0
     return sizeof(*this);
   }
 
-  size_t deserialize(const FrameParsers::FrameMsgInfo& info) {
+  size_t deserialize(const structframe::FrameMsgInfo& info) {
     if (info.msg_len < sizeof(*this)) return 0;
     mem_copy(this, info.msg_data, sizeof(*this));
     return sizeof(*this);
@@ -84,7 +84,7 @@ struct TestMessagePacked : public FrameParsers::MessageBase<TestMessagePacked, 0
 // Wire format size matches packed struct (40 bytes)
 // Uses IS_VARIABLE=true so encoder calls serialize() instead of memcpy(data())
 // =============================================================================
-struct TestMessageUnpacked : public FrameParsers::MessageBase<TestMessageUnpacked, 0x01, 40, 0xAA, 0x55> {
+struct TestMessageUnpacked : public structframe::MessageBase<TestMessageUnpacked, 0x01, 40, 0xAA, 0x55> {
   // Mark as variable so encoder uses serialize() instead of raw memcpy
   static constexpr bool IS_VARIABLE = true;
 
@@ -128,7 +128,7 @@ struct TestMessageUnpacked : public FrameParsers::MessageBase<TestMessageUnpacke
   }
 
   // Deserialize directly from wire buffer (field-by-field, no intermediate packed struct)
-  size_t deserialize(const FrameParsers::FrameMsgInfo& info) {
+  size_t deserialize(const structframe::FrameMsgInfo& info) {
     if (info.msg_len < WIRE_SIZE) return 0;
     const uint8_t* data = info.msg_data;
     size_t offset = 0;
@@ -206,7 +206,7 @@ inline void copy_to_unpacked(TestMessageUnpacked& unpacked, const TestMessagePac
 // =============================================================================
 // Message info function for parsing
 // =============================================================================
-inline FrameParsers::MessageInfo get_test_message_info(uint16_t msg_id) {
+inline structframe::MessageInfo get_test_message_info(uint16_t msg_id) {
   if (msg_id == TestMessagePacked::MSG_ID) {
     return {sizeof(TestMessagePacked), TestMessagePacked::MAGIC1, TestMessagePacked::MAGIC2};
   }
@@ -232,7 +232,7 @@ static constexpr size_t DEFAULT_RUNS = 1000;
 static constexpr size_t DEFAULT_BUFFER_SIZE = 128 * DEFAULT_ITERATIONS;
 
 // Default profile configuration
-using DefaultConfig = FrameParsers::ProfileStandardConfig;
+using DefaultConfig = structframe::ProfileStandardConfig;
 
 // Static test buffers and message arrays
 inline uint8_t* get_packed_buffer() {
@@ -302,7 +302,7 @@ inline EncodeDecodeResult encode_packed() {
   const TestMessagePacked* messages = get_packed_messages();
   size_t offset = 0;
   for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-    size_t written = FrameParsers::FrameEncoderWithCrc<DefaultConfig>::encode(
+    size_t written = structframe::FrameEncoderWithCrc<DefaultConfig>::encode(
         buffer + offset, DEFAULT_BUFFER_SIZE - offset, messages[i]);
     if (written == 0) {
       return {false, offset, i};
@@ -323,7 +323,7 @@ inline EncodeDecodeResult encode_unpacked() {
   const TestMessageUnpacked* messages = get_unpacked_messages();
   size_t offset = 0;
   for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-    size_t written = FrameParsers::FrameEncoderWithCrc<DefaultConfig>::encode(
+    size_t written = structframe::FrameEncoderWithCrc<DefaultConfig>::encode(
         buffer + offset, DEFAULT_BUFFER_SIZE - offset, messages[i]);
     if (written == 0) {
       return {false, offset, i};
@@ -344,7 +344,7 @@ inline EncodeDecodeResult decode_packed() {
   TestMessagePacked* messages = get_decoded_packed();
   size_t offset = 0;
   for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-    auto frame_info = FrameParsers::BufferParserWithCrc<DefaultConfig>::parse(buffer + offset, buffer_size - offset,
+    auto frame_info = structframe::BufferParserWithCrc<DefaultConfig>::parse(buffer + offset, buffer_size - offset,
                                                                               get_test_message_info);
     if (!frame_info.valid) {
       return {false, offset, i};
@@ -369,7 +369,7 @@ inline EncodeDecodeResult decode_unpacked() {
   TestMessageUnpacked* messages = get_decoded_unpacked();
   size_t offset = 0;
   for (size_t i = 0; i < DEFAULT_ITERATIONS; i++) {
-    auto frame_info = FrameParsers::BufferParserWithCrc<DefaultConfig>::parse(buffer + offset, buffer_size - offset,
+    auto frame_info = structframe::BufferParserWithCrc<DefaultConfig>::parse(buffer + offset, buffer_size - offset,
                                                                               get_test_message_info);
     if (!frame_info.valid) {
       return {false, offset, i};

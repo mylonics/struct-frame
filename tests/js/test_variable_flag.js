@@ -3,7 +3,7 @@
  */
 
 const { MESSAGE_COUNT, getMessage, checkMessage } = require('./include/variable_flag_messages');
-const { get_message_info } = require('../generated/js/serialization_test.structframe');
+const { get_message_info } = require('../generated/js/serialization-test.structframe');
 const { run } = require('./include/test_harness');
 
 const TEST_NAME = 'VariableFlagMessages';
