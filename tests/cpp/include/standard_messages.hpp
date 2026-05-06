@@ -9,17 +9,15 @@ using namespace structframe::serialization_test;
 // Message provider struct for use with TestRunner template
 struct StandardMessages {
   // Variant type for message return - includes all message types from standard_test_data
-  using MessageVariant =
-      std::variant<SerializationTestMessage, BasicTypesMessage,
-                   UnionTestMessage, VariableSingleArray, Message,
-                   NestedEnumMessage>;
+  using MessageVariant = std::variant<SerializationTestMessage, BasicTypesMessage, UnionTestMessage,
+                                      VariableSingleArray, Message, NestedEnumMessage, CollisionEnumMessage>;
 
   // Total number of messages (matches MESSAGE_COUNT from standard_test_data)
-  static constexpr size_t MESSAGE_COUNT = 19;
+  static constexpr size_t MESSAGE_COUNT = 21;
 
   // Helper functions to create messages (same as standard_test_data)
-  static SerializationTestMessage create_serialization_test(
-      uint32_t magic, const char* str, float flt, bool bl, const std::initializer_list<int32_t>& arr) {
+  static SerializationTestMessage create_serialization_test(uint32_t magic, const char* str, float flt, bool bl,
+                                                            const std::initializer_list<int32_t>& arr) {
     SerializationTestMessage msg{};
     msg.magic_number = magic;
     msg.test_string.length = static_cast<uint8_t>(std::strlen(str));
@@ -35,10 +33,9 @@ struct StandardMessages {
     return msg;
   }
 
-  static BasicTypesMessage create_basic_types(int8_t si, int16_t mi, int32_t ri, int64_t li,
-                                                               uint8_t su, uint16_t mu, uint32_t ru, uint64_t lu,
-                                                               float sp, double dp, bool fl, const char* dev,
-                                                               const char* desc) {
+  static BasicTypesMessage create_basic_types(int8_t si, int16_t mi, int32_t ri, int64_t li, uint8_t su, uint16_t mu,
+                                              uint32_t ru, uint64_t lu, float sp, double dp, bool fl, const char* dev,
+                                              const char* desc) {
     BasicTypesMessage msg{};
     msg.small_int = si;
     msg.medium_int = mi;
@@ -251,12 +248,26 @@ struct StandardMessages {
         msg.enabled = false;
         return msg;
       }
-      case 18:
-      default: {
+      case 18: {
         NestedEnumMessage msg{};
         msg.mode = NestedEnumMessage::OperationMode::Active;
         msg.value = 42;
         msg.enabled = true;
+        return msg;
+      }
+      case 19: {
+        CollisionEnumMessage msg{};
+        msg.status = CollisionEnumMessage::Status::Running;
+        msg.id = 7;
+        msg.time = 1.23;
+        return msg;
+      }
+      case 20:
+      default: {
+        CollisionEnumMessage msg{};
+        msg.status = CollisionEnumMessage::Status::Failed;
+        msg.id = 0;
+        msg.time = 0.0;
         return msg;
       }
     }

@@ -24,7 +24,7 @@
  * Message count and order
  * ============================================================================ */
 
-#define STD_MESSAGE_COUNT 19
+#define STD_MESSAGE_COUNT 21
 
 /* Index tracking for encoding/validation */
 static size_t std_serial_idx = 0;
@@ -33,6 +33,7 @@ static size_t std_union_idx = 0;
 static size_t std_var_single_idx = 0;
 static size_t std_message_idx = 0;
 static size_t std_nested_enum_idx = 0;
+static size_t std_collision_enum_idx = 0;
 
 /* Message ID order array */
 static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
@@ -55,6 +56,8 @@ static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_MESSAGE_MSG_ID,                    /* 16: Message[0] */
     SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MSG_ID,        /* 17: NestedEnum[0] - idle */
     SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MSG_ID,        /* 18: NestedEnum[1] - active */
+    SERIALIZATION_TEST_COLLISION_ENUM_MESSAGE_MSG_ID,     /* 19: CollisionEnum[0] - running */
+    SERIALIZATION_TEST_COLLISION_ENUM_MESSAGE_MSG_ID,     /* 20: CollisionEnum[1] - failed */
 };
 
 static inline const uint16_t* std_get_msg_id_order(void) { return std_msg_id_order; }
@@ -310,11 +313,11 @@ static inline const SerializationTestVariableSingleArray* get_variable_single_ar
   static bool initialized = false;
 
   if (!initialized) {
-    messages[0] = create_variable_single_array_empty();   /* Empty */
-    messages[1] = create_variable_single_array_single();  /* Single element */
-    messages[2] = create_variable_single_array_third();   /* One-third filled */
-    messages[3] = create_variable_single_array_almost();  /* One position empty */
-    messages[4] = create_variable_single_array_full();    /* Full */
+    messages[0] = create_variable_single_array_empty();  /* Empty */
+    messages[1] = create_variable_single_array_single(); /* Single element */
+    messages[2] = create_variable_single_array_third();  /* One-third filled */
+    messages[3] = create_variable_single_array_almost(); /* One position empty */
+    messages[4] = create_variable_single_array_full();   /* Full */
     initialized = true;
   }
 
@@ -366,6 +369,27 @@ static inline const SerializationTestNestedEnumMessage* get_nested_enum_messages
   return messages;
 }
 
+static inline const SerializationTestCollisionEnumMessage* get_collision_enum_messages(void) {
+  static SerializationTestCollisionEnumMessage messages[2];
+  static bool initialized = false;
+
+  if (!initialized) {
+    memset(&messages[0], 0, sizeof(messages[0]));
+    messages[0].status = SERIALIZATION_TEST_COLLISION_ENUM_MESSAGE_STATUS_RUNNING;
+    messages[0].id = 7;
+    messages[0].time = 1.23;
+
+    memset(&messages[1], 0, sizeof(messages[1]));
+    messages[1].status = SERIALIZATION_TEST_COLLISION_ENUM_MESSAGE_STATUS_FAILED;
+    messages[1].id = 0;
+    messages[1].time = 0.0;
+
+    initialized = true;
+  }
+
+  return messages;
+}
+
 /* ============================================================================
  * Reset state for new encode/decode run
  * ============================================================================ */
@@ -377,6 +401,7 @@ static inline void std_reset_state(void) {
   std_var_single_idx = 0;
   std_message_idx = 0;
   std_nested_enum_idx = 0;
+  std_collision_enum_idx = 0;
 }
 
 /* ============================================================================
@@ -389,45 +414,56 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
   if (msg_id == SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestSerializationTestMessage* msg = &get_serialization_test_messages()[std_serial_idx++];
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
-                               SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAGIC2);
+                               SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAGIC1,
+                               SERIALIZATION_TEST_SERIALIZATION_TEST_MESSAGE_MAGIC2);
   } else if (msg_id == SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID) {
     const SerializationTestBasicTypesMessage* msg = &get_basic_types_messages()[std_basic_idx++];
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
-                               SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+                               SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                               SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
   } else if (msg_id == SERIALIZATION_TEST_UNION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestUnionTestMessage* msg = &get_union_test_messages()[std_union_idx++];
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
-                               SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC2);
+                               SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC1,
+                               SERIALIZATION_TEST_UNION_TEST_MESSAGE_MAGIC2);
   } else if (msg_id == SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID) {
     const SerializationTestVariableSingleArray* msg = &get_variable_single_array_messages()[std_var_single_idx++];
-    /* Variable message: use pack_variable if profile has length field */
-    #ifdef SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_IS_VARIABLE
+/* Variable message: use pack_variable if profile has length field */
+#ifdef SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_IS_VARIABLE
     if (writer->config->payload.has_length) {
       static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAX_SIZE];
       size_t packed_size = SerializationTestVariableSingleArray_serialize_variable(msg, pack_buffer);
       return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
-                                 SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1, SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
+                                 SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1,
+                                 SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
     }
-    #endif
+#endif
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
-                               SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1, SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
+                               SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC1,
+                               SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MAGIC2);
   } else if (msg_id == SERIALIZATION_TEST_MESSAGE_MSG_ID) {
     const SerializationTestMessage* msg = &get_message_messages()[std_message_idx++];
-    /* Variable message: use pack_variable if profile has length field */
-    #ifdef SERIALIZATION_TEST_MESSAGE_IS_VARIABLE
+/* Variable message: use pack_variable if profile has length field */
+#ifdef SERIALIZATION_TEST_MESSAGE_IS_VARIABLE
     if (writer->config->payload.has_length) {
       static uint8_t pack_buffer[SERIALIZATION_TEST_MESSAGE_MAX_SIZE];
       size_t packed_size = SerializationTestMessage_serialize_variable(msg, pack_buffer);
       return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
                                  SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_MESSAGE_MAGIC2);
     }
-    #endif
+#endif
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
                                SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_MESSAGE_MAGIC2);
   } else if (msg_id == SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MSG_ID) {
     const SerializationTestNestedEnumMessage* msg = &get_nested_enum_messages()[std_nested_enum_idx++];
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
-                               SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MAGIC1, SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MAGIC2);
+                               SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MAGIC1,
+                               SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MAGIC2);
+  } else if (msg_id == SERIALIZATION_TEST_COLLISION_ENUM_MESSAGE_MSG_ID) {
+    const SerializationTestCollisionEnumMessage* msg = &get_collision_enum_messages()[std_collision_enum_idx++];
+    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
+                               SERIALIZATION_TEST_COLLISION_ENUM_MESSAGE_MAGIC1,
+                               SERIALIZATION_TEST_COLLISION_ENUM_MESSAGE_MAGIC2);
   }
 
   return 0;
@@ -476,6 +512,11 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
     if (size != sizeof(*expected)) return false;
     const SerializationTestNestedEnumMessage* decoded = (const SerializationTestNestedEnumMessage*)data;
     return SerializationTestNestedEnumMessage_equals(decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_COLLISION_ENUM_MESSAGE_MSG_ID) {
+    const SerializationTestCollisionEnumMessage* expected = &get_collision_enum_messages()[std_collision_enum_idx++];
+    if (size != sizeof(*expected)) return false;
+    const SerializationTestCollisionEnumMessage* decoded = (const SerializationTestCollisionEnumMessage*)data;
+    return SerializationTestCollisionEnumMessage_equals(decoded, expected);
   }
 
   return false;
@@ -486,9 +527,8 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
  * ============================================================================ */
 
 static inline bool std_supports_format(const char* format) {
-  return strcmp(format, "standard") == 0 || strcmp(format, "sensor") == 0 ||
-         strcmp(format, "ipc") == 0 || strcmp(format, "bulk") == 0 ||
-         strcmp(format, "network") == 0;
+  return strcmp(format, "standard") == 0 || strcmp(format, "sensor") == 0 || strcmp(format, "ipc") == 0 ||
+         strcmp(format, "bulk") == 0 || strcmp(format, "network") == 0;
 }
 
 /* ============================================================================

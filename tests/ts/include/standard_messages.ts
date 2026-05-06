@@ -15,6 +15,8 @@ import {
   MsgSeverity,
   NestedEnumMessage,
   NestedEnumMessageOperationMode,
+  CollisionEnumMessage,
+  CollisionEnumMessageStatus,
 } from '../../generated/ts/serialization-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
@@ -25,10 +27,11 @@ export type MessageType =
   | UnionTestMessage
   | VariableSingleArray
   | Message
-  | NestedEnumMessage;
+  | NestedEnumMessage
+  | CollisionEnumMessage;
 
 // Message count
-export const MESSAGE_COUNT = 19;
+export const MESSAGE_COUNT = 21;
 
 
 // ============================================================================
@@ -198,7 +201,9 @@ export function getMessage(index: number): MessageType {
     case 15: return createVariableSingleArrayFull();
     case 16: return createMessageTest();
     case 17: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Idle, value: 0, enabled: false });
-    default: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Active, value: 42, enabled: true });
+    case 18: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Active, value: 42, enabled: true });
+    case 19: return new CollisionEnumMessage({ status: CollisionEnumMessageStatus.Running, id: 7, time: 1.23 });
+    default: return new CollisionEnumMessage({ status: CollisionEnumMessageStatus.Failed, id: 0, time: 0.0 });
   }
 }
 

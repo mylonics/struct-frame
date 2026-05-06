@@ -24,6 +24,7 @@ from struct_frame.generated.serialization_test import (
     Message,
     MsgSeverity,
     NestedEnumMessage,
+    CollisionEnumMessage,
     get_message_info,
 )
 
@@ -35,10 +36,11 @@ MessageType = Union[
     VariableSingleArray,
     Message,
     NestedEnumMessage,
+    CollisionEnumMessage,
 ]
 
 # Message count
-MESSAGE_COUNT = 19
+MESSAGE_COUNT = 21
 
 
 # ============================================================================
@@ -184,8 +186,12 @@ def get_message(index: int) -> MessageType:
         return create_message_test()
     elif index == 17:
         return NestedEnumMessage(mode=NestedEnumMessage.OperationMode.IDLE.value, value=0, enabled=False)
-    else:  # index == 18
+    elif index == 18:
         return NestedEnumMessage(mode=NestedEnumMessage.OperationMode.ACTIVE.value, value=42, enabled=True)
+    elif index == 19:
+        return CollisionEnumMessage(status=CollisionEnumMessage.Status.RUNNING.value, id=7, time=1.23)
+    else:  # index == 20
+        return CollisionEnumMessage(status=CollisionEnumMessage.Status.FAILED.value, id=0, time=0.0)
 
 
 # ============================================================================
