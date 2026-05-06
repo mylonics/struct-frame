@@ -549,7 +549,7 @@ class TestRunner:
             # Build command - always include --equality and --force flags for test generation
             # --force ensures regeneration even if hash matches (tests always need fresh generation)
             # --generate_tests emits per-package round-trip test code consumed by the
-            # roundtrip phase (see run_roundtrip_tests).
+            # round-trip phase (see run_roundtrip_tests).
             cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests"]
             for lang in active:
                 gen_dir = self.project_root / lang.gen_output_dir

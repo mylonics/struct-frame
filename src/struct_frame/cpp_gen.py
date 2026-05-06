@@ -744,9 +744,10 @@ class FileCppGen():
         # Include cstring for string comparison if equality is enabled
         if equality:
             yield '#include <cstring>\n'
-        # ``std::enable_if_t`` is referenced in the envelope/multi-message
-        # template overloads emitted further below; ensure the include is
-        # always present.
+        # ``std::enable_if_t`` is referenced in the multi-message envelope
+        # template overloads emitted later by FileCppGen for message types
+        # whose package contains envelope/oneof groupings; ensure the include
+        # is always present so generated headers compile standalone.
         yield '#include <type_traits>\n'
         
         # Always include frame_base.hpp for FrameMsgInfo and MessageBase

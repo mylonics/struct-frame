@@ -1417,8 +1417,10 @@ class TestPyGen():
                     items = ", ".join(f'b"test_{i}"' for i in range(count))
                 else:
                     items = ", ".join(TestPyGen._get_dummy_value(field, i) for i in range(count))
-                # Pad with default zero/empty values up to size_option so existing
-                # generated serializers that index past ``count`` find a valid value.
+                # Pad with default zero/empty values up to size_option so that
+                # the message serialiser emitted by FilePyGen, which always
+                # iterates the full ``size_option`` count, finds a valid value
+                # at every index instead of raising IndexError.
                 if type_name == "string":
                     pad = ", ".join('b""' for _ in range(field.size_option - count))
                 else:
