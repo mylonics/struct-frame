@@ -1490,27 +1490,32 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
             return None, element, element
 
         if lang == 'cpp':
-            # C++ uses package namespaces only when package IDs are enabled.
-            if pkg.package_id is not None:
-                namespace = camel_to_snake_case(pkg_name)
-                element = symbol_name
-                return namespace, element, f'{namespace}::{element}'
+            # C++ always uses structframe::<pkg_name> nested namespace
+            namespace = f'structframe::{camel_to_snake_case(pkg_name)}'
+            element = symbol_name
+            return namespace, element, f'{namespace}::{element}'
+
+        if lang in ('ts', 'js'):
+            element = symbol_name
+            return None, element, element
+
+        if lang == 'gql':
             element = f'{pkg_pascal}{symbol_name}'
             return None, element, element
 
-        if lang in ('ts', 'js', 'py', 'rust', 'gql'):
-            element = f'{pkg_pascal}{symbol_name}'
-            if lang == 'py':
-                namespace = f'struct_frame.generated.{pkg_name}'
-                return namespace, element, f'{namespace}.{element}'
-            if lang == 'rust':
-                namespace = pkg_name
-                return namespace, element, f'{namespace}::{element}'
-            return None, element, element
+        if lang == 'py':
+            namespace = f'struct_frame.generated.{pkg_name}'
+            element = symbol_name
+            return namespace, element, f'{namespace}.{element}'
+
+        if lang == 'rust':
+            namespace = pkg_name
+            element = symbol_name
+            return namespace, element, f'{namespace}::{element}'
 
         if lang == 'csharp':
             namespace = f'StructFrame.{pkg_pascal}'
-            element = f'{pkg_pascal}{symbol_name}'
+            element = symbol_name
             return namespace, element, f'{namespace}.{element}'
 
         return None, symbol_name, symbol_name
@@ -1573,16 +1578,14 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                         return None, flat_name, flat_name
 
                     if lang == 'cpp':
-                        parent_struct = f'{pkg_pascal_}{msg_name_}'
-                        if pkg_.package_id is not None:
-                            ns = camel_to_snake_case(pkg_name_)
-                            return ns, enum_name_, f'{ns}::{msg_name_}::{enum_name_}'
-                        return None, enum_name_, f'{parent_struct}::{enum_name_}'
+                        # C++ always uses structframe::<pkg_name> nested namespace
+                        ns = f'structframe::{camel_to_snake_case(pkg_name_)}'
+                        element = f'{msg_name_}::{enum_name_}'
+                        return ns, element, f'{ns}::{msg_name_}::{enum_name_}'
 
                     if lang == 'py':
-                        parent_class = f'{pkg_pascal_}{msg_name_}'
                         ns = f'struct_frame.generated.{pkg_name_}'
-                        return ns, enum_name_, f'{ns}.{parent_class}.{enum_name_}'
+                        return ns, enum_name_, f'{ns}.{msg_name_}.{enum_name_}'
 
                     if lang in ('ts', 'js'):
                         element = f'{msg_name_}{enum_name_}'

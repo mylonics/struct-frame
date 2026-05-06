@@ -131,7 +131,7 @@ repeated float matrix = 1 [size=9];  // Always 9 floats (3x3 matrix)
 repeated int32 readings = 1 [max_size=100];  // 0-100 integers
 ```
 
-Includes a 1-byte count prefix.
+Includes a count prefix before the array data. Arrays with `max_size` ≤ 255 use a 1-byte (`uint8`) count; arrays with `max_size` > 255 use a 2-byte (`uint16`) count.
 
 **String arrays**
 
