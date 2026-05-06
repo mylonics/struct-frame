@@ -27,7 +27,12 @@ def get_csharp_field_type(field, package_name):
         type_pkg = getattr(field, 'type_package', None) if hasattr(field, 'type_package') else None
         type_pkg = type_pkg if type_pkg else getattr(field, 'package', package_name)
         if field.is_enum:
-            base_type = type_name
+            type_msg = getattr(field, 'type_message', None)
+            if type_msg:
+                # Nested enum: qualify with class name (e.g., NestedEnumMessage.OperationMode)
+                base_type = f'{type_msg}.{type_name}'
+            else:
+                base_type = type_name
         else:
             base_type = type_name
     

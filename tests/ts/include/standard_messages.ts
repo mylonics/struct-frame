@@ -13,20 +13,22 @@ import {
   VariableSingleArray,
   Message,
   MsgSeverity,
+  NestedEnumMessage,
+  NestedEnumMessageOperationMode,
 } from '../../generated/ts/serialization-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
 
-// Type alias for message union (like C++ MessageVariant)
 export type MessageType = 
   | SerializationTestMessage
   | BasicTypesMessage
   | UnionTestMessage
   | VariableSingleArray
-  | Message;
+  | Message
+  | NestedEnumMessage;
 
 // Message count
-export const MESSAGE_COUNT = 17;
+export const MESSAGE_COUNT = 19;
 
 
 // ============================================================================
@@ -194,7 +196,9 @@ export function getMessage(index: number): MessageType {
     case 13: return createVariableSingleArrayThird();
     case 14: return createVariableSingleArrayAlmost();
     case 15: return createVariableSingleArrayFull();
-    default: return createMessageTest();
+    case 16: return createMessageTest();
+    case 17: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Idle, value: 0, enabled: false });
+    default: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Active, value: 42, enabled: true });
   }
 }
 

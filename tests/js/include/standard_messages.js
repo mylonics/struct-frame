@@ -13,10 +13,12 @@ const {
   VariableSingleArray,
   Message,
   MsgSeverity,
+  NestedEnumMessage,
+  NestedEnumMessageOperationMode,
 } = require('../../generated/js/serialization-test.structframe');
 
 // Message count
-const MESSAGE_COUNT = 17;
+const MESSAGE_COUNT = 19;
 
 
 // ============================================================================
@@ -183,7 +185,9 @@ function getMessage(index) {
     case 13: return createVariableSingleArrayThird();
     case 14: return createVariableSingleArrayAlmost();
     case 15: return createVariableSingleArrayFull();
-    default: return createMessageTest();
+    case 16: return createMessageTest();
+    case 17: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Idle, value: 0, enabled: false });
+    default: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Active, value: 42, enabled: true });
   }
 }
 

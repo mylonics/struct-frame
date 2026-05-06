@@ -24,7 +24,7 @@
  * Message count and order
  * ============================================================================ */
 
-#define STD_MESSAGE_COUNT 17
+#define STD_MESSAGE_COUNT 19
 
 /* Index tracking for encoding/validation */
 static size_t std_serial_idx = 0;
@@ -32,6 +32,7 @@ static size_t std_basic_idx = 0;
 static size_t std_union_idx = 0;
 static size_t std_var_single_idx = 0;
 static size_t std_message_idx = 0;
+static size_t std_nested_enum_idx = 0;
 
 /* Message ID order array */
 static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
@@ -52,6 +53,8 @@ static const uint16_t std_msg_id_order[STD_MESSAGE_COUNT] = {
     SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 14: VariableSingleArray[3] - one empty */
     SERIALIZATION_TEST_VARIABLE_SINGLE_ARRAY_MSG_ID,      /* 15: VariableSingleArray[4] - full */
     SERIALIZATION_TEST_MESSAGE_MSG_ID,                    /* 16: Message[0] */
+    SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MSG_ID,        /* 17: NestedEnum[0] - idle */
+    SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MSG_ID,        /* 18: NestedEnum[1] - active */
 };
 
 static inline const uint16_t* std_get_msg_id_order(void) { return std_msg_id_order; }
@@ -342,6 +345,27 @@ static inline const SerializationTestMessage* get_message_messages(void) {
   return messages;
 }
 
+static inline const SerializationTestNestedEnumMessage* get_nested_enum_messages(void) {
+  static SerializationTestNestedEnumMessage messages[2];
+  static bool initialized = false;
+
+  if (!initialized) {
+    memset(&messages[0], 0, sizeof(messages[0]));
+    messages[0].mode = SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_OPERATION_MODE_IDLE;
+    messages[0].value = 0;
+    messages[0].enabled = false;
+
+    memset(&messages[1], 0, sizeof(messages[1]));
+    messages[1].mode = SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_OPERATION_MODE_ACTIVE;
+    messages[1].value = 42;
+    messages[1].enabled = true;
+
+    initialized = true;
+  }
+
+  return messages;
+}
+
 /* ============================================================================
  * Reset state for new encode/decode run
  * ============================================================================ */
@@ -352,6 +376,7 @@ static inline void std_reset_state(void) {
   std_union_idx = 0;
   std_var_single_idx = 0;
   std_message_idx = 0;
+  std_nested_enum_idx = 0;
 }
 
 /* ============================================================================
@@ -399,6 +424,10 @@ static inline size_t std_encode_message(buffer_writer_t* writer, size_t index) {
     #endif
     return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
                                SERIALIZATION_TEST_MESSAGE_MAGIC1, SERIALIZATION_TEST_MESSAGE_MAGIC2);
+  } else if (msg_id == SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MSG_ID) {
+    const SerializationTestNestedEnumMessage* msg = &get_nested_enum_messages()[std_nested_enum_idx++];
+    return buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0, 0,
+                               SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MAGIC1, SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MAGIC2);
   }
 
   return 0;
@@ -442,6 +471,11 @@ static inline bool std_validate_message(uint16_t msg_id, const uint8_t* data, si
       return false;
     }
     return SerializationTestMessage_equals(&decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_NESTED_ENUM_MESSAGE_MSG_ID) {
+    const SerializationTestNestedEnumMessage* expected = &get_nested_enum_messages()[std_nested_enum_idx++];
+    if (size != sizeof(*expected)) return false;
+    const SerializationTestNestedEnumMessage* decoded = (const SerializationTestNestedEnumMessage*)data;
+    return SerializationTestNestedEnumMessage_equals(decoded, expected);
   }
 
   return false;

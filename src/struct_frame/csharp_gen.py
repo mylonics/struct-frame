@@ -100,7 +100,25 @@ class EnumCSharpGen():
         result += '\n    }\n'
 
         return result
-    
+
+    @staticmethod
+    def generate_nested(field):
+        """Generate a nested enum inside a C# class body (double-indented)."""
+        result = ''
+        if field.comments:
+            result += format_xml_summary(field.comments, indent='        ')
+        enum_name = field.name
+        result += '        public enum %s : byte\n' % enum_name
+        result += '        {\n'
+        entries = list(field.data.items())
+        for i, (entry_name, (value, comments)) in enumerate(entries):
+            if comments:
+                result += '            /// <summary>%s</summary>\n' % ' '.join(c.strip('/').strip() for c in comments)
+            comma = ',' if i < len(entries) - 1 else ''
+            result += '            %s = %d%s\n' % (pascal_case(entry_name), value, comma)
+        result += '        }\n'
+        return result
+
     @staticmethod
     def generate_discriminator_enum(oneof, msg_name):
         """Generate a discriminator enum for field_order oneofs in C#."""
@@ -477,6 +495,12 @@ class MessageCSharpGen():
         result += '    {\n'
 
         result += '        public const int MaxSize = %d;\n' % msg.size
+
+        # Emit nested enum definitions inside the class body
+        for enum_name, enum in msg.enums.items():
+            result += EnumCSharpGen.generate_nested(enum)
+            result += '\n'
+
         if msg.id:
             if package and package.package_id is not None:
                 combined_msg_id = (package.package_id << 8) | msg.id

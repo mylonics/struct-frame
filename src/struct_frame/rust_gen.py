@@ -138,12 +138,56 @@ class EnumRustGen():
 
         return result
 
+    @staticmethod
+    def generate_for_message(field, msg_name):
+        """Generate a flattened Rust enum for a message-nested enum.
+
+        Rust doesn't support enum nesting inside structs, so the enum is
+        emitted at module scope with a prefixed name: MsgNameEnumName.
+        """
+        result = ''
+        if field.comments:
+            for c in field.comments:
+                result += '//%s\n' % c
+        enum_name = f'{msg_name}{field.name}'
+        result += '/// Nested enum %s::%s (module-scoped for Rust)\n' % (msg_name, field.name)
+        result += '#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]\n'
+        result += '#[repr(u8)]\n'
+        result += 'pub enum %s {\n' % enum_name
+
+        entries = list(field.data.items())
+        for idx, (entry_key, (value, comments)) in enumerate(entries):
+            for c in comments:
+                result += '    //%s\n' % c
+            display_name = _style_c.enum_entry(entry_key)
+            if idx == 0:
+                result += '    #[default]\n'
+            result += '    %s = %d,\n' % (display_name, value)
+
+        result += '}\n\n'
+        # from_u8 impl
+        result += 'impl %s {\n' % enum_name
+        result += '    pub fn from_u8(v: u8) -> Option<Self> {\n'
+        result += '        match v {\n'
+        for entry_key, (value, _) in field.data.items():
+            display_name = _style_c.enum_entry(entry_key)
+            result += '            %d => Some(Self::%s),\n' % (value, display_name)
+        result += '            _ => None,\n'
+        result += '        }\n'
+        result += '    }\n'
+        result += '}\n'
+        return result
+
 
 def _get_field_type(field):
     """Get Rust type for a field (non-array, non-string)."""
     type_name = field.field_type
     if type_name in rust_types:
         return rust_types[type_name]
+    # Nested enum: flattened as MsgNameEnumName
+    type_msg = getattr(field, 'type_message', None)
+    if type_msg and field.is_enum:
+        return type_msg + type_name
     # Use type_package if available (for cross-package type references)
     type_pkg = getattr(field, 'type_package', None) or field.package
     if field.is_enum:
@@ -396,7 +440,11 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                         lines.append(f'{indent}    _pos += {type_size};')
                     lines.append(f'{indent}}}')
             elif field.is_enum:
-                enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
+                type_msg = getattr(field, 'type_message', None)
+                if type_msg:
+                    enum_type = type_msg + field.field_type
+                else:
+                    enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
                 if field.size_option is not None:
                     lines.append(f'{indent}// Fixed enum array: {var_name}')
                     lines.append(f'{indent}let mut {var_name}: [{enum_type}; {field.size_option}] = [{enum_type}::default(); {field.size_option}];')
@@ -470,7 +518,11 @@ def _generate_unpack_field(field, indent='        ', variable=False):
             lines.append(f'{indent}let {var_name} = {unpack_expr};')
             lines.append(f'{indent}_pos += {type_size};')
         elif field.is_enum:
-            enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
+            type_msg = getattr(field, 'type_message', None)
+            if type_msg:
+                enum_type = type_msg + field.field_type
+            else:
+                enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
             lines.append(f'{indent}let {var_name} = {enum_type}::from_u8(buf[_pos]).unwrap_or_default();')
             lines.append(f'{indent}_pos += 1;')
         else:
@@ -615,6 +667,11 @@ class MessageRustGen():
         if msg.comments:
             for c in msg.comments:
                 result += '//%s\n' % c
+
+        # Emit nested enum definitions before the struct (Rust has no nested types in structs)
+        for enum_name, enum in msg.enums.items():
+            result += EnumRustGen.generate_for_message(enum, struct_name)
+            result += '\n'
 
         # Derive attributes (Default is manually implemented if large arrays are present)
         needs_manual_default = _needs_manual_default(msg)

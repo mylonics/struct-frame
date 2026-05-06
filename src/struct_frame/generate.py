@@ -328,6 +328,7 @@ class Enum:
         self.package = package
         self.is_enum = True
         self.source_file = None
+        self.message = None  # Parent message name, or None for package-level enums
 
     def parse(self, enum):
         self.name = enum.name
@@ -370,6 +371,7 @@ class Field:
         self.package = package  # Package where this field is defined
         # Package where the field's type is defined (for cross-package refs)
         self.type_package = None
+        self.type_message = None  # Message name if type is a nested enum, else None
         self.is_enum = False
         self.flatten = False
         self.is_array = False
@@ -445,57 +447,66 @@ class Field:
             pass
         return True
 
-    def validate(self, current_package, packages, debug=False):
+    def validate(self, current_package, packages, debug=False, current_message=None):
 
         global current_error_field
         current_error_field = self.name
         if not self.validated:
-            # Handle fully-qualified type names like "pkg_name.TypeName"
-            bare_type = self.field_type
-            qualified_pkg = None
-            if '.' in self.field_type:
-                parts = self.field_type.split('.', 1)
-                qualified_pkg = parts[0]
-                bare_type = parts[1]
-
-            if qualified_pkg:
-                # Qualified name: search only in the named package
-                ret = None
-                source_package = None
-                if qualified_pkg in packages:
-                    ret = packages[qualified_pkg].find_field_type(bare_type)
-                    if ret:
-                        source_package = packages[qualified_pkg]
+            # Check for nested enum in the current message first (unqualified name only)
+            if (current_message and '.' not in self.field_type
+                    and self.field_type in current_message.enums):
+                nested_enum = current_message.enums[self.field_type]
+                self.is_enum = True
+                self.type_message = current_message.name
+                self.validated = True
+                base_size = nested_enum.size
             else:
-                # First try to find the type in the current package
-                ret = current_package.find_field_type(self.field_type)
-                source_package = current_package
+                # Handle fully-qualified type names like "pkg_name.TypeName"
+                bare_type = self.field_type
+                qualified_pkg = None
+                if '.' in self.field_type:
+                    parts = self.field_type.split('.', 1)
+                    qualified_pkg = parts[0]
+                    bare_type = parts[1]
 
-                # If not found in current package, search in all packages
-                if not ret:
-                    for pkg_name, pkg in packages.items():
-                        ret = pkg.find_field_type(self.field_type)
+                if qualified_pkg:
+                    # Qualified name: search only in the named package
+                    ret = None
+                    source_package = None
+                    if qualified_pkg in packages:
+                        ret = packages[qualified_pkg].find_field_type(bare_type)
                         if ret:
-                            source_package = pkg
-                            break
+                            source_package = packages[qualified_pkg]
+                else:
+                    # First try to find the type in the current package
+                    ret = current_package.find_field_type(self.field_type)
+                    source_package = current_package
 
-            if ret:
-                if ret.validate(current_package, packages, debug):
-                    self.is_enum = ret.is_enum
-                    self.validated = True
-                    base_size = ret.size
-                    # Track which package the type comes from
-                    self.type_package = source_package.name
-                    # Normalize field_type to the bare name (strip package qualifier)
-                    self.field_type = bare_type
+                    # If not found in current package, search in all packages
+                    if not ret:
+                        for pkg_name, pkg in packages.items():
+                            ret = pkg.find_field_type(self.field_type)
+                            if ret:
+                                source_package = pkg
+                                break
+
+                if ret:
+                    if ret.validate(current_package, packages, debug):
+                        self.is_enum = ret.is_enum
+                        self.validated = True
+                        base_size = ret.size
+                        # Track which package the type comes from
+                        self.type_package = source_package.name
+                        # Normalize field_type to the bare name (strip package qualifier)
+                        self.field_type = bare_type
+                    else:
+                        print(
+                            f"Failed to validate Field: {self.name} of Type: {self.field_type} in Package: {current_package.name}")
+                        return False
                 else:
                     print(
-                        f"Failed to validate Field: {self.name} of Type: {self.field_type} in Package: {current_package.name}")
+                        f"Failed to find Field: {self.name} of Type: {self.field_type} in Package: {current_package.name}")
                     return False
-            else:
-                print(
-                    f"Failed to find Field: {self.name} of Type: {self.field_type} in Package: {current_package.name}")
-                return False
         else:
             base_size = self.size
 
@@ -657,7 +668,7 @@ class OneOf:
                     return False
         return True
 
-    def validate(self, current_package, packages, debug=False):
+    def validate(self, current_package, packages, debug=False, current_message=None):
         """Validate all fields in the oneof and determine size."""
         if self.validated:
             return True
@@ -667,7 +678,7 @@ class OneOf:
         all_have_msg_id = True
 
         for key, field in self.fields.items():
-            if not field.validate(current_package, packages, debug):
+            if not field.validate(current_package, packages, debug, current_message=current_message):
                 print(f"Failed to validate field {key} in oneof {self.name}")
                 return False
             max_size = max(max_size, field.size)
@@ -756,6 +767,7 @@ class Message:
         self.name = None
         self.fields = {}
         self.oneofs = {}  # Dictionary of oneof constructs
+        self.enums = {}  # Nested enum definitions (message-scoped)
         self.validated = False
         self.comments = comments
         self.package = package
@@ -793,6 +805,15 @@ class Message:
                 comments = []
                 if not self.oneofs[e.name].parse(e):
                     return False
+            elif type(e) == ast.Enum:
+                if e.name in self.enums:
+                    print(f"Enum Redeclaration in message {self.name}")
+                    return False
+                self.enums[e.name] = Enum(self.package, comments)
+                self.enums[e.name].message = self.name
+                comments = []
+                if not self.enums[e.name].parse(e):
+                    return False
             elif type(e) == ast.Field:
                 if e.name in self.fields:
                     print(f"Field Redeclaration")
@@ -812,7 +833,7 @@ class Message:
 
         # Validate regular fields
         for key, value in self.fields.items():
-            if not value.validate(current_package, packages, debug):
+            if not value.validate(current_package, packages, debug, current_message=self):
                 print(
                     f"Failed To validate Field: {key}, in Message {self.name}\n")
                 return False
@@ -820,7 +841,7 @@ class Message:
 
         # Validate oneofs - they contribute their max size to the message
         for key, oneof in self.oneofs.items():
-            if not oneof.validate(current_package, packages, debug):
+            if not oneof.validate(current_package, packages, debug, current_message=self):
                 print(
                     f"Failed To validate OneOf: {key}, in Message {self.name}\n")
                 return False
@@ -1535,6 +1556,67 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                     pkg, msg_name, gen_files
                 ),
             })
+
+            # Nested enums (message-scoped): appear in the same file as the parent message
+            for nested_enum_name, nested_enum in msg.enums.items():
+                nested_gen_files = {}
+                for lang, rel_path in gen_files.items():
+                    # Nested enums share the parent message's generated file
+                    nested_gen_files[lang] = rel_path
+
+                def _nested_enum_symbol_info(lang, pkg_, msg_name_, enum_name_):
+                    pkg_name_ = pkg_.name
+                    pkg_pascal_ = pascal_case(pkg_name_)
+                    flat_name = f'{pkg_pascal_}{msg_name_}{enum_name_}'
+
+                    if lang == 'c':
+                        return None, flat_name, flat_name
+
+                    if lang == 'cpp':
+                        parent_struct = f'{pkg_pascal_}{msg_name_}'
+                        if pkg_.package_id is not None:
+                            ns = camel_to_snake_case(pkg_name_)
+                            return ns, enum_name_, f'{ns}::{msg_name_}::{enum_name_}'
+                        return None, enum_name_, f'{parent_struct}::{enum_name_}'
+
+                    if lang == 'py':
+                        parent_class = f'{pkg_pascal_}{msg_name_}'
+                        ns = f'struct_frame.generated.{pkg_name_}'
+                        return ns, enum_name_, f'{ns}.{parent_class}.{enum_name_}'
+
+                    if lang in ('ts', 'js'):
+                        element = f'{msg_name_}{enum_name_}'
+                        return None, element, element
+
+                    if lang == 'rust':
+                        element = f'{msg_name_}{enum_name_}'
+                        ns = pkg_name_
+                        return ns, element, f'{ns}::{element}'
+
+                    if lang == 'csharp':
+                        ns = f'StructFrame.{pkg_pascal_}'
+                        return ns, enum_name_, f'{ns}.{msg_name_}.{enum_name_}'
+
+                    return None, enum_name_, enum_name_
+
+                nested_entries = {}
+                for lang, rel_path in nested_gen_files.items():
+                    namespace_, element_, qualified_ = _nested_enum_symbol_info(
+                        lang, pkg, msg_name, nested_enum_name)
+                    nested_entries[lang] = {
+                        "path": rel_path,
+                        "namespace": namespace_,
+                        "element": element_,
+                        "qualified_element": qualified_,
+                    }
+
+                enums.append({
+                    "name": nested_enum_name,
+                    "package": pkg_name,
+                    "parent_message": msg_name,
+                    "source_file": os.path.basename(msg.source_file) if msg.source_file else None,
+                    "generated_files": nested_entries,
+                })
 
         for enum_name, enum in pkg.enums.items():
             gen_files = dict(pkg_files)

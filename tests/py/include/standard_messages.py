@@ -23,6 +23,7 @@ from struct_frame.generated.serialization_test import (
     VariableSingleArray,
     Message,
     MsgSeverity,
+    NestedEnumMessage,
     get_message_info,
 )
 
@@ -33,10 +34,11 @@ MessageType = Union[
     UnionTestMessage,
     VariableSingleArray,
     Message,
+    NestedEnumMessage,
 ]
 
 # Message count
-MESSAGE_COUNT = 17
+MESSAGE_COUNT = 19
 
 
 # ============================================================================
@@ -178,8 +180,12 @@ def get_message(index: int) -> MessageType:
         return create_variable_single_array_almost()
     elif index == 15:
         return create_variable_single_array_full()
-    else:  # index == 16
+    elif index == 16:
         return create_message_test()
+    elif index == 17:
+        return NestedEnumMessage(mode=NestedEnumMessage.OperationMode.IDLE.value, value=0, enabled=False)
+    else:  # index == 18
+        return NestedEnumMessage(mode=NestedEnumMessage.OperationMode.ACTIVE.value, value=42, enabled=True)
 
 
 # ============================================================================
