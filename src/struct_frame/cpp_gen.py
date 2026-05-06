@@ -151,31 +151,31 @@ class FieldCppGen():
 
 class OneOfCppGen():
     @staticmethod
-    def generate_discriminator_enum(oneof, msg_name, use_namespace=False):
-        """Generate a discriminator enum for field_order oneofs."""
+    def generate_discriminator_enum(oneof, use_namespace=False):
+        """Generate a nested discriminator enum for field_order oneofs (indented for struct body)."""
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
             return ''
         
         result = ''
-        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
+        enum_name = OneOfCppGen.get_discriminator_enum_name(oneof)
         
-        result += f'/* Discriminator enum for {msg_name}::{oneof.name} oneof */\n'
-        result += f'enum class {enum_name} : uint8_t {{\n'
-        result += f'    NONE = 0,\n'
+        result += f'    /* Discriminator enum for {oneof.name} oneof */\n'
+        result += f'    enum class {enum_name} : uint8_t {{\n'
+        result += f'        NONE = 0,\n'
         
         for idx, (field_name, field) in enumerate(oneof.fields.items()):
             field_order = idx + 1
             # Use SCREAMING_SNAKE_CASE for enum values
             enum_value = camel_to_snake_case(field_name).upper()
-            result += f'    {enum_value} = {field_order},\n'
+            result += f'        {enum_value} = {field_order},\n'
         
-        result += f'}};\n\n'
+        result += f'    }};\n'
         return result
     
     @staticmethod
-    def get_discriminator_enum_name(oneof, msg_name):
-        """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascal_case(oneof.name)}Field'
+    def get_discriminator_enum_name(oneof, msg_name=None):
+        """Get the enum type name for a field_order discriminator (scoped inside the struct)."""
+        return f'{pascal_case(oneof.name)}Field'
     
     @staticmethod
     def generate(oneof, use_namespace=False, package=None, msg_name=None):
@@ -194,7 +194,7 @@ class OneOfCppGen():
                 result += f'    uint16_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
             else:  # field_order
                 # Use the generated enum type for better type safety
-                enum_name = OneOfCppGen.get_discriminator_enum_name(oneof, msg_name) if msg_name else 'uint8_t'
+                enum_name = OneOfCppGen.get_discriminator_enum_name(oneof)
                 result += f'    {enum_name} {oneof.name}_discriminator;  // Auto-generated field order discriminator\n'
         
         # Generate the union
@@ -319,6 +319,13 @@ class MessageCppGen():
             result += 'struct %s {' % structName
 
         result += '\n'
+
+        # Generate nested discriminator enums at top of struct body
+        for oneof_name, oneof in msg.oneofs.items():
+            enum_code = OneOfCppGen.generate_discriminator_enum(oneof, use_namespace)
+            if enum_code:
+                result += enum_code
+                result += '\n'
 
         if not msg.fields and not msg.oneofs:
             result += '    char dummy_field;\n'
@@ -739,18 +746,6 @@ class FileCppGen():
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
                 yield EnumCppGen.generate(enum, use_namespace) + '\n'
-
-        # Generate discriminator enums for field_order oneofs (must come before struct definitions)
-        has_discriminator_enums = False
-        for key, msg in package.messages.items():
-            structName = msg.name
-            for oneof_name, oneof in msg.oneofs.items():
-                enum_code = OneOfCppGen.generate_discriminator_enum(oneof, structName, use_namespace)
-                if enum_code:
-                    if not has_discriminator_enums:
-                        yield '/* Oneof discriminator enums */\n'
-                        has_discriminator_enums = True
-                    yield enum_code
 
         if package.messages:
             yield '/* Struct definitions */\n'
