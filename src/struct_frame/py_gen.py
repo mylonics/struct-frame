@@ -96,6 +96,20 @@ class EnumPyGen():
         return result
     
     @staticmethod
+    def generate_nested(field):
+        """Generate a nested enum class indented inside the message class body."""
+        result = ''
+        if field.comments:
+            for c in field.comments:
+                result += f'    #{c}\n'
+        result += f'    class {field.name}(Enum):\n'
+        for entry_name, (value, comments) in field.data.items():
+            for c in comments:
+                result += f'        #{c}\n'
+            result += f'        {entry_name.upper()} = {value}\n'
+        return result
+
+    @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
         return f'{msg_name}{pascal_case(oneof.name)}Field'
@@ -590,6 +604,11 @@ class MessagePyGen():
 
         structName = msg.name
         result += 'class %s:\n' % structName
+
+        # Emit nested enum classes at the top of the class body
+        for enum_name, enum in msg.enums.items():
+            result += EnumPyGen.generate_nested(enum) + '\n'
+
         # Add both old and new naming for compatibility
         result += '    msg_size = %s\n' % msg.size
         result += '    MAX_SIZE = %s  # C++ compatible alias\n' % msg.size

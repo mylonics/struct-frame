@@ -7,10 +7,10 @@ This module generates C++ code for struct serialization with template-based
 Pack/Unpack methods and optional namespace support.
 """
 
-from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleCpp, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
 import time
 
-_style_c = NamingStyleC()
+_style_cpp = NamingStyleCpp()
 
 cpp_types = {"uint8": "uint8_t",
              "int8": "int8_t",
@@ -41,7 +41,7 @@ class EnumCppGen():
         result += 'enum class %s : uint8_t {\n' % (enum_name)
 
         enum_values = build_enum_values(
-            field, _style_c,
+            field, _style_cpp,
             value_format='{indent}{name} = {value}{comma}',
             skip_trailing_comma=True
         )
@@ -54,11 +54,32 @@ class EnumCppGen():
         result += f'inline const char* {enum_name}_to_string({enum_name} value) {{\n'
         result += '    switch (value) {\n'
         for d in field.data:
-            result += f'        case {enum_name}::{_style_c.enum_entry(d)}: return "{_style_c.enum_entry(d)}";\n'
+            result += f'        case {enum_name}::{_style_cpp.enum_entry(d)}: return "{d}";\n'
         result += '        default: return "UNKNOWN";\n'
         result += '    }\n'
         result += '}\n'
 
+        return result
+
+    @staticmethod
+    def generate_nested(field):
+        """Generate an enum class nested inside a struct body (indented, no package prefix, no to_string helper)."""
+        result = ''
+        if field.comments:
+            for c in field.comments:
+                result += f'    {c}\n'
+        enum_name = field.name
+        result += f'    enum class {enum_name} : uint8_t {{\n'
+
+        enum_values = build_enum_values(
+            field, _style_cpp,
+            value_format='{indent}{name} = {value}{comma}',
+            skip_trailing_comma=True
+        )
+        # Re-indent the values to be inside the struct
+        for line in enum_values:
+            result += f'    {line}\n'
+        result += '    };\n'
         return result
 
 
@@ -80,6 +101,9 @@ class FieldCppGen():
                     base_type = '%s::%s' % (camel_to_snake_case(type_pkg), type_name)
                 else:
                     base_type = type_name
+            elif getattr(field, 'type_message', None):
+                # Nested enum: use OwnerMessage::EnumName (valid even inside the same struct)
+                base_type = '%s::%s' % (field.type_message, type_name)
             else:
                 # Flat namespace mode: prefix with the type's defining package name
                 pkg_prefix = field.type_package if field.type_package else field.package
@@ -319,6 +343,11 @@ class MessageCppGen():
             result += 'struct %s {' % structName
 
         result += '\n'
+
+        # Generate nested enum classes at top of struct body
+        for enum_name, enum in msg.enums.items():
+            result += EnumCppGen.generate_nested(enum)
+            result += '\n'
 
         # Generate nested discriminator enums at top of struct body
         for oneof_name, oneof in msg.oneofs.items():

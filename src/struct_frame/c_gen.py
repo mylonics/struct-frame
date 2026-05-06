@@ -74,6 +74,38 @@ class EnumCGen():
 
         return result
 
+    @staticmethod
+    def generate_nested_for_c(enum, msg_name):
+        """Generate a flattened C enum for a message-nested enum (C has no nested types).
+        
+        The enum is named MsgNameEnumName and values are MSGNAME_ENUMNAME_VALUE.
+        """
+        result = ''
+        if enum.comments:
+            result += build_enum_leading_comments(enum.comments)
+        enum_name = f'{msg_name}{enum.name}'
+        enum_prefix = f'{camel_to_snake_case(msg_name).upper()}_{camel_to_snake_case(enum.name).upper()}'
+        result += f'/* Nested enum {msg_name}::{enum.name} (flattened for C) */\n'
+        result += f'typedef enum {enum_name} {{\n'
+        entries = list(enum.data.items())
+        for i, (entry_name, (value, comments)) in enumerate(entries):
+            for c in comments:
+                result += f'    {c}\n'
+            comma = ',' if i < len(entries) - 1 else ''
+            result += f'    {enum_prefix}_{entry_name.upper()} = {value}{comma}\n'
+        result += f'}} {enum_name};\n'
+        result += f'typedef uint8_t {enum_name}_t;\n'
+        # enum-to-string helper
+        result += f'\n/* Convert {enum_name} to string */\n'
+        result += f'static inline const char* {enum_name}_to_string({enum_name} value) {{\n'
+        result += '    switch (value) {\n'
+        for entry_name, (value, _) in enum.data.items():
+            result += f'        case {enum_prefix}_{entry_name.upper()}: return "{entry_name.upper()}";\n'
+        result += '        default: return "UNKNOWN";\n'
+        result += '    }\n'
+        result += '}\n'
+        return result
+
 
 class FieldCGen():
     @staticmethod
@@ -86,11 +118,16 @@ class FieldCGen():
         if type_name in c_types:
             base_type = c_types[type_name]
         else:
-            pkg_prefix = field.type_package if field.type_package else field.package
-            if field.is_enum:
-                base_type = '%s%s_t' % (pascal_case(pkg_prefix), type_name)
+            if getattr(field, 'type_message', None):
+                # Nested enum: flattened as PackageMsgNameEnumName_t
+                pkg_prefix = pascal_case(field.type_package if field.type_package else field.package)
+                base_type = f'{pkg_prefix}{field.type_message}{type_name}_t'
             else:
-                base_type = '%s%s' % (pascal_case(pkg_prefix), type_name)
+                pkg_prefix = field.type_package if field.type_package else field.package
+                if field.is_enum:
+                    base_type = '%s%s_t' % (pascal_case(pkg_prefix), type_name)
+                else:
+                    base_type = '%s%s' % (pascal_case(pkg_prefix), type_name)
 
         # Handle arrays
         if field.is_array:
@@ -674,6 +711,9 @@ class FileCGen():
         has_discriminator_enums = False
         for key, msg in package.messages.items():
             structName = '%s%s' % (pascal_case(msg.package), msg.name)
+            # Nested message enums (flattened for C)
+            for enum_name, enum in msg.enums.items():
+                yield EnumCGen.generate_nested_for_c(enum, structName) + '\n\n'
             for oneof_name, oneof in msg.oneofs.items():
                 enum_code = OneOfCGen.generate_discriminator_enum(oneof, structName, package)
                 if enum_code:

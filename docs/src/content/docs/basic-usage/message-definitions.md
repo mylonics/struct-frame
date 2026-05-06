@@ -236,6 +236,28 @@ string typeStr = type.ToString();
 // Returns: "TEMPERATURE"
 ```
 
+## Nested Enums
+
+Enums can be defined inside a message body, scoping them to that message. This keeps the type closely associated with the message that uses it.
+
+```proto
+message MotorCommand {
+  option msgid = 42;
+
+  enum Direction {
+    FORWARD = 0;
+    REVERSE = 1;
+    BRAKE = 2;
+  }
+
+  Direction dir = 1;
+  uint16 speed_rpm = 2;
+}
+```
+
+Enums are stored as `uint8` regardless of where they are defined.
+
+
 ## Nested Messages
 
 ```proto

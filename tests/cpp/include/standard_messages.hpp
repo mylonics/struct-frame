@@ -11,10 +11,11 @@ struct StandardMessages {
   // Variant type for message return - includes all message types from standard_test_data
   using MessageVariant =
       std::variant<SerializationTestMessage, BasicTypesMessage,
-                   UnionTestMessage, VariableSingleArray, Message>;
+                   UnionTestMessage, VariableSingleArray, Message,
+                   NestedEnumMessage>;
 
   // Total number of messages (matches MESSAGE_COUNT from standard_test_data)
-  static constexpr size_t MESSAGE_COUNT = 17;
+  static constexpr size_t MESSAGE_COUNT = 19;
 
   // Helper functions to create messages (same as standard_test_data)
   static SerializationTestMessage create_serialization_test(
@@ -89,15 +90,15 @@ struct StandardMessages {
     std::strcpy(arr.bounded_strings.data[0], "Test");
     arr.bounded_strings.count = 1;
 
-    arr.fixed_statuses[0] = Status::ACTIVE;
-    arr.fixed_statuses[1] = Status::ERROR;
+    arr.fixed_statuses[0] = Status::Active;
+    arr.fixed_statuses[1] = Status::Error;
 
-    arr.bounded_statuses.data[0] = Status::INACTIVE;
+    arr.bounded_statuses.data[0] = Status::Inactive;
     arr.bounded_statuses.count = 1;
 
     arr.fixed_sensors[0].id = 1;
     arr.fixed_sensors[0].value = 25.5f;
-    arr.fixed_sensors[0].status = Status::ACTIVE;
+    arr.fixed_sensors[0].status = Status::Active;
     std::strcpy(arr.fixed_sensors[0].name, "TempSensor");
 
     arr.bounded_sensors.count = 0;
@@ -178,7 +179,7 @@ struct StandardMessages {
 
   static Message create_message_test() {
     Message msg{};
-    msg.severity = MsgSeverity::SEV_MSG;
+    msg.severity = MsgSeverity::SevMsg;
     msg.module.length = 4;
     std::strcpy(msg.module.data, "test");
     msg.msg.length = 13;
@@ -240,8 +241,24 @@ struct StandardMessages {
 
       // Message (16)
       case 16:
-      default:
         return create_message_test();
+
+      // NestedEnumMessage (17-18)
+      case 17: {
+        NestedEnumMessage msg{};
+        msg.mode = NestedEnumMessage::OperationMode::Idle;
+        msg.value = 0;
+        msg.enabled = false;
+        return msg;
+      }
+      case 18:
+      default: {
+        NestedEnumMessage msg{};
+        msg.mode = NestedEnumMessage::OperationMode::Active;
+        msg.value = 42;
+        msg.enabled = true;
+        return msg;
+      }
     }
   }
 };

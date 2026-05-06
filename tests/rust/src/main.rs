@@ -16,7 +16,7 @@ use struct_frame_sdk::{
 };
 
 const BUFFER_SIZE: usize = 65536;
-const STANDARD_MESSAGE_COUNT: usize = 17;
+const STANDARD_MESSAGE_COUNT: usize = 19;
 const EXTENDED_MESSAGE_COUNT: usize = 17;
 const VARIABLE_FLAG_MESSAGE_COUNT: usize = 5;
 
@@ -424,7 +424,25 @@ fn get_expected_payload_standard(index: usize, buf: &mut [u8], use_fixed: bool) 
             m.checksum = 0x0005;
             pack_msg(&m, buf, use_fixed)
         }
-        _ => pack_msg(&create_message_test(), buf, use_fixed),
+        16 => pack_msg(&create_message_test(), buf, use_fixed),
+        17 => pack_msg(&create_nested_enum_idle(), buf, use_fixed),
+        _ => pack_msg(&create_nested_enum_active(), buf, use_fixed),
+    }
+}
+
+fn create_nested_enum_idle() -> NestedEnumMessage {
+    NestedEnumMessage {
+        mode: NestedEnumMessageOperationMode::IDLE,
+        value: 0,
+        enabled: false,
+    }
+}
+
+fn create_nested_enum_active() -> NestedEnumMessage {
+    NestedEnumMessage {
+        mode: NestedEnumMessageOperationMode::ACTIVE,
+        value: 42,
+        enabled: true,
     }
 }
 
@@ -537,6 +555,8 @@ fn encode_standard(config: &ProfileConfig, output: &mut [u8]) -> usize {
     }
 
     enc!(create_message_test());
+    enc!(create_nested_enum_idle());
+    enc!(create_nested_enum_active());
 
     written
 }

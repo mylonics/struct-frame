@@ -259,3 +259,24 @@ message NestedVariableMessage {
   NestedPayload payload = 2;             // nested struct with variable fields
   string description = 3 [max_size=64];
 }
+
+// ============================================================================
+// Nested Enum Test Message (msgid: 213)
+// ============================================================================
+
+// Tests a message-scoped enum definition and a field that references it
+message NestedEnumMessage {
+  option msgid = 213;
+
+  // Enum scoped to this message
+  enum OperationMode {
+    Idle = 0;
+    Active = 1;
+    Calibrating = 2;
+    ErrorState = 3;
+  }
+
+  OperationMode mode = 1;  // Field using the nested enum
+  uint8 value = 2;
+  bool enabled = 3;
+}

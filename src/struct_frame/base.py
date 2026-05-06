@@ -94,6 +94,17 @@ class NamingStyleC(NamingStyle):
         return word.lower()
 
 
+class NamingStyleCpp(NamingStyleC):
+    """
+    C++ style naming conventions (Google C++ Style Guide).
+
+    Inherits from NamingStyleC but uses PascalCase for enum values,
+    as recommended by the Google C++ Style Guide.
+    """
+    def enum_entry(self, name):
+        return pascal_case(name)
+
+
 def pascal_case(st):
     """Convert string to PascalCase (first letter uppercase)."""
     return ''.join(x for x in st.title() if x.isalnum())

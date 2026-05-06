@@ -59,6 +59,28 @@ class EnumJsGen():
         return result
     
     @staticmethod
+    def generate_for_message(field, msg_name):
+        """Generate a prefixed frozen object for a message-nested enum in JavaScript.
+
+        JavaScript can't nest enums inside objects, so the enum is emitted
+        at module scope with a prefixed name: MsgNameEnumName.
+        """
+        result = build_enum_leading_comments(field.comments)
+        enum_name = f'{msg_name}{field.name}'
+        result += f'const {enum_name} = Object.freeze({{\n'
+
+        entries = list(field.data.items())
+        for i, (entry_name, (value, comments)) in enumerate(entries):
+            for c in comments:
+                result += f'  // {c}\n'
+            comma = ',' if i < len(entries) - 1 else ''
+            result += f'  {pascal_case(entry_name)}: {value}{comma}\n'
+
+        result += '});\n'
+        result += f'module.exports.{enum_name} = {enum_name};'
+        return result
+
+    @staticmethod
     def generate_discriminator_enum(oneof, msg_name):
         """Generate a discriminator enum for field_order oneofs in JavaScript."""
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
@@ -721,6 +743,17 @@ class FileJsGen():
             yield '/* Enum definitions */\n'
             for key, enum in package.enums.items():
                 yield EnumJsGen.generate(enum, package_name_pascal) + '\n\n'
+
+        # Generate nested message enums (prefixed at module scope)
+        has_nested_enums = False
+        for key, msg in package.messages.items():
+            structName = msg.name
+            if msg.enums:
+                if not has_nested_enums:
+                    yield '/* Nested message enums (prefixed at module scope) */\n'
+                    has_nested_enums = True
+                for enum_name, enum in msg.enums.items():
+                    yield EnumJsGen.generate_for_message(enum, structName) + '\n\n'
 
         # Generate discriminator enums for field_order oneofs (must come before message definitions)
         has_discriminator_enums = False
