@@ -102,12 +102,12 @@ class EnumCSharpGen():
         return result
 
     @staticmethod
-    def generate_nested(field):
+    def generate_nested(field, name_override=None):
         """Generate a nested enum inside a C# class body (double-indented)."""
         result = ''
         if field.comments:
             result += format_xml_summary(field.comments, indent='        ')
-        enum_name = field.name
+        enum_name = name_override if name_override else field.name
         result += '        public enum %s : byte\n' % enum_name
         result += '        {\n'
         entries = list(field.data.items())
@@ -149,7 +149,7 @@ class EnumCSharpGen():
 
 class FieldCSharpGen():
     @staticmethod
-    def generate_field_declaration(field):
+    def generate_field_declaration(field, renamed_enums=None):
         """Generate C# field declaration"""
         result = ''
         var_name = pascal_case(field.name)
@@ -166,7 +166,7 @@ class FieldCSharpGen():
         else:
             # Use the type name directly — namespace/using directives handle scoping
             type_pkg = field.type_package if field.type_package else field.package
-            base_type = type_name
+            base_type = renamed_enums.get(type_name, type_name) if renamed_enums else type_name
 
         # Handle arrays
         if field.is_array:
@@ -354,7 +354,7 @@ class FieldCSharpGen():
         return lines
 
     @staticmethod
-    def generate_unpack_code(field, offset):
+    def generate_unpack_code(field, offset, renamed_enums=None):
         """Generate code to unpack this field from a byte array"""
         lines = []
         var_name = pascal_case(field.name)
@@ -464,7 +464,7 @@ class FieldCSharpGen():
         elif field.is_enum:
             # Single enum field - enums are byte values, cast to enum type
             type_pkg = field.type_package if field.type_package else field.package
-            enum_type = type_name
+            enum_type = renamed_enums.get(type_name, type_name) if renamed_enums else type_name
             lines.append(f'            msg.{var_name} = ({enum_type})data[{offset}];')
         else:
             # Nested struct
@@ -496,9 +496,13 @@ class MessageCSharpGen():
 
         result += '        public const int MaxSize = %d;\n' % msg.size
 
+        # Build rename map: nested enum names that collide with a property name get an 'Enum' suffix
+        field_property_names = {pascal_case(f.name) for f in msg.fields.values()}
+        renamed_enums = {name: f'{name}Enum' for name in msg.enums if name in field_property_names}
+
         # Emit nested enum definitions inside the class body
         for enum_name, enum in msg.enums.items():
-            result += EnumCSharpGen.generate_nested(enum)
+            result += EnumCSharpGen.generate_nested(enum, name_override=renamed_enums.get(enum_name))
             result += '\n'
 
         if msg.id:
@@ -522,7 +526,7 @@ class MessageCSharpGen():
 
         # Generate field declarations
         for key, f in msg.fields.items():
-            result += FieldCSharpGen.generate_field_declaration(f)
+            result += FieldCSharpGen.generate_field_declaration(f, renamed_enums=renamed_enums)
 
         # Generate oneofs - declarations for discriminator and union members
         for key, oneof in msg.oneofs.items():
@@ -651,7 +655,7 @@ class MessageCSharpGen():
 
         offset = 0
         for key, f in msg.fields.items():
-            unpack_lines = FieldCSharpGen.generate_unpack_code(f, offset)
+            unpack_lines = FieldCSharpGen.generate_unpack_code(f, offset, renamed_enums=renamed_enums)
             for line in unpack_lines:
                 result += line + '\n'
             offset += f.size
@@ -760,7 +764,7 @@ class MessageCSharpGen():
 
         # Generate variable message methods if this is a variable message
         if msg.variable:
-            result += MessageCSharpGen._generate_variable_methods(msg, structName)
+            result += MessageCSharpGen._generate_variable_methods(msg, structName, renamed_enums=renamed_enums)
 
         # Generate equality members if requested
         if equality:
@@ -775,7 +779,7 @@ class MessageCSharpGen():
         return result + '\n'
     
     @staticmethod
-    def _generate_variable_methods(msg, structName):
+    def _generate_variable_methods(msg, structName, renamed_enums=None):
         """Generate SerializedSize, _SerializeVariable, and _DeserializeVariable methods for variable messages."""
         result = '\n'
         
@@ -970,7 +974,7 @@ class MessageCSharpGen():
                     result += f'            offset += {f.size};\n'
                 elif f.is_enum:
                     type_pkg = f.type_package if f.type_package else f.package
-                    enum_type = type_name
+                    enum_type = renamed_enums.get(type_name, type_name) if renamed_enums else type_name
                     result += f'            msg.{var_name} = ({enum_type})data[offset++];\n'
                 else:
                     type_pkg = f.type_package if f.type_package else f.package
