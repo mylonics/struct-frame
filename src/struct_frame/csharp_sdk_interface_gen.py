@@ -13,7 +13,27 @@ from struct_frame import version, pascal_case
 import time
 
 
-def get_csharp_field_type(field, package_name):
+def _get_nested_enum_name(field, type_name, package):
+    """Return the (possibly renamed) enum type name for a nested enum field.
+
+    Applies the same rename-on-conflict logic as csharp_gen.py: when the
+    enum name would collide with a property of the same name in the owning
+    class (e.g. enum Status + field status => property Status), the enum
+    is generated as '<Name>Enum', so references here must match.
+    """
+    type_msg_name = getattr(field, 'type_message', None)
+    if not type_msg_name or package is None:
+        return type_name
+    msg = package.messages.get(type_msg_name)
+    if msg is None:
+        return type_name
+    field_property_names = {pascal_case(f.name) for f in msg.fields.values()}
+    if type_name in field_property_names:
+        return f'{type_name}Enum'
+    return type_name
+
+
+def get_csharp_field_type(field, package_name, package=None):
     """Get the C# type for a field"""
     from struct_frame.csharp_gen import csharp_types
     
@@ -30,7 +50,9 @@ def get_csharp_field_type(field, package_name):
             type_msg = getattr(field, 'type_message', None)
             if type_msg:
                 # Nested enum: qualify with class name (e.g., NestedEnumMessage.OperationMode)
-                base_type = f'{type_msg}.{type_name}'
+                # Apply rename-on-conflict: enum 'Status' with field 'status' => 'StatusEnum'
+                resolved_name = _get_nested_enum_name(field, type_name, package)
+                base_type = f'{type_msg}.{resolved_name}'
             else:
                 base_type = type_name
         else:
@@ -123,7 +145,7 @@ class SdkInterfaceGen:
         # Generate send and subscribe methods for each message with msgid
         for key, msg in package.sortedMessages().items():
             if msg.id:  # Only generate for messages with a message ID
-                yield from SdkInterfaceGen._generate_send_methods(msg, package.name)
+                yield from SdkInterfaceGen._generate_send_methods(msg, package.name, package)
                 yield from SdkInterfaceGen._generate_subscribe_method(msg, package.name)
         
         # Generate envelope helper methods and send-via-envelope methods
@@ -152,7 +174,7 @@ class SdkInterfaceGen:
         yield '\n'
     
     @staticmethod
-    def _generate_send_methods(msg, package_name):
+    def _generate_send_methods(msg, package_name, package=None):
         """Generate send methods for a single message"""
         struct_name = msg.name
         method_name = f'Send{msg.name}'
@@ -180,7 +202,7 @@ class SdkInterfaceGen:
             # Generate parameters
             params = []
             for field_name, field in msg.fields.items():
-                csharp_type = get_csharp_field_type(field, package_name)
+                csharp_type = get_csharp_field_type(field, package_name, package)
                 param_name = pascal_case(field.name).lower()
                 
                 # Add parameter with comment
@@ -367,7 +389,7 @@ class SdkInterfaceGen:
             
             if payload_msg and payload_msg.fields:
                 for pf_name, pf in payload_msg.fields.items():
-                    pf_csharp_type = get_csharp_field_type(pf, type_pkg)
+                    pf_csharp_type = get_csharp_field_type(pf, type_pkg, package)
                     payload_fields.append((pf_name, pf, pf_csharp_type))
             
             # Method 1: Overload with message object and envelope fields as parameters

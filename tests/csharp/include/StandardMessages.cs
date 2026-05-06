@@ -19,7 +19,7 @@ namespace StructFrameTests
     public static class StandardMessages
     {
         // Message count
-        public const int MESSAGE_COUNT = 19;
+        public const int MESSAGE_COUNT = 21;
 
         // ============================================================================
         // Helper functions to create messages (like C++ create_* functions)
@@ -241,7 +241,9 @@ namespace StructFrameTests
                 case 15: return CreateVariableSingleArrayFull();
                 case 16: return CreateMessageTest();
                 case 17: return new NestedEnumMessage { Mode = NestedEnumMessage.OperationMode.Idle, Value = 0, Enabled = false };
-                default: return new NestedEnumMessage { Mode = NestedEnumMessage.OperationMode.Active, Value = 42, Enabled = true };
+                case 18: return new NestedEnumMessage { Mode = NestedEnumMessage.OperationMode.Active, Value = 42, Enabled = true };
+                case 19: return new CollisionEnumMessage { Status = CollisionEnumMessage.StatusEnum.Running, Id = 7, Time = 1.23 };
+                default: return new CollisionEnumMessage { Status = CollisionEnumMessage.StatusEnum.Failed, Id = 0, Time = 0.0 };
             }
         }
 
@@ -275,6 +277,8 @@ namespace StructFrameTests
 
             else if (info.MsgId == NestedEnumMessage.MsgId)
                 decoded = NestedEnumMessage.Deserialize(info);
+            else if (info.MsgId == CollisionEnumMessage.MsgId)
+                decoded = CollisionEnumMessage.Deserialize(info);
 
             if (decoded == null) return false;
 

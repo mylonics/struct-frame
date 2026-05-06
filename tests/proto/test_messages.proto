@@ -280,3 +280,24 @@ message NestedEnumMessage {
   uint8 value = 2;
   bool enabled = 3;
 }
+
+// ============================================================================
+// Collision Enum Test Message (msgid: 214)
+// ============================================================================
+
+// Tests that an enum named identically to one of the fields (Status status)
+// is correctly renamed to StatusEnum to avoid CS0102 in C#.
+message CollisionEnumMessage {
+  option msgid = 214;
+
+  enum Status {
+    UNKNOWN = 0;
+    RUNNING = 1;
+    STOPPED = 2;
+    FAILED = 3;
+  }
+
+  Status status = 1;  // Collision: enum Status + field status -> StatusEnum
+  uint8 id = 2;
+  double time = 3;
+}

@@ -15,10 +15,12 @@ const {
   MsgSeverity,
   NestedEnumMessage,
   NestedEnumMessageOperationMode,
+  CollisionEnumMessage,
+  CollisionEnumMessageStatus,
 } = require('../../generated/js/serialization-test.structframe');
 
 // Message count
-const MESSAGE_COUNT = 19;
+const MESSAGE_COUNT = 21;
 
 
 // ============================================================================
@@ -187,7 +189,9 @@ function getMessage(index) {
     case 15: return createVariableSingleArrayFull();
     case 16: return createMessageTest();
     case 17: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Idle, value: 0, enabled: false });
-    default: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Active, value: 42, enabled: true });
+    case 18: return new NestedEnumMessage({ mode: NestedEnumMessageOperationMode.Active, value: 42, enabled: true });
+    case 19: return new CollisionEnumMessage({ status: CollisionEnumMessageStatus.Running, id: 7, time: 1.23 });
+    default: return new CollisionEnumMessage({ status: CollisionEnumMessageStatus.Failed, id: 0, time: 0.0 });
   }
 }
 
