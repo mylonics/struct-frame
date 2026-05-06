@@ -744,6 +744,10 @@ class FileCppGen():
         # Include cstring for string comparison if equality is enabled
         if equality:
             yield '#include <cstring>\n'
+        # ``std::enable_if_t`` is referenced in the envelope/multi-message
+        # template overloads emitted further below; ensure the include is
+        # always present.
+        yield '#include <type_traits>\n'
         
         # Always include frame_base.hpp for FrameMsgInfo and MessageBase
         # (needed for deserialize(FrameMsgInfo) overload and message base class)
@@ -900,9 +904,14 @@ class TestCppGen():
                 type_pkg = field.type_package if field.type_package else field.package
                 if type_pkg != field.package:
                     return f"static_cast<{camel_to_snake_case(type_pkg)}::{type_name}>(0)"
+                # Nested (message-scoped) enum: qualify with the parent message name.
+                if getattr(field, 'type_message', None):
+                    return f"static_cast<{field.type_message}::{type_name}>(0)"
                 return f"static_cast<{type_name}>(0)"
             else:
                 pkg_prefix = field.type_package if field.type_package else field.package
+                if getattr(field, 'type_message', None):
+                    return f"static_cast<{pascal_case(pkg_prefix)}{field.type_message}::{type_name}>(0)"
                 return f"static_cast<{pascal_case(pkg_prefix)}{type_name}>(0)"
         else:
             # Nested struct - return empty braces for aggregate init
@@ -975,9 +984,12 @@ class TestCppGen():
         yield f'namespace {namespace_name} {{\n'
         yield f'namespace Tests {{\n\n'
         
-        # Collect messages with IDs (can be used for round-trip testing)
-        testable_messages = [(key, msg) for key, msg in package.sortedMessages().items() 
-                            if msg.id is not None]
+        # Collect messages with IDs (can be used for round-trip testing).
+        # Messages with ``oneof`` blocks (variant/union messages) are excluded:
+        # they require special discriminator-aware encoding that the simple
+        # round-trip path here does not implement.
+        testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
+                            if msg.id is not None and not getattr(msg, 'oneofs', {})]
         
         # Generate message creation functions
         for key, msg in testable_messages:
@@ -1020,17 +1032,21 @@ class TestCppGen():
             yield f'/* Test round-trip encode/decode for {structName} */\n'
             yield f'template <typename Config>\n'
             yield f'inline TestResult {func_name}() {{\n'
-            yield f'    uint8_t buffer[1024];\n'
-            yield f'    auto msg = create_test_{camel_to_snake_case(msg.name)}();\n'
-            yield f'    \n'
-            if use_namespace:
-                yield f'    bool passed = structframe::ProfilingTests::verify_roundtrip<{structName}, Config>(\n'
-                yield f'        msg, buffer, sizeof(buffer), get_message_info);\n'
-            else:
-                yield f'    bool passed = structframe::ProfilingTests::verify_roundtrip<{structName}, Config>(\n'
-                yield f'        msg, buffer, sizeof(buffer), get_message_info);\n'
-            yield f'    \n'
-            yield f'    return TestResult{{passed, "{structName}", passed ? nullptr : "Round-trip verification failed"}};\n'
+            yield f'    using MsgT = {structName};\n'
+            # Compile-time profile compatibility checks. Skipping is reported as PASS
+            # so a profile that legitimately cannot carry a particular message does
+            # not fail the round-trip test suite.
+            yield f'    if constexpr (!Config::has_pkg_id && (MsgT::MSG_ID > 255)) {{\n'
+            yield f'        return TestResult{{true, "{structName}", "skipped: msg_id > 255 requires has_pkg_id profile"}};\n'
+            yield f'    }} else if constexpr (Config::has_length && (MsgT::MAX_SIZE > Config::max_payload)) {{\n'
+            yield f'        return TestResult{{true, "{structName}", "skipped: message exceeds profile max_payload"}};\n'
+            yield f'    }} else {{\n'
+            yield f'        uint8_t buffer[(MsgT::MAX_SIZE > 4096) ? (MsgT::MAX_SIZE + 128) : 4096];\n'
+            yield f'        auto msg = create_test_{camel_to_snake_case(msg.name)}();\n'
+            yield f'        bool passed = structframe::ProfilingTests::verify_roundtrip<MsgT, Config>(\n'
+            yield f'            msg, buffer, sizeof(buffer), get_message_info);\n'
+            yield f'        return TestResult{{passed, "{structName}", passed ? nullptr : "Round-trip verification failed"}};\n'
+            yield f'    }}\n'
             yield f'}}\n\n'
         
         # Generate master test function that runs all message tests
@@ -1104,6 +1120,76 @@ class TestCppGen():
         
         yield '}\n\n'
 
+        # Generate a runner that exercises all 5 frame profiles.
+        # Returns true only if every (message, profile) pair either round-trips
+        # successfully or is correctly skipped due to profile/message incompatibility.
+        yield '/* Run round-trip tests across all 5 frame profiles */\n'
+        yield 'inline bool run_roundtrip_all_profiles(bool verbose = false) {\n'
+        yield '    using namespace structframe;\n'
+        yield '    struct ProfileEntry { const char* name; size_t (*runner)(bool); };\n'
+        yield '    ProfileEntry profiles[] = {\n'
+        yield '        {"ProfileStandard", run_all_tests<ProfileStandardConfig>},\n'
+        yield '        {"ProfileSensor",   run_all_tests<ProfileSensorConfig>},\n'
+        yield '        {"ProfileIPC",      run_all_tests<ProfileIPCConfig>},\n'
+        yield '        {"ProfileBulk",     run_all_tests<ProfileBulkConfig>},\n'
+        yield '        {"ProfileNetwork",  run_all_tests<ProfileNetworkConfig>},\n'
+        yield '    };\n'
+        yield '    bool all_passed = true;\n'
+        yield '    for (const auto& p : profiles) {\n'
+        yield '        if (verbose) std::printf("\\n--- %s ---\\n", p.name);\n'
+        yield '        size_t passed = p.runner(verbose);\n'
+        yield '        if (passed != TEST_MESSAGE_COUNT) {\n'
+        yield '            all_passed = false;\n'
+        yield '            std::printf("[FAIL] %s: %zu/%zu passed\\n", p.name, passed, TEST_MESSAGE_COUNT);\n'
+        yield '        } else if (verbose) {\n'
+        yield '            std::printf("[OK] %s: %zu/%zu passed\\n", p.name, passed, TEST_MESSAGE_COUNT);\n'
+        yield '        }\n'
+        yield '    }\n'
+        yield '    return all_passed;\n'
+        yield '}\n\n'
+
+
         yield f'}}  // namespace Tests\n'
         yield f'}}  // namespace {namespace_name}\n'
         yield f'}}  // namespace structframe\n'
+
+    @staticmethod
+    def generate_roundtrip_main(package):
+        """Generate a self-contained ``test_roundtrip_<pkg>.cpp`` file with a
+        ``main()`` that runs round-trip encode/decode tests for every message
+        in *package* across all five frame profiles.
+        """
+        namespace_name = camel_to_snake_case(package.name)
+        yield '/* Automatically generated round-trip test for struct-frame messages. */\n'
+        yield f'/* Generated by struct-frame {version}. */\n'
+        yield '/*\n'
+        yield ' * For every message in the package this binary populates the\n'
+        yield ' * fields with deterministic dummy values, encodes the message via\n'
+        yield ' * BufferWriter / FrameEncoder, decodes it back via the parser used\n'
+        yield ' * by AccumulatingReader and verifies that the decoded message\n'
+        yield ' * matches the original. Every message is exercised against all\n'
+        yield ' * five frame profiles (Standard, Sensor, IPC, Bulk, Network).\n'
+        yield ' * Combinations that are intentionally incompatible (e.g. msg_id\n'
+        yield ' * > 255 on a profile without pkg_id, or a payload that exceeds\n'
+        yield ' * the profile maximum) are reported as skipped, not as failures.\n'
+        yield ' */\n\n'
+        yield '#include <cstdio>\n'
+        yield '#include <cstring>\n'
+        yield f'#include "{package.name}.tests.hpp"\n\n'
+        yield 'int main(int argc, char** argv) {\n'
+        yield '    bool verbose = false;\n'
+        yield '    for (int i = 1; i < argc; i++) {\n'
+        yield '        if (std::strcmp(argv[i], "-v") == 0 || std::strcmp(argv[i], "--verbose") == 0) {\n'
+        yield '            verbose = true;\n'
+        yield '        }\n'
+        yield '    }\n\n'
+        yield f'    std::printf("Running round-trip tests for package \'{package.name}\' across 5 profiles...\\n");\n'
+        yield f'    bool ok = structframe::{namespace_name}::Tests::run_roundtrip_all_profiles(verbose);\n'
+        yield '    if (ok) {\n'
+        yield f'        std::printf("[TEST PASSED] All round-trip tests for \'{package.name}\' succeeded.\\n");\n'
+        yield '        return 0;\n'
+        yield '    } else {\n'
+        yield f'        std::printf("[TEST FAILED] Round-trip tests for \'{package.name}\' had failures.\\n");\n'
+        yield '        return 1;\n'
+        yield '    }\n'
+        yield '}\n'

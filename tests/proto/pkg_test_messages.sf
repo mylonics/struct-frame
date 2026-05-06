@@ -5,8 +5,8 @@ package pkg_test_messages;
 
 option pkgid = 1;
 
-import "common_types.proto";
-import "pkg_test_a.proto";
+import "common_types.sf";
+import "pkg_test_a.sf";
 
 // Message using types from common_types (which inherits pkgid=1)
 message PackageTestMessage {

@@ -134,10 +134,10 @@ _init_colors()
 
 # Proto files to generate code from
 PROTO_FILES = [
-    "test_messages.proto",
-    "pkg_test_messages.proto",
-    "extended_messages.proto",
-    "envelope_messages.proto",
+    "test_messages.sf",
+    "pkg_test_messages.sf",
+    "extended_messages.sf",
+    "envelope_messages.sf",
 ]
 
 # Frame format profiles to test
@@ -548,7 +548,9 @@ class TestRunner:
             
             # Build command - always include --equality and --force flags for test generation
             # --force ensures regeneration even if hash matches (tests always need fresh generation)
-            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force"]
+            # --generate_tests emits per-package round-trip test code consumed by the
+            # roundtrip phase (see run_roundtrip_tests).
+            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests"]
             for lang in active:
                 gen_dir = self.project_root / lang.gen_output_dir
                 gen_dir.mkdir(parents=True, exist_ok=True)
@@ -1455,6 +1457,76 @@ class TestRunner:
         self.results.setdefault("envelope_sdk", {})["csharp"] = success
         return success
 
+    def run_roundtrip_tests(self) -> bool:
+        """Phase: round-trip tests for every message across all 5 frame profiles.
+
+        For each ``.sf`` file the generator emits ``test_roundtrip_<pkg>.{cpp,py}``
+        files (one per package) that populate every message with deterministic
+        dummy values, encode them via BufferWriter / equivalent, decode via
+        AccumulatingReader / equivalent and compare field-by-field. This phase
+        compiles (when needed) and executes those binaries.
+        """
+        self.print_section("ROUND-TRIP TESTS (all messages, all 5 profiles)")
+
+        results = self.results.setdefault("roundtrip", {})
+        all_success = True
+
+        # ---- C++ ----
+        cpp = self.languages.get("cpp")
+        if cpp and self.results["compilation"].get("cpp", True):
+            gen_dir = self.project_root / cpp.gen_output_dir
+            sources = sorted(gen_dir.glob("test_roundtrip_*.cpp"))
+            if not sources:
+                print("  [C++] No test_roundtrip_*.cpp files found - skipping")
+            else:
+                build_dir = gen_dir / "roundtrip_bin"
+                build_dir.mkdir(parents=True, exist_ok=True)
+                for src in sources:
+                    exe = build_dir / src.stem
+                    compile_cmd = f'g++ -std=c++20 -O0 -I"{gen_dir}" -o "{exe}" "{src}"'
+                    ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
+                    if not ok:
+                        print(f"  [C++] {Colors.fail_tag()} compile failed: {src.name}")
+                        results[f"cpp:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C++", None, f"compile {src.name}", stderr)
+                        all_success = False
+                        continue
+                    ok, stdout, stderr = self.run_cmd(f'"{exe}"', timeout=60)
+                    if ok:
+                        print(f"  [C++] {Colors.pass_text()} {src.stem}")
+                        results[f"cpp:{src.stem}"] = True
+                    else:
+                        print(f"  [C++] {Colors.fail_text()} {src.stem}")
+                        results[f"cpp:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C++", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                        all_success = False
+        else:
+            print("  [C++] Skipped (compilation failed or unavailable)")
+
+        # ---- Python ----
+        py = self.languages.get("py")
+        if py and "py" not in self.skipped_languages:
+            gen_dir = self.project_root / py.gen_output_dir
+            sources = sorted(gen_dir.glob("test_roundtrip_*.py"))
+            if not sources:
+                print("  [Python] No test_roundtrip_*.py files found - skipping")
+            else:
+                env = {"PYTHONPATH": str(gen_dir)}
+                for src in sources:
+                    ok, stdout, stderr = self.run_cmd(f'{sys.executable} "{src}"', env=env, timeout=60)
+                    if ok:
+                        print(f"  [Python] {Colors.pass_text()} {src.stem}")
+                        results[f"py:{src.stem}"] = True
+                    else:
+                        print(f"  [Python] {Colors.fail_text()} {src.stem}")
+                        results[f"py:{src.stem}"] = False
+                        self.add_failure("roundtrip", "Python", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                        all_success = False
+        else:
+            print("  [Python] Skipped")
+
+        return all_success
+
     
     
     # =========================================================================
@@ -1499,6 +1571,10 @@ class TestRunner:
         # Negative tests
         neg_total = len(self.results.get("negative", {}))
         neg_passed = sum(1 for v in self.results.get("negative", {}).values() if v)
+
+        # Round-trip tests (per-package, all 5 profiles)
+        rt_total = len(self.results.get("roundtrip", {}))
+        rt_passed = sum(1 for v in self.results.get("roundtrip", {}).values() if v)
         
         # Helper to colorize counts
         def colorize_count(passed: int, total: int) -> str:
@@ -1525,17 +1601,18 @@ class TestRunner:
         print(fmt('Variable Flag Validate', var_validate_passed, var_validate_total))
         print(fmt('Variable Flag Decode',   var_decode_passed,   var_decode_total))
         print(fmt('Negative Tests',         neg_passed,          neg_total))
+        print(fmt('Round-trip Tests',       rt_passed,           rt_total))
         
         total = (gen_total + comp_total + 
                  std_encode_total + std_validate_total + std_decode_total + 
                  ext_encode_total + ext_validate_total + ext_decode_total +
                  var_encode_total + var_validate_total + var_decode_total +
-                 neg_total)
+                 neg_total + rt_total)
         passed = (gen_passed + comp_passed + 
                   std_encode_passed + std_validate_passed + std_decode_passed + 
                   ext_encode_passed + ext_validate_passed + ext_decode_passed +
                   var_encode_passed + var_validate_passed + var_decode_passed +
-                  neg_passed)
+                  neg_passed + rt_passed)
         
         print(f"\n  Total: {colorize_count(passed, total)} tests passed")
         
@@ -1692,6 +1769,13 @@ class TestRunner:
                     self.run_standalone_tests()
             else:
                 print(f"\n{Colors.yellow('[SKIP]')} Standalone tests (--profiling)")
+
+            # Phase 12: Round-trip tests (every message, all 5 profiles)
+            if not profiling_only:
+                with self.timed_phase("Round-trip Tests"):
+                    self.run_roundtrip_tests()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Round-trip tests (--profiling)")
             
             # Summary
             success = self.print_summary()

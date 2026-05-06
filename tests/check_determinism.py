@@ -22,10 +22,10 @@ import tempfile
 from pathlib import Path
 
 PROTO_FILES = [
-    "test_messages.proto",
-    "pkg_test_messages.proto",
-    "extended_messages.proto",
-    "envelope_messages.proto",
+    "test_messages.sf",
+    "pkg_test_messages.sf",
+    "extended_messages.sf",
+    "envelope_messages.sf",
 ]
 
 # Language id  → (gen_flag, subdir)

@@ -3,7 +3,7 @@ package sensor_data;
 
 option pkgid = 2;
 
-import "common_types.proto";
+import "common_types.sf";
 
 message SensorReading {
   option msgid = 1;

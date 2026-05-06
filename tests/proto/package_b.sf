@@ -3,7 +3,7 @@ package package_b;
 
 option pkgid = 11;
 
-import "package_a.proto";
+import "package_a.sf";
 
 message MessageB {
   option msgid = 1;
