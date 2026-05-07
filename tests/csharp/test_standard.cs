@@ -13,6 +13,13 @@ class TestStandard
 
     public static int Main(string[] args)
     {
+        // Verify enum ToString() before running the main test suite
+        if (!StandardMessages.CheckEnumToString())
+        {
+            Console.Error.WriteLine("[FAIL] C# enum ToString() check failed");
+            return 1;
+        }
+
         return TestHarness.Run(
             args,
             StandardMessages.MESSAGE_COUNT,

@@ -301,3 +301,55 @@ message CollisionEnumMessage {
   uint8 id = 2;
   double time = 3;
 }
+
+// ============================================================================
+// Flatten Option Test (msgid: 215)
+// ============================================================================
+
+// Sub-message for flatten option test (no msgid - used as nested struct)
+message FlattenInner {
+  uint8 a = 1;
+  uint16 b = 2;
+}
+
+// Tests flatten=true option: inner fields appear inlined in to_dict() output
+message FlattenMessage {
+  option msgid = 215;
+  uint32 seq = 1;
+  FlattenInner inner = 2 [flatten=true];
+}
+
+// ============================================================================
+// Discriminator None Oneof Test (msgid: 216)
+// ============================================================================
+
+// Tests oneof with discriminator=none: no auto-discriminator field is generated.
+// Application must track which variant is active.
+message NoneDiscriminatorMessage {
+  option msgid = 216;
+  uint8 header = 1;
+  oneof data {
+    option discriminator = none;
+    BasicTypesMessage basic = 1;
+    SerializationTestMessage test_msg = 2;
+  }
+}
+
+// ============================================================================
+// Multiple Oneof Test (msgid: 217)
+// ============================================================================
+
+// Tests a message with two separate oneof fields.
+message MultiOneofMessage {
+  option msgid = 217;
+  uint8 selector = 1;
+  oneof first_payload {
+    BasicTypesMessage basic = 1;
+    SerializationTestMessage test_msg = 2;
+  }
+  oneof second_payload {
+    option discriminator = none;
+    VariableSingleArray var_single = 1;
+    Message msg_payload = 2;
+  }
+}

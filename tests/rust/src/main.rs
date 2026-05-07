@@ -719,6 +719,12 @@ fn main() {
         std::process::exit(1);
     }
 
+    // Verify enum Debug formatting (enum-to-string) before dispatch
+    assert_eq!(format!("{:?}", Priority::HIGH), "HIGH", "Rust Priority::HIGH Debug should be \"HIGH\"");
+    assert_eq!(format!("{:?}", Priority::LOW), "LOW", "Rust Priority::LOW Debug should be \"LOW\"");
+    assert_eq!(format!("{:?}", Status::ACTIVE), "ACTIVE", "Rust Status::ACTIVE Debug should be \"ACTIVE\"");
+    assert_eq!(format!("{:?}", Status::INACTIVE), "INACTIVE", "Rust Status::INACTIVE Debug should be \"INACTIVE\"");
+
     let runner_name = args[1].as_str();
     let operation   = args[2].as_str();
     let profile     = args[3].as_str();

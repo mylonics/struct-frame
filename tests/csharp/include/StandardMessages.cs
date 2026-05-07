@@ -294,5 +294,20 @@ namespace StructFrameTests
 
             return true;
         }
+
+        // ============================================================================
+        // CheckEnumToString - verifies enum ToString() returns expected string names
+        // ============================================================================
+
+        public static bool CheckEnumToString()
+        {
+            if (Priority.HIGH.ToString() != "HIGH") return false;
+            if (Priority.LOW.ToString() != "LOW") return false;
+            if (Priority.MEDIUM.ToString() != "MEDIUM") return false;
+            if (Priority.CRITICAL.ToString() != "CRITICAL") return false;
+            if (Status.ACTIVE.ToString() != "ACTIVE") return false;
+            if (Status.INACTIVE.ToString() != "INACTIVE") return false;
+            return true;
+        }
     }
 }

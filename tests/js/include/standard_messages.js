@@ -17,6 +17,8 @@ const {
   NestedEnumMessageOperationMode,
   CollisionEnumMessage,
   CollisionEnumMessageStatus,
+  Priority,
+  Status,
 } = require('../../generated/js/serialization-test.structframe');
 
 // Message count
@@ -218,3 +220,23 @@ module.exports = {
   getMessage,
   checkMessage,
 };
+
+// ============================================================================
+// Enum-to-string verification (JavaScript Object.freeze enum reverse lookup)
+// ============================================================================
+
+function checkEnumToString() {
+  // JS enums are plain frozen objects; reverse-lookup: find key by value
+  function enumName(enumObj, value) {
+    return Object.keys(enumObj).find(k => enumObj[k] === value);
+  }
+  if (enumName(Priority, Priority.High) !== 'High') return false;
+  if (enumName(Priority, Priority.Low) !== 'Low') return false;
+  if (enumName(Priority, Priority.Medium) !== 'Medium') return false;
+  if (enumName(Priority, Priority.Critical) !== 'Critical') return false;
+  if (enumName(Status, Status.Active) !== 'Active') return false;
+  if (enumName(Status, Status.Inactive) !== 'Inactive') return false;
+  return true;
+}
+
+module.exports.checkEnumToString = checkEnumToString;

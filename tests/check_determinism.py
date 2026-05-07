@@ -45,6 +45,7 @@ LANGUAGES = [
 IGNORE_NAMES = {
     "sf_compile.json",   # catalog – may contain absolute paths
     ".structframe.hash",  # cache key includes output-directory paths
+    "Cargo.lock",         # created by `cargo build`, not by the struct-frame generator
 }
 
 # Directory segments that mark entire subtrees to skip.

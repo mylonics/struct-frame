@@ -17,6 +17,8 @@ import {
   NestedEnumMessageOperationMode,
   CollisionEnumMessage,
   CollisionEnumMessageStatus,
+  Priority,
+  Status,
 } from '../../generated/ts/serialization-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
@@ -223,4 +225,19 @@ export function checkMessage(index: number, info: FrameMsgInfo): boolean {
   // Deserialize and compare
   const decoded = msgClass.deserialize(info);
   return decoded.equals(expected);
+}
+
+// ============================================================================
+// Enum-to-string verification (TypeScript enum reverse mapping)
+// ============================================================================
+
+export function checkEnumToString(): boolean {
+  // TypeScript numeric enums support reverse mapping: EnumName[value] === "MemberName"
+  if (Priority[Priority.High] !== 'High') return false;
+  if (Priority[Priority.Low] !== 'Low') return false;
+  if (Priority[Priority.Medium] !== 'Medium') return false;
+  if (Priority[Priority.Critical] !== 'Critical') return false;
+  if (Status[Status.Active] !== 'Active') return false;
+  if (Status[Status.Inactive] !== 'Inactive') return false;
+  return true;
 }

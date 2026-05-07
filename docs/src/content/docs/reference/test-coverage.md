@@ -91,9 +91,9 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
 |---------|---|-----|--------|----|----|----|------|
 | Enum definition and serialization | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Enum to string conversion | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Enum to string conversion | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-> **Gap (Medium):** No test verifies enum-to-string helpers for any language.
+> **C/C++:** `tests/test_proto_field_types.py` compiles and runs a C/C++ binary that calls `{Pkg}{Enum}_to_string()` / `{Enum}_to_string()`. **Python:** `.name` attribute verified in the same standalone test. **TS/JS:** reverse-mapping (`Priority[Priority.High]` / key-lookup) verified in `test_standard.ts/.js`. **C#:** `Priority.HIGH.ToString()` verified in `test_standard.cs`. **Rust:** `format!("{:?}", Priority::HIGH)` verified in `tests/rust/src/main.rs`.
 
 ### 2.5 Nested Messages
 
@@ -107,11 +107,11 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 |---------|---|-----|--------|----|----|----|------|
 | `oneof` with `msgid` discriminator | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `oneof` with `field_order` discriminator | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `oneof` with `discriminator = none` | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Multiple `oneof` fields in one message | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `oneof` with `discriminator = none` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Multiple `oneof` fields in one message | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Envelope messages (`is_envelope`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
-> **Gap (Medium):** `discriminator = none` and multi-oneof messages have no tests. Envelope tests missing in Rust.
+> **Gap (Partial):** `discriminator = none` and multi-oneof encode/decode tested in Python via `tests/test_proto_field_types.py`. C, C++, TS, JS, C#, Rust coverage still missing. Envelope tests still missing in Rust.
 
 ### 2.7 Message Options
 
@@ -121,9 +121,9 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 | `variable = true` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `pkgid` (package ID) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `is_envelope` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| `flatten` | ❌ | N/A | ❌ | N/A | N/A | N/A | N/A |
+| `flatten` | ✅ | N/A | ✅ | N/A | N/A | N/A | N/A |
 
-> **Gap (Medium):** `flatten` option not tested for Python or C.
+> **C/Python `flatten`:** Verified by `tests/test_proto_field_types.py` — Python `to_dict()` inlines inner fields; C generates the struct inline (compile test). `is_envelope` still missing in Rust.
 
 ---
 
@@ -356,11 +356,11 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 3. **Variable-flag edge cases** — `VariableMultipleArrays` and `VariableMixedFields` messages are defined in the proto but not exercised by `test_variable_flag.*` in any language.
 
-4. **Enum-to-string conversion** — Not tested for any language despite generated helpers existing.
+4. ~~**Enum-to-string conversion**~~ — ✅ **Closed** — Tested for all languages: C and C++ via compiled binary in `tests/test_proto_field_types.py`; Python via `.name` attribute; TS/JS via reverse mapping in `test_standard.ts/.js`; C# via `ToString()` in `test_standard.cs`; Rust via `format!("{:?}", ...)` in `tests/rust/src/main.rs`.
 
-5. **`discriminator = none` and multi-oneof** — No test verifies the `none` discriminator or messages with more than one `oneof` field.
+5. **`discriminator = none` and multi-oneof** — ⚠️ **Partially closed** — Python encode/decode verified in `tests/test_proto_field_types.py`. C, C++, TS, JS, C#, Rust coverage still missing.
 
-6. **Envelope messages in Rust** — Rust lacks `test_extended` coverage of envelope messages.
+6. **Envelope messages in Rust** — Rust lacks envelope SDK test coverage.
 
 7. **Round-trip generators** — Implemented for all seven languages (C, C++, Python, TypeScript, JavaScript, C#, Rust) via the `Test*Gen` classes and exercised by the Round-trip Tests phase.
 
@@ -368,16 +368,14 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 ### Low Priority
 
-8. **`discriminator = none` serialization** — Oneof with no discriminator not tested anywhere.
-
 9. **`AccumulatingReader` byte-stream mode in C and Rust** — Only buffer-mode `add_data()` is tested; byte-by-byte `push_byte()` not exercised.
 
 10. **Performance benchmarks** — Throughput benchmarks only exist for C++; other languages have no baseline.
 
-14. **Wireshark dissector** — No automated test for the Lua dissector.
+11. **Wireshark dissector** — No automated test for the Lua dissector.
 
-15. **`--equality` generated code** — No test verifies generated equality operators/methods for any language.
+12. **`--equality` generated code** — No test verifies generated equality operators/methods for any language.
 
 ---
 
-*Last updated: 2026-05-08. Update this document whenever tests are added or gaps are closed.*
+*Last updated: 2026-05-27. Update this document whenever tests are added or gaps are closed.*
