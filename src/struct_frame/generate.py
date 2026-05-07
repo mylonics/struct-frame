@@ -1606,7 +1606,11 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
 
                     if lang == 'csharp':
                         ns = f'StructFrame.{pkg_pascal_}'
-                        return ns, enum_name_, f'{ns}.{msg_name_}.{enum_name_}'
+                        # Apply the same collision-avoidance logic as csharp_gen.py:
+                        # if the enum name matches a field property name, add 'Enum' suffix
+                        field_property_names = {pascal_case(f.name) for f in msg.fields.values()}
+                        effective_name = f'{enum_name_}Enum' if enum_name_ in field_property_names else enum_name_
+                        return ns, effective_name, f'{ns}.{msg_name_}.{effective_name}'
 
                     return None, enum_name_, enum_name_
 
