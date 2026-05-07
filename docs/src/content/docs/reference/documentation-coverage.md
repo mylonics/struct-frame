@@ -57,6 +57,7 @@ This document maps every user-facing feature area to its documentation status, i
 | `--generate_tests` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No explanation of output format | Medium |
 | `--validate` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example showing validation errors | Low |
 | `--debug` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example of debug output | Low |
+| `--no_packed` | ✅ [CLI Reference](/reference/cli-reference/), [Message Definitions](/basic-usage/message-definitions/) | ✅ | — | — |
 | `--csharp_namespace` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
 | `--csharp_sdk` | ✅ [C# SDK](/extended-features/csharp-sdk/) | ✅ | — | — |
 | `--target_framework` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example showing framework targeting | Low |

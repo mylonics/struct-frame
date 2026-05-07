@@ -58,6 +58,7 @@ python -m struct_frame [proto_file] [options]
 | `--force` | Force regeneration even if hash matches previous generation |
 | `--hash_path PATH` | Path to store the generation hash file |
 | `--generate_tests` | Generate test code with dummy values for round-trip verification |
+| `--no_packed` | Generate code without packed structs. Treats every message as variable so that serialization is performed field-by-field. Useful on platforms that do not support struct packing or have different endianness/alignment requirements. |
 | `--validate` | Validate the proto file without generating code |
 | `--debug` | Enable debug output during code generation |
 | `--catalog_path PATH` | Directory for the LSP type catalog file (`sf_compile.json`); default `generated/` |
@@ -83,6 +84,20 @@ Generate with SDK:
 ```bash
 python -m struct_frame messages.proto --build_cpp --sdk
 ```
+
+Generate without packed structs (portable encoding):
+```bash
+python -m struct_frame messages.proto --build_c --no_packed
+```
+
+When `--no_packed` is used, the C/C++ generators omit the `#pragma pack(push, 1)` /
+`#pragma pack(pop)` directives around the struct definitions, and every message is
+treated as if it had been declared with `option variable = true`. The generated
+`<Type>_serialize` / `<Type>_deserialize` (and the C++ `serialize` / `deserialize`
+methods) then read and write each field individually instead of relying on the
+in-memory layout of the struct. This makes the generated code portable across
+platforms that lack support for packed structs or have different
+endianness/alignment requirements.
 
 ## Generated Files
 

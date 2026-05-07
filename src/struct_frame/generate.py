@@ -189,6 +189,7 @@ def compute_generation_hash(args, packages_dict):
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
         'csharp_namespace': args.csharp_namespace[0],
+        'no_packed': args.no_packed,
     }
     hasher.update(
         f"cli:{json.dumps(cli_params, sort_keys=True)}\n".encode('utf-8'))
@@ -1135,6 +1136,11 @@ parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
                     help='Path to store the generation hash file (default: first output path)')
 parser.add_argument('--generate_tests', action='store_true',
                     help='Generate test code with dummy values for all messages (round-trip encode/decode verification)')
+parser.add_argument('--no_packed', action='store_true',
+                    help=('Generate code without packed structs. All messages are treated as variable, '
+                          'so serialization/deserialization is performed field-by-field instead of relying on '
+                          'packed memory layout. Useful on platforms that do not support struct packing or '
+                          'have different endianness/alignment requirements.'))
 
 
 def parseFile(filename, base_path=None, importing_package=None):
@@ -2004,6 +2010,18 @@ def main():
         return
 
     parseFile(args.filename)
+
+    # If --no_packed is set, mark every message as variable BEFORE validation so
+    # that min_size and other variable-related metadata is computed correctly.
+    # This causes serialization to be performed field-by-field instead of relying
+    # on packed memory layout. Useful on platforms that don't support struct
+    # packing or have different endianness/alignment requirements.
+    if args.no_packed:
+        for pkg in packages.values():
+            for msg in pkg.messages.values():
+                msg.variable = True
+        if args.debug:
+            print("--no_packed: all messages marked as variable")
 
     # If validate mode is specified, skip build argument check and file generation
     if args.validate:
