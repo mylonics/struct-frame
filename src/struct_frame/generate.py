@@ -8,8 +8,8 @@ import hashlib
 import json
 import time
 from struct_frame import FileCGen
-from struct_frame import FileTsGen
-from struct_frame import FileJsGen
+from struct_frame import FileTsGen, TestTsGen
+from struct_frame import FileJsGen, TestJsGen
 from struct_frame import FilePyGen
 from struct_frame import FileGqlGen
 from struct_frame import FileCppGen
@@ -1658,7 +1658,7 @@ def generateCFileStrings(path, equality=False):
     return out
 
 
-def generateTsFileStrings(path, equality=False):
+def generateTsFileStrings(path, equality=False, generate_tests=False):
     import json as _json
     out = {}
     pkg_names = []
@@ -1669,6 +1669,16 @@ def generateTsFileStrings(path, equality=False):
             value, use_class_based=True, packages=packages, equality=equality))
         out[name] = data
         pkg_names.append(kebab_name)
+
+        # Generate test file alongside the package output if requested.
+        # Mirrors the Python/C++ generator pattern: emit a runnable
+        # ``test_roundtrip_<package>.ts`` containing dummy-value factories,
+        # round-trip verifier, and a ``main`` entrypoint.
+        if generate_tests:
+            imported = package_imports.get(value.name, [])
+            test_name = os.path.join(path, "test_roundtrip_" + value.name + ".ts")
+            test_data = ''.join(TestTsGen.generate(value, imported_packages=imported))
+            out[test_name] = test_data
 
     # Generate index.ts barrel so the output folder is a self-contained ESM package
     if pkg_names:
@@ -1695,7 +1705,7 @@ def generateTsFileStrings(path, equality=False):
     return out
 
 
-def generateJsFileStrings(path, equality=False):
+def generateJsFileStrings(path, equality=False, generate_tests=False):
     import json as _json
     out = {}
     pkg_names = []
@@ -1706,6 +1716,16 @@ def generateJsFileStrings(path, equality=False):
             value, use_class_based=True, packages=packages, equality=equality))
         out[name] = data
         pkg_names.append(kebab_name)
+
+        # Generate test file alongside the package output if requested.
+        # Mirrors the Python/C++ generator pattern: emit a runnable
+        # ``test_roundtrip_<package>.js`` containing dummy-value factories,
+        # round-trip verifier, and a ``main`` entrypoint.
+        if generate_tests:
+            imported = package_imports.get(value.name, [])
+            test_name = os.path.join(path, "test_roundtrip_" + value.name + ".js")
+            test_data = ''.join(TestJsGen.generate(value, imported_packages=imported))
+            out[test_name] = test_data
 
     # Generate index.js barrel so the output folder is a self-contained CJS package
     if pkg_names:
@@ -2003,11 +2023,11 @@ def main():
 
     if (args.build_ts):
         files.update(generateTsFileStrings(
-            args.ts_path[0], equality=args.equality))
+            args.ts_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_js):
         files.update(generateJsFileStrings(
-            args.js_path[0], equality=args.equality))
+            args.js_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_py):
         files.update(generatePyFileStrings(
