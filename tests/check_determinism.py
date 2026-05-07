@@ -86,7 +86,7 @@ def _generate(tmpdir: Path, project_root: Path, verbose: bool) -> bool:
 
     for proto_file in PROTO_FILES:
         proto_path = proto_dir / proto_file
-        cmd = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests"]
+        cmd = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests", "--sdk"]
         for _id, gen_flag, subdir in LANGUAGES:
             out = tmpdir / subdir
             out.mkdir(parents=True, exist_ok=True)

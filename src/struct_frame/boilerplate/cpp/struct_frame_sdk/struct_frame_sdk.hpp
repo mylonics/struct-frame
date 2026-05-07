@@ -63,7 +63,7 @@ public:
  */
 struct StructFrameSdkConfig {
     Transport* transport;
-    frame_parser* frame_parser;
+    frame_parser* parser;
     bool debug = false;
     size_t max_buffer_size = 8192;
 };
@@ -113,16 +113,24 @@ private:
 
             // Remove parsed data from buffer
             size_t frameSize = CalculateFrameSize(result);
+            if (frameSize == 0 || frameSize > buffer_.size()) {
+                // Safety guard: if CalculateFrameSize returns more than the buffer
+                // holds (e.g. conservative estimate exceeded actual data), consume
+                // the whole buffer to avoid an infinite loop.
+                buffer_.clear();
+                break;
+            }
             buffer_.erase(buffer_.begin(), buffer_.begin() + frameSize);
         }
     }
 
     size_t CalculateFrameSize(const structframe::FrameMsgInfo& result) const {
-        // Calculate total frame size including headers and footers
-        // Frame overhead by format:
-        // - BasicDefault: 2 start + 1 length + 1 msg_id + payload + 2 crc = 6 + payload
-        // - TinyDefault: 1 start + 1 length + 1 msg_id + payload + 2 crc = 5 + payload
-        // Using conservative estimate of 10 bytes to handle all frame formats
+        // Prefer the exact total frame size reported by the parser when available.
+        if (result.frame_size > 0) {
+            return result.frame_size;
+        }
+        // Fallback: conservative estimate of 10 bytes overhead to handle all
+        // frame formats when the parser does not populate frame_size.
         // TODO: Query frame parser for exact overhead to avoid buffering issues
         return result.msg_len + 10;
     }
@@ -170,7 +178,7 @@ private:
 public:
     StructFrameSdk(const StructFrameSdkConfig& config)
         : transport_(config.transport),
-          frame_parser_(config.frame_parser),
+          frame_parser_(config.parser),
           debug_(config.debug),
           max_buffer_size_(config.max_buffer_size) {
 

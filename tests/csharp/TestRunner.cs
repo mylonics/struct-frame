@@ -69,6 +69,10 @@ class TestRunner
         {
             return TestEnvelopeSdk.Main(filteredArgs);
         }
+        else if (testSuite == "test_sdk_subscribe")
+        {
+            return TestSdkSubscribe.Main(filteredArgs);
+        }
         else
         {
             return TestStandard.Main(filteredArgs);

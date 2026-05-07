@@ -555,7 +555,7 @@ impl AccumulatingReader {
 
     /// Returns the number of bytes to drain to re-align the buffer to the next
     /// possible start-byte position (0 means "wait for more data").
-    fn bytes_to_drain_for_resync(&self) -> usize {
+    fn bytes_to_drain_for_resync(&self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> usize {
         if self.buffer.is_empty() {
             return 0;
         }
@@ -566,21 +566,45 @@ impl AccumulatingReader {
                     get_tiny_start_byte(self.config.payload.payload_type as u8);
                 // If buffer starts with valid start byte, check if we might just
                 // need more data before deciding to drain.
-                if self.starts_with_possible_frame() && self.config.payload.has_length {
-                    let header_size = 1 + self.config.payload.header_size();
-                    let footer_size = self.config.footer_size();
-                    if self.buffer.len() < header_size {
-                        return 0; // Too early to determine frame size - wait for more data
-                    }
-                    let len_offset = 1usize; // after 1 start byte
-                    let msg_len = if self.config.payload.length_bytes == 1 {
-                        self.buffer[len_offset] as usize
+                if self.starts_with_possible_frame() {
+                    if self.config.payload.has_length {
+                        let header_size = 1 + self.config.payload.header_size();
+                        let footer_size = self.config.footer_size();
+                        if self.buffer.len() < header_size {
+                            return 0; // Too early to determine frame size - wait for more data
+                        }
+                        let len_offset = 1usize; // after 1 start byte
+                        let msg_len = if self.config.payload.length_bytes == 1 {
+                            self.buffer[len_offset] as usize
+                        } else {
+                            (self.buffer[len_offset] as usize)
+                                | ((self.buffer[len_offset + 1] as usize) << 8)
+                        };
+                        if self.buffer.len() < header_size + msg_len + footer_size {
+                            return 0; // Not enough data for full frame - wait for more
+                        }
                     } else {
-                        (self.buffer[len_offset] as usize)
-                            | ((self.buffer[len_offset + 1] as usize) << 8)
-                    };
-                    if self.buffer.len() < header_size + msg_len + footer_size {
-                        return 0; // Not enough data for full frame - wait for more
+                        // No length field: need get_message_info to determine payload size.
+                        // The header is start_byte(s) + msg_id byte(s).
+                        let header_size = 1 + self.config.payload.header_size(); // start + payload_header
+                        if self.buffer.len() < header_size {
+                            return 0; // Haven't received the msg_id byte yet – wait
+                        }
+                        // msg_id is the last byte of the header (after start byte(s))
+                        let msg_id = self.buffer[header_size - 1] as u16;
+                        if let Some(info) = get_message_info(msg_id) {
+                            // Valid msg_id: we know total frame size; wait if incomplete
+                            let total = header_size + info.size + self.config.footer_size();
+                            if self.buffer.len() < total {
+                                return 0; // Wait for payload (+ CRC if any) to arrive
+                            }
+                            // Full frame is present but parse still failed (e.g. bad CRC).
+                            // Fall through to drain past this start byte.
+                        } else {
+                            // Unknown msg_id: this start byte is not the beginning of a
+                            // valid frame.  Drain past it.
+                            return 1;
+                        }
                     }
                 }
                 // Search from index 1 if index 0 already is the start byte (that parse
@@ -636,6 +660,14 @@ impl AccumulatingReader {
         }
     }
 
+    /// Push a single byte and attempt to extract a complete frame.
+    /// Returns `Some(FrameMsgInfo)` as soon as a frame is available.
+    /// Equivalent to calling `add_data(&[byte])` then `next(...)`.
+    pub fn push_byte(&mut self, byte: u8, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
+        self.add_data(&[byte]);
+        self.next(get_message_info)
+    }
+
     /// Get the next complete frame, or None if not enough data yet.
     /// Automatically re-synchronizes past noise or partial frames.
     pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
@@ -656,7 +688,7 @@ impl AccumulatingReader {
                 return Some(result);
             }
 
-            let bytes_to_drain = self.bytes_to_drain_for_resync();
+            let bytes_to_drain = self.bytes_to_drain_for_resync(get_message_info);
             if bytes_to_drain == 0 {
                 return None;
             }
