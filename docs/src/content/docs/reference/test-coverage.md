@@ -107,11 +107,11 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 |---------|---|-----|--------|----|----|----|------|
 | `oneof` with `msgid` discriminator | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `oneof` with `field_order` discriminator | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `oneof` with `discriminator = none` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Multiple `oneof` fields in one message | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `oneof` with `discriminator = none` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Multiple `oneof` fields in one message | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Envelope messages (`is_envelope`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-> **Gap (Partial):** `discriminator = none` and multi-oneof encode/decode tested in Python via `tests/test_proto_field_types.py`. C, C++, TS, JS, C#, Rust coverage still missing. Rust envelope test added in `tests/rust/src/main.rs` (`test_envelope_sdk` runner).
+> **All gaps closed.** `discriminator = none` and multi-oneof encode/decode tested in all 7 languages: Python via `tests/test_proto_field_types.py`; C and C++ via compiled binaries in the same file; TS/JS via `checkDiscriminatorNone()`/`checkMultiOneof()` in their standard test helpers; C# via `CheckDiscriminatorNone()`/`CheckMultiOneof()` in `tests/csharp/include/StandardMessages.cs`; Rust via the `test_oneof_special` runner in `tests/rust/src/main.rs`.
 
 ### 2.7 Message Options
 
@@ -358,7 +358,7 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 4. ~~**Enum-to-string conversion**~~ — ✅ **Closed** — Tested for all languages: C and C++ via compiled binary in `tests/test_proto_field_types.py`; Python via `.name` attribute; TS/JS via reverse mapping in `test_standard.ts/.js`; C# via `ToString()` in `test_standard.cs`; Rust via `format!("{:?}", ...)` in `tests/rust/src/main.rs`.
 
-5. **`discriminator = none` and multi-oneof** — ⚠️ **Partially closed** — Python encode/decode verified in `tests/test_proto_field_types.py`. C, C++, TS, JS, C#, Rust coverage still missing.
+5. ~~**`discriminator = none` and multi-oneof**~~ — ✅ **Closed** — All 7 languages covered: Python via `tests/test_proto_field_types.py`; C and C++ via compiled binaries in the same file; TS/JS via `checkDiscriminatorNone()`/`checkMultiOneof()` helpers; C# via `CheckDiscriminatorNone()`/`CheckMultiOneof()` in `StandardMessages.cs`; Rust via the `test_oneof_special` runner in `tests/rust/src/main.rs`.
 
 6. ~~**Envelope messages in Rust**~~ — ✅ **Closed** — `tests/rust/src/main.rs` `test_envelope_sdk` runner tests `CommandEnvelope` (msgid discriminator) and `RawDataEnvelope` (field_order discriminator) round-trips via `run_envelope_sdk_test()` in `run_tests.py`.
 

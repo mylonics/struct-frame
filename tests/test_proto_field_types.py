@@ -291,6 +291,163 @@ def test_python_multi_oneof(mod) -> None:
 
 
 # ---------------------------------------------------------------------------
+# C discriminator=none and multi-oneof
+# ---------------------------------------------------------------------------
+
+_C_ONEOF_TEST_SRC = r"""
+#include <stdio.h>
+#include <string.h>
+#include <assert.h>
+#include <stdint.h>
+#include "serialization_test.structframe.h"
+
+int main(void) {
+    /* ---- NoneDiscriminatorMessage: no discriminator field, header round-trips ---- */
+    SerializationTestNoneDiscriminatorMessage msg1;
+    memset(&msg1, 0, sizeof(msg1));
+    msg1.header = 0xAB;
+
+    /* Write a recognisable pattern into the union (BasicTypesMessage variant) */
+    msg1.data.basic.small_int = -42;
+    msg1.data.basic.medium_uint = 5000;
+
+    uint8_t buf1[SERIALIZATION_TEST_NONE_DISCRIMINATOR_MESSAGE_MAX_SIZE];
+    size_t n1 = SerializationTestNoneDiscriminatorMessage_serialize(&msg1, buf1);
+    assert(n1 == SERIALIZATION_TEST_NONE_DISCRIMINATOR_MESSAGE_MAX_SIZE);
+
+    SerializationTestNoneDiscriminatorMessage dec1;
+    size_t r1 = SerializationTestNoneDiscriminatorMessage_deserialize(buf1, n1, &dec1);
+    assert(r1 == n1);
+    assert(dec1.header == 0xAB);
+    /* With discriminator=none the receiver keeps the raw union bytes */
+    assert(dec1.data.basic.small_int == -42);
+    assert(dec1.data.basic.medium_uint == 5000);
+
+    /* ---- MultiOneofMessage: two oneofs — first has msgid discriminator ---- */
+    SerializationTestMultiOneofMessage msg2;
+    memset(&msg2, 0, sizeof(msg2));
+    msg2.selector = 7;
+    /* first_payload: use the BasicTypesMessage variant; set discriminator */
+    msg2.first_payload_discriminator = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID;
+    msg2.first_payload.basic.small_int = 99;
+    /* second_payload: discriminator=none; use msg_payload variant (Message type) */
+    msg2.second_payload.msg_payload.severity = SERIALIZATION_TEST_MSG_SEVERITY_SEV_WARN;
+
+    uint8_t buf2[SERIALIZATION_TEST_MULTI_ONEOF_MESSAGE_MAX_SIZE];
+    size_t n2 = SerializationTestMultiOneofMessage_serialize(&msg2, buf2);
+    assert(n2 == SERIALIZATION_TEST_MULTI_ONEOF_MESSAGE_MAX_SIZE);
+
+    SerializationTestMultiOneofMessage dec2;
+    size_t r2 = SerializationTestMultiOneofMessage_deserialize(buf2, n2, &dec2);
+    assert(r2 == n2);
+    assert(dec2.selector == 7);
+    assert(dec2.first_payload_discriminator == SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID);
+    assert(dec2.first_payload.basic.small_int == 99);
+    /* second_payload bytes preserved (discriminator=none) */
+    assert(dec2.second_payload.msg_payload.severity == SERIALIZATION_TEST_MSG_SEVERITY_SEV_WARN);
+
+    printf("C discriminator=none and multi-oneof: OK\n");
+    return 0;
+}
+"""
+
+
+def test_c_oneof(c_dir: Path) -> None:
+    """C: discriminator=none oneof and multiple oneof fields both round-trip correctly."""
+    src = c_dir / "_oneof_test.c"
+    src.write_text(_C_ONEOF_TEST_SRC, encoding="utf-8")
+    out = c_dir / "_oneof_test.out"
+    try:
+        result = subprocess.run(
+            ["gcc", "-std=c99", "-I", str(c_dir), str(src), "-o", str(out)],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        print("SKIP: gcc not available - skipping C oneof tests")
+        return
+    _check(result.returncode == 0,
+           f"C oneof test failed to compile:\n{result.stdout}{result.stderr}")
+    run = subprocess.run([str(out)], capture_output=True, text=True)
+    _check(run.returncode == 0,
+           f"C oneof test binary failed:\n{run.stdout}{run.stderr}")
+
+
+# ---------------------------------------------------------------------------
+# C++ discriminator=none and multi-oneof
+# ---------------------------------------------------------------------------
+
+_CPP_ONEOF_TEST_SRC = r"""
+#include <cstring>
+#include <cassert>
+#include <cstdio>
+#include "serialization_test.structframe.hpp"
+using namespace structframe::serialization_test;
+
+int main() {
+    // ---- NoneDiscriminatorMessage: no discriminator field, header round-trips ----
+    NoneDiscriminatorMessage msg1{};
+    msg1.header = 0xAB;
+    msg1.data.basic.small_int = -42;
+    msg1.data.basic.medium_uint = 5000;
+
+    uint8_t buf1[NoneDiscriminatorMessage::MAX_SIZE];
+    size_t n1 = msg1.serialize(buf1);
+    assert(n1 == NoneDiscriminatorMessage::MAX_SIZE);
+
+    NoneDiscriminatorMessage dec1{};
+    size_t r1 = dec1.deserialize(buf1, n1);
+    assert(r1 == n1);
+    assert(dec1.header == 0xAB);
+    assert(dec1.data.basic.small_int == -42);
+    assert(dec1.data.basic.medium_uint == 5000);
+
+    // ---- MultiOneofMessage: two oneofs — first has msgid discriminator ----
+    MultiOneofMessage msg2{};
+    msg2.selector = 7;
+    msg2.first_payload_discriminator = BasicTypesMessage::MSG_ID;
+    msg2.first_payload.basic.small_int = 99;
+    // second_payload: discriminator=none; use msg_payload variant (Message type)
+    msg2.second_payload.msg_payload.severity = MsgSeverity::SevWarn;
+
+    uint8_t buf2[MultiOneofMessage::MAX_SIZE];
+    size_t n2 = msg2.serialize(buf2);
+    assert(n2 == MultiOneofMessage::MAX_SIZE);
+
+    MultiOneofMessage dec2{};
+    size_t r2 = dec2.deserialize(buf2, n2);
+    assert(r2 == n2);
+    assert(dec2.selector == 7);
+    assert(dec2.first_payload_discriminator == BasicTypesMessage::MSG_ID);
+    assert(dec2.first_payload.basic.small_int == 99);
+    assert(dec2.second_payload.msg_payload.severity == MsgSeverity::SevWarn);
+
+    printf("C++ discriminator=none and multi-oneof: OK\n");
+    return 0;
+}
+"""
+
+
+def test_cpp_oneof(cpp_dir: Path) -> None:
+    """C++: discriminator=none oneof and multiple oneof fields both round-trip correctly."""
+    src = cpp_dir / "_oneof_test.cpp"
+    src.write_text(_CPP_ONEOF_TEST_SRC, encoding="utf-8")
+    out = cpp_dir / "_oneof_test.out"
+    try:
+        result = subprocess.run(
+            ["g++", "-std=c++20", "-I", str(cpp_dir), str(src), "-o", str(out)],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        print("SKIP: g++ not available - skipping C++ oneof tests")
+        return
+    _check(result.returncode == 0,
+           f"C++ oneof test failed to compile:\n{result.stdout}{result.stderr}")
+    run = subprocess.run([str(out)], capture_output=True, text=True)
+    _check(run.returncode == 0,
+           f"C++ oneof test binary failed:\n{run.stdout}{run.stderr}")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -311,6 +468,8 @@ def main():
         test_python_flatten(mod)
         test_python_discriminator_none(mod)
         test_python_multi_oneof(mod)
+        test_c_oneof(c_dir)
+        test_cpp_oneof(cpp_dir)
 
     print("PASS: Proto field type coverage tests")
 

@@ -309,5 +309,42 @@ namespace StructFrameTests
             if (Status.INACTIVE.ToString() != "INACTIVE") return false;
             return true;
         }
+
+        // ============================================================================
+        // CheckDiscriminatorNone - verifies discriminator=none oneof round-trip
+        // ============================================================================
+
+        public static bool CheckDiscriminatorNone()
+        {
+            // NoneDiscriminatorMessage has no discriminator field — header must round-trip.
+            var msg = new NoneDiscriminatorMessage { Header = 0xAB };
+            byte[] raw = msg.Serialize();
+            if (raw.Length != NoneDiscriminatorMessage.MaxSize) return false;
+            var decoded = NoneDiscriminatorMessage.Deserialize(raw);
+            if (decoded.Header != 0xAB) return false;
+            return true;
+        }
+
+        // ============================================================================
+        // CheckMultiOneof - verifies multiple oneof fields in one message round-trip
+        // ============================================================================
+
+        public static bool CheckMultiOneof()
+        {
+            // MultiOneofMessage has two oneofs: FirstPayload (msgid discriminator) + SecondPayload (none).
+            var msg = new MultiOneofMessage { Selector = 7 };
+            msg.FirstPayloadDiscriminator = BasicTypesMessage.MsgId;
+            // Set a recognisable value in Basic (first payload variant)
+            var basic = new BasicTypesMessage { SmallInt = -42 };
+            msg.Basic = basic;
+            byte[] raw = msg.Serialize();
+            if (raw.Length != MultiOneofMessage.MaxSize) return false;
+            var decoded = MultiOneofMessage.Deserialize(raw);
+            if (decoded.Selector != 7) return false;
+            if (decoded.FirstPayloadDiscriminator != BasicTypesMessage.MsgId) return false;
+            // The decoded Basic should match (SmallInt = -42)
+            if (decoded.Basic.SmallInt != -42) return false;
+            return true;
+        }
     }
 }

@@ -20,6 +20,20 @@ class TestStandard
             return 1;
         }
 
+        // Verify discriminator=none oneof round-trip
+        if (!StandardMessages.CheckDiscriminatorNone())
+        {
+            Console.Error.WriteLine("[FAIL] C# discriminator=none oneof check failed");
+            return 1;
+        }
+
+        // Verify multiple oneof fields in one message
+        if (!StandardMessages.CheckMultiOneof())
+        {
+            Console.Error.WriteLine("[FAIL] C# multi-oneof check failed");
+            return 1;
+        }
+
         return TestHarness.Run(
             args,
             StandardMessages.MESSAGE_COUNT,

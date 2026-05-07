@@ -19,6 +19,8 @@ import {
   CollisionEnumMessageStatus,
   Priority,
   Status,
+  NoneDiscriminatorMessage,
+  MultiOneofMessage,
 } from '../../generated/ts/serialization-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
@@ -239,5 +241,47 @@ export function checkEnumToString(): boolean {
   if (Priority[Priority.Critical] !== 'Critical') return false;
   if (Status[Status.Active] !== 'Active') return false;
   if (Status[Status.Inactive] !== 'Inactive') return false;
+  return true;
+}
+
+// ============================================================================
+// discriminator=none and multi-oneof verification (TypeScript)
+// ============================================================================
+
+export function checkDiscriminatorNone(): boolean {
+  // NoneDiscriminatorMessage has no discriminator field — header must round-trip.
+  const msg = new NoneDiscriminatorMessage({ header: 0xAB });
+  const raw = msg.serialize();
+  if (raw.length !== NoneDiscriminatorMessage._size) return false;
+  const decoded = NoneDiscriminatorMessage.deserialize(raw);
+  if (decoded.header !== 0xAB) return false;
+  // dataData should be accessible (all zeros initially)
+  const data = decoded.dataData;
+  if (!Array.isArray(data) || data.length !== 204) return false;
+  return true;
+}
+
+export function checkMultiOneof(): boolean {
+  // MultiOneofMessage has two oneofs: firstPayload (msgid discriminator) + secondPayload (none).
+  const msg = new MultiOneofMessage({ selector: 7 });
+  // Set firstPayload discriminator to BasicTypesMessage msgid
+  msg.firstPayloadDiscriminator = BasicTypesMessage._msgid;
+  // Write a recognisable byte pattern into firstPayloadData
+  const payload = new Array<number>(204).fill(0);
+  payload[0] = 0xCA;
+  msg.firstPayloadData = payload;
+  // Write a recognisable byte into secondPayloadData
+  const payload2 = new Array<number>(274).fill(0);
+  payload2[5] = 0xFE;
+  msg.secondPayloadData = payload2;
+
+  const raw = msg.serialize();
+  if (raw.length !== MultiOneofMessage._size) return false;
+
+  const decoded = MultiOneofMessage.deserialize(raw);
+  if (decoded.selector !== 7) return false;
+  if (decoded.firstPayloadDiscriminator !== BasicTypesMessage._msgid) return false;
+  if (decoded.firstPayloadData[0] !== 0xCA) return false;
+  if (decoded.secondPayloadData[5] !== 0xFE) return false;
   return true;
 }

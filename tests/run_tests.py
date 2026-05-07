@@ -1485,6 +1485,22 @@ class TestRunner:
 
                 self.results.setdefault("envelope_sdk", {})["rust"] = success
 
+                # Also run oneof special tests (discriminator=none, multi-oneof)
+                rust_oneof_cmd = f'"{rust_runner}" test_oneof_special'
+                success2, stdout2, stderr2 = self.run_cmd(rust_oneof_cmd, timeout=30)
+                if stdout2:
+                    for line in stdout2.splitlines():
+                        print(f"  {line}")
+
+                status2 = Colors.pass_text() if success2 else Colors.fail_text()
+                print(f"\n  Rust OneofSpecial: {status2}")
+
+                if not success2:
+                    self.add_failure("envelope_sdk", "Rust", None, "Rust oneof special test failed")
+                    all_success = False
+
+                self.results.setdefault("envelope_sdk", {}).setdefault("rust_oneof", success2)
+
         return all_success
 
     def run_roundtrip_tests(self) -> bool:

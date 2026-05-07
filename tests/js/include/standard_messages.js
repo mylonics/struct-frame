@@ -19,6 +19,8 @@ const {
   CollisionEnumMessageStatus,
   Priority,
   Status,
+  NoneDiscriminatorMessage,
+  MultiOneofMessage,
 } = require('../../generated/js/serialization-test.structframe');
 
 // Message count
@@ -240,3 +242,45 @@ function checkEnumToString() {
 }
 
 module.exports.checkEnumToString = checkEnumToString;
+
+// ============================================================================
+// discriminator=none and multi-oneof verification (JavaScript)
+// ============================================================================
+
+function checkDiscriminatorNone() {
+  // NoneDiscriminatorMessage has no discriminator field — header must round-trip.
+  const msg = new NoneDiscriminatorMessage({ header: 0xAB });
+  const raw = msg.serialize();
+  if (raw.length !== NoneDiscriminatorMessage._size) return false;
+  const decoded = NoneDiscriminatorMessage.deserialize(raw);
+  if (decoded.header !== 0xAB) return false;
+  // dataData should be accessible (all zeros initially)
+  const data = decoded.dataData;
+  if (!Array.isArray(data) || data.length !== 204) return false;
+  return true;
+}
+
+function checkMultiOneof() {
+  // MultiOneofMessage has two oneofs: firstPayload (msgid discriminator) + secondPayload (none).
+  const msg = new MultiOneofMessage({ selector: 7 });
+  msg.firstPayloadDiscriminator = BasicTypesMessage._msgid;
+  const payload = new Array(204).fill(0);
+  payload[0] = 0xCA;
+  msg.firstPayloadData = payload;
+  const payload2 = new Array(274).fill(0);
+  payload2[5] = 0xFE;
+  msg.secondPayloadData = payload2;
+
+  const raw = msg.serialize();
+  if (raw.length !== MultiOneofMessage._size) return false;
+
+  const decoded = MultiOneofMessage.deserialize(raw);
+  if (decoded.selector !== 7) return false;
+  if (decoded.firstPayloadDiscriminator !== BasicTypesMessage._msgid) return false;
+  if (decoded.firstPayloadData[0] !== 0xCA) return false;
+  if (decoded.secondPayloadData[5] !== 0xFE) return false;
+  return true;
+}
+
+module.exports.checkDiscriminatorNone = checkDiscriminatorNone;
+module.exports.checkMultiOneof = checkMultiOneof;
