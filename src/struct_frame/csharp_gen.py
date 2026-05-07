@@ -1589,3 +1589,286 @@ class FileCSharpGen():
             yield FileCSharpGen._generate_message_definitions(package)
 
         yield '}\n'
+
+
+class TestCSharpGen():
+    """Generator for C# round-trip test code with deterministic dummy values.
+
+    Emits a single ``test_roundtrip_<pkg>.cs`` file inside the package folder
+    containing a ``Program`` class with ``Main()`` that exercises every message
+    across all 5 frame profiles.
+    """
+
+    @staticmethod
+    def _dummy_value(field, index=0):
+        """Return a C# literal for *field*'s scalar type, or None for nested
+        struct (caller must instantiate via ``new``)."""
+        type_name = field.field_type
+        type_values = {
+            "uint8":  f"(byte){(42 + index) % 256}",
+            "int8":   f"(sbyte){(42 + index) % 128}",
+            "uint16": f"(ushort){1000 + index}",
+            "int16":  f"(short){500 + index}",
+            "uint32": f"{123456 + index}u",
+            "int32":  f"{123456 + index}",
+            "uint64": f"{9876543210 + index}UL",
+            "int64":  f"{9876543210 + index}L",
+            "float":  f"{3.14159 + index}f",
+            "double": f"{2.718281828 + index}",
+            "bool":   "true" if index % 2 == 0 else "false",
+        }
+        if type_name in type_values:
+            return type_values[type_name]
+        if field.is_enum:
+            # Enum properties default to 0 (the first value). Avoid emitting an
+            # explicit cast because nested enums may be renamed to *Enum when
+            # they collide with property names, and they live inside the
+            # parent class (e.g. ``MyMsg.MyEnumEnum``). Returning ``None``
+            # tells the caller to skip the assignment.
+            return None
+        return None  # nested struct
+
+    @staticmethod
+    def _bytes_literal(s, fixed_size=None):
+        """Return a C# expression yielding a byte[] containing *s* (UTF-8),
+        optionally padded/truncated to *fixed_size* bytes."""
+        data = s.encode('utf-8')
+        if fixed_size is not None:
+            data = data[:fixed_size].ljust(fixed_size, b'\x00')
+        return 'new byte[] { ' + ', '.join(str(b) for b in data) + ' }'
+
+    @staticmethod
+    def _generate_field_init(field, prefix="msg", index=0):
+        """Generate C# field init lines for a deterministic test value."""
+        var_name = pascal_case(field.name)
+        type_name = field.field_type
+        out = ""
+
+        if field.is_array:
+            if type_name == "string":
+                if field.size_option is not None:
+                    # Fixed string array: byte[] flattened, size_option strings * element_size bytes
+                    total = field.size_option * field.element_size
+                    elem_bytes = b''.join(
+                        f"test_{i}".encode('utf-8')[:field.element_size].ljust(field.element_size, b'\x00')
+                        for i in range(field.size_option)
+                    )
+                    out += f'        {prefix}.{var_name} = new byte[] {{ ' + ', '.join(str(b) for b in elem_bytes) + ' };\n'
+                elif field.max_size is not None:
+                    count = min(field.max_size, 3)
+                    elem_bytes = b''.join(
+                        f"test_{i}".encode('utf-8')[:field.element_size].ljust(field.element_size, b'\x00')
+                        for i in range(count)
+                    )
+                    out += f'        {prefix}.{var_name}Count = {count};\n'
+                    out += f'        {prefix}.{var_name}Data = new byte[] {{ ' + ', '.join(str(b) for b in elem_bytes) + ' };\n'
+            else:
+                # Determine element type name in C#
+                if type_name in csharp_types:
+                    elem_type = csharp_types[type_name]
+                else:
+                    elem_type = type_name
+                if field.size_option is not None:
+                    count = field.size_option
+                    if field.is_enum:
+                        out += f'        {prefix}.{var_name} = new byte[{count}];\n'
+                    elif type_name not in csharp_types:
+                        out += f'        {prefix}.{var_name} = new {elem_type}[{count}];\n'
+                        out += f'        for (int _i = 0; _i < {count}; _i++) {prefix}.{var_name}[_i] = new {elem_type}();\n'
+                    else:
+                        n = min(count, 3)
+                        out += f'        {prefix}.{var_name} = new {elem_type}[{count}];\n'
+                        for i in range(n):
+                            out += f'        {prefix}.{var_name}[{i}] = {TestCSharpGen._dummy_value(field, i)};\n'
+                elif field.max_size is not None:
+                    count = min(field.max_size, 3)
+                    out += f'        {prefix}.{var_name}Count = {count};\n'
+                    if field.is_enum:
+                        bytes_ = ', '.join(str(i) for i in range(count))
+                        out += f'        {prefix}.{var_name}Data = new byte[] {{ {bytes_} }};\n'
+                    elif type_name not in csharp_types:
+                        out += f'        {prefix}.{var_name}Data = new {elem_type}[{count}];\n'
+                        out += f'        for (int _i = 0; _i < {count}; _i++) {prefix}.{var_name}Data[_i] = new {elem_type}();\n'
+                    else:
+                        out += f'        {prefix}.{var_name}Data = new {elem_type}[] {{ '
+                        out += ', '.join(TestCSharpGen._dummy_value(field, i) for i in range(count))
+                        out += ' };\n'
+        elif type_name == "string":
+            if field.size_option is not None:
+                out += f'        {prefix}.{var_name} = {TestCSharpGen._bytes_literal("test_string", field.size_option)};\n'
+            elif field.max_size is not None:
+                test_str = "test_string"
+                out += f'        {prefix}.{var_name}Length = {len(test_str)};\n'
+                out += f'        {prefix}.{var_name}Data = {TestCSharpGen._bytes_literal(test_str)};\n'
+        else:
+            dummy = TestCSharpGen._dummy_value(field, index)
+            if dummy is not None:
+                out += f'        {prefix}.{var_name} = {dummy};\n'
+            elif field.is_enum:
+                pass  # enum left at default 0 value
+            else:
+                # Nested message – default-construct
+                out += f'        {prefix}.{var_name} = new {type_name}();\n'
+        return out
+
+    @staticmethod
+    def generate(package, namespace='StructFrame.Generated'):
+        """Generate the ``test_roundtrip_<pkg>.cs`` file content."""
+        pkg_pascal = pascal_case(package.name)
+        # Skip oneof messages and messages without IDs
+        testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
+                             if msg.id is not None and not getattr(msg, 'oneofs', {})]
+
+        # Collect referenced packages for using directives (for nested-message field types)
+        referenced_packages = set()
+        for key, msg in testable_messages:
+            for fkey, field in msg.fields.items():
+                if field.type_package and field.type_package != package.name:
+                    referenced_packages.add(field.type_package)
+
+        yield '// Automatically generated round-trip test runner for struct-frame messages.\n'
+        yield f'// Generated by struct-frame {version}.\n\n'
+        yield '#nullable enable\n\n'
+        yield 'using System;\n'
+        yield 'using System.Collections.Generic;\n'
+        yield 'using System.Linq;\n'
+        yield 'using StructFrame;\n'
+        yield 'using StructFrame.Framing;\n'
+        yield 'using StructFrame.Profiles;\n'
+        yield f'using StructFrame.{pkg_pascal};\n'
+        for ref_pkg in sorted(referenced_packages):
+            yield f'using StructFrame.{pascal_case(ref_pkg)};\n'
+        yield '\n'
+        yield f'namespace StructFrame.{pkg_pascal}\n'
+        yield '{\n'
+        yield f'    public static class TestRoundtrip{pkg_pascal}\n'
+        yield '    {\n'
+
+        # Profile descriptor
+        yield '        private class ProfileEntry\n'
+        yield '        {\n'
+        yield '            public string Name = "";\n'
+        yield '            public Func<BufferWriter> CreateWriter = () => null!;\n'
+        yield '            public Func<Func<int, MessageInfo?>, AccumulatingReader> CreateReader = (_) => null!;\n'
+        yield '            public bool HasPkgId;\n'
+        yield '            public bool HasLength;\n'
+        yield '            public int MaxPayload; // -1 == unlimited\n'
+        yield '        }\n\n'
+
+        yield '        private static readonly ProfileEntry[] Profiles = new[]\n'
+        yield '        {\n'
+        yield '            new ProfileEntry { Name = "ProfileStandard", CreateWriter = () => new ProfileStandardWriter(),\n'
+        yield '                CreateReader = (g) => new ProfileStandardAccumulatingReader(2048, g), HasPkgId = false, HasLength = true,  MaxPayload = 255 },\n'
+        yield '            new ProfileEntry { Name = "ProfileSensor",   CreateWriter = () => new ProfileSensorWriter(),\n'
+        yield '                CreateReader = (g) => new ProfileSensorAccumulatingReader(2048, g), HasPkgId = false, HasLength = false, MaxPayload = -1 },\n'
+        yield '            new ProfileEntry { Name = "ProfileIPC",      CreateWriter = () => new ProfileIPCWriter(),\n'
+        yield '                CreateReader = (g) => new ProfileIPCAccumulatingReader(2048, g),    HasPkgId = false, HasLength = false, MaxPayload = -1 },\n'
+        yield '            new ProfileEntry { Name = "ProfileBulk",     CreateWriter = () => new ProfileBulkWriter(),\n'
+        yield '                CreateReader = (g) => new ProfileBulkAccumulatingReader(8192, g),   HasPkgId = true,  HasLength = true,  MaxPayload = 65535 },\n'
+        yield '            new ProfileEntry { Name = "ProfileNetwork",  CreateWriter = () => new ProfileNetworkWriter(),\n'
+        yield '                CreateReader = (g) => new ProfileNetworkAccumulatingReader(8192, g),HasPkgId = true,  HasLength = true,  MaxPayload = 65535 },\n'
+        yield '        };\n\n'
+
+        # Per-message create + roundtrip method
+        for key, msg in testable_messages:
+            structName = msg.name
+            yield f'        private static {structName} Create{structName}()\n'
+            yield '        {\n'
+            yield f'            var msg = new {structName}();\n'
+            field_index = 0
+            for fkey, field in msg.fields.items():
+                yield TestCSharpGen._generate_field_init(field, "msg", field_index)
+                field_index += 1
+            yield '            return msg;\n'
+            yield '        }\n\n'
+
+            yield f'        private static bool Roundtrip{structName}(ProfileEntry p, bool verbose)\n'
+            yield '        {\n'
+            yield f'            if (!p.HasPkgId && {structName}.MsgId > 255)\n'
+            yield '            {\n'
+            yield f'                if (verbose) Console.WriteLine($"[SKIP] {structName} ({{p.Name}}): msg_id > 255 needs HasPkgId");\n'
+            yield '                return true;\n'
+            yield '            }\n'
+            yield f'            if (p.MaxPayload >= 0 && {structName}.MaxSize > p.MaxPayload)\n'
+            yield '            {\n'
+            yield f'                if (verbose) Console.WriteLine($"[SKIP] {structName} ({{p.Name}}): exceeds MaxPayload");\n'
+            yield '                return true;\n'
+            yield '            }\n'
+            yield '            try\n'
+            yield '            {\n'
+            yield f'                var orig = Create{structName}();\n'
+            yield '                var writer = p.CreateWriter();\n'
+            yield f'                writer.SetBuffer(new byte[{structName}.MaxSize + 256]);\n'
+            yield '                writer.Write(orig);\n'
+            yield '                var data = writer.GetData();\n\n'
+            yield f'                var reader = p.CreateReader((id) => MessageDefinitions.GetMessageInfo(id));\n'
+            yield '                reader.AddData(data);\n'
+            yield '                var info = reader.Next();\n'
+            yield '                if (!info.Valid)\n'
+            yield '                {\n'
+            yield f'                    Console.WriteLine($"[FAIL] {structName} ({{p.Name}}): parse failed");\n'
+            yield '                    return false;\n'
+            yield '                }\n'
+            yield f'                if (info.MsgId != {structName}.MsgId)\n'
+            yield '                {\n'
+            yield f'                    Console.WriteLine($"[FAIL] {structName} ({{p.Name}}): msg_id mismatch (expected {{(int){structName}.MsgId}}, got {{(int)info.MsgId}})");\n'
+            yield '                    return false;\n'
+            yield '                }\n'
+            yield f'                var decoded = {structName}.Deserialize(info);\n'
+            yield '                var origBytes = orig.Serialize();\n'
+            yield '                var decBytes = decoded.Serialize();\n'
+            yield '                if (!origBytes.SequenceEqual(decBytes))\n'
+            yield '                {\n'
+            yield f'                    Console.WriteLine($"[FAIL] {structName} ({{p.Name}}): decoded data differs from original");\n'
+            yield '                    return false;\n'
+            yield '                }\n'
+            yield f'                if (verbose) Console.WriteLine($"[PASS] {structName} ({{p.Name}})");\n'
+            yield '                return true;\n'
+            yield '            }\n'
+            yield '            catch (Exception ex)\n'
+            yield '            {\n'
+            yield f'                Console.WriteLine($"[FAIL] {structName} ({{p.Name}}): exception: {{ex.Message}}");\n'
+            yield '                return false;\n'
+            yield '            }\n'
+            yield '        }\n\n'
+
+        # Master runner
+        yield f'        private const int MessageCount = {len(testable_messages)};\n\n'
+        yield '        public static bool RunAll(bool verbose)\n'
+        yield '        {\n'
+        yield '            bool allOk = true;\n'
+        yield '            foreach (var p in Profiles)\n'
+        yield '            {\n'
+        yield '                if (verbose) Console.WriteLine($"\\n--- {p.Name} ---");\n'
+        yield '                int passed = 0;\n'
+        for key, msg in testable_messages:
+            yield f'                if (Roundtrip{msg.name}(p, verbose)) passed++;\n'
+        yield '                if (verbose) Console.WriteLine($"  -> {passed}/{MessageCount} passed");\n'
+        yield '                if (passed != MessageCount)\n'
+        yield '                {\n'
+        yield '                    allOk = false;\n'
+        yield '                    Console.WriteLine($"[FAIL] {p.Name}: {passed}/{MessageCount} passed");\n'
+        yield '                }\n'
+        yield '                else if (verbose)\n'
+        yield '                {\n'
+        yield '                    Console.WriteLine($"[OK] {p.Name}: {passed}/{MessageCount} passed");\n'
+        yield '                }\n'
+        yield '            }\n'
+        yield '            return allOk;\n'
+        yield '        }\n\n'
+
+        yield '        public static int Main(string[] args)\n'
+        yield '        {\n'
+        yield '            bool verbose = args.Any(a => a == "-v" || a == "--verbose");\n'
+        yield f'            Console.WriteLine("Running round-trip tests for package \'{package.name}\' across 5 profiles...");\n'
+        yield '            bool ok = RunAll(verbose);\n'
+        yield '            if (ok)\n'
+        yield '            {\n'
+        yield f'                Console.WriteLine("[TEST PASSED] All round-trip tests for \'{package.name}\' succeeded.");\n'
+        yield '                return 0;\n'
+        yield '            }\n'
+        yield f'            Console.WriteLine("[TEST FAILED] Round-trip tests for \'{package.name}\' had failures.");\n'
+        yield '            return 1;\n'
+        yield '        }\n'
+        yield '    }\n'
+        yield '}\n'

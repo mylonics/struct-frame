@@ -17,6 +17,8 @@ from struct_frame import FileCSharpGen
 from struct_frame import FileRustGen
 from struct_frame import TestCppGen
 from struct_frame import TestPyGen
+from struct_frame import TestCGen
+from struct_frame import TestCSharpGen
 from struct_frame import pascal_case
 from struct_frame import camel_to_snake_case
 from proto_schema_parser.parser import Parser
@@ -1646,7 +1648,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
     return {catalog_file: json.dumps(catalog, indent=2) + "\n"}
 
 
-def generateCFileStrings(path, equality=False):
+def generateCFileStrings(path, equality=False, generate_tests=False):
     out = {}
     for key, value in packages.items():
         name = os.path.join(path, value.name + ".structframe.h")
@@ -1654,6 +1656,12 @@ def generateCFileStrings(path, equality=False):
         data = ''.join(FileCGen.generate(
             value, imported_packages=imported, equality=equality))
         out[name] = data
+
+        if generate_tests:
+            test_name = os.path.join(path, value.name + ".tests.h")
+            out[test_name] = ''.join(TestCGen.generate(value))
+            roundtrip_name = os.path.join(path, "test_roundtrip_" + value.name + ".c")
+            out[roundtrip_name] = ''.join(TestCGen.generate_roundtrip_main(value))
 
     return out
 
@@ -1839,7 +1847,7 @@ def generateRustFileStrings(path, equality=False):
     return out
 
 
-def generateCSharpFileStrings(path, equality=False, namespace='StructFrame.Generated'):
+def generateCSharpFileStrings(path, equality=False, namespace='StructFrame.Generated', generate_tests=False):
     out = {}
     for key, value in packages.items():
         # Generate per-file output into a package subfolder
@@ -1853,6 +1861,10 @@ def generateCSharpFileStrings(path, equality=False, namespace='StructFrame.Gener
         sdk_name = os.path.join(pkg_folder, "SdkInterface.cs")
         sdk_data = generate_csharp_sdk_interface(value)
         out[sdk_name] = sdk_data
+
+        if generate_tests:
+            test_name = os.path.join(pkg_folder, "test_roundtrip_" + value.name + ".cs")
+            out[test_name] = ''.join(TestCSharpGen.generate(value, namespace=namespace))
 
     # Always generate .csproj so consumers can use <ProjectReference>
     csproj_name = os.path.join(path, "StructFrame.csproj")
@@ -2019,7 +2031,7 @@ def main():
     files = {}
     if (args.build_c):
         files.update(generateCFileStrings(
-            args.c_path[0], equality=args.equality))
+            args.c_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_ts):
         files.update(generateTsFileStrings(
@@ -2040,7 +2052,8 @@ def main():
     if (args.build_csharp):
         files.update(generateCSharpFileStrings(args.csharp_path[0],
                                                equality=args.equality,
-                                               namespace=args.csharp_namespace[0]))
+                                               namespace=args.csharp_namespace[0],
+                                               generate_tests=args.generate_tests))
 
     if (args.build_gql):
         from struct_frame.gql_gen import _PACKAGE_DIRECTIVE_DEF
