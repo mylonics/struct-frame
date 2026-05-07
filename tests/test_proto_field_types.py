@@ -232,6 +232,9 @@ def test_python_discriminator_none(mod) -> None:
     raw = msg.serialize()
     _check(len(raw) == NoneDiscriminatorMessage.msg_size,
            f"discriminator=none: serialized size {len(raw)} != msg_size {NoneDiscriminatorMessage.msg_size}")
+    # The header byte (0xAB) should be at offset 0 in the wire format
+    _check(raw[0] == 0xAB,
+           f"discriminator=none: header byte at offset 0 expected 0xAB, got {raw[0]:#x}")
 
     # Deserialize - without discriminator, variant is unknown; header round-trips
     msg2 = NoneDiscriminatorMessage.deserialize(raw)
