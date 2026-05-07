@@ -7,6 +7,7 @@
 //   profile: standard | sensor | ipc | bulk | network
 //   file:    path to binary output/input file
 
+use struct_frame_sdk::envelope_test::*;
 use struct_frame_sdk::extended_test::*;
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::{
@@ -705,21 +706,144 @@ fn profile_uses_fixed(config: &ProfileConfig) -> bool {
 }
 
 // ============================================================================
+// Envelope SDK tests (is_envelope, msgid/field_order discriminator)
+// ============================================================================
+
+fn run_envelope_sdk_tests() {
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+
+    macro_rules! expect {
+        ($cond:expr, $name:expr) => {
+            if $cond {
+                println!("  PASS  {}", $name);
+                passed += 1;
+            } else {
+                eprintln!("  FAIL  {}", $name);
+                failed += 1;
+            }
+        };
+    }
+
+    println!("=== Rust EnvelopeSdk tests ===");
+
+    // --- CommandEnvelope with msgid discriminator ---
+    let mut env = CommandEnvelope::default();
+    env.sequence_number = 42;
+    env.priority = 5;
+    env.run_immediately = true;
+    let mut adc = ADCCommand::default();
+    adc.channel = 2;
+    adc.sample_rate = 1000;
+    adc.enable = true;
+    env.set_adc(&adc);
+
+    expect!(env.command_discriminator == ADCCommand::MSG_ID,
+            "CommandEnvelope: discriminator == ADCCommand::MSG_ID");
+
+    // Encode with ProfileStandard (MSG_ID=200 fits in u8)
+    let mut writer = struct_frame_sdk::new_standard_writer(2048);
+    let written = writer.write_crc(&env, 0);
+    expect!(written > 0, "CommandEnvelope: write_crc returned > 0");
+
+    let encoded = writer.data().to_vec();
+    let mut reader = struct_frame_sdk::new_standard_reader(4096);
+    reader.add_data(&encoded);
+    let frame = reader.next(&struct_frame_sdk::envelope_test::get_message_info);
+    expect!(frame.is_some(), "CommandEnvelope: frame parsed");
+    if let Some(f) = frame {
+        expect!(f.valid, "CommandEnvelope: frame valid");
+        expect!(f.msg_id == CommandEnvelope::MSG_ID, "CommandEnvelope: msg_id matches");
+        let decoded = CommandEnvelope::unpack(&f.payload);
+        expect!(decoded.is_some(), "CommandEnvelope: unpack succeeded");
+        if let Some(d) = decoded {
+            expect!(d.sequence_number == 42, "CommandEnvelope: sequence_number round-trips");
+            expect!(d.priority == 5, "CommandEnvelope: priority round-trips");
+            expect!(d.run_immediately, "CommandEnvelope: run_immediately round-trips");
+            expect!(d.command_discriminator == ADCCommand::MSG_ID,
+                    "CommandEnvelope: discriminator round-trips");
+            let adc2 = d.get_adc();
+            expect!(adc2.is_some(), "CommandEnvelope: get_adc() returns Some");
+            if let Some(a) = adc2 {
+                expect!(a.channel == 2, "CommandEnvelope: adc.channel round-trips");
+                expect!(a.sample_rate == 1000, "CommandEnvelope: adc.sample_rate round-trips");
+                expect!(a.enable, "CommandEnvelope: adc.enable round-trips");
+            }
+        }
+    }
+
+    // --- RawDataEnvelope with field_order discriminator ---
+    let mut raw_env = RawDataEnvelope::default();
+    raw_env.priority = 3;
+    raw_env.timestamp_us = 999_000;
+    let mut sample = RawSamplePayload::default();
+    sample.channel = 7;
+    sample.value = 2.718_f32;
+    sample.flags = 0xBE;
+    raw_env.set_sample(&sample);
+
+    // field_order discriminator: sample is 1st field → discriminator == 1
+    expect!(raw_env.payload_discriminator == 1,
+            "RawDataEnvelope: field_order discriminator == 1 for first variant");
+
+    let mut raw_writer = struct_frame_sdk::new_bulk_writer(2048);
+    let raw_written = raw_writer.write_crc(&raw_env, 0);
+    expect!(raw_written > 0, "RawDataEnvelope: write_crc returned > 0");
+
+    let raw_encoded = raw_writer.data().to_vec();
+    let mut raw_reader = struct_frame_sdk::new_bulk_reader(4096);
+    raw_reader.add_data(&raw_encoded);
+    let raw_frame = raw_reader.next(&struct_frame_sdk::envelope_test::get_message_info);
+    expect!(raw_frame.is_some(), "RawDataEnvelope: frame parsed");
+    if let Some(f) = raw_frame {
+        expect!(f.valid, "RawDataEnvelope: frame valid");
+        let raw_decoded = RawDataEnvelope::unpack(&f.payload);
+        expect!(raw_decoded.is_some(), "RawDataEnvelope: unpack succeeded");
+        if let Some(d) = raw_decoded {
+            expect!(d.priority == 3, "RawDataEnvelope: priority round-trips");
+            expect!(d.timestamp_us == 999_000, "RawDataEnvelope: timestamp_us round-trips");
+            expect!(d.payload_discriminator == 1,
+                    "RawDataEnvelope: discriminator round-trips == 1");
+            let s2 = d.get_sample();
+            expect!(s2.is_some(), "RawDataEnvelope: get_sample() returns Some");
+            if let Some(s) = s2 {
+                expect!(s.channel == 7, "RawDataEnvelope: sample.channel round-trips");
+                expect!((s.value - 2.718_f32).abs() < 1e-4, "RawDataEnvelope: sample.value round-trips");
+                expect!(s.flags == 0xBE, "RawDataEnvelope: sample.flags round-trips");
+            }
+        }
+    }
+
+    println!("\nSummary: {} passed, {} failed", passed, failed);
+    if failed > 0 {
+        std::process::exit(1);
+    }
+    std::process::exit(0);
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+
+    // Envelope SDK test can be invoked without the standard runner args.
+    if args.len() >= 2 && args[1] == "test_envelope_sdk" {
+        run_envelope_sdk_tests();
+        // run_envelope_sdk_tests() always exits.
+    }
+
     if args.len() < 5 {
         eprintln!("Usage:");
         eprintln!("  {} <runner> <mode> <profile> <file>", args[0]);
-        eprintln!("\nRunners: test_standard, test_extended, test_variable_flag");
+        eprintln!("\nRunners: test_standard, test_extended, test_variable_flag, test_envelope_sdk");
         eprintln!("Modes:   encode, decode, both");
         eprintln!("Profiles: standard, sensor, ipc, bulk, network");
         std::process::exit(1);
     }
 
-    # Verify enum Debug formatting (enum-to-string) before dispatch
+    // Verify enum Debug formatting (enum-to-string) before dispatch
     assert_eq!(format!("{:?}", Priority::HIGH), "HIGH", "Rust Priority::HIGH Debug should be \"HIGH\"");
     assert_eq!(format!("{:?}", Priority::LOW), "LOW", "Rust Priority::LOW Debug should be \"LOW\"");
     assert_eq!(format!("{:?}", Priority::MEDIUM), "MEDIUM", "Rust Priority::MEDIUM Debug should be \"MEDIUM\"");

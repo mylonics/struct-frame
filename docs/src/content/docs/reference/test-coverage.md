@@ -109,9 +109,9 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 | `oneof` with `field_order` discriminator | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `oneof` with `discriminator = none` | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Multiple `oneof` fields in one message | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Envelope messages (`is_envelope`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| Envelope messages (`is_envelope`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-> **Gap (Partial):** `discriminator = none` and multi-oneof encode/decode tested in Python via `tests/test_proto_field_types.py`. C, C++, TS, JS, C#, Rust coverage still missing. Envelope tests still missing in Rust.
+> **Gap (Partial):** `discriminator = none` and multi-oneof encode/decode tested in Python via `tests/test_proto_field_types.py`. C, C++, TS, JS, C#, Rust coverage still missing. Rust envelope test added in `tests/rust/src/main.rs` (`test_envelope_sdk` runner).
 
 ### 2.7 Message Options
 
@@ -120,10 +120,10 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 | `msgid` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `variable = true` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `pkgid` (package ID) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `is_envelope` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `is_envelope` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `flatten` | ✅ | N/A | ✅ | N/A | N/A | N/A | N/A |
 
-> **C/Python `flatten`:** Verified by `tests/test_proto_field_types.py` — Python `to_dict()` inlines inner fields; C generates the struct inline (compile test). `is_envelope` still missing in Rust.
+> **C/Python `flatten`:** Verified by `tests/test_proto_field_types.py` — Python `to_dict()` inlines inner fields; C generates the struct inline (compile test). **Rust envelope:** `tests/rust/src/main.rs` `test_envelope_sdk` runner tests `CommandEnvelope` (msgid discriminator) and `RawDataEnvelope` (field_order discriminator) round-trips.
 
 ---
 
@@ -360,7 +360,7 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 5. **`discriminator = none` and multi-oneof** — ⚠️ **Partially closed** — Python encode/decode verified in `tests/test_proto_field_types.py`. C, C++, TS, JS, C#, Rust coverage still missing.
 
-6. **Envelope messages in Rust** — Rust lacks envelope SDK test coverage.
+6. ~~**Envelope messages in Rust**~~ — ✅ **Closed** — `tests/rust/src/main.rs` `test_envelope_sdk` runner tests `CommandEnvelope` (msgid discriminator) and `RawDataEnvelope` (field_order discriminator) round-trips via `run_envelope_sdk_test()` in `run_tests.py`.
 
 7. **Round-trip generators** — Implemented for all seven languages (C, C++, Python, TypeScript, JavaScript, C#, Rust) via the `Test*Gen` classes and exercised by the Round-trip Tests phase.
 
