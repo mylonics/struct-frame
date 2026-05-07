@@ -1427,35 +1427,81 @@ class TestRunner:
         """Run the envelope SDK interface test (field_order discriminator naming)."""
         self.print_section("ENVELOPE SDK TESTS")
 
+        all_success = True
+
+        # C# test
         csharp = self.languages.get("csharp")
         if not csharp or not self.results["compilation"].get("csharp", False):
-            print("  Skipping envelope SDK test (C# not available / compilation failed)")
-            return True
-
-        build_dir = self.project_root / csharp.build_dir
-        test_exe = build_dir / "StructFrameTests.exe"
-        if not test_exe.exists():
-            test_exe = build_dir / "StructFrameTests.dll"
-            if not test_exe.exists():
-                print("  Skipping envelope SDK test (C# binary not found)")
-                return True
-            cmd = f'dotnet "{test_exe}" --runner test_envelope_sdk'
+            print("  Skipping C# envelope SDK test (C# not available / compilation failed)")
         else:
-            cmd = f'"{test_exe}" --runner test_envelope_sdk'
+            build_dir = self.project_root / csharp.build_dir
+            test_exe = build_dir / "StructFrameTests.exe"
+            if not test_exe.exists():
+                test_exe = build_dir / "StructFrameTests.dll"
+                if not test_exe.exists():
+                    print("  Skipping C# envelope SDK test (C# binary not found)")
+                    test_exe = None
+                else:
+                    cmd = f'dotnet "{test_exe}" --runner test_envelope_sdk'
+            else:
+                cmd = f'"{test_exe}" --runner test_envelope_sdk'
 
-        success, stdout, stderr = self.run_cmd(cmd, timeout=30)
-        if stdout:
-            for line in stdout.splitlines():
-                print(f"  {line}")
+            if test_exe is not None:
+                success, stdout, stderr = self.run_cmd(cmd, timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
 
-        status = Colors.pass_text() if success else Colors.fail_text()
-        print(f"\n  C# EnvelopeSdk: {status}")
+                status = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  C# EnvelopeSdk: {status}")
 
-        if not success:
-            self.add_failure("envelope_sdk", "C#", None, "Envelope SDK test failed")
+                if not success:
+                    self.add_failure("envelope_sdk", "C#", None, "Envelope SDK test failed")
+                    all_success = False
 
-        self.results.setdefault("envelope_sdk", {})["csharp"] = success
-        return success
+                self.results.setdefault("envelope_sdk", {})["csharp"] = success
+
+        # Rust test
+        rust = self.languages.get("rust")
+        if not rust or not self.results["compilation"].get("rust", False):
+            print("  Skipping Rust envelope SDK test (Rust not available / compilation failed)")
+        else:
+            rust_runner = self.project_root / rust.build_dir / f"struct_frame_rust_tests{rust.exe_ext}"
+            if not rust_runner.exists():
+                print("  Skipping Rust envelope SDK test (Rust binary not found)")
+            else:
+                rust_cmd = f'"{rust_runner}" test_envelope_sdk'
+                success, stdout, stderr = self.run_cmd(rust_cmd, timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+
+                status = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  Rust EnvelopeSdk: {status}")
+
+                if not success:
+                    self.add_failure("envelope_sdk", "Rust", None, "Rust Envelope SDK test failed")
+                    all_success = False
+
+                self.results.setdefault("envelope_sdk", {})["rust"] = success
+
+                # Also run oneof special tests (discriminator=none, multi-oneof)
+                rust_oneof_cmd = f'"{rust_runner}" test_oneof_special'
+                success2, stdout2, stderr2 = self.run_cmd(rust_oneof_cmd, timeout=30)
+                if stdout2:
+                    for line in stdout2.splitlines():
+                        print(f"  {line}")
+
+                status2 = Colors.pass_text() if success2 else Colors.fail_text()
+                print(f"\n  Rust OneofSpecial: {status2}")
+
+                if not success2:
+                    self.add_failure("envelope_sdk", "Rust", None, "Rust oneof special test failed")
+                    all_success = False
+
+                self.results.setdefault("envelope_sdk", {}).setdefault("rust_oneof", success2)
+
+        return all_success
 
     def run_roundtrip_tests(self) -> bool:
         """Phase: round-trip tests for every message across all 5 frame profiles.
