@@ -1661,8 +1661,20 @@ class TestRunner:
                         all_success = False
                         continue
                     startup = f"{namespace}.{class_name}"
-                    out_dir = gen_dir / "roundtrip_bin" / src.stem
+                    # Build outside the csproj source tree so that the
+                    # auto-generated obj/.../AssemblyInfo.cs isn't picked up
+                    # twice by the default Compile glob (which would produce
+                    # CS0579 duplicate-attribute errors).
+                    out_dir = self.project_root / "tests" / "build" / "csharp_roundtrip" / src.stem
+                    if out_dir.exists():
+                        shutil.rmtree(out_dir, ignore_errors=True)
                     out_dir.mkdir(parents=True, exist_ok=True)
+                    # Also nuke the csproj's default obj/ so its stale
+                    # AssemblyInfo.cs from the main C# test build doesn't get
+                    # double-included into the launcher assembly.
+                    default_obj = gen_dir / "obj"
+                    if default_obj.exists():
+                        shutil.rmtree(default_obj, ignore_errors=True)
                     # Build to a per-launcher output directory with the right
                     # StartupObject so the assembly has a single, correct entry
                     # point. Then invoke the resulting DLL directly via
@@ -1673,6 +1685,7 @@ class TestRunner:
                         f'dotnet build "{csproj}" -c Release --framework net8.0 '
                         f'-p:OutputType=Exe -p:StartupObject={startup} '
                         f'-p:GenerateDocumentationFile=false '
+                        f'-p:BaseIntermediateOutputPath="{out_dir}/obj/" '
                         f'-o "{out_dir}" --verbosity quiet'
                     )
                     ok, _, stderr = self.run_cmd(build_cmd, timeout=180)

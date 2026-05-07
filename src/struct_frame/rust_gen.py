@@ -1319,7 +1319,7 @@ class TestRustGen():
         yield '        Some(f) if f.valid => f,\n'
         yield '        _ => return Err("parse failed".to_string()),\n'
         yield '    };\n'
-        yield '    if frame.msg_id != (M::MSG_ID & 0xFF) && frame.msg_id != M::MSG_ID {\n'
+        yield '    if frame.msg_id != M::MSG_ID {\n'
         yield '        return Err(format!("msg_id mismatch: expected {}, got {}", M::MSG_ID, frame.msg_id));\n'
         yield '    }\n'
         yield '    let decoded = match M::unpack(&frame.payload) {\n'
