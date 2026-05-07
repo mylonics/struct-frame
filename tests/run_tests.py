@@ -654,8 +654,11 @@ class TestRunner:
         # C/C++: compile test_standard and test_extended executables
         if lang.id in ("c", "cpp"):
             success = True
-            for runner in ["test_standard", "test_extended", "test_variable_flag", 
-                          "test_profiling", "test_profiling_generated", "test_negative"]:
+            base_runners = ["test_standard", "test_extended", "test_variable_flag", 
+                           "test_profiling", "test_profiling_generated", "test_negative"]
+            sdk_runners = ["test_streaming"] if lang.id == "c" else ["test_sdk_units", "test_sdk_subscribe"]
+            
+            for runner in base_runners + sdk_runners:
                 source = test_dir / f"{runner}{lang.source_ext}"
                 if not source.exists():
                     continue
@@ -665,7 +668,12 @@ class TestRunner:
                     cmd = f'gcc -I"{gen_dir}" -o "{output}" "{source}" -lm'
                 else:
                     include_dir = test_dir / "include"
-                    cmd = f'g++ -std=c++20 -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}"'
+                    if runner == "test_sdk_subscribe":
+                        # SDK subscribe test needs the C++ SDK boilerplate headers
+                        sdk_dir = self.project_root / "src" / "struct_frame" / "boilerplate" / "cpp"
+                        cmd = f'g++ -std=c++20 -I"{gen_dir}" -I"{include_dir}" -I"{sdk_dir}" -o "{output}" "{source}"'
+                    else:
+                        cmd = f'g++ -std=c++20 -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}"'
                 
                 ok, _, _ = self.run_cmd(cmd)
                 if not ok:
@@ -1503,6 +1511,125 @@ class TestRunner:
 
         return all_success
 
+    def run_sdk_tests(self) -> bool:
+        """Run SDK unit and subscribe/dispatch tests (sections 6.1, 6.2, 6.3)."""
+        self.print_section("SDK UNIT & SUBSCRIBE TESTS")
+
+        all_success = True
+        results = self.results.setdefault("sdk", {})
+
+        # ---- C: test_streaming (section 6.2 – push_byte positive cases) ----
+        c_lang = self.languages.get("c")
+        if c_lang and self.results["compilation"].get("c", False):
+            build_dir = self.project_root / c_lang.build_dir
+            exe = build_dir / f"test_streaming{c_lang.exe_ext}"
+            if exe.exists():
+                success, stdout, _ = self.run_cmd(str(exe), timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  C test_streaming: {label}")
+                results["c:streaming"] = success
+                if not success:
+                    self.add_failure("sdk", "C", None, "test_streaming failed")
+                    all_success = False
+            else:
+                print("  Skipping C test_streaming (binary not found)")
+
+        # ---- C++: test_sdk_units (sections 6.1 + 6.2) ----
+        cpp_lang = self.languages.get("cpp")
+        if cpp_lang and self.results["compilation"].get("cpp", False):
+            build_dir = self.project_root / cpp_lang.build_dir
+            for runner, section_label in [
+                ("test_sdk_units", "C++ test_sdk_units"),
+                ("test_sdk_subscribe", "C++ test_sdk_subscribe"),
+            ]:
+                exe = build_dir / f"{runner}{cpp_lang.exe_ext}"
+                if not exe.exists():
+                    print(f"  Skipping {section_label} (binary not found)")
+                    continue
+                success, stdout, _ = self.run_cmd(str(exe), timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  {section_label}: {label}")
+                results[f"cpp:{runner}"] = success
+                if not success:
+                    self.add_failure("sdk", "C++", None, f"{runner} failed")
+                    all_success = False
+
+        # ---- Python: test_sdk.py (section 6.3) ----
+        py_lang = self.languages.get("py")
+        if py_lang:
+            script = self.project_root / py_lang.test_dir / "test_sdk.py"
+            if script.exists():
+                success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                if stderr and not success:
+                    print(stderr)
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  Python test_sdk: {label}")
+                results["py:sdk"] = success
+                if not success:
+                    self.add_failure("sdk", "Python", None, "test_sdk.py failed")
+                    all_success = False
+            else:
+                print("  Skipping Python test_sdk (script not found)")
+
+        # ---- TypeScript: test_sdk.ts (section 6.3) ----
+        ts_lang = self.languages.get("ts")
+        if ts_lang and self.results["compilation"].get("ts", False):
+            ts_dir = self.project_root / ts_lang.test_dir
+            script = ts_dir / "test_sdk.ts"
+            if script.exists():
+                success, stdout, stderr = self.run_cmd(
+                    f'npx ts-node "{script}"', cwd=ts_dir, timeout=60
+                )
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                if stderr and not success:
+                    print(stderr)
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  TypeScript test_sdk: {label}")
+                results["ts:sdk"] = success
+                if not success:
+                    self.add_failure("sdk", "TypeScript", None, "test_sdk.ts failed")
+                    all_success = False
+            else:
+                print("  Skipping TypeScript test_sdk (script not found)")
+
+        # ---- C#: test_sdk_subscribe (section 6.3) ----
+        csharp_lang = self.languages.get("csharp")
+        if csharp_lang and self.results["compilation"].get("csharp", False):
+            build_dir = self.project_root / csharp_lang.build_dir
+            test_exe = build_dir / "StructFrameTests.exe"
+            if not test_exe.exists():
+                test_exe = build_dir / "StructFrameTests.dll"
+                cmd = f'dotnet "{test_exe}" --runner test_sdk_subscribe'
+            else:
+                cmd = f'"{test_exe}" --runner test_sdk_subscribe'
+
+            if test_exe.exists():
+                success, stdout, _ = self.run_cmd(cmd, timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  C# test_sdk_subscribe: {label}")
+                results["csharp:sdk_subscribe"] = success
+                if not success:
+                    self.add_failure("sdk", "C#", None, "test_sdk_subscribe failed")
+                    all_success = False
+            else:
+                print("  Skipping C# test_sdk_subscribe (binary not found)")
+
+        return all_success
+
     def run_roundtrip_tests(self) -> bool:
         """Phase: round-trip tests for every message across all 5 frame profiles.
 
@@ -2029,6 +2156,13 @@ class TestRunner:
                     self.run_envelope_sdk_test()
             else:
                 print(f"\n{Colors.yellow('[SKIP]')} Envelope SDK tests (--profiling)")
+
+            # Phase 10b: SDK unit & subscribe/dispatch tests (sections 6.1, 6.2, 6.3)
+            if not profiling_only:
+                with self.timed_phase("SDK Unit & Subscribe Tests"):
+                    self.run_sdk_tests()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} SDK unit & subscribe tests (--profiling)")
             
             # Phase 11: Standalone tests
             if not profiling_only:

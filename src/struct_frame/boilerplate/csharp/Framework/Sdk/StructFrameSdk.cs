@@ -420,7 +420,7 @@ namespace StructFrame.Sdk
             {
                 if (disposing)
                 {
-                    StopSendQueue();
+                    if (_strictOrdering) StopSendQueue();
                     _sendQueueCts?.Dispose();
                 }
                 _disposed = true;

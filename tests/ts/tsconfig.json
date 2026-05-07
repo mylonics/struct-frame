@@ -30,6 +30,7 @@
   "include": [
     "./*.ts",
     "./include/*.ts",
-    "../generated/ts/*.ts"
+    "../generated/ts/*.ts",
+    "../generated/ts/struct-frame-sdk/*.ts"
   ]
 }
