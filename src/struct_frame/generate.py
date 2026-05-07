@@ -14,7 +14,7 @@ from struct_frame import FilePyGen
 from struct_frame import FileGqlGen
 from struct_frame import FileCppGen
 from struct_frame import FileCSharpGen
-from struct_frame import FileRustGen
+from struct_frame import FileRustGen, TestRustGen
 from struct_frame import TestCppGen
 from struct_frame import TestPyGen
 from struct_frame import TestCGen
@@ -1821,7 +1821,7 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
     return out
 
 
-def generateRustFileStrings(path, equality=False):
+def generateRustFileStrings(path, equality=False, generate_tests=False):
     out = {}
     # Collect all packages being generated now
     new_package_names = []
@@ -1830,6 +1830,13 @@ def generateRustFileStrings(path, equality=False):
         data = ''.join(FileRustGen.generate(value, equality=equality))
         out[name] = data
         new_package_names.append(value.name)
+
+        # Standalone round-trip binary per package: a single .rs file with
+        # ``fn main()`` that exercises every message across all 5 profiles.
+        if generate_tests:
+            test_name = os.path.join(path, "test_roundtrip_" + value.name + ".rs")
+            test_data = ''.join(TestRustGen.generate(value))
+            out[test_name] = test_data
 
     # Discover ALL .structframe.rs files in the output directory (from previous runs)
     all_package_names = list(new_package_names)
@@ -1840,10 +1847,25 @@ def generateRustFileStrings(path, equality=False):
                 if pkg_name not in all_package_names:
                     all_package_names.append(pkg_name)
 
-    # Generate lib.rs and Cargo.toml for the generated crate
+    # Generate lib.rs and Cargo.toml for the generated crate. We also need to
+    # account for test_roundtrip_*.rs files about to be written this run that
+    # don't yet exist on disk: write them out first via the returned dict and
+    # then synthesize the Cargo.toml binary list from the union.
     out[os.path.join(path, "lib.rs")] = FileRustGen.generate_lib_rs(
         sorted(all_package_names))
-    out[os.path.join(path, "Cargo.toml")] = FileRustGen.generate_cargo_toml()
+    cargo_toml = FileRustGen.generate_cargo_toml(output_path=path)
+    # Append [[bin]] entries for newly-generated test files not yet on disk.
+    if generate_tests:
+        existing = set()
+        if os.path.exists(path):
+            existing = {f for f in os.listdir(path)
+                        if f.startswith('test_roundtrip_') and f.endswith('.rs')}
+        for key, value in packages.items():
+            fname = "test_roundtrip_" + value.name + ".rs"
+            if fname not in existing:
+                bin_name = fname[:-3]
+                cargo_toml += f'\n[[bin]]\nname = "{bin_name}"\npath = "{fname}"\n'
+    out[os.path.join(path, "Cargo.toml")] = cargo_toml
     return out
 
 
@@ -2093,7 +2115,7 @@ def main():
 
     if (args.build_rust):
         files.update(generateRustFileStrings(
-            args.rust_path[0], equality=args.equality))
+            args.rust_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     # Generate LSP type catalog (single language-agnostic JSON file)
     lsp_build_flags = {

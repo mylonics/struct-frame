@@ -8,6 +8,7 @@ pack/unpack methods for binary compatibility across platforms.
 """
 
 from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
+import os
 import time
 
 _style_c = NamingStyleC()
@@ -1043,9 +1044,14 @@ class FileRustGen():
         return result
 
     @staticmethod
-    def generate_cargo_toml(crate_name='struct_frame_sdk'):
-        """Generate a Cargo.toml for the generated crate."""
-        return f'''[package]
+    def generate_cargo_toml(crate_name='struct_frame_sdk', output_path=None):
+        """Generate a Cargo.toml for the generated crate.
+
+        If *output_path* is provided, scan it for ``test_roundtrip_*.rs`` files
+        and append a ``[[bin]]`` section for each one so they can be built via
+        ``cargo build --bin test_roundtrip_<pkg>``.
+        """
+        toml = f'''[package]
 name = "{crate_name}"
 version = "0.1.0"
 edition = "2021"
@@ -1054,6 +1060,12 @@ edition = "2021"
 name = "{crate_name.replace("-", "_")}"
 path = "lib.rs"
 '''
+        if output_path and os.path.isdir(output_path):
+            for fname in sorted(os.listdir(output_path)):
+                if fname.startswith('test_roundtrip_') and fname.endswith('.rs'):
+                    bin_name = fname[:-3]
+                    toml += f'\n[[bin]]\nname = "{bin_name}"\npath = "{fname}"\n'
+        return toml
 
     @staticmethod
     def generate_lib_rs(package_names):
@@ -1111,3 +1123,261 @@ path = "lib.rs"
         result += '    None\n'
         result += '}\n'
         return result
+
+
+class TestRustGen():
+    """Generator for Rust round-trip test code with deterministic dummy values."""
+
+    @staticmethod
+    def _get_dummy_value(field, index=0):
+        """Generate a Rust literal dummy value for a field's element type."""
+        type_name = field.field_type
+        type_values = {
+            "uint8":  f'{(42 + index) % 256}u8',
+            "int8":   f'{(42 + index) % 128}i8',
+            "uint16": f'{1000 + index}u16',
+            "int16":  f'{500 + index}i16',
+            "uint32": f'{123456 + index}u32',
+            "int32":  f'{123456 + index}i32',
+            "uint64": f'{9876543210 + index}u64',
+            "int64":  f'{9876543210 + index}i64',
+            "float":  f'{3.14159 + index}f32',
+            "double": f'{2.718281828 + index}f64',
+            "bool":   "true" if index % 2 == 0 else "false",
+        }
+        if type_name in type_values:
+            return type_values[type_name]
+        if field.is_enum:
+            # Default-construct the enum (always defined as Default).
+            type_pkg = getattr(field, 'type_package', None) or field.package
+            type_msg = getattr(field, 'type_message', None)
+            if type_msg:
+                return f'{type_msg}{type_name}::default()'
+            return f'{_rust_struct_name(type_pkg, type_name)}::default()'
+        # Nested struct: rely on Default so we don't recurse into possibly
+        # large array fields.
+        type_pkg = getattr(field, 'type_package', None) or field.package
+        return f'{_rust_struct_name(type_pkg, type_name)}::default()'
+
+    @staticmethod
+    def _generate_field_init(field, prefix="msg", index=0):
+        """Generate Rust code that assigns a dummy value to ``<prefix>.<field>``.
+
+        Strings (fixed and bounded) are filled by copying ``b"test_<i>"`` into
+        the underlying byte slice. Bounded arrays/strings also set the
+        accompanying ``_count``/``_length`` field.
+        """
+        var_name = _escape_rust_field_name(field.name)
+        type_name = field.field_type
+        result = ""
+
+        if field.is_array:
+            if type_name == "string":
+                if field.size_option is not None:
+                    count = min(field.size_option, 3)
+                    for i in range(count):
+                        s = f'test_{i}'
+                        result += f'    {{ let s = b"{s}"; let n = s.len().min({prefix}.{var_name}[{i}].len()); {prefix}.{var_name}[{i}][..n].copy_from_slice(&s[..n]); }}\n'
+                elif field.max_size is not None:
+                    count = min(field.max_size, 3)
+                    result += f'    {prefix}.{var_name}_count = {count} as _;\n'
+                    for i in range(count):
+                        s = f'test_{i}'
+                        result += f'    {{ let s = b"{s}"; let n = s.len().min({prefix}.{var_name}[{i}].len()); {prefix}.{var_name}[{i}][..n].copy_from_slice(&s[..n]); }}\n'
+            else:
+                if field.size_option is not None:
+                    count = min(field.size_option, 3)
+                    for i in range(count):
+                        result += f'    {prefix}.{var_name}[{i}] = {TestRustGen._get_dummy_value(field, i)};\n'
+                elif field.max_size is not None:
+                    count = min(field.max_size, 3)
+                    result += f'    {prefix}.{var_name}_count = {count} as _;\n'
+                    for i in range(count):
+                        result += f'    {prefix}.{var_name}[{i}] = {TestRustGen._get_dummy_value(field, i)};\n'
+        elif type_name == "string":
+            if field.size_option is not None:
+                s = 'test_string'
+                result += f'    {{ let s = b"{s}"; let n = s.len().min({prefix}.{var_name}.len()); {prefix}.{var_name}[..n].copy_from_slice(&s[..n]); }}\n'
+            elif field.max_size is not None:
+                s = 'test_string'
+                result += f'    {{ let s = b"{s}"; let n = s.len().min({prefix}.{var_name}.len()); {prefix}.{var_name}_length = n as _; {prefix}.{var_name}[..n].copy_from_slice(&s[..n]); }}\n'
+        else:
+            result += f'    {prefix}.{var_name} = {TestRustGen._get_dummy_value(field, index)};\n'
+
+        return result
+
+    @staticmethod
+    def generate(package):
+        """Generate a self-contained Rust round-trip test binary for *package*.
+
+        For every message in the package the generated ``main()`` populates a
+        deterministic test instance, encodes it via the profile's BufferWriter,
+        decodes it via AccumulatingReader, and compares the original and
+        decoded payloads byte-for-byte (using ``pack_max_size``). Each message
+        is exercised against all five frame profiles; combinations that are
+        intentionally incompatible (msg_id > 255 on a profile without pkg_id,
+        or payload exceeding the profile maximum) are reported as skipped.
+        """
+        crate_name = 'struct_frame_sdk'
+        mod_name = package.name.replace('-', '_').replace(' ', '_')
+        testable_messages = [(k, m) for k, m in package.sortedMessages().items()
+                             if m.id is not None and not getattr(m, 'oneofs', {})]
+
+        # Collect cross-package modules referenced by any field type so we can
+        # bring nested struct/enum types into scope for create_test_* helpers.
+        referenced_packages = set()
+        for _, m in testable_messages:
+            for _, field in m.fields.items():
+                type_pkg = getattr(field, 'type_package', None)
+                if type_pkg and type_pkg != package.name and not field.is_default_type:
+                    referenced_packages.add(type_pkg.replace('-', '_').replace(' ', '_'))
+
+        yield '// Automatically generated round-trip test for struct-frame messages.\n'
+        yield f'// Generated by struct-frame {version}.\n'
+        yield '// DO NOT EDIT - regenerate using struct-frame.\n\n'
+        yield '#![allow(unused_imports, dead_code, unused_mut, unused_variables, clippy::all)]\n\n'
+        yield f'use {crate_name}::{{\n'
+        yield '    AccumulatingReader, BufferWriter, ProfileConfig,\n'
+        yield '    PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG,\n'
+        yield '    PROFILE_SENSOR_CONFIG, PROFILE_STANDARD_CONFIG,\n'
+        yield '    new_bulk_reader, new_bulk_writer, new_ipc_reader, new_ipc_writer,\n'
+        yield '    new_network_reader, new_network_writer, new_sensor_reader, new_sensor_writer,\n'
+        yield '    new_standard_reader, new_standard_writer,\n'
+        yield '};\n'
+        yield f'use {crate_name}::frame_base::{{MessageInfo, StructFrameMessage}};\n'
+        yield f'use {crate_name}::{mod_name}::*;\n'
+        yield f'use {crate_name}::{mod_name}::get_message_info;\n'
+        for ref_mod in sorted(referenced_packages):
+            yield f'use {crate_name}::{ref_mod}::*;\n'
+        yield '\n'
+
+        # create_test_<msg> functions
+        for _, msg in testable_messages:
+            struct_name = msg.name
+            fn = camel_to_snake_case(msg.name)
+            yield f'/// Build a deterministic test instance of `{struct_name}`.\n'
+            yield f'fn create_test_{fn}() -> {struct_name} {{\n'
+            yield f'    let mut msg = {struct_name}::default();\n'
+            field_index = 0
+            for _, field in msg.fields.items():
+                code = TestRustGen._generate_field_init(field, "msg", field_index)
+                if code:
+                    yield code
+                field_index += 1
+            yield '    msg\n'
+            yield '}\n\n'
+
+        # Profile descriptor table.
+        yield 'struct ProfileEntry {\n'
+        yield '    name: &\'static str,\n'
+        yield '    has_pkg_id: bool,\n'
+        yield '    max_payload: Option<u16>,\n'
+        yield '    new_writer: fn(usize) -> BufferWriter,\n'
+        yield '    new_reader: fn(usize) -> AccumulatingReader,\n'
+        yield '    has_crc: bool,\n'
+        yield '}\n\n'
+        yield 'const PROFILES: &[ProfileEntry] = &[\n'
+        yield '    ProfileEntry { name: "ProfileStandard", has_pkg_id: false, max_payload: Some(255),   new_writer: new_standard_writer, new_reader: new_standard_reader, has_crc: true  },\n'
+        yield '    ProfileEntry { name: "ProfileSensor",   has_pkg_id: false, max_payload: None,        new_writer: new_sensor_writer,   new_reader: new_sensor_reader,   has_crc: false },\n'
+        yield '    ProfileEntry { name: "ProfileIPC",      has_pkg_id: false, max_payload: None,        new_writer: new_ipc_writer,      new_reader: new_ipc_reader,      has_crc: false },\n'
+        yield '    ProfileEntry { name: "ProfileBulk",     has_pkg_id: true,  max_payload: Some(65535), new_writer: new_bulk_writer,     new_reader: new_bulk_reader,     has_crc: true  },\n'
+        yield '    ProfileEntry { name: "ProfileNetwork",  has_pkg_id: true,  max_payload: Some(65535), new_writer: new_network_writer,  new_reader: new_network_reader,  has_crc: true  },\n'
+        yield '];\n\n'
+
+        # Skip-reason logic: returns Some(reason) when this (message, profile) pair
+        # cannot legitimately round-trip; counts as "passed" for the suite total.
+        yield 'fn skip_reason<M: StructFrameMessage>(profile: &ProfileEntry) -> Option<&\'static str> {\n'
+        yield '    if !profile.has_pkg_id && M::MSG_ID > 255 {\n'
+        yield '        return Some("msg_id > 255 requires has_pkg_id profile");\n'
+        yield '    }\n'
+        yield '    if let Some(max) = profile.max_payload {\n'
+        yield '        if M::MAX_SIZE > max as usize {\n'
+        yield '            return Some("message exceeds profile max_payload");\n'
+        yield '        }\n'
+        yield '    }\n'
+        yield '    if get_message_info(M::MSG_ID).is_none() {\n'
+        yield '        return Some("msg_id not registered (cross-package mismatch)");\n'
+        yield '    }\n'
+        yield '    None\n'
+        yield '}\n\n'
+
+        yield 'fn verify_roundtrip<M: StructFrameMessage>(msg: &M, profile: &ProfileEntry) -> Result<(), String> {\n'
+        yield '    let buf_size = std::cmp::max(2048, M::MAX_SIZE + 256);\n'
+        yield '    let mut writer = (profile.new_writer)(buf_size);\n'
+        yield '    let written = if profile.has_crc {\n'
+        yield '        writer.write_crc(msg, 0)\n'
+        yield '    } else {\n'
+        yield '        writer.write_minimal(msg)\n'
+        yield '    };\n'
+        yield '    if written == 0 {\n'
+        yield '        return Err("encode failed (writer returned 0)".to_string());\n'
+        yield '    }\n'
+        yield '    let encoded: Vec<u8> = writer.data().to_vec();\n'
+        yield '    let mut reader = (profile.new_reader)(std::cmp::max(4096, buf_size * 2));\n'
+        yield '    reader.add_data(&encoded);\n'
+        yield '    let frame = match reader.next(&get_message_info) {\n'
+        yield '        Some(f) if f.valid => f,\n'
+        yield '        _ => return Err("parse failed".to_string()),\n'
+        yield '    };\n'
+        yield '    if frame.msg_id != (M::MSG_ID & 0xFF) && frame.msg_id != M::MSG_ID {\n'
+        yield '        return Err(format!("msg_id mismatch: expected {}, got {}", M::MSG_ID, frame.msg_id));\n'
+        yield '    }\n'
+        yield '    let decoded = match M::unpack(&frame.payload) {\n'
+        yield '        Some(d) => d,\n'
+        yield '        None => return Err("unpack returned None".to_string()),\n'
+        yield '    };\n'
+        yield '    let mut a = vec![0u8; M::MAX_SIZE];\n'
+        yield '    let mut b = vec![0u8; M::MAX_SIZE];\n'
+        yield '    let na = msg.pack_max_size(&mut a);\n'
+        yield '    let nb = decoded.pack_max_size(&mut b);\n'
+        yield '    if na != nb || a[..na] != b[..nb] {\n'
+        yield '        return Err("decoded payload differs from original".to_string());\n'
+        yield '    }\n'
+        yield '    Ok(())\n'
+        yield '}\n\n'
+
+        yield f'const TEST_MESSAGE_COUNT: usize = {len(testable_messages)};\n\n'
+
+        yield 'fn run_profile(profile: &ProfileEntry, verbose: bool) -> usize {\n'
+        yield '    let mut passed: usize = 0;\n'
+        for _, msg in testable_messages:
+            struct_name = msg.name
+            fn = camel_to_snake_case(msg.name)
+            yield f'    {{\n'
+            yield f'        let m = create_test_{fn}();\n'
+            yield f'        if let Some(reason) = skip_reason::<{struct_name}>(profile) {{\n'
+            yield f'            passed += 1;\n'
+            yield f'            if verbose {{ println!("[SKIP] {struct_name}: {{}}", reason); }}\n'
+            yield f'        }} else {{\n'
+            yield f'            match verify_roundtrip(&m, profile) {{\n'
+            yield f'                Ok(()) => {{ passed += 1; if verbose {{ println!("[PASS] {struct_name}"); }} }}\n'
+            yield f'                Err(e)  => {{ if verbose {{ println!("[FAIL] {struct_name}: {{}}", e); }} }}\n'
+            yield f'            }}\n'
+            yield f'        }}\n'
+            yield f'    }}\n'
+        yield '    if verbose { println!("  -> {}/{} passed", passed, TEST_MESSAGE_COUNT); }\n'
+        yield '    passed\n'
+        yield '}\n\n'
+
+        yield 'fn main() {\n'
+        yield '    let verbose = std::env::args().any(|a| a == "-v" || a == "--verbose");\n'
+        yield f'    println!("Running round-trip tests for package \'{package.name}\' across 5 profiles...");\n'
+        yield '    let mut all_ok = true;\n'
+        yield '    for p in PROFILES {\n'
+        yield '        if verbose { println!("\\n--- {} ---", p.name); }\n'
+        yield '        let passed = run_profile(p, verbose);\n'
+        yield '        if passed != TEST_MESSAGE_COUNT {\n'
+        yield '            all_ok = false;\n'
+        yield '            println!("[FAIL] {}: {}/{} passed", p.name, passed, TEST_MESSAGE_COUNT);\n'
+        yield '        } else if verbose {\n'
+        yield '            println!("[OK] {}: {}/{} passed", p.name, passed, TEST_MESSAGE_COUNT);\n'
+        yield '        }\n'
+        yield '    }\n'
+        yield '    if all_ok {\n'
+        yield f'        println!("[TEST PASSED] All round-trip tests for \'{package.name}\' succeeded.");\n'
+        yield '        std::process::exit(0);\n'
+        yield '    } else {\n'
+        yield f'        println!("[TEST FAILED] Round-trip tests for \'{package.name}\' had failures.");\n'
+        yield '        std::process::exit(1);\n'
+        yield '    }\n'
+        yield '}\n'

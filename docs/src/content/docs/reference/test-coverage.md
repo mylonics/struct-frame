@@ -28,7 +28,7 @@ These tests verify that `src/main.py` generates valid, compilable output. They a
 | Generate from imported proto | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | `sensor_with_import.sf` used |
 | Multi-package generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | `package_a/b.sf`; Rust partial |
 | `--equality` flag | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | No tests verify equality operator output |
-| `--generate_tests` flag | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | Exercised by the Round-trip Tests phase (C++ and Python only) |
+| `--generate_tests` flag | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Exercised by the Round-trip Tests phase for all seven targets |
 | `--validate` flag | ❌ | ❌ | ❌ | N/A | N/A | N/A | N/A | No test validates the validate mode |
 | Hash / `--force` caching | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | Caching logic not covered by tests |
 | `--csharp_legacy_enum_names` | N/A | N/A | N/A | N/A | N/A | ❌ | N/A | No test for legacy enum name mode |
@@ -191,18 +191,13 @@ are reported as **skipped** rather than failures.
 
 | Profile | C | C++ | Python | TS | JS | C# | Rust |
 |---------|---|-----|--------|----|----|----|------|
-| `profile_standard` round-trip | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `profile_sensor` round-trip | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `profile_ipc` round-trip | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `profile_bulk` round-trip | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| `profile_network` round-trip | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| `profile_standard` round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `profile_sensor` round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `profile_ipc` round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `profile_bulk` round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `profile_network` round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-Generated files: `tests/generated/cpp/test_roundtrip_<pkg>.cpp`, `tests/generated/py/test_roundtrip_<pkg>.py`.
-
-> **Gap (Medium):** Round-trip generators are only implemented for C++ (`TestCppGen`) and Python
-> (`TestPyGen`). Equivalent `Test*Gen` infrastructure does not yet exist for C, TypeScript,
-> JavaScript, C#, or Rust, so `--generate_tests` is a no-op for those targets and the
-> Round-trip Tests phase skips them.
+Generated files: `tests/generated/<lang>/test_roundtrip_<pkg>.{c,cpp,py,ts,js,cs,rs}` for all seven targets.
 
 ---
 
@@ -366,7 +361,7 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 6. **Envelope messages in Rust** — Rust lacks `test_extended` coverage of envelope messages.
 
-7. **Round-trip generators for other languages** — `--generate_tests` and the Round-trip Tests phase are only wired up for C++ and Python. C, TypeScript, JavaScript, C#, and Rust have no equivalent `Test*Gen` infrastructure.
+7. **Round-trip generators** — Implemented for all seven languages (C, C++, Python, TypeScript, JavaScript, C#, Rust) via the `Test*Gen` classes and exercised by the Round-trip Tests phase.
 
 8. **Circular import detection** — Not validated by any test.
 
@@ -384,4 +379,4 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 ---
 
-*Last updated: 2026-05-07. Update this document whenever tests are added or gaps are closed.*
+*Last updated: 2026-05-08. Update this document whenever tests are added or gaps are closed.*

@@ -52,7 +52,8 @@ IGNORE_DIR_SEGMENTS = {
     "__pycache__",  # Python bytecode
     "obj",          # C# / MSBuild build artefacts
     "bin",          # C# compiled output
-    "roundtrip_bin",  # round-trip test binaries built into tests/generated/cpp/ at runtime
+    "roundtrip_bin",  # round-trip test binaries built into tests/generated/<lang>/ at runtime
+    "target",         # Rust cargo build artefacts (tests/generated/rust/target)
 }
 
 
