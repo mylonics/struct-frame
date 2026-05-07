@@ -724,12 +724,17 @@ class FileCGen():
 
         if package.messages:
             yield '/* Struct definitions */\n'
-            yield '#pragma pack(push, 1)\n'
+            # When all messages are variable, struct packing is not needed because
+            # serialization/deserialization is performed field-by-field.
+            all_variable = all(m.variable for m in package.messages.values())
+            if not all_variable:
+                yield '#pragma pack(push, 1)\n'
             # Need to sort messages to make sure dependencies are properly met
 
             for key, msg in package.sortedMessages().items():
                 yield MessageCGen.generate(msg, package, equality) + '\n'
-            yield '#pragma pack(pop)\n'
+            if not all_variable:
+                yield '#pragma pack(pop)\n'
             yield '\n'
 
         # Add default initializers if needed

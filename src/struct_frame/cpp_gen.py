@@ -783,12 +783,19 @@ class FileCppGen():
 
         if package.messages:
             yield '/* Struct definitions */\n'
-            yield '#pragma pack(push, 1)\n'
+            # When all messages are variable, struct packing is not needed because
+            # serialization/deserialization is performed field-by-field.
+            all_variable = all(m.variable for m in package.messages.values())
+            if not all_variable:
+                yield '#pragma pack(push, 1)\n'
             # Need to sort messages to make sure dependencies are properly met
 
             for key, msg in package.sortedMessages().items():
                 yield MessageCppGen.generate(msg, use_namespace, package, equality) + '\n'
-            yield '#pragma pack(pop)\n\n'
+            if not all_variable:
+                yield '#pragma pack(pop)\n\n'
+            else:
+                yield '\n'
 
         # Generate get_message_length / get_message_info in the same namespace
         # as the structs, under structframe::<pkg>.

@@ -68,6 +68,8 @@ message SensorData {
 
 With variable encoding, arrays and strings only transmit actual used bytes instead of the full max_size. This reduces bandwidth when fields are partially filled.
 
+You can also enable variable-length encoding for **every** message in the project at code-generation time by passing the `--no_packed` CLI flag. This is equivalent to setting `option variable = true;` on every message and additionally drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ output. Use it on platforms that don't support packed structs or that have different endianness/alignment requirements. See the [CLI reference](/reference/cli-reference/) for details.
+
 **pkgid** (optional package-level option)
 
 ```proto
