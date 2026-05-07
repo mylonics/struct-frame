@@ -657,7 +657,8 @@ class TestRunner:
         if lang.id in ("c", "cpp"):
             success = True
             base_runners = ["test_standard", "test_extended", "test_variable_flag", 
-                           "test_profiling", "test_profiling_generated", "test_negative"]
+                           "test_profiling", "test_profiling_generated", "test_negative",
+                           "test_wire_evolution"]
             sdk_runners = ["test_streaming"] if lang.id == "c" else ["test_sdk_units", "test_sdk_subscribe"]
             
             for runner in base_runners + sdk_runners:
@@ -1679,6 +1680,117 @@ class TestRunner:
 
         return all_success
 
+    def run_wire_evolution_tests(self) -> bool:
+        """Run wire-evolution extension-field tests for C, C++, TypeScript, JavaScript, C#."""
+        self.print_section("WIRE EVOLUTION TESTS")
+
+        all_success = True
+        results = self.results.setdefault("wire_evolution", {})
+
+        # ---- C: test_wire_evolution ----
+        c_lang = self.languages.get("c")
+        if c_lang and self.results["compilation"].get("c", False):
+            build_dir = self.project_root / c_lang.build_dir
+            exe = build_dir / f"test_wire_evolution{c_lang.exe_ext}"
+            if exe.exists():
+                success, stdout, _ = self.run_cmd(str(exe), timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  C test_wire_evolution: {label}")
+                results["c"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "C", None, "test_wire_evolution failed")
+                    all_success = False
+            else:
+                print("  Skipping C test_wire_evolution (binary not found)")
+
+        # ---- C++: test_wire_evolution ----
+        cpp_lang = self.languages.get("cpp")
+        if cpp_lang and self.results["compilation"].get("cpp", False):
+            build_dir = self.project_root / cpp_lang.build_dir
+            exe = build_dir / f"test_wire_evolution{cpp_lang.exe_ext}"
+            if exe.exists():
+                success, stdout, _ = self.run_cmd(str(exe), timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  C++ test_wire_evolution: {label}")
+                results["cpp"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "C++", None, "test_wire_evolution failed")
+                    all_success = False
+            else:
+                print("  Skipping C++ test_wire_evolution (binary not found)")
+
+        # ---- TypeScript: test_wire_evolution.ts ----
+        ts_lang = self.languages.get("ts")
+        if ts_lang and self.results["compilation"].get("ts", False):
+            ts_dir = self.project_root / ts_lang.test_dir
+            build_dir = self.project_root / ts_lang.build_dir
+            ts_compiled = build_dir / "ts" / "test_wire_evolution.js"
+            if ts_compiled.exists():
+                success, stdout, _ = self.run_cmd(f'node "{ts_compiled}"', timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  TypeScript test_wire_evolution: {label}")
+                results["ts"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "TypeScript", None, "test_wire_evolution failed")
+                    all_success = False
+            else:
+                print("  Skipping TypeScript test_wire_evolution (compiled file not found)")
+
+        # ---- JavaScript: test_wire_evolution.js ----
+        js_lang = self.languages.get("js")
+        if js_lang and self.results["compilation"].get("js", False):
+            js_dir = self.project_root / js_lang.test_dir
+            js_script = js_dir / "test_wire_evolution.js"
+            if js_script.exists():
+                success, stdout, _ = self.run_cmd(f'node "{js_script}"', timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  JavaScript test_wire_evolution: {label}")
+                results["js"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "JavaScript", None, "test_wire_evolution failed")
+                    all_success = False
+            else:
+                print("  Skipping JavaScript test_wire_evolution (script not found)")
+
+        # ---- C#: test_wire_evolution ----
+        csharp_lang = self.languages.get("csharp")
+        if csharp_lang and self.results["compilation"].get("csharp", False):
+            build_dir = self.project_root / csharp_lang.build_dir
+            test_exe = build_dir / "StructFrameTests.exe"
+            if not test_exe.exists():
+                test_exe = build_dir / "StructFrameTests.dll"
+                cmd = f'dotnet "{test_exe}" --runner test_wire_evolution'
+            else:
+                cmd = f'"{test_exe}" --runner test_wire_evolution'
+
+            if test_exe.exists():
+                success, stdout, _ = self.run_cmd(cmd, timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  C# test_wire_evolution: {label}")
+                results["csharp"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "C#", None, "test_wire_evolution failed")
+                    all_success = False
+            else:
+                print("  Skipping C# test_wire_evolution (binary not found)")
+
+        return all_success
+
     def run_roundtrip_tests(self) -> bool:
         """Phase: round-trip tests for every message across all 5 frame profiles.
 
@@ -2212,6 +2324,13 @@ class TestRunner:
                     self.run_sdk_tests()
             else:
                 print(f"\n{Colors.yellow('[SKIP]')} SDK unit & subscribe tests (--profiling)")
+
+            # Phase 10c: Wire evolution tests
+            if not profiling_only:
+                with self.timed_phase("Wire Evolution Tests"):
+                    self.run_wire_evolution_tests()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Wire evolution tests (--profiling)")
             
             # Phase 11: Standalone tests
             if not profiling_only:

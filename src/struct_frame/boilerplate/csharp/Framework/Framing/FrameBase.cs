@@ -55,5 +55,31 @@ namespace StructFrame.Framing
             ck2 = (byte)(ck2 + ck1);
             return new FrameChecksum(ck1, ck2);
         }
+
+        /// <summary>
+        /// Extension-aware Fletcher-16 checksum.
+        /// Computes: Fletcher(data[offset..offset+baseLen]) -> mix magic1/magic2 -> Fletcher(data[offset+baseLen..offset+totalLen]).
+        /// When baseLen == totalLen the result is identical to FletcherChecksum.
+        /// </summary>
+        public static FrameChecksum FletcherChecksumExt(byte[] data, int offset, int baseLen, int totalLen, byte magic1 = 0, byte magic2 = 0)
+        {
+            byte ck1 = 0;
+            byte ck2 = 0;
+            for (int i = 0; i < baseLen; i++)
+            {
+                ck1 = (byte)(ck1 + data[offset + i]);
+                ck2 = (byte)(ck2 + ck1);
+            }
+            ck1 = (byte)(ck1 + magic1);
+            ck2 = (byte)(ck2 + ck1);
+            ck1 = (byte)(ck1 + magic2);
+            ck2 = (byte)(ck2 + ck1);
+            for (int i = baseLen; i < totalLen; i++)
+            {
+                ck1 = (byte)(ck1 + data[offset + i]);
+                ck2 = (byte)(ck2 + ck1);
+            }
+            return new FrameChecksum(ck1, ck2);
+        }
     }
 }

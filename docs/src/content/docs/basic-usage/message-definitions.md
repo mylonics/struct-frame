@@ -329,9 +329,9 @@ message SensorReading {
   uint32 timestamp = 1;
   
   oneof value {
-    float temperature = 2;
-    int32 pressure = 3;
-    uint16 humidity = 4;
+    float temperature = 1;
+    int32 pressure = 2;
+    uint16 humidity = 3;
   }
 }
 ```
@@ -362,8 +362,8 @@ message CommandWrapper {
   uint32 sequence = 1;
   
   oneof command {
-    CommandA cmd_a = 2;
-    CommandB cmd_b = 3;
+    CommandA cmd_a = 1;
+    CommandB cmd_b = 2;
   }
 }
 ```
@@ -383,6 +383,8 @@ oneof payload {
   CmdB cmd_b = 2;
 }
 ```
+
+> **Field numbers in oneof:** variants are numbered `1..M` independently within the `oneof` — the same 1-based sequential rule that applies to message-level fields.
 
 | Option | Discriminator Type | Size | Description |
 |--------|-------------------|------|-------------|
@@ -516,8 +518,8 @@ message CommandEnvelope {
   
   // Union of all command types - exactly one will be populated
   oneof command {
-    ADCCommand adc = 5;
-    DACCommand dac = 6;
+    ADCCommand adc = 1;
+    DACCommand dac = 2;
   }
 }
 ```
@@ -548,8 +550,8 @@ message CommandEnvelope {
   
   oneof command {
     option discriminator = "field_order";  // Force field_order even if all have msgid
-    ADCCommand adc = 5;
-    DACCommand dac = 6;
+    ADCCommand adc = 1;
+    DACCommand dac = 2;
   }
 }
 ```
@@ -654,7 +656,7 @@ The generator enforces:
 
 - Message IDs unique within package (0-255)
 - Package IDs unique across packages (0-255)
-- Field numbers unique within message
+- Field numbers must be `1..N` in declaration order (no gaps, no duplicates)
 - All arrays must have size or max_size
 - All strings must have size or max_size
 - String arrays need both max_size and element_size
@@ -662,6 +664,164 @@ The generator enforces:
 - Envelope messages must have exactly one oneof field
 - Envelope oneof fields must be message types (not primitives/enums)
 - Envelope oneof using `msgid` discriminator must have messages with msgid
+- `extensions_start` must be ≥ 2 (at least one non-extension base field required)
+- `extensions_start` must equal an existing field number in the same scope
+
+## Wire Evolution (Extension Fields)
+
+`option extensions_start = N;` allows a message (or a `oneof` inside a message) to be extended with new fields in the future without breaking older receivers.
+
+### How it works
+
+- Fields with number `< extensions_start` are **base fields** — always present on the wire, always covered by the magic-byte checksum seed.
+- Fields with number `>= extensions_start` are **extension fields** — newer senders include them; older receivers that received a shorter payload zero-fill them on reception.
+- The magic bytes (CRC seed) are computed only from base fields. Adding extension fields never changes the magic bytes, so older parsers still validate the base portion correctly.
+- Extension bytes are still mixed into the full CRC *after* the magic seed, so corruption of extension data is detected.
+
+> **Profile requirement:** Truncated/extended payloads can only be detected when the frame carries a length field. Use a length-bearing profile (Standard, Bulk, or Network). On profiles without a length field (Sensor, IPC) extension fields are treated as ordinary fixed bytes — both sender and receiver must agree on the full message size.
+
+### Message-level extensions
+
+Declare `option extensions_start = N;` anywhere in the message body, then list extension fields with numbers `>= N`:
+
+```proto
+message StatusReport {
+  option msgid = 10;
+
+  // Base fields (always on the wire)
+  uint32 device_id    = 1;
+  uint8  status_code  = 2;
+  uint16 error_flags  = 3;
+
+  // Extension fields — present in v2+ firmware; older receivers zero-fill them
+  option extensions_start = 4;
+  uint32 uptime_seconds    = 4;
+  float  cpu_temperature   = 5;
+  string firmware_version  = 6 [max_size=32];
+}
+```
+
+**What changes on the wire:**
+
+| Sender | Receiver | Result |
+|--------|----------|--------|
+| v1 (base only) | v1 (base only) | ✓ Normal fixed-size frame |
+| v2 (base + ext) | v1 (base only) | ✓ Receiver ignores extra trailing bytes |
+| v1 (base only) | v2 (base + ext) | ✓ Receiver zero-fills extension fields |
+| v2 (base + ext) | v2 (base + ext) | ✓ Full round-trip |
+
+### Oneof-level extensions (extension variants)
+
+A `oneof` block can also have extension variants. Older receivers that do not know about the new discriminator value simply ignore the unknown variant.
+
+```proto
+message AdcCommand {
+  option msgid = 100;
+  uint8 channel = 1;
+}
+
+message DacCommand {
+  option msgid = 101;
+  uint8 channel = 1;
+}
+
+// Added in v2
+message PwmCommand {
+  option msgid = 102;
+  uint8 channel = 1;
+  uint16 duty_cycle = 2;
+}
+
+// Added in v3
+message I2cCommand {
+  option msgid = 103;
+  uint8 address = 1;
+  uint8 reg = 2;
+}
+
+message JobMessage {
+  option msgid = 200;
+
+  bool run_immediately = 1;
+
+  oneof job {
+    option discriminator = "field_order";
+
+    // Base variants — understood by all receiver versions
+    AdcCommand adc = 1;
+    DacCommand dac = 2;
+
+    // Extension variants — receivers that do not know these simply report
+    // an unknown discriminator and skip the payload.
+    option extensions_start = 3;
+    PwmCommand pwm = 3;
+    I2cCommand i2c = 4;
+  }
+}
+```
+
+`extensions_start` inside a `oneof` works identically to the message-level option:
+
+- **base_size** of the message uses the largest *base* variant size, not the largest extension variant size.
+- Magic bytes are computed from base variants only.
+- The discriminator field itself is always a base field (present in every frame).
+
+### `BASE_SIZE` constant
+
+The generator emits a `BASE_SIZE` constant alongside `MAX_SIZE` for every message. For messages without extensions `BASE_SIZE == MAX_SIZE`. You can use `BASE_SIZE` in your application to compute how many bytes a legacy sender would transmit:
+
+**C**
+```c
+// WIRE_EVOLUTION_STATUS_REPORT_BASE_SIZE — non-extension payload bytes
+// WIRE_EVOLUTION_STATUS_REPORT_MAX_SIZE  — full payload with all extensions
+```
+
+**Python**
+```python
+from struct_frame.generated.my_package import StatusReport
+
+print(StatusReport.BASE_SIZE)  # 7  (device_id + status_code + error_flags)
+print(StatusReport.MAX_SIZE)   # 43 (+ uptime_seconds + cpu_temperature + firmware_version)
+```
+
+### Complete wire-evolution example
+
+```proto
+package device_control;
+
+// v1 command — base fields only
+// v2 adds extension fields; v1 receivers ignore them gracefully
+message DeviceCommand {
+  option msgid = 1;
+
+  // Base fields: always present, define the magic bytes
+  uint8  device_id  = 1;
+  uint8  command    = 2;
+  uint16 param      = 3;
+
+  // Extension fields: v2+ only; v1 receivers zero-fill on reception
+  option extensions_start = 4;
+  uint32 timeout_ms        = 4;
+  uint8  retry_count       = 5;
+}
+
+// Envelope that adds new job types without breaking v1 dispatchers
+message JobEnvelope {
+  option msgid = 50;
+  option is_envelope = true;
+
+  uint32 sequence = 1;
+
+  oneof job {
+    // v1 job types
+    DeviceCommand device_cmd = 1;
+
+    // v2 job types — older dispatchers see an unknown discriminator
+    option extensions_start = 2;
+    DeviceCommand maintenance_cmd = 2;
+  }
+}
+```
 
 ## Complete Example
 

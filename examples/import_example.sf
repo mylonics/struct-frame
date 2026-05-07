@@ -84,7 +84,7 @@ message SystemEvent {
   option msgid = 1;
   string event_name = 1 [size=32];
   // Priority priority = 2;  // Uses Priority from common package
-  string description = 3 [max_size=128];
+  string description = 2 [max_size=128];
 }
 
 // ============================================================

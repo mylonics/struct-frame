@@ -32,6 +32,12 @@ namespace StructFrame
         /// Get the magic numbers for checksum calculation (based on field types and positions).
         /// </summary>
         (byte Magic1, byte Magic2) GetMagicNumbers();
+
+        /// <summary>
+        /// Get the base (non-extension) size in bytes.
+        /// Returns GetSize() when no extensions are defined.
+        /// </summary>
+        int GetBaseSize() => GetSize();
     }
 
     /// <summary>

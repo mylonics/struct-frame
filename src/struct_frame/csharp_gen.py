@@ -516,6 +516,7 @@ class MessageCSharpGen():
         if msg.id is not None and msg.magic_bytes:
             result += f'        public const byte Magic1 = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
             result += f'        public const byte Magic2 = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
+            result += f'        public const int BaseSize = {msg.base_size}; // Non-extension portion size (== MaxSize when no extensions)\n'
         
         # Add variable message constants
         if msg.variable:
@@ -759,6 +760,7 @@ class MessageCSharpGen():
         result += '        /// </summary>\n'
         if msg.id is not None and msg.magic_bytes:
             result += f'        public (byte Magic1, byte Magic2) GetMagicNumbers() => (Magic1, Magic2);\n'
+            result += f'        public int GetBaseSize() => BaseSize;\n'
         else:
             result += '        public (byte Magic1, byte Magic2) GetMagicNumbers() => (0, 0);\n'
 
@@ -1426,9 +1428,9 @@ class FileCSharpGen():
                     magic1 = f'{structName}.Magic1'
                     magic2 = f'{structName}.Magic2'
                 if package.package_id is not None:
-                    result += '                case %d: return new MessageInfo(%s.MaxSize, %s, %s);\n' % (msg.id, structName, magic1, magic2)
+                    result += '                case %d: return new MessageInfo(%s.MaxSize, %s, %s, %s.BaseSize);\n' % (msg.id, structName, magic1, magic2, structName)
                 else:
-                    result += '                case %s.MsgId: return new MessageInfo(%s.MaxSize, %s, %s);\n' % (structName, structName, magic1, magic2)
+                    result += '                case %s.MsgId: return new MessageInfo(%s.MaxSize, %s, %s, %s.BaseSize);\n' % (structName, structName, magic1, magic2, structName)
         result += '                default: return null;\n'
         result += '            }\n'
         result += '        }\n\n'

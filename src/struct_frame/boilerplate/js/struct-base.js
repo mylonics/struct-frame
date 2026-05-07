@@ -74,6 +74,15 @@ class MessageBase {
   }
 
   /**
+   * Get the base (non-extension) size for this message type.
+   * Returns the full size if no extensions are defined.
+   * @returns {number} The base size
+   */
+  getBaseSize() {
+    return this.constructor._baseSize ?? this.getSize();
+  }
+
+  /**
    * Get the raw buffer containing the message data.
    * @param {MessageBase} instance - The message instance
    * @returns {Buffer} The raw buffer

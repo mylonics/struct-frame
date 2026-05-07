@@ -72,6 +72,12 @@ def calculate_magic_numbers(message):
     - Field positions
     - Field sizes
 
+    Extension fields (Message.extensions_start, set by `option extensions_start = N;`)
+    are excluded from the magic number computation: extending the message by appending
+    new fields past `extensions_start` does not change the magic, so older parsers can
+    still validate the base portion. Extension bytes are mixed into the runtime CRC
+    *after* the magic, so the extension data is still covered by the checksum.
+
     Returns: tuple (byte1, byte2)
     """
     magic1 = 0
@@ -79,6 +85,8 @@ def calculate_magic_numbers(message):
 
     position = 0
     for field_name, field in message.fields.items():
+        if getattr(field, 'is_extension', False):
+            continue
         # Get type code
         if field.field_type in type_codes:
             type_code = type_codes[field.field_type]
@@ -94,9 +102,13 @@ def calculate_magic_numbers(message):
 
         position += 1
 
-    # Handle oneofs
+    # Handle oneofs — extension fields inside a oneof are excluded from the
+    # magic computation just like top-level extension fields, so adding oneof
+    # extension variants doesn't change the magic bytes that older parsers see.
     for oneof_name, oneof in message.oneofs.items():
         for field_name, field in oneof.fields.items():
+            if getattr(field, 'is_extension', False):
+                continue
             if field.field_type in type_codes:
                 type_code = type_codes[field.field_type]
             else:
@@ -382,10 +394,19 @@ class Field:
         self.max_size = None      # Variable size using [max_size=X]
         # Element size for repeated string arrays [element_size=X]
         self.element_size = None
+        # Source-level field number (.sf "= N" suffix). Must be 1..N sequential
+        # within its scope (parent message's non-oneof fields, or each oneof
+        # independently). Does NOT affect wire layout — wire order follows
+        # source declaration order, which the validator pins to == number order.
+        self.number = None
+        # True if this field is in the trailing extensions block
+        # (number >= message.extensions_start). Set during Message.validate.
+        self.is_extension = False
 
     def parse(self, field):
         self.name = field.name
         self.field_type = field.type
+        self.number = getattr(field, 'number', None)
 
         # Check if this is a repeated field (array)
         if hasattr(field, 'cardinality') and field.cardinality == FieldCardinality.REPEATED:
@@ -626,7 +647,10 @@ class OneOf:
         # Fields within this oneof (preserves insertion order in Python 3.7+)
         self.fields = {}
         self.field_order = []  # List of field names in declaration order
-        self.size = 0  # Size of the largest field
+        self.size = 0  # Size of the largest field (including extension fields)
+        # Size of the largest *base* (non-extension) field.  Equal to self.size
+        # when there are no extensions in this oneof.
+        self.base_size = 0
         self.validated = False
         self.comments = comments
         self.package = package
@@ -634,6 +658,14 @@ class OneOf:
         # True if using msgid, False if using field_order, None if none
         self.auto_discriminator = None
         self.discriminator_type = None  # "msgid" or "field_order" after validation
+        # Wire-evolution: field number at which the trailing extension block
+        # starts inside this oneof.  Fields with .number >= extensions_start
+        # are extension variants; they are excluded from magic computation and
+        # from base_size.  None means no extension variants (all base).
+        self.extensions_start = None
+        # Internal parse-time flag: set True when a '// Extension::' comment
+        # is encountered; cleared after the next field's number is captured.
+        self._pending_extensions = False
 
     def parse(self, oneof_element):
         """Parse a oneof element from the AST."""
@@ -643,8 +675,26 @@ class OneOf:
         for e in oneof_element.elements:
             if type(e) == ast.Comment:
                 comments.append(e.text)
+                # Detect the visual extension marker: any comment containing
+                # 'Extension::' (case-sensitive) marks the start of extension
+                # variants.  The next field encountered becomes extensions_start.
+                if 'Extension::' in e.text and self.extensions_start is None:
+                    self._pending_extensions = True
             elif type(e) == ast.Option:
-                if e.name == "discriminator":
+                if e.name == "extensions_start":
+                    try:
+                        self.extensions_start = int(e.value)
+                    except (TypeError, ValueError):
+                        print(
+                            f"Invalid extensions_start value '{e.value}' in "
+                            f"oneof {self.name}: must be an integer field number")
+                        return False
+                    if self.extensions_start < 2:
+                        print(
+                            f"extensions_start in oneof {self.name} must be >= 2 "
+                            f"(at least one base variant is required)")
+                        return False
+                elif e.name == "discriminator":
                     # Handle both string values and identifier values
                     val = e.value
                     if hasattr(val, 'name'):
@@ -669,6 +719,14 @@ class OneOf:
                 comments = []
                 if not self.fields[e.name].parse(e):
                     return False
+                # Apply the pending Extension:: marker: the first field after
+                # the marker becomes extensions_start (if not already set by
+                # option extensions_start).
+                if self._pending_extensions and self.extensions_start is None:
+                    fnum = self.fields[e.name].number
+                    if fnum is not None:
+                        self.extensions_start = fnum
+                    self._pending_extensions = False
         return True
 
     def validate(self, current_package, packages, debug=False, current_message=None):
@@ -676,8 +734,42 @@ class OneOf:
         if self.validated:
             return True
 
+        # Field-number validation: each oneof has its own number space; fields
+        # must be 1..M sequentially in declaration order.
+        msg_label = (current_message.name + ".") if current_message else ""
+        for idx, (fname, fval) in enumerate(self.fields.items(), start=1):
+            if fval.number is None:
+                print(
+                    f"Field '{fname}' in OneOf {msg_label}{self.name}: "
+                    f"missing field number (expected '= {idx}').")
+                return False
+            if fval.number != idx:
+                print(
+                    f"Field '{fname}' in OneOf {msg_label}{self.name}: has number "
+                    f"{fval.number} but must be {idx} "
+                    f"(oneof fields must be numbered 1..M in declaration order).")
+                return False
+
+        # Wire-evolution: validate and apply extensions_start if set.
+        if self.extensions_start is not None:
+            field_numbers = [f.number for f in self.fields.values()]
+            if self.extensions_start not in field_numbers:
+                print(
+                    f"extensions_start = {self.extensions_start} in oneof "
+                    f"{msg_label}{self.name} must equal the field number of an "
+                    f"existing variant (have {field_numbers}).")
+                return False
+            if self.extensions_start < 2:
+                print(
+                    f"extensions_start in oneof {msg_label}{self.name} must be "
+                    f">= 2 (at least one base variant required).")
+                return False
+            for fval in self.fields.values():
+                fval.is_extension = (fval.number >= self.extensions_start)
+
         # Validate each field and track the largest size
         max_size = 0
+        max_base_size = 0
         all_have_msg_id = True
 
         for key, field in self.fields.items():
@@ -685,6 +777,8 @@ class OneOf:
                 print(f"Failed to validate field {key} in oneof {self.name}")
                 return False
             max_size = max(max_size, field.size)
+            if not getattr(field, 'is_extension', False):
+                max_base_size = max(max_base_size, field.size)
 
             # Check if this field's type has a message ID
             if not field.is_default_type and not field.is_enum:
@@ -706,6 +800,10 @@ class OneOf:
                 all_have_msg_id = False
 
         self.size = max_size
+        # base_size is the size of the largest non-extension variant.  When
+        # there are no extension variants (extensions_start is None), every
+        # variant is a base variant so base_size == size.
+        self.base_size = max_base_size if self.extensions_start is not None else max_size
 
         # Determine discriminator type based on mode
         if self.discriminator_mode == "none":
@@ -780,6 +878,13 @@ class Message:
         # True if this message is an envelope/container for other messages
         self.is_envelope = False
         self.source_file = None
+        # Wire-evolution: field number at which the trailing extension block
+        # starts. Fields with .number >= extensions_start are extensions and
+        # form a contiguous trailing block. None == no extensions (legacy).
+        self.extensions_start = None
+        # Computed during validate(): byte size of the non-extension portion
+        # of the encoded message (== self.size when extensions_start is None).
+        self.base_size = 0
 
     def parse(self, msg):
         self.name = msg.name
@@ -798,6 +903,19 @@ class Message:
                     sval = str(e.value).strip().lower()
                     if sval in ('true', '1', 'yes', 'on') or e.value is True:
                         self.is_envelope = True
+                elif e.name == "extensions_start":
+                    try:
+                        self.extensions_start = int(e.value)
+                    except (TypeError, ValueError):
+                        print(
+                            f"Invalid extensions_start value '{e.value}' in "
+                            f"message {self.name}: must be an integer field number")
+                        return False
+                    if self.extensions_start < 2:
+                        print(
+                            f"extensions_start in message {self.name} must be >= 2 "
+                            f"(at least one base field is required)")
+                        return False
             elif type(e) == ast.Comment:
                 comments.append(e.text)
             elif type(e) == ast.OneOf:
@@ -834,6 +952,39 @@ class Message:
         global current_error_message
         current_error_message = self.name
 
+        # Field-number validation: non-oneof fields must be numbered 1..N
+        # in declaration order. Numbers carry no wire-format meaning (wire
+        # order follows declaration order); the rule pins source numbering to
+        # match declaration order so the numbers are useful as a stable,
+        # human-readable identifier (and so `extensions_start = N` is
+        # unambiguous).
+        for idx, (fname, fval) in enumerate(self.fields.items(), start=1):
+            if fval.number is None:
+                print(
+                    f"Field '{fname}' in Message {self.name}: missing field number "
+                    f"(expected '= {idx}').")
+                return False
+            if fval.number != idx:
+                print(
+                    f"Field '{fname}' in Message {self.name}: has number "
+                    f"{fval.number} but must be {idx} "
+                    f"(non-oneof fields must be numbered 1..N in declaration order).")
+                return False
+
+        # Wire-evolution: tag extension fields and validate extensions_start.
+        # Extension semantics apply only to top-level message fields; oneof
+        # fields are always treated as base.
+        if self.extensions_start is not None:
+            field_numbers = [f.number for f in self.fields.values()]
+            if self.extensions_start not in field_numbers:
+                print(
+                    f"extensions_start = {self.extensions_start} in message "
+                    f"{self.name} must equal the field number of an existing "
+                    f"non-oneof field (have {field_numbers}).")
+                return False
+            for fval in self.fields.values():
+                fval.is_extension = (fval.number >= self.extensions_start)
+
         # Validate regular fields
         for key, value in self.fields.items():
             if not value.validate(current_package, packages, debug, current_message=self):
@@ -841,6 +992,8 @@ class Message:
                     f"Failed To validate Field: {key}, in Message {self.name}\n")
                 return False
             self.size = self.size + value.size
+            if not value.is_extension:
+                self.base_size = self.base_size + value.size
 
         # Validate oneofs - they contribute their max size to the message
         for key, oneof in self.oneofs.items():
@@ -850,12 +1003,18 @@ class Message:
                 return False
             # Add oneof size (largest field size)
             self.size = self.size + oneof.size
-            # If discriminator is enabled, add bytes for the discriminator field
+            # Use oneof.base_size so that extension variants within a oneof are
+            # not counted as part of the base wire footprint.
+            self.base_size = self.base_size + oneof.base_size
+            # Discriminator is always a base field — it is present in every
+            # frame regardless of which variant is active.
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
                     self.size = self.size + 2  # uint16_t for message ID
+                    self.base_size = self.base_size + 2
                 else:  # field_order
                     self.size = self.size + 1  # uint8_t for field order index
+                    self.base_size = self.base_size + 1
 
         # Flatten collision detection: if a field is marked as flatten and is a message,
         # ensure none of the child field names collide with fields in this message.

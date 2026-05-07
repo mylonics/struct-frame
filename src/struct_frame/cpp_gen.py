@@ -337,8 +337,8 @@ class MessageCppGen():
 
         # Generate struct with optional MessageBase inheritance
         if has_msg_id:
-            result += 'struct %s : structframe::MessageBase<%s, %d, %d, %d, %d> {\n' % (
-                structName, structName, msg_id_value, size, magic1, magic2)
+            result += 'struct %s : structframe::MessageBase<%s, %d, %d, %d, %d, %d> {\n' % (
+                structName, structName, msg_id_value, size, magic1, magic2, msg.base_size)
         else:
             result += 'struct %s {' % structName
 
@@ -859,12 +859,12 @@ class FileCppGen():
                 if msg.id is not None:
                     if package.package_id is not None:
                         # When using package ID, compare against local message ID
-                        yield '        case %d: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2};\n' % (
-                            msg.id, qualName, qualName, qualName)
+                        yield '        case %d: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2, %s::BASE_SIZE};\n' % (
+                            msg.id, qualName, qualName, qualName, qualName)
                     else:
                         # No package ID, compare against MSG_ID from MessageBase
-                        yield '        case %s::MSG_ID: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2};\n' % (
-                            qualName, qualName, qualName, qualName)
+                        yield '        case %s::MSG_ID: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2, %s::BASE_SIZE};\n' % (
+                            qualName, qualName, qualName, qualName, qualName)
 
             yield '        default: break;\n'
             yield '    }\n'

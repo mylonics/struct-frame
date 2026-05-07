@@ -109,7 +109,7 @@ class FrameEncoderWithCrc {
    * For variable messages (with IS_VARIABLE=true), uses serialize() for variable-length encoding.
    */
   template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
+                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>>>
   static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg, uint8_t seq = 0, uint8_t sys_id = 0,
                        uint8_t comp_id = 0) {
     // Determine if this is a variable message
@@ -177,10 +177,16 @@ class FrameEncoderWithCrc {
       idx += payload_size;
     }
 
-    // Calculate and write CRC
+    // Calculate and write CRC (extension-aware)
     if constexpr (Config::has_crc) {
       size_t crc_len = idx - crc_start;
-      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, T::MAGIC1, T::MAGIC2);
+      size_t effective_base = crc_len;
+      if constexpr (Config::has_length) {
+        if (T::BASE_SIZE <= payload_size) {
+          effective_base = (crc_len - payload_size) + T::BASE_SIZE;
+        }
+      }
+      FrameChecksum ck = fletcher_checksum_ext(buffer + crc_start, effective_base, crc_len, T::MAGIC1, T::MAGIC2);
       buffer[idx++] = ck.byte1;
       buffer[idx++] = ck.byte2;
     }
@@ -214,7 +220,7 @@ class FrameEncoderMinimal {
    * because the parser has no length field and cannot determine message boundaries.
    */
   template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
+                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>>>
   static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
     // Minimal profiles ALWAYS use MAX_SIZE (no variable-length support)
     constexpr size_t payload_size = T::MAX_SIZE;
@@ -311,14 +317,20 @@ class BufferParserWithCrc {
       return FrameMsgInfo();
     }
 
-    // Verify CRC
+    // Verify CRC (extension-aware)
     if constexpr (Config::has_crc) {
       size_t crc_len = total_size - crc_start - Config::footer_size;
 
-      // Get magic numbers for this message type from message info
+      // Get magic numbers and base_size for this message type
       auto info = get_message_info(msg_id);
 
-      FrameChecksum ck = fletcher_checksum(buffer + crc_start, crc_len, info.magic1, info.magic2);
+      size_t effective_base = crc_len;
+      if constexpr (Config::has_length) {
+        if (info.base_size <= msg_len) {
+          effective_base = (crc_len - msg_len) + info.base_size;
+        }
+      }
+      FrameChecksum ck = fletcher_checksum_ext(buffer + crc_start, effective_base, crc_len, info.magic1, info.magic2);
       if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
         return FrameMsgInfo();
       }
@@ -516,7 +528,7 @@ class BufferWriter {
    * Returns the number of bytes written, or 0 on failure.
    */
   template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
+                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>>>
   size_t write(const T& msg) {
     if constexpr (Config::has_length || Config::has_crc) {
       // Profiles with CRC use the full encoder signature
@@ -539,7 +551,7 @@ class BufferWriter {
    * Write a message with sequence and addressing (for profiles that support it).
    */
   template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>>>
+                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>>>
   size_t write(const T& msg, uint8_t seq, uint8_t sys_id = 0, uint8_t comp_id = 0) {
     static_assert(Config::has_seq || Config::has_sys_id || Config::has_comp_id,
                   "This profile does not support sequence/addressing fields");

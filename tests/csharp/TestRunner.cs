@@ -73,6 +73,10 @@ class TestRunner
         {
             return TestSdkSubscribe.Main(filteredArgs);
         }
+        else if (testSuite == "test_wire_evolution")
+        {
+            return TestWireEvolution.Main(filteredArgs);
+        }
         else
         {
             return TestStandard.Main(filteredArgs);

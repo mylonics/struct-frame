@@ -357,6 +357,9 @@ class MessageCGen():
         defineName = '%s_%s' % (camel_to_snake_case(
             msg.package).upper(), camel_to_snake_case(msg.name).upper())
         result += '#define %s_MAX_SIZE %d\n' % (defineName, size)
+        # Wire-evolution: BASE_SIZE is the size of the non-extension portion.
+        # Equal to MAX_SIZE for messages without `option extensions_start = N;`.
+        result += '#define %s_BASE_SIZE %d\n' % (defineName, msg.base_size)
         
         # Add MIN_SIZE for variable messages
         if msg.variable:
@@ -800,6 +803,7 @@ class FileCGen():
                         magic2 = f'{name}_MAGIC2'
                     
                     yield f'            info->size = {name}_MAX_SIZE;\n'
+                    yield f'            info->base_size = {name}_BASE_SIZE;\n'
                     yield f'            info->magic1 = {magic1};\n'
                     yield f'            info->magic2 = {magic2};\n'
                     yield '            return true;\n'
@@ -1017,9 +1021,10 @@ class TestCGen():
             yield f'       only when the profile carries a length field. */\n'
             yield f'    has_length_field_for_variable_encoding = p->has_length;\n'
             yield f'\n'
-            yield f'    size_t written = buffer_writer_write(&writer, msg_id_byte,\n'
+            yield f'    size_t written = buffer_writer_write_ext(&writer, msg_id_byte,\n'
             yield f'                                         payload, payload_size,\n'
             yield f'                                         0, 0, 0, pkg_id_byte,\n'
+            yield f'                                         (size_t){defineName}_BASE_SIZE,\n'
             yield f'                                         (uint8_t)({magic1}), (uint8_t)({magic2}));\n'
             yield f'    if (written == 0) {{\n'
             yield f'        printf("[FAIL] {structName} (%s): encode failed\\n", p->name);\n'

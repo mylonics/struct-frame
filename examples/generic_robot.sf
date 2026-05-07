@@ -39,8 +39,8 @@ message Rtcm {
 
 message LoraNetworkId {
   option msgid = 2;
-  uint32 mac_id = 2;
-  uint8 node_id = 3;
+  uint32 mac_id = 1;
+  uint8 node_id = 2;
 }
 
 message BaseStationStatus {

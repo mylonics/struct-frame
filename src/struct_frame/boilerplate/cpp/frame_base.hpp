@@ -10,13 +10,15 @@ namespace structframe {
 
 // Message info structure for unified callback
 struct MessageInfo {
-  size_t size;
+  size_t size;       // Full payload size
   uint8_t magic1;
   uint8_t magic2;
-  bool valid;  // True if message info is valid
+  bool valid;        // True if message info is valid
+  size_t base_size;  // Non-extension portion size (== size when no extensions)
   
-  MessageInfo() : size(0), magic1(0), magic2(0), valid(false) {}
-  MessageInfo(size_t s, uint8_t m1, uint8_t m2) : size(s), magic1(m1), magic2(m2), valid(true) {}
+  MessageInfo() : size(0), magic1(0), magic2(0), valid(false), base_size(0) {}
+  MessageInfo(size_t s, uint8_t m1, uint8_t m2) : size(s), magic1(m1), magic2(m2), valid(true), base_size(s) {}
+  MessageInfo(size_t s, uint8_t m1, uint8_t m2, size_t bs) : size(s), magic1(m1), magic2(m2), valid(true), base_size(bs) {}
   
   explicit operator bool() const { return valid; }
 };
@@ -38,6 +40,27 @@ inline FrameChecksum fletcher_checksum(const uint8_t* data, size_t length, uint8
   ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
   ck.byte1 = static_cast<uint8_t>(ck.byte1 + magic2);
   ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
+  return ck;
+}
+
+// Extension-aware Fletcher-16 checksum.
+// Computes: Fletcher(data[0..base_len]) → mix magic1/magic2 → Fletcher(data[base_len..total_len]).
+// When base_len == total_len the result is identical to fletcher_checksum.
+inline FrameChecksum fletcher_checksum_ext(const uint8_t* data, size_t base_len, size_t total_len,
+                                           uint8_t magic1 = 0, uint8_t magic2 = 0) {
+  FrameChecksum ck{0, 0};
+  for (size_t i = 0; i < base_len; i++) {
+    ck.byte1 = static_cast<uint8_t>(ck.byte1 + data[i]);
+    ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
+  }
+  ck.byte1 = static_cast<uint8_t>(ck.byte1 + magic1);
+  ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
+  ck.byte1 = static_cast<uint8_t>(ck.byte1 + magic2);
+  ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
+  for (size_t i = base_len; i < total_len; i++) {
+    ck.byte1 = static_cast<uint8_t>(ck.byte1 + data[i]);
+    ck.byte2 = static_cast<uint8_t>(ck.byte2 + ck.byte1);
+  }
   return ck;
 }
 
@@ -75,12 +98,13 @@ struct FrameMsgInfo {
  *   MyMessage msg{.field1 = 42, .field2 = 3.14f};
  *   encode_profile_standard(buffer, sizeof(buffer), msg);
  */
-template <typename Derived, uint16_t MsgId, size_t MaxSize, uint8_t Magic1, uint8_t Magic2>
+template <typename Derived, uint16_t MsgId, size_t MaxSize, uint8_t Magic1, uint8_t Magic2, size_t BaseSize = MaxSize>
 struct MessageBase {
   static constexpr uint16_t MSG_ID = MsgId;
   static constexpr size_t MAX_SIZE = MaxSize;
   static constexpr uint8_t MAGIC1 = Magic1;
   static constexpr uint8_t MAGIC2 = Magic2;
+  static constexpr size_t BASE_SIZE = BaseSize;  // Non-extension portion size
 
   // Get pointer to the message data (cast to derived type's data)
   const uint8_t* data() const { return reinterpret_cast<const uint8_t*>(static_cast<const Derived*>(this)); }

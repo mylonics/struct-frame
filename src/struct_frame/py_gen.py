@@ -612,6 +612,7 @@ class MessagePyGen():
         # Add both old and new naming for compatibility
         result += '    msg_size = %s\n' % msg.size
         result += '    MAX_SIZE = %s  # C++ compatible alias\n' % msg.size
+        result += '    BASE_SIZE = %s  # Non-extension portion size (== MAX_SIZE when no extensions)\n' % msg.base_size
         if msg.id != None:
             result += '    msg_id = %s\n' % msg.id
             result += '    MSG_ID = %s  # C++ compatible alias\n' % msg.id
@@ -1322,7 +1323,8 @@ class FilePyGen():
                 yield f'        return None\n'
                 yield f'    magic1 = getattr(msg_class, "MAGIC1", 0)\n'
                 yield f'    magic2 = getattr(msg_class, "MAGIC2", 0)\n'
-                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2)\n'
+                yield f'    base_size = getattr(msg_class, "BASE_SIZE", msg_class.msg_size)\n'
+                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2, base_size=base_size)\n'
             else:
                 # Flat namespace mode: 8-bit message ID
                 yield '%s_definitions = {\n' % package.name
@@ -1362,7 +1364,8 @@ class FilePyGen():
                 yield f'        return None\n'
                 yield f'    magic1 = getattr(msg_class, "MAGIC1", 0)\n'
                 yield f'    magic2 = getattr(msg_class, "MAGIC2", 0)\n'
-                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2)\n'
+                yield f'    base_size = getattr(msg_class, "BASE_SIZE", msg_class.msg_size)\n'
+                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2, base_size=base_size)\n'
 
 
 class TestPyGen():

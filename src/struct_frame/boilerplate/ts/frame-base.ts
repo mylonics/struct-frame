@@ -24,6 +24,28 @@ export function fletcherChecksum(buffer: Uint8Array | number[], start: number = 
     return [byte1, byte2];
 }
 
+// Extension-aware Fletcher-16 checksum.
+// Computes: Fletcher(buffer[start:baseEnd]) -> mix magic1/magic2 -> Fletcher(buffer[baseEnd:end]).
+// When baseEnd == end the result is identical to fletcherChecksum.
+export function fletcherChecksumExt(buffer: Uint8Array | number[], start: number, baseEnd: number,
+                                    end: number, init1: number = 0, init2: number = 0): [number, number] {
+    let byte1 = 0;
+    let byte2 = 0;
+    for (let i = start; i < baseEnd; i++) {
+        byte1 = (byte1 + buffer[i]) % 256;
+        byte2 = (byte2 + byte1) % 256;
+    }
+    byte1 = (byte1 + init1) % 256;
+    byte2 = (byte2 + byte1) % 256;
+    byte1 = (byte1 + init2) % 256;
+    byte2 = (byte2 + byte1) % 256;
+    for (let i = baseEnd; i < end; i++) {
+        byte1 = (byte1 + buffer[i]) % 256;
+        byte2 = (byte2 + byte1) % 256;
+    }
+    return [byte1, byte2];
+}
+
 // Parse result interface
 export interface FrameMsgInfo {
     valid: boolean;
