@@ -225,6 +225,67 @@ public class TestWireEvolution
     }
 
     // ---------------------------------------------------------------------------
+    // ---------------------------------------------------------------------------
+    // Test 6: NonExtension companion class
+    // ---------------------------------------------------------------------------
+
+#pragma warning disable CS0618 // NonExtension classes are intentionally obsolete
+    private static void TestNonExtensionClass()
+    {
+        var encoder = new ProfileStandardEncoder();
+        var parser  = new ProfileStandardParser(MessageDefinitions.GetMessageInfo);
+
+        var full = new BaseExtensionMessage
+        {
+            Header   = 0xABCD,
+            Seq      = 99,
+            CrcSeed  = 0xCAFEBABE,
+        };
+
+        // 1. The NonExtension wrapper should serialize only BaseSize bytes.
+        var wrapper = new BaseExtensionMessageNonExtension(full);
+        byte[] baseBytes = wrapper.Serialize();
+        Check(baseBytes.Length == BaseExtensionMessage.BaseSize,
+              "NonExtension Serialize() length == BaseSize");
+
+        // 2. The base bytes should match the first BaseSize bytes of the full serialization.
+        byte[] fullBytes = new byte[BaseExtensionMessage.MaxSize];
+        full.SerializeTo(fullBytes, 0);
+        bool baseMatch = true;
+        for (int i = 0; i < BaseExtensionMessage.BaseSize; i++)
+            if (baseBytes[i] != fullBytes[i]) { baseMatch = false; break; }
+        Check(baseMatch, "NonExtension bytes match start of full serialization");
+
+        // 3. GetMsgId / GetSize / GetMagicNumbers must be consistent with the original.
+        Check(wrapper.GetMsgId() == BaseExtensionMessage.MsgId,
+              "NonExtension GetMsgId() matches original");
+        Check(wrapper.GetSize() == BaseExtensionMessage.BaseSize,
+              "NonExtension GetSize() == BaseSize");
+        Check(wrapper.GetMagicNumbers() == full.GetMagicNumbers(),
+              "NonExtension GetMagicNumbers() matches original");
+
+        // 4. Encoding the wrapper via the framing layer produces a valid (short) frame
+        //    that a legacy receiver (unaware of extension fields) can parse.
+        byte[] buffer = new byte[512];
+        int encoded = encoder.Encode(buffer, 0, wrapper);
+        Check(encoded > 0, "NonExtension frame encodes");
+
+        // A legacy parser uses a fixed msg_len = BaseSize, so the payload length
+        // embedded in the frame must equal BaseSize.
+        var info = parser.Parse(buffer, 0, encoded);
+        Check(info.Valid, "NonExtension frame validates CRC");
+        Check(info.MsgId == BaseExtensionMessage.MsgId, "NonExtension frame has correct MsgId");
+        Check(info.MsgLen == BaseExtensionMessage.BaseSize, "NonExtension frame payload length == BaseSize");
+
+        // 5. null inner message throws ArgumentNullException.
+        bool threw = false;
+        try { _ = new BaseExtensionMessageNonExtension(null!); }
+        catch (ArgumentNullException) { threw = true; }
+        Check(threw, "NonExtension rejects null inner message");
+    }
+#pragma warning restore CS0618
+
+    // ---------------------------------------------------------------------------
     // Entry point
     // ---------------------------------------------------------------------------
 
@@ -250,6 +311,10 @@ public class TestWireEvolution
 
         Console.WriteLine("Test group 5: Legacy-frame compatibility");
         TestLegacyFrameCompatibility();
+        Console.WriteLine();
+
+        Console.WriteLine("Test group 6: NonExtension companion class");
+        TestNonExtensionClass();
         Console.WriteLine();
 
         Console.WriteLine($"Results: {_passed} passed, {_failed} failed");

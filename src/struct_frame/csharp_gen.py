@@ -778,6 +778,11 @@ class MessageCSharpGen():
 
         result += '    }\n'
 
+        # Generate NonExtension companion class for messages with extension fields
+        if msg.id is not None and msg.base_size < msg.size:
+            result += '\n'
+            result += MessageCSharpGen._generate_non_extension_class(msg, structName, package)
+
         return result + '\n'
     
     @staticmethod
@@ -988,6 +993,57 @@ class MessageCSharpGen():
         
         return result
     
+    @staticmethod
+    def _generate_non_extension_class(msg, structName, package):
+        """Generate a NonExtension companion class for messages with extension fields.
+
+        The companion class serializes only the base (non-extension) portion of
+        the message wire format.  It is marked [Obsolete] because it exists only
+        to communicate with older firmware that does not understand extensions;
+        once all devices are upgraded this class should be removed.
+        """
+        non_ext_name = f'{structName}NonExtension'
+        base_size = msg.base_size
+
+        r = ''
+        r += '    /// <summary>\n'
+        r += f'    /// Deprecated companion of <see cref="{structName}"/> that omits extension fields.\n'
+        r += '    /// Use this only when communicating with older firmware that does not understand\n'
+        r += '    /// the extension fields.  Once all devices have been upgraded, switch back to\n'
+        r += f'    /// <see cref="{structName}"/> and remove usages of this class.\n'
+        r += '    /// </summary>\n'
+        r += '    [Obsolete("Use ' + structName + ' for extension-aware devices. ' + non_ext_name + ' is a transitional helper for legacy firmware only.")]\n'
+        r += f'    public class {non_ext_name} : IStructFrameMessage\n'
+        r += '    {\n'
+        r += f'        public const int MaxSize = {structName}.BaseSize;\n'
+        r += f'        public const ushort MsgId = {structName}.MsgId;\n'
+        r += f'        public const byte Magic1 = {structName}.Magic1;\n'
+        r += f'        public const byte Magic2 = {structName}.Magic2;\n'
+        r += '\n'
+        r += f'        private readonly {structName} _inner;\n'
+        r += '\n'
+        r += f'        /// <param name="inner">The full {structName} whose base fields will be sent.</param>\n'
+        r += f'        public {non_ext_name}({structName} inner)\n'
+        r += '        {\n'
+        r += '            _inner = inner ?? throw new ArgumentNullException(nameof(inner));\n'
+        r += '        }\n'
+        r += '\n'
+        r += '        /// <summary>Serialize only the base (non-extension) fields.</summary>\n'
+        r += '        public byte[] Serialize()\n'
+        r += '        {\n'
+        r += f'            byte[] full = new byte[{structName}.MaxSize];\n'
+        r += '            _inner.SerializeTo(full, 0);\n'
+        r += f'            byte[] baseOnly = new byte[{base_size}];\n'
+        r += f'            Array.Copy(full, baseOnly, {base_size});\n'
+        r += '            return baseOnly;\n'
+        r += '        }\n'
+        r += '\n'
+        r += '        public ushort GetMsgId() => MsgId;\n'
+        r += '        public int GetSize() => MaxSize;\n'
+        r += '        public (byte Magic1, byte Magic2) GetMagicNumbers() => (Magic1, Magic2);\n'
+        r += '    }\n'
+        return r
+
     @staticmethod
     def _generate_equality_members(msg, structName):
         """Generate Equals, GetHashCode, and equality operators."""

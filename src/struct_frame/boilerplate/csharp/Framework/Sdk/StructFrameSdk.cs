@@ -226,9 +226,9 @@ namespace StructFrame.Sdk
         {
             var temp = new T();
             ushort msgId = temp.GetMsgId();
-            
+
             var typedHandler = new TypedMessageHandler<T>(handler);
-            
+
             if (!_messageHandlers.TryGetValue(msgId, out var handlers))
             {
                 handlers = new List<IMessageHandler>();
@@ -261,6 +261,15 @@ namespace StructFrame.Sdk
         /// </para>
         /// </summary>
         public async Task SendAsync<T>(T message, byte seq = 0, byte sysId = 0, byte compId = 0) where T : IStructFrameMessage<T>
+        {
+            await SendRawAsync(message, seq, sysId, compId).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Send any <see cref="IStructFrameMessage"/> (including non-generic wrappers).
+        /// Prefer <see cref="SendAsync{T}"/> for normal messages.
+        /// </summary>
+        public async Task SendRawAsync(IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
             byte[] buffer = new byte[_profile.MaxPayload + _profile.Overhead];
             int bytesWritten = _encoder.Encode(buffer, 0, message, seq, sysId, compId);
