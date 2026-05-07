@@ -744,6 +744,7 @@ class FileCGen():
         #    yield '\n'
 
         if package.messages:
+            pkg_fn_name = f'{camel_to_snake_case(package.name)}_get_message_info'
             if package.package_id is not None:
                 # When using package ID, message ID is 16-bit (package_id << 8 | msg_id)
                 yield '/**\n'
@@ -752,7 +753,7 @@ class FileCGen():
                 yield ' * @param info Pointer to message_info_t struct to fill\n'
                 yield ' * @return true if message ID is known, false otherwise\n'
                 yield ' */\n'
-                yield 'static inline bool get_message_info(uint16_t msg_id, message_info_t* info) {\n'
+                yield f'static inline bool {pkg_fn_name}(uint16_t msg_id, message_info_t* info) {{\n'
                 yield '    /* Extract package ID and message ID from 16-bit message ID */\n'
                 yield '    uint8_t pkg_id = (msg_id >> 8) & 0xFF;\n'
                 yield '    uint8_t local_msg_id = msg_id & 0xFF;\n'
@@ -772,7 +773,7 @@ class FileCGen():
                 yield ' * @param info Pointer to message_info_t struct to fill\n'
                 yield ' * @return true if message ID is known, false otherwise\n'
                 yield ' */\n'
-                yield 'static inline bool get_message_info(uint16_t msg_id, message_info_t* info) {\n'
+                yield f'static inline bool {pkg_fn_name}(uint16_t msg_id, message_info_t* info) {{\n'
                 yield '    switch (msg_id) {\n'
             
             for key, msg in package.sortedMessages().items():
@@ -802,6 +803,20 @@ class FileCGen():
             yield '    }\n'
             yield '    return false;\n'
             yield '}\n'
+
+            # Provide an unprefixed alias `get_message_info` resolving to this
+            # package's function. When a package header is included after other
+            # package headers (which also define this macro), the alias is
+            # redefined so the most-recently-included package wins. This
+            # preserves backward compatibility with downstream code that uses
+            # the unprefixed name while avoiding the duplicate function-symbol
+            # error that occurs when multiple package headers are included in
+            # one translation unit.
+            yield '\n'
+            yield '#ifdef get_message_info\n'
+            yield '#  undef get_message_info\n'
+            yield '#endif\n'
+            yield f'#define get_message_info {pkg_fn_name}\n'
 
         yield '\n#ifdef __cplusplus\n'
         yield '}\n'
@@ -1008,7 +1023,7 @@ class TestCGen():
             yield f'\n'
             yield f'    /* Decode the framed bytes back into a struct. */\n'
             yield f'    buffer_reader_t reader;\n'
-            yield f'    buffer_reader_init(&reader, &p->config, buffer, written, get_message_info);\n'
+            yield f'    buffer_reader_init(&reader, &p->config, buffer, written, {camel_to_snake_case(package.name)}_get_message_info);\n'
             yield f'    frame_msg_info_t info = buffer_reader_next(&reader);\n'
             yield f'    if (!info.valid) {{\n'
             yield f'        printf("[FAIL] {structName} (%s): parse failed\\n", p->name);\n'

@@ -1460,10 +1460,12 @@ class TestRunner:
     def run_roundtrip_tests(self) -> bool:
         """Phase: round-trip tests for every message across all 5 frame profiles.
 
-        For each ``.sf`` file the generator emits ``test_roundtrip_<pkg>.{cpp,py}``
-        files (one per package) that populate every message with deterministic
-        dummy values, encode them via BufferWriter / equivalent, decode via
-        AccumulatingReader / equivalent and compare field-by-field. This phase
+        For each ``.sf`` file the generator emits ``test_roundtrip_<pkg>``
+        launchers (one per package) for every supported language
+        (C, C++, Python, TypeScript, JavaScript, C#, Rust). Each launcher
+        populates every message with deterministic dummy values, encodes them
+        via the language's BufferWriter equivalent, decodes via the
+        AccumulatingReader equivalent and compares field-by-field. This phase
         compiles (when needed) and executes those binaries.
         """
         self.print_section("ROUND-TRIP TESTS (all messages, all 5 profiles)")
@@ -1536,27 +1538,6 @@ class TestRunner:
                 build_dir = gen_dir / "roundtrip_bin"
                 build_dir.mkdir(parents=True, exist_ok=True)
                 for src in sources:
-                    # The C generator emits a single static-inline get_message_info
-                    # per package header at file scope, so a package whose header
-                    # transitively includes another package header produces a
-                    # redefinition error. Skip the round-trip launcher in that
-                    # case; this is a pre-existing limitation of the C generator
-                    # tracked separately from round-trip coverage.
-                    pkg_name = src.stem[len("test_roundtrip_"):]
-                    pkg_header = gen_dir / f"{pkg_name}.structframe.h"
-                    has_cross_pkg_include = False
-                    try:
-                        for line in pkg_header.read_text().splitlines():
-                            ls = line.strip()
-                            if ls.startswith("#include") and ".structframe.h" in ls and pkg_name not in ls:
-                                has_cross_pkg_include = True
-                                break
-                    except Exception:
-                        pass
-                    if has_cross_pkg_include:
-                        print(f"  [C] {Colors.yellow('SKIP')} {src.stem} (cross-package include in C header)")
-                        results[f"c:{src.stem}"] = True
-                        continue
                     exe = build_dir / src.stem
                     compile_cmd = f'gcc -O0 -I"{gen_dir}" -o "{exe}" "{src}" -lm'
                     ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
@@ -1600,7 +1581,7 @@ class TestRunner:
                     f'--types node --typeRoots "{ts_test_dir / "node_modules" / "@types"}" '
                     f'--outDir "{build_dir}" {ts_inputs}'
                 )
-                compile_ok, _, compile_err = self.run_cmd(compile_cmd, timeout=180)
+                compile_ok, _, compile_err = self.run_cmd(compile_cmd, cwd=ts_test_dir, timeout=180)
                 if not compile_ok:
                     print(f"  [TS] {Colors.fail_tag()} compile failed")
                     self.add_failure("roundtrip", "TypeScript", None, "tsc compile", compile_err)
@@ -1682,12 +1663,32 @@ class TestRunner:
                     startup = f"{namespace}.{class_name}"
                     out_dir = gen_dir / "roundtrip_bin" / src.stem
                     out_dir.mkdir(parents=True, exist_ok=True)
-                    cmd = (
-                        f'dotnet run --project "{csproj}" -c Release --framework net8.0 '
+                    # Build to a per-launcher output directory with the right
+                    # StartupObject so the assembly has a single, correct entry
+                    # point. Then invoke the resulting DLL directly via
+                    # `dotnet <dll>` (avoids the race conditions of `dotnet run`
+                    # with shared OutputPath; mirrors the convention used for
+                    # the C# test runner above).
+                    build_cmd = (
+                        f'dotnet build "{csproj}" -c Release --framework net8.0 '
                         f'-p:OutputType=Exe -p:StartupObject={startup} '
-                        f'-p:OutputPath="{out_dir}/" --verbosity quiet'
+                        f'-p:GenerateDocumentationFile=false '
+                        f'-o "{out_dir}" --verbosity quiet'
                     )
-                    ok, stdout, stderr = self.run_cmd(cmd, timeout=180)
+                    ok, _, stderr = self.run_cmd(build_cmd, timeout=180)
+                    if not ok:
+                        print(f"  [C#] {Colors.fail_tag()} compile failed: {src.name}")
+                        results[f"csharp:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C#", None, f"compile {src.name}", stderr)
+                        all_success = False
+                        continue
+                    dll = out_dir / "StructFrame.dll"
+                    if not dll.exists():
+                        # Fall back to whatever .dll was produced (e.g. if the
+                        # AssemblyName was overridden upstream).
+                        dlls = list(out_dir.glob("*.dll"))
+                        dll = dlls[0] if dlls else dll
+                    ok, stdout, stderr = self.run_cmd(f'dotnet "{dll}"', timeout=60)
                     if ok:
                         print(f"  [C#] {Colors.pass_text()} {src.stem}")
                         results[f"csharp:{src.stem}"] = True
