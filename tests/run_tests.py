@@ -134,10 +134,10 @@ _init_colors()
 
 # Proto files to generate code from
 PROTO_FILES = [
-    "test_messages.proto",
-    "pkg_test_messages.proto",
-    "extended_messages.proto",
-    "envelope_messages.proto",
+    "test_messages.sf",
+    "pkg_test_messages.sf",
+    "extended_messages.sf",
+    "envelope_messages.sf",
 ]
 
 # Frame format profiles to test
@@ -548,7 +548,9 @@ class TestRunner:
             
             # Build command - always include --equality and --force flags for test generation
             # --force ensures regeneration even if hash matches (tests always need fresh generation)
-            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force"]
+            # --generate_tests emits per-package round-trip test code consumed by the
+            # round-trip phase (see run_roundtrip_tests).
+            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests"]
             for lang in active:
                 gen_dir = self.project_root / lang.gen_output_dir
                 gen_dir.mkdir(parents=True, exist_ok=True)
@@ -1455,6 +1457,297 @@ class TestRunner:
         self.results.setdefault("envelope_sdk", {})["csharp"] = success
         return success
 
+    def run_roundtrip_tests(self) -> bool:
+        """Phase: round-trip tests for every message across all 5 frame profiles.
+
+        For each ``.sf`` file the generator emits ``test_roundtrip_<pkg>``
+        launchers (one per package) for every supported language
+        (C, C++, Python, TypeScript, JavaScript, C#, Rust). Each launcher
+        populates every message with deterministic dummy values, encodes them
+        via the language's BufferWriter equivalent, decodes via the
+        AccumulatingReader equivalent and compares field-by-field. This phase
+        compiles (when needed) and executes those binaries.
+        """
+        self.print_section("ROUND-TRIP TESTS (all messages, all 5 profiles)")
+
+        results = self.results.setdefault("roundtrip", {})
+        all_success = True
+
+        # ---- C++ ----
+        cpp = self.languages.get("cpp")
+        if cpp and self.results["compilation"].get("cpp", True):
+            gen_dir = self.project_root / cpp.gen_output_dir
+            sources = sorted(gen_dir.glob("test_roundtrip_*.cpp"))
+            if not sources:
+                print("  [C++] No test_roundtrip_*.cpp files found - skipping")
+            else:
+                build_dir = gen_dir / "roundtrip_bin"
+                build_dir.mkdir(parents=True, exist_ok=True)
+                for src in sources:
+                    exe = build_dir / src.stem
+                    compile_cmd = f'g++ -std=c++20 -O0 -I"{gen_dir}" -o "{exe}" "{src}"'
+                    ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
+                    if not ok:
+                        print(f"  [C++] {Colors.fail_tag()} compile failed: {src.name}")
+                        results[f"cpp:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C++", None, f"compile {src.name}", stderr)
+                        all_success = False
+                        continue
+                    ok, stdout, stderr = self.run_cmd(f'"{exe}"', timeout=60)
+                    if ok:
+                        print(f"  [C++] {Colors.pass_text()} {src.stem}")
+                        results[f"cpp:{src.stem}"] = True
+                    else:
+                        print(f"  [C++] {Colors.fail_text()} {src.stem}")
+                        results[f"cpp:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C++", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                        all_success = False
+        else:
+            print("  [C++] Skipped (compilation failed or unavailable)")
+
+        # ---- Python ----
+        py = self.languages.get("py")
+        if py and "py" not in self.skipped_languages:
+            gen_dir = self.project_root / py.gen_output_dir
+            sources = sorted(gen_dir.glob("test_roundtrip_*.py"))
+            if not sources:
+                print("  [Python] No test_roundtrip_*.py files found - skipping")
+            else:
+                env = {"PYTHONPATH": str(gen_dir)}
+                for src in sources:
+                    ok, stdout, stderr = self.run_cmd(f'{sys.executable} "{src}"', env=env, timeout=60)
+                    if ok:
+                        print(f"  [Python] {Colors.pass_text()} {src.stem}")
+                        results[f"py:{src.stem}"] = True
+                    else:
+                        print(f"  [Python] {Colors.fail_text()} {src.stem}")
+                        results[f"py:{src.stem}"] = False
+                        self.add_failure("roundtrip", "Python", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                        all_success = False
+        else:
+            print("  [Python] Skipped")
+
+        # ---- C ----
+        c_lang = self.languages.get("c")
+        if c_lang and "c" not in self.skipped_languages and self.results["compilation"].get("c", True):
+            gen_dir = self.project_root / c_lang.gen_output_dir
+            sources = sorted(gen_dir.glob("test_roundtrip_*.c"))
+            if not sources:
+                print("  [C] No test_roundtrip_*.c files found - skipping")
+            else:
+                build_dir = gen_dir / "roundtrip_bin"
+                build_dir.mkdir(parents=True, exist_ok=True)
+                for src in sources:
+                    exe = build_dir / src.stem
+                    compile_cmd = f'gcc -O0 -I"{gen_dir}" -o "{exe}" "{src}" -lm'
+                    ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
+                    if not ok:
+                        print(f"  [C] {Colors.fail_tag()} compile failed: {src.name}")
+                        results[f"c:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C", None, f"compile {src.name}", stderr)
+                        all_success = False
+                        continue
+                    ok, stdout, stderr = self.run_cmd(f'"{exe}"', timeout=60)
+                    if ok:
+                        print(f"  [C] {Colors.pass_text()} {src.stem}")
+                        results[f"c:{src.stem}"] = True
+                    else:
+                        print(f"  [C] {Colors.fail_text()} {src.stem}")
+                        results[f"c:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                        all_success = False
+        else:
+            print("  [C] Skipped (compilation failed or unavailable)")
+
+        # ---- TypeScript ----
+        ts = self.languages.get("ts")
+        if ts and "ts" not in self.skipped_languages:
+            gen_dir = self.project_root / ts.gen_output_dir
+            sources = sorted(gen_dir.glob("test_roundtrip_*.ts"))
+            if not sources:
+                print("  [TS] No test_roundtrip_*.ts files found - skipping")
+            else:
+                build_dir = gen_dir / "roundtrip_bin"
+                build_dir.mkdir(parents=True, exist_ok=True)
+                ts_test_dir = self.project_root / ts.test_dir
+                local_tsc = ts_test_dir / "node_modules" / ".bin" / "tsc"
+                tsc_cmd = f'"{local_tsc}"' if local_tsc.exists() else "npx tsc"
+                # Compile every top-level .ts file in gen_dir (excludes the
+                # bundled struct-frame-sdk subdirectory) to CommonJS in build_dir.
+                ts_inputs = ' '.join(f'"{p}"' for p in sorted(gen_dir.glob("*.ts")))
+                compile_cmd = (
+                    f'{tsc_cmd} --target es2020 --module commonjs --esModuleInterop '
+                    f'--moduleResolution node --skipLibCheck --lib es2020,dom '
+                    f'--types node --typeRoots "{ts_test_dir / "node_modules" / "@types"}" '
+                    f'--outDir "{build_dir}" {ts_inputs}'
+                )
+                compile_ok, _, compile_err = self.run_cmd(compile_cmd, cwd=ts_test_dir, timeout=180)
+                if not compile_ok:
+                    print(f"  [TS] {Colors.fail_tag()} compile failed")
+                    self.add_failure("roundtrip", "TypeScript", None, "tsc compile", compile_err)
+                    for src in sources:
+                        results[f"ts:{src.stem}"] = False
+                    all_success = False
+                else:
+                    for src in sources:
+                        js_file = build_dir / f"{src.stem}.js"
+                        if not js_file.exists():
+                            print(f"  [TS] {Colors.fail_text()} {src.stem} (no js output)")
+                            results[f"ts:{src.stem}"] = False
+                            all_success = False
+                            continue
+                        ok, stdout, stderr = self.run_cmd(f'node "{js_file}"', timeout=60)
+                        if ok:
+                            print(f"  [TS] {Colors.pass_text()} {src.stem}")
+                            results[f"ts:{src.stem}"] = True
+                        else:
+                            print(f"  [TS] {Colors.fail_text()} {src.stem}")
+                            results[f"ts:{src.stem}"] = False
+                            self.add_failure("roundtrip", "TypeScript", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                            all_success = False
+        else:
+            print("  [TS] Skipped")
+
+        # ---- JavaScript ----
+        js = self.languages.get("js")
+        if js and "js" not in self.skipped_languages:
+            gen_dir = self.project_root / js.gen_output_dir
+            sources = sorted(gen_dir.glob("test_roundtrip_*.js"))
+            if not sources:
+                print("  [JS] No test_roundtrip_*.js files found - skipping")
+            else:
+                for src in sources:
+                    ok, stdout, stderr = self.run_cmd(f'node "{src}"', timeout=60)
+                    if ok:
+                        print(f"  [JS] {Colors.pass_text()} {src.stem}")
+                        results[f"js:{src.stem}"] = True
+                    else:
+                        print(f"  [JS] {Colors.fail_text()} {src.stem}")
+                        results[f"js:{src.stem}"] = False
+                        self.add_failure("roundtrip", "JavaScript", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                        all_success = False
+        else:
+            print("  [JS] Skipped")
+
+        # ---- C# ----
+        cs = self.languages.get("csharp")
+        if cs and "csharp" not in self.skipped_languages:
+            gen_dir = self.project_root / cs.gen_output_dir
+            sources = sorted(gen_dir.rglob("test_roundtrip_*.cs"))
+            csproj = gen_dir / "StructFrame.csproj"
+            if not sources or not csproj.exists():
+                print("  [C#] No test_roundtrip_*.cs files found - skipping")
+            else:
+                for src in sources:
+                    # Each generated test_roundtrip file declares a namespace and
+                    # class; build a fully-qualified StartupObject name so the
+                    # csproj (which contains many Main methods) builds as Exe.
+                    namespace = None
+                    class_name = None
+                    try:
+                        for line in src.read_text().splitlines():
+                            ls = line.strip()
+                            if ls.startswith("namespace ") and namespace is None:
+                                namespace = ls[len("namespace "):].split("{")[0].strip()
+                            elif ls.startswith("public static class ") and class_name is None:
+                                class_name = ls[len("public static class "):].split()[0].split("{")[0].strip()
+                            if namespace and class_name:
+                                break
+                    except Exception:
+                        pass
+                    if not (namespace and class_name):
+                        print(f"  [C#] {Colors.fail_text()} {src.stem} (could not parse namespace/class)")
+                        results[f"csharp:{src.stem}"] = False
+                        all_success = False
+                        continue
+                    startup = f"{namespace}.{class_name}"
+                    # Build outside the csproj source tree so that the
+                    # auto-generated obj/.../AssemblyInfo.cs isn't picked up
+                    # twice by the default Compile glob (which would produce
+                    # CS0579 duplicate-attribute errors).
+                    out_dir = self.project_root / "tests" / "build" / "csharp_roundtrip" / src.stem
+                    if out_dir.exists():
+                        shutil.rmtree(out_dir, ignore_errors=True)
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    # Also nuke the csproj's default obj/ so its stale
+                    # AssemblyInfo.cs from the main C# test build doesn't get
+                    # double-included into the launcher assembly.
+                    default_obj = gen_dir / "obj"
+                    if default_obj.exists():
+                        shutil.rmtree(default_obj, ignore_errors=True)
+                    # Build to a per-launcher output directory with the right
+                    # StartupObject so the assembly has a single, correct entry
+                    # point. Then invoke the resulting DLL directly via
+                    # `dotnet <dll>` (avoids the race conditions of `dotnet run`
+                    # with shared OutputPath; mirrors the convention used for
+                    # the C# test runner above).
+                    build_cmd = (
+                        f'dotnet build "{csproj}" -c Release --framework net8.0 '
+                        f'-p:OutputType=Exe -p:StartupObject={startup} '
+                        f'-p:GenerateDocumentationFile=false '
+                        f'-p:BaseIntermediateOutputPath="{out_dir}/obj/" '
+                        f'-o "{out_dir}" --verbosity quiet'
+                    )
+                    ok, _, stderr = self.run_cmd(build_cmd, timeout=180)
+                    if not ok:
+                        print(f"  [C#] {Colors.fail_tag()} compile failed: {src.name}")
+                        results[f"csharp:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C#", None, f"compile {src.name}", stderr)
+                        all_success = False
+                        continue
+                    dll = out_dir / "StructFrame.dll"
+                    if not dll.exists():
+                        # Fall back to whatever .dll was produced (e.g. if the
+                        # AssemblyName was overridden upstream).
+                        dlls = list(out_dir.glob("*.dll"))
+                        dll = dlls[0] if dlls else dll
+                    ok, stdout, stderr = self.run_cmd(f'dotnet "{dll}"', timeout=60)
+                    if ok:
+                        print(f"  [C#] {Colors.pass_text()} {src.stem}")
+                        results[f"csharp:{src.stem}"] = True
+                    else:
+                        print(f"  [C#] {Colors.fail_text()} {src.stem}")
+                        results[f"csharp:{src.stem}"] = False
+                        self.add_failure("roundtrip", "C#", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                        all_success = False
+        else:
+            print("  [C#] Skipped")
+
+        # ---- Rust ----
+        rust = self.languages.get("rust")
+        if rust and "rust" not in self.skipped_languages:
+            gen_dir = self.project_root / rust.gen_output_dir
+            sources = sorted(gen_dir.glob("test_roundtrip_*.rs"))
+            cargo_toml = gen_dir / "Cargo.toml"
+            if not sources or not cargo_toml.exists():
+                print("  [Rust] No test_roundtrip_*.rs files found - skipping")
+            else:
+                for src in sources:
+                    bin_name = src.stem
+                    build_cmd = f'cargo build --release --bin {bin_name} --quiet'
+                    ok, _, stderr = self.run_cmd(build_cmd, cwd=gen_dir, timeout=300)
+                    if not ok:
+                        print(f"  [Rust] {Colors.fail_tag()} compile failed: {bin_name}")
+                        results[f"rust:{bin_name}"] = False
+                        self.add_failure("roundtrip", "Rust", None, f"compile {src.name}", stderr)
+                        all_success = False
+                        continue
+                    exe_ext = ".exe" if sys.platform == "win32" else ""
+                    exe = gen_dir / "target" / "release" / f"{bin_name}{exe_ext}"
+                    ok, stdout, stderr = self.run_cmd(f'"{exe}"', timeout=60)
+                    if ok:
+                        print(f"  [Rust] {Colors.pass_text()} {bin_name}")
+                        results[f"rust:{bin_name}"] = True
+                    else:
+                        print(f"  [Rust] {Colors.fail_text()} {bin_name}")
+                        results[f"rust:{bin_name}"] = False
+                        self.add_failure("roundtrip", "Rust", None, f"run {src.name}", (stdout or "") + (stderr or ""))
+                        all_success = False
+        else:
+            print("  [Rust] Skipped")
+
+        return all_success
+
     
     
     # =========================================================================
@@ -1499,6 +1792,10 @@ class TestRunner:
         # Negative tests
         neg_total = len(self.results.get("negative", {}))
         neg_passed = sum(1 for v in self.results.get("negative", {}).values() if v)
+
+        # Round-trip tests (per-package, all 5 profiles)
+        rt_total = len(self.results.get("roundtrip", {}))
+        rt_passed = sum(1 for v in self.results.get("roundtrip", {}).values() if v)
         
         # Helper to colorize counts
         def colorize_count(passed: int, total: int) -> str:
@@ -1525,17 +1822,18 @@ class TestRunner:
         print(fmt('Variable Flag Validate', var_validate_passed, var_validate_total))
         print(fmt('Variable Flag Decode',   var_decode_passed,   var_decode_total))
         print(fmt('Negative Tests',         neg_passed,          neg_total))
+        print(fmt('Round-trip Tests',       rt_passed,           rt_total))
         
         total = (gen_total + comp_total + 
                  std_encode_total + std_validate_total + std_decode_total + 
                  ext_encode_total + ext_validate_total + ext_decode_total +
                  var_encode_total + var_validate_total + var_decode_total +
-                 neg_total)
+                 neg_total + rt_total)
         passed = (gen_passed + comp_passed + 
                   std_encode_passed + std_validate_passed + std_decode_passed + 
                   ext_encode_passed + ext_validate_passed + ext_decode_passed +
                   var_encode_passed + var_validate_passed + var_decode_passed +
-                  neg_passed)
+                  neg_passed + rt_passed)
         
         print(f"\n  Total: {colorize_count(passed, total)} tests passed")
         
@@ -1692,6 +1990,13 @@ class TestRunner:
                     self.run_standalone_tests()
             else:
                 print(f"\n{Colors.yellow('[SKIP]')} Standalone tests (--profiling)")
+
+            # Phase 12: Round-trip tests (every message, all 5 profiles)
+            if not profiling_only:
+                with self.timed_phase("Round-trip Tests"):
+                    self.run_roundtrip_tests()
+            else:
+                print(f"\n{Colors.yellow('[SKIP]')} Round-trip tests (--profiling)")
             
             # Summary
             success = self.print_summary()

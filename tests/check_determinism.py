@@ -22,10 +22,10 @@ import tempfile
 from pathlib import Path
 
 PROTO_FILES = [
-    "test_messages.proto",
-    "pkg_test_messages.proto",
-    "extended_messages.proto",
-    "envelope_messages.proto",
+    "test_messages.sf",
+    "pkg_test_messages.sf",
+    "extended_messages.sf",
+    "envelope_messages.sf",
 ]
 
 # Language id  → (gen_flag, subdir)
@@ -52,6 +52,8 @@ IGNORE_DIR_SEGMENTS = {
     "__pycache__",  # Python bytecode
     "obj",          # C# / MSBuild build artefacts
     "bin",          # C# compiled output
+    "roundtrip_bin",  # round-trip test binaries built into tests/generated/<lang>/ at runtime
+    "target",         # Rust cargo build artefacts (tests/generated/rust/target)
 }
 
 
@@ -83,7 +85,7 @@ def _generate(tmpdir: Path, project_root: Path, verbose: bool) -> bool:
 
     for proto_file in PROTO_FILES:
         proto_path = proto_dir / proto_file
-        cmd = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force"]
+        cmd = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests"]
         for _id, gen_flag, subdir in LANGUAGES:
             out = tmpdir / subdir
             out.mkdir(parents=True, exist_ok=True)

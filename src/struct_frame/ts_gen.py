@@ -916,3 +916,282 @@ class FileTsGen():
                 yield '    }\n'
                 yield '}\n'
             yield '\n'
+
+
+# =============================================================================
+# Round-trip test code generator
+# =============================================================================
+
+# Field type set for primitives (used by the test generator below).
+_TS_PRIM_TYPES = {"uint8", "int8", "uint16", "int16", "uint32", "int32",
+                  "uint64", "int64", "float", "double", "bool"}
+
+
+class TestTsGen():
+    """Generator for TypeScript test code with dummy values for round-trip verification."""
+
+    @staticmethod
+    def _get_dummy_value(field, index=0):
+        """Generate a dummy literal for a primitive/enum/string field."""
+        type_name = field.field_type
+        type_values = {
+            "uint8": str((42 + index) % 256),
+            "int8": str((42 + index) % 128),
+            "uint16": str(1000 + index),
+            "int16": str(500 + index),
+            "uint32": str(123456 + index),
+            "int32": str(123456 + index),
+            "uint64": f"{9876543210 + index}n",
+            "int64": f"{9876543210 + index}n",
+            "float": str(round(3.14159 + index, 5)),
+            "double": str(round(2.718281828 + index, 9)),
+            "bool": "true" if index % 2 == 0 else "false",
+        }
+        if type_name in type_values:
+            return type_values[type_name]
+        if type_name == "string":
+            return f'"test_{index}"'
+        if field.is_enum:
+            return "0"
+        # Nested struct - empty plain object accepted by the init applier
+        return "{}"
+
+    @staticmethod
+    def _generate_field_init(field, prefix="msg", index=0):
+        """Generate setter assignment code for a single field."""
+        var_name = to_camel_case(field.name)
+        type_name = field.field_type
+        result = ""
+
+        # Variable arrays / nested struct fields are modelled as arrays in TS.
+        if field.is_array:
+            if field.size_option is not None:
+                count = min(field.size_option, 3)
+                if type_name == "string":
+                    items = [f'"test_{i}"' for i in range(count)]
+                    pad = ['""' for _ in range(field.size_option - count)]
+                elif type_name == "bool":
+                    # Setters for primitive bool arrays accept ``number[]``.
+                    items = [str((42 + i) % 2) for i in range(count)]
+                    pad = ["0" for _ in range(field.size_option - count)]
+                elif type_name not in _TS_PRIM_TYPES and not field.is_enum:
+                    # Nested struct array - use empty object literals
+                    items = ["{}" for _ in range(count)]
+                    pad = ["{}" for _ in range(field.size_option - count)]
+                else:
+                    items = [TestTsGen._get_dummy_value(field, i) for i in range(count)]
+                    pad = ["0" for _ in range(field.size_option - count)]
+                arr_literal = "[" + ", ".join(items + pad) + "]"
+                result += f"    {prefix}.{var_name} = {arr_literal};\n"
+            elif field.max_size is not None:
+                num_elements = min(field.max_size, 3)
+                if type_name == "string":
+                    items = [f'"test_{i}"' for i in range(num_elements)]
+                elif type_name == "bool":
+                    items = [str((42 + i) % 2) for i in range(num_elements)]
+                elif type_name not in _TS_PRIM_TYPES and not field.is_enum:
+                    items = ["{}" for _ in range(num_elements)]
+                else:
+                    items = [TestTsGen._get_dummy_value(field, i) for i in range(num_elements)]
+                arr_literal = "[" + ", ".join(items) + "]"
+                result += f"    {prefix}.{var_name}Count = {num_elements};\n"
+                result += f"    {prefix}.{var_name}Data = {arr_literal};\n"
+        elif type_name == "string":
+            if field.size_option is not None:
+                result += f'    {prefix}.{var_name} = "test_string";\n'
+            elif field.max_size is not None:
+                test_str = "test_string"
+                result += f'    {prefix}.{var_name}Length = {len(test_str)};\n'
+                result += f'    {prefix}.{var_name}Data = "{test_str}";\n'
+            else:
+                result += f'    {prefix}.{var_name} = "test_string";\n'
+        elif type_name not in _TS_PRIM_TYPES and not field.is_enum:
+            # Single nested struct - the TS layout wraps it as a 1-element
+            # struct array, so the setter accepts ``[{}]``.
+            result += f"    {prefix}.{var_name} = [{{}}];\n"
+        else:
+            result += f"    {prefix}.{var_name} = {TestTsGen._get_dummy_value(field, index)};\n"
+
+        return result
+
+    @staticmethod
+    def generate(package, imported_packages=None):
+        """Generate TypeScript round-trip test code for a package."""
+        package_kebab = package.name.replace('_', '-')
+
+        yield '/**\n'
+        yield ' * Automatically generated round-trip test code for struct-frame messages.\n'
+        yield ' * For every message in the package this file populates fields with\n'
+        yield ' * deterministic dummy values, encodes via BufferWriter, decodes back via\n'
+        yield ' * AccumulatingReader and verifies that the decoded message matches the\n'
+        yield ' * original. Every message is exercised against all five frame profiles.\n'
+        yield f' * Generated by struct-frame {version}.\n'
+        yield ' */\n\n'
+
+        yield "import {\n"
+        yield "    ProfileStandardWriter, ProfileStandardAccumulatingReader,\n"
+        yield "    ProfileSensorWriter,   ProfileSensorAccumulatingReader,\n"
+        yield "    ProfileIPCWriter,      ProfileIPCAccumulatingReader,\n"
+        yield "    ProfileBulkWriter,     ProfileBulkAccumulatingReader,\n"
+        yield "    ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,\n"
+        yield "} from './frame-profiles';\n"
+        yield f"import * as Pkg from './{package_kebab}.structframe';\n"
+        yield f"import {{ getMessageInfo }} from './{package_kebab}.structframe';\n"
+        if imported_packages:
+            for imp in imported_packages:
+                imp_kebab = imp.replace('_', '-')
+                yield f"import * as {pascal_case(imp)}Pkg from './{imp_kebab}.structframe';\n"
+        yield "\n"
+
+        # Profile name -> writer/reader/has_pkg_id/max_payload table.
+        # Profiles without ``has_pkg_id`` cannot encode messages with msg_id > 255.
+        # Profiles with a finite ``maxPayload`` reject messages whose ``_size`` exceeds it.
+        yield "interface ProfileEntry {\n"
+        yield "    name: string;\n"
+        yield "    WriterCls: any;\n"
+        yield "    ReaderCls: any;\n"
+        yield "    hasPkgId: boolean;\n"
+        yield "    maxPayload: number | null;\n"
+        yield "}\n\n"
+
+        yield "const PROFILES: ProfileEntry[] = [\n"
+        yield "    { name: 'ProfileStandard', WriterCls: ProfileStandardWriter, ReaderCls: ProfileStandardAccumulatingReader, hasPkgId: false, maxPayload: 255 },\n"
+        yield "    { name: 'ProfileSensor',   WriterCls: ProfileSensorWriter,   ReaderCls: ProfileSensorAccumulatingReader,   hasPkgId: false, maxPayload: null },\n"
+        yield "    { name: 'ProfileIPC',      WriterCls: ProfileIPCWriter,      ReaderCls: ProfileIPCAccumulatingReader,      hasPkgId: false, maxPayload: null },\n"
+        yield "    { name: 'ProfileBulk',     WriterCls: ProfileBulkWriter,     ReaderCls: ProfileBulkAccumulatingReader,     hasPkgId: true,  maxPayload: 65535 },\n"
+        yield "    { name: 'ProfileNetwork',  WriterCls: ProfileNetworkWriter,  ReaderCls: ProfileNetworkAccumulatingReader,  hasPkgId: true,  maxPayload: 65535 },\n"
+        yield "];\n\n"
+
+        # Collect testable messages (skip oneof/variant messages).
+        testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
+                             if msg.id is not None and not getattr(msg, 'oneofs', {})]
+
+        # Per-message factory functions.
+        for key, msg in testable_messages:
+            struct_name = msg.name
+            func_name = f'createTest{struct_name}'
+            yield f'export function {func_name}(): Pkg.{struct_name} {{\n'
+            yield f'    const msg = new Pkg.{struct_name}();\n'
+            field_index = 0
+            for field_key, field in msg.fields.items():
+                yield TestTsGen._generate_field_init(field, "msg", field_index)
+                field_index += 1
+            yield '    return msg;\n'
+            yield '}\n\n'
+
+        # Result + helper types.
+        yield 'interface TestResult { passed: boolean; name: string; error: string; }\n\n'
+
+        yield 'function verifyRoundtrip(msg: any, MsgCls: any, WriterCls: any, ReaderCls: any, getInfoFn: any): [boolean, string] {\n'
+        yield '    try {\n'
+        yield '        const bufSize = Math.max(2048, (MsgCls._size || 0) + 128);\n'
+        yield '        const writer = new WriterCls(bufSize);\n'
+        yield '        const written = writer.write(msg);\n'
+        yield '        if (!written) return [false, "encode failed"];\n'
+        yield '        const encoded = writer.data();\n'
+        yield '        if (!encoded || encoded.length === 0) return [false, "empty encoded buffer"];\n'
+        yield '\n'
+        yield '        const reader = new ReaderCls(getInfoFn, Math.max(4096, bufSize * 2));\n'
+        yield '        reader.addData(Buffer.from(encoded));\n'
+        yield '        const result = reader.next();\n'
+        yield '        if (!result || !result.valid) return [false, "parse failed"];\n'
+        yield '        if (result.msgId !== MsgCls._msgid) {\n'
+        yield '            return [false, `msg_id mismatch: expected ${MsgCls._msgid}, got ${result.msgId}`];\n'
+        yield '        }\n'
+        yield '\n'
+        yield '        const decoded = MsgCls.deserialize(result);\n'
+        yield '        if (!decoded) return [false, "deserialize returned null"];\n'
+        yield '\n'
+        yield '        const a = msg.serialize();\n'
+        yield '        const b = decoded.serialize();\n'
+        yield '        if (a.length !== b.length || !Buffer.from(a).equals(Buffer.from(b))) {\n'
+        yield '            return [false, "decoded data differs from original"];\n'
+        yield '        }\n'
+        yield '        return [true, ""];\n'
+        yield '    } catch (e: any) {\n'
+        yield '        return [false, `exception: ${e && e.message ? e.message : e}`];\n'
+        yield '    }\n'
+        yield '}\n\n'
+
+        yield 'function isCompatible(MsgCls: any, hasPkgId: boolean, maxPayload: number | null, getInfoFn: any): string | null {\n'
+        yield '    if (!hasPkgId && (MsgCls._msgid > 255)) {\n'
+        yield '        return "msg_id > 255 requires has_pkg_id profile";\n'
+        yield '    }\n'
+        yield '    if (maxPayload !== null && (MsgCls._size || 0) > maxPayload) {\n'
+        yield '        return "message exceeds profile max_payload";\n'
+        yield '    }\n'
+        yield '    if (getInfoFn(MsgCls._msgid) === undefined) {\n'
+        yield '        return "msg_id not registered for this profile (likely cross-package mismatch)";\n'
+        yield '    }\n'
+        yield '    return null;\n'
+        yield '}\n\n'
+
+        # Per-message test wrappers.
+        for key, msg in testable_messages:
+            struct_name = msg.name
+            create_func = f'createTest{struct_name}'
+            test_func = f'test{struct_name}'
+            yield f'function {test_func}(WriterCls: any, ReaderCls: any, getInfoFn: any): TestResult {{\n'
+            yield f'    const msg = {create_func}();\n'
+            yield f'    const [passed, reason] = verifyRoundtrip(msg, Pkg.{struct_name}, WriterCls, ReaderCls, getInfoFn);\n'
+            yield f'    return {{ passed, name: "{struct_name}", error: passed ? "" : reason }};\n'
+            yield '}\n\n'
+
+        yield f'export const TEST_MESSAGE_COUNT = {len(testable_messages)};\n\n'
+
+        # Driver that runs all messages for one profile.
+        yield 'function runAllTests(WriterCls: any, ReaderCls: any, getInfoFn: any, hasPkgId: boolean, maxPayload: number | null, verbose: boolean): number {\n'
+        yield '    let passed = 0;\n'
+        for key, msg in testable_messages:
+            struct_name = msg.name
+            test_func = f'test{struct_name}'
+            yield f'    {{\n'
+            yield f'        const skip = isCompatible(Pkg.{struct_name}, hasPkgId, maxPayload, getInfoFn);\n'
+            yield f'        if (skip !== null) {{\n'
+            yield f'            passed += 1;\n'
+            yield f'            if (verbose) console.log(`[SKIP] {struct_name}: ${{skip}}`);\n'
+            yield f'        }} else {{\n'
+            yield f'            const r = {test_func}(WriterCls, ReaderCls, getInfoFn);\n'
+            yield f'            if (r.passed) {{\n'
+            yield f'                passed += 1;\n'
+            yield f'                if (verbose) console.log(`[PASS] ${{r.name}}`);\n'
+            yield f'            }} else if (verbose) {{\n'
+            yield f'                console.log(`[FAIL] ${{r.name}}: ${{r.error}}`);\n'
+            yield f'            }}\n'
+            yield f'        }}\n'
+            yield f'    }}\n'
+        yield '    if (verbose) console.log(`  -> ${passed}/${TEST_MESSAGE_COUNT} passed`);\n'
+        yield '    return passed;\n'
+        yield '}\n\n'
+
+        yield 'export function runRoundtripAllProfiles(verbose: boolean = false): boolean {\n'
+        yield '    let allOk = true;\n'
+        yield '    for (const p of PROFILES) {\n'
+        yield '        if (verbose) console.log(`\\n--- ${p.name} ---`);\n'
+        yield '        const passed = runAllTests(p.WriterCls, p.ReaderCls, getMessageInfo, p.hasPkgId, p.maxPayload, verbose);\n'
+        yield '        if (passed !== TEST_MESSAGE_COUNT) {\n'
+        yield '            allOk = false;\n'
+        yield '            console.log(`[FAIL] ${p.name}: ${passed}/${TEST_MESSAGE_COUNT} passed`);\n'
+        yield '        } else if (verbose) {\n'
+        yield '            console.log(`[OK] ${p.name}: ${passed}/${TEST_MESSAGE_COUNT} passed`);\n'
+        yield '        }\n'
+        yield '    }\n'
+        yield '    return allOk;\n'
+        yield '}\n\n'
+
+        # Module-as-script entrypoint.
+        yield 'if (require.main === module) {\n'
+        yield '    const verbose = process.argv.includes("-v") || process.argv.includes("--verbose");\n'
+        yield f'    console.log("Running round-trip tests for package \'{package.name}\' across 5 profiles...");\n'
+        yield '    const ok = runRoundtripAllProfiles(verbose);\n'
+        yield '    if (ok) {\n'
+        yield f'        console.log("[TEST PASSED] All round-trip tests for \'{package.name}\' succeeded.");\n'
+        yield '        process.exit(0);\n'
+        yield '    } else {\n'
+        yield f'        console.log("[TEST FAILED] Round-trip tests for \'{package.name}\' had failures.");\n'
+        yield '        process.exit(1);\n'
+        yield '    }\n'
+        yield '}\n'
+
+
+

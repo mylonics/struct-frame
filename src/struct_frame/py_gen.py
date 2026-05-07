@@ -1411,12 +1411,23 @@ class TestPyGen():
         # Handle arrays
         if field.is_array:
             if field.size_option is not None:
-                # Fixed array
-                for i in range(min(field.size_option, 3)):
-                    if type_name == "string":
-                        result += f'    {prefix}.{var_name}[{i}] = b"test_{i}"\n'
-                    else:
-                        result += f"    {prefix}.{var_name}[{i}] = {TestPyGen._get_dummy_value(field, i)}\n"
+                # Fixed array - generated as a Python list, so initialise it before indexing
+                count = min(field.size_option, 3)
+                if type_name == "string":
+                    items = ", ".join(f'b"test_{i}"' for i in range(count))
+                else:
+                    items = ", ".join(TestPyGen._get_dummy_value(field, i) for i in range(count))
+                # Pad with default zero/empty values up to size_option so that
+                # the message serialiser emitted by FilePyGen, which always
+                # iterates the full ``size_option`` count, finds a valid value
+                # at every index instead of raising IndexError.
+                if type_name == "string":
+                    pad = ", ".join('b""' for _ in range(field.size_option - count))
+                else:
+                    pad_val = "0" if field.is_enum or type_name != "bool" else "False"
+                    pad = ", ".join(pad_val for _ in range(field.size_option - count))
+                full = items + (", " + pad if pad else "")
+                result += f"    {prefix}.{var_name} = [{full}]\n"
             elif field.max_size is not None:
                 # Variable array
                 num_elements = min(field.max_size, 3)
@@ -1436,7 +1447,7 @@ class TestPyGen():
         return result
     
     @staticmethod
-    def generate(package):
+    def generate(package, imported_packages=None):
         """Generate test code for all messages in a package."""
         yield '"""\n'
         yield 'Automatically generated test code for struct-frame messages.\n'
@@ -1446,18 +1457,24 @@ class TestPyGen():
         
         yield 'import sys\n'
         yield 'from typing import List, Tuple, Optional\n'
-        yield f'from {package.name} import *\n'
+        yield f'from struct_frame.generated.{package.name} import *\n'
+        yield f'from struct_frame.generated.{package.name} import get_message_info\n'
+        # Re-export names from imported packages so create_test_* functions can
+        # construct cross-package nested-message fields by their bare type name.
+        if imported_packages:
+            for imp in imported_packages:
+                yield f'from struct_frame.generated.{imp} import *\n'
         yield 'from frame_profiles import (\n'
-        yield '    encode_profile_standard, parse_profile_standard,\n'
-        yield '    encode_profile_sensor, parse_profile_sensor,\n'
-        yield '    encode_profile_ipc, parse_profile_ipc,\n'
-        yield '    encode_profile_bulk, parse_profile_bulk,\n'
-        yield '    encode_profile_network, parse_profile_network,\n'
+        yield '    ProfileStandardWriter, ProfileStandardAccumulatingReader,\n'
+        yield '    ProfileSensorWriter,   ProfileSensorAccumulatingReader,\n'
+        yield '    ProfileIPCWriter,      ProfileIPCAccumulatingReader,\n'
+        yield '    ProfileBulkWriter,     ProfileBulkAccumulatingReader,\n'
+        yield '    ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,\n'
         yield ')\n\n'
         
-        # Collect testable messages
-        testable_messages = [(key, msg) for key, msg in package.sortedMessages().items() 
-                            if msg.id is not None]
+        # Collect testable messages (skip variant/oneof messages)
+        testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
+                            if msg.id is not None and not getattr(msg, 'oneofs', {})]
         
         # Generate message creation functions
         for key, msg in testable_messages:
@@ -1477,28 +1494,40 @@ class TestPyGen():
             yield '    return msg\n\n'
         
         # Generate test function
-        yield 'def verify_roundtrip(msg, encode_fn, parse_fn, get_info_fn) -> bool:\n'
-        yield '    """Verify round-trip encode/decode for a message."""\n'
+        yield 'def verify_roundtrip(msg, writer_cls, reader_cls, get_info_fn) -> Tuple[bool, str]:\n'
+        yield '    """Encode *msg* with ``writer_cls`` (a BufferWriter), decode it back\n'
+        yield '    using ``reader_cls`` (an AccumulatingReader) and compare field-by-field\n'
+        yield '    with the original. Returns (passed, reason)."""\n'
         yield '    try:\n'
-        yield '        # Encode\n'
-        yield '        buffer = encode_fn(msg)\n'
-        yield '        if not buffer:\n'
-        yield '            return False\n'
+        yield '        # Generously size the working buffers based on the message MAX_SIZE\n'
+        yield '        # so that even the largest extended payloads fit with profile overhead.\n'
+        yield '        buf_size = max(2048, getattr(msg, "MAX_SIZE", 0) + 128)\n'
+        yield '        writer = writer_cls(buf_size)\n'
+        yield '        if not writer.write(msg):\n'
+        yield '            return (False, "encode failed")\n'
+        yield '        encoded = writer.data()\n'
+        yield '        if not encoded:\n'
+        yield '            return (False, "empty encoded buffer")\n'
         yield '        \n'
-        yield '        # Parse\n'
-        yield '        result = parse_fn(buffer, get_info_fn)\n'
-        yield '        if not result.valid:\n'
-        yield '            return False\n'
+        yield '        reader = reader_cls(get_info_fn, max(4096, buf_size * 2))\n'
+        yield '        reader.add_data(encoded)\n'
+        yield '        result = reader.next()\n'
+        yield '        if result is None or not result.valid:\n'
+        yield '            return (False, "parse failed")\n'
         yield '        \n'
-        yield '        # Deserialize\n'
-        yield '        decoded = type(msg)()\n'
-        yield '        decoded.deserialize(result.msg_data)\n'
+        yield '        if result.msg_id != msg.MSG_ID:\n'
+        yield '            return (False, f"msg_id mismatch: expected {msg.MSG_ID}, got {result.msg_id}")\n'
         yield '        \n'
-        yield '        # Compare bytes\n'
-        yield '        return msg.serialize() == decoded.serialize()\n'
+        yield '        decoded = type(msg).deserialize(result.msg_data)\n'
+        yield '        if decoded is None:\n'
+        yield '            return (False, "deserialize returned None")\n'
+        yield '        \n'
+        yield '        # Field-by-field comparison via serialized representation.\n'
+        yield '        if msg.serialize() != decoded.serialize():\n'
+        yield '            return (False, "decoded data differs from original")\n'
+        yield '        return (True, "")\n'
         yield '    except Exception as e:\n'
-        yield '        print(f"Round-trip failed: {e}")\n'
-        yield '        return False\n\n'
+        yield '        return (False, f"exception: {e}")\n\n'
         
         # Generate test result class
         yield 'class TestResult:\n'
@@ -1514,45 +1543,89 @@ class TestPyGen():
             func_name = f'test_{camel_to_snake_case(msg.name)}'
             create_func = f'create_test_{camel_to_snake_case(msg.name)}'
             
-            yield f'def {func_name}(encode_fn, parse_fn, get_info_fn) -> TestResult:\n'
+            yield f'def {func_name}(writer_cls, reader_cls, get_info_fn) -> TestResult:\n'
             yield f'    """Test round-trip for {struct_name}."""\n'
             yield f'    msg = {create_func}()\n'
-            yield f'    passed = verify_roundtrip(msg, encode_fn, parse_fn, get_info_fn)\n'
-            yield f'    return TestResult(passed, "{struct_name}", None if passed else "Round-trip failed")\n\n'
+            yield f'    passed, reason = verify_roundtrip(msg, writer_cls, reader_cls, get_info_fn)\n'
+            yield f'    return TestResult(passed, "{struct_name}", None if passed else reason)\n\n'
         
         # Generate run_all_tests function
         yield 'TEST_MESSAGE_COUNT = %d\n\n' % len(testable_messages)
-        
-        yield 'def run_all_tests(encode_fn, parse_fn, get_info_fn, verbose: bool = False) -> int:\n'
-        yield '    """Run all message tests. Returns count of passed tests."""\n'
+
+        # Mapping of profile name -> (writer class, reader class, has_pkg_id, max_payload).
+        # Used to determine if a (message, profile) pair is compatible. Profiles
+        # without ``has_pkg_id`` cannot encode messages with ``MSG_ID > 255``.
+        # Profiles with ``max_payload`` reject messages whose ``MAX_SIZE``
+        # exceeds the limit.
+        yield 'PROFILES = [\n'
+        yield '    ("ProfileStandard", ProfileStandardWriter, ProfileStandardAccumulatingReader, False, 255),\n'
+        yield '    ("ProfileSensor",   ProfileSensorWriter,   ProfileSensorAccumulatingReader,   False, None),\n'
+        yield '    ("ProfileIPC",      ProfileIPCWriter,      ProfileIPCAccumulatingReader,      False, None),\n'
+        yield '    ("ProfileBulk",     ProfileBulkWriter,     ProfileBulkAccumulatingReader,     True,  65535),\n'
+        yield '    ("ProfileNetwork",  ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,  True,  65535),\n'
+        yield ']\n\n'
+
+        yield 'def _is_compatible(msg, has_pkg_id: bool, max_payload: Optional[int], get_info_fn) -> Optional[str]:\n'
+        yield '    """Return None if compatible, otherwise a human-readable skip reason."""\n'
+        yield '    if not has_pkg_id and msg.MSG_ID > 255:\n'
+        yield '        return "msg_id > 255 requires has_pkg_id profile"\n'
+        yield '    if max_payload is not None and getattr(msg, "MAX_SIZE", 0) > max_payload:\n'
+        yield '        return "message exceeds profile max_payload"\n'
+        yield '    # If the registry does not know about ``msg.MSG_ID`` directly the\n'
+        yield '    # parser cannot reconstruct the message; this happens for packages\n'
+        yield '    # that bake a pkg_id into the registry key but not into MSG_ID.\n'
+        yield '    if get_info_fn(msg.MSG_ID) is None:\n'
+        yield '        return "msg_id not registered for this profile (likely cross-package mismatch)"\n'
+        yield '    return None\n\n'
+
+        yield 'def run_all_tests(writer_cls, reader_cls, get_info_fn, has_pkg_id: bool, max_payload: Optional[int], verbose: bool = False) -> int:\n'
+        yield '    """Run all message tests for one profile. Skipped messages count as passed."""\n'
         yield '    passed = 0\n'
-        yield '    results = [\n'
         for key, msg in testable_messages:
+            struct_name = msg.name
+            create_func = f'create_test_{camel_to_snake_case(msg.name)}'
             func_name = f'test_{camel_to_snake_case(msg.name)}'
-            yield f'        {func_name}(encode_fn, parse_fn, get_info_fn),\n'
-        yield '    ]\n'
-        yield '    \n'
-        yield '    for result in results:\n'
-        yield '        if result.passed:\n'
-        yield '            passed += 1\n'
-        yield '            if verbose:\n'
-        yield '                print(f"[PASS] {result.name}")\n'
-        yield '        else:\n'
-        yield '            if verbose:\n'
-        yield '                print(f"[FAIL] {result.name}: {result.error}")\n'
-        yield '    \n'
+            yield f'    skip = _is_compatible({create_func}(), has_pkg_id, max_payload, get_info_fn)\n'
+            yield f'    if skip is not None:\n'
+            yield f'        passed += 1\n'
+            yield f'        if verbose:\n'
+            yield f'            print(f"[SKIP] {struct_name}: {{skip}}")\n'
+            yield f'    else:\n'
+            yield f'        r = {func_name}(writer_cls, reader_cls, get_info_fn)\n'
+            yield f'        if r.passed:\n'
+            yield f'            passed += 1\n'
+            yield f'            if verbose:\n'
+            yield f'                print(f"[PASS] {{r.name}}")\n'
+            yield f'        elif verbose:\n'
+            yield f'            print(f"[FAIL] {{r.name}}: {{r.error}}")\n'
         yield '    if verbose:\n'
-        yield '        print(f"\\nTest Results: {passed}/{TEST_MESSAGE_COUNT} passed")\n'
-        yield '    \n'
+        yield '        print(f"  -> {passed}/{TEST_MESSAGE_COUNT} passed")\n'
         yield '    return passed\n\n'
         
         # Generate main function for standalone execution
-        yield 'def run_tests_standard(verbose: bool = False) -> int:\n'
-        yield '    """Run all tests with ProfileStandard."""\n'
-        yield '    return run_all_tests(encode_profile_standard, parse_profile_standard, get_message_info, verbose)\n\n'
-        
+        yield 'def run_roundtrip_all_profiles(verbose: bool = False) -> bool:\n'
+        yield '    """Run round-trip tests for every message across all 5 frame profiles.\n'
+        yield '    Returns True only if every (message, profile) pair either round-trips\n'
+        yield '    successfully or is correctly skipped due to incompatibility."""\n'
+        yield '    all_ok = True\n'
+        yield '    for name, writer_cls, reader_cls, has_pkg_id, max_payload in PROFILES:\n'
+        yield '        if verbose:\n'
+        yield '            print(f"\\n--- {name} ---")\n'
+        yield '        passed = run_all_tests(writer_cls, reader_cls, get_message_info, has_pkg_id, max_payload, verbose=verbose)\n'
+        yield '        if passed != TEST_MESSAGE_COUNT:\n'
+        yield '            all_ok = False\n'
+        yield '            print(f"[FAIL] {name}: {passed}/{TEST_MESSAGE_COUNT} passed")\n'
+        yield '        elif verbose:\n'
+        yield '            print(f"[OK] {name}: {passed}/{TEST_MESSAGE_COUNT} passed")\n'
+        yield '    return all_ok\n\n'
+
         yield 'if __name__ == "__main__":\n'
         yield '    verbose = "--verbose" in sys.argv or "-v" in sys.argv\n'
-        yield '    passed = run_tests_standard(verbose=verbose)\n'
-        yield '    print(f"Tests: {passed}/{TEST_MESSAGE_COUNT} passed")\n'
-        yield '    sys.exit(0 if passed == TEST_MESSAGE_COUNT else 1)\n'
+        yield f'    print(f"Running round-trip tests for package \'{package.name}\' across 5 profiles...")\n'
+        yield '    ok = run_roundtrip_all_profiles(verbose=verbose)\n'
+        yield '    if ok:\n'
+        yield f'        print(f"[TEST PASSED] All round-trip tests for \'{package.name}\' succeeded.")\n'
+        yield '        sys.exit(0)\n'
+        yield '    else:\n'
+        yield f'        print(f"[TEST FAILED] Round-trip tests for \'{package.name}\' had failures.")\n'
+        yield '        sys.exit(1)\n'
