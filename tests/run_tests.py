@@ -550,7 +550,9 @@ class TestRunner:
             # --force ensures regeneration even if hash matches (tests always need fresh generation)
             # --generate_tests emits per-package round-trip test code consumed by the
             # round-trip phase (see run_roundtrip_tests).
-            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests"]
+            # --sdk ensures the StructFrameSdk boilerplate (struct-frame-sdk/, etc.) is
+            # copied alongside generated code so SDK tests can import it.
+            cmd_parts = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests", "--sdk"]
             for lang in active:
                 gen_dir = self.project_root / lang.gen_output_dir
                 gen_dir.mkdir(parents=True, exist_ok=True)
@@ -1603,6 +1605,29 @@ class TestRunner:
             else:
                 print("  Skipping TypeScript test_sdk (script not found)")
 
+        # ---- JavaScript: test_sdk.js (section 6.3) ----
+        js_lang = self.languages.get("js")
+        if js_lang and "js" not in self.skipped_languages:
+            js_dir = self.project_root / js_lang.test_dir
+            script = js_dir / "test_sdk.js"
+            if script.exists():
+                success, stdout, stderr = self.run_cmd(
+                    f'node "{script}"', cwd=js_dir, timeout=30
+                )
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                if stderr and not success:
+                    print(stderr)
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  JavaScript test_sdk: {label}")
+                results["js:sdk"] = success
+                if not success:
+                    self.add_failure("sdk", "JavaScript", None, "test_sdk.js failed")
+                    all_success = False
+            else:
+                print("  Skipping JavaScript test_sdk (script not found)")
+
         # ---- C#: test_sdk_subscribe (section 6.3) ----
         csharp_lang = self.languages.get("csharp")
         if csharp_lang and self.results["compilation"].get("csharp", False):
@@ -1627,6 +1652,30 @@ class TestRunner:
                     all_success = False
             else:
                 print("  Skipping C# test_sdk_subscribe (binary not found)")
+
+        # ---- Rust: test_streaming + test_sdk_subscribe (sections 6.2, 6.3) ----
+        rust_lang = self.languages.get("rust")
+        if rust_lang and self.results["compilation"].get("rust", False):
+            rust_runner = self.project_root / rust_lang.build_dir / f"struct_frame_rust_tests{rust_lang.exe_ext}"
+            if rust_runner.exists():
+                for runner_arg, label_str in [
+                    ("test_streaming", "Rust test_streaming"),
+                    ("test_sdk_subscribe", "Rust test_sdk_subscribe"),
+                ]:
+                    success, stdout, stderr = self.run_cmd(f'"{rust_runner}" {runner_arg}', timeout=30)
+                    if stdout:
+                        for line in stdout.splitlines():
+                            print(f"  {line}")
+                    if stderr and not success:
+                        print(stderr)
+                    label = Colors.pass_text() if success else Colors.fail_text()
+                    print(f"\n  {label_str}: {label}")
+                    results[f"rust:{runner_arg}"] = success
+                    if not success:
+                        self.add_failure("sdk", "Rust", None, f"{runner_arg} failed")
+                        all_success = False
+            else:
+                print("  Skipping Rust SDK tests (binary not found)")
 
         return all_success
 

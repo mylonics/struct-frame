@@ -270,7 +270,7 @@ runtime are the canonical identifiers used across all languages:
 |-------|---|-----|--------|----|----|----|------|
 | `BufferReader<Config>` / `buffer_reader_t` | ✅ | ✅ | N/A | N/A | N/A | N/A | N/A |
 | `AccumulatingReader<Config>` (buffer mode) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `AccumulatingReader<Config>` (stream/byte mode) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| `AccumulatingReader<Config>` (stream/byte mode) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `ProfileStandardAccumulatingReader` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `BufferParserWithCrc` | N/A | ✅ | N/A | N/A | N/A | N/A | N/A |
 | `BufferParserMinimal` | N/A | ✅ | N/A | N/A | N/A | N/A | N/A |
@@ -279,26 +279,28 @@ runtime are the canonical identifiers used across all languages:
 >
 > **Closed (C++).** `BufferParserWithCrc` and `BufferParserMinimal` now have dedicated unit tests in `tests/cpp/test_sdk_units.cpp` (15 tests across all profiles).
 >
-> **Gap (Low):** Rust still lacks byte-by-byte streaming mode tests for `AccumulatingReader`.
+> **Closed (Rust).** `AccumulatingReader::push_byte` is now exercised by the `test_streaming` runner in `tests/rust/src/main.rs` (6 tests: standard profile, sensor/minimal profile, two consecutive frames, garbage-prefix skip). The Rust `bytes_to_drain_for_resync` logic was also fixed to correctly await payload bytes for minimal (no-length) profiles in streaming mode.
 
 ### 6.3 High-Level SDK (Transport + Routing)
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
 |---------|---|-----|--------|----|----|----|------|
-| `StructFrameSdk` subscribe/dispatch | N/A | ✅ | ✅ | ✅ | ❌ | ✅ | N/A |
+| `StructFrameSdk` subscribe/dispatch | N/A | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Serial transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | TCP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | UDP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | WebSocket transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | Async transport (Python) | N/A | N/A | ❌ | N/A | N/A | N/A | N/A |
 
-> **Partially closed.** `StructFrameSdk` subscribe/dispatch is now tested with mock transports in four languages:
+> **Closed.** `StructFrameSdk` subscribe/dispatch is now tested with mock transports in six languages:
 > - **C++** — `tests/cpp/test_sdk_subscribe.cpp` (7 tests: subscribe/dispatch, multiple observers, RAII unsubscribe, no-op notify, Connect delegation, incoming data pipeline, full encode→inject→parse)
 > - **Python** — `tests/py/test_sdk.py` (11 tests: subscribe/dispatch, multiple handlers, unsubscribe, send_raw)
 > - **TypeScript** — `tests/ts/test_sdk.ts` (10 tests: subscribe/dispatch, multiple handlers, unsubscribe, codec deserialization)
 > - **C#** — `tests/csharp/TestSdkSubscribe.cs` (14 tests: subscribe, multiple handlers, unsubscribe, UnhandledMessage event, two-type dispatch, SendAsync)
+> - **JavaScript** — `tests/js/test_sdk.js` (10 tests: subscribe/dispatch, multiple handlers, unsubscribe, codec deserialization). A CommonJS `StructFrameSdk` was added to `src/struct_frame/boilerplate/js/struct-frame-sdk/`.
+> - **Rust** — `tests/rust/src/main.rs` `test_sdk_subscribe` runner (9 tests: subscribe/dispatch, multiple handlers, unsubscribe, no-op notify, push_byte dispatch). A `StructFrameSdk` struct was added to `src/struct_frame/boilerplate/rust/struct_frame_sdk.rs`.
 >
-> **Gap (Medium):** JavaScript and transport-level tests (serial, TCP, UDP, WebSocket) remain uncovered.
+> **Gap (Low):** Transport-level tests (serial, TCP, UDP, WebSocket) remain uncovered.
 
 ---
 
@@ -358,7 +360,7 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 1. **Generator validation tests** — All generator-level error rules (duplicate IDs, missing size options, invalid envelope definitions, etc.) are untested. A Python-based unit test file (`tests/py/test_generator.py` or similar) should cover these.
 
-2. ~~**High-level SDK tests**~~ — ✅ **Partially closed** — `StructFrameSdk` subscribe/dispatch is now covered with mock transports for C++ (7 tests), Python (11 tests), TypeScript (10 tests), and C# (14 tests). JavaScript and transport-level tests remain outstanding.
+2. ~~**High-level SDK tests**~~ — ✅ **Closed** — `StructFrameSdk` subscribe/dispatch is now covered with mock transports for C++ (7 tests), Python (11 tests), TypeScript (10 tests), C# (14 tests), JavaScript (10 tests), and Rust (9 tests). Transport-level tests remain outstanding.
 
 ### Medium Priority
 
@@ -376,13 +378,15 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 ### Low Priority
 
-9. ~~**`AccumulatingReader` byte-stream mode in C**~~ — ✅ **Closed** — `tests/c/test_streaming.c` now exercises `accumulating_reader_push_byte` with 4 tests (single frame, sensor profile, two consecutive frames, garbage-prefix skip). Rust remains uncovered.
+9. ~~**`AccumulatingReader` byte-stream mode in C**~~ — ✅ **Closed** — `tests/c/test_streaming.c` exercises `accumulating_reader_push_byte` with 4 tests (single frame, sensor profile, two consecutive frames, garbage-prefix skip).
 
-10. **Performance benchmarks** — Throughput benchmarks only exist for C++; other languages have no baseline.
+10. ~~**`AccumulatingReader` byte-stream mode in Rust**~~ — ✅ **Closed** — `AccumulatingReader::push_byte` is now tested via the `test_streaming` runner in `tests/rust/src/main.rs` (6 tests). A bug in `bytes_to_drain_for_resync` for minimal profiles was fixed as part of this work.
 
-11. **Wireshark dissector** — No automated test for the Lua dissector.
+11. **Performance benchmarks** — Throughput benchmarks only exist for C++; other languages have no baseline.
 
-12. **`--equality` generated code** — No test verifies generated equality operators/methods for any language.
+12. **Wireshark dissector** — No automated test for the Lua dissector.
+
+13. **`--equality` generated code** — No test verifies generated equality operators/methods for any language.
 
 ---
 

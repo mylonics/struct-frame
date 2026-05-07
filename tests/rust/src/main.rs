@@ -12,6 +12,7 @@ use struct_frame_sdk::extended_test::*;
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::{
     encode_message_crc, encode_message_minimal, AccumulatingReader, ProfileConfig,
+    StructFrameSdk,
     PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG, PROFILE_SENSOR_CONFIG,
     PROFILE_STANDARD_CONFIG,
 };
@@ -911,6 +912,258 @@ fn run_oneof_special_tests() {
 }
 
 // ============================================================================
+// Streaming tests (AccumulatingReader::push_byte)
+// ============================================================================
+
+fn run_streaming_tests() {
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+
+    macro_rules! expect {
+        ($cond:expr, $name:expr) => {
+            if $cond {
+                println!("  PASS  {}", $name);
+                passed += 1;
+            } else {
+                eprintln!("  FAIL  {}", $name);
+                failed += 1;
+            }
+        };
+    }
+
+    println!("\n========================================");
+    println!("STREAMING TESTS - Rust AccumulatingReader (push_byte)");
+    println!("========================================\n");
+
+    // Helper: encode a BasicTypesMessage with the given profile, returning the raw frame bytes.
+    fn encode_frame(config: struct_frame_sdk::ProfileConfig, regular_int: i32) -> Vec<u8> {
+        let mut msg = BasicTypesMessage::default();
+        msg.regular_int = regular_int;
+        let mut writer = struct_frame_sdk::BufferWriter::new(config, 512);
+        writer.write_crc(&msg, 0);
+        writer.data().to_vec()
+    }
+
+    // Test 1: Standard profile – push bytes one-by-one, last byte completes the frame
+    {
+        let frame = encode_frame(PROFILE_STANDARD_CONFIG, 9876);
+        let mut reader = struct_frame_sdk::new_standard_reader(512);
+        let mut result: Option<struct_frame_sdk::FrameMsgInfo> = None;
+        for (i, &byte) in frame.iter().enumerate() {
+            let r = reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info);
+            if i < frame.len() - 1 {
+                if r.is_some() { failed += 1; break; }
+            } else {
+                result = r;
+            }
+        }
+        let valid = result.as_ref().map_or(false, |f| {
+            f.valid
+                && f.msg_id == BasicTypesMessage::MSG_ID
+                && BasicTypesMessage::unpack(&f.payload)
+                    .map_or(false, |m| m.regular_int == 9876)
+        });
+        expect!(valid, "Standard profile: push_byte decodes complete frame");
+    }
+
+    // Test 2: Sensor profile (minimal, no CRC) – push bytes one-by-one
+    {
+        let mut msg = BasicTypesMessage::default();
+        msg.small_int = 7;
+        let mut writer = struct_frame_sdk::BufferWriter::new(PROFILE_SENSOR_CONFIG, 512);
+        writer.write_minimal(&msg);
+        let frame = writer.data().to_vec();
+        let mut reader = struct_frame_sdk::new_sensor_reader(512);
+        let mut last: Option<struct_frame_sdk::FrameMsgInfo> = None;
+        for &byte in &frame {
+            last = reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info);
+        }
+        let valid = last.as_ref().map_or(false, |f| f.valid && f.msg_id == BasicTypesMessage::MSG_ID);
+        expect!(valid, "Sensor profile: push_byte decodes minimal frame");
+    }
+
+    // Test 3: Two consecutive frames decoded via push_byte
+    {
+        let frame1 = encode_frame(PROFILE_STANDARD_CONFIG, 1111);
+        let frame2 = encode_frame(PROFILE_STANDARD_CONFIG, 2222);
+        let mut reader = struct_frame_sdk::new_standard_reader(512);
+        let mut r1: Option<struct_frame_sdk::FrameMsgInfo> = None;
+        for &byte in &frame1 {
+            r1 = reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info);
+        }
+        let mut r2: Option<struct_frame_sdk::FrameMsgInfo> = None;
+        for &byte in &frame2 {
+            r2 = reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info);
+        }
+        let v1 = r1.as_ref().map_or(false, |f| {
+            f.valid && BasicTypesMessage::unpack(&f.payload).map_or(false, |m| m.regular_int == 1111)
+        });
+        let v2 = r2.as_ref().map_or(false, |f| {
+            f.valid && BasicTypesMessage::unpack(&f.payload).map_or(false, |m| m.regular_int == 2222)
+        });
+        expect!(v1, "Two consecutive frames: first frame decodes correctly");
+        expect!(v2, "Two consecutive frames: second frame decodes correctly");
+    }
+
+    // Test 4: Garbage bytes before a valid frame are silently discarded
+    {
+        let frame = encode_frame(PROFILE_STANDARD_CONFIG, 5555);
+        let mut reader = struct_frame_sdk::new_standard_reader(512);
+        // Push garbage that doesn't contain the start-byte sequence
+        let garbage: &[u8] = &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
+        let mut garbage_fired = false;
+        for &byte in garbage {
+            if reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info).is_some() {
+                garbage_fired = true;
+            }
+        }
+        let mut result: Option<struct_frame_sdk::FrameMsgInfo> = None;
+        for &byte in &frame {
+            result = reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info);
+        }
+        expect!(!garbage_fired, "Garbage prefix: garbage bytes do not produce a frame");
+        let valid = result.as_ref().map_or(false, |f| {
+            f.valid && BasicTypesMessage::unpack(&f.payload).map_or(false, |m| m.regular_int == 5555)
+        });
+        expect!(valid, "Garbage prefix: real frame after garbage is decoded correctly");
+    }
+
+    println!("\n========================================");
+    println!("Summary: {} passed, {} failed", passed, failed);
+    println!("========================================\n");
+    if failed > 0 {
+        std::process::exit(1);
+    }
+    std::process::exit(0);
+}
+
+// ============================================================================
+// SDK subscribe / dispatch tests
+// ============================================================================
+
+fn run_sdk_subscribe_tests() {
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+
+    macro_rules! expect {
+        ($cond:expr, $name:expr) => {
+            if $cond {
+                println!("  PASS  {}", $name);
+                passed += 1;
+            } else {
+                eprintln!("  FAIL  {}", $name);
+                failed += 1;
+            }
+        };
+    }
+
+    println!("\n========================================");
+    println!("SDK SUBSCRIBE/DISPATCH TESTS - Rust");
+    println!("========================================\n");
+
+    fn encode_basic(regular_int: i32) -> Vec<u8> {
+        let mut msg = BasicTypesMessage::default();
+        msg.regular_int = regular_int;
+        let mut writer = struct_frame_sdk::BufferWriter::new(PROFILE_STANDARD_CONFIG, 512);
+        writer.write_crc(&msg, 0);
+        writer.data().to_vec()
+    }
+
+    // Test 1: subscribe + inject_data dispatches to handler
+    {
+        let reader = struct_frame_sdk::new_standard_reader(512);
+        let mut sdk = StructFrameSdk::new(reader, struct_frame_sdk::serialization_test::get_message_info);
+
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<i32>::new()));
+        let received2 = received.clone();
+        sdk.subscribe(BasicTypesMessage::MSG_ID, move |frame| {
+            if let Some(m) = BasicTypesMessage::unpack(&frame.payload) {
+                received2.lock().unwrap().push(m.regular_int);
+            }
+        });
+
+        sdk.inject_data(&encode_basic(42));
+        let vals = received.lock().unwrap();
+        expect!(vals.len() == 1, "subscribe: handler invoked on inject_data");
+        expect!(vals.first() == Some(&42), "subscribe: regular_int value correct");
+    }
+
+    // Test 2: multiple handlers for same message ID
+    {
+        let reader = struct_frame_sdk::new_standard_reader(512);
+        let mut sdk = StructFrameSdk::new(reader, struct_frame_sdk::serialization_test::get_message_info);
+
+        let count_a = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+        let count_b = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+        let ca = count_a.clone();
+        let cb = count_b.clone();
+        sdk.subscribe(BasicTypesMessage::MSG_ID, move |_| { *ca.lock().unwrap() += 1; });
+        sdk.subscribe(BasicTypesMessage::MSG_ID, move |_| { *cb.lock().unwrap() += 1; });
+
+        sdk.inject_data(&encode_basic(1));
+        expect!(*count_a.lock().unwrap() == 1, "multiple handlers: first handler fires");
+        expect!(*count_b.lock().unwrap() == 1, "multiple handlers: second handler fires");
+    }
+
+    // Test 3: unsubscribe stops handler delivery
+    {
+        let reader = struct_frame_sdk::new_standard_reader(512);
+        let mut sdk = StructFrameSdk::new(reader, struct_frame_sdk::serialization_test::get_message_info);
+
+        let count = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+        let c = count.clone();
+        let sub = sdk.subscribe(BasicTypesMessage::MSG_ID, move |_| { *c.lock().unwrap() += 1; });
+
+        sdk.inject_data(&encode_basic(1));
+        expect!(*count.lock().unwrap() == 1, "unsubscribe: handler fires before unsubscribe");
+
+        sdk.unsubscribe(sub);
+        sdk.inject_data(&encode_basic(2));
+        expect!(*count.lock().unwrap() == 1, "unsubscribe: handler silent after unsubscribe");
+    }
+
+    // Test 4: no handler registered – inject_data is a no-op (does not panic)
+    {
+        let reader = struct_frame_sdk::new_standard_reader(512);
+        let mut sdk = StructFrameSdk::new(reader, struct_frame_sdk::serialization_test::get_message_info);
+        // No subscription; should not panic
+        sdk.inject_data(&encode_basic(99));
+        expect!(true, "no handler: inject_data with no subscriber does not panic");
+    }
+
+    // Test 5: push_byte byte-by-byte dispatches on the final byte
+    {
+        let reader = struct_frame_sdk::new_standard_reader(512);
+        let mut sdk = StructFrameSdk::new(reader, struct_frame_sdk::serialization_test::get_message_info);
+
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<i32>::new()));
+        let recv2 = received.clone();
+        sdk.subscribe(BasicTypesMessage::MSG_ID, move |frame| {
+            if let Some(m) = BasicTypesMessage::unpack(&frame.payload) {
+                recv2.lock().unwrap().push(m.regular_int);
+            }
+        });
+
+        let frame = encode_basic(777);
+        let mut dispatched_count = 0usize;
+        for &byte in &frame {
+            if sdk.push_byte(byte) { dispatched_count += 1; }
+        }
+        expect!(dispatched_count == 1, "push_byte: exactly one frame dispatched");
+        let vals = received.lock().unwrap();
+        expect!(vals.first() == Some(&777), "push_byte: regular_int value correct");
+    }
+
+    println!("\n========================================");
+    println!("Summary: {} passed, {} failed", passed, failed);
+    println!("========================================\n");
+    if failed > 0 {
+        std::process::exit(1);
+    }
+    std::process::exit(0);
+}
+
+// ============================================================================
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -925,6 +1178,18 @@ fn main() {
     if args.len() >= 2 && args[1] == "test_oneof_special" {
         run_oneof_special_tests();
         // run_oneof_special_tests() always exits.
+    }
+
+    // Streaming (push_byte) tests
+    if args.len() >= 2 && args[1] == "test_streaming" {
+        run_streaming_tests();
+        // run_streaming_tests() always exits.
+    }
+
+    // SDK subscribe/dispatch tests
+    if args.len() >= 2 && args[1] == "test_sdk_subscribe" {
+        run_sdk_subscribe_tests();
+        // run_sdk_subscribe_tests() always exits.
     }
 
     if args.len() < 5 {
