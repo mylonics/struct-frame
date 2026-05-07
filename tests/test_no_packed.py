@@ -104,6 +104,14 @@ def test_no_packed_flag():
         # 5. Encode/decode round-trip with --no_packed succeeds.
         _roundtrip_c(nopacked_dir / "c")
 
+        # 6. Wire-size equivalence: for messages that contain only fixed-size
+        #    fields (no bounded arrays / variable strings), the variable
+        #    encoding emitted with --no_packed must produce the EXACT same
+        #    wire bytes (and therefore the same wire size) as the packed
+        #    baseline encoding. This guarantees binary compatibility on the
+        #    wire when only --no_packed flips between the two modes.
+        _wire_size_parity(baseline_dir / "c", nopacked_dir / "c")
+
     print("PASS: --no_packed flag tests")
 
 
@@ -165,6 +173,94 @@ def _roundtrip_c(c_dir: Path) -> None:
         ["gcc", "-std=c99", "-I", str(c_dir), str(src), "-o", str(out)],
     )
     subprocess.check_call([str(out)])
+
+
+def _wire_size_parity(baseline_c_dir: Path, nopacked_c_dir: Path) -> None:
+    """For a fully-fixed-size message, packed and --no_packed must produce
+    the same wire size and the same wire bytes.
+
+    Uses ``Sensor`` (uint8 + float + enum + fixed string[16]), which has no
+    bounded arrays or variable strings. The baseline build encodes such a
+    message with ``memcpy`` of the packed struct; the --no_packed build
+    encodes it field-by-field via ``_serialize_variable``. Both encodings
+    must be byte-for-byte identical.
+    """
+    # Baseline: dump the packed in-memory struct (which IS the wire format
+    # for non-variable messages) into a binary file.
+    baseline_src = baseline_c_dir / "_wire_dump.c"
+    baseline_src.write_text(
+        '#include <stdio.h>\n'
+        '#include <string.h>\n'
+        '#include "serialization_test.structframe.h"\n'
+        "int main(int argc, char** argv) {\n"
+        "    SerializationTestSensor s;\n"
+        "    memset(&s, 0, sizeof(s));\n"
+        "    s.id = 7;\n"
+        "    s.value = 3.14f;\n"
+        "    s.status = (SerializationTestStatus)1;\n"
+        "    const char name[] = \"sensor-alpha-12\";\n"
+        "    memcpy(s.name, name, sizeof(name));\n"
+        "    FILE* f = fopen(argv[1], \"wb\");\n"
+        "    if (!f) return 1;\n"
+        "    /* Packed wire encoding == raw struct memory */\n"
+        "    fwrite(&s, 1, SERIALIZATION_TEST_SENSOR_MAX_SIZE, f);\n"
+        "    fclose(f);\n"
+        "    return 0;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    baseline_out = baseline_c_dir / "_wire_dump.out"
+    subprocess.check_call(
+        ["gcc", "-std=c99", "-I", str(baseline_c_dir), str(baseline_src), "-o", str(baseline_out)],
+    )
+    baseline_bin = baseline_c_dir / "_wire.bin"
+    subprocess.check_call([str(baseline_out), str(baseline_bin)])
+
+    # --no_packed: encode the same logical message via the generated
+    # _serialize_variable path.
+    nopacked_src = nopacked_c_dir / "_wire_dump.c"
+    nopacked_src.write_text(
+        '#include <stdio.h>\n'
+        '#include <string.h>\n'
+        '#include "serialization_test.structframe.h"\n'
+        "int main(int argc, char** argv) {\n"
+        "    SerializationTestSensor s;\n"
+        "    memset(&s, 0, sizeof(s));\n"
+        "    s.id = 7;\n"
+        "    s.value = 3.14f;\n"
+        "    s.status = (SerializationTestStatus)1;\n"
+        "    const char name[] = \"sensor-alpha-12\";\n"
+        "    memcpy(s.name, name, sizeof(name));\n"
+        "    uint8_t buf[256];\n"
+        "    size_t n = SerializationTestSensor_serialize(&s, buf);\n"
+        "    FILE* f = fopen(argv[1], \"wb\");\n"
+        "    if (!f) return 1;\n"
+        "    fwrite(buf, 1, n, f);\n"
+        "    fclose(f);\n"
+        "    return 0;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    nopacked_out = nopacked_c_dir / "_wire_dump.out"
+    subprocess.check_call(
+        ["gcc", "-std=c99", "-I", str(nopacked_c_dir), str(nopacked_src), "-o", str(nopacked_out)],
+    )
+    nopacked_bin = nopacked_c_dir / "_wire.bin"
+    subprocess.check_call([str(nopacked_out), str(nopacked_bin)])
+
+    baseline_bytes = baseline_bin.read_bytes()
+    nopacked_bytes = nopacked_bin.read_bytes()
+
+    _check(
+        len(baseline_bytes) == len(nopacked_bytes),
+        f"wire size mismatch for fixed-size Sensor: packed={len(baseline_bytes)} "
+        f"!= no_packed={len(nopacked_bytes)}",
+    )
+    _check(
+        baseline_bytes == nopacked_bytes,
+        f"wire bytes mismatch for fixed-size Sensor: packed={baseline_bytes.hex()} "
+        f"!= no_packed={nopacked_bytes.hex()}",
+    )
 
 
 if __name__ == "__main__":
