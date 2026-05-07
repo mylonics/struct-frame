@@ -52,6 +52,7 @@ IGNORE_DIR_SEGMENTS = {
     "__pycache__",  # Python bytecode
     "obj",          # C# / MSBuild build artefacts
     "bin",          # C# compiled output
+    "roundtrip_bin",  # round-trip test binaries built into tests/generated/cpp/ at runtime
 }
 
 
@@ -83,7 +84,7 @@ def _generate(tmpdir: Path, project_root: Path, verbose: bool) -> bool:
 
     for proto_file in PROTO_FILES:
         proto_path = proto_dir / proto_file
-        cmd = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force"]
+        cmd = [sys.executable, "-m", "struct_frame", str(proto_path), "--equality", "--force", "--generate_tests"]
         for _id, gen_flag, subdir in LANGUAGES:
             out = tmpdir / subdir
             out.mkdir(parents=True, exist_ok=True)
