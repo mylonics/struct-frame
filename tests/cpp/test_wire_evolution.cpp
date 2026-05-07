@@ -23,8 +23,8 @@
 #include <cmath>
 #include <cstdint>
 
-#include "../../generated/cpp/wire_evolution.structframe.hpp"
-#include "../../generated/cpp/frame_profiles.hpp"
+#include "../generated/cpp/wire_evolution.structframe.hpp"
+#include "../generated/cpp/frame_profiles.hpp"
 
 using namespace structframe;
 using namespace structframe::wire_evolution;

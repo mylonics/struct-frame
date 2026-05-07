@@ -138,6 +138,7 @@ PROTO_FILES = [
     "pkg_test_messages.sf",
     "extended_messages.sf",
     "envelope_messages.sf",
+    "wire_evolution_messages.sf",
 ]
 
 # Frame format profiles to test
@@ -1689,7 +1690,7 @@ class TestRunner:
 
         # ---- C: test_wire_evolution ----
         c_lang = self.languages.get("c")
-        if c_lang and self.results["compilation"].get("c", False):
+        if c_lang and "c" not in self.skipped_languages and self.results["compilation"].get("c", False):
             build_dir = self.project_root / c_lang.build_dir
             exe = build_dir / f"test_wire_evolution{c_lang.exe_ext}"
             if exe.exists():
@@ -1708,7 +1709,7 @@ class TestRunner:
 
         # ---- C++: test_wire_evolution ----
         cpp_lang = self.languages.get("cpp")
-        if cpp_lang and self.results["compilation"].get("cpp", False):
+        if cpp_lang and "cpp" not in self.skipped_languages and self.results["compilation"].get("cpp", False):
             build_dir = self.project_root / cpp_lang.build_dir
             exe = build_dir / f"test_wire_evolution{cpp_lang.exe_ext}"
             if exe.exists():
@@ -1727,7 +1728,7 @@ class TestRunner:
 
         # ---- TypeScript: test_wire_evolution.ts ----
         ts_lang = self.languages.get("ts")
-        if ts_lang and self.results["compilation"].get("ts", False):
+        if ts_lang and "ts" not in self.skipped_languages and self.results["compilation"].get("ts", False):
             ts_dir = self.project_root / ts_lang.test_dir
             build_dir = self.project_root / ts_lang.build_dir
             ts_compiled = build_dir / "ts" / "test_wire_evolution.js"
@@ -1747,7 +1748,7 @@ class TestRunner:
 
         # ---- JavaScript: test_wire_evolution.js ----
         js_lang = self.languages.get("js")
-        if js_lang and self.results["compilation"].get("js", False):
+        if js_lang and "js" not in self.skipped_languages and self.results["compilation"].get("js", True):
             js_dir = self.project_root / js_lang.test_dir
             js_script = js_dir / "test_wire_evolution.js"
             if js_script.exists():
@@ -1766,7 +1767,7 @@ class TestRunner:
 
         # ---- C#: test_wire_evolution ----
         csharp_lang = self.languages.get("csharp")
-        if csharp_lang and self.results["compilation"].get("csharp", False):
+        if csharp_lang and "csharp" not in self.skipped_languages and self.results["compilation"].get("csharp", False):
             build_dir = self.project_root / csharp_lang.build_dir
             test_exe = build_dir / "StructFrameTests.exe"
             if not test_exe.exists():
