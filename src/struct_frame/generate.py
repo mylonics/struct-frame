@@ -58,7 +58,8 @@ type_codes = {
     "double": 9,
     "int64": 10,
     "uint64": 11,
-    "string": 12
+    "string": 12,
+    "enum": 13,  # Fixed code for all enum types (name-independent)
 }
 
 
@@ -90,9 +91,13 @@ def calculate_magic_numbers(message):
         # Get type code
         if field.field_type in type_codes:
             type_code = type_codes[field.field_type]
+        elif getattr(field, 'is_enum', False):
+            # All enum types share the same type code regardless of name:
+            # renaming an enum or moving it inline doesn't change the wire layout.
+            type_code = type_codes["enum"]
         else:
-            # For custom types (enums, nested messages), use a hash of the type name
-            # This ensures different custom types get different codes
+            # For nested message types, use a hash of the type name so that
+            # different message types still get different codes.
             type_code = sum(ord(c) for c in field.field_type) % 256
 
         # Incorporate type code, position, and size into magic numbers
@@ -111,6 +116,8 @@ def calculate_magic_numbers(message):
                 continue
             if field.field_type in type_codes:
                 type_code = type_codes[field.field_type]
+            elif getattr(field, 'is_enum', False):
+                type_code = type_codes["enum"]
             else:
                 type_code = sum(ord(c) for c in field.field_type) % 256
 
@@ -220,6 +227,8 @@ def compute_generation_hash(args, packages_dict):
             hasher.update(f"  enum:{enum_name}\n".encode('utf-8'))
             for entry_name in sorted(enum.data.keys()):
                 value, _ = enum.data[entry_name]
+                if enum.extensions_start is not None and value >= enum.extensions_start:
+                    continue
                 hasher.update(f"    {entry_name}={value}\n".encode('utf-8'))
 
         # Add messages (sorted by name)
@@ -232,6 +241,20 @@ def compute_generation_hash(args, packages_dict):
                 hasher.update(f"    variable:true\n".encode('utf-8'))
             if msg.is_envelope:
                 hasher.update(f"    is_envelope:true\n".encode('utf-8'))
+            if msg.extensions_start is not None:
+                hasher.update(f"    extensions_start:{msg.extensions_start}\n".encode('utf-8'))
+            if msg.magic_bytes_override is not None:
+                hasher.update(f"    magic_bytes:{msg.magic_bytes_override[0]},{msg.magic_bytes_override[1]}\n".encode('utf-8'))
+
+            # Add message-scoped enums (sorted by name)
+            for enum_name in sorted(msg.enums.keys()):
+                enum = msg.enums[enum_name]
+                hasher.update(f"    enum:{enum_name}\n".encode('utf-8'))
+                for entry_name in sorted(enum.data.keys()):
+                    value, _ = enum.data[entry_name]
+                    if enum.extensions_start is not None and value >= enum.extensions_start:
+                        continue
+                    hasher.update(f"      {entry_name}={value}\n".encode('utf-8'))
 
             # Add fields (sorted by name)
             for field_name in sorted(msg.fields.keys()):
@@ -344,6 +367,9 @@ class Enum:
         self.is_enum = True
         self.source_file = None
         self.message = None  # Parent message name, or None for package-level enums
+        # Enum-level wire-evolution: entries with value >= extensions_start are
+        # extensions and must not affect the generation hash.
+        self.extensions_start = None
 
     def parse(self, enum):
         self.name = enum.name
@@ -351,6 +377,15 @@ class Enum:
         for e in enum.elements:
             if type(e) == ast.Comment:
                 comments.append(e.text)
+            elif type(e) == ast.Option:
+                if e.name == "extensions_start":
+                    try:
+                        self.extensions_start = int(e.value)
+                    except (TypeError, ValueError):
+                        print(
+                            f"Invalid extensions_start value '{e.value}' in "
+                            f"enum {self.name}: must be an integer")
+                        return False
             else:
                 if e.name in self.data:
                     print(f"Enum Field Redclaration")
@@ -874,6 +909,7 @@ class Message:
         self.package = package
         self.is_enum = False
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
+        self.magic_bytes_override = None  # User-specified magic bytes (option magic_bytes)
         self.variable = False  # Variable length message encoding
         # True if this message is an envelope/container for other messages
         self.is_envelope = False
@@ -916,6 +952,33 @@ class Message:
                             f"extensions_start in message {self.name} must be >= 2 "
                             f"(at least one base field is required)")
                         return False
+                elif e.name == "magic_bytes":
+                    raw = str(e.value).strip()
+                    parts = [p.strip() for p in raw.split(',')]
+                    if len(parts) != 2:
+                        print(
+                            f"Invalid magic_bytes value '{raw}' in message {self.name}: "
+                            f"expected two comma-separated byte values, e.g. \"0xAB, 0xCD\"")
+                        return False
+                    try:
+                        b1 = int(parts[0], 0)
+                        b2 = int(parts[1], 0)
+                    except ValueError:
+                        print(
+                            f"Invalid magic_bytes value '{raw}' in message {self.name}: "
+                            f"values must be integers (hex or decimal)")
+                        return False
+                    if not (0 <= b1 <= 255 and 0 <= b2 <= 255):
+                        print(
+                            f"Invalid magic_bytes value '{raw}' in message {self.name}: "
+                            f"each byte must be in range 0-255")
+                        return False
+                    if b1 == 0 or b2 == 0:
+                        print(
+                            f"Invalid magic_bytes value '{raw}' in message {self.name}: "
+                            f"magic bytes must be non-zero")
+                        return False
+                    self.magic_bytes_override = (b1, b2)
             elif type(e) == ast.Comment:
                 comments.append(e.text)
             elif type(e) == ast.OneOf:
@@ -1097,8 +1160,11 @@ class Message:
 
         self.validated = True
 
-        # Calculate magic numbers for this message
-        self.magic_bytes = calculate_magic_numbers(self)
+        # Calculate magic numbers for this message (skip if user hardcoded them)
+        if self.magic_bytes_override is not None:
+            self.magic_bytes = self.magic_bytes_override
+        else:
+            self.magic_bytes = calculate_magic_numbers(self)
 
         # Calculate minimum size for variable messages
         # min_size is the size when all variable-length fields are at their minimum

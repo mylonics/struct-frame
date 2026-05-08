@@ -650,6 +650,41 @@ var envelope = EnvelopeTestCommandEnvelope.Wrap(adcCmd, 42, 1, true);
 var payloadId = envelope.GetPayloadMessageId();
 ```
 
+## Hardcoded Magic Bytes
+
+In normal operation the generator calculates two magic bytes for each message based on the types, positions, and sizes of its base fields. These bytes seed the checksum and act as a structural fingerprint for the message.
+
+Use `option magic_bytes` to override this calculation with a fixed pair of values. This is useful when migrating an existing message across schema changes that would otherwise alter the magic bytes — for example, renaming an enum, moving an enum definition inline, or restructuring fields that are logically unchanged on the wire.
+
+```proto
+message JobStatusMessage {
+  option msgid = 53;
+  option magic_bytes = "0xA3, 0x7F";  // Preserve magic from original schema
+
+  enum Status {
+    JOB_START = 0;
+    JOB_END   = 1;
+    JOB_ABORT = 2;
+    option extensions_start = 3;
+    JOB_FAILED   = 3;
+    JOB_END_WARN = 4;
+  }
+
+  Status status = 1;
+  uint8  id       = 2;
+  uint8  job_type = 3;
+  double time     = 4;
+}
+```
+
+**Rules:**
+- Both values must be in the range `1–255` (zero bytes are rejected).
+- Values can be written in hex (`0xAB`) or decimal (`171`).
+- Exactly two comma-separated values are required.
+- Changing the override value triggers regeneration (it is included in the generation hash).
+
+> **When to use this:** Prefer keeping the calculated magic bytes — they serve as automatic structural validation. Only use `magic_bytes` when you intentionally need two schema revisions to be treated as wire-compatible by existing parsers, and you have verified that the wire layout is genuinely unchanged.
+
 ## Validation Rules
 
 The generator enforces:
