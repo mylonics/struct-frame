@@ -217,6 +217,7 @@ class MessageTsClassGen():
         if msg.id is not None and msg.magic_bytes:
             result += f'  static readonly _magic1: number = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
             result += f'  static readonly _magic2: number = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
+            result += f'  static readonly _baseSize: number = {msg.base_size}; // Non-extension portion size (== _size when no extensions)\n'
         
         # Add variable message constants
         if msg.variable:
@@ -906,11 +907,11 @@ class FileTsGen():
                     magic1 = msg.magic_bytes[0] if msg.magic_bytes else 0
                     magic2 = msg.magic_bytes[1] if msg.magic_bytes else 0
                     if use_class_based:
-                        yield '        case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2 };\n' % (
-                            package_msg_name, package_msg_name, package_msg_name, package_msg_name)
+                        yield '        case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (
+                            package_msg_name, package_msg_name, package_msg_name, package_msg_name, package_msg_name)
                     else:
-                        yield '        case %s._msgid: return { size: %s._size, magic1: %d, magic2: %d };\n' % (
-                            package_msg_name, package_msg_name, magic1, magic2)
+                        yield '        case %s._msgid: return { size: %s._size, magic1: %d, magic2: %d, baseSize: %d };\n' % (
+                            package_msg_name, package_msg_name, magic1, magic2, msg.base_size)
 
                 yield '        default: return undefined;\n'
                 yield '    }\n'

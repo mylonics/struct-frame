@@ -719,6 +719,7 @@ class MessageRustGen():
             magic2 = msg.magic_bytes[1] if msg.magic_bytes else 0
             result += f'pub const {const_prefix}_MSG_ID: u16 = {msg_id_value};\n'
             result += f'pub const {const_prefix}_MAX_SIZE: usize = {msg.size};\n'
+            result += f'pub const {const_prefix}_BASE_SIZE: usize = {msg.base_size};\n'
             result += f'pub const {const_prefix}_MAGIC1: u8 = {magic1};\n'
             result += f'pub const {const_prefix}_MAGIC2: u8 = {magic2};\n'
         else:
@@ -733,6 +734,7 @@ class MessageRustGen():
             result += f'    pub const MSG_ID: u16 = {const_prefix}_MSG_ID;\n'
             result += f'    pub const MAX_SIZE: usize = {const_prefix}_MAX_SIZE;\n'
             result += f'    pub const SIZE: usize = {const_prefix}_MAX_SIZE;\n'
+            result += f'    pub const BASE_SIZE: usize = {const_prefix}_BASE_SIZE;\n'
             result += f'    pub const MAGIC1: u8 = {const_prefix}_MAGIC1;\n'
             result += f'    pub const MAGIC2: u8 = {const_prefix}_MAGIC2;\n'
             result += f'    pub const IS_VARIABLE: bool = {str(is_variable).lower()};\n'
@@ -934,7 +936,7 @@ class MessageRustGen():
         if has_msg_id:
             result += '\n    /// Get message info (size + magic numbers) for frame parsing.\n'
             result += '    pub fn message_info() -> crate::frame_base::MessageInfo {\n'
-            result += f'        crate::frame_base::MessageInfo::new(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2)\n'
+            result += f'        crate::frame_base::MessageInfo::new_with_base_size(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2, Self::BASE_SIZE)\n'
             result += '    }\n'
 
         result += '}\n\n'
@@ -946,6 +948,9 @@ class MessageRustGen():
             result += f'    const MAX_SIZE: usize = {const_prefix}_MAX_SIZE;\n'
             result += f'    const MAGIC1: u8 = {const_prefix}_MAGIC1;\n'
             result += f'    const MAGIC2: u8 = {const_prefix}_MAGIC2;\n'
+            # Only emit BASE_SIZE override when it differs from MAX_SIZE (extension messages).
+            if msg.base_size < msg.size:
+                result += f'    const BASE_SIZE: usize = {const_prefix}_BASE_SIZE;\n'
             result += f'    const IS_VARIABLE: bool = {str(is_variable).lower()};\n'
             result += f'    fn pack(&self, buf: &mut [u8]) -> usize {{ Self::pack(self, buf) }}\n'
             result += f'    fn pack_max_size(&self, buf: &mut [u8]) -> usize {{ Self::pack_max_size(self, buf) }}\n'

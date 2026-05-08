@@ -24,6 +24,27 @@ function fletcherChecksum(buffer, start = 0, end = undefined, init1 = 0, init2 =
     return [byte1, byte2];
 }
 
+// Extension-aware Fletcher-16 checksum.
+// Computes: Fletcher(buffer[start:baseEnd]) -> mix magic1/magic2 -> Fletcher(buffer[baseEnd:end]).
+// When baseEnd == end the result is identical to fletcherChecksum.
+function fletcherChecksumExt(buffer, start, baseEnd, end, init1 = 0, init2 = 0) {
+    let byte1 = 0;
+    let byte2 = 0;
+    for (let i = start; i < baseEnd; i++) {
+        byte1 = (byte1 + buffer[i]) % 256;
+        byte2 = (byte2 + byte1) % 256;
+    }
+    byte1 = (byte1 + init1) % 256;
+    byte2 = (byte2 + byte1) % 256;
+    byte1 = (byte1 + init2) % 256;
+    byte2 = (byte2 + byte1) % 256;
+    for (let i = baseEnd; i < end; i++) {
+        byte1 = (byte1 + buffer[i]) % 256;
+        byte2 = (byte2 + byte1) % 256;
+    }
+    return [byte1, byte2];
+}
+
 // Create default FrameMsgInfo
 function createFrameMsgInfo() {
     return {
@@ -345,6 +366,7 @@ function createFrameParserClass(config) {
 
 module.exports = {
     fletcherChecksum,
+    fletcherChecksumExt,
     createFrameMsgInfo,
     validatePayloadWithCrc,
     validatePayloadMinimal,

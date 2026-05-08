@@ -58,6 +58,37 @@ def fletcher_checksum(data: Union[bytes, List[int]], start: int = 0, end: Option
     return FrameChecksum(byte1, byte2)
 
 
+def fletcher_checksum_ext(data: Union[bytes, List[int]], start: int, base_end: int, end: int,
+                          init1: int = 0, init2: int = 0) -> FrameChecksum:
+    """
+    Extension-aware Fletcher-16 checksum.
+
+    Computes: Fletcher(data[start:base_end]) -> mix magic1/magic2 -> Fletcher(data[base_end:end]).
+    When base_end == end the result is identical to fletcher_checksum.
+
+    Args:
+        data: Buffer to checksum
+        start: Start index (inclusive)
+        base_end: End of non-extension portion (exclusive); magic bytes are mixed here
+        end: End index (exclusive)
+        init1: Magic number 1
+        init2: Magic number 2
+    """
+    byte1 = 0
+    byte2 = 0
+    for i in range(start, base_end):
+        byte1 = (byte1 + data[i]) & 0xFF
+        byte2 = (byte2 + byte1) & 0xFF
+    byte1 = (byte1 + init1) & 0xFF
+    byte2 = (byte2 + byte1) & 0xFF
+    byte1 = (byte1 + init2) & 0xFF
+    byte2 = (byte2 + byte1) & 0xFF
+    for i in range(base_end, end):
+        byte1 = (byte1 + data[i]) & 0xFF
+        byte2 = (byte2 + byte1) & 0xFF
+    return FrameChecksum(byte1, byte2)
+
+
 # =============================================================================
 # Parse Result
 # =============================================================================

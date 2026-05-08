@@ -28,6 +28,33 @@ pub fn fletcher_checksum(data: &[u8], magic1: u8, magic2: u8) -> FrameChecksum {
     FrameChecksum { byte1: b1, byte2: b2 }
 }
 
+/// Extension-aware Fletcher-16 checksum.
+/// Computes: Fletcher(base_data) -> mix magic1/magic2 -> Fletcher(ext_data).
+/// When ext_data is empty the result is identical to fletcher_checksum.
+///
+/// # Arguments
+/// * `base_data` - Non-extension portion of the payload
+/// * `ext_data` - Extension portion of the payload (may be empty)
+/// * `magic1` - First magic number (mixed in after base_data)
+/// * `magic2` - Second magic number (mixed in after magic1)
+pub fn fletcher_checksum_ext(base_data: &[u8], ext_data: &[u8], magic1: u8, magic2: u8) -> FrameChecksum {
+    let mut b1: u8 = 0;
+    let mut b2: u8 = 0;
+    for &byte in base_data {
+        b1 = b1.wrapping_add(byte);
+        b2 = b2.wrapping_add(b1);
+    }
+    b1 = b1.wrapping_add(magic1);
+    b2 = b2.wrapping_add(b1);
+    b1 = b1.wrapping_add(magic2);
+    b2 = b2.wrapping_add(b1);
+    for &byte in ext_data {
+        b1 = b1.wrapping_add(byte);
+        b2 = b2.wrapping_add(b1);
+    }
+    FrameChecksum { byte1: b1, byte2: b2 }
+}
+
 /// Result from frame parsing.
 #[derive(Debug, Clone, Default)]
 pub struct FrameMsgInfo {
@@ -55,11 +82,16 @@ pub struct MessageInfo {
     pub size: usize,
     pub magic1: u8,
     pub magic2: u8,
+    pub base_size: usize,  // Non-extension portion size (== size when no extensions)
 }
 
 impl MessageInfo {
     pub fn new(size: usize, magic1: u8, magic2: u8) -> Self {
-        MessageInfo { size, magic1, magic2 }
+        MessageInfo { size, magic1, magic2, base_size: size }
+    }
+
+    pub fn new_with_base_size(size: usize, magic1: u8, magic2: u8, base_size: usize) -> Self {
+        MessageInfo { size, magic1, magic2, base_size }
     }
 }
 
@@ -69,6 +101,8 @@ pub trait StructFrameMessage {
     const MAX_SIZE: usize;
     const MAGIC1: u8;
     const MAGIC2: u8;
+    /// Non-extension portion size. Equal to MAX_SIZE for messages with no extensions.
+    const BASE_SIZE: usize = Self::MAX_SIZE;
     /// True if the message uses variable-length encoding for bounded fields.
     const IS_VARIABLE: bool;
 

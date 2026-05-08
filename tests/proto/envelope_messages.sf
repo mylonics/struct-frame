@@ -55,10 +55,10 @@ message CommandEnvelope {
   // Union of all command types - exactly one will be populated
   // The auto-discriminator uses the message ID of the wrapped command
   oneof command {
-    ADCCommand adc = 5;
-    DACCommand dac = 6;
-    MotorCommand motor = 7;
-    SensorReadCommand sensor = 8;
+    ADCCommand adc = 1;
+    DACCommand dac = 2;
+    MotorCommand motor = 3;
+    SensorReadCommand sensor = 4;
   }
 }
 
@@ -119,10 +119,10 @@ message ResponseEnvelope {
   
   // Union of all response types
   oneof response {
-    ADCResponse adc = 5;
-    DACResponse dac = 6;
-    MotorResponse motor = 7;
-    SensorResponse sensor = 8;
+    ADCResponse adc = 1;
+    DACResponse dac = 2;
+    MotorResponse motor = 3;
+    SensorResponse sensor = 4;
   }
 }
 
@@ -157,7 +157,7 @@ message RawDataEnvelope {
   uint32 timestamp_us = 2;
 
   oneof payload {
-    RawSamplePayload sample = 3;
-    RawConfigPayload config = 4;
+    RawSamplePayload sample = 1;
+    RawConfigPayload config = 2;
   }
 }

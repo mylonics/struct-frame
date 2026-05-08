@@ -26,7 +26,7 @@ const {
   payloadHeaderSize,
   payloadFooterSize,
 } = require('./payload-types');
-const { fletcherChecksum, createFrameMsgInfo } = require('./frame-base');
+const { fletcherChecksum, fletcherChecksumExt, createFrameMsgInfo } = require('./frame-base');
 
 /**
  * @typedef {Object} MessageInfo
@@ -243,9 +243,16 @@ function encodeMessage(config, msg, options = {}) {
   buffer.set(payload, idx);
   idx += payloadSize;
 
-  // Calculate and write CRC
+  // Calculate and write CRC (extension-aware)
   const crcLen = idx - crcStart;
-  const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
+  const baseSize = typeof msg.getBaseSize === 'function' ? msg.getBaseSize() : payloadSize;
+  let ck;
+  if (config.payload.hasLength && baseSize < payloadSize) {
+    const baseEnd = crcStart + (crcLen - payloadSize) + baseSize;
+    ck = fletcherChecksumExt(buffer, crcStart, baseEnd, crcStart + crcLen, magic1, magic2);
+  } else {
+    ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
+  }
   buffer[idx++] = ck[0];
   buffer[idx++] = ck[1];
 
@@ -313,20 +320,28 @@ function parseFrameWithCrc(config, buffer, getMessageInfo) {
     return result;
   }
 
-  // Verify CRC
+  // Verify CRC (extension-aware)
   const crcLen = totalSize - crcStart - footerSize;
 
-  // Get magic numbers for this message type
+  // Get magic numbers and base_size for this message type
   let magic1 = 0, magic2 = 0;
+  let baseSize = msgLen;
   if (getMessageInfo) {
     const info = getMessageInfo(msgId);
     if (info) {
       magic1 = info.magic1;
       magic2 = info.magic2;
+      baseSize = info.baseSize ?? msgLen;
     }
   }
 
-  const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
+  let ck;
+  if (config.payload.hasLength && baseSize < msgLen) {
+    const baseEnd = crcStart + (crcLen - msgLen) + baseSize;
+    ck = fletcherChecksumExt(buffer, crcStart, baseEnd, crcStart + crcLen, magic1, magic2);
+  } else {
+    ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
+  }
   if (ck[0] !== buffer[totalSize - 2] || ck[1] !== buffer[totalSize - 1]) {
     return result;
   }

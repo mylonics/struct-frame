@@ -88,12 +88,22 @@ static const profile_config_t PROFILE_NETWORK_CONFIG = {
  * Generic encode function for frames with CRC (Default, Extended, etc.)
  * Uses the profile configuration to encode any supported frame type.
  */
-static inline size_t profile_encode_with_crc(
+/**
+ * Encode a frame with CRC, extension-aware variant. base_size is the size of
+ * the message's non-extension portion (use payload_size when the message
+ * has no extensions). The CRC is computed via
+ * frame_fletcher_checksum_with_magic_ext, which mixes base bytes, the magic
+ * pair, then the extension bytes — so legacy messages (base_size ==
+ * payload_size) produce byte-identical wire output to the pre-extension
+ * format.
+ */
+static inline size_t profile_encode_with_crc_ext(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
     uint8_t seq, uint8_t sys_id, uint8_t comp_id,
     uint8_t pkg_id, uint8_t msg_id,
     const uint8_t* payload_data, size_t payload_size,
+    size_t base_size,
     uint8_t magic1, uint8_t magic2) {
     
     uint8_t header_size = profile_header_size(config);
@@ -159,12 +169,44 @@ static inline size_t profile_encode_with_crc(
     /* Calculate and write CRC */
     if (config->payload.has_crc) {
         size_t crc_len = idx - crc_start;
-        frame_checksum_t ck = frame_fletcher_checksum_with_magic(buffer + crc_start, crc_len, magic1, magic2);
+        /* effective_base is the offset within the CRC input at which the
+         * payload's extension portion begins. The base portion includes the
+         * pre-payload overhead (seq/sys_id/comp_id/length/pkg_id/msg_id) plus
+         * the message's non-extension fields. For profiles without a length
+         * field, extension bytes cannot be truncated on receive, so the
+         * post-magic mix collapses into the pre-magic mix (silent fallback).
+         */
+        size_t effective_base = crc_len;
+        if (config->payload.has_length && base_size <= payload_size) {
+            effective_base = (crc_len - payload_size) + base_size;
+        }
+        frame_checksum_t ck = frame_fletcher_checksum_with_magic_ext(
+            buffer + crc_start, effective_base, crc_len, magic1, magic2);
         buffer[idx++] = ck.byte1;
         buffer[idx++] = ck.byte2;
     }
     
     return idx;
+}
+
+/**
+ * Backwards-compatible wrapper: no extension support (base_size == payload_size).
+ * Existing code may continue to call this; for messages without
+ * `option extensions_start = N;` the result is byte-identical to the
+ * extension-aware variant.
+ */
+static inline size_t profile_encode_with_crc(
+    const profile_config_t* config,
+    uint8_t* buffer, size_t buffer_size,
+    uint8_t seq, uint8_t sys_id, uint8_t comp_id,
+    uint8_t pkg_id, uint8_t msg_id,
+    const uint8_t* payload_data, size_t payload_size,
+    uint8_t magic1, uint8_t magic2) {
+    return profile_encode_with_crc_ext(
+        config, buffer, buffer_size,
+        seq, sys_id, comp_id, pkg_id, msg_id,
+        payload_data, payload_size, payload_size,
+        magic1, magic2);
 }
 
 /**
@@ -276,17 +318,31 @@ static inline frame_msg_info_t profile_parse_with_crc(
     if (config->payload.has_crc) {
         size_t crc_len = total_size - crc_start - footer_size;
         
-        /* Get magic numbers for this message type */
+        /* Get magic numbers and base size for this message type */
         uint8_t magic1 = 0, magic2 = 0;
+        size_t base_size = 0;
+        bool have_info = false;
         if (get_message_info_func) {
             message_info_t info;
             if (get_message_info_func(msg_id, &info)) {
                 magic1 = info.magic1;
                 magic2 = info.magic2;
+                base_size = info.base_size;
+                have_info = true;
             }
         }
         
-        frame_checksum_t ck = frame_fletcher_checksum_with_magic(buffer + crc_start, crc_len, magic1, magic2);
+        /* effective_base mirrors the encoder logic: split the CRC input at
+         * the offset where extension payload bytes begin. For non-length
+         * profiles, base_size equals total payload size so the split is a
+         * no-op and the result is identical to the pre-extension format.
+         */
+        size_t effective_base = crc_len;
+        if (have_info && config->payload.has_length && base_size <= msg_len) {
+            effective_base = (crc_len - msg_len) + base_size;
+        }
+        frame_checksum_t ck = frame_fletcher_checksum_with_magic_ext(
+            buffer + crc_start, effective_base, crc_len, magic1, magic2);
         if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
             return result;
         }
@@ -515,7 +571,7 @@ static inline void buffer_writer_init(
     writer->offset = 0;
 }
 
-static inline size_t buffer_writer_write(
+static inline size_t buffer_writer_write_ext(
     buffer_writer_t* writer,
     uint8_t msg_id,
     const uint8_t* payload,
@@ -524,6 +580,7 @@ static inline size_t buffer_writer_write(
     uint8_t sys_id,
     uint8_t comp_id,
     uint8_t pkg_id,
+    size_t base_size,
     uint8_t magic1,
     uint8_t magic2)
 {
@@ -531,12 +588,12 @@ static inline size_t buffer_writer_write(
     size_t written;
     
     if (writer->config->payload.has_crc || writer->config->payload.has_length) {
-        written = profile_encode_with_crc(
+        written = profile_encode_with_crc_ext(
             writer->config,
             writer->buffer + writer->offset,
             remaining,
             seq, sys_id, comp_id, pkg_id, msg_id,
-            payload, payload_size, magic1, magic2);
+            payload, payload_size, base_size, magic1, magic2);
     } else {
         written = profile_encode_minimal(
             writer->config,
@@ -550,6 +607,26 @@ static inline size_t buffer_writer_write(
     }
     
     return written;
+}
+
+/* Backwards-compatible wrapper: callers that don't know base_size pass
+ * payload_size implicitly (no extension support). Identical wire output to
+ * the extension-aware variant for messages without extensions. */
+static inline size_t buffer_writer_write(
+    buffer_writer_t* writer,
+    uint8_t msg_id,
+    const uint8_t* payload,
+    size_t payload_size,
+    uint8_t seq,
+    uint8_t sys_id,
+    uint8_t comp_id,
+    uint8_t pkg_id,
+    uint8_t magic1,
+    uint8_t magic2)
+{
+    return buffer_writer_write_ext(writer, msg_id, payload, payload_size,
+                                   seq, sys_id, comp_id, pkg_id,
+                                   payload_size, magic1, magic2);
 }
 
 static inline void buffer_writer_reset(buffer_writer_t* writer) { writer->offset = 0; }

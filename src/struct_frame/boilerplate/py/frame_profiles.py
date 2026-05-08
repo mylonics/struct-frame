@@ -34,7 +34,7 @@ try:
         PAYLOAD_MINIMAL_CONFIG, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
         PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG
     )
-    from .frame_base import fletcher_checksum, FrameMsgInfo, FrameChecksum, ParserState
+    from .frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameChecksum, ParserState
 except ImportError:
     from frame_headers import (
         HeaderType, HeaderConfig,
@@ -46,7 +46,7 @@ except ImportError:
         PAYLOAD_MINIMAL_CONFIG, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
         PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG
     )
-    from frame_base import fletcher_checksum, FrameMsgInfo, FrameChecksum, ParserState
+    from frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameChecksum, ParserState
 
 
 # =============================================================================
@@ -64,10 +64,12 @@ class MessageInfo(NamedTuple):
         size: Message payload size in bytes
         magic1: First magic number for CRC calculation
         magic2: Second magic number for CRC calculation
+        base_size: Non-extension portion size (== size when no extensions)
     """
     size: int
     magic1: int = 0
     magic2: int = 0
+    base_size: int = 0
 
 
 # =============================================================================
@@ -357,9 +359,16 @@ def _frame_format_encode_with_crc(
     # Write payload
     output.extend(payload)
     
-    # Calculate and write CRC
+    # Calculate and write CRC (extension-aware)
     if config.has_crc:
-        crc = fletcher_checksum(output, crc_start, init1=magic1, init2=magic2)
+        base_size = getattr(type(msg), 'BASE_SIZE', payload_size)
+        crc_end = len(output)
+        crc_len = crc_end - crc_start
+        if config.has_length and base_size < payload_size:
+            base_end = crc_start + (crc_len - payload_size) + base_size
+            crc = fletcher_checksum_ext(output, crc_start, base_end, crc_end, init1=magic1, init2=magic2)
+        else:
+            crc = fletcher_checksum(output, crc_start, init1=magic1, init2=magic2)
         output.append(crc.byte1)
         output.append(crc.byte2)
     
@@ -497,18 +506,25 @@ def _frame_format_parse_with_crc(
     if length < total_size:
         return result
     
-    # Verify CRC
+    # Verify CRC (extension-aware)
     if config.has_crc:
         crc_len = total_size - crc_start - config.footer_size
         
-        # Get magic numbers for this message type
+        # Get magic numbers and base_size for this message type
         magic1, magic2 = 0, 0
+        base_size = msg_len
         if get_message_info:
             msg_info = get_message_info(msg_id)
             if msg_info:
                 magic1, magic2 = msg_info.magic1, msg_info.magic2
+                base_size = getattr(msg_info, 'base_size', msg_len)
         
-        calc_crc = fletcher_checksum(buffer, crc_start, crc_start + crc_len, init1=magic1, init2=magic2)
+        if config.has_length and base_size < msg_len:
+            base_end = crc_start + (crc_len - msg_len) + base_size
+            calc_crc = fletcher_checksum_ext(buffer, crc_start, base_end, crc_start + crc_len,
+                                             init1=magic1, init2=magic2)
+        else:
+            calc_crc = fletcher_checksum(buffer, crc_start, crc_start + crc_len, init1=magic1, init2=magic2)
         recv_crc = FrameChecksum(buffer[total_size - 2], buffer[total_size - 1])
         if calc_crc.byte1 != recv_crc.byte1 or calc_crc.byte2 != recv_crc.byte2:
             return result

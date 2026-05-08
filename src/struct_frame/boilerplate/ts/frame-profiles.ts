@@ -28,7 +28,7 @@ import {
     payloadHeaderSize,
     payloadFooterSize,
 } from './payload-types';
-import { fletcherChecksum, createFrameMsgInfo, FrameMsgInfo } from './frame-base';
+import { fletcherChecksum, fletcherChecksumExt, createFrameMsgInfo, FrameMsgInfo } from './frame-base';
 import { MessageBase } from './struct-base';
 
 // =============================================================================
@@ -73,6 +73,8 @@ export interface MessageInfo {
     magic1: number;
     /** Magic number 2 (added at end of CRC checksum calculation) */
     magic2: number;
+    /** Non-extension portion size (== size when no extensions) */
+    baseSize?: number;
 }
 
 /**
@@ -291,9 +293,16 @@ export function encodeMessage(
     buffer.set(payload, idx);
     idx += payloadSize;
 
-    // Calculate and write CRC
+    // Calculate and write CRC (extension-aware)
     const crcLen = idx - crcStart;
-    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
+    const baseSize = (msg as any).getBaseSize?.() ?? payloadSize;
+    let ck: [number, number];
+    if (config.payload.hasLength && baseSize < payloadSize) {
+        const baseEnd = crcStart + (crcLen - payloadSize) + baseSize;
+        ck = fletcherChecksumExt(buffer, crcStart, baseEnd, crcStart + crcLen, magic1, magic2);
+    } else {
+        ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
+    }
     buffer[idx++] = ck[0];
     buffer[idx++] = ck[1];
 
@@ -365,20 +374,28 @@ export function parseFrameWithCrc(
         return result;
     }
 
-    // Verify CRC
+    // Verify CRC (extension-aware)
     const crcLen = totalSize - crcStart - footerSize;
     
-    // Get magic numbers for this message type
+    // Get magic numbers and base_size for this message type
     let magic1 = 0, magic2 = 0;
+    let baseSize = msgLen;
     if (getMessageInfo) {
         const info = getMessageInfo(msgId);
         if (info) {
             magic1 = info.magic1;
             magic2 = info.magic2;
+            baseSize = info.baseSize ?? msgLen;
         }
     }
     
-    const ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
+    let ck: [number, number];
+    if (config.payload.hasLength && baseSize < msgLen) {
+        const baseEnd = crcStart + (crcLen - msgLen) + baseSize;
+        ck = fletcherChecksumExt(buffer, crcStart, baseEnd, crcStart + crcLen, magic1, magic2);
+    } else {
+        ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
+    }
     if (ck[0] !== buffer[totalSize - 2] || ck[1] !== buffer[totalSize - 1]) {
         return result;
     }

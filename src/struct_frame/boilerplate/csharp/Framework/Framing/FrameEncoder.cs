@@ -112,11 +112,21 @@ namespace StructFrame.Framing
                 idx += payloadSize;
             }
 
-            // Calculate and write CRC
+            // Calculate and write CRC (extension-aware)
             if (_config.HasCrc)
             {
                 int crcLen = idx - crcStart;
-                var ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen, magic1, magic2);
+                int baseSize = message.GetBaseSize();
+                FrameChecksum ck;
+                if (_config.HasLength && baseSize < payloadSize)
+                {
+                    int effectiveBase = crcLen - payloadSize + baseSize;
+                    ck = FrameBase.FletcherChecksumExt(buffer, crcStart, effectiveBase, crcLen, magic1, magic2);
+                }
+                else
+                {
+                    ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen, magic1, magic2);
+                }
                 buffer[idx++] = ck.Byte1;
                 buffer[idx++] = ck.Byte2;
             }

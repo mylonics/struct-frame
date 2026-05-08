@@ -147,6 +147,9 @@ class SdkInterfaceGen:
             if msg.id:  # Only generate for messages with a message ID
                 yield from SdkInterfaceGen._generate_send_methods(msg, package.name, package)
                 yield from SdkInterfaceGen._generate_subscribe_method(msg, package.name)
+                # For extension messages, also generate the deprecated NonExtension send helper
+                if msg.base_size < msg.size:
+                    yield from SdkInterfaceGen._generate_send_non_extension_method(msg, package.name)
         
         # Generate envelope helper methods and send-via-envelope methods
         for key, envelope_msg in envelope_msgs.items():
@@ -255,6 +258,30 @@ class SdkInterfaceGen:
             yield f'            await {method_name}(message);\n'
             yield '        }\n'
             yield '\n'
+
+    @staticmethod
+    def _generate_send_non_extension_method(msg, package_name):
+        """Generate a deprecated Send{Name}NonExtension convenience method."""
+        struct_name = msg.name
+        non_ext_name = f'{struct_name}NonExtension'
+        method_name = f'Send{non_ext_name}'
+
+        yield '        /// <summary>\n'
+        yield f'        /// Send <see cref="{struct_name}"/> without extension fields (for legacy firmware).\n'
+        yield '        /// </summary>\n'
+        yield '        /// <remarks>\n'
+        yield f'        /// This method is deprecated. Use <see cref="Send{struct_name}"/> once all target\n'
+        yield '        /// devices have been upgraded to firmware that understands the extension fields.\n'
+        yield '        /// </remarks>\n'
+        yield f'        [Obsolete("Use Send{struct_name} for extension-aware devices. {method_name} is a transitional helper for legacy firmware only.")]\n'
+        yield f'        public async Task {method_name}({struct_name} message, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
+        yield '        {\n'
+        yield f'#pragma warning disable CS0618 // {non_ext_name} is intentionally obsolete\n'
+        yield f'            var wrapper = new {non_ext_name}(message);\n'
+        yield '#pragma warning restore CS0618\n'
+        yield '            await _sdk.SendRawAsync(wrapper, seq, sysId, compId);\n'
+        yield '        }\n'
+        yield '\n'
 
     @staticmethod
     def _generate_envelope_helper(envelope_msg, package_name):

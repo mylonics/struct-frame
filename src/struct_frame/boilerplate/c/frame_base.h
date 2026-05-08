@@ -34,6 +34,42 @@ static inline frame_checksum_t frame_fletcher_checksum_with_magic(const uint8_t*
 }
 
 /**
+ * Calculate Fletcher-16 checksum with extension-aware magic mixing.
+ *
+ * Wire-evolution policy: base bytes are mixed first, then the message's two
+ * magic bytes, then the extension bytes. This means:
+ *   - Magic bytes act as a "schema seed" that depends only on the immutable
+ *     base portion (computed at code-gen time from non-extension fields).
+ *   - Extension bytes are still covered by the CRC, so silent corruption of
+ *     extension data is still detected.
+ *   - Truncating trailing zero-extension bytes does not invalidate the
+ *     checksum on length-bearing profiles (parser zero-fills the missing
+ *     bytes before re-computing).
+ *
+ * When base_len == total_len (no extensions, or extensions disabled because
+ * the profile lacks a length field), the result is byte-identical to
+ * frame_fletcher_checksum_with_magic(data, total_len, magic1, magic2).
+ */
+static inline frame_checksum_t frame_fletcher_checksum_with_magic_ext(const uint8_t* data, size_t base_len,
+                                                                      size_t total_len, uint8_t magic1,
+                                                                      uint8_t magic2) {
+  frame_checksum_t ck = {0, 0};
+  for (size_t i = 0; i < base_len; i++) {
+    ck.byte1 = (uint8_t)(ck.byte1 + data[i]);
+    ck.byte2 = (uint8_t)(ck.byte2 + ck.byte1);
+  }
+  ck.byte1 = (uint8_t)(ck.byte1 + magic1);
+  ck.byte2 = (uint8_t)(ck.byte2 + ck.byte1);
+  ck.byte1 = (uint8_t)(ck.byte1 + magic2);
+  ck.byte2 = (uint8_t)(ck.byte2 + ck.byte1);
+  for (size_t i = base_len; i < total_len; i++) {
+    ck.byte1 = (uint8_t)(ck.byte1 + data[i]);
+    ck.byte2 = (uint8_t)(ck.byte2 + ck.byte1);
+  }
+  return ck;
+}
+
+/**
  * Calculate Fletcher-16 checksum over the given data
  */
 static inline frame_checksum_t frame_fletcher_checksum(const uint8_t* data, size_t length) {
@@ -42,7 +78,10 @@ static inline frame_checksum_t frame_fletcher_checksum(const uint8_t* data, size
 
 /* Message info - unified type for size and magic numbers lookup */
 typedef struct message_info {
-  size_t size;
+  size_t size;       /* total payload size (base + extensions) */
+  size_t base_size;  /* size of the non-extension portion; equal to size when
+                        the message has no extensions or is used over a
+                        profile without a length field */
   uint8_t magic1;
   uint8_t magic2;
 } message_info_t;

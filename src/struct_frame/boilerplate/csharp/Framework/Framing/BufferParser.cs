@@ -100,11 +100,12 @@ namespace StructFrame.Framing
                 return FrameMsgInfo.Invalid;
             }
 
-            // Verify CRC
+            // Verify CRC (extension-aware)
             if (_config.HasCrc)
             {
                 int crcLen = totalSize - (crcStart - offset) - _config.FooterSize;
                 byte magic1 = 0, magic2 = 0;
+                int baseSize = msgLen;
                 if (_getMessageInfo != null)
                 {
                     var info = _getMessageInfo(msgId);
@@ -112,9 +113,19 @@ namespace StructFrame.Framing
                     {
                         magic1 = info.Value.Magic1;
                         magic2 = info.Value.Magic2;
+                        baseSize = info.Value.BaseSize;
                     }
                 }
-                var ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen, magic1, magic2);
+                FrameChecksum ck;
+                if (_config.HasLength && baseSize < msgLen)
+                {
+                    int effectiveBase = crcLen - msgLen + baseSize;
+                    ck = FrameBase.FletcherChecksumExt(buffer, crcStart, effectiveBase, crcLen, magic1, magic2);
+                }
+                else
+                {
+                    ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen, magic1, magic2);
+                }
                 if (ck.Byte1 != buffer[offset + totalSize - 2] || ck.Byte2 != buffer[offset + totalSize - 1])
                 {
                     return FrameMsgInfo.Invalid;

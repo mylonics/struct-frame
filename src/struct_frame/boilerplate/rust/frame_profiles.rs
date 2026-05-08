@@ -1,7 +1,7 @@
 // Frame Profiles - Pre-defined Header + Payload combinations (Rust)
 // Mirrors frame_profiles.h from C boilerplate
 
-use crate::frame_base::{fletcher_checksum, FrameChecksum, FrameMsgInfo, MessageInfo, StructFrameMessage};
+use crate::frame_base::{fletcher_checksum, fletcher_checksum_ext, FrameChecksum, FrameMsgInfo, MessageInfo, StructFrameMessage};
 use crate::frame_headers::{
     get_basic_second_start_byte, get_tiny_start_byte, HeaderConfig, HeaderType,
     BASIC_START_BYTE, HEADER_BASIC_CONFIG, HEADER_NONE_CONFIG, HEADER_TINY_CONFIG,
@@ -161,9 +161,84 @@ pub fn encode_with_crc(
     buffer[idx..idx + payload.len()].copy_from_slice(payload);
     idx += payload.len();
 
-    // Calculate and write CRC
+    // Calculate and write CRC (extension-aware; base_size defaults to full payload)
     if config.payload.has_crc {
         let ck = fletcher_checksum(&buffer[crc_start..idx], magic1, magic2);
+        buffer[idx] = ck.byte1;
+        buffer[idx + 1] = ck.byte2;
+        idx += 2;
+    }
+
+    idx
+}
+
+/// Encode a message with CRC and extension-aware checksum.
+///
+/// Same as encode_with_crc but accepts base_size for the extension-aware CRC algorithm.
+/// When base_size == payload.len(), produces identical output to encode_with_crc.
+#[allow(clippy::too_many_arguments)]
+pub fn encode_with_crc_ext(
+    config: &ProfileConfig,
+    buffer: &mut [u8],
+    seq: u8,
+    sys_id: u8,
+    comp_id: u8,
+    pkg_id: u8,
+    msg_id: u8,
+    payload: &[u8],
+    magic1: u8,
+    magic2: u8,
+    base_size: usize,
+) -> usize {
+    let header_size = config.header_size();
+    let footer_size = config.footer_size();
+    let total_size = header_size + footer_size + payload.len();
+
+    if buffer.len() < total_size {
+        return 0;
+    }
+
+    let mut idx = 0;
+
+    if config.header.num_start_bytes >= 1 {
+        buffer[idx] = config.computed_start_byte1();
+        idx += 1;
+    }
+    if config.header.num_start_bytes >= 2 {
+        buffer[idx] = config.computed_start_byte2();
+        idx += 1;
+    }
+
+    let crc_start = idx;
+
+    if config.payload.has_seq { buffer[idx] = seq; idx += 1; }
+    if config.payload.has_sys_id { buffer[idx] = sys_id; idx += 1; }
+    if config.payload.has_comp_id { buffer[idx] = comp_id; idx += 1; }
+
+    if config.payload.has_length {
+        if config.payload.length_bytes == 1 {
+            buffer[idx] = payload.len() as u8; idx += 1;
+        } else {
+            buffer[idx] = (payload.len() & 0xFF) as u8;
+            buffer[idx + 1] = ((payload.len() >> 8) & 0xFF) as u8;
+            idx += 2;
+        }
+    }
+
+    if config.payload.has_pkg_id { buffer[idx] = pkg_id; idx += 1; }
+    buffer[idx] = msg_id; idx += 1;
+
+    buffer[idx..idx + payload.len()].copy_from_slice(payload);
+    idx += payload.len();
+
+    if config.payload.has_crc {
+        let ck = if config.payload.has_length && base_size < payload.len() {
+            let overhead_in_crc = idx - crc_start - payload.len();
+            let base_end = crc_start + overhead_in_crc + base_size;
+            fletcher_checksum_ext(&buffer[crc_start..base_end], &buffer[base_end..idx], magic1, magic2)
+        } else {
+            fletcher_checksum(&buffer[crc_start..idx], magic1, magic2)
+        };
         buffer[idx] = ck.byte1;
         buffer[idx + 1] = ck.byte2;
         idx += 2;
@@ -294,14 +369,25 @@ pub fn parse_with_crc(
         return FrameMsgInfo::invalid();
     }
 
-    // Verify CRC
+    // Verify CRC (extension-aware)
     if config.payload.has_crc {
         let crc_len = total_size - crc_start - footer_size;
-        let (magic1, magic2) = match get_message_info(msg_id) {
-            Some(info) => (info.magic1, info.magic2),
-            None => (0, 0),
+        let (magic1, magic2, base_size) = match get_message_info(msg_id) {
+            Some(info) => (info.magic1, info.magic2, info.base_size),
+            None => (0, 0, msg_len),
         };
-        let ck = fletcher_checksum(&buffer[crc_start..crc_start + crc_len], magic1, magic2);
+        let ck = if config.payload.has_length && base_size < msg_len {
+            let overhead_in_crc = crc_len - msg_len;
+            let base_end = crc_start + overhead_in_crc + base_size;
+            fletcher_checksum_ext(
+                &buffer[crc_start..base_end],
+                &buffer[base_end..crc_start + crc_len],
+                magic1,
+                magic2,
+            )
+        } else {
+            fletcher_checksum(&buffer[crc_start..crc_start + crc_len], magic1, magic2)
+        };
         if ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1] {
             return FrameMsgInfo::invalid();
         }
@@ -399,7 +485,7 @@ pub fn encode_message_crc<M: StructFrameMessage>(
     } else {
         pkg_id
     };
-    encode_with_crc(
+    encode_with_crc_ext(
         config,
         buffer,
         0,
@@ -410,6 +496,7 @@ pub fn encode_message_crc<M: StructFrameMessage>(
         &payload[..payload_len],
         M::MAGIC1,
         M::MAGIC2,
+        M::BASE_SIZE,
     )
 }
 

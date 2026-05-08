@@ -216,6 +216,7 @@ class MessageJsClassGen():
         if msg.id is not None and msg.magic_bytes:
             result += f'  static _magic1 = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
             result += f'  static _magic2 = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
+            result += f'  static _baseSize = {msg.base_size}; // Non-extension portion size (== _size when no extensions)\n'
         
         # Add variable message constants
         if msg.variable:
@@ -815,8 +816,8 @@ class FileJsGen():
                 
                 for msg in messages_with_id:
                     package_msg_name = msg.name
-                    yield '    case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2 };\n' % (
-                        package_msg_name, package_msg_name, package_msg_name, package_msg_name)
+                    yield '    case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (
+                        package_msg_name, package_msg_name, package_msg_name, package_msg_name, package_msg_name)
 
                 yield '    default: break;\n'
                 yield '  }\n'

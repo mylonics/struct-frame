@@ -16,6 +16,7 @@ export interface MessageConstructor<T extends MessageBase = MessageBase> {
   readonly _msgid?: number;
   readonly _magic1?: number;
   readonly _magic2?: number;
+  readonly _baseSize?: number;
   getSize(): number;
   unpack?(buffer: Buffer): T;
 }
@@ -88,6 +89,14 @@ export abstract class MessageBase {
    */
   getMagic2(): number {
     return (this.constructor as MessageConstructor)._magic2 ?? 0;
+  }
+
+  /**
+   * Get the base (non-extension) size for this message type.
+   * Returns the full size if no extensions are defined.
+   */
+  getBaseSize(): number {
+    return (this.constructor as MessageConstructor)._baseSize ?? this.getSize();
   }
 
   /**
