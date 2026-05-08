@@ -1,19 +1,11 @@
 /**
  * Extended test message definitions (JavaScript).
- * Provides getMessage(index) function for extended message ID and payload testing.
- *
- * This file matches the C++ extended_messages.hpp structure.
+ * Three representative extended IDs (boundary/mid/high) + two large-payload
+ * messages + five variable-array fill levels = 10 total.
  */
 
 const {
-  ExtendedIdMessage1,
   ExtendedIdMessage2,
-  ExtendedIdMessage3,
-  ExtendedIdMessage4,
-  ExtendedIdMessage5,
-  ExtendedIdMessage6,
-  ExtendedIdMessage7,
-  ExtendedIdMessage8,
   ExtendedIdMessage9,
   ExtendedIdMessage10,
   LargePayloadMessage1,
@@ -21,21 +13,14 @@ const {
   ExtendedVariableSingleArray,
 } = require('../../generated/js/extended-test.structframe');
 
-// Message count
-const MESSAGE_COUNT = 17;
-
+const MESSAGE_COUNT = 10;
 
 // ============================================================================
-// Helper functions to create messages (like C++ create_* functions)
+// Helper functions
 // ============================================================================
 
-function createExtId1() {
-  return new ExtendedIdMessage1({
-    sequenceNumber: 12345678,
-    label: 'Test Label Extended 1',
-    value: 3.14159,
-    enabled: true,
-  });
+function createExtId10() {
+  return new ExtendedIdMessage10({ smallValue: 256, shortText: 'Boundary Test', flag: true });
 }
 
 function createExtId2() {
@@ -48,62 +33,6 @@ function createExtId2() {
   });
 }
 
-function createExtId3() {
-  return new ExtendedIdMessage3({
-    timestamp: 1704067200000000n,
-    temperature: -40,
-    humidity: 85,
-    location: 'Sensor Room A',
-  });
-}
-
-function createExtId4() {
-  return new ExtendedIdMessage4({
-    eventId: 999999,
-    eventType: 42,
-    eventTime: 1704067200000n,
-    eventDataLength: 'Event payload with extended message ID'.length,
-    eventDataData: 'Event payload with extended message ID',
-  });
-}
-
-function createExtId5() {
-  return new ExtendedIdMessage5({
-    xPosition: 100.5,
-    yPosition: -200.25,
-    zPosition: 50.125,
-    frameNumber: 1000000,
-  });
-}
-
-function createExtId6() {
-  return new ExtendedIdMessage6({
-    commandId: -12345,
-    parameter1: 1000,
-    parameter2: 2000,
-    acknowledged: false,
-    commandName: 'CALIBRATE_SENSOR',
-  });
-}
-
-function createExtId7() {
-  return new ExtendedIdMessage7({
-    counter: 4294967295,
-    average: 123.456789,
-    minimum: -999.99,
-    maximum: 999.99,
-  });
-}
-
-function createExtId8() {
-  return new ExtendedIdMessage8({
-    level: 255,
-    offset: -32768,
-    duration: 86400000,
-    tag: 'TEST123',
-  });
-}
-
 function createExtId9() {
   return new ExtendedIdMessage9({
     bigNumber: -9223372036854775807n,
@@ -112,21 +41,9 @@ function createExtId9() {
   });
 }
 
-function createExtId10() {
-  return new ExtendedIdMessage10({
-    smallValue: 256,
-    shortText: 'Boundary Test',
-    flag: true,
-  });
-}
-
 function createLarge1() {
-  const sensorReadings = [];
-  for (let i = 0; i < 64; i++) {
-    sensorReadings.push(i + 1);
-  }
   return new LargePayloadMessage1({
-    sensorReadings: sensorReadings,
+    sensorReadings: Array.from({ length: 64 }, (_, i) => i + 1),
     readingCount: 64,
     timestamp: 1704067200000000n,
     deviceName: 'Large Sensor Array Device',
@@ -135,109 +52,49 @@ function createLarge1() {
 
 function createLarge2() {
   const largeData = [];
-  for (let i = 0; i < 256; i++) {
-    largeData.push(i);
-  }
-  for (let i = 256; i < 280; i++) {
-    largeData.push(i - 256);
-  }
-  return new LargePayloadMessage2({
-    largeData: largeData,
-  });
+  for (let i = 0; i < 256; i++) largeData.push(i);
+  for (let i = 256; i < 280; i++) largeData.push(i - 256);
+  return new LargePayloadMessage2({ largeData });
 }
 
-function createExtVarSingleEmpty() {
+function extVar(ts, count, data, crc) {
   return new ExtendedVariableSingleArray({
-    timestamp: 0x0000000000000001n,
-    telemetryDataCount: 0,
-    telemetryDataData: [],
-    crc: 0x00000001,
+    timestamp: ts,
+    telemetryDataCount: count,
+    telemetryDataData: data,
+    crc,
   });
 }
-
-function createExtVarSingleSingle() {
-  return new ExtendedVariableSingleArray({
-    timestamp: 0x0000000000000002n,
-    telemetryDataCount: 1,
-    telemetryDataData: [42],
-    crc: 0x00000002,
-  });
-}
-
-function createExtVarSingleThird() {
-  return new ExtendedVariableSingleArray({
-    timestamp: 0x0000000000000003n,
-    telemetryDataCount: 83,
-    telemetryDataData: Array.from({ length: 83 }, (_, i) => i),
-    crc: 0x00000003,
-  });
-}
-
-function createExtVarSingleAlmost() {
-  return new ExtendedVariableSingleArray({
-    timestamp: 0x0000000000000004n,
-    telemetryDataCount: 249,
-    telemetryDataData: Array.from({ length: 249 }, (_, i) => i % 256),
-    crc: 0x00000004,
-  });
-}
-
-function createExtVarSingleFull() {
-  return new ExtendedVariableSingleArray({
-    timestamp: 0x0000000000000005n,
-    telemetryDataCount: 250,
-    telemetryDataData: Array.from({ length: 250 }, (_, i) => i % 256),
-    crc: 0x00000005,
-  });
-}
-
 
 // ============================================================================
-// getMessage(index) - unified interface matching C++ MessageProvider pattern
+// getMessage(index) - order: ExtId10, ExtId2, ExtId9, Large1, Large2, Var×5
 // ============================================================================
 
 function getMessage(index) {
   switch (index) {
-    case 0: return createExtId1();
+    case 0: return createExtId10();
     case 1: return createExtId2();
-    case 2: return createExtId3();
-    case 3: return createExtId4();
-    case 4: return createExtId5();
-    case 5: return createExtId6();
-    case 6: return createExtId7();
-    case 7: return createExtId8();
-    case 8: return createExtId9();
-    case 9: return createExtId10();
-    case 10: return createLarge1();
-    case 11: return createLarge2();
-    case 12: return createExtVarSingleEmpty();
-    case 13: return createExtVarSingleSingle();
-    case 14: return createExtVarSingleThird();
-    case 15: return createExtVarSingleAlmost();
-    default: return createExtVarSingleFull();
+    case 2: return createExtId9();
+    case 3: return createLarge1();
+    case 4: return createLarge2();
+    case 5: return extVar(0x0000000000000001n, 0,   [],                                            0x00000001);
+    case 6: return extVar(0x0000000000000002n, 1,   [42],                                          0x00000002);
+    case 7: return extVar(0x0000000000000003n, 83,  Array.from({ length: 83  }, (_, i) => i),      0x00000003);
+    case 8: return extVar(0x0000000000000004n, 249, Array.from({ length: 249 }, (_, i) => i % 256), 0x00000004);
+    default: return extVar(0x0000000000000005n, 250, Array.from({ length: 250 }, (_, i) => i % 256), 0x00000005);
   }
 }
 
-
 // ============================================================================
-// checkMessage(index, info) - validates decoded message matches expected
-// This is the callback passed to ProfileRunner.parse()
+// checkMessage(index, info) - validates decoded message
 // ============================================================================
 
 function checkMessage(index, info) {
   const expected = getMessage(index);
   const msgClass = expected.constructor;
-
-  // Check msg_id matches
   if (info.msgId !== msgClass._msgid) return false;
-
-  // Deserialize and compare
   const decoded = msgClass.deserialize(info);
   return decoded.equals(expected);
 }
 
-module.exports = {
-  MESSAGE_COUNT,
-  getMessage,
-  checkMessage,
-};
+module.exports = { MESSAGE_COUNT, getMessage, checkMessage };

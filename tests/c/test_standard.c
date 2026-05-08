@@ -8,6 +8,6 @@
  * Frame formats: profile_standard, profile_sensor, profile_ipc, profile_bulk, profile_network
  */
 
-#include "include/standard_test_data.h"
+#include "include/standard_messages.h"
 
 int main(int argc, char* argv[]) { return run_test_main(&std_test_config, argc, argv); }

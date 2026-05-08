@@ -18,7 +18,7 @@
 #include <string.h>
 
 #include "../../generated/c/serialization_test.structframe.h"
-#include "test_codec.h"
+#include "test_harness.h"
 
 /* ============================================================================
  * Message count and order

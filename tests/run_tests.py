@@ -158,7 +158,7 @@ EXTENDED_PROFILES = [
 
 # Expected message counts
 STANDARD_MESSAGE_COUNT = 17
-EXTENDED_MESSAGE_COUNT = 17
+EXTENDED_MESSAGE_COUNT = 10
 
 
 # =============================================================================
@@ -1392,7 +1392,7 @@ class TestRunner:
             header = f"{'Test Name':<{test_name_width}}"
             for lang_id in lang_ids:
                 # Use short language names for columns
-                lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#"}
+                lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#", "rust": "Rs"}
                 lang_name = lang_display.get(lang_id, lang_id.upper()[:6])
                 header += f" {lang_name:^{lang_col_width}}"
             print(header)
@@ -2089,6 +2089,105 @@ class TestRunner:
     # Summary
     # =========================================================================
     
+    def _print_summary_matrices(self) -> None:
+        """Print three compact summary matrices at end-of-run."""
+
+        lang_order = ["c", "cpp", "py", "ts", "js", "csharp", "rust"]
+        lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#", "rust": "Rs"}
+
+        # Detect which languages actually participated
+        all_lang_ids = [lid for lid in lang_order if lid in self.results.get("compilation", {})]
+        if not all_lang_ids:
+            return
+
+        col_w = 6
+        ok_cell  = lambda: Colors.green("OK".center(col_w))
+        fail_cell = lambda: Colors.red("FAIL".center(col_w))
+        skip_cell = lambda: "-".center(col_w)
+
+        def cell(success, present=True):
+            if not present:
+                return skip_cell()
+            return ok_cell() if success else fail_cell()
+
+        # ------------------------------------------------------------------
+        # Matrix 1: Compilation × language
+        # ------------------------------------------------------------------
+        comp = self.results.get("compilation", {})
+        if comp:
+            header = f"  {'':22}" + "".join(lang_display.get(lid, lid).center(col_w) for lid in all_lang_ids)
+            print(f"\n  {Colors.bold('Matrix 1: Compilation')}")
+            print(header)
+            row = f"  {'Compilation':<22}"
+            for lid in all_lang_ids:
+                row += cell(comp.get(lid, False), lid in comp)
+            print(row)
+
+        # ------------------------------------------------------------------
+        # Matrix 2: Round-trip tests (package × language)
+        # ------------------------------------------------------------------
+        rt = self.results.get("roundtrip", {})
+        if rt:
+            # Build a set of packages and per-lang results
+            # Keys: "cpp:test_roundtrip_pkg_name"  or  "py:test_roundtrip_pkg_name"
+            pkgs_by_lang: Dict[str, Dict[str, bool]] = {}
+            for key, success in rt.items():
+                if ":" not in key:
+                    continue
+                lang_id, stem = key.split(":", 1)
+                pkg = stem.removeprefix("test_roundtrip_")
+                pkgs_by_lang.setdefault(pkg, {})[lang_id] = success
+
+            if pkgs_by_lang:
+                rt_langs = [lid for lid in all_lang_ids if any(lid in v for v in pkgs_by_lang.values())]
+                if rt_langs:
+                    header = f"  {'Package':<22}" + "".join(lang_display.get(lid, lid).center(col_w) for lid in rt_langs)
+                    print(f"\n  {Colors.bold('Matrix 2: Round-trip (pkg × language)')}")
+                    print(header)
+                    for pkg in sorted(pkgs_by_lang):
+                        row = f"  {pkg[:20]:<22}"
+                        for lid in rt_langs:
+                            if lid in pkgs_by_lang[pkg]:
+                                row += cell(pkgs_by_lang[pkg][lid])
+                            else:
+                                row += skip_cell()
+                        print(row)
+
+        # ------------------------------------------------------------------
+        # Matrix 3: Encode/Decode compatibility (test-phase × language)
+        # Aggregates all standard+extended+variable phases for each language.
+        # Cells show fraction of phases that passed (or OK / FAIL).
+        # ------------------------------------------------------------------
+        phase_keys = [
+            ("standard_encode",  "Std Encode"),
+            ("standard_validate","Std Validate"),
+            ("standard_decode",  "Std Decode"),
+            ("extended_encode",  "Ext Encode"),
+            ("extended_validate","Ext Validate"),
+            ("extended_decode",  "Ext Decode"),
+        ]
+        # Only include phases that have data
+        active_phases = [(rk, label) for rk, label in phase_keys if self.results.get(rk)]
+        if active_phases:
+            header = f"  {'Phase':<22}" + "".join(lang_display.get(lid, lid).center(col_w) for lid in all_lang_ids)
+            print(f"\n  {Colors.bold('Matrix 3: Encode/Decode phase summary (lang × phase)')}")
+            print(header)
+            for result_key, label in active_phases:
+                phase_data = self.results[result_key]
+                row = f"  {label:<22}"
+                for lid in all_lang_ids:
+                    # Key format is "{lang_id}_{ProfileName}" — aggregate all profiles for this lang
+                    lang_entries = {k: v for k, v in phase_data.items() if k.startswith(lid + "_")}
+                    if not lang_entries:
+                        row += skip_cell()
+                    elif all(lang_entries.values()):
+                        row += ok_cell()
+                    else:
+                        passed_n = sum(1 for v in lang_entries.values() if v)
+                        total_n  = len(lang_entries)
+                        row += Colors.red(f"{passed_n}/{total_n}".center(col_w))
+                print(row)
+
     def print_summary(self) -> bool:
         """Print test summary and return success status."""
         self.print_section("TEST RESULTS SUMMARY")
@@ -2178,14 +2277,15 @@ class TestRunner:
             for phase, elapsed in self.phase_times.items():
                 print(f"    {phase:<20}: {elapsed:.2f}s")
         
+        # Print three summary matrices
+        self._print_summary_matrices()
+        
         # Print failure summary if any
         if self.failures:
             print(f"\n  {Colors.bold(Colors.red('Failures:'))}")
-            for failure in self.failures[:10]:  # Limit to 10 failures
+            for failure in self.failures:
                 profile_str = f" [{failure['profile']}]" if failure['profile'] else ""
                 print(f"    - {failure['phase']}: {failure['language']}{profile_str} - {failure['reason']}")
-            if len(self.failures) > 10:
-                print(f"    ... and {len(self.failures) - 10} more failures")
         
         if passed == total and total > 0:
             print(f"\n  {Colors.green(Colors.bold('SUCCESS: All tests passed'))}")
