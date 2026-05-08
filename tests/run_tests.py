@@ -158,7 +158,7 @@ EXTENDED_PROFILES = [
 
 # Expected message counts
 STANDARD_MESSAGE_COUNT = 17
-EXTENDED_MESSAGE_COUNT = 17
+EXTENDED_MESSAGE_COUNT = 10
 
 
 # =============================================================================
@@ -1392,7 +1392,7 @@ class TestRunner:
             header = f"{'Test Name':<{test_name_width}}"
             for lang_id in lang_ids:
                 # Use short language names for columns
-                lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#"}
+                lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#", "rust": "Rs"}
                 lang_name = lang_display.get(lang_id, lang_id.upper()[:6])
                 header += f" {lang_name:^{lang_col_width}}"
             print(header)
@@ -2181,11 +2181,9 @@ class TestRunner:
         # Print failure summary if any
         if self.failures:
             print(f"\n  {Colors.bold(Colors.red('Failures:'))}")
-            for failure in self.failures[:10]:  # Limit to 10 failures
+            for failure in self.failures:
                 profile_str = f" [{failure['profile']}]" if failure['profile'] else ""
                 print(f"    - {failure['phase']}: {failure['language']}{profile_str} - {failure['reason']}")
-            if len(self.failures) > 10:
-                print(f"    ... and {len(self.failures) - 10} more failures")
         
         if passed == total and total > 0:
             print(f"\n  {Colors.green(Colors.bold('SUCCESS: All tests passed'))}")

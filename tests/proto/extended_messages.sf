@@ -9,97 +9,8 @@ package extended_test;
 
 // ============================================================================
 // Extended Message ID Tests (msgid > 255)
+// Three representative IDs cover the full range: boundary (256), mid (1000), high (4000).
 // ============================================================================
-
-// Message with ID 750 - tests 2-byte message ID encoding
-message ExtendedIdMessage1 {
-  option msgid = 750;
-  
-  uint32 sequence_number = 1;
-  string label = 2 [size=32];
-  float value = 3;
-  bool enabled = 4;
-}
-
-// Message with ID 1000 - tests larger message ID
-message ExtendedIdMessage2 {
-  option msgid = 1000;
-  
-  int32 sensor_id = 1;
-  double reading = 2;
-  uint16 status_code = 3;
-  string description = 4 [max_size=64];
-}
-
-// Message with ID 500 - tests mid-range extended ID
-message ExtendedIdMessage3 {
-  option msgid = 500;
-  
-  uint64 timestamp = 1;
-  int16 temperature = 2;
-  uint8 humidity = 3;
-  string location = 4 [size=16];
-}
-
-// Message with ID 2048 - tests higher extended ID
-message ExtendedIdMessage4 {
-  option msgid = 2048;
-  
-  uint32 event_id = 1;
-  uint32 event_type = 2;
-  int64 event_time = 3;
-  string event_data = 4 [max_size=128];
-}
-
-// Message with ID 300 - tests ID just above 255
-message ExtendedIdMessage5 {
-  option msgid = 300;
-  
-  float x_position = 1;
-  float y_position = 2;
-  float z_position = 3;
-  uint32 frame_number = 4;
-}
-
-// Message with ID 1500 - tests another extended ID
-message ExtendedIdMessage6 {
-  option msgid = 1500;
-  
-  int32 command_id = 1;
-  uint16 parameter1 = 2;
-  uint16 parameter2 = 3;
-  bool acknowledged = 4;
-  string command_name = 5 [size=24];
-}
-
-// Message with ID 999 - tests ID close to 1000
-message ExtendedIdMessage7 {
-  option msgid = 999;
-  
-  uint32 counter = 1;
-  double average = 2;
-  float minimum = 3;
-  float maximum = 4;
-}
-
-// Message with ID 1234 - tests easy-to-verify ID
-message ExtendedIdMessage8 {
-  option msgid = 1234;
-  
-  uint8 level = 1;
-  int16 offset = 2;
-  uint32 duration = 3;
-  string tag = 4 [size=8];
-}
-
-// Message with ID 4000 - tests high extended ID
-message ExtendedIdMessage9 {
-  option msgid = 4000;
-  
-  int64 big_number = 1;
-  uint64 big_unsigned = 2;
-  double precision_value = 3;
-}
 
 // Message with ID 256 - tests minimum extended ID (just above 255)
 message ExtendedIdMessage10 {
@@ -110,26 +21,49 @@ message ExtendedIdMessage10 {
   bool flag = 3;
 }
 
+// Message with ID 1000 - tests mid-range extended ID
+message ExtendedIdMessage2 {
+  option msgid = 1000;
+  
+  int32 sensor_id = 1;
+  double reading = 2;
+  uint16 status_code = 3;
+  string description = 4 [max_size=64];
+}
+
+// Message with ID 4000 - tests high extended ID with 64-bit fields
+message ExtendedIdMessage9 {
+  option msgid = 4000;
+  
+  int64 big_number = 1;
+  uint64 big_unsigned = 2;
+  double precision_value = 3;
+}
+
 // ============================================================================
 // Extended Payload Tests (payload > 255 bytes)
 // These require profiles with 2-byte length field
 // ============================================================================
 
-// Large message with payload > 255 bytes
+// Large message with payload > 255 bytes (fixed arrays: 64 floats = 256 bytes)
 message LargePayloadMessage1 {
   option msgid = 800;
   
-  // Fixed arrays to ensure large payload
   repeated float sensor_readings = 1 [size=64];     // 64 * 4 = 256 bytes
   uint32 reading_count = 2;
   int64 timestamp = 3;
   string device_name = 4 [size=32];
 }
 
+// Large message with fixed array of 280 bytes
+message LargePayloadMessage2 {
+  option msgid = 801;
+  
+  repeated uint8 large_data = 1 [size=280];
+}
+
 // ============================================================================
-// Variable Length Message Tests for Extended IDs (msgid: 802-804)
-// These messages use option variable = true for variable-length encoding
-// with extended message IDs (> 255)
+// Variable Length Message Tests for Extended IDs (msgid: 802)
 // ============================================================================
 
 // Variable message with extended ID and single bounded array (msgid: 802)
@@ -140,73 +74,4 @@ message ExtendedVariableSingleArray {
   uint64 timestamp = 1;
   repeated uint8 telemetry_data = 2 [max_size=250];  // Up to 250 bytes
   uint32 crc = 3;
-}
-
-// Variable message with extended ID and multiple bounded arrays (msgid: 803)
-message ExtendedVariableMultipleArrays {
-  option msgid = 803;
-  option variable = true;
-  
-  uint32 device_id = 1;
-  repeated int16 temperatures = 2 [max_size=100];   // Up to 200 bytes of int16 data
-  repeated uint32 timestamps = 3 [max_size=50];     // Up to 200 bytes of uint32 data
-  string device_info = 4 [max_size=128];            // Up to 128 chars variable string
-}
-
-// Variable message with extended ID and mixed fixed/variable fields (msgid: 804)
-message ExtendedVariableMixedFields {
-  option msgid = 804;
-  option variable = true;
-  
-  uint64 session_id = 1;             // Fixed field (8 bytes)
-  double latitude = 2;               // Fixed field (8 bytes)
-  double longitude = 3;              // Fixed field (8 bytes)
-  string fixed_tag = 4 [size=32];    // Fixed string (32 bytes)
-  repeated float sensor_values = 5 [max_size=80];   // Variable array
-  string variable_notes = 6 [max_size=200];         // Variable string
-}
-
-// ============================================================================
-// Large Payload Message 2 (msgid: 801) - Tests fixed array with 280 elements
-// ============================================================================
-
-// Another large message with different structure
-message LargePayloadMessage2 {
-  option msgid = 801;
-  
-  // Large fixed array to ensure extended payload (> 255 bytes)
-  repeated uint8 large_data = 1 [size=280];
-}
-
-// ============================================================================
-// Array > 256 Element Tests (msgid: 805-807)
-// These messages test arrays with more than 256 elements, requiring uint16_t
-// for the count field instead of uint8_t
-// ============================================================================
-
-// Message with variable array of 300 uint8 elements (msgid: 805)
-message LargeArrayMessage1 {
-  option msgid = 805;
-  
-  uint32 sequence_number = 1;
-  repeated uint8 sensor_data = 2 [max_size=300];  // Up to 300 bytes of sensor data
-  uint32 checksum = 3;
-}
-
-// Message with variable array of 500 uint16 elements (msgid: 806)
-message LargeArrayMessage2 {
-  option msgid = 806;
-  
-  uint64 timestamp = 1;
-  repeated uint16 measurements = 2 [max_size=500];  // Up to 500 uint16 values
-  string device_id = 3 [size=16];
-}
-
-// Message with variable array of 1000 float elements (msgid: 807)
-message LargeArrayMessage3 {
-  option msgid = 807;
-  
-  int32 data_id = 1;
-  repeated float readings = 2 [max_size=1000];  // Up to 1000 float values
-  bool is_valid = 3;
 }

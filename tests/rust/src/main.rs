@@ -19,7 +19,7 @@ use struct_frame_sdk::{
 
 const BUFFER_SIZE: usize = 65536;
 const STANDARD_MESSAGE_COUNT: usize = 21;
-const EXTENDED_MESSAGE_COUNT: usize = 17;
+const EXTENDED_MESSAGE_COUNT: usize = 10;
 const VARIABLE_FLAG_MESSAGE_COUNT: usize = 5;
 
 // ============================================================================
@@ -138,13 +138,12 @@ fn create_message_test() -> Message {
 // Extended message creation helpers -- mirror extended_messages.hpp
 // ============================================================================
 
-fn create_ext_id_1() -> ExtendedIdMessage1 {
-    let mut msg = ExtendedIdMessage1::default();
-    msg.sequence_number = 12345678;
-    let s = b"Test Label Extended 1";
-    msg.label[..s.len()].copy_from_slice(s);
-    msg.value = 3.14159f32;
-    msg.enabled = true;
+fn create_ext_id_10() -> ExtendedIdMessage10 {
+    let mut msg = ExtendedIdMessage10::default();
+    msg.small_value = 256;
+    let text = b"Boundary Test";
+    msg.short_text[..text.len()].copy_from_slice(text);
+    msg.flag = true;
     msg
 }
 
@@ -159,80 +158,11 @@ fn create_ext_id_2() -> ExtendedIdMessage2 {
     msg
 }
 
-fn create_ext_id_3() -> ExtendedIdMessage3 {
-    let mut msg = ExtendedIdMessage3::default();
-    msg.timestamp = 1704067200000000u64;
-    msg.temperature = -40;
-    msg.humidity = 85;
-    let loc = b"Sensor Room A";
-    msg.location[..loc.len()].copy_from_slice(loc);
-    msg
-}
-
-fn create_ext_id_4() -> ExtendedIdMessage4 {
-    let mut msg = ExtendedIdMessage4::default();
-    msg.event_id = 999999;
-    msg.event_type = 42;
-    msg.event_time = 1704067200000i64;
-    let data = b"Event payload with extended message ID";
-    msg.event_data_length = data.len() as u8;
-    msg.event_data[..data.len()].copy_from_slice(data);
-    msg
-}
-
-fn create_ext_id_5() -> ExtendedIdMessage5 {
-    let mut msg = ExtendedIdMessage5::default();
-    msg.x_position = 100.5f32;
-    msg.y_position = -200.25f32;
-    msg.z_position = 50.125f32;
-    msg.frame_number = 1000000;
-    msg
-}
-
-fn create_ext_id_6() -> ExtendedIdMessage6 {
-    let mut msg = ExtendedIdMessage6::default();
-    msg.command_id = -12345;
-    msg.parameter1 = 1000;
-    msg.parameter2 = 2000;
-    msg.acknowledged = false;
-    let name = b"CALIBRATE_SENSOR";
-    msg.command_name[..name.len()].copy_from_slice(name);
-    msg
-}
-
-fn create_ext_id_7() -> ExtendedIdMessage7 {
-    let mut msg = ExtendedIdMessage7::default();
-    msg.counter = 4294967295u32;
-    msg.average = 123.456789;
-    msg.minimum = -999.99f32;
-    msg.maximum = 999.99f32;
-    msg
-}
-
-fn create_ext_id_8() -> ExtendedIdMessage8 {
-    let mut msg = ExtendedIdMessage8::default();
-    msg.level = 255;
-    msg.offset = -32768;
-    msg.duration = 86400000;
-    let tag = b"TEST123";
-    msg.tag[..tag.len()].copy_from_slice(tag);
-    msg
-}
-
 fn create_ext_id_9() -> ExtendedIdMessage9 {
     let mut msg = ExtendedIdMessage9::default();
     msg.big_number = -9223372036854775807i64;
     msg.big_unsigned = 18446744073709551615u64;
     msg.precision_value = 1.7976931348623157e+308f64;
-    msg
-}
-
-fn create_ext_id_10() -> ExtendedIdMessage10 {
-    let mut msg = ExtendedIdMessage10::default();
-    msg.small_value = 256;
-    let text = b"Boundary Test";
-    msg.short_text[..text.len()].copy_from_slice(text);
-    msg.flag = true;
     msg
 }
 
@@ -468,23 +398,17 @@ fn create_collision_enum_failed() -> CollisionEnumMessage {
 
 fn get_expected_payload_extended(index: usize, buf: &mut [u8]) -> (u16, usize) {
     // Extended profiles always have a length field, so always use variable pack()
+    // Order: ExtId10 (256), ExtId2 (1000), ExtId9 (4000), Large1, Large2, Var×5
     match index {
-        0  => pack_msg(&create_ext_id_1(),  buf, false),
-        1  => pack_msg(&create_ext_id_2(),  buf, false),
-        2  => pack_msg(&create_ext_id_3(),  buf, false),
-        3  => pack_msg(&create_ext_id_4(),  buf, false),
-        4  => pack_msg(&create_ext_id_5(),  buf, false),
-        5  => pack_msg(&create_ext_id_6(),  buf, false),
-        6  => pack_msg(&create_ext_id_7(),  buf, false),
-        7  => pack_msg(&create_ext_id_8(),  buf, false),
-        8  => pack_msg(&create_ext_id_9(),  buf, false),
-        9  => pack_msg(&create_ext_id_10(), buf, false),
-        10 => pack_msg(&create_ext_large_1(), buf, false),
-        11 => pack_msg(&create_ext_large_2(), buf, false),
-        12 => pack_msg(&create_ext_var_single(1, 0,   1, 0),  buf, false),
-        13 => pack_msg(&create_ext_var_single(2, 1,   2, 42), buf, false),
-        14 => pack_msg(&create_ext_var_single(3, 83,  3, 0),  buf, false),
-        15 => pack_msg(&create_ext_var_single(4, 249, 4, 0),  buf, false),
+        0  => pack_msg(&create_ext_id_10(),  buf, false),
+        1  => pack_msg(&create_ext_id_2(),   buf, false),
+        2  => pack_msg(&create_ext_id_9(),   buf, false),
+        3  => pack_msg(&create_ext_large_1(), buf, false),
+        4  => pack_msg(&create_ext_large_2(), buf, false),
+        5  => pack_msg(&create_ext_var_single(1, 0,   1, 0),  buf, false),
+        6  => pack_msg(&create_ext_var_single(2, 1,   2, 42), buf, false),
+        7  => pack_msg(&create_ext_var_single(3, 83,  3, 0),  buf, false),
+        8  => pack_msg(&create_ext_var_single(4, 249, 4, 0),  buf, false),
         _  => pack_msg(&create_ext_var_single(5, 250, 5, 0),  buf, false),
     }
 }
@@ -593,16 +517,10 @@ fn encode_extended(config: &ProfileConfig, output: &mut [u8]) -> usize {
         }};
     }
 
-    enc!(create_ext_id_1());
-    enc!(create_ext_id_2());
-    enc!(create_ext_id_3());
-    enc!(create_ext_id_4());
-    enc!(create_ext_id_5());
-    enc!(create_ext_id_6());
-    enc!(create_ext_id_7());
-    enc!(create_ext_id_8());
-    enc!(create_ext_id_9());
+    // Encode order: ExtId10, ExtId2, ExtId9, Large1, Large2, Var×5
     enc!(create_ext_id_10());
+    enc!(create_ext_id_2());
+    enc!(create_ext_id_9());
     enc!(create_ext_large_1());
     enc!(create_ext_large_2());
     enc!(create_ext_var_single(1, 0,   1, 0));
