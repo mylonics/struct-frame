@@ -36,18 +36,21 @@ test_extended.c     →  Runs extended message ID tests
 test_variable_flag.c →  Runs variable-length truncation tests
 ```
 
-### 2. Test Data (`include/*_test_data.*`)
+### 2. Message Definitions (`include/*_messages.*`)
 Contains three logical sections:
 - **Message Definitions**: Hardcoded test messages with known values
 - **Encoder**: Functions to serialize messages into a byte stream
 - **Validator**: Functions to deserialize and compare with expected values
 
-### 3. Test Codec (`include/test_codec.*`)
-Shared infrastructure for all test suites:
-- Frame profile configuration
+### 3. Profile Runner (`include/profile_runner.h`)
+Profile-dispatch encode/decode functions and the `test_config_t` struct:
+- Frame profile configuration and dispatch
+- `encode_messages()` and `decode_messages()` implementations
+
+### 4. Test Harness (`include/test_harness.h`)
+Higher-level test infrastructure (includes `profile_runner.h`):
 - File I/O utilities
-- Command-line parsing
-- Encode/decode orchestration
+- Command-line parsing (`run_encode`, `run_decode`, `run_test_main`)
 
 ## Test Suites
 
@@ -97,10 +100,11 @@ tests/
 │   ├── test_extended.c           # Entry point
 │   ├── test_variable_flag.c      # Entry point
 │   └── include/
-│       ├── standard_test_data.h      # Message definitions + encode/validate
-│       ├── extended_test_data.h      # Extended test data
-│       ├── variable_flag_test_data.h # Variable flag test data
-│       └── test_codec.h              # Shared codec infrastructure
+│       ├── standard_messages.h       # Message definitions + encode/validate
+│       ├── extended_messages.h       # Extended test data
+│       ├── variable_flag_messages.h  # Variable flag test data
+│       ├── profile_runner.h          # Profile-dispatch encode/decode + test_config_t
+│       └── test_harness.h            # File I/O, CLI, run_test_main (includes profile_runner.h)
 ├── cpp/                      # C++ language tests (same structure)
 ├── py/                       # Python tests (same structure)
 ├── ts/                       # TypeScript tests (same structure)
@@ -185,13 +189,13 @@ pip install proto-schema-parser
 1. Create proto definitions in `tests/proto/`
 2. For each language, create:
    - Entry point: `test_<name>.<ext>`
-   - Test data: `include/<name>_test_data.<ext>` with:
-     - Message creation functions
-     - Message arrays
-     - Encoder functions
-     - Validator functions
-     - Test configuration
-3. Use the shared `test_codec` infrastructure for encode/decode orchestration
+   - Message definitions: `include/<name>_messages.<ext>` with:
+      - Message creation functions
+      - Message arrays
+      - Encoder functions
+      - Validator functions
+      - Test configuration
+3. For C, use `test_harness.h` / `profile_runner.h` for encode/decode orchestration
 4. Use the standard test output format:
    - Print `[TEST START] <Language> <Profile> <Mode>`
    - Print `[TEST END] <Language> <Profile> <Mode>: PASS` or `FAIL`

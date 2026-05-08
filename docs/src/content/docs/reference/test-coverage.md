@@ -25,8 +25,8 @@ These tests verify that `src/main.py` generates valid, compilable output. They a
 | Feature | C | C++ | Python | TS | JS | C# | Rust | Notes |
 |---------|---|-----|--------|----|----|----|------|-------|
 | Generate from single proto | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | All test suites exercise generation |
-| Generate from imported proto | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | `sensor_with_import.sf` used |
-| Multi-package generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | `package_a/b.sf`; Rust partial |
+| Generate from imported proto | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | `pkg_test_messages.sf` imports `pkg_test_a.sf` |
+| Multi-package generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | `pkg_test_messages.sf` + `pkg_test_a.sf`; Rust partial |
 | `--equality` flag | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | No tests verify equality operator output |
 | `--generate_tests` flag | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Exercised by the Round-trip Tests phase for all seven targets |
 | `--validate` flag | ❌ | ❌ | ❌ | N/A | N/A | N/A | N/A | No test validates the validate mode |
@@ -39,7 +39,7 @@ These tests verify that `src/main.py` generates valid, compilable output. They a
 ## 2. Proto Field Types
 
 Test file references:
-- C: `tests/c/include/standard_test_data.h`
+- C: `tests/c/include/standard_messages.h`
 - C++: `tests/cpp/include/standard_messages.hpp`
 - Python: `tests/py/include/standard_messages.py`
 - TS/JS: `tests/ts/include/standard_messages.ts` / `tests/js/include/standard_messages.js`
@@ -314,9 +314,10 @@ runtime are the canonical identifiers used across all languages:
 | Package with missing `msgid` on message | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ |
 | Circular import detection | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
-Proto files: `tests/proto/package_a.sf`, `package_b.sf`, `pkg_test_*.sf`
+Proto files: `tests/proto/pkg_test_messages.sf`, `pkg_test_a.sf`
 
 > **Gap (Medium):** Circular import detection is not tested; the generator should error gracefully.
+> `tests/test_generator_validation.py` documents the intended behaviour for circular imports, duplicate msgids, and duplicate pkgids as TODO cases.
 
 ---
 
@@ -326,8 +327,8 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 | Validation Rule | Tested |
 |----------------|--------|
-| Duplicate `msgid` within package | ❌ |
-| Duplicate `pkgid` across packages | ❌ |
+| Duplicate `msgid` within package | ⚠️ |
+| Duplicate `pkgid` across packages | ⚠️ |
 | Duplicate field numbers within message | ❌ |
 | Missing `size`/`max_size` on array | ❌ |
 | Missing `size`/`max_size` on string | ❌ |
@@ -337,12 +338,44 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 | Envelope with non-message oneof fields | ❌ |
 | Envelope with `msgid` discriminator and messages missing `msgid` | ❌ |
 | Invalid `discriminator` option value | ❌ |
+| Circular import detection | ⚠️ |
+| Multi-package without `pkgid` | ✅ |
 
-> **Gap (High):** The generator validation rules are **completely untested**. A dedicated Python test suite for generator error paths is needed.
+> **Partially addressed:** `tests/test_generator_validation.py` documents intended rejection behaviour for
+> duplicate `msgid`, duplicate `pkgid`, and circular imports as TODO items (the generator currently accepts
+> these inputs silently). The multi-package-without-pkgid case IS currently detected and rejected.
+> Remaining validation rules are still completely untested.
 
 ---
 
-## 9. Wireshark Dissector
+## 9. Wire-Evolution Tests
+
+Tests that verify backward-compatible message handling: unknown fields are ignored, fields with new defaults are decoded correctly from older binaries, and field reordering does not break decoding.
+
+| Feature | Tested | File |
+|---------|--------|------|
+| Unknown trailing fields ignored on decode | ✅ | `tests/test_wire_evolution.py` |
+| New-field default on decode from older binary | ✅ | `tests/test_wire_evolution.py` |
+| Field reorder round-trip (producer → consumer) | ✅ | `tests/test_wire_evolution.py` |
+
+Proto source: `tests/proto/test_messages.sf` (Python generator + round-trip).
+
+---
+
+## 10. Magic-Byte Tests
+
+Tests that verify the per-message start-byte constants (`magic1`/`magic2`) are correctly embedded in encoded frames and validated on decode.
+
+| Feature | Tested | File |
+|---------|--------|------|
+| Magic bytes present in encoded frame | ✅ | `tests/test_magic_bytes.py` |
+| Wrong magic bytes → frame rejected | ✅ | `tests/test_magic_bytes.py` |
+| Correct magic bytes → frame accepted | ✅ | `tests/test_magic_bytes.py` |
+| Magic bytes absent (profile without magic) | ✅ | `tests/test_magic_bytes.py` |
+
+---
+
+## 11. Wireshark Dissector
 
 | Feature | Tested |
 |---------|--------|
@@ -354,17 +387,17 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 ---
 
-## 10. Summary of Gaps by Priority
+## 12. Summary of Gaps by Priority
 
 ### High Priority
 
-1. **Generator validation tests** — All generator-level error rules (duplicate IDs, missing size options, invalid envelope definitions, etc.) are untested. A Python-based unit test file (`tests/py/test_generator.py` or similar) should cover these.
+1. **Generator validation tests** — `tests/test_generator_validation.py` now documents three missing checks (duplicate msgid, duplicate pkgid, circular import) as TODO. The tests will pass once the generator properly rejects those inputs. All other generator validation rules remain untested.
 
 2. ~~**High-level SDK tests**~~ — ✅ **Closed** — `StructFrameSdk` subscribe/dispatch is now covered with mock transports for C++ (7 tests), Python (11 tests), TypeScript (10 tests), C# (14 tests), JavaScript (10 tests), and Rust (9 tests). Transport-level tests remain outstanding.
 
 ### Medium Priority
 
-3. **Variable-flag edge cases** — `VariableMultipleArrays` and `VariableMixedFields` messages are defined in the proto but not exercised by `test_variable_flag.*` in any language.
+3. ~~**Variable-flag edge cases**~~ — ✅ **Closed** — `VariableMultipleArrays` and `VariableMixedFields` have been removed from the proto as redundant duplicates of the variable-flag test coverage already provided by `VariableSingleArray` and `NestedVariableMessage`. The `test_variable_flag.*` suites now cover all remaining variable patterns.
 
 4. ~~**Enum-to-string conversion**~~ — ✅ **Closed** — Tested for all languages: C and C++ via compiled binary in `tests/test_proto_field_types.py`; Python via `.name` attribute; TS/JS via reverse mapping in `test_standard.ts/.js`; C# via `ToString()` in `test_standard.cs`; Rust via `format!("{:?}", ...)` in `tests/rust/src/main.rs`.
 
@@ -374,7 +407,7 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 7. **Round-trip generators** — Implemented for all seven languages (C, C++, Python, TypeScript, JavaScript, C#, Rust) via the `Test*Gen` classes and exercised by the Round-trip Tests phase.
 
-8. **Circular import detection** — Not validated by any test.
+8. ~~**Circular import detection**~~ — ⚠️ **Documented** — `tests/test_generator_validation.py` now includes a TODO test for circular imports. The generator currently accepts circular imports silently; the test will pass once the check is implemented.
 
 ### Low Priority
 
@@ -390,4 +423,4 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 
 ---
 
-*Last updated: 2026-05-07. Update this document whenever tests are added or gaps are closed.*
+*Last updated: 2026-05-08. Update this document whenever tests are added or gaps are closed.*
