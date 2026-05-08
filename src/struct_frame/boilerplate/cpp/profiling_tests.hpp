@@ -328,7 +328,7 @@ ProfileResult decode_unpacked_test(const uint8_t* buffer, size_t buffer_size,
  */
 template <typename T, typename Config, typename GetMsgInfo>
 bool verify_roundtrip(const T& msg, uint8_t* buffer, size_t buffer_size, GetMsgInfo get_message_info) {
-  static_assert(std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2>, T>,
+  static_assert(std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>,
                 "Message type must derive from MessageBase");
 
   // Encode the message

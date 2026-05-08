@@ -485,7 +485,7 @@ pub fn encode_message_crc<M: StructFrameMessage>(
     } else {
         pkg_id
     };
-    encode_with_crc(
+    encode_with_crc_ext(
         config,
         buffer,
         0,
@@ -496,6 +496,7 @@ pub fn encode_message_crc<M: StructFrameMessage>(
         &payload[..payload_len],
         M::MAGIC1,
         M::MAGIC2,
+        M::BASE_SIZE,
     )
 }
 

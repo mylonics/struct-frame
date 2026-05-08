@@ -101,6 +101,8 @@ pub trait StructFrameMessage {
     const MAX_SIZE: usize;
     const MAGIC1: u8;
     const MAGIC2: u8;
+    /// Non-extension portion size. Equal to MAX_SIZE for messages with no extensions.
+    const BASE_SIZE: usize = Self::MAX_SIZE;
     /// True if the message uses variable-length encoding for bounded fields.
     const IS_VARIABLE: bool;
 

@@ -948,6 +948,9 @@ class MessageRustGen():
             result += f'    const MAX_SIZE: usize = {const_prefix}_MAX_SIZE;\n'
             result += f'    const MAGIC1: u8 = {const_prefix}_MAGIC1;\n'
             result += f'    const MAGIC2: u8 = {const_prefix}_MAGIC2;\n'
+            # Only emit BASE_SIZE override when it differs from MAX_SIZE (extension messages).
+            if msg.base_size < msg.size:
+                result += f'    const BASE_SIZE: usize = {const_prefix}_BASE_SIZE;\n'
             result += f'    const IS_VARIABLE: bool = {str(is_variable).lower()};\n'
             result += f'    fn pack(&self, buf: &mut [u8]) -> usize {{ Self::pack(self, buf) }}\n'
             result += f'    fn pack_max_size(&self, buf: &mut [u8]) -> usize {{ Self::pack_max_size(self, buf) }}\n'
