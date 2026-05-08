@@ -115,8 +115,11 @@ def get_message(index: int) -> MessageType:
 
 def check_message(index: int, info) -> bool:
     expected = get_message(index)
-    cls = type(expected)
-    if info.msg_id != cls.MSG_ID:
+    if info.msg_id != expected.MSG_ID:
         return False
-    decoded = cls.deserialize(info)
-    return decoded == expected
+    msg_class = type(expected)
+    decoded = msg_class.deserialize(info)
+    # Normalize expected through a serialize/deserialize round-trip so that
+    # padding and truncation are applied consistently before comparison.
+    expected_normalized = msg_class.deserialize(expected.serialize())
+    return decoded == expected_normalized
