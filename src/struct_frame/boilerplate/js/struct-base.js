@@ -16,13 +16,18 @@
 class MessageBase {
   /**
    * Create a new message instance.
-   * @param {Buffer|Object} [bufferOrInit] - Optional buffer to wrap, or an init object with field values.
-   *                                         If not provided, allocates a new zero-filled buffer.
+   * @param {Buffer|Uint8Array|Object} [bufferOrInit] - Optional buffer to wrap, or an init object with field values.
+   *                                                    If not provided, allocates a new zero-filled buffer.
    */
   constructor(bufferOrInit) {
     const size = this.constructor._size;
     if (Buffer.isBuffer(bufferOrInit)) {
-      this._buffer = Buffer.from(bufferOrInit);
+      // Wrap the Buffer directly without copying
+      this._buffer = bufferOrInit;
+    } else if (bufferOrInit instanceof Uint8Array) {
+      // Wrap the Uint8Array directly without copying — used for read-only parsing
+      // on the hot receive path to avoid a redundant allocation + memcpy.
+      this._buffer = Buffer.from(bufferOrInit.buffer, bufferOrInit.byteOffset, bufferOrInit.byteLength);
     } else {
       this._buffer = Buffer.alloc(size);
       // If init object provided, it will be applied by generated constructors

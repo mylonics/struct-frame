@@ -37,10 +37,15 @@ export abstract class MessageBase {
    * @param bufferOrInit Optional buffer to wrap, or an init object with field values.
    *                     If not provided, allocates a new zero-filled buffer.
    */
-  constructor(bufferOrInit?: Buffer | Record<string, unknown>) {
+  constructor(bufferOrInit?: Buffer | Uint8Array | Record<string, unknown>) {
     const size = (this.constructor as MessageConstructor)._size;
     if (Buffer.isBuffer(bufferOrInit)) {
-      this._buffer = Buffer.from(bufferOrInit);
+      // Wrap the Buffer directly without copying
+      this._buffer = bufferOrInit;
+    } else if (bufferOrInit instanceof Uint8Array) {
+      // Wrap the Uint8Array directly without copying — used for read-only parsing
+      // on the hot receive path to avoid a redundant allocation + memcpy.
+      this._buffer = Buffer.from(bufferOrInit.buffer, bufferOrInit.byteOffset, bufferOrInit.byteLength);
     } else {
       this._buffer = Buffer.alloc(size);
       // If init object provided, apply values after subclass constructor runs
