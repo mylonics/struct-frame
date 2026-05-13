@@ -73,6 +73,26 @@ class TestRunner
         {
             return TestSdkSubscribe.Main(filteredArgs);
         }
+        else if (testSuite == "test_sdk_strict_ordering")
+        {
+            return TestSdkStrictOrdering.Main(filteredArgs);
+        }
+        else if (testSuite == "test_sdk_lifecycle")
+        {
+            return TestSdkLifecycle.Main(filteredArgs);
+        }
+        else if (testSuite == "test_sdk_client_wrapper")
+        {
+            return TestSdkClientWrapper.Main(filteredArgs);
+        }
+        else if (testSuite == "test_sdk_profiles")
+        {
+            return TestSdkProfiles.Main(filteredArgs);
+        }
+        else if (testSuite == "test_base_transport")
+        {
+            return TestBaseTransport.Main(filteredArgs);
+        }
         else if (testSuite == "test_wire_evolution")
         {
             return TestWireEvolution.Main(filteredArgs);

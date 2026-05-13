@@ -355,7 +355,7 @@ class FieldCSharpGen():
 
     @staticmethod
     def generate_unpack_code(field, offset, renamed_enums=None):
-        """Generate code to unpack this field from a byte array"""
+        """Generate code to unpack this field from a ReadOnlySpan<byte>."""
         lines = []
         var_name = pascal_case(field.name)
         type_name = field.field_type
@@ -367,25 +367,25 @@ class FieldCSharpGen():
                     # Fixed string array
                     total_size = field.size_option * field.element_size
                     lines.append(f'            msg.{var_name} = new byte[{total_size}];')
-                    lines.append(f'            Array.Copy(data, {offset}, msg.{var_name}, 0, {total_size});')
+                    lines.append(f'            data.Slice({offset}, {total_size}).CopyTo(msg.{var_name}.AsSpan());')
                 elif field.max_size is not None:
                     # Variable string array
                     total_size = field.max_size * field.element_size
                     lines.append(f'            msg.{var_name}Count = data[{offset}];')
                     lines.append(f'            msg.{var_name}Data = new byte[{total_size}];')
-                    lines.append(f'            Array.Copy(data, {offset + 1}, msg.{var_name}Data, 0, {total_size});')
+                    lines.append(f'            data.Slice({offset + 1}, {total_size}).CopyTo(msg.{var_name}Data.AsSpan());')
             else:
                 element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.field_type, 1)
                 if field.size_option is not None:
                     # Fixed array
                     if field.is_enum:
                         lines.append(f'            msg.{var_name} = new byte[{field.size_option}];')
-                        lines.append(f'            Array.Copy(data, {offset}, msg.{var_name}, 0, {field.size_option});')
+                        lines.append(f'            data.Slice({offset}, {field.size_option}).CopyTo(msg.{var_name}.AsSpan());')
                     elif field.field_type in csharp_type_sizes:
                         base_type = csharp_types.get(field.field_type, field.field_type)
                         total_data_size = field.size
                         lines.append(f'            msg.{var_name} = new {base_type}[{field.size_option}];')
-                        lines.append(f'            Buffer.BlockCopy(data, {offset}, msg.{var_name}, 0, {total_data_size});')
+                        lines.append(f'            MemoryMarshal.Cast<byte, {base_type}>(data.Slice({offset}, {total_data_size})).CopyTo(msg.{var_name}.AsSpan());')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
@@ -401,17 +401,17 @@ class FieldCSharpGen():
                     # Variable array
                     count_size = 2 if field.max_size > 255 else 1
                     if field.max_size > 255:
-                        lines.append(f'            msg.{var_name}Count = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
+                        lines.append(f'            msg.{var_name}Count = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice({offset}, 2));')
                     else:
                         lines.append(f'            msg.{var_name}Count = data[{offset}];')
                     if field.is_enum:
                         lines.append(f'            msg.{var_name}Data = new byte[{field.max_size}];')
-                        lines.append(f'            Array.Copy(data, {offset + count_size}, msg.{var_name}Data, 0, {field.max_size});')
+                        lines.append(f'            data.Slice({offset + count_size}, {field.max_size}).CopyTo(msg.{var_name}Data.AsSpan());')
                     elif field.field_type in csharp_type_sizes:
                         base_type = csharp_types.get(field.field_type, field.field_type)
                         total_data_size = field.size - count_size  # subtract count bytes
                         lines.append(f'            msg.{var_name}Data = new {base_type}[{field.max_size}];')
-                        lines.append(f'            Buffer.BlockCopy(data, {offset + count_size}, msg.{var_name}Data, 0, {total_data_size});')
+                        lines.append(f'            MemoryMarshal.Cast<byte, {base_type}>(data.Slice({offset + count_size}, {total_data_size})).CopyTo(msg.{var_name}Data.AsSpan());')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
@@ -430,37 +430,37 @@ class FieldCSharpGen():
             elif type_name == "int8":
                 lines.append(f'            msg.{var_name} = (sbyte)data[{offset}];')
             elif type_name == "uint16":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice({offset}, 2));')
             elif type_name == "int16":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt16LittleEndian(data.Slice({offset}, 2));')
             elif type_name == "uint32":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt32LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 4));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice({offset}, 4));')
             elif type_name == "int32":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt32LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 4));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt32LittleEndian(data.Slice({offset}, 4));')
             elif type_name == "uint64":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt64LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 8));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice({offset}, 8));')
             elif type_name == "int64":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt64LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 8));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadInt64LittleEndian(data.Slice({offset}, 8));')
             elif type_name == "float":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadSingleLittleEndian(new ReadOnlySpan<byte>(data, {offset}, 4));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadSingleLittleEndian(data.Slice({offset}, 4));')
             elif type_name == "double":
-                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(new ReadOnlySpan<byte>(data, {offset}, 8));')
+                lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(data.Slice({offset}, 8));')
             elif type_name == "bool":
                 lines.append(f'            msg.{var_name} = data[{offset}] != 0;')
         elif field.field_type == "string":
             if field.size_option is not None:
                 # Fixed string
                 lines.append(f'            msg.{var_name} = new byte[{field.size_option}];')
-                lines.append(f'            Array.Copy(data, {offset}, msg.{var_name}, 0, {field.size_option});')
+                lines.append(f'            data.Slice({offset}, {field.size_option}).CopyTo(msg.{var_name}.AsSpan());')
             elif field.max_size is not None:
                 # Variable string
                 length_size = 2 if field.max_size > 255 else 1
                 if field.max_size > 255:
-                    lines.append(f'            msg.{var_name}Length = BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, {offset}, 2));')
+                    lines.append(f'            msg.{var_name}Length = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice({offset}, 2));')
                 else:
                     lines.append(f'            msg.{var_name}Length = data[{offset}];')
                 lines.append(f'            msg.{var_name}Data = new byte[{field.max_size}];')
-                lines.append(f'            Array.Copy(data, {offset + length_size}, msg.{var_name}Data, 0, {field.max_size});')
+                lines.append(f'            data.Slice({offset + length_size}, {field.max_size}).CopyTo(msg.{var_name}Data.AsSpan());')
         elif field.is_enum:
             # Single enum field - enums are byte values, cast to enum type
             type_pkg = field.type_package if field.type_package else field.package
@@ -622,11 +622,13 @@ class MessageCSharpGen():
         # Generate Deserialize() static method
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Deserialize a byte array into this message type\n'
+        result += '        /// Deserialize a <see cref="ReadOnlySpan{byte}"/> into this message type.\n'
+        result += '        /// This is the primary implementation — the <c>byte[]</c> and\n'
+        result += '        /// <see cref="FrameMsgInfo"/> overloads delegate here.\n'
         if msg.variable:
-            result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding\n'
+            result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding.\n'
         result += '        /// </summary>\n'
-        result += f'        public static {structName} Deserialize(byte[] data)\n'
+        result += f'        public static {structName} Deserialize(ReadOnlySpan<byte> data)\n'
         result += '        {\n'
         
         # For variable messages, detect format based on size
@@ -640,7 +642,7 @@ class MessageCSharpGen():
             result += '            else\n'
             result += '            {\n'
             result += f'                // Variable-length encoding\n'
-            result += f'                return _DeserializeVariable(data);\n'
+            result += f'                return _DeserializeVariable(data.ToArray());\n'
             result += '            }\n'
             result += '        }\n'
             
@@ -649,7 +651,7 @@ class MessageCSharpGen():
             result += '        /// <summary>\n'
             result += '        /// Deserialize from MAX_SIZE buffer (for minimal profiles)\n'
             result += '        /// </summary>\n'
-            result += f'        private static {structName} _DeserializeMaxSize(byte[] data)\n'
+            result += f'        private static {structName} _DeserializeMaxSize(ReadOnlySpan<byte> data)\n'
             result += '        {\n'
         
         result += f'            var msg = new {structName}();\n'
@@ -666,7 +668,7 @@ class MessageCSharpGen():
             if oneof.auto_discriminator:
                 result += f'            // Oneof {oneof_name} discriminator\n'
                 if oneof.discriminator_type == "msgid":
-                    result += f'            msg.{pascal_case(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan({offset}));\n'
+                    result += f'            msg.{pascal_case(oneof_name)}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice({offset}));\n'
                     result += f'            var {oneof_name}_discriminator = msg.{pascal_case(oneof_name)}Discriminator;\n'
                     offset += 2
                 else:  # field_order
@@ -717,10 +719,19 @@ class MessageCSharpGen():
         result += '            return msg;\n'
         result += '        }\n'
 
+        # byte[] overload — delegates to the span overload (keeps API compatibility)
+        result += '\n'
+        result += '        /// <summary>\n'
+        result += '        /// Deserialize a byte array. Delegates to <see cref="Deserialize(ReadOnlySpan{byte})"/>.\n'
+        result += '        /// </summary>\n'
+        result += f'        public static {structName} Deserialize(byte[] data) => Deserialize(data.AsSpan());\n'
+
         # Add FrameMsgInfo overload
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Deserialize message from FrameMsgInfo (convenience overload)\n'
+        result += '        /// Deserialize message from FrameMsgInfo without allocating.\n'
+        result += '        /// Uses <see cref="FrameMsgInfo.GetPayloadSpan"/> to avoid the\n'
+        result += '        /// heap allocation that <see cref="FrameMsgInfo.ExtractPayload"/> incurs.\n'
         result += '        /// </summary>\n'
         result += '        /// <param name="frameInfo">Frame information from frame parser</param>\n'
         result += '        /// <returns>Deserialized message</returns>\n'
@@ -730,7 +741,7 @@ class MessageCSharpGen():
         result += '            {\n'
         result += '                return new ' + structName + '();\n'
         result += '            }\n'
-        result += '            return Deserialize(frameInfo.ExtractPayload());\n'
+        result += '            return Deserialize(frameInfo.GetPayloadSpan());\n'
         result += '        }\n'
 
         # Generate interface implementation methods
@@ -898,6 +909,8 @@ class MessageCSharpGen():
         result += '        }\n'
         
         # Generate _DeserializeVariable static method (internal method)
+        # Keeps byte[] parameter — variable messages receive a freshly-allocated slice
+        # from the span dispatch path (data.ToArray()), so no additional allocation occurs.
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Deserialize message from variable-length encoded buffer\n'
@@ -919,18 +932,18 @@ class MessageCSharpGen():
                     element_size = type_sizes.get(type_name, (f.size - count_size) // f.max_size)
                 result += f'            // {f.name}: variable array\n'
                 if f.max_size > 255:
-                    result += f'            msg.{var_name}Count = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset, 2)), (ushort){f.max_size});\n'
+                    result += f'            msg.{var_name}Count = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset, 2)), (ushort){f.max_size});\n'
                     result += f'            offset += 2;\n'
                 else:
                     result += f'            msg.{var_name}Count = Math.Min(data[offset++], (byte){f.max_size});\n'
                 if type_name in type_sizes:
                     base_type = csharp_types.get(type_name, type_name)
                     result += f'            msg.{var_name}Data = new {base_type}[{f.max_size}];\n'
-                    result += f'            Buffer.BlockCopy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Count * {element_size});\n'
+                    result += f'            MemoryMarshal.Cast<byte, {base_type}>(data.AsSpan(offset, msg.{var_name}Count * {element_size})).CopyTo(msg.{var_name}Data.AsSpan());\n'
                     result += f'            offset += msg.{var_name}Count * {element_size};\n'
                 elif f.is_enum:
                     result += f'            msg.{var_name}Data = new byte[{f.max_size}];\n'
-                    result += f'            Array.Copy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Count);\n'
+                    result += f'            data.AsSpan(offset, msg.{var_name}Count).CopyTo(msg.{var_name}Data.AsSpan());\n'
                     result += f'            offset += msg.{var_name}Count;\n'
                 else:
                     type_pkg = f.type_package if f.type_package else f.package
@@ -942,12 +955,12 @@ class MessageCSharpGen():
             elif type_name == "string" and f.max_size is not None:
                 result += f'            // {f.name}: variable string\n'
                 if f.max_size > 255:
-                    result += f'            msg.{var_name}Length = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(new ReadOnlySpan<byte>(data, offset, 2)), (ushort){f.max_size});\n'
+                    result += f'            msg.{var_name}Length = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset, 2)), (ushort){f.max_size});\n'
                     result += f'            offset += 2;\n'
                 else:
                     result += f'            msg.{var_name}Length = Math.Min(data[offset++], (byte){f.max_size});\n'
                 result += f'            msg.{var_name}Data = new byte[{f.max_size}];\n'
-                result += f'            Array.Copy(data, offset, msg.{var_name}Data, 0, msg.{var_name}Length);\n'
+                result += f'            data.AsSpan(offset, msg.{var_name}Length).CopyTo(msg.{var_name}Data.AsSpan());\n'
                 result += f'            offset += msg.{var_name}Length;\n'
             else:
                 # Fixed field
@@ -977,7 +990,7 @@ class MessageCSharpGen():
                 elif type_name == "string" and f.size_option is not None:
                     # Fixed string - copy into byte array
                     result += f'            msg.{var_name} = new byte[{f.size}];\n'
-                    result += f'            Array.Copy(data, offset, msg.{var_name}, 0, {f.size});\n'
+                    result += f'            data.AsSpan(offset, {f.size}).CopyTo(msg.{var_name}.AsSpan());\n'
                     result += f'            offset += {f.size};\n'
                 elif f.is_enum:
                     type_pkg = f.type_package if f.type_package else f.package

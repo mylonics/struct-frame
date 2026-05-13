@@ -1630,30 +1630,40 @@ class TestRunner:
             else:
                 print("  Skipping JavaScript test_sdk (script not found)")
 
-        # ---- C#: test_sdk_subscribe (section 6.3) ----
+        # ---- C#: SDK test suites (subscribe + Magnum-review additions) ----
         csharp_lang = self.languages.get("csharp")
         if csharp_lang and self.results["compilation"].get("csharp", False):
             build_dir = self.project_root / csharp_lang.build_dir
             test_exe = build_dir / "StructFrameTests.exe"
             if not test_exe.exists():
                 test_exe = build_dir / "StructFrameTests.dll"
-                cmd = f'dotnet "{test_exe}" --runner test_sdk_subscribe'
+                cmd_prefix = f'dotnet "{test_exe}"'
             else:
-                cmd = f'"{test_exe}" --runner test_sdk_subscribe'
+                cmd_prefix = f'"{test_exe}"'
 
             if test_exe.exists():
-                success, stdout, _ = self.run_cmd(cmd, timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  C# test_sdk_subscribe: {label}")
-                results["csharp:sdk_subscribe"] = success
-                if not success:
-                    self.add_failure("sdk", "C#", None, "test_sdk_subscribe failed")
-                    all_success = False
+                csharp_sdk_runners = [
+                    ("test_sdk_subscribe", "C# test_sdk_subscribe"),
+                    ("test_sdk_strict_ordering", "C# test_sdk_strict_ordering"),
+                    ("test_sdk_lifecycle", "C# test_sdk_lifecycle"),
+                    ("test_sdk_client_wrapper", "C# test_sdk_client_wrapper"),
+                    ("test_sdk_profiles", "C# test_sdk_profiles"),
+                    ("test_base_transport", "C# test_base_transport"),
+                ]
+                for runner_arg, label_str in csharp_sdk_runners:
+                    cmd = f'{cmd_prefix} --runner {runner_arg}'
+                    success, stdout, _ = self.run_cmd(cmd, timeout=60)
+                    if stdout:
+                        for line in stdout.splitlines():
+                            print(f"  {line}")
+                    label = Colors.pass_text() if success else Colors.fail_text()
+                    print(f"\n  {label_str}: {label}")
+                    results[f"csharp:{runner_arg}"] = success
+                    if not success:
+                        self.add_failure("sdk", "C#", None, f"{runner_arg} failed")
+                        all_success = False
             else:
-                print("  Skipping C# test_sdk_subscribe (binary not found)")
+                print("  Skipping C# SDK tests (binary not found)")
 
         # ---- Rust: test_streaming + test_sdk_subscribe (sections 6.2, 6.3) ----
         rust_lang = self.languages.get("rust")

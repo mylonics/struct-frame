@@ -23,54 +23,7 @@ using StructFrame.Profiles;
 using StructFrame.Sdk;
 using StructFrame.SerializationTest;
 
-// ============================================================================
-// Mock Transport
-// ============================================================================
-
-/// <summary>
-/// A minimal ITransport implementation that allows test code to inject data
-/// directly by raising DataReceived, and records all outgoing Send calls.
-/// </summary>
-class MockTransport : ITransport
-{
-    public bool IsConnected { get; private set; }
-
-    public event EventHandler<byte[]>? DataReceived;
-    public event EventHandler<Exception>? ErrorOccurred;
-    public event EventHandler? ConnectionClosed;
-
-    public List<byte[]> SentData { get; } = new();
-
-    public Task ConnectAsync()
-    {
-        IsConnected = true;
-        return Task.CompletedTask;
-    }
-
-    public Task DisconnectAsync()
-    {
-        IsConnected = false;
-        ConnectionClosed?.Invoke(this, EventArgs.Empty);
-        return Task.CompletedTask;
-    }
-
-    public Task SendAsync(byte[] data)
-    {
-        SentData.Add((byte[])data.Clone());
-        return Task.CompletedTask;
-    }
-
-    public Task SendAsync(ReadOnlyMemory<byte> data)
-    {
-        SentData.Add(data.ToArray());
-        return Task.CompletedTask;
-    }
-
-    /// <summary>Simulates arriving data (e.g., received over the network).</summary>
-    public void InjectData(byte[] data) => DataReceived?.Invoke(this, data);
-
-    public void InjectError(Exception ex) => ErrorOccurred?.Invoke(this, ex);
-}
+// MockTransport is defined in MockTransport.cs (shared across test files).
 
 // ============================================================================
 // Helpers
@@ -91,8 +44,8 @@ static class SdkTestHelpers
         return frame;
     }
 
-    /// <summary>Creates a StructFrameSdkConfig backed by the given mock transport.</summary>
-    public static StructFrameSdkConfig MakeConfig(MockTransport transport)
+    /// <summary>Creates a StructFrameSdkConfig backed by the given transport.</summary>
+    public static StructFrameSdkConfig MakeConfig(ITransport transport)
         => new StructFrameSdkConfig(
                transport,
                MessageDefinitions.GetMessageInfo,

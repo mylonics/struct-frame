@@ -21,6 +21,8 @@ from struct_frame.ts_js_base import (
     WRITE_METHODS,
     READ_ARRAY_METHODS,
     WRITE_ARRAY_METHODS,
+    BUFFER_READ_METHODS,
+    BUFFER_WRITE_METHODS,
     calculate_field_layout,
     FieldInfo,
 )
@@ -267,6 +269,10 @@ class MessageJsClassGen():
         if msg.is_envelope:
             result += MessageJsClassGen._generate_envelope_methods(msg, package_msg_name, package_name, packages)
         
+        # toObject() for efficient repeated field reads
+        if fields:
+            result += MessageJsClassGen._generate_to_object_method(fields)
+
         # Static getSize method
         result += f'  static getSize() {{\n'
         result += f'    return {total_size};\n'
@@ -616,18 +622,65 @@ class MessageJsClassGen():
         if field_info.is_enum:
             field_type = "uint8"
         
-        read_method = READ_METHODS.get(field_type, "_readUInt8")
-        write_method = WRITE_METHODS.get(field_type, "_writeUInt8")
-        
-        result = f'  get {name}() {{\n'
-        result += f'    return this.{read_method}({offset});\n'
-        result += f'  }}\n'
-        result += f'  set {name}(value) {{\n'
-        result += f'    this.{write_method}({offset}, value);\n'
-        result += f'  }}\n\n'
+        # Boolean needs special transforms (readUInt8 + !== 0, writeUInt8 + ternary)
+        if field_type == "bool":
+            result = f'  get {name}() {{\n'
+            result += f'    return this._buffer.readUInt8({offset}) !== 0;\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value) {{\n'
+            result += f'    this._buffer.writeUInt8(value ? 1 : 0, {offset});\n'
+            result += f'  }}\n\n'
+        else:
+            # Inline the Buffer method call directly — eliminates the MessageBase
+            # wrapper hop on the hot read path (getter → Buffer, not getter → wrapper → Buffer).
+            # Note: Buffer.readXxx(offset) but Buffer.writeXxx(value, offset) — different arg order.
+            buf_read = BUFFER_READ_METHODS.get(field_type, "readUInt8")
+            buf_write = BUFFER_WRITE_METHODS.get(field_type, "writeUInt8")
+            result = f'  get {name}() {{\n'
+            result += f'    return this._buffer.{buf_read}({offset});\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value) {{\n'
+            result += f'    this._buffer.{buf_write}(value, {offset});\n'
+            result += f'  }}\n\n'
         
         return result
-    
+
+    @staticmethod
+    def _generate_to_object_method(fields):
+        """Generate a toObject() method that decodes all fields into a plain POJO.
+
+        Scalar primitive reads are inlined directly to this._buffer.readXxx(offset)
+        to eliminate the getter-to-wrapper call chain on the hot read path.
+        String and array fields delegate to their getters.
+        """
+        result = '\n  /**\n'
+        result += '   * Decode all fields into a plain object for efficient repeated reads.\n'
+        result += '   * Call this once at parse/store time, then read from the returned POJO\n'
+        result += '   * in render loops — plain property reads hit V8 inline caches directly.\n'
+        result += '   * Scalar reads are inlined (no getter or wrapper call overhead).\n'
+        result += '   * @returns {Object} Plain object with all field values decoded\n'
+        result += '   */\n'
+        result += '  toObject() {\n'
+        result += '    return {\n'
+        for field_info in fields:
+            name = field_info.name
+            field_type = field_info.field_type
+            offset = field_info.offset
+            if field_info.is_array or field_info.is_nested:
+                result += f'      {name}: this.{name},\n'
+            elif field_type == "string":
+                size = field_info.element_size or field_info.size
+                result += f'      {name}: this._readString({offset}, {size}),\n'
+            elif field_type == "bool":
+                result += f'      {name}: this._buffer.readUInt8({offset}) !== 0,\n'
+            else:
+                actual_type = "uint8" if field_info.is_enum else field_type
+                buf_read = BUFFER_READ_METHODS.get(actual_type, "readUInt8")
+                result += f'      {name}: this._buffer.{buf_read}({offset}),\n'
+        result += '    };\n'
+        result += '  }\n'
+        return result
+
     @staticmethod
     def _generate_string_accessors(field_info):
         """Generate accessors for string types."""
