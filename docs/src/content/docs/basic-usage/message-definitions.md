@@ -475,6 +475,123 @@ message MultiUnionMessage {
 
 Each `oneof` is independent and contributes its own union size to the message.
 
+## Variable Oneofs
+
+When a parent message has `option variable = true;`, any `oneof` with a discriminator is serialized in **trimmed** mode by default: only the active variant's bytes are transmitted. For forward-compatible protocols, the oneof can additionally be marked `option variable = true;` to include a length prefix.
+
+> **Requirement:** The parent message must have `option variable = true;` for either encoding mode to take effect.
+
+### Trimmed Mode (Default for Variable Messages)
+
+A discriminated `oneof` inside a variable message transmits only the active variant's bytes. The receiver derives the size from the discriminator value.
+
+**Wire format:**
+```
+[discriminator: 1–2 bytes] [variant_bytes: active variant size]
+```
+
+```proto
+message SensorCommand {
+  option msgid = 30;
+  option variable = true;
+
+  uint8 header = 1;
+
+  oneof data {
+    option discriminator = "field_order";
+    // No 'option variable = true' — trimmed mode (default)
+    SmallPayload small = 1;   // 3 bytes on the wire when active
+    LargePayload large = 2;   // 32 bytes on the wire when active
+  }
+}
+```
+
+### Variable Mode (Length-Prefixed)
+
+Add `option variable = true;` to the oneof for a fully forward-compatible format. A `uint16 LE` length field is inserted before the variant bytes, allowing receivers to skip unknown variants without error.
+
+**Wire format:**
+```
+[discriminator: 1–2 bytes] [payload_length: uint16 LE] [variant_bytes: payload_length bytes]
+```
+
+```proto
+message CommandMessage {
+  option msgid = 20;
+  option variable = true;
+
+  uint8 header = 1;
+
+  oneof data {
+    option discriminator = "field_order";
+    option variable = true;   // Add length prefix for forward compatibility
+    SmallPayload small = 1;   // 3 bytes on the wire
+    LargePayload large = 2;   // 32 bytes on the wire
+  }
+}
+```
+
+### Oneof Size Controls
+
+#### `option max_size = N;` — Reserve Space for Future Variants
+
+**Valid for non-variable (trimmed) oneofs only.**
+
+Increases the in-memory union buffer to at least `N` bytes without changing the wire size of existing variants. Use this when you plan to add larger variants in future schema versions.
+
+```proto
+oneof data {
+  option discriminator = "field_order";
+  // Trimmed mode — no 'option variable = true'
+  option max_size = 64;   // Reserve 64 bytes in struct; future variants up to 64 bytes are safe
+  SmallPayload small = 1; // Still 3 bytes on the wire
+}
+```
+
+`max_size` is not applicable to variable oneofs (`option variable = true`), because variable encoding transmits each variant at its own size regardless of the in-memory union buffer.
+
+#### `option min_size = N;` — Guarantee a Minimum Wire Payload Size
+
+**Valid when the parent message is `variable = true`, and either:**
+- **the oneof has `option variable = true;`**, or
+- **the oneof is the only variable-length field in the message** (trimmed oneof as the trailing variable-size region).
+
+Pads the serialized payload to at least `N` bytes. Use this when a receiver compiled against an older schema expects a fixed-length payload.
+
+**On a variable oneof** — padding is inside the length prefix; the receiver reads `payload_length` and ignores trailing zeros:
+```proto
+oneof data {
+  option discriminator = "field_order";
+  option variable = true;
+  option min_size = 8;    // Length prefix will report at least 8
+  SmallPayload small = 1; // 3 bytes → wire sends [disc][0x08 0x00][3 bytes + 5 zero bytes]
+  LargePayload large = 2; // 8 bytes → wire sends [disc][0x08 0x00][8 bytes]
+}
+```
+
+**On a trimmed oneof** — padding extends the trimmed payload; the receiver derives the length from the known variant size:
+```proto
+oneof data {
+  option discriminator = "field_order";
+  // Trimmed mode
+  option min_size = 8;    // Trimmed wire payload is always at least 8 bytes
+  SmallPayload small = 1; // 3 bytes → padded to 8 bytes on the wire
+  LargePayload large = 2; // 8 bytes → transmitted as-is
+}
+```
+
+**Rules:**
+- `min_size` must be ≤ the oneof's buffer size (`max(variant_sizes)`, or `max_size` if set). Use `max_size` to increase the buffer first if needed.
+- Padding bytes are always zero.
+
+### Option Summary
+
+| Option | Applies to | Effect |
+|--------|-----------|--------|
+| `variable = true` | Any discriminated oneof in a variable message | Adds `uint16 LE` length prefix before variant bytes |
+| `max_size = N` | Non-variable (trimmed) oneofs only | Sets minimum in-memory union buffer size |
+| `min_size = N` | Variable oneofs, or trimmed oneof as the sole variable-length field in a variable message | Pads wire payload to at least N bytes |
+
 ## Envelope Messages (Oneof with is_envelope)
 
 Envelope messages are container messages that wrap other messages for unified handling. They use the `is_envelope` option along with a `oneof` field to contain different message types.

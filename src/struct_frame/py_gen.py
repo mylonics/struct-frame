@@ -831,12 +831,26 @@ class MessagePyGen():
             else:
                 result += f'        size += {f.size}  # {f.name}\n'
         
-        # Oneofs: discriminator (1 or 2 bytes) + full union payload
+        # Oneofs: discriminator + union payload (or length-prefix + variant size for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
                 result += f'        size += {disc_bytes}  # {oneof_name} discriminator\n'
-            result += f'        size += {oneof.size}  # {oneof_name} union payload\n'
+            if oneof.variable:
+                result += f'        size += 2  # {oneof_name} variable-length prefix\n'
+                vsize_by_which = ', '.join(f'"{field_name}": {sz}' for _, field_name, sz in oneof.variant_info)
+                if oneof.min_size_override:
+                    result += f'        size += max({{{vsize_by_which}}}.get(self.{oneof_name}_which, 0), {oneof.min_size_override})  # {oneof_name} variant\n'
+                else:
+                    result += f'        size += {{{vsize_by_which}}}.get(self.{oneof_name}_which, 0)  # {oneof_name} variant\n'
+            elif oneof.discriminator_type is not None:
+                vsize_by_which = ', '.join(f'"{fn}": {sz}' for _, fn, sz in oneof.variant_info)
+                if oneof.min_size_override:
+                    result += f'        size += max({{{vsize_by_which}}}.get(self.{oneof_name}_which, 0), {oneof.min_size_override})  # {oneof_name} trimmed union\n'
+                else:
+                    result += f'        size += {{{vsize_by_which}}}.get(self.{oneof_name}_which, 0)  # {oneof_name} trimmed union\n'
+            else:
+                result += f'        size += {oneof.size}  # {oneof_name} union payload\n'
         
         result += '        return size\n'
         
@@ -921,7 +935,7 @@ class MessagePyGen():
                 result += f'        # {f.name}: nested message\n'
                 result += f'        data += self.{f.name}.serialize()\n'
         
-        # Oneofs: discriminator (1 or 2 bytes) + full union payload (padded to oneof.size)
+        # Oneofs: write discriminator + union payload (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
@@ -938,12 +952,33 @@ class MessagePyGen():
                     result += f'            data += struct.pack("<B", _field_order_map[self.{oneof_name}_which])\n'
                     result += f'        else:\n'
                     result += f'            data += struct.pack("<B", 0)\n'
-            result += f'        # Oneof {oneof_name} union payload (full size)\n'
-            result += f'        union_data = b""\n'
-            result += f'        if self.{oneof_name}_which is not None:\n'
-            result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
-            result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
-            result += f'        data += union_data\n'
+            if oneof.variable:
+                result += f'        # Oneof {oneof_name} variable-length union payload\n'
+                result += f'        _variant_{oneof_name} = b""\n'
+                result += f'        if self.{oneof_name}_which is not None:\n'
+                result += f'            _variant_{oneof_name} = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
+                if oneof.min_size_override:
+                    result += f'        if len(_variant_{oneof_name}) < {oneof.min_size_override}:\n'
+                    result += f'            _variant_{oneof_name} = _variant_{oneof_name}.ljust({oneof.min_size_override}, b"\\x00")\n'
+                result += f'        data += struct.pack("<H", len(_variant_{oneof_name}))\n'
+                result += f'        data += _variant_{oneof_name}\n'
+            elif oneof.discriminator_type is not None:
+                _trim_label = f'trimmed union payload (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union payload'
+                result += f'        # Oneof {oneof_name} {_trim_label}\n'
+                result += f'        union_data = b""\n'
+                result += f'        if self.{oneof_name}_which is not None:\n'
+                result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
+                if oneof.min_size_override:
+                    result += f'        if len(union_data) < {oneof.min_size_override}:\n'
+                    result += f'            union_data = union_data.ljust({oneof.min_size_override}, b"\\x00")\n'
+                result += f'        data += union_data\n'
+            else:
+                result += f'        # Oneof {oneof_name} union payload (full size)\n'
+                result += f'        union_data = b""\n'
+                result += f'        if self.{oneof_name}_which is not None:\n'
+                result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
+                result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
+                result += f'        data += union_data\n'
         
         result += '        return data\n'
         
@@ -1057,7 +1092,7 @@ class MessagePyGen():
                 result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                 result += f'        offset += {type_name}.MAX_SIZE\n'
         
-        # Oneofs: discriminator (1 or 2 bytes) + full union payload
+        # Oneofs: read discriminator + union payload (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
@@ -1070,16 +1105,44 @@ class MessagePyGen():
                     result += f'        offset += 1\n'
             else:
                 result += f'        disc_val = 0\n'
-            result += f'        # Oneof {oneof_name} union payload ({oneof.size} bytes)\n'
-            # Build dispatch: map discriminator value -> field name
-            field_order_map_inv = {idx + 1: field_name for idx, field_name in enumerate(oneof.field_order)}
-            for disc_idx, field_name in field_order_map_inv.items():
-                field = oneof.fields[field_name]
-                type_name = field.field_type
-                result += f'        if disc_val == {disc_idx}:\n'
-                result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
-                result += f'            fields["{oneof_name}"] = {{"{field_name}": {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])}}\n'
-            result += f'        offset += {oneof.size}\n'
+            if oneof.variable:
+                result += f'        # Oneof {oneof_name} variable-length union payload\n'
+                result += f'        if offset + 2 > len(data): return None\n'
+                result += f'        _{oneof_name}_len = struct.unpack_from("<H", data, offset)[0]\n'
+                result += f'        offset += 2\n'
+                result += f'        if offset + _{oneof_name}_len > len(data): return None\n'
+                for disc_val_const, field_name, field_size in oneof.variant_info:
+                    type_name = oneof.fields[field_name].field_type
+                    result += f'        if disc_val == {disc_val_const} and _{oneof_name}_len >= {field_size}:\n'
+                    result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
+                    result += f'            fields["{oneof_name}"] = {{"{field_name}": {type_name}._deserialize_fixed(data[offset:offset+{field_size}])}}\n'
+                result += f'        offset += _{oneof_name}_len  # Always skip full payload\n'
+            elif oneof.discriminator_type is not None:
+                _min_sz = oneof.min_size_override or 0
+                _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
+                result += f'        # Oneof {oneof_name} {_trim_label}\n'
+                result += f'        _{oneof_name}_rlen = {_min_sz}\n'
+                for disc_val_const, field_name, field_size in oneof.variant_info:
+                    result += f'        if disc_val == {disc_val_const}: _{oneof_name}_rlen = max({field_size}, {_min_sz})\n'
+                for disc_val_const, field_name, field_size in oneof.variant_info:
+                    type_name = oneof.fields[field_name].field_type
+                    result += f'        if disc_val == {disc_val_const}:\n'
+                    result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
+                    result += f'            _slice = data[offset:offset+{type_name}.MAX_SIZE]\n'
+                    result += f'            if len(_slice) < {type_name}.MAX_SIZE: _slice = _slice.ljust({type_name}.MAX_SIZE, b"\\x00")\n'
+                    result += f'            fields["{oneof_name}"] = {{"{field_name}": {type_name}._deserialize_fixed(_slice)}}\n'
+                result += f'        offset += _{oneof_name}_rlen\n'
+            else:
+                result += f'        # Oneof {oneof_name} union payload ({oneof.size} bytes)\n'
+                # Build dispatch: map discriminator value -> field name
+                field_order_map_inv = {idx + 1: field_name for idx, field_name in enumerate(oneof.field_order)}
+                for disc_idx, field_name in field_order_map_inv.items():
+                    field = oneof.fields[field_name]
+                    type_name = field.field_type
+                    result += f'        if disc_val == {disc_idx}:\n'
+                    result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
+                    result += f'            fields["{oneof_name}"] = {{"{field_name}": {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])}}\n'
+                result += f'        offset += {oneof.size}\n'
         
         result += '        return cls(**fields)\n'
         

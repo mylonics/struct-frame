@@ -406,3 +406,58 @@ message VariableEnvelopeMsgIdMessage {
     SerializationTestMessage test_msg = 2;
   }
 }
+
+// ============================================================================
+// Variable oneof tests (msgid: 223-224)
+// Tests for option variable = true on a oneof (different from variable message with fixed oneof).
+// Wire format: [disc][uint16 length][variant_bytes]
+// ============================================================================
+
+// Variable oneof test message: oneof with variable = true
+// Each variant writes only its own bytes (not padded to union size).
+message VariableOneofMessage {
+  option msgid = 223;
+  option variable = true;
+
+  uint8 header = 1;
+
+  oneof data {
+    option discriminator = "field_order";
+    option variable = true;
+    VarEnvPayloadA small_payload = 1;
+    VarEnvPayloadB large_payload = 2;
+  }
+}
+
+// Max-size oneof test message: oneof with max_size override
+// oneof.size is extended to 32 bytes so future larger variants fit.
+message MaxSizeOneofMessage {
+  option msgid = 224;
+  option variable = true;
+
+  uint8 header = 1;
+
+  oneof data {
+    option discriminator = "field_order";
+    option max_size = 32;
+    VarEnvPayloadA small_payload = 1;
+  }
+}
+
+// Min-size oneof test message: oneof with min_size override
+// VarEnvPayloadA is 3 bytes; min_size = 8 pads it to 8 on the wire.
+// VarEnvPayloadB is 8 bytes; no padding needed (already at min_size).
+message MinSizeOneofMessage {
+  option msgid = 225;
+  option variable = true;
+
+  uint8 header = 1;
+
+  oneof data {
+    option discriminator = "field_order";
+    option variable = true;
+    option min_size = 8;
+    VarEnvPayloadA small_payload = 1;
+    VarEnvPayloadB large_payload = 2;
+  }
+}
