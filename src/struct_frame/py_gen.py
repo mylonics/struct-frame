@@ -831,6 +831,13 @@ class MessagePyGen():
             else:
                 result += f'        size += {f.size}  # {f.name}\n'
         
+        # Oneofs: discriminator (1 or 2 bytes) + full union payload
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'        size += {disc_bytes}  # {oneof_name} discriminator\n'
+            result += f'        size += {oneof.size}  # {oneof_name} union payload\n'
+        
         result += '        return size\n'
         
         # Generate _serialize_variable method (internal method)
@@ -913,6 +920,30 @@ class MessagePyGen():
                 # Nested message
                 result += f'        # {f.name}: nested message\n'
                 result += f'        data += self.{f.name}.serialize()\n'
+        
+        # Oneofs: discriminator (1 or 2 bytes) + full union payload (padded to oneof.size)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'        # Oneof {oneof_name} discriminator (uint16 - message ID)\n'
+                    result += f'        if self.{oneof_name}_which is not None:\n'
+                    result += f'            data += struct.pack("<H", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
+                    result += f'        else:\n'
+                    result += f'            data += struct.pack("<H", 0)\n'
+                else:  # field_order
+                    result += f'        # Oneof {oneof_name} discriminator (uint8 - field order, 1-based)\n'
+                    field_order_map = {field_name: idx + 1 for idx, field_name in enumerate(oneof.field_order)}
+                    result += f'        _field_order_map = {field_order_map}\n'
+                    result += f'        if self.{oneof_name}_which is not None:\n'
+                    result += f'            data += struct.pack("<B", _field_order_map[self.{oneof_name}_which])\n'
+                    result += f'        else:\n'
+                    result += f'            data += struct.pack("<B", 0)\n'
+            result += f'        # Oneof {oneof_name} union payload (full size)\n'
+            result += f'        union_data = b""\n'
+            result += f'        if self.{oneof_name}_which is not None:\n'
+            result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
+            result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
+            result += f'        data += union_data\n'
         
         result += '        return data\n'
         
@@ -1025,6 +1056,30 @@ class MessagePyGen():
                 result += f'        # {f.name}: nested message\n'
                 result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                 result += f'        offset += {type_name}.MAX_SIZE\n'
+        
+        # Oneofs: discriminator (1 or 2 bytes) + full union payload
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'        # Oneof {oneof_name} discriminator (uint16 - message ID)\n'
+                    result += f'        disc_val = struct.unpack_from("<H", data, offset)[0]\n'
+                    result += f'        offset += 2\n'
+                else:  # field_order
+                    result += f'        # Oneof {oneof_name} discriminator (uint8 - field order)\n'
+                    result += f'        disc_val = struct.unpack_from("<B", data, offset)[0]\n'
+                    result += f'        offset += 1\n'
+            else:
+                result += f'        disc_val = 0\n'
+            result += f'        # Oneof {oneof_name} union payload ({oneof.size} bytes)\n'
+            # Build dispatch: map discriminator value -> field name
+            field_order_map_inv = {idx + 1: field_name for idx, field_name in enumerate(oneof.field_order)}
+            for disc_idx, field_name in field_order_map_inv.items():
+                field = oneof.fields[field_name]
+                type_name = field.field_type
+                result += f'        if disc_val == {disc_idx}:\n'
+                result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
+                result += f'            fields["{oneof_name}"] = {{"{field_name}": {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])}}\n'
+            result += f'        offset += {oneof.size}\n'
         
         result += '        return cls(**fields)\n'
         

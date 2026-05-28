@@ -823,6 +823,13 @@ class MessageCSharpGen():
             else:
                 result += f'            size += {f.size}; // {f.name}\n'
         
+        # Oneofs: discriminator (1 or 2 bytes) + full union payload
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'            size += {disc_bytes}; // {oneof_name} discriminator\n'
+            result += f'            size += {oneof.size}; // {oneof_name} union payload\n'
+        
         result += '            return size;\n'
         result += '        }\n'
         
@@ -904,6 +911,31 @@ class MessageCSharpGen():
                     # Nested struct
                     result += f'            if ({var_name} != null) {{ var nestedBytes = {var_name}.Serialize(); Array.Copy(nestedBytes, 0, buffer, offset, nestedBytes.Length); }}\n'
                     result += f'            offset += {f.size};\n'
+        
+        # Oneofs: write discriminator then union payload
+        for oneof_name, oneof in msg.oneofs.items():
+            oneof_pascal = pascal_case(oneof_name)
+            if oneof.auto_discriminator:
+                result += f'            // Oneof {oneof_name} discriminator\n'
+                if oneof.discriminator_type == "msgid":
+                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), {oneof_pascal}Discriminator);\n'
+                    result += f'            offset += 2;\n'
+                else:  # field_order
+                    result += f'            buffer[offset++] = (byte){oneof_pascal}Discriminator;\n'
+            result += f'            // Oneof {oneof_name} union payload\n'
+            first = True
+            for field_name, field in oneof.fields.items():
+                field_var = pascal_case(field_name)
+                if first:
+                    result += f'            if ({field_var} != null)\n'
+                    first = False
+                else:
+                    result += f'            else if ({field_var} != null)\n'
+                result += '            {\n'
+                result += f'                var {field_name}Bytes = {field_var}.Serialize();\n'
+                result += f'                Array.Copy({field_name}Bytes, 0, buffer, offset, {field_name}Bytes.Length);\n'
+                result += '            }\n'
+            result += f'            offset += {oneof.size};\n'
         
         result += '            return buffer;\n'
         result += '        }\n'
@@ -1000,6 +1032,52 @@ class MessageCSharpGen():
                     type_pkg = f.type_package if f.type_package else f.package
                     nested_type = type_name
                     result += f'            msg.{var_name} = {nested_type}.Deserialize(data[offset..(offset + {nested_type}.MaxSize)]); offset += {nested_type}.MaxSize;\n'
+        
+        # Oneofs: read discriminator then union payload
+        for oneof_name, oneof in msg.oneofs.items():
+            oneof_pascal = pascal_case(oneof_name)
+            if oneof.auto_discriminator:
+                result += f'            // Oneof {oneof_name} discriminator\n'
+                if oneof.discriminator_type == "msgid":
+                    result += f'            msg.{oneof_pascal}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset, 2));\n'
+                    result += f'            var {oneof_name}_discriminator = msg.{oneof_pascal}Discriminator;\n'
+                    result += f'            offset += 2;\n'
+                else:  # field_order
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
+                    result += f'            msg.{oneof_pascal}Discriminator = ({enum_name})data[offset++];\n'
+                    result += f'            var {oneof_name}_discriminator = msg.{oneof_pascal}Discriminator;\n'
+            result += f'            // Oneof {oneof_name} union payload ({oneof.size} bytes)\n'
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    first = True
+                    for field_name, field in oneof.fields.items():
+                        type_name = field.field_type
+                        field_var = pascal_case(field_name)
+                        if first:
+                            result += f'            if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
+                            first = False
+                        else:
+                            result += f'            else if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
+                        result += '            {\n'
+                        result += f'                msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {type_name}.MaxSize)]);\n'
+                        result += '            }\n'
+                else:  # field_order
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
+                    first = True
+                    for idx, field_name in enumerate(oneof.field_order):
+                        field = oneof.fields[field_name]
+                        type_name = field.field_type
+                        enum_entry = pascal_case(field_name)
+                        field_var = pascal_case(field_name)
+                        if first:
+                            result += f'            if ({oneof_name}_discriminator == {enum_name}.{enum_entry})\n'
+                            first = False
+                        else:
+                            result += f'            else if ({oneof_name}_discriminator == {enum_name}.{enum_entry})\n'
+                        result += '            {\n'
+                        result += f'                msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {type_name}.MaxSize)]);\n'
+                        result += '            }\n'
+            result += f'            offset += {oneof.size};\n'
         
         result += '            return msg;\n'
         result += '        }\n'

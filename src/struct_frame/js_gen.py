@@ -460,6 +460,13 @@ class MessageJsClassGen():
             else:
                 result += f'    size += {field.size}; // {name}\n'
         
+        # Oneofs: discriminator (1 or 2 bytes) + full union payload (always included)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'    size += {disc_bytes}; // {oneof_name} discriminator\n'
+            result += f'    size += {oneof.size}; // {oneof_name} union payload\n'
+        
         result += f'    return size;\n'
         result += f'  }}\n'
         
@@ -507,6 +514,19 @@ class MessageJsClassGen():
                 result += f'    offset += {field.size};\n'
             msg_offset += field.size
         
+        # Oneofs: copy discriminator bytes + full union payload from internal buffer
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'    // {oneof_name}: discriminator ({disc_bytes} bytes)\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset + disc_bytes});\n'
+                result += f'    offset += {disc_bytes};\n'
+                msg_offset += disc_bytes
+            result += f'    // {oneof_name}: union payload ({oneof.size} bytes)\n'
+            result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset + oneof.size});\n'
+            result += f'    offset += {oneof.size};\n'
+            msg_offset += oneof.size
+        
         result += f'    return buffer;\n'
         result += f'  }}\n'
         
@@ -549,6 +569,19 @@ class MessageJsClassGen():
                 result += f'    buffer.copy(msg._buffer, {msg_offset}, offset, offset + {field.size});\n'
                 result += f'    offset += {field.size};\n'
             msg_offset += field.size
+        
+        # Oneofs: read discriminator bytes + full union payload into internal buffer
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'    // {oneof_name}: discriminator ({disc_bytes} bytes)\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset}, offset, offset + {disc_bytes});\n'
+                result += f'    offset += {disc_bytes};\n'
+                msg_offset += disc_bytes
+            result += f'    // {oneof_name}: union payload ({oneof.size} bytes)\n'
+            result += f'    buffer.copy(msg._buffer, {msg_offset}, offset, offset + {oneof.size});\n'
+            result += f'    offset += {oneof.size};\n'
+            msg_offset += oneof.size
         
         result += f'    return msg;\n'
         result += f'  }}\n'

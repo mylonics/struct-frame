@@ -20,6 +20,11 @@ from struct_frame.generated.serialization_test import (
     NestedVariableMessage,
     VariableMultipleArrays,
     VariableMixedFields,
+    VarEnvPayloadA,
+    VarEnvPayloadB,
+    VariableEnvelopeMessage,
+    BasicTypesMessage,
+    VariableEnvelopeMsgIdMessage,
     get_message_info,
 )
 
@@ -30,10 +35,12 @@ MessageType = Union[
     NestedVariableMessage,
     VariableMultipleArrays,
     VariableMixedFields,
+    VariableEnvelopeMessage,
+    VariableEnvelopeMsgIdMessage,
 ]
 
 # Message count
-MESSAGE_COUNT = 5
+MESSAGE_COUNT = 7
 
 
 # ============================================================================
@@ -93,6 +100,23 @@ def create_mixed_fields() -> VariableMixedFields:
     )
 
 
+def create_variable_envelope_field_order() -> VariableEnvelopeMessage:
+    """Create variable envelope message with field_order oneof discriminator (payload_a active)."""
+    payload = VarEnvPayloadA(code=0x42, value=0x1234)
+    return VariableEnvelopeMessage.wrap(payload, 7)
+
+
+def create_variable_envelope_msgid() -> VariableEnvelopeMsgIdMessage:
+    """Create variable envelope message with msgid oneof discriminator (basic active)."""
+    inner = BasicTypesMessage(
+        flag=True,
+        small_uint=0xAB,
+        medium_uint=0xCDEF,
+        regular_uint=0x12345678,
+    )
+    return VariableEnvelopeMsgIdMessage.wrap(inner, 3)
+
+
 # ============================================================================
 # get_message(index) - unified interface matching C++ MessageProvider pattern
 # ============================================================================
@@ -107,8 +131,12 @@ def get_message(index: int) -> MessageType:
         return create_nested_variable()
     elif index == 3:
         return create_multiple_arrays()
-    else:  # index == 4
+    elif index == 4:
         return create_mixed_fields()
+    elif index == 5:
+        return create_variable_envelope_field_order()
+    else:  # index == 6
+        return create_variable_envelope_msgid()
 
 
 # ============================================================================

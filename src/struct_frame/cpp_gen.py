@@ -451,6 +451,13 @@ class MessageCppGen():
             else:
                 result += f'        size += {field.size};  // {var_name}\n'
         
+        # Oneofs: discriminator (1 or 2 bytes) + full union payload
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'        size += {disc_bytes};  // {oneof_name} discriminator\n'
+            result += f'        size += {oneof.size};  // {oneof_name} union payload\n'
+        
         result += f'        return size;\n'
         result += f'    }}\n'
         
@@ -481,6 +488,18 @@ class MessageCppGen():
             else:
                 result += f'        std::memcpy(buffer + offset, &{var_name}, {field.size});\n'
                 result += f'        offset += {field.size};\n'
+        
+        # Oneofs: write discriminator then full union bytes
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'        std::memcpy(buffer + offset, &{oneof_name}_discriminator, 2);\n'
+                    result += f'        offset += 2;\n'
+                else:  # field_order (uint8)
+                    result += f'        std::memcpy(buffer + offset, &{oneof_name}_discriminator, 1);\n'
+                    result += f'        offset += 1;\n'
+            result += f'        std::memcpy(buffer + offset, &{oneof_name}, {oneof.size});\n'
+            result += f'        offset += {oneof.size};\n'
         
         result += f'        return offset;\n'
         result += f'    }}\n'
@@ -521,6 +540,21 @@ class MessageCppGen():
                 result += f'        if (offset + {field.size} > buffer_size) return 0;\n'
                 result += f'        std::memcpy(&{var_name}, buffer + offset, {field.size});\n'
                 result += f'        offset += {field.size};\n'
+        
+        # Oneofs: read discriminator then full union bytes
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'        if (offset + 2 > buffer_size) return 0;\n'
+                    result += f'        std::memcpy(&{oneof_name}_discriminator, buffer + offset, 2);\n'
+                    result += f'        offset += 2;\n'
+                else:  # field_order (uint8)
+                    result += f'        if (offset + 1 > buffer_size) return 0;\n'
+                    result += f'        std::memcpy(&{oneof_name}_discriminator, buffer + offset, 1);\n'
+                    result += f'        offset += 1;\n'
+            result += f'        if (offset + {oneof.size} > buffer_size) return 0;\n'
+            result += f'        std::memcpy(&{oneof_name}, buffer + offset, {oneof.size});\n'
+            result += f'        offset += {oneof.size};\n'
         
         result += f'        return offset;\n'
         result += f'    }}\n'

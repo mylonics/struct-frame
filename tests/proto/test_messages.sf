@@ -353,3 +353,56 @@ message MultiOneofMessage {
     Message msg_payload = 2;
   }
 }
+
+// ============================================================================
+// Variable + Oneof Tests (msgid: 221-222)
+// These messages combine option variable = true with a oneof to cover the
+// code-generation bug where variable serializers skipped oneof fields entirely.
+// ============================================================================
+
+// Small fixed-size payload A (no msgid - used as oneof variant)
+message VarEnvPayloadA {
+  uint8 code = 1;
+  uint16 value = 2;
+}
+
+// Small fixed-size payload B (no msgid - used as oneof variant)
+message VarEnvPayloadB {
+  uint32 flags = 1;
+  float ratio = 2;
+}
+
+// Variable envelope with field_order discriminator (msgid: 221)
+// Combines variable = true + is_envelope = true + oneof (field_order)
+// This is the key regression test: discriminator + union must appear on the wire.
+message VariableEnvelopeMessage {
+  option msgid = 221;
+  option is_envelope = true;
+  option variable = true;
+
+  // Fixed header field (always present on the wire)
+  uint8 priority = 1;
+
+  // field_order oneof - discriminator must be serialized in variable format
+  oneof payload {
+    option discriminator = "field_order";
+    VarEnvPayloadA payload_a = 1;
+    VarEnvPayloadB payload_b = 2;
+  }
+}
+
+// Variable envelope with msgid discriminator (msgid: 222)
+// Uses msgs that have IDs so the generator picks msgid discriminator type.
+message VariableEnvelopeMsgIdMessage {
+  option msgid = 222;
+  option is_envelope = true;
+  option variable = true;
+
+  uint8 priority = 1;
+
+  // msgid oneof - uint16 discriminator must be serialized in variable format
+  oneof payload {
+    BasicTypesMessage basic = 1;
+    SerializationTestMessage test_msg = 2;
+  }
+}

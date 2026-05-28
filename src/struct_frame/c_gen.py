@@ -455,6 +455,13 @@ class MessageCGen():
                 # Fixed-size field
                 result += f'    size += {field.size};  // {var_name}\n'
         
+        # Oneofs: discriminator (1 or 2 bytes) + full union payload
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'    size += {disc_bytes};  // {oneof_name} discriminator\n'
+            result += f'    size += {oneof.size};  // {oneof_name} union payload\n'
+        
         result += f'    return size;\n'
         result += f'}}\n'
         
@@ -500,6 +507,21 @@ class MessageCGen():
                 result += f'    // {var_name}: fixed size ({field.size} bytes)\n'
                 result += f'    memcpy(buffer + offset, &msg->{var_name}, {field.size});\n'
                 result += f'    offset += {field.size};\n'
+        
+        # Oneofs: write discriminator then full union bytes
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'    // {oneof_name} discriminator (uint16)\n'
+                    result += f'    memcpy(buffer + offset, &msg->{oneof_name}_discriminator, 2);\n'
+                    result += f'    offset += 2;\n'
+                else:  # field_order (uint8)
+                    result += f'    // {oneof_name} discriminator (uint8)\n'
+                    result += f'    memcpy(buffer + offset, &msg->{oneof_name}_discriminator, 1);\n'
+                    result += f'    offset += 1;\n'
+            result += f'    // {oneof_name} union payload\n'
+            result += f'    memcpy(buffer + offset, &msg->{oneof_name}, {oneof.size});\n'
+            result += f'    offset += {oneof.size};\n'
         
         result += f'    return offset;\n'
         result += f'}}\n'
@@ -558,6 +580,24 @@ class MessageCGen():
                 result += f'    memcpy(&msg->{var_name}, buffer + offset, {field.size});\n'
                 result += f'    offset += {field.size};\n'
         
+        # Oneofs: read discriminator then full union bytes
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'    // {oneof_name} discriminator (uint16)\n'
+                    result += f'    if (offset + 2 > buffer_size) return 0;\n'
+                    result += f'    memcpy(&msg->{oneof_name}_discriminator, buffer + offset, 2);\n'
+                    result += f'    offset += 2;\n'
+                else:  # field_order (uint8)
+                    result += f'    // {oneof_name} discriminator (uint8)\n'
+                    result += f'    if (offset + 1 > buffer_size) return 0;\n'
+                    result += f'    memcpy(&msg->{oneof_name}_discriminator, buffer + offset, 1);\n'
+                    result += f'    offset += 1;\n'
+            result += f'    // {oneof_name} union payload\n'
+            result += f'    if (offset + {oneof.size} > buffer_size) return 0;\n'
+            result += f'    memcpy(&msg->{oneof_name}, buffer + offset, {oneof.size});\n'
+            result += f'    offset += {oneof.size};\n'
+        
         result += f'    return offset;\n'
         result += f'}}\n'
         
@@ -573,14 +613,19 @@ class MessageCGen():
         result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
         result += f' */\n'
         result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
-        result += f'    if (buffer_size == {defineName}_MAX_SIZE) {{\n'
-        result += f'        /* MAX_SIZE encoding (from minimal profiles or non-variable encoding) */\n'
-        result += f'        memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
-        result += f'        return {defineName}_MAX_SIZE;\n'
-        result += f'    }} else {{\n'
-        result += f'        /* Variable-length encoding */\n'
-        result += f'        return {structName}_deserialize_variable(buffer, buffer_size, msg);\n'
-        result += f'    }}\n'
+        if msg.oneofs:
+            # Structs with oneof discriminators: C enum fields are 4 bytes but wire is 1/2 bytes.
+            # Always use _deserialize_variable to avoid struct layout mismatch.
+            result += f'    return {structName}_deserialize_variable(buffer, buffer_size, msg);\n'
+        else:
+            result += f'    if (buffer_size == {defineName}_MAX_SIZE) {{\n'
+            result += f'        /* MAX_SIZE encoding (from minimal profiles or non-variable encoding) */\n'
+            result += f'        memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
+            result += f'        return {defineName}_MAX_SIZE;\n'
+            result += f'    }} else {{\n'
+            result += f'        /* Variable-length encoding */\n'
+            result += f'        return {structName}_deserialize_variable(buffer, buffer_size, msg);\n'
+            result += f'    }}\n'
         result += f'}}\n'
         
         # Also generate serialize() function for variable messages

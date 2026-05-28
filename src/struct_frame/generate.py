@@ -1182,6 +1182,12 @@ class Message:
                 else:
                     # Fixed-size fields use their full size
                     self.min_size += value.size
+            # Oneofs are always fully present on the wire (discriminator + full union size)
+            for key, oneof in self.oneofs.items():
+                if oneof.auto_discriminator:
+                    disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                    self.min_size += disc_bytes
+                self.min_size += oneof.size
         else:
             self.min_size = self.size
 
