@@ -105,6 +105,7 @@ export default defineConfig({
             },
             { label: 'CLI Reference', slug: 'reference/cli-reference' },
             { label: 'Testing', slug: 'reference/testing' },
+            { label: 'Conformance', slug: 'reference/conformance' },
             { label: 'Development', slug: 'reference/development' },
             {
               label: 'Documentation Coverage',
