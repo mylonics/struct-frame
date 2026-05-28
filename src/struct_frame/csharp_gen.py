@@ -823,6 +823,30 @@ class MessageCSharpGen():
             else:
                 result += f'            size += {f.size}; // {f.name}\n'
         
+        # Oneofs: discriminator + union payload (or length-prefix + variant size for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            oneof_pascal = pascal_case(oneof_name)
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'            size += {disc_bytes}; // {oneof_name} discriminator\n'
+            if oneof.variable:
+                result += f'            size += 2; // {oneof_name} variable-length prefix\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    field_var = pascal_case(field_name)
+                    effective_size = max(field_size, oneof.min_size_override) if oneof.min_size_override else field_size
+                    result += f'            if ((int){oneof_pascal}Discriminator == {disc_val}) size += {effective_size}; // {field_name}\n'
+            elif oneof.discriminator_type is not None:
+                result += f'            {{\n'
+                result += f'                int _{oneof_name}_tlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'                if ((int){oneof_pascal}Discriminator == {disc_val}) _{oneof_name}_tlen = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'                if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
+                result += f'                size += _{oneof_name}_tlen; // {oneof_name} trimmed union payload\n'
+                result += f'            }}\n'
+            else:
+                result += f'            size += {oneof.size}; // {oneof_name} union payload\n'
+        
         result += '            return size;\n'
         result += '        }\n'
         
@@ -904,6 +928,73 @@ class MessageCSharpGen():
                     # Nested struct
                     result += f'            if ({var_name} != null) {{ var nestedBytes = {var_name}.Serialize(); Array.Copy(nestedBytes, 0, buffer, offset, nestedBytes.Length); }}\n'
                     result += f'            offset += {f.size};\n'
+        
+        # Oneofs: write discriminator then union payload (or length-prefix + variant bytes for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            oneof_pascal = pascal_case(oneof_name)
+            if oneof.auto_discriminator:
+                result += f'            // Oneof {oneof_name} discriminator\n'
+                if oneof.discriminator_type == "msgid":
+                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), {oneof_pascal}Discriminator);\n'
+                    result += f'            offset += 2;\n'
+                else:  # field_order
+                    result += f'            buffer[offset++] = (byte){oneof_pascal}Discriminator;\n'
+            if oneof.variable:
+                result += f'            // Oneof {oneof_name} variable-length union payload\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    field_var = pascal_case(field_name)
+                    effective_size = max(field_size, oneof.min_size_override) if oneof.min_size_override else field_size
+                    result += f'            if ((int){oneof_pascal}Discriminator == {disc_val} && {field_var} != null)\n'
+                    result += f'            {{\n'
+                    result += f'                var {field_name}Bytes = {field_var}.Serialize();\n'
+                    result += f'                BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), (ushort){effective_size});\n'
+                    result += f'                offset += 2;\n'
+                    result += f'                Array.Copy({field_name}Bytes, 0, buffer, offset, {field_name}Bytes.Length);\n'
+                    result += f'                offset += {effective_size};\n'
+                    result += f'            }}\n'
+                result += f'            else if ({oneof_pascal}Discriminator == 0 || ({" && ".join(f"(int){oneof_pascal}Discriminator != {dv}" for dv, _, _ in oneof.variant_info)}))\n'
+                result += f'            {{\n'
+                result += f'                // Unknown or NONE discriminator: write 0-length payload\n'
+                result += f'                BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), 0); offset += 2;\n'
+                result += f'            }}\n'
+            elif oneof.discriminator_type is not None:
+                _trim_label = f'trimmed union (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union'
+                result += f'            // Oneof {oneof_name} {_trim_label}\n'
+                result += f'            {{\n'
+                result += f'                int _{oneof_name}_tlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'                if ((int){oneof_pascal}Discriminator == {disc_val}) _{oneof_name}_tlen = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'                if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
+                first = True
+                for field_name, field in oneof.fields.items():
+                    field_var = pascal_case(field_name)
+                    if first:
+                        result += f'                if ({field_var} != null)\n'
+                        first = False
+                    else:
+                        result += f'                else if ({field_var} != null)\n'
+                    result += '                {\n'
+                    result += f'                    var {field_name}Bytes = {field_var}.Serialize();\n'
+                    result += f'                    Array.Copy({field_name}Bytes, 0, buffer, offset, {field_name}Bytes.Length);\n'
+                    result += '                }\n'
+                result += f'                offset += _{oneof_name}_tlen;\n'
+                result += f'            }}\n'
+            else:
+                result += f'            // Oneof {oneof_name} union payload\n'
+                first = True
+                for field_name, field in oneof.fields.items():
+                    field_var = pascal_case(field_name)
+                    if first:
+                        result += f'            if ({field_var} != null)\n'
+                        first = False
+                    else:
+                        result += f'            else if ({field_var} != null)\n'
+                    result += '            {\n'
+                    result += f'                var {field_name}Bytes = {field_var}.Serialize();\n'
+                    result += f'                Array.Copy({field_name}Bytes, 0, buffer, offset, {field_name}Bytes.Length);\n'
+                    result += '            }\n'
+                result += f'            offset += {oneof.size};\n'
         
         result += '            return buffer;\n'
         result += '        }\n'
@@ -1000,6 +1091,104 @@ class MessageCSharpGen():
                     type_pkg = f.type_package if f.type_package else f.package
                     nested_type = type_name
                     result += f'            msg.{var_name} = {nested_type}.Deserialize(data[offset..(offset + {nested_type}.MaxSize)]); offset += {nested_type}.MaxSize;\n'
+        
+        # Oneofs: read discriminator then union payload (or length-prefix + variant bytes for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            oneof_pascal = pascal_case(oneof_name)
+            if oneof.auto_discriminator:
+                result += f'            // Oneof {oneof_name} discriminator\n'
+                if oneof.discriminator_type == "msgid":
+                    result += f'            msg.{oneof_pascal}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset, 2));\n'
+                    result += f'            var {oneof_name}_discriminator = msg.{oneof_pascal}Discriminator;\n'
+                    result += f'            offset += 2;\n'
+                else:  # field_order
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
+                    result += f'            msg.{oneof_pascal}Discriminator = ({enum_name})data[offset++];\n'
+                    result += f'            var {oneof_name}_discriminator = msg.{oneof_pascal}Discriminator;\n'
+            if oneof.variable:
+                result += f'            // Oneof {oneof_name} variable-length union payload\n'
+                result += f'            if (offset + 2 > data.Length) return msg;\n'
+                result += f'            int _{oneof_name}_len = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset, 2));\n'
+                result += f'            offset += 2;\n'
+                result += f'            if (offset + _{oneof_name}_len > data.Length) return msg;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    type_name = oneof.fields[field_name].field_type
+                    field_var = pascal_case(field_name)
+                    result += f'            if ((int){oneof_name}_discriminator == {disc_val} && _{oneof_name}_len >= {field_size})\n'
+                    result += f'                msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {field_size})]);\n'
+                result += f'            offset += _{oneof_name}_len;  // Always skip full payload\n'
+            elif oneof.discriminator_type is not None:
+                _min_sz = oneof.min_size_override or 0
+                _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
+                result += f'            // Oneof {oneof_name} {_trim_label}\n'
+                result += f'            {{\n'
+                result += f'                int _{oneof_name}_rlen = {_min_sz};\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'                if ((int)msg.{oneof_pascal}Discriminator == {disc_val}) _{oneof_name}_rlen = Math.Max({field_size}, {_min_sz});\n'
+                if oneof.discriminator_type == "msgid":
+                    first = True
+                    for field_name, field_obj in oneof.fields.items():
+                        type_name = field_obj.field_type
+                        field_var = pascal_case(field_name)
+                        if first:
+                            result += f'                if (msg.{oneof_pascal}Discriminator == {type_name}.MsgId)\n'
+                            first = False
+                        else:
+                            result += f'                else if (msg.{oneof_pascal}Discriminator == {type_name}.MsgId)\n'
+                        result += '                {\n'
+                        result += f'                    msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {type_name}.MaxSize)]);\n'
+                        result += '                }\n'
+                else:  # field_order
+                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
+                    first = True
+                    for idx, field_name in enumerate(oneof.field_order):
+                        field_obj = oneof.fields[field_name]
+                        type_name = field_obj.field_type
+                        enum_entry = pascal_case(field_name)
+                        field_var = pascal_case(field_name)
+                        if first:
+                            result += f'                if (msg.{oneof_pascal}Discriminator == {enum_name}.{enum_entry})\n'
+                            first = False
+                        else:
+                            result += f'                else if (msg.{oneof_pascal}Discriminator == {enum_name}.{enum_entry})\n'
+                        result += '                {\n'
+                        result += f'                    msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {type_name}.MaxSize)]);\n'
+                        result += '                }\n'
+                result += f'                offset += _{oneof_name}_rlen;\n'
+                result += f'            }}\n'
+            else:
+                result += f'            // Oneof {oneof_name} union payload ({oneof.size} bytes)\n'
+                if oneof.auto_discriminator:
+                    if oneof.discriminator_type == "msgid":
+                        first = True
+                        for field_name, field in oneof.fields.items():
+                            type_name = field.field_type
+                            field_var = pascal_case(field_name)
+                            if first:
+                                result += f'            if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
+                                first = False
+                            else:
+                                result += f'            else if ({oneof_name}_discriminator == {type_name}.MsgId)\n'
+                            result += '            {\n'
+                            result += f'                msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {type_name}.MaxSize)]);\n'
+                            result += '            }\n'
+                    else:  # field_order
+                        enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
+                        first = True
+                        for idx, field_name in enumerate(oneof.field_order):
+                            field = oneof.fields[field_name]
+                            type_name = field.field_type
+                            enum_entry = pascal_case(field_name)
+                            field_var = pascal_case(field_name)
+                            if first:
+                                result += f'            if ({oneof_name}_discriminator == {enum_name}.{enum_entry})\n'
+                                first = False
+                            else:
+                                result += f'            else if ({oneof_name}_discriminator == {enum_name}.{enum_entry})\n'
+                            result += '            {\n'
+                            result += f'                msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {type_name}.MaxSize)]);\n'
+                            result += '            }\n'
+                result += f'            offset += {oneof.size};\n'
         
         result += '            return msg;\n'
         result += '        }\n'

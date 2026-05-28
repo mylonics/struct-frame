@@ -276,6 +276,16 @@ def compute_generation_hash(args, packages_dict):
             for oneof_name in sorted(msg.oneofs.keys()):
                 oneof = msg.oneofs[oneof_name]
                 hasher.update(f"    oneof:{oneof_name}\n".encode('utf-8'))
+                if oneof.variable:
+                    hasher.update(f"      variable:true\n".encode('utf-8'))
+                if oneof.discriminator_mode and oneof.discriminator_mode != "auto":
+                    hasher.update(f"      discriminator:{oneof.discriminator_mode}\n".encode('utf-8'))
+                if oneof.max_size_override is not None:
+                    hasher.update(f"      max_size:{oneof.max_size_override}\n".encode('utf-8'))
+                if oneof.min_size_override is not None:
+                    hasher.update(f"      min_size:{oneof.min_size_override}\n".encode('utf-8'))
+                if oneof.extensions_start is not None:
+                    hasher.update(f"      extensions_start:{oneof.extensions_start}\n".encode('utf-8'))
                 for oneof_field_name in sorted(oneof.fields.keys()):
                     oneof_field = oneof.fields[oneof_field_name]
                     hasher.update(
@@ -701,6 +711,19 @@ class OneOf:
         # Internal parse-time flag: set True when a '// Extension::' comment
         # is encountered; cleared after the next field's number is captured.
         self._pending_extensions = False
+        # Maximum size override: forces the union wire allocation to this value.
+        # Allows reserving space for future variants without changing current sizes.
+        self.max_size_override = None
+        # Minimum serialized payload size for variable oneofs.
+        # When set, the variable-length payload is zero-padded to at least this many bytes.
+        # Useful for wire-compatibility: receivers compiled against older protocol versions
+        # (when oneof.size was smaller) can still deserialize messages from newer senders.
+        self.min_size_override = None
+        # Variable oneof: if True, wire format is [disc][uint16 len][variant bytes].
+        # Only valid when the parent message is also variable.
+        self.variable = False
+        # Pre-computed variant info for code generation: [(disc_value, field_name, field_size), ...]
+        self.variant_info = []
 
     def parse(self, oneof_element):
         """Parse a oneof element from the AST."""
@@ -745,6 +768,31 @@ class OneOf:
                         print(f"Invalid discriminator option '{e.value}' in oneof {self.name}. "
                               f"Valid values: auto, msgid, field_order, none")
                         return False
+                elif e.name == "max_size":
+                    try:
+                        self.max_size_override = int(e.value)
+                    except (TypeError, ValueError):
+                        print(f"Invalid max_size value '{e.value}' in oneof {self.name}: must be an integer")
+                        return False
+                    if self.max_size_override <= 0:
+                        print(f"max_size in oneof {self.name} must be > 0")
+                        return False
+                elif e.name == "min_size":
+                    try:
+                        self.min_size_override = int(e.value)
+                    except (TypeError, ValueError):
+                        print(f"Invalid min_size value '{e.value}' in oneof {self.name}: must be an integer")
+                        return False
+                    if self.min_size_override <= 0:
+                        print(f"min_size in oneof {self.name} must be > 0")
+                        return False
+                elif e.name == "variable":
+                    val = e.value
+                    if hasattr(val, 'name'):
+                        sval = val.name.lower()
+                    else:
+                        sval = str(val).strip().lower().strip('"\'')
+                    self.variable = sval in ('true', '1', 'yes')
             elif type(e) == ast.Field:
                 if e.name in self.fields:
                     print(f"Field Redeclaration in oneof {self.name}")
@@ -865,6 +913,51 @@ class OneOf:
             else:
                 self.auto_discriminator = None
                 self.discriminator_type = None
+
+        # Apply max_size_override if specified
+        if self.max_size_override is not None:
+            if self.max_size_override < self.size:
+                print(f"Error: oneof '{self.name}' max_size={self.max_size_override} is smaller than "
+                      f"the computed max variant size {self.size}. max_size must be >= largest variant.")
+                return False
+            self.size = self.max_size_override
+            if self.extensions_start is None:
+                self.base_size = self.max_size_override
+
+        # Validate min_size_override if specified
+        if self.min_size_override is not None:
+            if not self.variable:
+                # For fixed oneofs: min_size grows the union buffer if the current size is smaller,
+                # mirroring max_size behaviour as a lower bound.
+                if self.min_size_override > self.size:
+                    self.size = self.min_size_override
+                    if self.extensions_start is None:
+                        self.base_size = self.min_size_override
+                # If current size already >= min_size, this is a no-op — no warning needed.
+            else:
+                # For variable oneofs: min_size pads the wire payload but cannot exceed the buffer.
+                if self.min_size_override > self.size:
+                    print(f"Error: oneof '{self.name}' min_size={self.min_size_override} exceeds the "
+                          f"union buffer size {self.size}. min_size must be <= oneof size (use max_size "
+                          f"to increase union buffer size first).")
+                    return False
+
+        # Validate variable oneof flag
+        if self.variable:
+            if current_message is not None and not current_message.variable:
+                print(f"Error: oneof '{self.name}' has variable=true but parent message "
+                      f"'{current_message.name}' is not marked as variable. "
+                      f"Add 'option variable = true;' to the message.")
+                return False
+
+        # Pre-compute discriminator values for each variant (used by code generators)
+        self.variant_info = []
+        for field_name, field in self.fields.items():
+            if self.discriminator_type is not None:
+                disc_val = self.get_field_discriminator_value(field_name, current_package, packages)
+            else:
+                disc_val = 0
+            self.variant_info.append((disc_val, field_name, field.size))
 
         self.validated = True
         return True
@@ -1065,10 +1158,12 @@ class Message:
                     f"Failed To validate OneOf: {key}, in Message {self.name}\n")
                 return False
             # Add oneof size (largest field size)
-            self.size = self.size + oneof.size
+            # For variable oneof, add 2 bytes for the uint16 length prefix on the wire.
+            length_prefix = 2 if oneof.variable else 0
+            self.size = self.size + oneof.size + length_prefix
             # Use oneof.base_size so that extension variants within a oneof are
             # not counted as part of the base wire footprint.
-            self.base_size = self.base_size + oneof.base_size
+            self.base_size = self.base_size + oneof.base_size + length_prefix
             # Discriminator is always a base field — it is present in every
             # frame regardless of which variant is active.
             if oneof.auto_discriminator:
@@ -1182,6 +1277,15 @@ class Message:
                 else:
                     # Fixed-size fields use their full size
                     self.min_size += value.size
+            # Oneofs: discriminator + union payload (or length-prefix + 0 bytes for variable oneof)
+            for key, oneof in self.oneofs.items():
+                if oneof.auto_discriminator:
+                    disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                    self.min_size += disc_bytes
+                if oneof.variable:
+                    self.min_size += 2  # uint16 length prefix; minimum payload is 0 bytes
+                else:
+                    self.min_size += oneof.size
         else:
             self.min_size = self.size
 
@@ -1786,10 +1890,42 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                 gen_files['csharp'] = _relpath(
                     os.path.join(os.path.abspath(paths['csharp']),
                                  pkg_pascal, 'Messages', f'{msg_name}.cs'))
+
+            # Build oneof summary list
+            oneof_entries = []
+            for oneof_name, oneof in msg.oneofs.items():
+                variant_list = [
+                    {"disc_val": dv, "field_name": fn, "field_size": fs}
+                    for dv, fn, fs in oneof.variant_info
+                ] if oneof.variant_info else []
+                oneof_entries.append({
+                    "name": oneof_name,
+                    "size": oneof.size,
+                    "base_size": oneof.base_size,
+                    "variable": oneof.variable,
+                    "auto_discriminator": oneof.auto_discriminator,
+                    "discriminator_type": oneof.discriminator_type,
+                    "min_size_override": oneof.min_size_override,
+                    "max_size_override": oneof.max_size_override,
+                    "variants": variant_list,
+                })
+
+            # magic_bytes is a (byte1, byte2) tuple after validate(); convert to list
+            magic = list(msg.magic_bytes) if msg.magic_bytes is not None else None
+
             messages.append({
                 "name": msg_name,
                 "package": pkg_name,
                 "source_file": os.path.basename(msg.source_file) if msg.source_file else None,
+                "msgid": msg.id,
+                "max_size": msg.size,
+                "base_size": msg.base_size,
+                "min_size": msg.min_size,
+                "is_variable": msg.variable,
+                "is_envelope": msg.is_envelope,
+                "extensions_start": msg.extensions_start if msg.extensions_start else None,
+                "magic_bytes": magic,
+                "oneofs": oneof_entries if oneof_entries else None,
                 "generated_files": _generated_file_entries(
                     pkg, msg_name, gen_files
                 ),

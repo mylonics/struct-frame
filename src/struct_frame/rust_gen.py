@@ -764,8 +764,8 @@ class MessageRustGen():
                 result += f'        self.{oneof_name}_bytes.copy_from_slice(&tmp[..{oneof.size}]);\n'
                 result += f'    }}\n'
 
-        # Helper to generate oneof pack code (always fixed-size)
-        def _pack_oneofs(result):
+        # Helper to generate oneof pack code
+        def _pack_oneofs(result, variable_pack=False):
             for oneof_name, oneof in msg.oneofs.items():
                 if oneof.auto_discriminator:
                     if oneof.discriminator_type == "msgid":
@@ -776,9 +776,40 @@ class MessageRustGen():
                         result += f'        // Oneof {oneof_name} discriminator (field_order)\n'
                         result += f'        buf[_pos] = self.{oneof_name}_discriminator;\n'
                         result += f'        _pos += 1;\n'
-                result += f'        // Oneof {oneof_name} union bytes\n'
-                result += f'        buf[_pos.._pos+{oneof.size}].copy_from_slice(&self.{oneof_name}_bytes);\n'
-                result += f'        _pos += {oneof.size};\n'
+                if oneof.variable:
+                    result += f'        // Oneof {oneof_name} variable-length union bytes\n'
+                    result += f'        let _{oneof_name}_raw_len: u16 = match self.{oneof_name}_discriminator as u16 {{\n'
+                    for disc_val, field_name, field_size in oneof.variant_info:
+                        result += f'            {disc_val} => {field_size},  // {field_name}\n'
+                    result += f'            _ => 0,\n'
+                    result += f'        }};\n'
+                    if oneof.min_size_override:
+                        result += f'        let _{oneof_name}_len: u16 = if _{oneof_name}_raw_len < {oneof.min_size_override} {{ {oneof.min_size_override} }} else {{ _{oneof_name}_raw_len }};\n'
+                    else:
+                        result += f'        let _{oneof_name}_len: u16 = _{oneof_name}_raw_len;\n'
+                    result += f'        buf[_pos.._pos+2].copy_from_slice(&_{oneof_name}_len.to_le_bytes());\n'
+                    result += f'        _pos += 2;\n'
+                    result += f'        buf[_pos.._pos+_{oneof_name}_raw_len as usize].copy_from_slice(&self.{oneof_name}_bytes[.._{oneof_name}_raw_len as usize]);\n'
+                    if oneof.min_size_override:
+                        result += f'        if _{oneof_name}_len > _{oneof_name}_raw_len {{\n'
+                        result += f'            buf[_pos+_{oneof_name}_raw_len as usize.._pos+_{oneof_name}_len as usize].fill(0);\n'
+                        result += f'        }}\n'
+                    result += f'        _pos += _{oneof_name}_len as usize;\n'
+                elif variable_pack and oneof.auto_discriminator:
+                    _min_sz = oneof.min_size_override or 0
+                    _trim_label = f'trimmed union bytes (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union bytes'
+                    result += f'        // Oneof {oneof_name} {_trim_label}\n'
+                    result += f'        let _{oneof_name}_tlen: usize = match self.{oneof_name}_discriminator as u16 {{\n'
+                    for disc_val, field_name, field_size in oneof.variant_info:
+                        result += f'            {disc_val} => {max(field_size, _min_sz)},  // {field_name}\n'
+                    result += f'            _ => {_min_sz},\n'
+                    result += f'        }};\n'
+                    result += f'        buf[_pos.._pos+_{oneof_name}_tlen].copy_from_slice(&self.{oneof_name}_bytes[.._{oneof_name}_tlen]);\n'
+                    result += f'        _pos += _{oneof_name}_tlen;\n'
+                else:
+                    result += f'        // Oneof {oneof_name} union bytes\n'
+                    result += f'        buf[_pos.._pos+{oneof.size}].copy_from_slice(&self.{oneof_name}_bytes);\n'
+                    result += f'        _pos += {oneof.size};\n'
             return result
 
         # pack method (variable-length for IS_VARIABLE, same as pack_max_size for fixed)
@@ -791,7 +822,7 @@ class MessageRustGen():
             pack_code = _generate_pack_field(field, variable=is_variable)
             if pack_code:
                 result += pack_code + '\n'
-        result = _pack_oneofs(result)
+        result = _pack_oneofs(result, variable_pack=is_variable)
         result += '        _pos\n'
         result += '    }\n'
 
@@ -816,12 +847,19 @@ class MessageRustGen():
         result += '    pub fn unpack(buf: &[u8]) -> Option<Self> {\n'
 
         if is_variable:
-            result += '        if buf.len() == Self::MAX_SIZE {\n'
-            result += '            Self::_unpack_fixed(buf)\n'
-            result += '        } else {\n'
-            result += '            Self::_unpack_variable(buf)\n'
-            result += '        }\n'
-            result += '    }\n'
+            has_variable_oneof = any(o.variable for o in msg.oneofs.values())
+            if has_variable_oneof:
+                # Variable oneof: memcpy shortcut invalid (wire has length prefix, struct doesn't)
+                result += '        // Variable oneof message - always use variable-length unpack\n'
+                result += '        Self::_unpack_variable(buf)\n'
+                result += '    }\n'
+            else:
+                result += '        if buf.len() == Self::MAX_SIZE {\n'
+                result += '            Self::_unpack_fixed(buf)\n'
+                result += '        } else {\n'
+                result += '            Self::_unpack_variable(buf)\n'
+                result += '        }\n'
+                result += '    }\n'
 
             # Helper to build unpack body
             def _build_unpack_body(result, variable_mode, indent='        '):
@@ -847,8 +885,29 @@ class MessageRustGen():
                             result += f'{indent}_pos += 1;\n'
                             oneof_var_names.append(f'{oneof_name}_discriminator')
                     result += f'{indent}let mut {oneof_name}_bytes = [0u8; {oneof.size}];\n'
-                    result += f'{indent}{oneof_name}_bytes.copy_from_slice(&buf[_pos.._pos+{oneof.size}]);\n'
-                    result += f'{indent}_pos += {oneof.size};\n'
+                    if oneof.variable:
+                        result += f'{indent}let _{oneof_name}_len = u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?) as usize;\n'
+                        result += f'{indent}_pos += 2;\n'
+                        result += f'{indent}if _pos + _{oneof_name}_len > buf.len() {{ return None; }}\n'
+                        result += f'{indent}let _copy = _{oneof_name}_len.min({oneof.size});\n'
+                        result += f'{indent}{oneof_name}_bytes[.._copy].copy_from_slice(&buf[_pos.._pos+_copy]);\n'
+                        result += f'{indent}_pos += _{oneof_name}_len;\n'
+                    elif variable_mode and oneof.auto_discriminator:
+                        _min_sz = oneof.min_size_override or 0
+                        _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
+                        result += f'{indent}// Oneof {oneof_name} {_trim_label}\n'
+                        result += f'{indent}let _{oneof_name}_rlen: usize = match {oneof_name}_discriminator as u16 {{\n'
+                        for disc_val, field_name, field_size in oneof.variant_info:
+                            result += f'{indent}    {disc_val} => {max(field_size, _min_sz)},  // {field_name}\n'
+                        result += f'{indent}    _ => {_min_sz},\n'
+                        result += f'{indent}}};\n'
+                        result += f'{indent}if _pos + _{oneof_name}_rlen > buf.len() {{ return None; }}\n'
+                        result += f'{indent}let _copy = _{oneof_name}_rlen.min({oneof.size});\n'
+                        result += f'{indent}{oneof_name}_bytes[.._copy].copy_from_slice(&buf[_pos.._pos+_copy]);\n'
+                        result += f'{indent}_pos += _{oneof_name}_rlen;\n'
+                    else:
+                        result += f'{indent}{oneof_name}_bytes.copy_from_slice(&buf[_pos.._pos+{oneof.size}]);\n'
+                        result += f'{indent}_pos += {oneof.size};\n'
                     oneof_var_names.append(f'{oneof_name}_bytes')
                 result += f'{indent}Some(Self {{\n'
                 for var in field_names:
@@ -883,7 +942,14 @@ class MessageRustGen():
                 else:
                     min_size += field.size if field.size else 0
             for oneof in msg.oneofs.values():
-                min_size += oneof.size
+                if oneof.variable:
+                    min_size += 2  # length prefix only; minimum payload is 0 bytes
+                    if oneof.min_size_override:
+                        min_size += oneof.min_size_override  # min_size guarantee
+                elif oneof.auto_discriminator:
+                    min_size += oneof.min_size_override or 0  # trimmed min is min_size (or 0 if unset)
+                else:
+                    min_size += oneof.size
                 if oneof.auto_discriminator:
                     min_size += 2 if oneof.discriminator_type == "msgid" else 1
             result += f'    pub const MIN_SIZE: usize = {min_size};\n'
@@ -921,8 +987,16 @@ class MessageRustGen():
                         result += f'        _pos += 1;\n'
                         oneof_var_names.append(f'{oneof_name}_discriminator')
                 result += f'        let mut {oneof_name}_bytes = [0u8; {oneof.size}];\n'
-                result += f'        {oneof_name}_bytes.copy_from_slice(&buf[_pos.._pos+{oneof.size}]);\n'
-                result += f'        _pos += {oneof.size};\n'
+                if oneof.variable:
+                    result += f'        let _{oneof_name}_len = u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?) as usize;\n'
+                    result += f'        _pos += 2;\n'
+                    result += f'        if _pos + _{oneof_name}_len > buf.len() {{ return None; }}\n'
+                    result += f'        let _copy = _{oneof_name}_len.min({oneof.size});\n'
+                    result += f'        {oneof_name}_bytes[.._copy].copy_from_slice(&buf[_pos.._pos+_copy]);\n'
+                    result += f'        _pos += _{oneof_name}_len;\n'
+                else:
+                    result += f'        {oneof_name}_bytes.copy_from_slice(&buf[_pos.._pos+{oneof.size}]);\n'
+                    result += f'        _pos += {oneof.size};\n'
                 oneof_var_names.append(f'{oneof_name}_bytes')
             result += '        Some(Self {\n'
             for var in field_names:

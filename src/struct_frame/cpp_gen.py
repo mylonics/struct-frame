@@ -231,6 +231,13 @@ class OneOfCppGen():
             field_code = field_code.strip()
             result += f'        {field_code}\n'
         
+        # Pad union to oneof.size if min_size_override or max_size_override inflated it
+        # beyond the largest variant. This keeps sizeof(union) == oneof.size so the
+        # struct memory layout matches the wire layout (needed for the fast memcpy path).
+        _max_variant = max((fs for _, _, fs in oneof.variant_info), default=0)
+        if oneof.size > _max_variant:
+            result += f'        uint8_t _padding[{oneof.size}];  // pad union to oneof.size\n'
+        
         result += f'    }} {oneof.name};'
         
         return result
@@ -451,6 +458,33 @@ class MessageCppGen():
             else:
                 result += f'        size += {field.size};  // {var_name}\n'
         
+        # Oneofs: discriminator + union payload (or length-prefix + variant size for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'        size += {disc_bytes};  // {oneof_name} discriminator\n'
+            if oneof.variable:
+                result += f'        size += 2;  // {oneof_name} variable-length prefix\n'
+                result += f'        {{\n'
+                result += f'            uint16_t _{oneof_name}_vlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) _{oneof_name}_vlen = {field_size};  // {field_name}\n'
+                if oneof.min_size_override:
+                    result += f'            if (_{oneof_name}_vlen < {oneof.min_size_override}) _{oneof_name}_vlen = {oneof.min_size_override};\n'
+                result += f'            size += _{oneof_name}_vlen;\n'
+                result += f'        }}\n'
+            elif oneof.discriminator_type is not None:
+                result += f'        {{\n'
+                result += f'            uint16_t _{oneof_name}_tlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) _{oneof_name}_tlen = {field_size};  // {field_name}\n'
+                if oneof.min_size_override:
+                    result += f'            if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
+                result += f'            size += _{oneof_name}_tlen;  // {oneof_name} trimmed union payload\n'
+                result += f'        }}\n'
+            else:
+                result += f'        size += {oneof.size};  // {oneof_name} union payload\n'
+        
         result += f'        return size;\n'
         result += f'    }}\n'
         
@@ -481,6 +515,45 @@ class MessageCppGen():
             else:
                 result += f'        std::memcpy(buffer + offset, &{var_name}, {field.size});\n'
                 result += f'        offset += {field.size};\n'
+        
+        # Oneofs: write discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'        std::memcpy(buffer + offset, &{oneof_name}_discriminator, 2);\n'
+                    result += f'        offset += 2;\n'
+                else:  # field_order (uint8)
+                    result += f'        buffer[offset++] = static_cast<uint8_t>({oneof_name}_discriminator);\n'
+            if oneof.variable:
+                result += f'        // {oneof_name} variable-length union: write uint16 length + variant bytes\n'
+                result += f'        {{\n'
+                result += f'            uint16_t _{oneof_name}_len = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) _{oneof_name}_len = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'            if (_{oneof_name}_len < {oneof.min_size_override}) _{oneof_name}_len = {oneof.min_size_override};\n'
+                result += f'            std::memcpy(buffer + offset, &_{oneof_name}_len, 2);\n'
+                result += f'            offset += 2;\n'
+                result += f'            if (_{oneof_name}_len > 0) {{\n'
+                result += f'                std::memcpy(buffer + offset, &{oneof_name}, _{oneof_name}_len);\n'
+                result += f'                offset += _{oneof_name}_len;\n'
+                result += f'            }}\n'
+                result += f'        }}\n'
+            elif oneof.discriminator_type is not None:
+                _trim_label = f'trimmed union (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union'
+                result += f'        // {oneof_name}: {_trim_label}\n'
+                result += f'        {{\n'
+                result += f'            uint16_t _{oneof_name}_tlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) _{oneof_name}_tlen = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'            if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
+                result += f'            std::memcpy(buffer + offset, &{oneof_name}, _{oneof_name}_tlen);\n'
+                result += f'            offset += _{oneof_name}_tlen;\n'
+                result += f'        }}\n'
+            else:
+                result += f'        std::memcpy(buffer + offset, &{oneof_name}, {oneof.size});\n'
+                result += f'        offset += {oneof.size};\n'
         
         result += f'        return offset;\n'
         result += f'    }}\n'
@@ -522,6 +595,49 @@ class MessageCppGen():
                 result += f'        std::memcpy(&{var_name}, buffer + offset, {field.size});\n'
                 result += f'        offset += {field.size};\n'
         
+        # Oneofs: read discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'        if (offset + 2 > buffer_size) return 0;\n'
+                    result += f'        std::memcpy(&{oneof_name}_discriminator, buffer + offset, 2);\n'
+                    result += f'        offset += 2;\n'
+                else:  # field_order (uint8)
+                    result += f'        if (offset >= buffer_size) return 0;\n'
+                    result += f'        {oneof_name}_discriminator = static_cast<decltype({oneof_name}_discriminator)>(buffer[offset++]);\n'
+            if oneof.variable:
+                result += f'        // {oneof_name} variable-length union: read uint16 length + variant bytes\n'
+                result += f'        {{\n'
+                result += f'            if (offset + 2 > buffer_size) return 0;\n'
+                result += f'            uint16_t _{oneof_name}_len;\n'
+                result += f'            std::memcpy(&_{oneof_name}_len, buffer + offset, 2);\n'
+                result += f'            offset += 2;\n'
+                result += f'            if (offset + _{oneof_name}_len > buffer_size) return 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) {{\n'
+                    result += f'                size_t _copy = _{oneof_name}_len < {field_size} ? _{oneof_name}_len : {field_size};\n'
+                    result += f'                std::memcpy(&{oneof_name}, buffer + offset, _copy);\n'
+                    result += f'            }}\n'
+                result += f'            offset += _{oneof_name}_len;  // Always skip full payload\n'
+                result += f'        }}\n'
+            elif oneof.discriminator_type is not None:
+                _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
+                result += f'        // {oneof_name}: {_trim_label}\n'
+                result += f'        {{\n'
+                result += f'            uint16_t _{oneof_name}_rlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) _{oneof_name}_rlen = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'            if (_{oneof_name}_rlen < {oneof.min_size_override}) _{oneof_name}_rlen = {oneof.min_size_override};\n'
+                result += f'            if (offset + _{oneof_name}_rlen > buffer_size) return 0;\n'
+                result += f'            std::memcpy(&{oneof_name}, buffer + offset, _{oneof_name}_rlen);\n'
+                result += f'            offset += _{oneof_name}_rlen;\n'
+                result += f'        }}\n'
+            else:
+                result += f'        if (offset + {oneof.size} > buffer_size) return 0;\n'
+                result += f'        std::memcpy(&{oneof_name}, buffer + offset, {oneof.size});\n'
+                result += f'        offset += {oneof.size};\n'
+        
         result += f'        return offset;\n'
         result += f'    }}\n'
         
@@ -545,17 +661,25 @@ class MessageCppGen():
         result += f'    size_t deserialize(const uint8_t* buffer, size_t buffer_size) {{\n'
         
         if msg.variable:
-            # Variable message: check if it's minimal profile (buffer_size == MAX_SIZE)
-            # If so, use direct copy; otherwise use variable deserialization
-            result += f'        // Variable message - check encoding format\n'
-            result += f'        if (buffer_size == MAX_SIZE) {{\n'
-            result += f'            // Minimal profile format (MAX_SIZE encoding)\n'
-            result += f'            std::memcpy(this, buffer, MAX_SIZE);\n'
-            result += f'            return MAX_SIZE;\n'
-            result += f'        }} else {{\n'
-            result += f'            // Variable-length format\n'
-            result += f'            return _deserialize_variable(buffer, buffer_size);\n'
-            result += f'        }}\n'
+            has_variable_oneof = any(o.variable for o in msg.oneofs.values())
+            if has_variable_oneof:
+                # Variable oneof messages: wire format differs from struct layout.
+                # The length prefix in the wire format has no counterpart in the struct.
+                # Always use variable deserialization to correctly parse the length prefix.
+                result += f'        // Variable oneof message - always use variable-length deserialization\n'
+                result += f'        return _deserialize_variable(buffer, buffer_size);\n'
+            else:
+                # Variable message: check if it's minimal profile (buffer_size == MAX_SIZE)
+                # If so, use direct copy; otherwise use variable deserialization
+                result += f'        // Variable message - check encoding format\n'
+                result += f'        if (buffer_size == MAX_SIZE) {{\n'
+                result += f'            // Minimal profile format (MAX_SIZE encoding)\n'
+                result += f'            std::memcpy(this, buffer, MAX_SIZE);\n'
+                result += f'            return MAX_SIZE;\n'
+                result += f'        }} else {{\n'
+                result += f'            // Variable-length format\n'
+                result += f'            return _deserialize_variable(buffer, buffer_size);\n'
+                result += f'        }}\n'
         else:
             # Non-variable message: simple memcpy with size check
             result += f'        // Fixed-size message - use direct copy\n'
