@@ -243,9 +243,10 @@ def _render_table(table):
         out.append(table["intro"] + "\n")
 
     columns = table["columns"]
+    # Columns that carry coverage symbols (present in at least one row's cells).
+    # Any remaining columns (e.g. "Notes"/"File") are fed from the row's notes.
     cell_cols = [c for c in columns
                  if any(c in row["cells"] for row in table["rows"])]
-    text_cols = [c for c in columns if c not in cell_cols]
 
     header = "| " + " | ".join([table["header"]] + columns) + " |"
     sep = "|" + "|".join(["--------"] * (len(columns) + 1)) + "|"
@@ -259,8 +260,6 @@ def _render_table(table):
             else:
                 values.append(row.get("notes", ""))
         out.append("| " + " | ".join(values) + " |")
-    # text_cols already consumed via notes; nothing else to do.
-    _ = text_cols
     block = "\n".join(out)
     if table.get("caption"):
         block += "\n\n" + table["caption"]
