@@ -1,205 +1,66 @@
 # AI Agent Guide for struct-frame Testing
 
-This document provides guidance for AI agents working with the struct-frame project's test suite. It explains how to efficiently update, debug, and extend the testing framework.
+> **This document is intentionally short.** The previous version of this guide
+> referenced proto files (`basic_types.proto`, `comprehensive_arrays.proto`,
+> `nested_messages.proto`, `serialization_test.proto`), CLI flags
+> (`--generate-only`, `--skip-c`, `--skip-ts`), and bugs that no longer exist.
+> It was deleted in favour of pointing at the live, maintained docs below.
 
-## Test Architecture Overview
+## Where to look
 
-The struct-frame project uses a comprehensive multi-language test suite located in the `tests/` directory:
+| If you want to… | Read |
+| --- | --- |
+| Run the test suite | [`tests/README.md`](tests/README.md) |
+| See what every language tests today | [`docs/src/content/docs/reference/test-coverage.md`](docs/src/content/docs/reference/test-coverage.md) |
+| Understand the wire format and the canonical test vectors | [`docs/src/content/docs/reference/conformance.md`](docs/src/content/docs/reference/conformance.md) |
+| Add or debug negative / malformed-frame tests | [`tests/NEGATIVE_TESTS.md`](tests/NEGATIVE_TESTS.md) |
+| See user-facing testing docs (rendered on the site) | [`docs/src/content/docs/reference/testing.md`](docs/src/content/docs/reference/testing.md) |
+| Understand the generator and codebase layout | [`DEVGUIDE.md`](DEVGUIDE.md), [`REVIEW.md`](REVIEW.md) |
 
-```
-tests/
-├── run_tests.py              # Main test orchestrator
-├── proto/                    # Protocol buffer test definitions  
-├── c/                        # C language test programs
-├── ts/                       # TypeScript test programs
-├── py/                       # Python test programs
-└── generated/                # Generated code output (git-ignored)
-```
+## Cardinal rules for agents working on tests
 
-### Entry Points
+1. **The test-coverage matrix is the source of truth.** Before claiming a
+   feature is "tested in all languages", check
+   `docs/src/content/docs/reference/test-coverage.md`. When you add or close a
+   coverage gap, update that file in the same PR.
 
-- **Primary**: `python test_all.py` (project root)
-- **Direct**: `python tests/run_tests.py` (detailed options)
+2. **Seven languages, not three.** Every per-language test suite
+   (`test_standard`, `test_extended`, `test_variable_flag`, `test_negative`)
+   exists in **C, C++, Python, TypeScript, JavaScript, C#, and Rust**. If you
+   change a shared test scenario, change it in all seven.
 
-## Key Components
+3. **Wire format is sacred.** If a change alters serialised bytes, run
+   `python tests/check_golden.py` and update `tests/golden/` deliberately, in
+   its own commit, with a note in `CHANGELOG.md`. Drift detected by
+   `check_golden.py` is *always* a real bug or a deliberate format change —
+   never silently regenerate the goldens to make CI green.
 
-### 1. Test Runner (`tests/run_tests.py`)
+4. **Use the existing CLI.** Current flags are
+   `--verbose / --skip-lang LANG / --only-generate / --only-compile /
+   --profile NAME / --no-clean / --no-parallel / --no-color`. There is no
+   `--generate-only`, no `--skip-c`, no `--skip-ts`.
 
-The TestRunner class orchestrates all testing activities:
-- **Code Generation**: Runs struct-frame generator on proto files
-- **Compilation**: Compiles generated C/TypeScript code  
-- **Execution**: Runs test programs for each language
-- **Cross-Language**: Verifies binary compatibility between languages
+5. **Don't grep for `*.proto`.** Definitions live in `tests/proto/*.sf`.
 
-**Key Methods:**
-- `test_code_generation()`: Generates code for all proto files
-- `test_c_compilation()`: Compiles C tests using GCC
-- `run_c_tests()`: Executes compiled C test programs  
-- `run_python_tests()`: Executes Python test scripts
-- `print_summary()`: Reports comprehensive results
-
-### 2. Protocol Definitions (`tests/proto/`)
-
-Test proto files covering different aspects:
-- **`basic_types.proto`**: All primitive data types (int8-int64, float, double, bool, string)
-- **`comprehensive_arrays.proto`**: Fixed arrays, bounded arrays, string arrays, enum arrays, nested message arrays
-- **`nested_messages.proto`**: Message composition, enums, flatten attribute
-- **`serialization_test.proto`**: Cross-language compatibility testing
-
-### 3. Language-Specific Tests
-
-Each language directory contains parallel test implementations:
-- **`test_basic_types.*`**: Serialization/deserialization of primitive types
-- **`test_arrays.*`**: Array operations and memory layout verification
-- **`test_serialization.*`**: Cross-language binary compatibility
-
-## Common AI Agent Tasks
-
-### Adding New Test Cases
-
-1. **Create Proto Definition**:
-   ```proto
-   // tests/proto/new_feature.proto
-   package new_feature;
-   
-   message TestMessage {
-     option msgid = 205;  // Use next available ID
-     // Add your test fields
-   }
-   ```
-
-2. **Implement Language Tests**:
-   - Copy existing test structure from `test_basic_types.*`
-   - Modify to test your specific feature
-   - Ensure all languages have parallel implementations
-
-3. **Update Test Runner**:
-   - Add proto file to `proto_files` list in `test_code_generation()`
-   - Add test category if needed in `TestRunner.results` dictionary
-
-### Debugging Test Failures
-
-#### C Compilation Issues
-- **Missing GCC**: Test runner gracefully skips if GCC unavailable
-- **Header Issues**: Check generated files in `tests/generated/c/`
-- **Boilerplate Problems**: Verify boilerplate files are automatically copied by the main generation script
-- **C++ Syntax**: Look for aggregate initialization (`{}`) instead of C-compatible `{0}`
-
-#### Python Test Issues  
-- **Import Errors**: Check `PYTHONPATH` includes generated directory
-- **Module Missing**: Verify code generation completed successfully
-- **Constructor Issues**: Structured classes require positional arguments, not keyword arguments
-
-#### TypeScript Issues
-- **Compilation**: Check if `tsc` is available and `npm install` completed
-- **Runtime Errors**: Generated TypeScript may have method call issues (known limitation)
-
-#### Cross-Language Compatibility
-- **Binary Files**: Tests create `*_test_data.bin` files for compatibility checking
-- **Serialization Format**: All languages must produce identical binary output
-- **Checksum Validation**: Fletcher checksum algorithm must match across implementations
-
-### Performance Optimization
-
-The test suite is designed for speed:
-- **Code Generation**: ~0.1 seconds per proto file
-- **C Compilation**: ~1-2 seconds per test file
-- **Python Tests**: ~0.5 seconds per test
-- **Total Runtime**: Usually under 5 seconds
-
-**Never cancel operations** - they complete quickly and interruption can leave partial state.
-
-### Known Issues and Workarounds
-
-#### C Code Generation
-- **Issue**: C++ aggregate initialization syntax in generated C code
-- **Fix**: Update boilerplate files to use `= {0}` instead of `{}`
-- **Location**: `src/struct_frame/boilerplate/c/*.h`
-
-#### Checksum Validation
-- **Issue**: Mismatch between encoding and validation checksum calculation
-- **Fix**: Ensure both use same data length (`msg_size + 1` to include message ID)
-- **Location**: `basic_frame_validate_packet()` function
-
-#### Floating Point Comparisons
-- **Issue**: Exact equality fails due to precision
-- **Fix**: Use tolerance-based comparison with `fabsf()` and `FLOAT_TOLERANCE`
-- **Pattern**: `assert(fabsf(actual - expected) < FLOAT_TOLERANCE)`
-
-#### Array Serialization
-- **Issue**: Complex array structures may serialize only partial data
-- **Limitation**: Known limitation in struct-frame serialization system
-- **Workaround**: Basic types work perfectly; arrays have architectural limitations
-
-### Test Result Interpretation
-
-The test runner provides detailed results categorized by:
-- **Code Generation**: Should always pass (validates proto parsing)
-- **Compilation**: May fail if compilers unavailable (GCC, TSC)
-- **Basic Types**: Should pass for all languages (core functionality)
-- **Arrays**: Python passes; C/TS may have limitations
-- **Serialization**: Tests cross-language binary compatibility
-
-**Success Criteria:**
-- **80%+ pass rate**: Full success
-- **30%+ with core working**: Partial success (acceptable)
-- **<30% pass rate**: Needs attention
-
-### Environment Dependencies
-
-#### Required Always
-- Python 3.8+ with `proto-schema-parser`
-
-#### Optional (graceful degradation)
-- **GCC**: For C compilation and execution
-- **TypeScript/Node.js**: For TypeScript compilation and execution
-- **MinGW** (Windows): Provides GCC compiler
-
-#### Directory Structure
-- Tests automatically create `tests/generated/` for output
-- Boilerplate files copied from `src/struct_frame/boilerplate/`
-- Binary test files written to language-specific directories
-
-### Extending the Framework
-
-#### Adding New Languages
-1. Create boilerplate directory: `src/struct_frame/boilerplate/newlang/`
-2. Implement generator: `src/struct_frame/newlang_gen.py`
-3. Add test directory: `tests/newlang/`
-4. Update test runner with compilation and execution logic
-
-#### Adding New Features
-1. Update proto definitions with new syntax
-2. Implement in all language generators
-3. Add comprehensive test cases
-4. Verify cross-language compatibility
-
-### Best Practices for AI Agents
-
-1. **Always run full test suite** after making changes
-2. **Test incrementally** - add one feature at a time
-3. **Verify all languages** - don't assume changes work universally  
-4. **Check boilerplate files** - many issues stem from template problems
-5. **Use verbose mode** when debugging: `python tests/run_tests.py --verbose`
-6. **Preserve working tests** - ensure changes don't break existing functionality
-
-### Quick Reference Commands
+## Quick reference
 
 ```bash
-# Full test suite
+# Full suite (calls tests/run_tests.py)
 python test_all.py
 
-# Code generation only
-python tests/run_tests.py --generate-only
+# Single language
+python tests/run_tests.py --skip-lang c --skip-lang cpp --skip-lang csharp --skip-lang rust --skip-lang ts --skip-lang js
 
-# Skip problematic languages
-python tests/run_tests.py --skip-c --skip-ts
+# Single profile
+python tests/run_tests.py --profile ProfileStandard
 
-# Debug specific issue
-python tests/run_tests.py --verbose
+# Regenerate code without running tests
+python tests/run_tests.py --only-generate
 
-# Clean and retry
-rm -rf tests/generated/ && python test_all.py
+# Wire-format regression
+python tests/check_golden.py            # verify
+python tests/check_golden.py --update   # regenerate (deliberate format change only)
+
+# Generator determinism
+python tests/check_determinism.py
 ```
-
-This testing framework ensures struct-frame maintains high quality across all supported languages while providing clear feedback for development and debugging.

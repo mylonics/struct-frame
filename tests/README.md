@@ -1,6 +1,12 @@
 # struct-frame Test Suite
 
-Comprehensive test suite for struct-frame that validates code generation and serialization/deserialization across all supported languages (C, C++, Python, TypeScript, JavaScript, C#, and GraphQL).
+Comprehensive test suite for struct-frame that validates code generation and serialization/deserialization across all supported languages: **C, C++, Python, TypeScript, JavaScript, C#, Rust** (and GraphQL schema generation).
+
+For an authoritative map of which features are tested in each language, see
+[`docs/src/content/docs/reference/test-coverage.md`](../docs/src/content/docs/reference/test-coverage.md).
+For the wire-format spec that any new implementation must conform to, see
+[`docs/src/content/docs/reference/conformance.md`](../docs/src/content/docs/reference/conformance.md).
+For negative / malformed-input tests, see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
 
 ## Quick Start
 
@@ -85,39 +91,69 @@ Higher-level test infrastructure (includes `profile_runner.h`):
 
 **Frame Profiles**: profile_bulk
 
+### 4. Negative Tests (`test_negative.*`)
+**Purpose**: Validates parsers reject corrupted, truncated, or malformed frames.
+13 uniform scenarios implemented identically in all 7 languages — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
+
+### 5. Streaming Tests (`test_streaming.*`)
+**Purpose**: Validates byte-at-a-time accumulating-reader behaviour (C, Rust).
+
+### 6. SDK Tests (`test_sdk.*`, `test_sdk_subscribe.*`, `test_envelope_sdk.*`)
+**Purpose**: Validates `StructFrameSdk` subscribe/dispatch with mock transports.
+Languages: C++, Python, TypeScript, JavaScript, C#, Rust.
+
+### 7. Wire-Evolution Tests (`test_wire_evolution.*`)
+**Purpose**: Validates backward-compatible message extension: unknown trailing
+fields are ignored, legacy frames decode against new schemas, magic bytes are
+computed only from base fields.
+Top-level orchestrator: `tests/test_wire_evolution.py`. Per-language compiled
+tests: C++, TS, JS, C#.
+
+### 8. Cross-Cutting Generator Tests (top-level `tests/test_*.py`)
+- `test_magic_bytes.py` — magic-byte derivation + enforcement
+- `test_proto_field_types.py` — enum-to-string, flatten, `discriminator=none`, multi-oneof
+- `test_generator_validation.py` — `.sf` semantic rejection (duplicates, cycles)
+- `test_no_packed.py` — `--no_packed` flag
+- `check_determinism.py` — generator output must be byte-deterministic
+- `check_golden.py` — wire-format regression against checked-in golden bytes
+
 ## Test Organization
 
 ```
 tests/
 ├── run_tests.py              # Main test runner
 ├── README.md                 # This file
-├── proto/                    # Proto definitions for tests
-│   ├── test_messages.proto       # Standard test messages
-│   ├── pkg_test_messages.proto   # Package ID test messages
-│   └── extended_messages.proto   # Extended message ID tests
-├── c/                        # C language tests
-│   ├── test_standard.c           # Entry point
-│   ├── test_extended.c           # Entry point
-│   ├── test_variable_flag.c      # Entry point
-│   └── include/
-│       ├── standard_messages.h       # Message definitions + encode/validate
-│       ├── extended_messages.h       # Extended test data
-│       ├── variable_flag_messages.h  # Variable flag test data
-│       ├── profile_runner.h          # Profile-dispatch encode/decode + test_config_t
-│       └── test_harness.h            # File I/O, CLI, run_test_main (includes profile_runner.h)
-├── cpp/                      # C++ language tests (same structure)
-├── py/                       # Python tests (same structure)
-├── ts/                       # TypeScript tests (same structure)
-├── js/                       # JavaScript tests (same structure)
-├── csharp/                   # C# tests (same structure)
-└── generated/                # Generated code output
-    ├── c/
-    ├── cpp/
-    ├── py/
-    ├── ts/
-    ├── js/
-    ├── csharp/
-    └── gql/
+├── NEGATIVE_TESTS.md         # Negative / malformed-frame tests
+├── check_determinism.py      # Verifies generator output is byte-deterministic
+├── check_golden.py           # Verifies wire bytes against checked-in goldens
+├── test_generator_validation.py  # Generator-validation (.sf input) tests
+├── test_magic_bytes.py           # Magic-byte computation / enforcement tests
+├── test_no_packed.py             # `--no_packed` C/C++ output tests
+├── test_proto_field_types.py     # Proto field-type coverage tests
+├── test_wire_evolution.py        # Backward-compat / extension-field tests
+├── proto/                    # .sf message definitions used by all suites
+│   ├── test_messages.sf          # Standard / serialization test messages
+│   ├── pkg_test_messages.sf      # Package-ID test messages
+│   ├── pkg_test_a.sf             # Imported by pkg_test_messages.sf
+│   ├── extended_messages.sf      # Message IDs > 255
+│   ├── envelope_messages.sf      # Envelope (oneof) messages
+│   ├── wire_evolution_messages.sf
+│   └── common_types.sf
+├── golden/                   # Canonical wire bytes (see check_golden.py)
+├── c/                        # C tests (test_standard.c, test_extended.c,
+│   │                         #  test_variable_flag.c, test_negative.c,
+│   │                         #  test_streaming.c)
+│   └── include/              # Shared message defs + profile_runner + test_harness
+├── cpp/                      # C++ tests (adds test_profiling*, test_sdk_*,
+│                             #  test_wire_evolution.cpp)
+├── py/                       # Python tests (adds test_sdk.py)
+├── ts/                       # TypeScript tests (adds test_sdk.ts, test_wire_evolution.ts)
+├── js/                       # JavaScript tests (adds test_sdk.js, test_wire_evolution.js)
+├── csharp/                   # C# tests (adds TestSdkSubscribe.cs, test_envelope_sdk.cs,
+│                             #  test_wire_evolution.cs)
+├── rust/                     # Rust tests (single binary with subcommands)
+└── generated/                # Generated code output (git-ignored)
+    ├── c/  cpp/  py/  ts/  js/  csharp/  gql/
 ```
 
 ## How Tests Work
@@ -184,22 +220,25 @@ pip install proto-schema-parser
 **For C# tests**:
 - .NET SDK
 
+**For Rust tests**:
+- `cargo` / `rustc` (stable)
+
 ## Adding a New Test Suite
 
-1. Create proto definitions in `tests/proto/`
-2. For each language, create:
-   - Entry point: `test_<name>.<ext>`
-   - Message definitions: `include/<name>_messages.<ext>` with:
-      - Message creation functions
-      - Message arrays
-      - Encoder functions
-      - Validator functions
-      - Test configuration
-3. For C, use `test_harness.h` / `profile_runner.h` for encode/decode orchestration
-4. Use the standard test output format:
+1. Add proto definitions to `tests/proto/<name>.sf` (or extend an existing file).
+2. For each language under `tests/<lang>/`, add:
+   - An entry point: `test_<name>.<ext>` whose CLI is
+     `<binary> encode|decode|both <profile> <file>`
+   - A message-definitions module under `include/` (`<name>_messages.<ext>`)
+     containing the per-message creator/encoder/validator helpers
+3. Wire the new suite into `tests/run_tests.py` by adding it to the suite
+   list near the existing `test_standard` / `test_extended` / `test_variable_flag`
+   entries (search for `"standard"` to find the dispatch table).
+4. Conform to the standard test output format:
    - Print `[TEST START] <Language> <Profile> <Mode>`
    - Print `[TEST END] <Language> <Profile> <Mode>: PASS` or `FAIL`
-5. Return exit code 0 on success, 1 on failure
+5. Return exit code 0 on success, 1 on failure.
+6. Update `docs/.../test-coverage.md` so the new feature appears in the matrix.
 
 ## Debugging Failed Tests
 

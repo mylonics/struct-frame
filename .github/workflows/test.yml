@@ -60,6 +60,9 @@ jobs:
       - name: Check generated-file determinism
         run: python tests/check_determinism.py --verbose
 
+      - name: Check wire-format goldens
+        run: python tests/check_golden.py --verbose
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
