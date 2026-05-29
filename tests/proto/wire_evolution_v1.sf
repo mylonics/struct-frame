@@ -1,0 +1,88 @@
+// Wire-evolution interop fixture — *version 1* (base schema, no extensions).
+//
+// This is the "older" half of a paired schema set used to test genuine
+// cross-version extension interop.  It is generated into its own package
+// (`wire_evolution_v1`) so that the v1 side is truly unaware of the extra
+// extension fields/variants that the v2 schema adds.
+//
+// v1 defines only the BASE fields/variants of each message.  It deliberately
+// does NOT declare `option extensions_start` or any extension fields, exactly
+// as an older code-base predating the extension additions would look.
+//
+// The message ids, base field layout, and base oneof variants are identical to
+// `wire_evolution_v2.sf` so that:
+//   • magic bytes (computed from base fields only) match between versions, and
+//   • a v1 receiver can validate and decode the base portion of a v2 frame.
+//
+package wire_evolution_v1;
+
+// ============================================================================
+// Shared sub-message types used inside oneofs (base variants only)
+// ============================================================================
+
+message BaseCommandA {
+  uint32 value_a = 1;
+  uint16 flags_a = 2;
+}
+
+message BaseCommandB {
+  int16  value_b  = 1;
+  bool   active_b = 2;
+}
+
+// ============================================================================
+// Scenario 1 — standard message, base fields only (no crc_seed extension)
+// ============================================================================
+message BaseExtensionMessage {
+  option msgid = 1;
+
+  uint16 header = 1;
+  uint8  seq    = 2;
+}
+
+// ============================================================================
+// Scenario 2 — variable-length message, base fields only (no ext_timestamp)
+// ============================================================================
+message VariableExtensionMessage {
+  option msgid = 2;
+  option variable = true;
+
+  uint8           node_id  = 1;
+  repeated uint16 readings = 2 [max_size=16];
+}
+
+// ============================================================================
+// Scenario 3 — single oneof, base variants only (no ext variants)
+// ============================================================================
+message OneOfExtensionMessage {
+  option msgid = 3;
+
+  uint8 device_id = 1;
+
+  oneof command {
+    option discriminator = "field_order";
+
+    BaseCommandA cmd_a = 1;
+    BaseCommandB cmd_b = 2;
+  }
+}
+
+// ============================================================================
+// Scenario 4 — two oneofs, base variants only in both
+// ============================================================================
+message MultiOneOfExtensionMessage {
+  option msgid = 4;
+
+  uint8 priority = 1;
+
+  oneof base_union {
+    option discriminator = "field_order";
+    BaseCommandA first_a = 1;
+    BaseCommandB first_b = 2;
+  }
+
+  oneof ext_union {
+    option discriminator = "field_order";
+    BaseCommandA second_a = 1;
+  }
+}
