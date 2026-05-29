@@ -1,0 +1,48 @@
+name: Benchmark Regression
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: benchmark-regression-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark-regression:
+    name: Benchmark regression smoke
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ build-essential
+      - name: Install Python dependencies
+        run: pip install proto-schema-parser
+      - name: Install TypeScript dependencies
+        run: npm ci
+        working-directory: tests/ts
+      - name: Run benchmark smoke
+        run: python tests/benchmarks/run_all.py --quick
+      - name: Check regressions
+        run: python tests/benchmarks/check_regression.py --allow-missing-baseline
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: tests/benchmarks/results/

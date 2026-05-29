@@ -1,0 +1,109 @@
+{
+  "schema_version": "1",
+  "language": "js",
+  "runner_version": "placeholder-baseline",
+  "timestamp": "1970-01-01T00:00:00Z",
+  "host": {
+    "os": "baseline",
+    "arch": "baseline",
+    "cpu": "baseline"
+  },
+  "scenarios": [
+    {
+      "name": "standard_encode",
+      "profile": "standard",
+      "operation": "encode",
+      "msg_count": 100,
+      "bytes_total": 3800,
+      "duration_s": 1.0,
+      "msg_per_sec": 1.0,
+      "mb_per_sec": 0.001,
+      "latency_ns": {
+        "p50": 1,
+        "p95": 1,
+        "p99": 1000000000000,
+        "max": 1000000000000
+      }
+    },
+    {
+      "name": "standard_decode",
+      "profile": "standard",
+      "operation": "decode",
+      "msg_count": 100,
+      "bytes_total": 3800,
+      "duration_s": 1.0,
+      "msg_per_sec": 1.0,
+      "mb_per_sec": 0.001,
+      "latency_ns": {
+        "p50": 1,
+        "p95": 1,
+        "p99": 1000000000000,
+        "max": 1000000000000
+      }
+    },
+    {
+      "name": "bulk_encode",
+      "profile": "bulk",
+      "operation": "encode",
+      "msg_count": 100,
+      "bytes_total": 52000,
+      "duration_s": 1.0,
+      "msg_per_sec": 1.0,
+      "mb_per_sec": 0.001,
+      "latency_ns": {
+        "p50": 1,
+        "p95": 1,
+        "p99": 1000000000000,
+        "max": 1000000000000
+      }
+    },
+    {
+      "name": "bulk_decode",
+      "profile": "bulk",
+      "operation": "decode",
+      "msg_count": 100,
+      "bytes_total": 52000,
+      "duration_s": 1.0,
+      "msg_per_sec": 1.0,
+      "mb_per_sec": 0.001,
+      "latency_ns": {
+        "p50": 1,
+        "p95": 1,
+        "p99": 1000000000000,
+        "max": 1000000000000
+      }
+    },
+    {
+      "name": "network_encode",
+      "profile": "network",
+      "operation": "encode",
+      "msg_count": 100,
+      "bytes_total": 10700,
+      "duration_s": 1.0,
+      "msg_per_sec": 1.0,
+      "mb_per_sec": 0.001,
+      "latency_ns": {
+        "p50": 1,
+        "p95": 1,
+        "p99": 1000000000000,
+        "max": 1000000000000
+      }
+    },
+    {
+      "name": "network_decode",
+      "profile": "network",
+      "operation": "decode",
+      "msg_count": 100,
+      "bytes_total": 10700,
+      "duration_s": 1.0,
+      "msg_per_sec": 1.0,
+      "mb_per_sec": 0.001,
+      "latency_ns": {
+        "p50": 1,
+        "p95": 1,
+        "p99": 1000000000000,
+        "max": 1000000000000
+      }
+    }
+  ]
+}
