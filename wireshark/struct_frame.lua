@@ -357,7 +357,8 @@ end
 
 -- Register the dissector
 -- Register on a custom DLT for PCAP files
--- User DLT 0 (pcap LINKTYPE 147) maps to wtap encap 45 in Wireshark.
+-- User DLT 0 (pcap LINKTYPE 147) is exposed as wtap encap 45 by tshark
+-- (for example, run: tshark -T fields -e frame.encap_type on a LINKTYPE_USER0 pcap).
 local wtap_encap_table = DissectorTable.get("wtap_encap")
 local USER_DLT = 45  -- User DLT 0
 wtap_encap_table:add(USER_DLT, struct_frame_proto)

@@ -49,18 +49,19 @@ def pct(values, q):
 
 def run_case(name, profile, op, iterations):
     scenario = next(s for s in SCENARIOS if s[0] == profile)
-    frames = [encode(*scenario[1:], seq=i) for i in range(8)]
+    _, *encode_args = scenario
+    frames = [encode(*encode_args, seq=i) for i in range(8)]
     lat = []; total_bytes = 0; start = time.perf_counter_ns()
     for i in range(iterations):
         t0 = time.perf_counter_ns()
         if op == "encode":
-            frame = encode(*scenario[1:], seq=i); total_bytes += len(frame)
+            frame = encode(*encode_args, seq=i); total_bytes += len(frame)
         elif op == "decode":
             frame = frames[i % len(frames)]
             decode(frame)
             total_bytes += len(frame)
         else:
-            frame = encode(*scenario[1:], seq=i); decode(frame); total_bytes += len(frame)
+            frame = encode(*encode_args, seq=i); decode(frame); total_bytes += len(frame)
         lat.append(time.perf_counter_ns() - t0)
     duration = max((time.perf_counter_ns() - start) / 1e9, 1e-9)
     return {"name": name, "profile": profile, "operation": op, "msg_count": iterations, "bytes_total": total_bytes,
