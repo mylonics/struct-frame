@@ -220,7 +220,7 @@ function scenario7(): void {
   const frame = encodeMessage(ProfileStandardConfig, orig);
 
   const corrupted = new Uint8Array(frame);
-  const headerSize = 2 + 4; // start bytes + length(2) + msgid(2)
+  const headerSize = 2 + 4; // start bytes(2) + length(2) + msgid(2)
   const extOffset = headerSize + V2BaseExtensionMessage._baseSize;
   corrupted[extOffset] ^= 0xFF;
 

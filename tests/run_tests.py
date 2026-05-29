@@ -1857,7 +1857,7 @@ class TestRunner:
                     results[f"{lang_id}_interop"] = success
                     if not success:
                         self.add_failure("wire_evolution", label_name, None, "test_wire_evolution_interop failed")
-                    interop_success = False
+                        interop_success = False
                 else:
                     print(f"  Skipping {label_name} test_wire_evolution_interop (binary not found)")
 
