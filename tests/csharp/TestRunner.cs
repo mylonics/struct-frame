@@ -97,6 +97,10 @@ class TestRunner
         {
             return TestWireEvolution.Main(filteredArgs);
         }
+        else if (testSuite == "test_wire_evolution_interop")
+        {
+            return TestWireEvolutionInterop.Main(filteredArgs);
+        }
         else
         {
             return TestStandard.Main(filteredArgs);
