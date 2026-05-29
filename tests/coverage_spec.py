@@ -506,7 +506,7 @@ SECTIONS = [
                           "JS": "✅", "C#": "✅", "Rust": "✅"}),
                     _row("Serial transport",
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
-                          "JS": "❌", "C#": "❌", "Rust": "N/A"}),
+                          "JS": "❌", "C#": "✅", "Rust": "N/A"}),
                     _row("TCP transport",
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
                           "JS": "❌", "C#": "❌", "Rust": "N/A"}),
@@ -530,8 +530,26 @@ SECTIONS = [
                     "> - **JavaScript** -- `tests/js/test_sdk.js` (10 tests)\n"
                     "> - **Rust** -- `tests/rust/src/main.rs` `test_sdk_subscribe` "
                     "runner (9 tests)\n>\n"
-                    "> **Gap (Low):** Transport-level tests (serial, TCP, UDP, "
-                    "WebSocket) remain uncovered."
+                    "> The C# suite additionally registers five dedicated SDK "
+                    "runners (selected via `--runner <name>` in "
+                    "`tests/csharp/TestRunner.cs`):\n"
+                    "> - `test_sdk_strict_ordering` -- `tests/csharp/TestSdkStrictOrdering.cs` "
+                    "(`StrictOrdering=true` FIFO send-queue, cancel-on-disconnect, "
+                    "restart-after-reconnect)\n"
+                    "> - `test_sdk_lifecycle` -- `tests/csharp/TestSdkLifecycle.cs` "
+                    "(connect/close lifecycle, persistent + transient subscriber "
+                    "coexistence, error paths)\n"
+                    "> - `test_sdk_client_wrapper` -- `tests/csharp/TestSdkClientWrapper.cs` "
+                    "(generated package `Client` wrapper Subscribe/Send/"
+                    "SendViaCommandEnvelope)\n"
+                    "> - `test_sdk_profiles` -- `tests/csharp/TestSdkProfiles.cs` "
+                    "(SDK round-trip under Bulk and Sensor profiles)\n"
+                    "> - `test_base_transport` -- `tests/csharp/TestBaseTransport.cs` "
+                    "(`BaseTransport` semaphore/ROM overload/AutoReconnect and "
+                    "`SerialTransport` construction)\n>\n"
+                    "> **Gap (Low):** Serial transport is now covered for C# by "
+                    "`test_base_transport`; TCP, UDP and WebSocket transports "
+                    "remain uncovered."
                 ),
             },
         ],
@@ -625,6 +643,71 @@ SECTIONS = [
                 ],
                 "caption": "Proto source: `tests/proto/test_messages.sf` "
                            "(Python generator + round-trip).",
+            },
+            {
+                "header": "Cross-version interop scenario",
+                "columns": LANGS,
+                "lang_cols": LANGS,
+                "subtitle": "9.1 Genuine Cross-Version Extension Interop",
+                "rows": [
+                    _row("Newer sender → older receiver (length-bearing; "
+                         "base decodes, trailing ext bytes skipped)",
+                         {lang: "✅" for lang in LANGS}),
+                    _row("Older sender → newer receiver (extension fields "
+                         "zero-filled to defaults)",
+                         {lang: "✅" for lang in LANGS}),
+                    _row("Same-version round-trip regression guard (v2 → v2)",
+                         {lang: "✅" for lang in LANGS}),
+                    _row("Newer ext oneof variant → older receiver degrades "
+                         "gracefully (unknown discriminator)",
+                         {lang: "✅" for lang in LANGS}),
+                    _row("Older base oneof variant → newer receiver decodes",
+                         {lang: "✅" for lang in LANGS}),
+                    _row("Multi-oneof: base oneof unaffected while 2nd oneof "
+                         "carries an extension variant",
+                         {lang: "✅" for lang in LANGS}),
+                    _row("Corrupted extension bytes invalidate full CRC "
+                         "(magic from base still matches)",
+                         {lang: "✅" for lang in LANGS}),
+                    _row("Truncated payload (length < base_size) rejected",
+                         {"C": "❌", "C++": "❌", "Python": "✅", "TS": "❌",
+                          "JS": "❌", "C#": "❌", "Rust": "❌"}),
+                    _row("Length-less profile guard (Sensor/IPC: both sides "
+                         "must agree on full message size)",
+                         {"C": "❌", "C++": "❌", "Python": "✅", "TS": "❌",
+                          "JS": "❌", "C#": "❌", "Rust": "❌"}),
+                    _row("Variable base array + trailing extension field "
+                         "interop (both directions)",
+                         {"C": "❌", "C++": "❌", "Python": "✅", "TS": "❌",
+                          "JS": "❌", "C#": "❌", "Rust": "❌"}),
+                ],
+                "caption": (
+                    "> Genuine cross-version interop uses a paired schema set, "
+                    "`tests/proto/wire_evolution_v1.sf` (base only, no "
+                    "`extensions_start`) and `tests/proto/wire_evolution_v2.sf` "
+                    "(same `msg_id`/base fields + extension fields), generated "
+                    "into separate namespaces so each side is unaware of the "
+                    "other's extra fields. Magic bytes and `base_size` match "
+                    "across versions because they are computed from the base "
+                    "fields only, which is what lets cross-version CRC "
+                    "validation work over the length-bearing Standard/Bulk/"
+                    "Network profiles.\n>\n"
+                    "> Dedicated runners (scenarios 1–7 in every language):\n"
+                    "> - **Python** -- `tests/test_wire_evolution_interop.py` "
+                    "(also covers scenarios 8–10)\n"
+                    "> - **C** -- `tests/c/test_wire_evolution_interop.c`\n"
+                    "> - **C++** -- `tests/cpp/test_wire_evolution_interop.cpp`\n"
+                    "> - **TypeScript** -- `tests/ts/test_wire_evolution_interop.ts`\n"
+                    "> - **JavaScript** -- `tests/js/test_wire_evolution_interop.js`\n"
+                    "> - **C#** -- `tests/csharp/test_wire_evolution_interop.cs` "
+                    "(`--runner test_wire_evolution_interop`)\n"
+                    "> - **Rust** -- `tests/rust/src/main.rs` "
+                    "`test_wire_evolution_interop` runner\n>\n"
+                    "> **Gap (Low):** scenarios 8–10 (truncated-payload "
+                    "rejection, length-less profile guard, and the "
+                    "variable-base-array + trailing-extension combination) are "
+                    "currently exercised only by the Python runner."
+                ),
             },
         ],
     },
