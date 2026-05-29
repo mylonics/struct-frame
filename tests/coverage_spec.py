@@ -98,23 +98,31 @@ SECTIONS = [
                           "`pkg_test_messages.sf` imports `pkg_test_a.sf`"),
                     _row("Multi-package generation",
                          {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
-                          "JS": "✅", "C#": "✅", "Rust": "⚠️"},
-                         "`pkg_test_messages.sf` + `pkg_test_a.sf`; Rust partial"),
-                    _full("`--equality` flag", "❌",
-                          "No tests verify equality operator output"),
+                          "JS": "✅", "C#": "✅", "Rust": "✅"},
+                         "`pkg_test_messages.sf` + `pkg_test_a.sf`; Rust covered by "
+                         "round-trip tests (`test_roundtrip_pkg_test_messages.rs`, "
+                         "`test_roundtrip_pkg_test_a.rs`)"),
+                    _row("`--equality` flag",
+                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
+                          "JS": "✅", "C#": "✅", "Rust": "✅"},
+                         "Verified by `tests/test_equality.py` (C `*_equals()`, "
+                         "C++ `operator==`, Python `__eq__`/`__ne__`, "
+                         "TS/JS `equals()`, C# `Equals()`/`==`, Rust `PartialEq` derive)"),
                     _full("`--generate_tests` flag", "✅",
                           "Exercised by the Round-trip Tests phase for all seven targets"),
                     _row("`--validate` flag",
-                         {"C": "❌", "C++": "❌", "Python": "❌", "TS": "N/A",
+                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "N/A",
                           "JS": "N/A", "C#": "N/A", "Rust": "N/A"},
-                         "No test validates the validate mode"),
+                         "Verified by `tests/test_validate_flag.py` (success path, "
+                         "no-output guarantee, failure path)"),
                     _row("`--no_packed` flag",
                          {"C": "✅", "C++": "✅", "Python": "N/A", "TS": "N/A",
                           "JS": "N/A", "C#": "N/A", "Rust": "N/A"},
                          "Verified by `tests/test_no_packed.py` (CLI generation, "
                          "absence of `#pragma pack`, round-trip parity)"),
-                    _full("Hash / `--force` caching", "❌",
-                          "Caching logic not covered by tests"),
+                    _full("Hash / `--force` caching", "✅",
+                          "Verified by `tests/test_caching.py` (hash file creation, "
+                          "skip-on-match, `--force` bypass, structural change invalidation)"),
                 ],
             },
         ],
@@ -541,15 +549,15 @@ SECTIONS = [
                     _full("Package with `pkgid`", "✅"),
                     _row("Multi-package with no IDs",
                          {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
-                          "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
+                          "JS": "✅", "C#": "✅", "Rust": "✅"}),
                     _row("Package with missing `msgid` on message",
                          {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
-                          "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
+                          "JS": "✅", "C#": "✅", "Rust": "✅"}),
                     _full("Circular import detection", "✅"),
                 ],
                 "caption": (
                     "Proto files: `tests/proto/pkg_test_messages.sf`, "
-                    "`pkg_test_a.sf`\n\n"
+                    "`pkg_test_a.sf`, `common_types.sf`\n\n"
                     "> Circular import detection is tested in "
                     "`tests/test_generator_validation.py`."
                 ),
