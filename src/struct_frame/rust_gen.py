@@ -676,10 +676,11 @@ class MessageRustGen():
 
         # Derive attributes (Default is manually implemented if large arrays are present)
         needs_manual_default = _needs_manual_default(msg)
+        eq_derive = ', PartialEq' if equality else ''
         if needs_manual_default:
-            result += '#[derive(Debug, Clone)]\n'
+            result += f'#[derive(Debug, Clone{eq_derive})]\n'
         else:
-            result += '#[derive(Debug, Clone, Default)]\n'
+            result += f'#[derive(Debug, Clone, Default{eq_derive})]\n'
         result += 'pub struct %s {\n' % struct_name
 
         # Regular fields
