@@ -1107,8 +1107,254 @@ fn run_sdk_subscribe_tests() {
 
 // ============================================================================
 
+// ============================================================================
+// Cross-version wire-evolution interop tests (v1 base-only <-> v2 +extensions)
+//
+// Unlike the single-schema round-trip runner, this uses two SEPARATELY
+// generated schema versions of the same messages:
+//   - wire_evolution_v1 -- base fields only (older, extension-unaware)
+//   - wire_evolution_v2 -- base fields + `extensions_start` extension fields
+// Each side has its own structs, magic constants and `get_message_info`,
+// exactly as two independently built code-bases would.  The scenarios mirror
+// the project's interop plan (1-7) over the length-bearing profiles.
+// ============================================================================
+fn run_wire_evolution_interop_tests() -> ! {
+    use struct_frame_sdk::frame_base::{FrameMsgInfo, MessageInfo, StructFrameMessage};
+    use struct_frame_sdk::{BufferReader, BufferWriter};
+    use struct_frame_sdk::wire_evolution_v1 as v1;
+    use struct_frame_sdk::wire_evolution_v2 as v2;
+
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    macro_rules! check {
+        ($cond:expr, $msg:expr) => {
+            if $cond {
+                println!("  [PASS] {}", $msg);
+                passed += 1;
+            } else {
+                println!("  [FAIL] {}", $msg);
+                failed += 1;
+            }
+        };
+    }
+
+    fn encode<M: StructFrameMessage>(config: ProfileConfig, msg: &M) -> Vec<u8> {
+        let mut w = BufferWriter::new(config, 256);
+        w.write_crc(msg, 0);
+        w.data().to_vec()
+    }
+    fn parse(
+        config: ProfileConfig,
+        buf: Vec<u8>,
+        gmi: &dyn Fn(u16) -> Option<MessageInfo>,
+    ) -> Option<FrameMsgInfo> {
+        let mut r = BufferReader::new(config, buf);
+        r.next(gmi)
+    }
+
+    let profiles: [(ProfileConfig, &str); 3] = [
+        (PROFILE_STANDARD_CONFIG, "standard"),
+        (PROFILE_BULK_CONFIG, "bulk"),
+        (PROFILE_NETWORK_CONFIG, "network"),
+    ];
+
+    // -- Scenario 1: newer sender -> older receiver over length-bearing profiles
+    println!("Scenario 1: newer sender -> older receiver (length-bearing)");
+    for (config, name) in profiles.iter() {
+        let mut m = v2::BaseExtensionMessage::default();
+        m.header = 0xBEEF;
+        m.seq = 42;
+        m.crc_seed = 0xDEADC0DE;
+        let buf = encode(*config, &m);
+        let frame = parse(*config, buf, &v1::get_message_info);
+        check!(
+            frame.as_ref().map_or(false, |f| f.valid),
+            format!("[S1/{}] v2->v1 frame validates CRC (magic from base)", name)
+        );
+        if let Some(f) = frame {
+            let d = v1::BaseExtensionMessage::unpack(&f.payload);
+            check!(
+                d.map_or(false, |x| x.header == 0xBEEF && x.seq == 42),
+                format!("[S1/{}] v1 decodes base; trailing ext bytes ignored", name)
+            );
+        }
+    }
+
+    // -- Scenario 2: older sender -> newer receiver (zero-fill extensions)
+    println!("\nScenario 2: older sender -> newer receiver (zero-fill)");
+    {
+        let mut m = v1::BaseExtensionMessage::default();
+        m.header = 0x1234;
+        m.seq = 7;
+        let buf = encode(PROFILE_STANDARD_CONFIG, &m);
+        let frame = parse(PROFILE_STANDARD_CONFIG, buf, &v2::get_message_info);
+        check!(
+            frame.as_ref().map_or(false, |f| f.valid),
+            "[S2] v1->v2 base-only frame validates CRC"
+        );
+        if let Some(f) = frame {
+            // Newer receiver zero-fills the missing extension bytes before decoding.
+            let mut padded = vec![0u8; v2::BaseExtensionMessage::MAX_SIZE];
+            padded[..f.payload.len()].copy_from_slice(&f.payload);
+            let d = v2::BaseExtensionMessage::unpack(&padded);
+            check!(
+                d.as_ref().map_or(false, |x| x.header == 0x1234 && x.seq == 7),
+                "[S2] v2 decodes base fields correctly"
+            );
+            check!(
+                d.map_or(false, |x| x.crc_seed == 0),
+                "[S2] v2 extension field zero-filled to default"
+            );
+        }
+    }
+
+    // -- Scenario 3: same-version sanity (v2 -> v2 with extension variant)
+    println!("\nScenario 3: same-version sanity (v2 -> v2)");
+    {
+        let mut m = v2::OneOfExtensionMessage::default();
+        m.device_id = 2;
+        let mut c = v2::ExtCommandC::default();
+        c.value_c = 3.14;
+        c.mode_c = 2;
+        m.set_cmd_c(&c);
+        let buf = encode(PROFILE_STANDARD_CONFIG, &m);
+        let frame = parse(PROFILE_STANDARD_CONFIG, buf, &v2::get_message_info);
+        check!(
+            frame.as_ref().map_or(false, |f| f.valid),
+            "[S3] v2->v2 (ext variant) frame validates CRC"
+        );
+        if let Some(f) = frame {
+            let d = v2::OneOfExtensionMessage::unpack(&f.payload);
+            check!(
+                d.map_or(false, |x| x.command_discriminator == 3
+                    && x.get_cmd_c().map_or(false, |cc| (cc.value_c - 3.14).abs() < 1e-4)),
+                "[S3] v2 round-trips the extension variant"
+            );
+        }
+    }
+
+    // -- Scenario 4: newer ext oneof variant -> older receiver degrades gracefully
+    println!("\nScenario 4: newer ext oneof variant -> older receiver");
+    {
+        let mut m = v2::OneOfExtensionMessage::default();
+        m.device_id = 9;
+        let mut c = v2::ExtCommandD::default();
+        c.value_d = 2.718281828;
+        m.set_cmd_d(&c);
+        let buf = encode(PROFILE_STANDARD_CONFIG, &m);
+        let frame = parse(PROFILE_STANDARD_CONFIG, buf, &v1::get_message_info);
+        check!(
+            frame.as_ref().map_or(false, |f| f.valid),
+            "[S4] v2 ext-variant -> v1 frame validates CRC"
+        );
+        if let Some(f) = frame {
+            let d = v1::OneOfExtensionMessage::unpack(&f.payload);
+            check!(
+                d.as_ref().map_or(false, |x| x.device_id == 9),
+                "[S4] v1 still decodes the base header field"
+            );
+            // v1 knows nothing about discriminator 4; it must preserve the raw
+            // value without corrupting the base field.
+            check!(
+                d.map_or(false, |x| x.command_discriminator == 4),
+                "[S4] v1 preserves unknown ext discriminator without corruption"
+            );
+        }
+    }
+
+    // -- Scenario 5: older base oneof variant -> newer receiver decodes correctly
+    println!("\nScenario 5: older base oneof variant -> newer receiver");
+    {
+        let mut m = v1::OneOfExtensionMessage::default();
+        m.device_id = 5;
+        let mut b = v1::BaseCommandB::default();
+        b.value_b = -1234;
+        b.active_b = true;
+        m.set_cmd_b(&b);
+        let buf = encode(PROFILE_STANDARD_CONFIG, &m);
+        let frame = parse(PROFILE_STANDARD_CONFIG, buf, &v2::get_message_info);
+        check!(
+            frame.as_ref().map_or(false, |f| f.valid),
+            "[S5] v1 base-variant -> v2 frame validates CRC"
+        );
+        if let Some(f) = frame {
+            let mut padded = vec![0u8; v2::OneOfExtensionMessage::MAX_SIZE];
+            padded[..f.payload.len()].copy_from_slice(&f.payload);
+            let d = v2::OneOfExtensionMessage::unpack(&padded);
+            check!(
+                d.map_or(false, |x| x.command_discriminator == 2
+                    && x.get_cmd_b().map_or(false, |cb| cb.value_b == -1234)),
+                "[S5] v2 decodes the older base oneof variant correctly"
+            );
+        }
+    }
+
+    // -- Scenario 6: multi-oneof, ext only in the second union
+    println!("\nScenario 6: multi-oneof (ext only in 2nd union)");
+    {
+        let mut m = v2::MultiOneOfExtensionMessage::default();
+        m.priority = 3;
+        let mut a = v2::BaseCommandA::default();
+        a.value_a = 100;
+        a.flags_a = 5;
+        m.set_first_a(&a);
+        let mut c = v2::ExtCommandC::default();
+        c.value_c = 2.71;
+        c.mode_c = 1;
+        m.set_second_ext(&c);
+        let buf = encode(PROFILE_STANDARD_CONFIG, &m);
+        let frame = parse(PROFILE_STANDARD_CONFIG, buf, &v1::get_message_info);
+        check!(
+            frame.as_ref().map_or(false, |f| f.valid),
+            "[S6] v2 multi-oneof (ext in 2nd union) -> v1 validates CRC"
+        );
+        if let Some(f) = frame {
+            let d = v1::MultiOneOfExtensionMessage::unpack(&f.payload);
+            check!(
+                d.map_or(false, |x| x.priority == 3
+                    && x.base_union_discriminator == 1
+                    && x.get_first_a().map_or(false, |fa| fa.value_a == 100)),
+                "[S6] v1 decodes the FIRST (base) oneof unaffected by ext in the second"
+            );
+        }
+    }
+
+    // -- Scenario 7: corrupted extension bytes invalidate the full CRC
+    println!("\nScenario 7: corrupted extension bytes invalidate CRC");
+    {
+        let mut m = v2::BaseExtensionMessage::default();
+        m.header = 0xBEEF;
+        m.seq = 42;
+        m.crc_seed = 0xDEADC0DE;
+        let mut buf = encode(PROFILE_STANDARD_CONFIG, &m);
+        // Probe the frame layout (msg_len) to locate the extension region.
+        let probe = parse(PROFILE_STANDARD_CONFIG, buf.clone(), &v1::get_message_info);
+        if let Some(p) = probe {
+            // Footer is 2 bytes; the extension region starts BASE_SIZE bytes into
+            // the payload, which itself starts (frame_size - footer - msg_len) in.
+            let payload_off = buf.len() - 2 - p.msg_len;
+            let ext_off = payload_off + v2::BaseExtensionMessage::BASE_SIZE;
+            buf[ext_off] ^= 0xFF;
+        }
+        let frame = parse(PROFILE_STANDARD_CONFIG, buf, &v1::get_message_info);
+        check!(
+            frame.is_none(),
+            "[S7] corrupted extension byte invalidates full CRC"
+        );
+    }
+
+    println!("\nResults: {} passed, {} failed", passed, failed);
+    std::process::exit(if failed == 0 { 0 } else { 1 });
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+
+    // Cross-version (v1<->v2) wire-evolution interop tests.
+    if args.len() >= 2 && args[1] == "test_wire_evolution_interop" {
+        run_wire_evolution_interop_tests();
+        // run_wire_evolution_interop_tests() always exits.
+    }
 
     // Envelope SDK test can be invoked without the standard runner args.
     if args.len() >= 2 && args[1] == "test_envelope_sdk" {
