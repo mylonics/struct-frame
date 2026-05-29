@@ -36,14 +36,15 @@ jobs:
         # Coverage focuses on the generator (src/struct_frame), which is what
         # Python tooling can instrument end-to-end.  The generated message
         # modules under tests/generated/py are imported by the property test
-        # and contribute incidentally.
+        # and contribute incidentally.  Failures here propagate so Codecov's
+        # `fail_ci_if_error: false` is the only suppression knob.
         run: |
           coverage run --source=src/struct_frame --branch \
-              -m pytest tests/test_property_roundtrip.py -v || true
+              -m pytest tests/test_property_roundtrip.py -v
           coverage run --source=src/struct_frame --branch --append \
-              tests/test_generator_validation.py || true
+              tests/test_generator_validation.py
           coverage xml -o coverage.xml
-          coverage report --skip-covered --skip-empty || true
+          coverage report --skip-covered --skip-empty
       - name: Upload to Codecov
         uses: codecov/codecov-action@v4
         with:

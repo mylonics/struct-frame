@@ -332,7 +332,7 @@ def test_envelope_msgid_discriminator_without_msgid() -> bool:
     proto = """\
 package env_msgid_missing_test;
 
-message Inner { uint32 v = 1; }   // No msgid here on purpose.
+message Inner { uint32 v = 1; } // No msgid here on purpose.
 
 message Outer {
   option msgid = 1;

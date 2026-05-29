@@ -71,7 +71,7 @@ except Exception as exc:  # pragma: no cover  — fail soft, scaffold not yet wi
 def basic_types_messages(draw):  # noqa: D401
     """Random BasicTypesMessage with field values inside their declared ranges."""
     return BasicTypesMessage(
-        small_int=draw(st.integers(min_value=-(2**7),  max_value=2**7 - 1)),
+        small_int=draw(st.integers(min_value=-(2**7), max_value=2**7 - 1)),
         medium_int=draw(st.integers(min_value=-(2**15), max_value=2**15 - 1)),
         regular_int=draw(st.integers(min_value=-(2**31), max_value=2**31 - 1)),
         large_int=draw(st.integers(min_value=-(2**63), max_value=2**63 - 1)),

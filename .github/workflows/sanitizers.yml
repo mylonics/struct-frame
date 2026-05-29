@@ -102,9 +102,11 @@ jobs:
           pip install proto-schema-parser
       - name: Build C binaries (compile only, no run)
         # --only-compile produces all language artifacts; we only execute the
-        # C ones below under Valgrind.  Other languages compile as a side
-        # effect but their failure is not relevant to this job.
-        run: python test_all.py --only-compile || true
+        # C ones below under Valgrind.  Other languages' compile failures are
+        # not relevant to this job, so we tolerate a non-zero exit here and
+        # rely on the subsequent "no C binaries produced" guard to fail loudly
+        # if the C portion didn't build.
+        run: python test_all.py --only-compile || echo "non-C languages may have failed; continuing"
       - name: Run C binaries under Valgrind
         # Run every produced C test binary under memcheck.  --error-exitcode=1
         # converts any leak / invalid-access into a non-zero CI status.

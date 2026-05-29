@@ -86,6 +86,8 @@ jobs:
   os-matrix:
     name: ${{ matrix.os }} (py3.11)
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -111,6 +113,8 @@ jobs:
   python-matrix:
     name: python ${{ matrix.python }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -135,6 +139,8 @@ jobs:
   node-matrix:
     name: node ${{ matrix.node }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -159,6 +165,8 @@ jobs:
   dotnet-matrix:
     name: dotnet ${{ matrix.dotnet }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -190,6 +198,8 @@ jobs:
   compiler-matrix:
     name: ${{ matrix.cc }} / ${{ matrix.cxx }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
