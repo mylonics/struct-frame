@@ -11,8 +11,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Primary job: full suite on Ubuntu / pinned tool versions.  Acts as the
+  # gating check and produces the canonical `test-results` artifact.
   test:
-    name: Run Test Suite
+    name: Run Test Suite (ubuntu / py3.11 / node20 / dotnet10)
     runs-on: ubuntu-latest
 
     permissions:
@@ -74,3 +76,155 @@ jobs:
             tests/cpp/build/
             tests/py/build/
           retention-days: 5
+
+  # Cross-OS matrix: confirm the suite is portable to macOS.  Each runner
+  # only exercises languages whose toolchains are present out of the box,
+  # so we drop .NET on macOS to avoid spending the matrix on installer flakes.
+  # Windows is intentionally not in the matrix — `tests/run_tests.py` uses
+  # POSIX-style shell quoting and many compile invocations would need
+  # individual debugging.  Tracked as a follow-up.
+  os-matrix:
+    name: ${{ matrix.os }} (py3.11)
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Install Python deps
+        run: pip install proto-schema-parser
+      - name: Install Node deps
+        run: npm ci
+        working-directory: tests/ts
+      - name: Run test suite (skip C# — no .NET 10 SDK on macOS runner)
+        run: python test_all.py --skip-lang csharp
+
+  # Python version matrix: catch interpreter-specific regressions.  We skip
+  # the heavier compiled-language phases via --skip-lang to keep wall time
+  # to ~ the time of the Python phase itself.
+  python-matrix:
+    name: python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Install Python deps
+        run: pip install proto-schema-parser
+      - name: Install Node deps
+        run: npm ci
+        working-directory: tests/ts
+      - name: Run Python + C suite
+        run: python test_all.py --skip-lang csharp --skip-lang rust
+
+  # Node version matrix: focused JS/TS validation against supported LTS lines.
+  node-matrix:
+    name: node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install Python deps
+        run: pip install proto-schema-parser
+      - name: Install Node deps
+        run: npm ci
+        working-directory: tests/ts
+      - name: Run JS + TS suite
+        run: python test_all.py --skip-lang csharp --skip-lang rust
+
+  # .NET SDK matrix: 8 (LTS) and 10 (preview, current dev target).
+  dotnet-matrix:
+    name: dotnet ${{ matrix.dotnet }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - dotnet: "8.0.x"
+            quality: "ga"
+          - dotnet: "10.0.x"
+            quality: "preview"
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+          dotnet-quality: ${{ matrix.quality }}
+      - name: Install Python deps
+        run: pip install proto-schema-parser
+      - name: Run C# slice
+        # The .NET 8 run will fail if any generated csproj pins net10.0
+        # exclusively — this matrix exists precisely to surface that.
+        # Allowed to fail today via continue-on-error; flip when the gap
+        # documented in test-coverage.md §8 is closed.
+        continue-on-error: ${{ matrix.dotnet == '8.0.x' }}
+        run: python test_all.py --skip-lang rust
+
+  # Compiler matrix: GCC vs Clang for the C / C++ binaries.
+  compiler-matrix:
+    name: ${{ matrix.cc }} / ${{ matrix.cxx }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cc: gcc
+            cxx: g++
+            pkg: gcc
+          - cc: clang
+            cxx: clang++
+            pkg: clang
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.pkg }} build-essential
+          pip install proto-schema-parser
+          (cd tests/ts && npm ci)
+      - name: Run C / C++ suite under ${{ matrix.cc }}
+        run: python test_all.py --skip-lang csharp --skip-lang rust

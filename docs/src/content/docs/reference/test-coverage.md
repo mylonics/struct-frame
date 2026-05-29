@@ -329,22 +329,23 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 |----------------|--------|
 | Duplicate `msgid` within package | ⚠️ |
 | Duplicate `pkgid` across packages | ⚠️ |
-| Duplicate field numbers within message | ❌ |
-| Missing `size`/`max_size` on array | ❌ |
-| Missing `size`/`max_size` on string | ❌ |
-| Missing `element_size` on string array | ❌ |
-| `max_size` > 255 on array count | ❌ |
-| Envelope with zero oneofs | ❌ |
-| Envelope with non-message oneof fields | ❌ |
-| Envelope with `msgid` discriminator and messages missing `msgid` | ❌ |
-| Invalid `discriminator` option value | ❌ |
+| Duplicate field numbers within message | ⚠️ |
+| Missing `size`/`max_size` on array | ⚠️ |
+| Missing `size`/`max_size` on string | ⚠️ |
+| Missing `element_size` on string array | ⚠️ |
+| `max_size` > 255 on array count | ⚠️ |
+| Envelope with zero oneofs | ⚠️ |
+| Envelope with non-message oneof fields | ⚠️ |
+| Envelope with `msgid` discriminator and messages missing `msgid` | ⚠️ |
+| Invalid `discriminator` option value | ⚠️ |
+| Field number zero | ⚠️ |
 | Circular import detection | ⚠️ |
 | Multi-package without `pkgid` | ✅ |
 
-> **Partially addressed:** `tests/test_generator_validation.py` documents intended rejection behaviour for
-> duplicate `msgid`, duplicate `pkgid`, and circular imports as TODO items (the generator currently accepts
-> these inputs silently). The multi-package-without-pkgid case IS currently detected and rejected.
-> Remaining validation rules are still completely untested.
+> **Partially addressed:** `tests/test_generator_validation.py` documents intended rejection behaviour
+> for every `⚠️` row above as a TODO test. Tests whose generator-side rejection is already implemented
+> (or trivially inherited from the proto parser) are reported as `PASS`; the rest print `TODO` and
+> exit 0, deferring the actual rejection logic in `src/struct_frame/` to follow-up PRs.
 
 ---
 
@@ -423,4 +424,49 @@ Tests that verify the per-message start-byte constants (`magic1`/`magic2`) are c
 
 ---
 
-*Last updated: 2026-05-08. Update this document whenever tests are added or gaps are closed.*
+## 13. CI / Robustness Infrastructure
+
+Tier B/C of the test-suite-vs-protobuf gap analysis added the following CI surfaces.
+Each lives in `.github/workflows/`:
+
+| Workflow | Purpose |
+|----------|---------|
+| `test.yml` (extended) | Primary suite + OS matrix (Linux, macOS), Python 3.9 / 3.11 / 3.13 matrix, Node 18 / 20 / 22 matrix, .NET 8 / 10 matrix, GCC vs Clang matrix |
+| `sanitizers.yml` | ASan+UBSan and TSan jobs for the C/C++ suite, plus a Valgrind memcheck job for C binaries |
+| `fuzz.yml` | Short per-push libFuzzer run on the C parser harness; atheris run on the Python parser |
+| `coverage.yml` | `coverage.py` instrumentation of the Python generator + Codecov upload |
+
+Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / `CXXFLAGS` / `LDFLAGS`,
+which `tests/run_tests.py` honours at every C/C++ compile site.  No runner changes are
+needed to introduce additional sanitizer or coverage jobs.
+
+### Fuzzing harnesses
+
+| Harness | File | Tooling |
+|---------|------|---------|
+| C accumulating-reader | `tests/c/fuzz_parser.c` | libFuzzer + ASan/UBSan |
+| Python `AccumulatingReader` | `tests/py/fuzz_parser.py` | atheris |
+| Rust `AccumulatingReader` | `tests/rust/fuzz/fuzz_targets/parser.rs` (+ `Cargo.toml`) | cargo-fuzz |
+
+### Property-based tests
+
+`tests/test_property_roundtrip.py` uses Hypothesis to generate random instances of
+selected message classes and assert that Python encode → Python decode round-trips
+preserve equality across the Standard, Bulk, and Network profiles.  Cross-language
+fan-out is tracked as a follow-up.
+
+### Out-of-scope follow-ups (explicitly deferred from Tier B/C)
+
+* Implementing the 10 generator rejection rules listed in §8 — the TODO tests now
+  document the desired behaviour.
+* The remaining `❌` rows in this document (transports, dissector, `--equality`,
+  `--validate`, `--force` caching, `--csharp_legacy_enum_names`, …).
+* Upstream submission of the project to OSS-Fuzz (separate PR in `google/oss-fuzz`).
+* Windows CI (`run_tests.py` quoting needs work).
+* Coverage uploads for non-Python languages (`gcov+lcov`, `c8`/`nyc`, `coverlet`,
+  `cargo-llvm-cov`) — they plug into the same `codecov-action` step as Python.
+* `fast-check` (TS) cross-language property tests.
+
+---
+
+*Last updated: 2026-05-29. Update this document whenever tests are added or gaps are closed.*

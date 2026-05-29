@@ -1,0 +1,55 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: coverage-${{ github.sha }}
+  cancel-in-progress: true
+
+# Tier C item 1: coverage instrumentation.  This workflow lands the Codecov
+# plumbing using Python (`coverage.py`) as the first language; gcov+lcov,
+# c8/nyc, coverlet, and cargo-llvm-cov plug into the same `codecov-action`
+# step in follow-up PRs.
+
+jobs:
+  python-coverage:
+    name: Python (coverage.py)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install proto-schema-parser coverage hypothesis pytest
+      - name: Generate code (required by property tests)
+        run: python test_all.py --only-generate --skip-lang csharp --skip-lang rust
+      - name: Run Python suite under coverage
+        # Coverage focuses on the generator (src/struct_frame), which is what
+        # Python tooling can instrument end-to-end.  The generated message
+        # modules under tests/generated/py are imported by the property test
+        # and contribute incidentally.  Failures here propagate so Codecov's
+        # `fail_ci_if_error: false` is the only suppression knob.
+        run: |
+          coverage run --source=src/struct_frame --branch \
+              -m pytest tests/test_property_roundtrip.py -v
+          coverage run --source=src/struct_frame --branch --append \
+              tests/test_generator_validation.py
+          coverage xml -o coverage.xml
+          coverage report --skip-covered --skip-empty
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.xml
+          flags: python
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
