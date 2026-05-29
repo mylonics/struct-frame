@@ -115,6 +115,10 @@ export default defineConfig({
               label: 'Test Coverage',
               slug: 'reference/test-coverage',
             },
+            {
+              label: 'Test Stability Policy',
+              slug: 'reference/test-stability',
+            },
           ],
         },
       ],

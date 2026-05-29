@@ -1,6 +1,15 @@
 
 # Struct Frame
 
+[![Tests](https://github.com/mylonics/struct-frame/actions/workflows/test.yml/badge.svg)](https://github.com/mylonics/struct-frame/actions/workflows/test.yml)
+[![Coverage](https://codecov.io/gh/mylonics/struct-frame/branch/main/graph/badge.svg)](https://codecov.io/gh/mylonics/struct-frame)
+[![Fuzz](https://github.com/mylonics/struct-frame/actions/workflows/fuzz.yml/badge.svg)](https://github.com/mylonics/struct-frame/actions/workflows/fuzz.yml)
+
+[![Python](https://img.shields.io/badge/python-3.9%20%7C%203.11%20%7C%203.13-blue)](https://github.com/mylonics/struct-frame/actions/workflows/test.yml)
+[![Node](https://img.shields.io/badge/node-18%20%7C%2020%20%7C%2022-green)](https://github.com/mylonics/struct-frame/actions/workflows/test.yml)
+[![.NET](https://img.shields.io/badge/.NET-8%20%7C%2010-512BD4)](https://github.com/mylonics/struct-frame/actions/workflows/test.yml)
+[![Rust](https://img.shields.io/badge/rust-stable-orange)](https://github.com/mylonics/struct-frame/actions/workflows/test.yml)
+
 A multi-language code generation framework that converts Protocol Buffer (.proto) files into serialization/deserialization code for C, C++, TypeScript, Python, and GraphQL. It provides framing and parsing utilities for structured message communication.
 
 ## Installation
