@@ -3,7 +3,13 @@ title: Test Coverage
 description: Maps every feature, message type, profile, and error path to its test coverage across all languages.
 ---
 
-This document maps every feature, message type, frame profile, and error path to its test coverage. Each row cross-references the actual test files in `tests/`. **Keep this file updated** as new tests are added or coverage gaps are closed.
+<!-- GENERATED FILE - DO NOT EDIT.
+     Source of truth: tests/coverage_spec.py
+     Regenerate with: python tests/gen_test_coverage.py -->
+
+This document maps every feature, message type, frame profile, and error path to its test coverage. Each row cross-references the actual test files in `tests/`.
+
+**This file is generated** by `tests/gen_test_coverage.py` from `tests/coverage_spec.py`. Do not edit it by hand -- update the spec and re-run the generator (`python tests/gen_test_coverage.py`). CI runs the generator in `--check` mode so the published table cannot drift from the tests that actually exist on disk.
 
 ## Legend
 
@@ -14,16 +20,16 @@ This document maps every feature, message type, frame profile, and error path to
 | ❌ | Not tested |
 | N/A | Not applicable to this language |
 
-Languages tracked: **C**, **C++**, **Python**, **TypeScript (TS)**, **JavaScript (JS)**, **C#**, **Rust**
+Languages tracked: **C**, **C++**, **Python**, **TS**, **JS**, **C#**, **Rust**
 
 ---
 
 ## 1. Code Generation (Generator Smoke Tests)
 
-These tests verify that `src/main.py` generates valid, compilable output. They are exercised implicitly by every compile-and-run test.
+These tests verify that `python -m struct_frame` generates valid, compilable output. They are exercised implicitly by every compile-and-run test.
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust | Notes |
-|---------|---|-----|--------|----|----|----|------|-------|
+|--------|--------|--------|--------|--------|--------|--------|--------|--------|
 | Generate from single proto | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | All test suites exercise generation |
 | Generate from imported proto | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | `pkg_test_messages.sf` imports `pkg_test_a.sf` |
 | Multi-package generation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | `pkg_test_messages.sf` + `pkg_test_a.sf`; Rust partial |
@@ -32,7 +38,6 @@ These tests verify that `src/main.py` generates valid, compilable output. They a
 | `--validate` flag | ❌ | ❌ | ❌ | N/A | N/A | N/A | N/A | No test validates the validate mode |
 | `--no_packed` flag | ✅ | ✅ | N/A | N/A | N/A | N/A | N/A | Verified by `tests/test_no_packed.py` (CLI generation, absence of `#pragma pack`, round-trip parity) |
 | Hash / `--force` caching | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | Caching logic not covered by tests |
-| `--csharp_legacy_enum_names` | N/A | N/A | N/A | N/A | N/A | ❌ | N/A | No test for legacy enum name mode |
 
 ---
 
@@ -51,7 +56,7 @@ Proto source: `tests/proto/test_messages.sf` (`BasicTypesMessage`, `Comprehensiv
 ### 2.1 Primitive Types
 
 | Type | C | C++ | Python | TS | JS | C# | Rust |
-|------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `int8` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `int16` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `int32` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -67,14 +72,14 @@ Proto source: `tests/proto/test_messages.sf` (`BasicTypesMessage`, `Comprehensiv
 ### 2.2 String Types
 
 | Type | C | C++ | Python | TS | JS | C# | Rust |
-|------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | Fixed string (`size=N`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Variable string (`max_size=N`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### 2.3 Arrays
 
 | Type | C | C++ | Python | TS | JS | C# | Rust |
-|------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | Fixed array of primitives | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bounded array of primitives | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Fixed array of strings | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -89,7 +94,7 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 ### 2.4 Enums
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | Enum definition and serialization | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Enum to string conversion | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
@@ -98,13 +103,13 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 ### 2.5 Nested Messages
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | Nested struct round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ### 2.6 Oneof / Union Types
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `oneof` with `msgid` discriminator | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `oneof` with `field_order` discriminator | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `oneof` with `discriminator = none` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -116,14 +121,14 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 ### 2.7 Message Options
 
 | Option | C | C++ | Python | TS | JS | C# | Rust |
-|--------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `msgid` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `variable = true` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `pkgid` (package ID) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `is_envelope` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `flatten` | ✅ | N/A | ✅ | N/A | N/A | N/A | N/A |
 
-> **C/Python `flatten`:** Verified by `tests/test_proto_field_types.py` — Python `to_dict()` inlines inner fields; C generates the struct inline (compile test). **Rust envelope:** `tests/rust/src/main.rs` `test_envelope_sdk` runner tests `CommandEnvelope` (msgid discriminator) and `RawDataEnvelope` (field_order discriminator) round-trips.
+> **C/Python `flatten`:** Verified by `tests/test_proto_field_types.py` -- Python `to_dict()` inlines inner fields; C generates the struct inline (compile test). **Rust envelope:** `tests/rust/src/main.rs` `test_envelope_sdk` runner tests `CommandEnvelope` (msgid discriminator) and `RawDataEnvelope` (field_order discriminator) round-trips.
 
 ---
 
@@ -134,7 +139,7 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 Tests all five profiles with a standard set of messages.
 
 | Profile | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `profile_standard` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `profile_sensor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `profile_ipc` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -148,7 +153,7 @@ Files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_standard.*`
 Tests extended message IDs (> 255) requiring Bulk/Network profiles.
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | Extended msg ID (> 255) + `profile_bulk` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Extended msg ID (> 255) + `profile_network` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Payload > 255 bytes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -161,7 +166,7 @@ Proto: `tests/proto/extended_messages.sf`
 Tests `option variable = true` truncation behaviour with `profile_bulk`.
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `variable = true` truncation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Single bounded array truncation | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Nested variable struct (variable parent + nested struct with variable fields) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -173,7 +178,7 @@ Files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_variable_flag.*`
 ### 3.4 Profiling / Performance Tests
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | Encode/decode throughput | N/A | ✅ | N/A | N/A | N/A | N/A | N/A |
 | Packed vs unpacked struct comparison | N/A | ✅ | N/A | N/A | N/A | N/A | N/A |
 
@@ -183,15 +188,10 @@ Files: `tests/cpp/test_profiling.cpp`, `tests/cpp/test_profiling_generated.cpp`
 
 ### 3.5 Per-Message Round-trip Tests (`test_roundtrip_<pkg>.*`)
 
-Generated by `--generate_tests` and run by the **Round-trip Tests** phase of `tests/run_tests.py`.
-For every message in every `.sf` file, fields are populated with deterministic dummy values,
-the message is encoded through every frame profile, decoded via the streaming reader, and
-compared against the original. (msg, profile) pairs that are intentionally incompatible
-(e.g. `MSG_ID > 255` on a profile without `pkg_id`, or payload exceeding `Config::max_payload`)
-are reported as **skipped** rather than failures.
+Generated by `--generate_tests` and run by the **Round-trip Tests** phase of `tests/run_tests.py`. For every message in every `.sf` file, fields are populated with deterministic dummy values, the message is encoded through every frame profile, decoded via the streaming reader, and compared against the original. (msg, profile) pairs that are intentionally incompatible (e.g. `MSG_ID > 255` on a profile without `pkg_id`, or payload exceeding `Config::max_payload`) are reported as **skipped** rather than failures.
 
 | Profile | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `profile_standard` round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `profile_sensor` round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `profile_ipc` round-trip | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -207,7 +207,7 @@ Generated files: `tests/generated/<lang>/test_roundtrip_<pkg>.{c,cpp,py,ts,js,cs
 The test runner builds a compatibility matrix by having each language encode a frame and every other language decode it.
 
 | Encoder \ Decoder | C | C++ | Python | TS | JS | C# | Rust |
-|-------------------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | C | — | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | C++ | ✅ | — | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Python | ✅ | ✅ | — | ✅ | ✅ | ✅ | ✅ |
@@ -216,7 +216,7 @@ The test runner builds a compatibility matrix by having each language encode a f
 | C# | ✅ | ✅ | ✅ | ✅ | ✅ | — | ✅ |
 | Rust | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 
-Cross-platform testing is driven by the `CrossPlatformMatrixPlugin` in `tests/plugins.py`.
+Cross-platform testing is driven by the encode/validate/decode matrix phases in `tests/run_tests.py`.
 
 ---
 
@@ -226,11 +226,10 @@ Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`
 
 See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.
 
-Each language's `test_negative.*` file runs 13 uniform scenarios. The test names printed at
-runtime are the canonical identifiers used across all languages:
+Each language's `test_negative.*` file runs 13 uniform scenarios. The test names printed at runtime are the canonical identifiers used across all languages:
 
 | Error Scenario (test name) | C | C++ | Python | TS | JS | C# | Rust |
-|---------------------------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | Bulk profile: Corrupted CRC | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Corrupted CRC detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Corrupted length field detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -252,7 +251,7 @@ runtime are the canonical identifiers used across all languages:
 ### 6.1 Encoders / Writers
 
 | Class | C | C++ | Python | TS | JS | C# | Rust |
-|-------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `BufferWriter<Config>` / `buffer_writer_t` | ✅ | ✅ | N/A | N/A | N/A | N/A | N/A |
 | `ProfileStandardWriter` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `ProfileSensorWriter` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -267,7 +266,7 @@ runtime are the canonical identifiers used across all languages:
 ### 6.2 Parsers / Readers
 
 | Class | C | C++ | Python | TS | JS | C# | Rust |
-|-------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `BufferReader<Config>` / `buffer_reader_t` | ✅ | ✅ | N/A | N/A | N/A | N/A | N/A |
 | `AccumulatingReader<Config>` (buffer mode) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `AccumulatingReader<Config>` (stream/byte mode) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -284,7 +283,7 @@ runtime are the canonical identifiers used across all languages:
 ### 6.3 High-Level SDK (Transport + Routing)
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | `StructFrameSdk` subscribe/dispatch | N/A | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Serial transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | TCP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
@@ -293,12 +292,12 @@ runtime are the canonical identifiers used across all languages:
 | Async transport (Python) | N/A | N/A | ❌ | N/A | N/A | N/A | N/A |
 
 > **Closed.** `StructFrameSdk` subscribe/dispatch is now tested with mock transports in six languages:
-> - **C++** — `tests/cpp/test_sdk_subscribe.cpp` (7 tests: subscribe/dispatch, multiple observers, RAII unsubscribe, no-op notify, Connect delegation, incoming data pipeline, full encode→inject→parse)
-> - **Python** — `tests/py/test_sdk.py` (11 tests: subscribe/dispatch, multiple handlers, unsubscribe, send_raw)
-> - **TypeScript** — `tests/ts/test_sdk.ts` (10 tests: subscribe/dispatch, multiple handlers, unsubscribe, codec deserialization)
-> - **C#** — `tests/csharp/TestSdkSubscribe.cs` (14 tests: subscribe, multiple handlers, unsubscribe, UnhandledMessage event, two-type dispatch, SendAsync)
-> - **JavaScript** — `tests/js/test_sdk.js` (10 tests: subscribe/dispatch, multiple handlers, unsubscribe, codec deserialization). A CommonJS `StructFrameSdk` was added to `src/struct_frame/boilerplate/js/struct-frame-sdk/`.
-> - **Rust** — `tests/rust/src/main.rs` `test_sdk_subscribe` runner (9 tests: subscribe/dispatch, multiple handlers, unsubscribe, no-op notify, push_byte dispatch). A `StructFrameSdk` struct was added to `src/struct_frame/boilerplate/rust/struct_frame_sdk.rs`.
+> - **C++** -- `tests/cpp/test_sdk_subscribe.cpp` (7 tests)
+> - **Python** -- `tests/py/test_sdk.py` (11 tests)
+> - **TypeScript** -- `tests/ts/test_sdk.ts` (10 tests)
+> - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (14 tests)
+> - **JavaScript** -- `tests/js/test_sdk.js` (10 tests)
+> - **Rust** -- `tests/rust/src/main.rs` `test_sdk_subscribe` runner (9 tests)
 >
 > **Gap (Low):** Transport-level tests (serial, TCP, UDP, WebSocket) remain uncovered.
 
@@ -307,7 +306,7 @@ runtime are the canonical identifiers used across all languages:
 ## 7. Import / Multi-Package Tests
 
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
-|---------|---|-----|--------|----|----|----|------|
+|--------|--------|--------|--------|--------|--------|--------|--------|
 | Single import (`import "types.sf"`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Package with `pkgid` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Multi-package with no IDs | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ |
@@ -326,7 +325,7 @@ Proto files: `tests/proto/pkg_test_messages.sf`, `pkg_test_a.sf`
 These are tests of the generator itself (Python, language-agnostic), not the generated code.
 
 | Validation Rule | Tested |
-|----------------|--------|
+|--------|--------|
 | Duplicate `msgid` within package | ⚠️ |
 | Duplicate `pkgid` across packages | ⚠️ |
 | Duplicate field numbers within message | ⚠️ |
@@ -342,10 +341,7 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 | Circular import detection | ⚠️ |
 | Multi-package without `pkgid` | ✅ |
 
-> **Partially addressed:** `tests/test_generator_validation.py` documents intended rejection behaviour
-> for every `⚠️` row above as a TODO test. Tests whose generator-side rejection is already implemented
-> (or trivially inherited from the proto parser) are reported as `PASS`; the rest print `TODO` and
-> exit 0, deferring the actual rejection logic in `src/struct_frame/` to follow-up PRs.
+> **Partially addressed:** `tests/test_generator_validation.py` documents intended rejection behaviour for every `⚠️` row above as a TODO test. Tests whose generator-side rejection is already implemented (or trivially inherited from the proto parser) are reported as `PASS`; the rest print `TODO` and exit 0, deferring the actual rejection logic in `src/struct_frame/` to follow-up PRs.
 
 ---
 
@@ -354,7 +350,7 @@ These are tests of the generator itself (Python, language-agnostic), not the gen
 Tests that verify backward-compatible message handling: unknown fields are ignored, fields with new defaults are decoded correctly from older binaries, and field reordering does not break decoding.
 
 | Feature | Tested | File |
-|---------|--------|------|
+|--------|--------|--------|
 | Unknown trailing fields ignored on decode | ✅ | `tests/test_wire_evolution.py` |
 | New-field default on decode from older binary | ✅ | `tests/test_wire_evolution.py` |
 | Field reorder round-trip (producer → consumer) | ✅ | `tests/test_wire_evolution.py` |
@@ -368,7 +364,7 @@ Proto source: `tests/proto/test_messages.sf` (Python generator + round-trip).
 Tests that verify the per-message start-byte constants (`magic1`/`magic2`) are correctly embedded in encoded frames and validated on decode.
 
 | Feature | Tested | File |
-|---------|--------|------|
+|--------|--------|--------|
 | Magic bytes present in encoded frame | ✅ | `tests/test_magic_bytes.py` |
 | Wrong magic bytes → frame rejected | ✅ | `tests/test_magic_bytes.py` |
 | Correct magic bytes → frame accepted | ✅ | `tests/test_magic_bytes.py` |
@@ -379,7 +375,7 @@ Tests that verify the per-message start-byte constants (`magic1`/`magic2`) are c
 ## 11. Wireshark Dissector
 
 | Feature | Tested |
-|---------|--------|
+|--------|--------|
 | Lua dissector loads without errors | ❌ |
 | Standard profile frame dissection | ❌ |
 | Extended profile frame dissection | ❌ |
@@ -388,46 +384,48 @@ Tests that verify the per-message start-byte constants (`magic1`/`magic2`) are c
 
 ---
 
-## 12. Summary of Gaps by Priority
+## Test Coverage Triage
 
-### High Priority
+Every `❌` and `⚠️` cell in the tables above is converted here into a tracked, linkable GitHub issue so coverage gaps are *owned* rather than merely listed. Triage ownership, retry budgets, and quarantine rules live in the [Test Stability Policy](test-stability).
 
-1. **Generator validation tests** — `tests/test_generator_validation.py` now documents three missing checks (duplicate msgid, duplicate pkgid, circular import) as TODO. The tests will pass once the generator properly rejects those inputs. All other generator validation rules remain untested.
+Open gaps: **28**. Each **track ↗** link opens a pre-filled issue (labels `test-gap,coverage`); replace it with the real issue URL once filed. To see issues already filed, browse [`label:test-gap`](https://github.com/mylonics/struct-frame/issues?q=is%3Aissue+label%3Atest-gap).
 
-2. ~~**High-level SDK tests**~~ — ✅ **Closed** — `StructFrameSdk` subscribe/dispatch is now covered with mock transports for C++ (7 tests), Python (11 tests), TypeScript (10 tests), C# (14 tests), JavaScript (10 tests), and Rust (9 tests). Transport-level tests remain outstanding.
-
-### Medium Priority
-
-3. ~~**Variable-flag edge cases**~~ — ✅ **Closed** — `VariableMultipleArrays` and `VariableMixedFields` have been removed from the proto as redundant duplicates of the variable-flag test coverage already provided by `VariableSingleArray` and `NestedVariableMessage`. The `test_variable_flag.*` suites now cover all remaining variable patterns.
-
-4. ~~**Enum-to-string conversion**~~ — ✅ **Closed** — Tested for all languages: C and C++ via compiled binary in `tests/test_proto_field_types.py`; Python via `.name` attribute; TS/JS via reverse mapping in `test_standard.ts/.js`; C# via `ToString()` in `test_standard.cs`; Rust via `format!("{:?}", ...)` in `tests/rust/src/main.rs`.
-
-5. ~~**`discriminator = none` and multi-oneof**~~ — ✅ **Closed** — All 7 languages covered: Python via `tests/test_proto_field_types.py`; C and C++ via compiled binaries in the same file; TS/JS via `checkDiscriminatorNone()`/`checkMultiOneof()` helpers; C# via `CheckDiscriminatorNone()`/`CheckMultiOneof()` in `StandardMessages.cs`; Rust via the `test_oneof_special` runner in `tests/rust/src/main.rs`.
-
-6. ~~**Envelope messages in Rust**~~ — ✅ **Closed** — `tests/rust/src/main.rs` `test_envelope_sdk` runner tests `CommandEnvelope` (msgid discriminator) and `RawDataEnvelope` (field_order discriminator) round-trips via `run_envelope_sdk_test()` in `run_tests.py`.
-
-7. **Round-trip generators** — Implemented for all seven languages (C, C++, Python, TypeScript, JavaScript, C#, Rust) via the `Test*Gen` classes and exercised by the Round-trip Tests phase.
-
-8. ~~**Circular import detection**~~ — ⚠️ **Documented** — `tests/test_generator_validation.py` now includes a TODO test for circular imports. The generator currently accepts circular imports silently; the test will pass once the check is implemented.
-
-### Low Priority
-
-9. ~~**`AccumulatingReader` byte-stream mode in C**~~ — ✅ **Closed** — `tests/c/test_streaming.c` exercises `accumulating_reader_push_byte` with 4 tests (single frame, sensor profile, two consecutive frames, garbage-prefix skip).
-
-10. ~~**`AccumulatingReader` byte-stream mode in Rust**~~ — ✅ **Closed** — `AccumulatingReader::push_byte` is now tested via the `test_streaming` runner in `tests/rust/src/main.rs` (6 tests). A bug in `bytes_to_drain_for_resync` for minimal profiles was fixed as part of this work.
-
-11. **Performance benchmarks** — Throughput benchmarks only exist for C++; other languages have no baseline.
-
-12. **Wireshark dissector** — No automated test for the Lua dissector.
-
-13. **`--equality` generated code** — No test verifies generated equality operators/methods for any language.
+| ID | Priority | Area | Section | Gap | Languages | Issue |
+|----|----------|------|---------|-----|-----------|-------|
+| `TC-8-13` | High | Duplicate msgid within package | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-13%5D+Duplicate+msgid+within+package+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-13%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Duplicate+msgid+within+package%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-14` | High | Duplicate pkgid across packages | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-14%5D+Duplicate+pkgid+across+packages+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-14%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Duplicate+pkgid+across+packages%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-15` | High | Duplicate field numbers within message | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-15%5D+Duplicate+field+numbers+within+message+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-15%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Duplicate+field+numbers+within+message%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-16` | High | Missing size/max_size on array | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-16%5D+Missing+size%2Fmax_size+on+array+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-16%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Missing+size%2Fmax_size+on+array%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-17` | High | Missing size/max_size on string | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-17%5D+Missing+size%2Fmax_size+on+string+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-17%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Missing+size%2Fmax_size+on+string%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-18` | High | Missing element_size on string array | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-18%5D+Missing+element_size+on+string+array+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-18%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Missing+element_size+on+string+array%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-19` | High | max_size > 255 on array count | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-19%5D+max_size+%3E+255+on+array+count+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-19%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+max_size+%3E+255+on+array+count%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-20` | High | Envelope with zero oneofs | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-20%5D+Envelope+with+zero+oneofs+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-20%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Envelope+with+zero+oneofs%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-21` | High | Envelope with non-message oneof fields | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-21%5D+Envelope+with+non-message+oneof+fields+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-21%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Envelope+with+non-message+oneof+fields%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-22` | High | Envelope with msgid discriminator and messages missing msgid | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-22%5D+Envelope+with+msgid+discriminator+and+messages+missing+msgid+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-22%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Envelope+with+msgid+discriminator+and+messages+missing+msgid%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-23` | High | Invalid discriminator option value | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-23%5D+Invalid+discriminator+option+value+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-23%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Invalid+discriminator+option+value%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-24` | High | Field number zero | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-24%5D+Field+number+zero+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-24%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Field+number+zero%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-8-25` | High | Circular import detection | §8 | ⚠️ | generator | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-8-25%5D+Circular+import+detection+%28generator%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-8-25%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Circular+import+detection%0A-+%2A%2ASection%3A%2A%2A+Validation+%2F+Generator+Error+Paths%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+generator%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+High%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-1-01` | Medium | Multi-package generation | §1 | ⚠️ | Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-1-01%5D+Multi-package+generation+%28Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-1-01%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Multi-package+generation%0A-+%2A%2ASection%3A%2A%2A+Code+Generation+%28Generator+Smoke+Tests%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-7-10` | Medium | Multi-package with no IDs | §7 | ⚠️ | Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-7-10%5D+Multi-package+with+no+IDs+%28Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-7-10%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Multi-package+with+no+IDs%0A-+%2A%2ASection%3A%2A%2A+Import+%2F+Multi-Package+Tests%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-7-11` | Medium | Package with missing msgid on message | §7 | ⚠️ | Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-7-11%5D+Package+with+missing+msgid+on+message+%28Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-7-11%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Package+with+missing+msgid+on+message%0A-+%2A%2ASection%3A%2A%2A+Import+%2F+Multi-Package+Tests%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-7-12` | Medium | Circular import detection | §7 | ❌ | C, C++, Python, TS, JS, C#, Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-7-12%5D+Circular+import+detection+%28C%2C+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%2C+Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-7-12%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Circular+import+detection%0A-+%2A%2ASection%3A%2A%2A+Import+%2F+Multi-Package+Tests%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2C+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%2C+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-1-02` | Low | --equality flag | §1 | ❌ | C, C++, Python, TS, JS, C#, Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-1-02%5D+--equality+flag+%28C%2C+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%2C+Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-1-02%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+--equality+flag%0A-+%2A%2ASection%3A%2A%2A+Code+Generation+%28Generator+Smoke+Tests%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2C+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%2C+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-1-03` | Low | --validate flag | §1 | ❌ | C, C++, Python | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-1-03%5D+--validate+flag+%28C%2C+C%2B%2B%2C+Python%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-1-03%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+--validate+flag%0A-+%2A%2ASection%3A%2A%2A+Code+Generation+%28Generator+Smoke+Tests%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2C+C%2B%2B%2C+Python%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-1-04` | Low | Hash / --force caching | §1 | ❌ | C, C++, Python, TS, JS, C#, Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-1-04%5D+Hash+%2F+--force+caching+%28C%2C+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%2C+Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-1-04%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Hash+%2F+--force+caching%0A-+%2A%2ASection%3A%2A%2A+Code+Generation+%28Generator+Smoke+Tests%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2C+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%2C+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-11-26` | Low | Lua dissector loads without errors | §11 | ❌ | wireshark | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-11-26%5D+Lua+dissector+loads+without+errors+%28wireshark%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-11-26%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Lua+dissector+loads+without+errors%0A-+%2A%2ASection%3A%2A%2A+Wireshark+Dissector%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+wireshark%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-11-27` | Low | Standard profile frame dissection | §11 | ❌ | wireshark | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-11-27%5D+Standard+profile+frame+dissection+%28wireshark%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-11-27%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Standard+profile+frame+dissection%0A-+%2A%2ASection%3A%2A%2A+Wireshark+Dissector%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+wireshark%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-11-28` | Low | Extended profile frame dissection | §11 | ❌ | wireshark | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-11-28%5D+Extended+profile+frame+dissection+%28wireshark%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-11-28%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Extended+profile+frame+dissection%0A-+%2A%2ASection%3A%2A%2A+Wireshark+Dissector%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+wireshark%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-05` | Low | Serial transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-05%5D+Serial+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-05%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Serial+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-06` | Low | TCP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-06%5D+TCP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-06%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+TCP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-07` | Low | UDP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-07%5D+UDP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-07%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+UDP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-08` | Low | WebSocket transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-08%5D+WebSocket+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-08%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+WebSocket+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-09` | Low | Async transport (Python) | §6 · 6.3 | ❌ | Python | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-09%5D+Async+transport+%28Python%29+%28Python%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-09%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Async+transport+%28Python%29%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Python%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 
 ---
 
 ## 13. CI / Robustness Infrastructure
 
-Tier B/C of the test-suite-vs-protobuf gap analysis added the following CI surfaces.
-Each lives in `.github/workflows/`:
+Tier B/C of the test-suite-vs-protobuf gap analysis added the following CI surfaces. Each lives in `.github/workflows/`:
 
 | Workflow | Purpose |
 |----------|---------|
@@ -436,9 +434,7 @@ Each lives in `.github/workflows/`:
 | `fuzz.yml` | Short per-push libFuzzer run on the C parser harness; atheris run on the Python parser |
 | `coverage.yml` | `coverage.py` instrumentation of the Python generator + Codecov upload |
 
-Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / `CXXFLAGS` / `LDFLAGS`,
-which `tests/run_tests.py` honours at every C/C++ compile site.  No runner changes are
-needed to introduce additional sanitizer or coverage jobs.
+Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / `CXXFLAGS` / `LDFLAGS`, which `tests/run_tests.py` honours at every C/C++ compile site. No runner changes are needed to introduce additional sanitizer or coverage jobs.
 
 ### Fuzzing harnesses
 
@@ -450,23 +446,12 @@ needed to introduce additional sanitizer or coverage jobs.
 
 ### Property-based tests
 
-`tests/test_property_roundtrip.py` uses Hypothesis to generate random instances of
-selected message classes and assert that Python encode → Python decode round-trips
-preserve equality across the Standard, Bulk, and Network profiles.  Cross-language
-fan-out is tracked as a follow-up.
+`tests/test_property_roundtrip.py` uses Hypothesis to generate random instances of selected message classes and assert that Python encode → Python decode round-trips preserve equality across the Standard, Bulk, and Network profiles. Cross-language fan-out is tracked as a follow-up.
 
-### Out-of-scope follow-ups (explicitly deferred from Tier B/C)
+### Stability & flake policy
 
-* Implementing the 10 generator rejection rules listed in §8 — the TODO tests now
-  document the desired behaviour.
-* The remaining `❌` rows in this document (transports, dissector, `--equality`,
-  `--validate`, `--force` caching, `--csharp_legacy_enum_names`, …).
-* Upstream submission of the project to OSS-Fuzz (separate PR in `google/oss-fuzz`).
-* Windows CI (`run_tests.py` quoting needs work).
-* Coverage uploads for non-Python languages (`gcov+lcov`, `c8`/`nyc`, `coverlet`,
-  `cargo-llvm-cov`) — they plug into the same `codecov-action` step as Python.
-* `fast-check` (TS) cross-language property tests.
+Retry budgets, quarantine rules, and triage ownership for flaky tests are documented in [Test Stability Policy](test-stability).
 
 ---
 
-*Last updated: 2026-05-29. Update this document whenever tests are added or gaps are closed.*
+*Generated from `tests/coverage_spec.py` by `tests/gen_test_coverage.py` on 2026-05-29. Do not edit this file directly -- update the spec and regenerate.*
