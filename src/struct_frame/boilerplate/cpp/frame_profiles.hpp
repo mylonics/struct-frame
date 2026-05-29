@@ -493,9 +493,9 @@ class BufferReader {
  private:
   FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
     if constexpr (Config::has_length || Config::has_crc) {
-      return BufferParserWithCrc<Config>::template parse(buffer, size, get_message_info_);
+      return BufferParserWithCrc<Config>::parse(buffer, size, get_message_info_);
     } else {
-      return BufferParserMinimal<Config>::template parse(buffer, size, get_message_info_);
+      return BufferParserMinimal<Config>::parse(buffer, size, get_message_info_);
     }
   }
 
@@ -1062,9 +1062,9 @@ class AccumulatingReader {
 
   FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
     if constexpr (Config::has_length || Config::has_crc) {
-      return BufferParserWithCrc<Config>::template parse(buffer, size, get_message_info_);
+      return BufferParserWithCrc<Config>::parse(buffer, size, get_message_info_);
     } else {
-      return BufferParserMinimal<Config>::template parse(buffer, size, get_message_info_);
+      return BufferParserMinimal<Config>::parse(buffer, size, get_message_info_);
     }
   }
 

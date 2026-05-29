@@ -7,7 +7,9 @@
 
 use libfuzzer_sys::fuzz_target;
 use struct_frame_sdk::{
-    AccumulatingReader, MessageInfo,
+    frame_base::MessageInfo,
+    frame_profiles::ProfileConfig,
+    AccumulatingReader,
     PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG,
     PROFILE_SENSOR_CONFIG, PROFILE_STANDARD_CONFIG,
 };
@@ -16,10 +18,10 @@ fn stub_info(_msg_id: u16) -> Option<MessageInfo> {
     // Small, well-formed MessageInfo for parsers that need a length lookup.
     // Most fuzz inputs will mismatch the embedded magic and be dropped, but
     // the parser must remain safe regardless.
-    Some(MessageInfo { size: 64, magic1: 0, magic2: 0 })
+    Some(MessageInfo::new(64, 0, 0))
 }
 
-fn drive(cfg: struct_frame_sdk::ProfileConfig, data: &[u8]) {
+fn drive(cfg: ProfileConfig, data: &[u8]) {
     let mut reader = AccumulatingReader::new(cfg, 1024);
     let mid = data.len() / 2;
     // Two-slice feed exercises the cross-buffer accumulation path.

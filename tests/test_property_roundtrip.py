@@ -27,7 +27,13 @@ import os
 import sys
 from pathlib import Path
 
-import pytest
+try:
+    import pytest
+except ModuleNotFoundError:
+    if __name__ == "__main__":
+        print("SKIP: pytest not installed")
+        raise SystemExit(0)
+    raise
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GEN_PY = REPO_ROOT / "tests" / "generated" / "py"
@@ -95,6 +101,11 @@ def _roundtrip(profile, msg):
     reader.add_data(encoded)
     result = reader.next()
     assert result.valid, f"parser rejected its own output for {type(msg).__name__}"
+    decoded = type(msg).deserialize(result.msg_data)
+    assert decoded is not None, f"deserialize returned None for {type(msg).__name__}"
+    assert decoded.serialize() == msg.serialize(), (
+        f"decoded payload differs from original for {type(msg).__name__}"
+    )
     return result
 
 

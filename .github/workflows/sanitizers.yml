@@ -114,13 +114,43 @@ jobs:
           set -e
           shopt -s nullglob
           found=0
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "$tmp_dir"' EXIT
           for exe in tests/c/build/test_*; do
             [ -x "$exe" ] || continue
             found=1
             echo "=== valgrind $exe ==="
-            valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
-                     --errors-for-leak-kinds=definite,possible \
-                     --track-origins=yes "$exe"
+            case "$(basename "$exe")" in
+              test_standard|test_standard.exe)
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" encode profile_standard "$tmp_dir/standard.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" decode profile_standard "$tmp_dir/standard.bin"
+                ;;
+              test_extended|test_extended.exe)
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" encode profile_bulk "$tmp_dir/extended.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" decode profile_bulk "$tmp_dir/extended.bin"
+                ;;
+              test_variable_flag|test_variable_flag.exe)
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" encode profile_bulk "$tmp_dir/variable.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" decode profile_bulk "$tmp_dir/variable.bin"
+                ;;
+              *)
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe"
+                ;;
+            esac
           done
           if [ "$found" -eq 0 ]; then
             echo "No C test binaries were built; nothing to check." >&2
