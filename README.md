@@ -51,6 +51,15 @@ python tests/run_tests.py --only-generate
 
 See `tests/README.md` for detailed test documentation.
 
+### Tier D validation workflows
+
+Additional cross-language validation lives under `tests/`:
+
+- Benchmarks: `python tests/benchmarks/run_all.py --quick`, then `python tests/benchmarks/check_regression.py --allow-missing-baseline`.
+- Wireshark dissector goldens: `python wireshark/test_dissector.py` (skips when `tshark` is unavailable).
+- API stability: `PYTHONPATH=src python tests/api_stability/python/test_api_stability.py`; npm/NuGet/crates scaffolds are checked in.
+- Documentation samples: `python tests/docs/extract_samples.py && python tests/docs/run_samples.py --quick`.
+
 ### Continuous Integration
 
 The project uses GitHub Actions to automatically run the full test suite on:

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "struct-frame benchmark result",
+  "type": "object",
+  "required": ["schema_version", "language", "runner_version", "timestamp", "host", "scenarios"],
+  "properties": {
+    "schema_version": {"const": "1"},
+    "language": {"enum": ["python", "c", "cpp", "ts", "js", "csharp", "rust"]},
+    "runner_version": {"type": "string"},
+    "timestamp": {"type": "string"},
+    "host": {
+      "type": "object",
+      "required": ["os", "arch", "cpu"],
+      "properties": {"os": {"type": "string"}, "arch": {"type": "string"}, "cpu": {"type": "string"}}
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "profile", "operation", "msg_count", "bytes_total", "duration_s", "msg_per_sec", "mb_per_sec", "latency_ns"],
+        "properties": {
+          "name": {"type": "string"},
+          "profile": {"enum": ["standard", "bulk", "network"]},
+          "operation": {"enum": ["encode", "decode", "roundtrip"]},
+          "msg_count": {"type": "integer"},
+          "bytes_total": {"type": "integer"},
+          "duration_s": {"type": "number"},
+          "msg_per_sec": {"type": "number"},
+          "mb_per_sec": {"type": "number"},
+          "latency_ns": {
+            "type": "object",
+            "required": ["p50", "p95", "p99", "max"],
+            "properties": {"p50": {"type": "integer"}, "p95": {"type": "integer"}, "p99": {"type": "integer"}, "max": {"type": "integer"}}
+          }
+        }
+      }
+    }
+  }
+}

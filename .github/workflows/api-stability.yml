@@ -1,0 +1,39 @@
+name: API Stability
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: api-stability-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  api-stability:
+    name: Public API compatibility
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Install Python dependencies
+        run: pip install proto-schema-parser
+      - name: Run Python API stability
+        run: PYTHONPATH=src python tests/api_stability/python/test_api_stability.py
+      - name: Run npm API scaffold
+        run: node tests/api_stability/npm/check_api.js
+      - name: Run NuGet API scaffold
+        run: python tests/api_stability/nuget/check_api.py
+      - name: Run crates.io API scaffold
+        run: python tests/api_stability/crates/check_api.py

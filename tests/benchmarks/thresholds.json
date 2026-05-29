@@ -1,0 +1,8 @@
+{
+  "default": {
+    "throughput_drop_pct": 10.0,
+    "mb_per_sec_drop_pct": 10.0,
+    "p99_increase_pct": 25.0
+  },
+  "languages": {}
+}

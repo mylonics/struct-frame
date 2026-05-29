@@ -1,0 +1,39 @@
+name: Documentation Samples
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: doc-samples-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  doc-samples:
+    name: Doctest-style sample compilation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++ build-essential
+      - name: Install TypeScript dependencies
+        run: npm ci
+        working-directory: tests/ts
+      - name: Extract samples
+        run: python tests/docs/extract_samples.py
+      - name: Compile documentation samples
+        run: python tests/docs/run_samples.py --quick

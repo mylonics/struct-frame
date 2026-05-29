@@ -1,0 +1,29 @@
+name: Wireshark Dissector
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: wireshark-dissector-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  wireshark:
+    name: Golden pcap dissection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install tshark
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y tshark
+      - name: Run dissector tests
+        run: python wireshark/test_dissector.py

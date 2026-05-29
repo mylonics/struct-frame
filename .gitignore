@@ -75,5 +75,12 @@ node_modules/
 
 # Rust build artifacts
 tests/rust/target/
+tests/benchmarks/rust/target/
+
+# Tier D benchmark / docs-sample / API stability artifacts
+tests/benchmarks/results/
+tests/benchmarks/csharp/bin/
+tests/benchmarks/csharp/obj/
+tests/docs/_samples/
 
 docs/theme_overrides/

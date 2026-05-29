@@ -1,0 +1,119 @@
+{
+  "struct_frame": [
+    {
+      "kind": "type",
+      "name": "FileCGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "FileCSharpGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "FileCppGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "FileGqlGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "FileJsGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "FilePyGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "FileRustGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "FileTsGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "NamingStyleC",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "NamingStyleCpp",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "TestCGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "TestCSharpGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "TestCppGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "TestJsGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "TestPyGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "TestRustGen",
+      "signature": "()"
+    },
+    {
+      "kind": "type",
+      "name": "TestTsGen",
+      "signature": "()"
+    },
+    {
+      "kind": "function",
+      "name": "build_enum_leading_comments",
+      "signature": "(comments, comment_prefix='', comment_suffix='')"
+    },
+    {
+      "kind": "function",
+      "name": "build_enum_values",
+      "signature": "(field, naming_style, value_format=None, comment_formatter=None, skip_trailing_comma=True, value_generator=None)"
+    },
+    {
+      "kind": "function",
+      "name": "camel_to_snake_case",
+      "signature": "(data)"
+    },
+    {
+      "kind": "function",
+      "name": "main",
+      "signature": "()"
+    },
+    {
+      "kind": "function",
+      "name": "pascal_case",
+      "signature": "(st)"
+    },
+    {
+      "kind": "str",
+      "name": "version",
+      "signature": null
+    }
+  ]
+}
