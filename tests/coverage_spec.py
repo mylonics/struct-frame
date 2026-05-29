@@ -545,16 +545,13 @@ SECTIONS = [
                     _row("Package with missing `msgid` on message",
                          {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
                           "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
-                    _full("Circular import detection", "❌"),
+                    _full("Circular import detection", "✅"),
                 ],
                 "caption": (
                     "Proto files: `tests/proto/pkg_test_messages.sf`, "
                     "`pkg_test_a.sf`\n\n"
-                    "> **Gap (Medium):** Circular import detection is not tested; "
-                    "the generator should error gracefully.\n"
-                    "> `tests/test_generator_validation.py` documents the intended "
-                    "behaviour for circular imports, duplicate msgids, and "
-                    "duplicate pkgids as TODO cases."
+                    "> Circular import detection is tested in "
+                    "`tests/test_generator_validation.py`."
                 ),
             },
         ],
@@ -573,30 +570,26 @@ SECTIONS = [
                 "lang_cols": ["Tested"],
                 "scope": "generator",
                 "rows": [
-                    _row("Duplicate `msgid` within package", {"Tested": "⚠️"}),
-                    _row("Duplicate `pkgid` across packages", {"Tested": "⚠️"}),
-                    _row("Duplicate field numbers within message", {"Tested": "⚠️"}),
-                    _row("Missing `size`/`max_size` on array", {"Tested": "⚠️"}),
-                    _row("Missing `size`/`max_size` on string", {"Tested": "⚠️"}),
-                    _row("Missing `element_size` on string array", {"Tested": "⚠️"}),
-                    _row("`max_size` > 255 on array count", {"Tested": "⚠️"}),
-                    _row("Envelope with zero oneofs", {"Tested": "⚠️"}),
-                    _row("Envelope with non-message oneof fields", {"Tested": "⚠️"}),
+                    _row("Duplicate `msgid` within package", {"Tested": "✅"}),
+                    _row("Duplicate `pkgid` across packages", {"Tested": "✅"}),
+                    _row("Duplicate field numbers within message", {"Tested": "✅"}),
+                    _row("Missing `size`/`max_size` on array", {"Tested": "✅"}),
+                    _row("Missing `size`/`max_size` on string", {"Tested": "✅"}),
+                    _row("Missing `element_size` on string array", {"Tested": "✅"}),
+                    _row("`max_size` > 255 on array count", {"Tested": "✅"}),
+                    _row("Envelope with zero oneofs", {"Tested": "✅"}),
+                    _row("Envelope with non-message oneof fields", {"Tested": "✅"}),
                     _row("Envelope with `msgid` discriminator and messages "
-                         "missing `msgid`", {"Tested": "⚠️"}),
-                    _row("Invalid `discriminator` option value", {"Tested": "⚠️"}),
-                    _row("Field number zero", {"Tested": "⚠️"}),
-                    _row("Circular import detection", {"Tested": "⚠️"}),
+                         "missing `msgid`", {"Tested": "✅"}),
+                    _row("Invalid `discriminator` option value", {"Tested": "✅"}),
+                    _row("Field number zero", {"Tested": "✅"}),
+                    _row("Circular import detection", {"Tested": "✅"}),
                     _row("Multi-package without `pkgid`", {"Tested": "✅"}),
                 ],
                 "caption": (
-                    "> **Partially addressed:** `tests/test_generator_validation.py` "
-                    "documents intended rejection behaviour for every `⚠️` row "
-                    "above as a TODO test. Tests whose generator-side rejection is "
-                    "already implemented (or trivially inherited from the proto "
-                    "parser) are reported as `PASS`; the rest print `TODO` and "
-                    "exit 0, deferring the actual rejection logic in "
-                    "`src/struct_frame/` to follow-up PRs."
+                    "All 14 validation rules are enforced by the generator in "
+                    "`src/struct_frame/` and every case is covered by a passing "
+                    "test in `tests/test_generator_validation.py`."
                 ),
             },
         ],
@@ -663,12 +656,21 @@ SECTIONS = [
                 "lang_cols": ["Tested"],
                 "scope": "wireshark",
                 "rows": [
-                    _row("Lua dissector loads without errors", {"Tested": "❌"}),
-                    _row("Standard profile frame dissection", {"Tested": "❌"}),
-                    _row("Extended profile frame dissection", {"Tested": "❌"}),
+                    _row("Lua dissector loads without errors", {"Tested": "✅"}),
+                    _row("Standard profile frame dissection", {"Tested": "✅"}),
+                    _row("Extended (Bulk) profile frame dissection", {"Tested": "✅"}),
+                    _row("Network profile frame dissection", {"Tested": "✅"}),
+                    _row("CRC validity surfaced by dissector", {"Tested": "✅"}),
                 ],
-                "caption": "> **Gap (Low):** The `wireshark/struct_frame.lua` "
-                           "dissector has no automated tests.",
+                "caption": "> Automated dissector tests live in "
+                           "`wireshark/test_dissector.py`: each test writes a "
+                           "`LINKTYPE_USER0` pcap, runs `tshark` with "
+                           "`wireshark/struct_frame.lua`, and asserts the parsed "
+                           "fields (start byte, message/package/system/component "
+                           "id, length, CRC validity). The `tshark` invocation "
+                           "itself exercises the *loads-without-errors* path. CI "
+                           "runs them in `.github/workflows/wireshark-dissector.yml` "
+                           "(skipped automatically when `tshark` is unavailable).",
             },
         ],
     },
@@ -694,7 +696,13 @@ TRAILING_SECTIONS = [
             "| `fuzz.yml` | Short per-push libFuzzer run on the C parser harness; "
             "atheris run on the Python parser |\n"
             "| `coverage.yml` | `coverage.py` instrumentation of the Python "
-            "generator + Codecov upload |\n\n"
+            "generator + Codecov upload |\n"
+            "| `wireshark-dissector.yml` | Runs `wireshark/test_dissector.py` "
+            "against the Lua dissector via `tshark` on golden pcaps |\n"
+            "| `benchmark-regression.yml` | Tracks encode/decode benchmark "
+            "results and flags performance regressions |\n"
+            "| `api-stability.yml` | Guards the public generated-API surface "
+            "against unintended breaking changes |\n\n"
             "Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / "
             "`CXXFLAGS` / `LDFLAGS`, which `tests/run_tests.py` honours at every "
             "C/C++ compile site. No runner changes are needed to introduce "

@@ -223,4 +223,4 @@ def check_message(index: int, info) -> bool:
     # Normalize expected for comparison (round-trip through serialize/deserialize)
     expected_normalized = msg_class.deserialize(expected.serialize())
     
-    return decoded == expected_normalized
+    return decoded.to_dict() == expected_normalized.to_dict()
