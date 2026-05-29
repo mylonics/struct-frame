@@ -1172,7 +1172,7 @@ class TestRunner:
                             break
                     
                     all_match = False
-                    self.record_failure("variable_verify", lang_id, "bulk", 
+                    self.add_failure("variable_verify", lang_id, "bulk", 
                                       "Binary output does not match reference")
         
         # Verify truncation by checking frame sizes
