@@ -4,9 +4,12 @@ Wire-format regression check.
 
 Re-encodes the canonical test fixtures using the Python reference encoder
 and compares the resulting bytes against the goldens committed under
-``tests/golden/``. Any difference is a wire-format change and must be
-either reverted or, if intentional, explicitly committed by re-running this
-script with ``--update``.
+``tests/golden/``.  Also runs a **decode direction**: each golden file is
+fed to the Python reference decoder and the parsed message count is
+validated, confirming that the decoder can read its own encoder's output
+byte-for-byte.  Any difference is a wire-format change and must be either
+reverted or, if intentional, explicitly committed by re-running this script
+with ``--update``.
 
 See: docs/src/content/docs/reference/conformance.md
 
@@ -14,10 +17,11 @@ Usage:
     python tests/check_golden.py            # verify (default; CI mode)
     python tests/check_golden.py --update   # regenerate goldens
     python tests/check_golden.py --verbose  # show per-file pass/fail detail
+    python tests/check_golden.py --no-decode  # skip the decode phase
 
 Exit codes:
-    0 — all goldens match
-    1 — at least one golden differs (or is missing)
+    0 — all goldens match (and all decodes pass)
+    1 — at least one golden differs / decode fails (or is missing)
     2 — generator/encoder failed
 """
 from __future__ import annotations
@@ -104,6 +108,23 @@ def _hex_preview(data: bytes, limit: int = 32) -> str:
     return " ".join(f"{b:02x}" for b in head) + (" …" if len(data) > limit else "")
 
 
+def _decode(script: str, profile: str, golden_path: Path, verbose: bool) -> bool:
+    """Run the Python decoder against a golden file; return True on success."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    cmd = [sys.executable, str(TESTS_DIR / script), "decode", profile, str(golden_path)]
+    result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(result.stdout)
+        print(result.stderr, file=sys.stderr)
+        print(f"[FAIL] decode failed: {script} {profile} {golden_path.name}",
+              file=sys.stderr)
+        return False
+    if verbose:
+        print(f"[dec ] {script} {profile} <- {golden_path.name}")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -111,6 +132,8 @@ def main() -> int:
                         help="overwrite goldens with freshly encoded bytes")
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="show per-file detail")
+    parser.add_argument("--no-decode", action="store_true",
+                        help="skip the decode phase")
     args = parser.parse_args()
 
     GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
@@ -166,6 +189,31 @@ def main() -> int:
         return 1
 
     print(f"[PASS] all {len(SUITES)} golden(s) match.")
+
+    # -----------------------------------------------------------------
+    # DECODE DIRECTION: each golden file is decoded by the Python
+    # reference decoder to confirm the decoder accepts its own encoder's
+    # byte sequences (conformance §6/§7 row 1).
+    # -----------------------------------------------------------------
+    if args.no_decode:
+        return 0
+
+    decode_failures: List[str] = []
+    for script, profile, golden_name in SUITES:
+        golden_path = GOLDEN_DIR / golden_name
+        if not golden_path.exists():
+            decode_failures.append(f"MISSING: {golden_name} (cannot decode)")
+            continue
+        if not _decode(script, profile, golden_path, args.verbose):
+            decode_failures.append(f"DECODE FAIL: {golden_name} ({script} {profile})")
+
+    if decode_failures:
+        print(f"\n[FAIL] {len(decode_failures)} decode failure(s):\n")
+        for msg in decode_failures:
+            print(f"  {msg}")
+        return 1
+
+    print(f"[PASS] all {len(SUITES)} golden(s) decoded successfully.")
     return 0
 
 
