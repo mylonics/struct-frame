@@ -20,7 +20,7 @@ use struct_frame_sdk::{
 const BUFFER_SIZE: usize = 65536;
 const STANDARD_MESSAGE_COUNT: usize = 21;
 const EXTENDED_MESSAGE_COUNT: usize = 10;
-const VARIABLE_FLAG_MESSAGE_COUNT: usize = 5;
+const VARIABLE_FLAG_MESSAGE_COUNT: usize = 7;
 
 // ============================================================================
 // Message creation helpers - mirror standard_messages
@@ -293,6 +293,26 @@ fn create_mixed_fields() -> VariableMixedFields {
     msg
 }
 
+fn create_variable_envelope_field_order() -> VariableEnvelopeMessage {
+    let mut msg = VariableEnvelopeMessage::default();
+    msg.priority = 7;
+    let payload_a = VarEnvPayloadA { code: 0x42, value: 0x1234 };
+    msg.set_payload_a(&payload_a);
+    msg
+}
+
+fn create_variable_envelope_msgid() -> VariableEnvelopeMsgIdMessage {
+    let mut msg = VariableEnvelopeMsgIdMessage::default();
+    msg.priority = 3;
+    let mut inner = BasicTypesMessage::default();
+    inner.flag = true;
+    inner.small_uint = 0xAB;
+    inner.medium_uint = 0xCDEF;
+    inner.regular_uint = 0x12345678u32;
+    msg.set_basic(&inner);
+    msg
+}
+
 // ============================================================================
 // Expected payload helpers
 // ============================================================================
@@ -415,11 +435,13 @@ fn get_expected_payload_extended(index: usize, buf: &mut [u8]) -> (u16, usize) {
 
 fn get_expected_payload_variable_flag(index: usize, buf: &mut [u8], use_fixed: bool) -> (u16, usize) {
     match index {
-        0 => pack_msg(&create_non_variable(),        buf, use_fixed),
-        1 => pack_msg(&create_truncation_variable(), buf, use_fixed),
-        2 => pack_msg(&create_nested_variable(),     buf, use_fixed),
-        3 => pack_msg(&create_multiple_arrays(),     buf, use_fixed),
-        _ => pack_msg(&create_mixed_fields(),        buf, use_fixed),
+        0 => pack_msg(&create_non_variable(),                     buf, use_fixed),
+        1 => pack_msg(&create_truncation_variable(),              buf, use_fixed),
+        2 => pack_msg(&create_nested_variable(),                  buf, use_fixed),
+        3 => pack_msg(&create_multiple_arrays(),                  buf, use_fixed),
+        4 => pack_msg(&create_mixed_fields(),                     buf, use_fixed),
+        5 => pack_msg(&create_variable_envelope_field_order(),    buf, use_fixed),
+        _ => pack_msg(&create_variable_envelope_msgid(),          buf, use_fixed),
     }
 }
 
@@ -551,6 +573,8 @@ fn encode_variable_flag(config: &ProfileConfig, output: &mut [u8]) -> usize {
     enc!(create_nested_variable());
     enc!(create_multiple_arrays());
     enc!(create_mixed_fields());
+    enc!(create_variable_envelope_field_order());
+    enc!(create_variable_envelope_msgid());
 
     written
 }

@@ -13,15 +13,16 @@ using namespace structframe::serialization_test;
 // - NestedVariableMessage: variable parent with nested struct containing variable fields
 // - VariableMultipleArrays: multiple bounded arrays all truncated
 // - VariableMixedFields: fixed fields plus variable array and variable string
+// - VariableEnvelopeMessage: variable + is_envelope + field_order oneof (msgid 221)
+// - VariableEnvelopeMsgIdMessage: variable + is_envelope + msgid oneof (msgid 222)
 struct VariableFlagMessages {
   // Variant type for message return
   using MessageVariant =
-      std::variant<TruncationTestNonVariable, TruncationTestVariable,
-                   NestedVariableMessage, VariableMultipleArrays,
-                   VariableMixedFields>;
+      std::variant<TruncationTestNonVariable, TruncationTestVariable, NestedVariableMessage, VariableMultipleArrays,
+                   VariableMixedFields, VariableEnvelopeMessage, VariableEnvelopeMsgIdMessage>;
 
   // Total number of messages
-  static constexpr size_t MESSAGE_COUNT = 5;
+  static constexpr size_t MESSAGE_COUNT = 7;
 
   // Create non-variable message with 1/3 filled array (67 out of 200 bytes)
   // This message will NOT truncate - full 200 bytes are always serialized
@@ -133,8 +134,33 @@ struct VariableFlagMessages {
       case 3:
         return create_multiple_arrays();
       case 4:
-      default:
         return create_mixed_fields();
+      case 5:
+        return create_variable_envelope_field_order();
+      case 6:
+      default:
+        return create_variable_envelope_msgid();
     }
+  }
+
+  // VariableEnvelopeMessage: variable + is_envelope + field_order oneof (msgid 221)
+  // Tests that the oneof discriminator + union are correctly serialized in variable format.
+  static VariableEnvelopeMessage create_variable_envelope_field_order() {
+    // Use wrap() helper to build envelope with payload_a active
+    VarEnvPayloadA payload{};
+    payload.code = 0x42;
+    payload.value = 0x1234;
+    return VariableEnvelopeMessage::wrap(7, payload);
+  }
+
+  // VariableEnvelopeMsgIdMessage: variable + is_envelope + msgid oneof (msgid 222)
+  // Tests that a uint16 msgid discriminator is correctly serialized in variable format.
+  static VariableEnvelopeMsgIdMessage create_variable_envelope_msgid() {
+    BasicTypesMessage inner{};
+    inner.flag = true;
+    inner.small_uint = 0xAB;
+    inner.medium_uint = 0xCDEF;
+    inner.regular_uint = 0x12345678U;
+    return VariableEnvelopeMsgIdMessage::wrap(3, inner);
   }
 };

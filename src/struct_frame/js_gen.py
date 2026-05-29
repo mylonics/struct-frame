@@ -21,6 +21,8 @@ from struct_frame.ts_js_base import (
     WRITE_METHODS,
     READ_ARRAY_METHODS,
     WRITE_ARRAY_METHODS,
+    BUFFER_READ_METHODS,
+    BUFFER_WRITE_METHODS,
     calculate_field_layout,
     FieldInfo,
 )
@@ -267,6 +269,10 @@ class MessageJsClassGen():
         if msg.is_envelope:
             result += MessageJsClassGen._generate_envelope_methods(msg, package_msg_name, package_name, packages)
         
+        # toObject() for efficient repeated field reads
+        if fields:
+            result += MessageJsClassGen._generate_to_object_method(fields)
+
         # Static getSize method
         result += f'  static getSize() {{\n'
         result += f'    return {total_size};\n'
@@ -454,6 +460,48 @@ class MessageJsClassGen():
             else:
                 result += f'    size += {field.size}; // {name}\n'
         
+        # Track _buffer offset for oneof discriminator reads
+        js_sz_msg_offset = sum(f.size for f in msg.fields.values())
+        # Oneofs: discriminator + union payload (or length-prefix + variant size for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'    size += {disc_bytes}; // {oneof_name} discriminator\n'
+            if oneof.variable:
+                result += f'    size += 2; // {oneof_name} variable-length prefix\n'
+                if oneof.auto_discriminator:
+                    disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                    read_method = 'readUInt16LE' if oneof.discriminator_type == "msgid" else 'readUInt8'
+                    result += f'    const _{oneof_name}Disc = this._buffer.{read_method}({js_sz_msg_offset});\n'
+                    js_sz_msg_offset += disc_bytes
+                else:
+                    result += f'    const _{oneof_name}Disc = 0;\n'
+                result += f'    let _{oneof_name}VSize = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'    if (_{oneof_name}Disc === {disc_val}) _{oneof_name}VSize = {field_size};  // {field_name}\n'
+                if oneof.min_size_override:
+                    result += f'    if (_{oneof_name}VSize < {oneof.min_size_override}) _{oneof_name}VSize = {oneof.min_size_override};\n'
+                result += f'    size += _{oneof_name}VSize; // {oneof_name} variant\n'
+                js_sz_msg_offset += oneof.size
+            elif oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                disc_read_method = 'readUInt16LE' if oneof.discriminator_type == "msgid" else 'readUInt8'
+                result += f'    const _{oneof_name}TrimDisc = this._buffer.{disc_read_method}({js_sz_msg_offset});\n'
+                js_sz_msg_offset += disc_bytes
+                result += f'    let _{oneof_name}TLen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'    if (_{oneof_name}TrimDisc === {disc_val}) _{oneof_name}TLen = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'    if (_{oneof_name}TLen < {oneof.min_size_override}) _{oneof_name}TLen = {oneof.min_size_override};\n'
+                result += f'    size += _{oneof_name}TLen; // {oneof_name} trimmed union payload\n'
+                js_sz_msg_offset += oneof.size
+            else:
+                if oneof.auto_discriminator:
+                    disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                    js_sz_msg_offset += disc_bytes
+                result += f'    size += {oneof.size}; // {oneof_name} union payload\n'
+                js_sz_msg_offset += oneof.size
+        
         result += f'    return size;\n'
         result += f'  }}\n'
         
@@ -501,6 +549,50 @@ class MessageJsClassGen():
                 result += f'    offset += {field.size};\n'
             msg_offset += field.size
         
+        # Oneofs: copy discriminator bytes + union payload (or length-prefix + variant bytes for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'    // {oneof_name}: discriminator ({disc_bytes} bytes)\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset + disc_bytes});\n'
+                result += f'    offset += {disc_bytes};\n'
+                msg_offset += disc_bytes
+            if oneof.variable:
+                disc_read = f'this._buffer.readUInt16LE({msg_offset - 2})' if oneof.discriminator_type == "msgid" else f'this._buffer.readUInt8({msg_offset - 1})'
+                result += f'    // {oneof_name}: variable-length union payload\n'
+                result += f'    const _{oneof_name}SerDisc = {disc_read};\n'
+                result += f'    let _{oneof_name}SerLen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'    if (_{oneof_name}SerDisc === {disc_val}) _{oneof_name}SerLen = {field_size};  // {field_name}\n'
+                if oneof.min_size_override:
+                    result += f'    if (_{oneof_name}SerLen < {oneof.min_size_override}) _{oneof_name}SerLen = {oneof.min_size_override};\n'
+                result += f'    buffer.writeUInt16LE(_{oneof_name}SerLen, offset); offset += 2;\n'
+                result += f'    if (_{oneof_name}SerLen > 0) {{\n'
+                result += f'      this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset} + _{oneof_name}SerLen);\n'
+                result += f'      offset += _{oneof_name}SerLen;\n'
+                result += f'    }}\n'
+                msg_offset += oneof.size
+            elif oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                disc_offset = msg_offset - disc_bytes
+                disc_read_method = 'readUInt16LE' if oneof.discriminator_type == "msgid" else 'readUInt8'
+                _trim_label = f'trimmed union (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union'
+                result += f'    // {oneof_name}: {_trim_label}\n'
+                result += f'    const _{oneof_name}TrimDisc = this._buffer.{disc_read_method}({disc_offset});\n'
+                result += f'    let _{oneof_name}TrimLen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'    if (_{oneof_name}TrimDisc === {disc_val}) _{oneof_name}TrimLen = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'    if (_{oneof_name}TrimLen < {oneof.min_size_override}) _{oneof_name}TrimLen = {oneof.min_size_override};\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset} + _{oneof_name}TrimLen);\n'
+                result += f'    offset += _{oneof_name}TrimLen;\n'
+                msg_offset += oneof.size
+            else:
+                result += f'    // {oneof_name}: union payload ({oneof.size} bytes)\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset + oneof.size});\n'
+                result += f'    offset += {oneof.size};\n'
+                msg_offset += oneof.size
+        
         result += f'    return buffer;\n'
         result += f'  }}\n'
         
@@ -544,6 +636,43 @@ class MessageJsClassGen():
                 result += f'    offset += {field.size};\n'
             msg_offset += field.size
         
+        # Oneofs: read discriminator bytes + union payload (or length-prefix + variant bytes for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'    // {oneof_name}: discriminator ({disc_bytes} bytes)\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset}, offset, offset + {disc_bytes});\n'
+                result += f'    offset += {disc_bytes};\n'
+                msg_offset += disc_bytes
+            if oneof.variable:
+                result += f'    // {oneof_name}: variable-length union payload\n'
+                result += f'    const _{oneof_name}DeserLen = buffer.readUInt16LE(offset); offset += 2;\n'
+                result += f'    if (_{oneof_name}DeserLen > 0 && offset + _{oneof_name}DeserLen <= buffer.length) {{\n'
+                result += f'      buffer.copy(msg._buffer, {msg_offset}, offset, offset + Math.min(_{oneof_name}DeserLen, {oneof.size}));\n'
+                result += f'    }}\n'
+                result += f'    offset += _{oneof_name}DeserLen;\n'
+                msg_offset += oneof.size
+            elif oneof.auto_discriminator:
+                _min_sz = oneof.min_size_override or 0
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                disc_offset = msg_offset - disc_bytes
+                disc_read_method = 'readUInt16LE' if oneof.discriminator_type == "msgid" else 'readUInt8'
+                _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
+                result += f'    // {oneof_name}: {_trim_label}\n'
+                result += f'    const _{oneof_name}TRDisc = msg._buffer.{disc_read_method}({disc_offset});\n'
+                result += f'    let _{oneof_name}TRLen = {_min_sz};\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'    if (_{oneof_name}TRDisc === {disc_val}) _{oneof_name}TRLen = Math.max({field_size}, {_min_sz});\n'
+                result += f'    if (offset + _{oneof_name}TRLen <= buffer.length) {{\n'
+                result += f'      buffer.copy(msg._buffer, {msg_offset}, offset, offset + Math.min(_{oneof_name}TRLen, {oneof.size}));\n'
+                result += f'    }}\n'
+                result += f'    offset += _{oneof_name}TRLen;\n'
+                msg_offset += oneof.size
+            else:
+                result += f'    // {oneof_name}: union payload ({oneof.size} bytes)\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset}, offset, offset + {oneof.size});\n'
+                result += f'    offset += {oneof.size};\n'
+                msg_offset += oneof.size
         result += f'    return msg;\n'
         result += f'  }}\n'
         
@@ -616,18 +745,65 @@ class MessageJsClassGen():
         if field_info.is_enum:
             field_type = "uint8"
         
-        read_method = READ_METHODS.get(field_type, "_readUInt8")
-        write_method = WRITE_METHODS.get(field_type, "_writeUInt8")
-        
-        result = f'  get {name}() {{\n'
-        result += f'    return this.{read_method}({offset});\n'
-        result += f'  }}\n'
-        result += f'  set {name}(value) {{\n'
-        result += f'    this.{write_method}({offset}, value);\n'
-        result += f'  }}\n\n'
+        # Boolean needs special transforms (readUInt8 + !== 0, writeUInt8 + ternary)
+        if field_type == "bool":
+            result = f'  get {name}() {{\n'
+            result += f'    return this._buffer.readUInt8({offset}) !== 0;\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value) {{\n'
+            result += f'    this._buffer.writeUInt8(value ? 1 : 0, {offset});\n'
+            result += f'  }}\n\n'
+        else:
+            # Inline the Buffer method call directly — eliminates the MessageBase
+            # wrapper hop on the hot read path (getter → Buffer, not getter → wrapper → Buffer).
+            # Note: Buffer.readXxx(offset) but Buffer.writeXxx(value, offset) — different arg order.
+            buf_read = BUFFER_READ_METHODS.get(field_type, "readUInt8")
+            buf_write = BUFFER_WRITE_METHODS.get(field_type, "writeUInt8")
+            result = f'  get {name}() {{\n'
+            result += f'    return this._buffer.{buf_read}({offset});\n'
+            result += f'  }}\n'
+            result += f'  set {name}(value) {{\n'
+            result += f'    this._buffer.{buf_write}(value, {offset});\n'
+            result += f'  }}\n\n'
         
         return result
-    
+
+    @staticmethod
+    def _generate_to_object_method(fields):
+        """Generate a toObject() method that decodes all fields into a plain POJO.
+
+        Scalar primitive reads are inlined directly to this._buffer.readXxx(offset)
+        to eliminate the getter-to-wrapper call chain on the hot read path.
+        String and array fields delegate to their getters.
+        """
+        result = '\n  /**\n'
+        result += '   * Decode all fields into a plain object for efficient repeated reads.\n'
+        result += '   * Call this once at parse/store time, then read from the returned POJO\n'
+        result += '   * in render loops — plain property reads hit V8 inline caches directly.\n'
+        result += '   * Scalar reads are inlined (no getter or wrapper call overhead).\n'
+        result += '   * @returns {Object} Plain object with all field values decoded\n'
+        result += '   */\n'
+        result += '  toObject() {\n'
+        result += '    return {\n'
+        for field_info in fields:
+            name = field_info.name
+            field_type = field_info.field_type
+            offset = field_info.offset
+            if field_info.is_array or field_info.is_nested:
+                result += f'      {name}: this.{name},\n'
+            elif field_type == "string":
+                size = field_info.element_size or field_info.size
+                result += f'      {name}: this._readString({offset}, {size}),\n'
+            elif field_type == "bool":
+                result += f'      {name}: this._buffer.readUInt8({offset}) !== 0,\n'
+            else:
+                actual_type = "uint8" if field_info.is_enum else field_type
+                buf_read = BUFFER_READ_METHODS.get(actual_type, "readUInt8")
+                result += f'      {name}: this._buffer.{buf_read}({offset}),\n'
+        result += '    };\n'
+        result += '  }\n'
+        return result
+
     @staticmethod
     def _generate_string_accessors(field_info):
         """Generate accessors for string types."""

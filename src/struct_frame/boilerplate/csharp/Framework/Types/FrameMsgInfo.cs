@@ -45,6 +45,8 @@ namespace StructFrame
 
         /// <summary>
         /// Extract payload from frame info, handling offset if needed.
+        /// Allocates a new array. Prefer <see cref="GetPayloadSpan"/> when calling
+        /// <c>Deserialize(ReadOnlySpan&lt;byte&gt;)</c> to avoid this allocation.
         /// </summary>
         public readonly byte[] ExtractPayload()
         {
@@ -78,6 +80,19 @@ namespace StructFrame
                 Array.Copy(MsgData, 0, payload, 0, MsgLen);
                 return payload;
             }
+        }
+
+        /// <summary>
+        /// Get a zero-copy <see cref="ReadOnlySpan{T}"/> over the payload data.
+        /// Use this with <c>Deserialize(ReadOnlySpan&lt;byte&gt;)</c> to avoid the
+        /// heap allocation that <see cref="ExtractPayload"/> incurs on the hot receive path.
+        /// </summary>
+        public readonly ReadOnlySpan<byte> GetPayloadSpan()
+        {
+            if (MsgData == null) return ReadOnlySpan<byte>.Empty;
+            if (MsgDataOffset + MsgLen > MsgData.Length)
+                throw new ArgumentException($"Invalid buffer range: MsgData length ({MsgData.Length}) is insufficient for offset {MsgDataOffset} + length {MsgLen}");
+            return MsgData.AsSpan(MsgDataOffset, MsgLen);
         }
     }
 }

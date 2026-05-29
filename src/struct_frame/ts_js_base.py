@@ -337,6 +337,36 @@ WRITE_ARRAY_METHODS = {
     "bool": "_writeUInt8Array",  # Boolean arrays stored as UInt8Array
 }
 
+# Direct Node.js Buffer method names used to inline field reads/writes in generated code,
+# eliminating the MessageBase wrapper-method call on the hot path.
+# "bool" is intentionally absent — it requires a `!== 0` / ternary transform that
+# must be handled explicitly at each call site.
+BUFFER_READ_METHODS = {
+    "int8":   "readInt8",
+    "uint8":  "readUInt8",
+    "int16":  "readInt16LE",
+    "uint16": "readUInt16LE",
+    "int32":  "readInt32LE",
+    "uint32": "readUInt32LE",
+    "int64":  "readBigInt64LE",
+    "uint64": "readBigUInt64LE",
+    "float":  "readFloatLE",
+    "double": "readDoubleLE",
+}
+
+BUFFER_WRITE_METHODS = {
+    "int8":   "writeInt8",
+    "uint8":  "writeUInt8",
+    "int16":  "writeInt16LE",
+    "uint16": "writeUInt16LE",
+    "int32":  "writeInt32LE",
+    "uint32": "writeUInt32LE",
+    "int64":  "writeBigInt64LE",
+    "uint64": "writeBigUInt64LE",
+    "float":  "writeFloatLE",
+    "double": "writeDoubleLE",
+}
+
 
 class FieldInfo:
     """Information about a field for class-based code generation."""

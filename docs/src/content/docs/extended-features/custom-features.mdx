@@ -3,7 +3,7 @@ title: Advanced Features
 description: Advanced scenarios including package IDs, minimal frames, large messages, and variable-length encoding.
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
+import { Tabs, TabItem } from "@astrojs/starlight/components";
 
 This page covers advanced scenarios for special use cases.
 
@@ -12,6 +12,7 @@ This page covers advanced scenarios for special use cases.
 Package IDs enable 16-bit message addressing for large systems.
 
 **When to use:**
+
 - Systems with more than 255 messages
 - Multi-package systems requiring namespace separation
 
@@ -19,6 +20,7 @@ Package IDs enable 16-bit message addressing for large systems.
 Use Extended or ExtendedMultiSystemStream payload types with package IDs.
 
 **Message ID encoding:**
+
 - Without pkgid: 8-bit (0-255)
 - With pkgid: 16-bit = `(package_id << 8) | msg_id`
 
@@ -29,6 +31,7 @@ See [Message Definitions](/basic-usage/message-definitions/#message-options) for
 Minimal frames remove length and checksum fields for lowest overhead.
 
 **Requirements:**
+
 - All messages must be fixed-size (no max_size, only size)
 - Parser needs message length lookup function
 
@@ -40,28 +43,32 @@ The generator creates a `get_msg_info` function automatically:
   from frame_profiles import ProfileSensorWriter, ProfileSensorAccumulatingReader
   from struct_frame.generated.messages import get_message_info
 
-  # Encode using sensor profile (Tiny + Minimal)
-  writer = ProfileSensorWriter(1024)
-  writer.write(msg)
-  frame = writer.data()
+# Encode using sensor profile (Tiny + Minimal)
 
-  # Parser requires get_message_info callback for minimal profiles
-  reader = ProfileSensorAccumulatingReader(get_message_info=get_message_info)
-  reader.add_data(frame)
-  result = reader.next()
-  ```
-  </TabItem>
+writer = ProfileSensorWriter(1024)
+writer.write(msg)
+frame = writer.data()
+
+# Parser requires get_message_info callback for minimal profiles
+
+reader = ProfileSensorAccumulatingReader(get_message_info=get_message_info)
+reader.add_data(frame)
+result = reader.next()
+
+````
+</TabItem>
 </Tabs>
 
 <Tabs>
-  <TabItem label="C++">
-  ```cpp
-  #include "frame_profiles.hpp"
-  #include "messages.structframe.hpp"
+<TabItem label="C++">
+```cpp
+#include "frame_profiles.hpp"
+#include "messages.structframe.hpp"
 
-  // Use sensor profile with minimal frames (requires message info callback)
-  ProfileSensorAccumulatingReader reader(get_message_info);
-  ```
+// Use sensor profile with minimal frames (requires message info callback)
+ProfileSensorAccumulatingReader reader(get_message_info);
+````
+
   </TabItem>
 </Tabs>
 
@@ -93,3 +100,73 @@ message LogEntry {
 
 Only used bytes are transmitted instead of full max_size. See [Message Definitions](/basic-usage/message-definitions/#message-options) for details.
 
+## Variable Oneofs
+
+A `oneof` with a discriminator inside a variable message transmits only the active variant's bytes by default ("trimmed" mode). Add `option variable = true;` to the oneof for a length-prefixed forward-compatible format.
+
+### Trimmed Mode (Default)
+
+When the parent message is variable and the oneof has a discriminator (no `option variable = true;`), only the active variant's bytes are sent. The receiver derives the size from the discriminator:
+
+```proto
+message CommandMessage {
+  option msgid = 20;
+  option variable = true;
+
+  oneof data {
+    option discriminator = "field_order";
+    SmallPayload small = 1;   // 3 bytes on the wire when active
+    LargePayload large = 2;   // 32 bytes on the wire when active
+  }
+}
+```
+
+### Variable Mode (Length-Prefixed)
+
+Add `option variable = true;` to include a `uint16` length prefix, allowing receivers to skip unknown variants:
+
+```proto
+message CommandMessage {
+  option msgid = 20;
+  option variable = true;
+
+  oneof data {
+    option discriminator = "field_order";
+    option variable = true;
+    SmallPayload small = 1;   // Only its own bytes transmitted
+    LargePayload large = 2;   // Only its own bytes transmitted
+  }
+}
+```
+
+**Wire format:** `[discriminator][uint16 length][variant_bytes]`
+
+### Controlling Oneof Size
+
+**`option max_size = N;`** — valid on **non-variable (trimmed) oneofs only**. Reserves `N` bytes in the in-memory struct union for future variants without changing the wire size of current variants:
+
+```proto
+oneof data {
+  option discriminator = "field_order";
+  option max_size = 64;    // 64-byte in-memory buffer; not for variable oneofs
+  SmallPayload small = 1;  // Still 3 bytes on the wire
+}
+```
+
+**`option min_size = N;`** — valid when the parent message is `variable = true` **and** the oneof is either `variable = true` or the only variable-length (trimmed) field in the message. Pads the wire payload to at least `N` bytes for backward compatibility:
+
+```proto
+oneof data {
+  option discriminator = "field_order";
+  option variable = true;
+  option min_size = 8;     // Transmit at least 8 bytes
+  SmallPayload small = 1;  // 3 bytes → padded to 8 bytes on the wire
+  LargePayload large = 2;  // 8 bytes → transmitted as-is
+}
+```
+
+> **`max_size`** applies to non-variable (trimmed) oneofs — it reserves in-memory space without affecting wire size per variant.
+>
+> **`min_size`** applies to variable or trimmed oneofs in variable messages — it pads the wire payload and cannot exceed the oneof's buffer size.
+
+See [Variable Oneofs](/basic-usage/message-definitions/#variable-oneofs) in Message Definitions for the complete reference.

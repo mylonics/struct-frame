@@ -18,7 +18,7 @@ namespace StructFrameTests
     public static class VariableFlagMessages
     {
         // Message count
-        public const int MESSAGE_COUNT = 5;
+        public const int MESSAGE_COUNT = 7;
 
         // ============================================================================
         // Helper functions to create messages (like C++ create_* functions)
@@ -114,6 +114,26 @@ namespace StructFrameTests
             return msg;
         }
 
+        private static VariableEnvelopeMessage CreateVariableEnvelopeFieldOrder()
+        {
+            var payload = new VarEnvPayloadA();
+            payload.Code = 0x42;
+            payload.Value = 0x1234;
+            return VariableEnvelopeMessage.Wrap(payload, 7);
+        }
+
+        private static VariableEnvelopeMsgIdMessage CreateVariableEnvelopeMsgId()
+        {
+            var inner = new BasicTypesMessage();
+            inner.Flag = true;
+            inner.SmallUint = 0xAB;
+            inner.MediumUint = 0xCDEF;
+            inner.RegularUint = 0x12345678U;
+            inner.DeviceId = new byte[32];
+            inner.DescriptionData = new byte[128];
+            return VariableEnvelopeMsgIdMessage.Wrap(inner, 3);
+        }
+
         // ============================================================================
         // GetMessage(index) - unified interface matching C++ MessageProvider pattern
         // ============================================================================
@@ -128,8 +148,12 @@ namespace StructFrameTests
                 return CreateNestedVariable();
             else if (index == 3)
                 return CreateMultipleArrays();
-            else
+            else if (index == 4)
                 return CreateMixedFields();
+            else if (index == 5)
+                return CreateVariableEnvelopeFieldOrder();
+            else
+                return CreateVariableEnvelopeMsgId();
         }
 
         // ============================================================================
@@ -157,6 +181,10 @@ namespace StructFrameTests
                 decoded = VariableMultipleArrays.Deserialize(info);
             else if (info.MsgId == VariableMixedFields.MsgId)
                 decoded = VariableMixedFields.Deserialize(info);
+            else if (info.MsgId == VariableEnvelopeMessage.MsgId)
+                decoded = VariableEnvelopeMessage.Deserialize(info);
+            else if (info.MsgId == VariableEnvelopeMsgIdMessage.MsgId)
+                decoded = VariableEnvelopeMsgIdMessage.Deserialize(info);
 
             if (decoded == null) return false;
 

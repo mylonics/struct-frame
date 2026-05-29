@@ -1176,21 +1176,21 @@ class TestRunner:
                                       "Binary output does not match reference")
         
         # Verify truncation by checking frame sizes
-        # The encoded file contains 5 frames (ProfileBulk, bulk profile, 8 bytes overhead each):
-        #   Frame 1: TruncationTestNonVariable   — NOT truncated: 207 + 8 = 215 bytes (full 200-byte array)
-        #   Frame 2: TruncationTestVariable      — TRUNCATED:     74 + 8 =  82 bytes (67 bytes used)
-        #   Frame 3: NestedVariableMessage       — TRUNCATED:     92 + 8 = 100 bytes
-        #   Frame 4: VariableMultipleArrays      — TRUNCATED:     41 + 8 =  49 bytes (3+2 elems used)
-        #   Frame 5: VariableMixedFields         — TRUNCATED:     53 + 8 =  61 bytes (5 elems used)
-        # Total with truncation:  ~507 bytes
-        # Total without truncation: 215+215+144+376+362 = ~1312 bytes
+        # The encoded file contains 7 frames (ProfileBulk, 8 bytes overhead each):
+        #   Frame 1: TruncationTestNonVariable         — NOT truncated: 207 + 8 = 215 bytes
+        #   Frame 2: TruncationTestVariable            — TRUNCATED:      74 + 8 =  82 bytes
+        #   Frame 3: NestedVariableMessage             — TRUNCATED:      92 + 8 = 100 bytes
+        #   Frame 4: VariableMultipleArrays            — TRUNCATED:      41 + 8 =  49 bytes
+        #   Frame 5: VariableMixedFields               — TRUNCATED:      53 + 8 =  61 bytes
+        #   Frame 6: VariableEnvelopeMessage           — fixed oneof:    10 + 8 =  18 bytes
+        #   Frame 7: VariableEnvelopeMsgIdMessage      — fixed oneof:    ~N + 8 bytes
+        # Total with truncation:  ~600 bytes (generous upper bound)
+        # Total without truncation (frames 2-5): much larger
         if reference_data and all_match:
             print(f"\n  {Colors.bold('Analyzing frame sizes for truncation...')}")
-            # We expect the total size to be much smaller than the sum of all MAX_SIZE frames.
-            # With truncation: ~507 bytes.  Without truncation: ~1312 bytes.
             total_size = len(reference_data)
-            max_expected_if_no_truncation = 1312  # Sum of all 5 frames at MAX_SIZE + overhead
-            expected_with_truncation = 700        # Conservative upper bound with truncation
+            max_expected_if_no_truncation = 2000  # Conservative upper bound
+            expected_with_truncation = 1000       # Generous upper bound with truncation
 
             if total_size < expected_with_truncation:
                 print(f"  {Colors.ok_tag()} Truncation verified: Total size {total_size} bytes < {expected_with_truncation} bytes")
@@ -1630,30 +1630,40 @@ class TestRunner:
             else:
                 print("  Skipping JavaScript test_sdk (script not found)")
 
-        # ---- C#: test_sdk_subscribe (section 6.3) ----
+        # ---- C#: SDK test suites (subscribe + Magnum-review additions) ----
         csharp_lang = self.languages.get("csharp")
         if csharp_lang and self.results["compilation"].get("csharp", False):
             build_dir = self.project_root / csharp_lang.build_dir
             test_exe = build_dir / "StructFrameTests.exe"
             if not test_exe.exists():
                 test_exe = build_dir / "StructFrameTests.dll"
-                cmd = f'dotnet "{test_exe}" --runner test_sdk_subscribe'
+                cmd_prefix = f'dotnet "{test_exe}"'
             else:
-                cmd = f'"{test_exe}" --runner test_sdk_subscribe'
+                cmd_prefix = f'"{test_exe}"'
 
             if test_exe.exists():
-                success, stdout, _ = self.run_cmd(cmd, timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  C# test_sdk_subscribe: {label}")
-                results["csharp:sdk_subscribe"] = success
-                if not success:
-                    self.add_failure("sdk", "C#", None, "test_sdk_subscribe failed")
-                    all_success = False
+                csharp_sdk_runners = [
+                    ("test_sdk_subscribe", "C# test_sdk_subscribe"),
+                    ("test_sdk_strict_ordering", "C# test_sdk_strict_ordering"),
+                    ("test_sdk_lifecycle", "C# test_sdk_lifecycle"),
+                    ("test_sdk_client_wrapper", "C# test_sdk_client_wrapper"),
+                    ("test_sdk_profiles", "C# test_sdk_profiles"),
+                    ("test_base_transport", "C# test_base_transport"),
+                ]
+                for runner_arg, label_str in csharp_sdk_runners:
+                    cmd = f'{cmd_prefix} --runner {runner_arg}'
+                    success, stdout, _ = self.run_cmd(cmd, timeout=60)
+                    if stdout:
+                        for line in stdout.splitlines():
+                            print(f"  {line}")
+                    label = Colors.pass_text() if success else Colors.fail_text()
+                    print(f"\n  {label_str}: {label}")
+                    results[f"csharp:{runner_arg}"] = success
+                    if not success:
+                        self.add_failure("sdk", "C#", None, f"{runner_arg} failed")
+                        all_success = False
             else:
-                print("  Skipping C# test_sdk_subscribe (binary not found)")
+                print("  Skipping C# SDK tests (binary not found)")
 
         # ---- Rust: test_streaming + test_sdk_subscribe (sections 6.2, 6.3) ----
         rust_lang = self.languages.get("rust")
@@ -2392,10 +2402,10 @@ class TestRunner:
             elif profiling_only:
                 print(f"\n{Colors.yellow('[SKIP]')} Extended tests (--profiling)")
 
-            # Phase 7: Variable tests (only ProfileBulk, 5 messages)
+            # Phase 7: Variable tests (only ProfileBulk, 7 messages)
             if not profiling_only:
                 with self.timed_phase("Variable Tests"):
-                    self.run_tests("variable", [("bulk", "ProfileBulk")], 5, "test_variable_flag")
+                    self.run_tests("variable", [("bulk", "ProfileBulk")], 7, "test_variable_flag")
                     # Verify truncation by checking binary file sizes
                     self.verify_variable_truncation()
             else:

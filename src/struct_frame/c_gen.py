@@ -251,6 +251,13 @@ class OneOfCGen():
             field_code = field_code.strip()
             result += f'        {field_code}\n'
         
+        # Pad union to oneof.size if min_size_override or max_size_override inflated it
+        # beyond the largest variant. Keeps sizeof(union) == oneof.size so the struct
+        # memory layout matches the wire layout (needed for the fast memcpy path).
+        _max_variant = max((fs for _, _, fs in oneof.variant_info), default=0)
+        if oneof.size > _max_variant:
+            result += f'        uint8_t _padding[{oneof.size}];  /* pad union to oneof.size */\n'
+        
         result += f'    }} {oneof.name};'
         
         return result
@@ -455,6 +462,33 @@ class MessageCGen():
                 # Fixed-size field
                 result += f'    size += {field.size};  // {var_name}\n'
         
+        # Oneofs: discriminator + union payload (or length-prefix + variant size for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
+                result += f'    size += {disc_bytes};  // {oneof_name} discriminator\n'
+            if oneof.variable:
+                result += f'    size += 2;  // {oneof_name} variable-length prefix\n'
+                result += f'    {{\n'
+                result += f'        uint16_t _{oneof_name}_vlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) _{oneof_name}_vlen = {field_size};  // {field_name}\n'
+                if oneof.min_size_override:
+                    result += f'        if (_{oneof_name}_vlen < {oneof.min_size_override}) _{oneof_name}_vlen = {oneof.min_size_override};\n'
+                result += f'        size += _{oneof_name}_vlen;\n'
+                result += f'    }}\n'
+            elif oneof.discriminator_type is not None:
+                result += f'    {{\n'
+                result += f'        uint16_t _{oneof_name}_tlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) _{oneof_name}_tlen = {field_size};  // {field_name}\n'
+                if oneof.min_size_override:
+                    result += f'        if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
+                result += f'        size += _{oneof_name}_tlen;  // {oneof_name} trimmed union payload\n'
+                result += f'    }}\n'
+            else:
+                result += f'    size += {oneof.size};  // {oneof_name} union payload\n'
+        
         result += f'    return size;\n'
         result += f'}}\n'
         
@@ -500,6 +534,48 @@ class MessageCGen():
                 result += f'    // {var_name}: fixed size ({field.size} bytes)\n'
                 result += f'    memcpy(buffer + offset, &msg->{var_name}, {field.size});\n'
                 result += f'    offset += {field.size};\n'
+        
+        # Oneofs: write discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'    // {oneof_name} discriminator (uint16)\n'
+                    result += f'    memcpy(buffer + offset, &msg->{oneof_name}_discriminator, 2);\n'
+                    result += f'    offset += 2;\n'
+                else:  # field_order (uint8)
+                    result += f'    // {oneof_name} discriminator (uint8)\n'
+                    result += f'    buffer[offset++] = (uint8_t)msg->{oneof_name}_discriminator;\n'
+            if oneof.variable:
+                result += f'    // {oneof_name} variable-length union: write uint16 length + variant bytes\n'
+                result += f'    {{\n'
+                result += f'        uint16_t _{oneof_name}_len = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) _{oneof_name}_len = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'        if (_{oneof_name}_len < {oneof.min_size_override}) _{oneof_name}_len = {oneof.min_size_override};\n'
+                result += f'        memcpy(buffer + offset, &_{oneof_name}_len, 2);\n'
+                result += f'        offset += 2;\n'
+                result += f'        if (_{oneof_name}_len > 0) {{\n'
+                result += f'            memcpy(buffer + offset, &msg->{oneof_name}, _{oneof_name}_len);\n'
+                result += f'            offset += _{oneof_name}_len;\n'
+                result += f'        }}\n'
+                result += f'    }}\n'
+            elif oneof.discriminator_type is not None:
+                _trim_label = f'trimmed union (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union'
+                result += f'    // {oneof_name}: {_trim_label}\n'
+                result += f'    {{\n'
+                result += f'        uint16_t _{oneof_name}_tlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) _{oneof_name}_tlen = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'        if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
+                result += f'        memcpy(buffer + offset, &msg->{oneof_name}, _{oneof_name}_tlen);\n'
+                result += f'        offset += _{oneof_name}_tlen;\n'
+                result += f'    }}\n'
+            else:
+                result += f'    // {oneof_name} union payload ({oneof.size} bytes)\n'
+                result += f'    memcpy(buffer + offset, &msg->{oneof_name}, {oneof.size});\n'
+                result += f'    offset += {oneof.size};\n'
         
         result += f'    return offset;\n'
         result += f'}}\n'
@@ -558,6 +634,53 @@ class MessageCGen():
                 result += f'    memcpy(&msg->{var_name}, buffer + offset, {field.size});\n'
                 result += f'    offset += {field.size};\n'
         
+        # Oneofs: read discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
+        for oneof_name, oneof in msg.oneofs.items():
+            if oneof.auto_discriminator:
+                if oneof.discriminator_type == "msgid":
+                    result += f'    // {oneof_name} discriminator (uint16)\n'
+                    result += f'    if (offset + 2 > buffer_size) return 0;\n'
+                    result += f'    memcpy(&msg->{oneof_name}_discriminator, buffer + offset, 2);\n'
+                    result += f'    offset += 2;\n'
+                else:  # field_order (uint8)
+                    result += f'    // {oneof_name} discriminator (uint8)\n'
+                    result += f'    if (offset >= buffer_size) return 0;\n'
+                    disc_enum = f'{structName}{pascal_case(oneof_name)}Field'
+                    result += f'    msg->{oneof_name}_discriminator = ({disc_enum})buffer[offset++];\n'
+            if oneof.variable:
+                result += f'    // {oneof_name} variable-length union: read uint16 length + variant bytes\n'
+                result += f'    {{\n'
+                result += f'        if (offset + 2 > buffer_size) return 0;\n'
+                result += f'        uint16_t _{oneof_name}_len;\n'
+                result += f'        memcpy(&_{oneof_name}_len, buffer + offset, 2);\n'
+                result += f'        offset += 2;\n'
+                result += f'        if (offset + _{oneof_name}_len > buffer_size) return 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) {{\n'
+                    result += f'            uint16_t _copy = _{oneof_name}_len < {field_size} ? _{oneof_name}_len : {field_size};\n'
+                    result += f'            memcpy(&msg->{oneof_name}, buffer + offset, _copy);\n'
+                    result += f'        }}\n'
+                result += f'        offset += _{oneof_name}_len;  // Always skip full payload\n'
+                result += f'    }}\n'
+            elif oneof.discriminator_type is not None:
+                _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
+                result += f'    // {oneof_name}: {_trim_label}\n'
+                result += f'    {{\n'
+                result += f'        uint16_t _{oneof_name}_rlen = 0;\n'
+                for disc_val, field_name, field_size in oneof.variant_info:
+                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) _{oneof_name}_rlen = {field_size};\n'
+                if oneof.min_size_override:
+                    result += f'        if (_{oneof_name}_rlen < {oneof.min_size_override}) _{oneof_name}_rlen = {oneof.min_size_override};\n'
+                result += f'        if (offset + _{oneof_name}_rlen > buffer_size) return 0;\n'
+                result += f'        memcpy(&msg->{oneof_name}, buffer + offset, _{oneof_name}_rlen);\n'
+                result += f'        offset += _{oneof_name}_rlen;\n'
+                result += f'    }}\n'
+            else:
+                result += f'    // {oneof_name} union payload ({oneof.size} bytes)\n'
+                result += f'    if (offset + {oneof.size} > buffer_size) return 0;\n'
+                result += f'    memcpy(&msg->{oneof_name}, buffer + offset, {oneof.size});\n'
+                result += f'    offset += {oneof.size};\n'
+        
         result += f'    return offset;\n'
         result += f'}}\n'
         
@@ -573,14 +696,19 @@ class MessageCGen():
         result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
         result += f' */\n'
         result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
-        result += f'    if (buffer_size == {defineName}_MAX_SIZE) {{\n'
-        result += f'        /* MAX_SIZE encoding (from minimal profiles or non-variable encoding) */\n'
-        result += f'        memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
-        result += f'        return {defineName}_MAX_SIZE;\n'
-        result += f'    }} else {{\n'
-        result += f'        /* Variable-length encoding */\n'
-        result += f'        return {structName}_deserialize_variable(buffer, buffer_size, msg);\n'
-        result += f'    }}\n'
+        if msg.oneofs:
+            # Structs with oneof discriminators: C enum fields are 4 bytes but wire is 1/2 bytes.
+            # Always use _deserialize_variable to avoid struct layout mismatch.
+            result += f'    return {structName}_deserialize_variable(buffer, buffer_size, msg);\n'
+        else:
+            result += f'    if (buffer_size == {defineName}_MAX_SIZE) {{\n'
+            result += f'        /* MAX_SIZE encoding (from minimal profiles or non-variable encoding) */\n'
+            result += f'        memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
+            result += f'        return {defineName}_MAX_SIZE;\n'
+            result += f'    }} else {{\n'
+            result += f'        /* Variable-length encoding */\n'
+            result += f'        return {structName}_deserialize_variable(buffer, buffer_size, msg);\n'
+            result += f'    }}\n'
         result += f'}}\n'
         
         # Also generate serialize() function for variable messages

@@ -17,7 +17,7 @@
  * Message count and order
  * ============================================================================ */
 
-#define VAR_FLAG_MESSAGE_COUNT 5
+#define VAR_FLAG_MESSAGE_COUNT 7
 
 /* Index tracking for encoding/validation */
 static size_t var_non_var_idx = 0;
@@ -25,14 +25,18 @@ static size_t var_var_idx = 0;
 static size_t var_nested_idx = 0;
 static size_t var_multiple_idx = 0;
 static size_t var_mixed_idx = 0;
+static size_t var_env_field_order_idx = 0;
+static size_t var_env_msgid_idx = 0;
 
 /* Message ID order array */
 static const uint16_t var_flag_msg_id_order[VAR_FLAG_MESSAGE_COUNT] = {
-    SERIALIZATION_TEST_TRUNCATION_TEST_NON_VARIABLE_MSG_ID, /* 0: Non-variable message */
-    SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MSG_ID,     /* 1: Variable message */
-    SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MSG_ID,      /* 2: Nested variable message */
-    SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MSG_ID,     /* 3: Multiple bounded arrays */
-    SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MSG_ID,        /* 4: Mixed fixed + variable fields */
+    SERIALIZATION_TEST_TRUNCATION_TEST_NON_VARIABLE_MSG_ID,     /* 0: Non-variable message */
+    SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MSG_ID,         /* 1: Variable message */
+    SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MSG_ID,          /* 2: Nested variable message */
+    SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MSG_ID,         /* 3: Multiple bounded arrays */
+    SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MSG_ID,            /* 4: Mixed fixed + variable fields */
+    SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_MSG_ID,        /* 5: Variable + field_order oneof */
+    SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_MSG_ID, /* 6: Variable + msgid oneof */
 };
 
 static inline const uint16_t* var_flag_get_msg_id_order(void) { return var_flag_msg_id_order; }
@@ -140,6 +144,28 @@ static inline SerializationTestVariableMixedFields create_mixed_fields(void) {
   return msg;
 }
 
+static inline SerializationTestVariableEnvelopeMessage create_variable_envelope_field_order(void) {
+  SerializationTestVariableEnvelopeMessage msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.priority = 7;
+  msg.payload_discriminator = SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_PAYLOAD_FIELD_PAYLOAD_A;
+  msg.payload.payload_a.code = 0x42;
+  msg.payload.payload_a.value = 0x1234;
+  return msg;
+}
+
+static inline SerializationTestVariableEnvelopeMsgIdMessage create_variable_envelope_msgid(void) {
+  SerializationTestVariableEnvelopeMsgIdMessage msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.priority = 3;
+  msg.payload_discriminator = SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID;
+  msg.payload.basic.flag = true;
+  msg.payload.basic.small_uint = 0xAB;
+  msg.payload.basic.medium_uint = 0xCDEF;
+  msg.payload.basic.regular_uint = 0x12345678U;
+  return msg;
+}
+
 /* ============================================================================
  * Typed message arrays
  * ============================================================================ */
@@ -194,6 +220,26 @@ static inline const SerializationTestVariableMixedFields* get_mixed_fields_messa
   return messages;
 }
 
+static inline const SerializationTestVariableEnvelopeMessage* get_variable_envelope_field_order_messages(void) {
+  static SerializationTestVariableEnvelopeMessage messages[1];
+  static bool initialized = false;
+  if (!initialized) {
+    messages[0] = create_variable_envelope_field_order();
+    initialized = true;
+  }
+  return messages;
+}
+
+static inline const SerializationTestVariableEnvelopeMsgIdMessage* get_variable_envelope_msgid_messages(void) {
+  static SerializationTestVariableEnvelopeMsgIdMessage messages[1];
+  static bool initialized = false;
+  if (!initialized) {
+    messages[0] = create_variable_envelope_msgid();
+    initialized = true;
+  }
+  return messages;
+}
+
 /* ============================================================================
  * Encoder helper - writes messages in order using index tracking
  * ============================================================================ */
@@ -210,18 +256,18 @@ static inline size_t var_flag_encode_message(buffer_writer_t* writer, size_t ind
     return written;
   } else if (msg_id == SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MSG_ID) {
     const SerializationTestTruncationTestVariable* msg = &get_variable_messages()[var_var_idx++];
-    /* Variable message: use pack_variable if profile has length field */
-    #ifdef SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_IS_VARIABLE
+/* Variable message: use pack_variable if profile has length field */
+#ifdef SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_IS_VARIABLE
     if (writer->config->payload.has_length) {
       static uint8_t pack_buffer[SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAX_SIZE];
       size_t packed_size = SerializationTestTruncationTestVariable_serialize_variable(msg, pack_buffer);
-      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0,
-                                           0, SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC1,
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
+                                           SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC1,
                                            SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC2);
       printf("MSG2: %zu bytes (payload=%zu, TRUNCATED)\n", written, packed_size);
       return written;
     }
-    #endif
+#endif
     size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
                                          0, SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC1,
                                          SERIALIZATION_TEST_TRUNCATION_TEST_VARIABLE_MAGIC2);
@@ -229,18 +275,18 @@ static inline size_t var_flag_encode_message(buffer_writer_t* writer, size_t ind
     return written;
   } else if (msg_id == SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MSG_ID) {
     const SerializationTestNestedVariableMessage* msg = &get_nested_variable_messages()[var_nested_idx++];
-    /* Nested variable message: use serialize_variable if profile has length field */
-    #ifdef SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_IS_VARIABLE
+/* Nested variable message: use serialize_variable if profile has length field */
+#ifdef SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_IS_VARIABLE
     if (writer->config->payload.has_length) {
       static uint8_t pack_buffer[SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAX_SIZE];
       size_t packed_size = SerializationTestNestedVariableMessage_serialize_variable(msg, pack_buffer);
-      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0,
-                                           0, SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC1,
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
+                                           SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC1,
                                            SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC2);
       printf("MSG3: %zu bytes (payload=%zu, TRUNCATED nested)\n", written, packed_size);
       return written;
     }
-    #endif
+#endif
     size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
                                          0, SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC1,
                                          SERIALIZATION_TEST_NESTED_VARIABLE_MESSAGE_MAGIC2);
@@ -248,17 +294,17 @@ static inline size_t var_flag_encode_message(buffer_writer_t* writer, size_t ind
     return written;
   } else if (msg_id == SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MSG_ID) {
     const SerializationTestVariableMultipleArrays* msg = &get_multiple_arrays_messages()[var_multiple_idx++];
-    #ifdef SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_IS_VARIABLE
+#ifdef SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_IS_VARIABLE
     if (writer->config->payload.has_length) {
       static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAX_SIZE];
       size_t packed_size = SerializationTestVariableMultipleArrays_serialize_variable(msg, pack_buffer);
-      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0,
-                                           0, SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC1,
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
+                                           SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC1,
                                            SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC2);
       printf("MSG4: %zu bytes (payload=%zu, TRUNCATED multiple arrays)\n", written, packed_size);
       return written;
     }
-    #endif
+#endif
     size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
                                          0, SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC1,
                                          SERIALIZATION_TEST_VARIABLE_MULTIPLE_ARRAYS_MAGIC2);
@@ -266,21 +312,59 @@ static inline size_t var_flag_encode_message(buffer_writer_t* writer, size_t ind
     return written;
   } else if (msg_id == SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MSG_ID) {
     const SerializationTestVariableMixedFields* msg = &get_mixed_fields_messages()[var_mixed_idx++];
-    #ifdef SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_IS_VARIABLE
+#ifdef SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_IS_VARIABLE
     if (writer->config->payload.has_length) {
       static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAX_SIZE];
       size_t packed_size = SerializationTestVariableMixedFields_serialize_variable(msg, pack_buffer);
-      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0,
-                                           0, SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC1,
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
+                                           SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC1,
                                            SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC2);
       printf("MSG5: %zu bytes (payload=%zu, TRUNCATED mixed fields)\n", written, packed_size);
       return written;
     }
-    #endif
+#endif
     size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
                                          0, SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC1,
                                          SERIALIZATION_TEST_VARIABLE_MIXED_FIELDS_MAGIC2);
     printf("MSG5: %zu bytes (payload=%zu, TRUNCATED mixed fields)\n", written, sizeof(*msg));
+    return written;
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_MSG_ID) {
+    const SerializationTestVariableEnvelopeMessage* msg =
+        &get_variable_envelope_field_order_messages()[var_env_field_order_idx++];
+#ifdef SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_IS_VARIABLE
+    if (writer->config->payload.has_length) {
+      static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_MAX_SIZE];
+      size_t packed_size = SerializationTestVariableEnvelopeMessage_serialize_variable(msg, pack_buffer);
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
+                                           SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_MAGIC1,
+                                           SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_MAGIC2);
+      printf("MSG6: %zu bytes (payload=%zu, envelope field_order oneof)\n", written, packed_size);
+      return written;
+    }
+#endif
+    size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
+                                         0, SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_MAGIC1,
+                                         SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_MAGIC2);
+    printf("MSG6: %zu bytes (payload=%zu, envelope field_order oneof)\n", written, sizeof(*msg));
+    return written;
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_MSG_ID) {
+    const SerializationTestVariableEnvelopeMsgIdMessage* msg =
+        &get_variable_envelope_msgid_messages()[var_env_msgid_idx++];
+#ifdef SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_IS_VARIABLE
+    if (writer->config->payload.has_length) {
+      static uint8_t pack_buffer[SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_MAX_SIZE];
+      size_t packed_size = SerializationTestVariableEnvelopeMsgIdMessage_serialize_variable(msg, pack_buffer);
+      size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), pack_buffer, packed_size, 0, 0, 0, 0,
+                                           SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_MAGIC1,
+                                           SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_MAGIC2);
+      printf("MSG7: %zu bytes (payload=%zu, envelope msgid oneof)\n", written, packed_size);
+      return written;
+    }
+#endif
+    size_t written = buffer_writer_write(writer, (uint8_t)(msg_id & 0xFF), (const uint8_t*)msg, sizeof(*msg), 0, 0, 0,
+                                         0, SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_MAGIC1,
+                                         SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_MAGIC2);
+    printf("MSG7: %zu bytes (payload=%zu, envelope msgid oneof)\n", written, sizeof(*msg));
     return written;
   }
 
@@ -319,6 +403,18 @@ static inline bool var_flag_validate_message(uint16_t msg_id, const uint8_t* dat
     SerializationTestVariableMixedFields decoded;
     if (SerializationTestVariableMixedFields_deserialize(data, size, &decoded) == 0) return false;
     return SerializationTestVariableMixedFields_equals(&decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_ENVELOPE_MESSAGE_MSG_ID) {
+    const SerializationTestVariableEnvelopeMessage* expected =
+        &get_variable_envelope_field_order_messages()[var_env_field_order_idx++];
+    SerializationTestVariableEnvelopeMessage decoded;
+    if (SerializationTestVariableEnvelopeMessage_deserialize(data, size, &decoded) == 0) return false;
+    return SerializationTestVariableEnvelopeMessage_equals(&decoded, expected);
+  } else if (msg_id == SERIALIZATION_TEST_VARIABLE_ENVELOPE_MSG_ID_MESSAGE_MSG_ID) {
+    const SerializationTestVariableEnvelopeMsgIdMessage* expected =
+        &get_variable_envelope_msgid_messages()[var_env_msgid_idx++];
+    SerializationTestVariableEnvelopeMsgIdMessage decoded;
+    if (SerializationTestVariableEnvelopeMsgIdMessage_deserialize(data, size, &decoded) == 0) return false;
+    return SerializationTestVariableEnvelopeMsgIdMessage_equals(&decoded, expected);
   }
 
   return false;
@@ -334,6 +430,8 @@ static inline void var_flag_reset_state(void) {
   var_nested_idx = 0;
   var_multiple_idx = 0;
   var_mixed_idx = 0;
+  var_env_field_order_idx = 0;
+  var_env_msgid_idx = 0;
 }
 
 /* ============================================================================

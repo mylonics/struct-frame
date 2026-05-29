@@ -12,10 +12,15 @@ const {
   NestedVariableMessage,
   VariableMultipleArrays,
   VariableMixedFields,
+  VarEnvPayloadA,
+  VarEnvPayloadB,
+  VariableEnvelopeMessage,
+  BasicTypesMessage,
+  VariableEnvelopeMsgIdMessage,
 } = require('../../generated/js/serialization-test.structframe');
 
 // Message count
-const MESSAGE_COUNT = 5;
+const MESSAGE_COUNT = 7;
 
 
 // ============================================================================
@@ -82,6 +87,21 @@ function createMixedFields() {
   });
 }
 
+function createVariableEnvelopeFieldOrder() {
+  const payload = new VarEnvPayloadA({ code: 0x42, value: 0x1234 });
+  return VariableEnvelopeMessage.wrap(payload, 7);
+}
+
+function createVariableEnvelopeMsgId() {
+  const inner = new BasicTypesMessage({
+    flag: true,
+    smallUint: 0xAB,
+    mediumUint: 0xCDEF,
+    regularUint: 0x12345678,
+  });
+  return VariableEnvelopeMsgIdMessage.wrap(inner, 3);
+}
+
 
 // ============================================================================
 // getMessage(index) - unified interface matching C++ MessageProvider pattern
@@ -96,8 +116,12 @@ function getMessage(index) {
     return createNestedVariable();
   } else if (index === 3) {
     return createMultipleArrays();
-  } else {
+  } else if (index === 4) {
     return createMixedFields();
+  } else if (index === 5) {
+    return createVariableEnvelopeFieldOrder();
+  } else {
+    return createVariableEnvelopeMsgId();
   }
 }
 

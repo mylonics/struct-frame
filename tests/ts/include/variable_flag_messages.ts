@@ -12,6 +12,11 @@ import {
   NestedVariableMessage,
   VariableMultipleArrays,
   VariableMixedFields,
+  VarEnvPayloadA,
+  VarEnvPayloadB,
+  VariableEnvelopeMessage,
+  BasicTypesMessage,
+  VariableEnvelopeMsgIdMessage,
 } from '../../generated/ts/serialization-test.structframe';
 
 import { FrameMsgInfo } from '../../generated/ts/frame-base';
@@ -22,10 +27,12 @@ export type MessageType =
   | TruncationTestVariable
   | NestedVariableMessage
   | VariableMultipleArrays
-  | VariableMixedFields;
+  | VariableMixedFields
+  | VariableEnvelopeMessage
+  | VariableEnvelopeMsgIdMessage;
 
 // Message count
-export const MESSAGE_COUNT = 5;
+export const MESSAGE_COUNT = 7;
 
 
 // ============================================================================
@@ -92,6 +99,21 @@ function createMixedFields(): VariableMixedFields {
   });
 }
 
+function createVariableEnvelopeFieldOrder(): VariableEnvelopeMessage {
+  const payload = new VarEnvPayloadA({ code: 0x42, value: 0x1234 });
+  return VariableEnvelopeMessage.wrap(payload, 7);
+}
+
+function createVariableEnvelopeMsgId(): VariableEnvelopeMsgIdMessage {
+  const inner = new BasicTypesMessage({
+    flag: true,
+    smallUint: 0xAB,
+    mediumUint: 0xCDEF,
+    regularUint: 0x12345678,
+  });
+  return VariableEnvelopeMsgIdMessage.wrap(inner, 3);
+}
+
 
 // ============================================================================
 // getMessage(index) - unified interface matching C++ MessageProvider pattern
@@ -106,8 +128,12 @@ export function getMessage(index: number): MessageType {
     return createNestedVariable();
   } else if (index === 3) {
     return createMultipleArrays();
-  } else {
+  } else if (index === 4) {
     return createMixedFields();
+  } else if (index === 5) {
+    return createVariableEnvelopeFieldOrder();
+  } else {
+    return createVariableEnvelopeMsgId();
   }
 }
 
