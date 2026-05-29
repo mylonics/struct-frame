@@ -116,8 +116,9 @@ Default ownership routing for a flake on `main`:
 
 ## Common flake sources to check first
 
-- **Unseeded randomness.** Property tests (`tests/test_property_roundtrip.py`)
-  must pin Hypothesis seeds/`derandomize` in CI. Fuzz harnesses
+- **Unseeded randomness.** When property tests are promoted to gating CI,
+  pin Hypothesis seeds/`derandomize` (the current
+  `tests/test_property_roundtrip.py` suite is non-gating). Fuzz harnesses
   (`tests/c/fuzz_parser.c`, `tests/py/fuzz_parser.py`, the Rust target) save the
   reproducing input on failure — attach it to the issue.
 - **Ordering / shared state.** Tests that depend on filesystem ordering or
