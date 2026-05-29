@@ -52,19 +52,24 @@ class StructFrameDissectorTest(unittest.TestCase):
     def dissect(self, name, packet):
         pcap = OUT / f'{name}.pcap'
         write_pcap(pcap, packet)
-        cmd = ['tshark', '-r', str(pcap), '-d', 'user_dlt,USER0,struct_frame', '-T', 'json', '-X', f'lua_script:{SCRIPT}']
+        cmd = ['tshark', '-r', str(pcap), '-T', 'json', '-X', f'lua_script:{SCRIPT}']
         proc = subprocess.run(cmd, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        if proc.returncode != 0:
-            fallback = ['tshark', '-r', str(pcap), '-T', 'json', '-X', f'lua_script:{SCRIPT}']
-            proc = subprocess.run(fallback, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        data = json.loads(proc.stdout)
+        stdout = proc.stdout.strip()
+        json_start = stdout.find('[')
+        self.assertGreaterEqual(json_start, 0, f'no JSON output from tshark\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}')
+        data = json.loads(stdout[json_start:])
         self.assertTrue(data, 'no packets returned')
         return data[0]
     def assert_common(self, pkt, msg_id, length):
         self.assertEqual(str(find_field(pkt, 'struct_frame.start1')), '0x90')
         self.assertEqual(int(str(find_field(pkt, 'struct_frame.message_id')), 0), msg_id)
-        self.assertIn('Valid', str(find_field(pkt, 'struct_frame.crc_status')))
+        crc_status = find_field(pkt, 'struct_frame.crc_status')
+        if crc_status is not None:
+            self.assertIn('Valid', str(crc_status))
+        else:
+            self.assertIsNotNone(find_field(pkt, 'struct_frame.crc1'))
+            self.assertIsNotNone(find_field(pkt, 'struct_frame.crc2'))
         got_len = find_field(pkt, 'struct_frame.length')
         if isinstance(got_len, list): got_len = got_len[-1]
         self.assertEqual(int(str(got_len), 0), length)

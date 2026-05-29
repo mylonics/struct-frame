@@ -155,7 +155,12 @@ function fletcher16(data)
     local sum2 = 0
     
     for i = 0, data:len() - 1 do
-        local byte = data:get_index(i)
+        local byte
+        if data.get_index then
+            byte = data:get_index(i)
+        else
+            byte = data(i, 1):uint()
+        end
         sum1 = (sum1 + byte) % 256
         sum2 = (sum2 + sum1) % 256
     end
@@ -352,9 +357,9 @@ end
 
 -- Register the dissector
 -- Register on a custom DLT for PCAP files
--- User DLT 0 = 147 in Wireshark (fixed mapping, see Wireshark documentation)
+-- User DLT 0 (pcap LINKTYPE 147) maps to wtap encap 45 in Wireshark.
 local wtap_encap_table = DissectorTable.get("wtap_encap")
-local USER_DLT = 147  -- User DLT 0
+local USER_DLT = 45  -- User DLT 0
 wtap_encap_table:add(USER_DLT, struct_frame_proto)
 
 -- Also register as a heuristic dissector for UDP

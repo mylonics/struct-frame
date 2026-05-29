@@ -20,13 +20,21 @@ def command(sample, quick):
     if quick and lang in {'c','cpp','ts','rust','csharp'}: return None, 'quick-skip'
     if looks_like_fragment(path): return None, 'fragment-skip'
     if lang=='python': return [sys.executable, '-m', 'py_compile', str(path)], None
-    if lang=='js': return ['node', '--check', str(path)], None if shutil.which('node') else (None, 'missing-tool')
+    if lang=='js':
+        if not shutil.which('node'): return None, 'missing-tool'
+        return ['node', '--check', str(path)], None
     if lang=='ts':
         tsc=ROOT/'tests/ts/node_modules/.bin/tsc'
         if not tsc.exists(): return None, 'missing-tool'
         return [str(tsc), '--noEmit', '--target', 'es2020', '--module', 'esnext', '--strict', 'false', str(path)], None
-    if lang=='c': return [os.environ.get('CC','gcc'), '-fsyntax-only', str(path)], None if shutil.which(os.environ.get('CC','gcc')) else (None, 'missing-tool')
-    if lang=='cpp': return [os.environ.get('CXX','g++'), '-std=c++20', '-fsyntax-only', str(path)], None if shutil.which(os.environ.get('CXX','g++')) else (None, 'missing-tool')
+    if lang=='c':
+        cc = os.environ.get('CC','gcc')
+        if not shutil.which(cc): return None, 'missing-tool'
+        return [cc, '-fsyntax-only', str(path)], None
+    if lang=='cpp':
+        cxx = os.environ.get('CXX','g++')
+        if not shutil.which(cxx): return None, 'missing-tool'
+        return [cxx, '-std=c++20', '-fsyntax-only', str(path)], None
     if lang=='rust':
         if not shutil.which('cargo'): return None, 'missing-tool'
         crate=SCRATCH/'rust'; (crate/'src').mkdir(parents=True, exist_ok=True); code=path.read_text();

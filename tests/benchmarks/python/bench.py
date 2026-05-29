@@ -60,7 +60,7 @@ def run_case(name, profile, op, iterations):
             decode(frame)
             total_bytes += len(frame)
         else:
-            frame = encode(*scenario, seq=i); decode(frame); total_bytes += len(frame)
+            frame = encode(*scenario[1:], seq=i); decode(frame); total_bytes += len(frame)
         lat.append(time.perf_counter_ns() - t0)
     duration = max((time.perf_counter_ns() - start) / 1e9, 1e-9)
     return {"name": name, "profile": profile, "operation": op, "msg_count": iterations, "bytes_total": total_bytes,
