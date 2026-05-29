@@ -1,0 +1,72 @@
+name: Fuzz (short)
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: fuzz-${{ github.sha }}
+  cancel-in-progress: true
+
+# Short per-push smoke fuzzer: 60 seconds per harness, intended only to catch
+# regressions that surface immediately.  Long-running corpus growth happens
+# upstream once the project is submitted to OSS-Fuzz (tracked as a follow-up).
+
+jobs:
+  fuzz-c-parser:
+    name: libFuzzer / C accumulating-reader
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - name: Install clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+      - name: Build C fuzz harness
+        run: |
+          mkdir -p tests/c/build
+          clang -O1 -g -fsanitize=fuzzer,address,undefined \
+                -fno-sanitize-recover=all \
+                -I src/struct_frame/boilerplate/c \
+                tests/c/fuzz_parser.c -o tests/c/build/fuzz_parser
+      - name: Run libFuzzer for 60 s
+        env:
+          ASAN_OPTIONS: "abort_on_error=1:halt_on_error=1"
+          UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+        run: |
+          mkdir -p tests/c/build/fuzz_corpus
+          tests/c/build/fuzz_parser -max_total_time=60 -max_len=4096 \
+                                    tests/c/build/fuzz_corpus
+      - name: Upload corpus and any crashes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-c-corpus
+          path: |
+            tests/c/build/fuzz_corpus
+            crash-*
+            leak-*
+            timeout-*
+          if-no-files-found: ignore
+          retention-days: 7
+
+  fuzz-py-parser:
+    name: atheris / Python AccumulatingReader
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install atheris
+        # atheris ships a wheel for cpython 3.11 on linux/x86_64.
+        run: pip install atheris
+      - name: Run atheris for 60 s
+        run: python tests/py/fuzz_parser.py -max_total_time=60 -max_len=4096

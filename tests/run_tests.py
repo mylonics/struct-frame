@@ -129,6 +129,35 @@ _init_colors()
 
 
 # =============================================================================
+# Compiler env-var resolution (sanitizer / cross-compiler injection)
+# =============================================================================
+
+def _cc() -> str:
+    """Return the C compiler from $CC, defaulting to gcc."""
+    return os.environ.get("CC") or "gcc"
+
+
+def _cxx() -> str:
+    """Return the C++ compiler from $CXX, defaulting to g++."""
+    return os.environ.get("CXX") or "g++"
+
+
+def _cflags() -> str:
+    """Extra C flags from $CFLAGS (space-separated; injected as-is)."""
+    return os.environ.get("CFLAGS", "")
+
+
+def _cxxflags() -> str:
+    """Extra C++ flags from $CXXFLAGS (space-separated; injected as-is)."""
+    return os.environ.get("CXXFLAGS", "")
+
+
+def _ldflags() -> str:
+    """Extra linker flags from $LDFLAGS (space-separated; injected as-is)."""
+    return os.environ.get("LDFLAGS", "")
+
+
+# =============================================================================
 # Configuration
 # =============================================================================
 
@@ -669,15 +698,15 @@ class TestRunner:
                 output = build_dir / f"{runner}{lang.exe_ext}"
                 
                 if lang.id == "c":
-                    cmd = f'gcc -I"{gen_dir}" -o "{output}" "{source}" -lm'
+                    cmd = f'{_cc()} {_cflags()} -I"{gen_dir}" -o "{output}" "{source}" {_ldflags()} -lm'
                 else:
                     include_dir = test_dir / "include"
                     if runner == "test_sdk_subscribe":
                         # SDK subscribe test needs the C++ SDK boilerplate headers
                         sdk_dir = self.project_root / "src" / "struct_frame" / "boilerplate" / "cpp"
-                        cmd = f'g++ -std=c++20 -I"{gen_dir}" -I"{include_dir}" -I"{sdk_dir}" -o "{output}" "{source}"'
+                        cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -I"{sdk_dir}" -o "{output}" "{source}" {_ldflags()}'
                     else:
-                        cmd = f'g++ -std=c++20 -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}"'
+                        cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
                 
                 ok, _, _ = self.run_cmd(cmd)
                 if not ok:
@@ -1830,7 +1859,7 @@ class TestRunner:
                 build_dir.mkdir(parents=True, exist_ok=True)
                 for src in sources:
                     exe = build_dir / src.stem
-                    compile_cmd = f'g++ -std=c++20 -O0 -I"{gen_dir}" -o "{exe}" "{src}"'
+                    compile_cmd = f'{_cxx()} -std=c++20 -O0 {_cxxflags()} -I"{gen_dir}" -o "{exe}" "{src}" {_ldflags()}'
                     ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
                     if not ok:
                         print(f"  [C++] {Colors.fail_tag()} compile failed: {src.name}")
@@ -1884,7 +1913,7 @@ class TestRunner:
                 build_dir.mkdir(parents=True, exist_ok=True)
                 for src in sources:
                     exe = build_dir / src.stem
-                    compile_cmd = f'gcc -O0 -I"{gen_dir}" -o "{exe}" "{src}" -lm'
+                    compile_cmd = f'{_cc()} -O0 {_cflags()} -I"{gen_dir}" -o "{exe}" "{src}" {_ldflags()} -lm'
                     ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
                     if not ok:
                         print(f"  [C] {Colors.fail_tag()} compile failed: {src.name}")

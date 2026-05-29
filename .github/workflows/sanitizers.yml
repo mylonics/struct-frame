@@ -1,0 +1,126 @@
+name: Sanitizers
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: sanitizers-${{ github.sha }}
+  cancel-in-progress: true
+
+# All jobs run the full test suite via `python test_all.py`.  C/C++ compile
+# commands in tests/run_tests.py honor $CC/$CXX/$CFLAGS/$CXXFLAGS/$LDFLAGS, so
+# the only thing each job has to do is export the right toolchain + flags.
+#
+# We deliberately skip language slices that have nothing to do with the
+# instrumented C/C++ binaries (Rust/.NET) using --skip-lang to keep wall time
+# manageable and avoid noise from unrelated toolchains.
+
+jobs:
+  asan-ubsan:
+    name: AddressSanitizer + UndefinedBehaviorSanitizer (C / C++)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CC: clang
+      CXX: clang++
+      # -fno-sanitize-recover so any UB aborts the test process with a
+      # non-zero status and is reported by run_tests.py.
+      CFLAGS: "-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all"
+      CXXFLAGS: "-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all"
+      LDFLAGS: "-fsanitize=address,undefined"
+      ASAN_OPTIONS: "detect_leaks=1:abort_on_error=1:halt_on_error=1:strict_string_checks=1:detect_stack_use_after_return=1"
+      UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+          pip install proto-schema-parser
+          (cd tests/ts && npm ci)
+      - name: Run C / C++ suite under ASan + UBSan
+        run: python test_all.py --skip-lang csharp --skip-lang rust
+
+  tsan:
+    name: ThreadSanitizer (C++ SDK)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CC: clang
+      CXX: clang++
+      CFLAGS:   "-O1 -g -fno-omit-frame-pointer -fsanitize=thread"
+      CXXFLAGS: "-O1 -g -fno-omit-frame-pointer -fsanitize=thread"
+      LDFLAGS:  "-fsanitize=thread"
+      TSAN_OPTIONS: "halt_on_error=1:second_deadlock_stack=1"
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+          pip install proto-schema-parser
+          (cd tests/ts && npm ci)
+      - name: Run C / C++ suite under TSan
+        # TSan is mutually exclusive with ASan; the SDK subscribe / streaming
+        # tests are where the threading races would surface.
+        run: python test_all.py --skip-lang csharp --skip-lang rust
+
+  valgrind-c:
+    name: Valgrind memcheck (C only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      CC: gcc
+      # No sanitizer flags — Valgrind instruments at run time.  -O0 -g keeps
+      # the line numbers in error reports useful.
+      CFLAGS: "-O0 -g"
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install Valgrind
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y valgrind gcc build-essential
+          pip install proto-schema-parser
+      - name: Build C binaries (compile only, no run)
+        # --only-compile produces all language artifacts; we only execute the
+        # C ones below under Valgrind.  Other languages compile as a side
+        # effect but their failure is not relevant to this job.
+        run: python test_all.py --only-compile || true
+      - name: Run C binaries under Valgrind
+        # Run every produced C test binary under memcheck.  --error-exitcode=1
+        # converts any leak / invalid-access into a non-zero CI status.
+        run: |
+          set -e
+          shopt -s nullglob
+          found=0
+          for exe in tests/c/build/test_*; do
+            [ -x "$exe" ] || continue
+            found=1
+            echo "=== valgrind $exe ==="
+            valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                     --errors-for-leak-kinds=definite,possible \
+                     --track-origins=yes "$exe"
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "No C test binaries were built; nothing to check." >&2
+            exit 1
+          fi

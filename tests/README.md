@@ -243,3 +243,84 @@ pip install proto-schema-parser
 ## Debugging Failed Tests
 
 When a test fails, it prints detailed failure information including hex dump of the encoded data. Use `--verbose` flag to see all command output including successful operations.
+
+## Sanitizers, fuzzing, coverage, property tests (Tier B / C)
+
+These workflows live under `.github/workflows/` and are also runnable locally.
+
+### Sanitizers (C / C++)
+
+`tests/run_tests.py` honours the standard `CC` / `CXX` / `CFLAGS` /
+`CXXFLAGS` / `LDFLAGS` environment variables at every compile site, so
+sanitizer instrumentation is a one-line wrapper:
+
+```bash
+# ASan + UBSan
+CC=clang CXX=clang++ \
+  CFLAGS="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all" \
+  CXXFLAGS="$CFLAGS" \
+  LDFLAGS="-fsanitize=address,undefined" \
+  python test_all.py --skip-lang csharp --skip-lang rust
+
+# ThreadSanitizer
+CC=clang CXX=clang++ \
+  CFLAGS="-O1 -g -fsanitize=thread" CXXFLAGS="$CFLAGS" LDFLAGS="-fsanitize=thread" \
+  python test_all.py --skip-lang csharp --skip-lang rust
+
+# Valgrind (C only; build first, then valgrind the binaries directly)
+python test_all.py --only-compile
+for exe in tests/c/build/test_*; do
+  valgrind --error-exitcode=1 --leak-check=full "$exe"
+done
+```
+
+CI runs these under `sanitizers.yml`.
+
+### Fuzzing harnesses
+
+| Harness                       | File                                                     | Tooling      |
+|-------------------------------|----------------------------------------------------------|--------------|
+| C accumulating-reader         | `tests/c/fuzz_parser.c`                                  | libFuzzer    |
+| Python `AccumulatingReader`   | `tests/py/fuzz_parser.py`                                | atheris      |
+| Rust `AccumulatingReader`     | `tests/rust/fuzz/fuzz_targets/parser.rs` (+ `Cargo.toml`) | cargo-fuzz   |
+
+Local quick start (C harness):
+
+```bash
+clang -O1 -g -fsanitize=fuzzer,address,undefined \
+      -I src/struct_frame/boilerplate/c \
+      tests/c/fuzz_parser.c -o /tmp/fuzz_parser
+/tmp/fuzz_parser -max_total_time=60 -max_len=4096
+```
+
+CI runs a 60-second smoke fuzz of the C and Python harnesses under
+`fuzz.yml`.  Long-running corpus growth is intended to happen upstream
+via OSS-Fuzz (follow-up).
+
+### Property-based round-trip tests
+
+`tests/test_property_roundtrip.py` uses Hypothesis to generate random
+message instances and assert encode → decode equality across the
+Standard, Bulk, and Network profiles.  It is skipped automatically when
+`tests/generated/py` does not yet exist; generate it first:
+
+```bash
+python test_all.py --only-generate
+pip install hypothesis pytest
+python -m pytest tests/test_property_roundtrip.py -v
+```
+
+### Coverage
+
+`coverage.yml` runs the Python generator and Python tests under
+`coverage.py` and uploads `coverage.xml` to Codecov.  Locally:
+
+```bash
+pip install coverage
+coverage run --source=src/struct_frame --branch test_all.py
+coverage report
+```
+
+Coverage uploads for non-Python languages (`gcov`/`lcov`, `c8`/`nyc`,
+`coverlet`, `cargo-llvm-cov`) plug into the same Codecov action and are
+tracked as follow-ups.
