@@ -122,4 +122,4 @@ def check_message(index: int, info) -> bool:
     # Normalize expected through a serialize/deserialize round-trip so that
     # padding and truncation are applied consistently before comparison.
     expected_normalized = msg_class.deserialize(expected.serialize())
-    return decoded == expected_normalized
+    return decoded.to_dict() == expected_normalized.to_dict()
