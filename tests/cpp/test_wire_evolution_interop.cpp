@@ -12,7 +12,7 @@
  * would.  The tests exercise genuine newer<->older interop over the
  * length-bearing Standard/Bulk/Network profiles plus negative coverage.
  *
- * Scenarios (mirrors the project's wire-evolution interop plan, 1-7):
+ * Scenarios (mirrors the project's wire-evolution interop plan, 1-10):
  *   1. Newer sender -> older receiver (v2 encodes extensions, v1 decodes base)
  *   2. Older sender -> newer receiver (v1 base-only, v2 zero-fills extensions)
  *   3. Same-version sanity (v2 -> v2 with extension variant)
@@ -20,6 +20,9 @@
  *   5. Older base oneof variant -> newer receiver decodes correctly
  *   6. Multi-oneof: base oneof unaffected while ext oneof exercises 4/5
  *   7. Corrupted extension bytes invalidate the full CRC
+ *   8. Truncated payload (fewer bytes than length field claims) is rejected
+ *   9. Length-less profile guard (IPC): both sides must agree on full size
+ *  10. Variable base array + trailing extension field, both interop directions
  *
  * Build:
  *   g++ -std=c++20 -I../../generated/cpp test_wire_evolution_interop.cpp \
@@ -240,6 +243,105 @@ static void scenario_7() {
     check(!result.valid, "[S7] corrupted extension byte invalidates full CRC");
 }
 
+// ---------------------------------------------------------------------------
+// Scenario 8: truncated payload is rejected
+// ---------------------------------------------------------------------------
+static void scenario_8() {
+    v1::BaseExtensionMessage m{};
+    m.header = 1; m.seq = 2;
+
+    uint8_t buffer[256];
+    size_t encoded = FrameEncoderWithCrc<ProfileStandardConfig>::encode(buffer, sizeof(buffer), m);
+
+    // Drop the last byte — fewer bytes than the length field claims.
+    auto result = BufferParserWithCrc<ProfileStandardConfig>::parse(
+        buffer, encoded - 1, v1::get_message_info);
+    check(!result.valid, "[S8] truncated payload (fewer bytes than length claims) is rejected");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 9: length-less profile guard (IPC)
+//
+// On a length-less (IPC) profile both sides must agree on the full fixed size.
+// An older (base-only, shorter) frame is NOT silently accepted by a newer
+// receiver because the frame size does not match the expected MAX_SIZE.
+// ---------------------------------------------------------------------------
+static void scenario_9() {
+    // Positive: same-version v2 over IPC validates.
+    v2::BaseExtensionMessage same{};
+    same.header = 0xAA; same.seq = 5; same.crc_seed = 0x99;
+
+    uint8_t buffer[256];
+    size_t encoded = FrameEncoderMinimal<ProfileIPCConfig>::encode(buffer, sizeof(buffer), same);
+    auto result = BufferParserMinimal<ProfileIPCConfig>::parse(
+        buffer, encoded, v2::get_message_info);
+    check(result.valid, "[S9] IPC same-version v2 frame validates");
+
+    // Negative: base-only v1 frame (shorter) rejected by newer v2 receiver.
+    v1::BaseExtensionMessage older{};
+    older.header = 0xAA; older.seq = 5;
+
+    uint8_t buffer2[256];
+    size_t encoded2 = FrameEncoderMinimal<ProfileIPCConfig>::encode(buffer2, sizeof(buffer2), older);
+    auto result2 = BufferParserMinimal<ProfileIPCConfig>::parse(
+        buffer2, encoded2, v2::get_message_info);
+    check(!result2.valid,
+          "[S9] IPC base-only older frame is rejected by newer receiver "
+          "(both sides must agree on size)");
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 10: variable base array + trailing extension, both directions
+// ---------------------------------------------------------------------------
+static void scenario_10() {
+    // Newer -> older: v1 locates variable base, ignores trailing ext bytes.
+    v2::VariableExtensionMessage m{};
+    m.node_id = 7;
+    m.readings.count = 3;
+    m.readings.data[0] = 10; m.readings.data[1] = 20; m.readings.data[2] = 30;
+    m.ext_timestamp = 0x12345678;
+
+    uint8_t buffer[256];
+    size_t encoded = FrameEncoderWithCrc<ProfileStandardConfig>::encode(buffer, sizeof(buffer), m);
+
+    auto result = BufferParserWithCrc<ProfileStandardConfig>::parse(
+        buffer, encoded, v1::get_message_info);
+    check(result.valid, "[S10] v2 variable+ext -> v1 validates CRC");
+    if (result.valid && result.msg_data) {
+        v1::VariableExtensionMessage d{};
+        d.deserialize(result.msg_data, result.msg_len);
+        check(d.node_id == 7
+              && d.readings.count == 3
+              && d.readings.data[0] == 10
+              && d.readings.data[1] == 20
+              && d.readings.data[2] == 30,
+              "[S10] v1 locates/decodes variable base; trailing ext bytes ignored");
+    }
+
+    // Older -> newer: v2 zero-fills the trailing extension field.
+    v1::VariableExtensionMessage m1{};
+    m1.node_id = 9;
+    m1.readings.count = 2;
+    m1.readings.data[0] = 1; m1.readings.data[1] = 2;
+
+    uint8_t buffer2[256];
+    size_t encoded2 = FrameEncoderWithCrc<ProfileStandardConfig>::encode(buffer2, sizeof(buffer2), m1);
+
+    auto result2 = BufferParserWithCrc<ProfileStandardConfig>::parse(
+        buffer2, encoded2, v2::get_message_info);
+    check(result2.valid, "[S10] v1 variable (base-only) -> v2 validates CRC");
+    if (result2.valid && result2.msg_data) {
+        v2::VariableExtensionMessage d2{};
+        decode_zerofill(d2, result2.msg_data, result2.msg_len);
+        check(d2.node_id == 9
+              && d2.readings.count == 2
+              && d2.readings.data[0] == 1
+              && d2.readings.data[1] == 2,
+              "[S10] v2 locates variable base after cross-version decode");
+        check(d2.ext_timestamp == 0, "[S10] v2 zero-fills the trailing extension field");
+    }
+}
+
 int main() {
     printf("=== C++ Cross-Version Wire-Evolution Interop Tests ===\n\n");
     printf("Scenario 1: newer sender -> older receiver (length-bearing)\n");
@@ -256,6 +358,12 @@ int main() {
     scenario_6();
     printf("\nScenario 7: corrupted extension bytes invalidate CRC\n");
     scenario_7();
+    printf("\nScenario 8: truncated payload rejected\n");
+    scenario_8();
+    printf("\nScenario 9: length-less profile guard (IPC)\n");
+    scenario_9();
+    printf("\nScenario 10: variable base + trailing extension (both directions)\n");
+    scenario_10();
     printf("\nResults: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

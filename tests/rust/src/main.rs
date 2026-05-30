@@ -1116,7 +1116,7 @@ fn run_sdk_subscribe_tests() {
 //   - wire_evolution_v2 -- base fields + `extensions_start` extension fields
 // Each side has its own structs, magic constants and `get_message_info`,
 // exactly as two independently built code-bases would.  The scenarios mirror
-// the project's interop plan (1-7) over the length-bearing profiles.
+// the project's interop plan (1-10) over the length-bearing and length-less profiles.
 // ============================================================================
 fn run_wire_evolution_interop_tests() -> ! {
     use struct_frame_sdk::frame_base::{FrameMsgInfo, MessageInfo, StructFrameMessage};
@@ -1341,6 +1341,113 @@ fn run_wire_evolution_interop_tests() -> ! {
             frame.is_none(),
             "[S7] corrupted extension byte invalidates full CRC"
         );
+    }
+
+    println!("\nScenario 8: truncated payload rejected");
+    {
+        let mut m = v1::BaseExtensionMessage::default();
+        m.header = 1;
+        m.seq = 2;
+        let mut buf = encode(PROFILE_STANDARD_CONFIG, &m);
+        // Drop the last byte — fewer bytes than the length field claims.
+        buf.pop();
+        let frame = parse(PROFILE_STANDARD_CONFIG, buf, &v1::get_message_info);
+        check!(
+            frame.map_or(true, |f| !f.valid),
+            "[S8] truncated payload (fewer bytes than length claims) is rejected"
+        );
+    }
+
+    println!("\nScenario 9: length-less profile guard (IPC)");
+    {
+        // Positive: same-version v2 over IPC validates.
+        let mut same = v2::BaseExtensionMessage::default();
+        same.header = 0xAA;
+        same.seq = 5;
+        same.crc_seed = 0x99;
+        let mut w = BufferWriter::new(PROFILE_IPC_CONFIG, 256);
+        w.write_minimal(&same);
+        let frame_buf = w.data().to_vec();
+        let mut r = BufferReader::new(PROFILE_IPC_CONFIG, frame_buf);
+        let frame = r.next(&v2::get_message_info);
+        check!(
+            frame.as_ref().map_or(false, |f| f.valid),
+            "[S9] IPC same-version v2 frame validates"
+        );
+
+        // Negative: base-only v1 frame (shorter) rejected by newer v2 receiver.
+        let mut older = v1::BaseExtensionMessage::default();
+        older.header = 0xAA;
+        older.seq = 5;
+        let mut w2 = BufferWriter::new(PROFILE_IPC_CONFIG, 256);
+        w2.write_minimal(&older);
+        let frame_buf2 = w2.data().to_vec();
+        let mut r2 = BufferReader::new(PROFILE_IPC_CONFIG, frame_buf2);
+        let frame2 = r2.next(&v2::get_message_info);
+        check!(
+            frame2.map_or(true, |f| !f.valid),
+            "[S9] IPC base-only older frame is rejected by newer receiver \
+             (both sides must agree on size)"
+        );
+    }
+
+    println!("\nScenario 10: variable base + trailing extension (both directions)");
+    {
+        // Newer -> older: v1 locates variable base, ignores trailing ext bytes.
+        let mut m = v2::VariableExtensionMessage::default();
+        m.node_id = 7;
+        m.readings_count = 3;
+        m.readings[0] = 10; m.readings[1] = 20; m.readings[2] = 30;
+        m.ext_timestamp = 0x12345678;
+        let buf = encode(PROFILE_STANDARD_CONFIG, &m);
+        let frame = parse(PROFILE_STANDARD_CONFIG, buf, &v1::get_message_info);
+        check!(
+            frame.as_ref().map_or(false, |f| f.valid),
+            "[S10] v2 variable+ext -> v1 validates CRC"
+        );
+        if let Some(f) = frame {
+            let d = v1::VariableExtensionMessage::unpack(&f.payload);
+            check!(
+                d.map_or(false, |x|
+                    x.node_id == 7
+                    && x.readings_count == 3
+                    && x.readings[0] == 10
+                    && x.readings[1] == 20
+                    && x.readings[2] == 30),
+                "[S10] v1 locates/decodes variable base; trailing ext bytes ignored"
+            );
+        }
+
+        // Older -> newer: v2 zero-fills the trailing extension field.
+        let mut m1 = v1::VariableExtensionMessage::default();
+        m1.node_id = 9;
+        m1.readings_count = 2;
+        m1.readings[0] = 1; m1.readings[1] = 2;
+        let buf2 = encode(PROFILE_STANDARD_CONFIG, &m1);
+        let frame2 = parse(PROFILE_STANDARD_CONFIG, buf2, &v2::get_message_info);
+        check!(
+            frame2.as_ref().map_or(false, |f| f.valid),
+            "[S10] v1 variable (base-only) -> v2 validates CRC"
+        );
+        if let Some(f2) = frame2 {
+            // Pad payload to MAX_SIZE so unpack() uses fixed-size read (zero-fills ext).
+            let mut padded = vec![0u8; v2::VariableExtensionMessage::MAX_SIZE];
+            let copy_len = f2.payload.len().min(padded.len());
+            padded[..copy_len].copy_from_slice(&f2.payload[..copy_len]);
+            let d2 = v2::VariableExtensionMessage::unpack(&padded);
+            check!(
+                d2.as_ref().map_or(false, |x|
+                    x.node_id == 9
+                    && x.readings_count == 2
+                    && x.readings[0] == 1
+                    && x.readings[1] == 2),
+                "[S10] v2 locates variable base after cross-version decode"
+            );
+            check!(
+                d2.map_or(false, |x| x.ext_timestamp == 0),
+                "[S10] v2 zero-fills the trailing extension field"
+            );
+        }
     }
 
     println!("\nResults: {} passed, {} failed", passed, failed);

@@ -12,7 +12,7 @@
  * would.  The tests exercise genuine newer<->older interop over the
  * length-bearing Standard/Bulk/Network profiles plus negative coverage.
  *
- * Scenarios (mirrors the project's wire-evolution interop plan, 1-7):
+ * Scenarios (mirrors the project's wire-evolution interop plan, 1-10):
  *   1. Newer sender -> older receiver (v2 encodes extensions, v1 decodes base)
  *   2. Older sender -> newer receiver (v1 base-only, v2 zero-fills extensions)
  *   3. Same-version sanity (v2 -> v2 with extension variant)
@@ -20,6 +20,9 @@
  *   5. Older base oneof variant -> newer receiver decodes correctly
  *   6. Multi-oneof: base oneof unaffected while ext oneof exercises 4/5
  *   7. Corrupted extension bytes invalidate the full CRC
+ *   8. Truncated payload (fewer bytes than length field claims) is rejected
+ *   9. Length-less profile guard (IPC): both sides must agree on full size
+ *  10. Variable base array + trailing extension field, both interop directions
  *
  * Build:
  *   gcc -I../../generated/c test_wire_evolution_interop.c -o test_wire_evolution_interop -lm
@@ -289,6 +292,146 @@ static void scenario_7(void) {
     check(!r.valid, "[S7] corrupted extension byte invalidates full CRC");
 }
 
+/* -------------------------------------------------------------------------
+ * Scenario 8: truncated payload is rejected
+ * ------------------------------------------------------------------------- */
+static void scenario_8(void) {
+    WireEvolutionV1BaseExtensionMessage m = {0};
+    m.header = 1; m.seq = 2;
+    uint8_t payload[64];
+    size_t plen = WireEvolutionV1BaseExtensionMessage_serialize(&m, payload);
+
+    uint8_t buffer[128];
+    size_t fs = encode_ext(&PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer),
+                           WIRE_EVOLUTION_V1_BASE_EXTENSION_MESSAGE_MSG_ID,
+                           payload, plen,
+                           WIRE_EVOLUTION_V1_BASE_EXTENSION_MESSAGE_BASE_SIZE,
+                           WIRE_EVOLUTION_V1_BASE_EXTENSION_MESSAGE_MAGIC1,
+                           WIRE_EVOLUTION_V1_BASE_EXTENSION_MESSAGE_MAGIC2);
+
+    /* Drop the last byte — fewer bytes than the length field claims. */
+    frame_msg_info_t r = parse_with(&PROFILE_STANDARD_CONFIG, buffer, fs - 1,
+                                    wire_evolution_v1_get_message_info);
+    check(!r.valid, "[S8] truncated payload (fewer bytes than length claims) is rejected");
+}
+
+/* -------------------------------------------------------------------------
+ * Scenario 9: length-less profile guard (IPC)
+ *
+ * On a length-less (IPC) profile both sides must agree on the full fixed size.
+ * An older (base-only, shorter) frame is NOT silently accepted by a newer
+ * receiver because the frame size does not match the expected MAX_SIZE.
+ * ------------------------------------------------------------------------- */
+static void scenario_9(void) {
+    /* Positive: same-version v2 over IPC validates. */
+    WireEvolutionV2BaseExtensionMessage same = {0};
+    same.header = 0xAA; same.seq = 5; same.crc_seed = 0x99;
+    uint8_t payload[64];
+    size_t plen = WireEvolutionV2BaseExtensionMessage_serialize(&same, payload);
+
+    uint8_t buffer[128];
+    size_t fs = encode_ext(&PROFILE_IPC_CONFIG, buffer, sizeof(buffer),
+                           WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_MSG_ID,
+                           payload, plen,
+                           WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_BASE_SIZE,
+                           WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_MAGIC1,
+                           WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_MAGIC2);
+    frame_msg_info_t r = parse_with(&PROFILE_IPC_CONFIG, buffer, fs,
+                                    wire_evolution_v2_get_message_info);
+    check(r.valid, "[S9] IPC same-version v2 frame validates");
+
+    /* Negative: base-only v1 frame (shorter) is rejected by newer v2 receiver. */
+    WireEvolutionV1BaseExtensionMessage older = {0};
+    older.header = 0xAA; older.seq = 5;
+    size_t plen1 = WireEvolutionV1BaseExtensionMessage_serialize(&older, payload);
+
+    uint8_t buffer2[128];
+    size_t fs2 = encode_ext(&PROFILE_IPC_CONFIG, buffer2, sizeof(buffer2),
+                            WIRE_EVOLUTION_V1_BASE_EXTENSION_MESSAGE_MSG_ID,
+                            payload, plen1,
+                            WIRE_EVOLUTION_V1_BASE_EXTENSION_MESSAGE_BASE_SIZE,
+                            WIRE_EVOLUTION_V1_BASE_EXTENSION_MESSAGE_MAGIC1,
+                            WIRE_EVOLUTION_V1_BASE_EXTENSION_MESSAGE_MAGIC2);
+    frame_msg_info_t r2 = parse_with(&PROFILE_IPC_CONFIG, buffer2, fs2,
+                                     wire_evolution_v2_get_message_info);
+    check(!r2.valid,
+          "[S9] IPC base-only older frame is rejected by newer receiver "
+          "(both sides must agree on size)");
+}
+
+/* -------------------------------------------------------------------------
+ * Scenario 10: variable base array + trailing extension, both directions
+ * ------------------------------------------------------------------------- */
+static void scenario_10(void) {
+    /* Newer -> older: v1 locates variable base, ignores trailing ext bytes. */
+    WireEvolutionV2VariableExtensionMessage m = {0};
+    m.node_id = 7;
+    m.readings.count = 3;
+    m.readings.data[0] = 10;
+    m.readings.data[1] = 20;
+    m.readings.data[2] = 30;
+    m.ext_timestamp = 0x12345678;
+
+    uint8_t pack_buf[256];
+    size_t plen = WireEvolutionV2VariableExtensionMessage_serialize_variable(&m, pack_buf);
+
+    uint8_t buffer[256];
+    size_t fs = encode_ext(&PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer),
+                           WIRE_EVOLUTION_V2_VARIABLE_EXTENSION_MESSAGE_MSG_ID,
+                           pack_buf, plen,
+                           WIRE_EVOLUTION_V2_VARIABLE_EXTENSION_MESSAGE_BASE_SIZE,
+                           WIRE_EVOLUTION_V2_VARIABLE_EXTENSION_MESSAGE_MAGIC1,
+                           WIRE_EVOLUTION_V2_VARIABLE_EXTENSION_MESSAGE_MAGIC2);
+
+    frame_msg_info_t r = parse_with(&PROFILE_STANDARD_CONFIG, buffer, fs,
+                                    wire_evolution_v1_get_message_info);
+    check(r.valid, "[S10] v2 variable+ext -> v1 validates CRC");
+    if (r.valid && r.msg_data) {
+        WireEvolutionV1VariableExtensionMessage d = {0};
+        WireEvolutionV1VariableExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
+        check(d.node_id == 7
+              && d.readings.count == 3
+              && d.readings.data[0] == 10
+              && d.readings.data[1] == 20
+              && d.readings.data[2] == 30,
+              "[S10] v1 locates/decodes variable base; trailing ext bytes ignored");
+    }
+
+    /* Older -> newer: v2 zero-fills the trailing extension field. */
+    WireEvolutionV1VariableExtensionMessage m1 = {0};
+    m1.node_id = 9;
+    m1.readings.count = 2;
+    m1.readings.data[0] = 1;
+    m1.readings.data[1] = 2;
+
+    size_t plen1 = WireEvolutionV1VariableExtensionMessage_serialize_variable(&m1, pack_buf);
+
+    uint8_t buffer2[256];
+    size_t fs2 = encode_ext(&PROFILE_STANDARD_CONFIG, buffer2, sizeof(buffer2),
+                            WIRE_EVOLUTION_V1_VARIABLE_EXTENSION_MESSAGE_MSG_ID,
+                            pack_buf, plen1,
+                            WIRE_EVOLUTION_V1_VARIABLE_EXTENSION_MESSAGE_BASE_SIZE,
+                            WIRE_EVOLUTION_V1_VARIABLE_EXTENSION_MESSAGE_MAGIC1,
+                            WIRE_EVOLUTION_V1_VARIABLE_EXTENSION_MESSAGE_MAGIC2);
+
+    frame_msg_info_t r2 = parse_with(&PROFILE_STANDARD_CONFIG, buffer2, fs2,
+                                     wire_evolution_v2_get_message_info);
+    check(r2.valid, "[S10] v1 variable (base-only) -> v2 validates CRC");
+    if (r2.valid && r2.msg_data) {
+        uint8_t padded[WIRE_EVOLUTION_V2_VARIABLE_EXTENSION_MESSAGE_MAX_SIZE] = {0};
+        size_t copy_len = r2.msg_len < sizeof(padded) ? r2.msg_len : sizeof(padded);
+        memcpy(padded, r2.msg_data, copy_len);
+        WireEvolutionV2VariableExtensionMessage d2 = {0};
+        WireEvolutionV2VariableExtensionMessage_deserialize(padded, sizeof(padded), &d2);
+        check(d2.node_id == 9
+              && d2.readings.count == 2
+              && d2.readings.data[0] == 1
+              && d2.readings.data[1] == 2,
+              "[S10] v2 locates variable base after cross-version decode");
+        check(d2.ext_timestamp == 0, "[S10] v2 zero-fills the trailing extension field");
+    }
+}
+
 int main(void) {
     printf("=== C Cross-Version Wire-Evolution Interop Tests ===\n\n");
     printf("Scenario 1: newer sender -> older receiver (length-bearing)\n");
@@ -305,6 +448,12 @@ int main(void) {
     scenario_6();
     printf("\nScenario 7: corrupted extension bytes invalidate CRC\n");
     scenario_7();
+    printf("\nScenario 8: truncated payload rejected\n");
+    scenario_8();
+    printf("\nScenario 9: length-less profile guard (IPC)\n");
+    scenario_9();
+    printf("\nScenario 10: variable base + trailing extension (both directions)\n");
+    scenario_10();
     printf("\nResults: %d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

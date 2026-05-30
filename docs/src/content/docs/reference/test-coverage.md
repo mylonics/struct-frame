@@ -374,22 +374,21 @@ Proto source: `tests/proto/test_messages.sf` (Python generator + round-trip).
 | Older base oneof variant → newer receiver decodes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Multi-oneof: base oneof unaffected while 2nd oneof carries an extension variant | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Corrupted extension bytes invalidate full CRC (magic from base still matches) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Truncated payload (length < base_size) rejected | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Length-less profile guard (Sensor/IPC: both sides must agree on full message size) | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Variable base array + trailing extension field interop (both directions) | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Truncated payload (length < base_size) rejected | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Length-less profile guard (Sensor/IPC: both sides must agree on full message size) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Variable base array + trailing extension field interop (both directions) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 > Genuine cross-version interop uses a paired schema set, `tests/proto/wire_evolution_v1.sf` (base only, no `extensions_start`) and `tests/proto/wire_evolution_v2.sf` (same `msg_id`/base fields + extension fields), generated into separate namespaces so each side is unaware of the other's extra fields. Magic bytes and `base_size` match across versions because they are computed from the base fields only, which is what lets cross-version CRC validation work over the length-bearing Standard/Bulk/Network profiles.
 >
-> Dedicated runners (scenarios 1–7 in every language):
-> - **Python** -- `tests/test_wire_evolution_interop.py` (also covers scenarios 8–10)
+> Dedicated runners (scenarios 1–10 in every language):
+> - **Python** -- `tests/test_wire_evolution_interop.py`
 > - **C** -- `tests/c/test_wire_evolution_interop.c`
 > - **C++** -- `tests/cpp/test_wire_evolution_interop.cpp`
 > - **TypeScript** -- `tests/ts/test_wire_evolution_interop.ts`
 > - **JavaScript** -- `tests/js/test_wire_evolution_interop.js`
 > - **C#** -- `tests/csharp/test_wire_evolution_interop.cs` (`--runner test_wire_evolution_interop`)
 > - **Rust** -- `tests/rust/src/main.rs` `test_wire_evolution_interop` runner
->
-> **Gap (Low):** scenarios 8–10 (truncated-payload rejection, length-less profile guard, and the variable-base-array + trailing-extension combination) are currently exercised only by the Python runner.
+
 
 ---
 
@@ -424,13 +423,10 @@ Tests that verify the per-message start-byte constants (`magic1`/`magic2`) are c
 
 Every `❌` and `⚠️` cell in the tables above is converted here into a tracked, linkable GitHub issue so coverage gaps are *owned* rather than merely listed. Triage ownership, retry budgets, and quarantine rules live in the [Test Stability Policy](test-stability).
 
-Open gaps: **8**. Each **track ↗** link opens a pre-filled issue (labels `test-gap,coverage`); replace it with the real issue URL once filed. To see issues already filed, browse [`label:test-gap`](https://github.com/mylonics/struct-frame/issues?q=is%3Aissue+label%3Atest-gap).
+Open gaps: **5**. Each **track ↗** link opens a pre-filled issue (labels `test-gap,coverage`); replace it with the real issue URL once filed. To see issues already filed, browse [`label:test-gap`](https://github.com/mylonics/struct-frame/issues?q=is%3Aissue+label%3Atest-gap).
 
 | ID | Priority | Area | Section | Gap | Languages | Issue |
 |----|----------|------|---------|-----|-----------|-------|
-| `TC-9-3C2EEC0C` | Medium | Variable base array + trailing extension field interop (both directions) | §9 · 9.1 | ❌ | C, C++, TS, JS, C#, Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-9-3C2EEC0C%5D+Variable+base+array+%2B+trailing+extension+field+interop+%28both+directions%29+%28C%2C+C%2B%2B%2C+TS%2C+JS%2C+C%23%2C+Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-9-3C2EEC0C%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Variable+base+array+%2B+trailing+extension+field+interop+%28both+directions%29%0A-+%2A%2ASection%3A%2A%2A+Wire-Evolution+Tests+%2F+9.1+Genuine+Cross-Version+Extension+Interop%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2C+C%2B%2B%2C+TS%2C+JS%2C+C%23%2C+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
-| `TC-9-9AB4F316` | Medium | Truncated payload (length < base_size) rejected | §9 · 9.1 | ❌ | C, C++, TS, JS, C#, Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-9-9AB4F316%5D+Truncated+payload+%28length+%3C+base_size%29+rejected+%28C%2C+C%2B%2B%2C+TS%2C+JS%2C+C%23%2C+Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-9-9AB4F316%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Truncated+payload+%28length+%3C+base_size%29+rejected%0A-+%2A%2ASection%3A%2A%2A+Wire-Evolution+Tests+%2F+9.1+Genuine+Cross-Version+Extension+Interop%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2C+C%2B%2B%2C+TS%2C+JS%2C+C%23%2C+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
-| `TC-9-C8B99049` | Medium | Length-less profile guard (Sensor/IPC: both sides must agree on full message size) | §9 · 9.1 | ❌ | C, C++, TS, JS, C#, Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-9-C8B99049%5D+Length-less+profile+guard+%28Sensor%2FIPC%3A+both+sides+must+agree+on+full+message+size%29+%28C%2C+C%2B%2B%2C+TS%2C+JS%2C+C%23%2C+Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-9-C8B99049%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Length-less+profile+guard+%28Sensor%2FIPC%3A+both+sides+must+agree+on+full+message+size%29%0A-+%2A%2ASection%3A%2A%2A+Wire-Evolution+Tests+%2F+9.1+Genuine+Cross-Version+Extension+Interop%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2C+C%2B%2B%2C+TS%2C+JS%2C+C%23%2C+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-1AA40181` | Low | WebSocket transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-1AA40181%5D+WebSocket+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-1AA40181%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+WebSocket+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-2D690115` | Low | UDP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-2D690115%5D+UDP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-2D690115%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+UDP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-785BEC06` | Low | Async transport (Python) | §6 · 6.3 | ❌ | Python | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-785BEC06%5D+Async+transport+%28Python%29+%28Python%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-785BEC06%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Async+transport+%28Python%29%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Python%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |

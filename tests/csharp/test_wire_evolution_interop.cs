@@ -12,7 +12,7 @@
  * code-bases would.  The tests exercise genuine newer<->older interop over the
  * length-bearing Standard/Bulk/Network profiles plus negative coverage.
  *
- * Scenarios (mirrors the project's wire-evolution interop plan, 1-7):
+ * Scenarios (mirrors the project's wire-evolution interop plan, 1-10):
  *   1. Newer sender -> older receiver (v2 encodes extensions, v1 decodes base)
  *   2. Older sender -> newer receiver (v1 base-only, v2 zero-fills extensions)
  *   3. Same-version sanity (v2 -> v2 with extension variant)
@@ -20,6 +20,9 @@
  *   5. Older base oneof variant -> newer receiver decodes correctly
  *   6. Multi-oneof: base oneof unaffected while ext oneof exercises 4/5
  *   7. Corrupted extension bytes invalidate the full CRC
+ *   8. Truncated payload (fewer bytes than length field claims) is rejected
+ *   9. Length-less profile guard (IPC): both sides must agree on full size
+ *  10. Variable base array + trailing extension field, both interop directions
  */
 
 using System;
@@ -248,6 +251,111 @@ public class TestWireEvolutionInterop
         Check(!info.Valid, "[S7] corrupted extension byte invalidates full CRC");
     }
 
+    // -------------------------------------------------------------------------
+    // Scenario 8: truncated payload is rejected
+    // -------------------------------------------------------------------------
+    private static void Scenario8()
+    {
+        var encoder = new ProfileStandardEncoder();
+        var parser = new ProfileStandardParser(V1.MessageDefinitions.GetMessageInfo);
+
+        var orig = new V1.BaseExtensionMessage { Header = 1, Seq = 2 };
+        byte[] buffer = new byte[256];
+        int encoded = encoder.Encode(buffer, 0, orig);
+        // Drop the last byte — fewer bytes than the length field claims.
+        var info = parser.Parse(buffer, 0, encoded - 1);
+        Check(!info.Valid, "[S8] truncated payload (fewer bytes than length claims) is rejected");
+    }
+
+    // -------------------------------------------------------------------------
+    // Scenario 9: length-less profile guard (IPC)
+    //
+    // On a length-less (IPC) profile both sides must agree on the full fixed
+    // size.  An older (base-only, shorter) frame is NOT silently accepted by a
+    // newer receiver because the frame size does not match the expected MaxSize.
+    // -------------------------------------------------------------------------
+    private static void Scenario9()
+    {
+        // Positive: same-version v2 over IPC validates.
+        var ipcEncoder = new ProfileIPCEncoder();
+        var ipcParserV2 = new ProfileIPCParser(V2.MessageDefinitions.GetMessageInfo);
+
+        var same = new V2.BaseExtensionMessage { Header = 0xAA, Seq = 5, CrcSeed = 0x99 };
+        byte[] buffer = new byte[256];
+        int encoded = ipcEncoder.Encode(buffer, 0, same);
+        var info = ipcParserV2.Parse(buffer, 0, encoded);
+        Check(info.Valid, "[S9] IPC same-version v2 frame validates");
+
+        // Negative: base-only v1 frame (shorter) rejected by newer v2 receiver.
+        var older = new V1.BaseExtensionMessage { Header = 0xAA, Seq = 5 };
+        byte[] buffer2 = new byte[256];
+        int encoded2 = ipcEncoder.Encode(buffer2, 0, older);
+        var info2 = ipcParserV2.Parse(buffer2, 0, encoded2);
+        Check(!info2.Valid,
+              "[S9] IPC base-only older frame is rejected by newer receiver "
+              + "(both sides must agree on size)");
+    }
+
+    // -------------------------------------------------------------------------
+    // Scenario 10: variable base array + trailing extension, both directions
+    // -------------------------------------------------------------------------
+    private static void Scenario10()
+    {
+        var encoder = new ProfileStandardEncoder();
+
+        // Newer -> older: v1 locates variable base, ignores trailing ext bytes.
+        var parserV1 = new ProfileStandardParser(V1.MessageDefinitions.GetMessageInfo);
+
+        var orig = new V2.VariableExtensionMessage
+        {
+            NodeId = 7,
+            ReadingsCount = 3,
+            ReadingsData = new ushort[] { 10, 20, 30 },
+            ExtTimestamp = 0x12345678,
+        };
+        byte[] buffer = new byte[256];
+        int encoded = encoder.Encode(buffer, 0, orig);
+        var info = parserV1.Parse(buffer, 0, encoded);
+        Check(info.Valid, "[S10] v2 variable+ext -> v1 validates CRC");
+        if (info.Valid && info.MsgData != null)
+        {
+            var d = V1.VariableExtensionMessage.Deserialize(info);
+            Check(d.NodeId == 7
+                  && d.ReadingsCount == 3
+                  && d.ReadingsData != null
+                  && d.ReadingsData[0] == 10
+                  && d.ReadingsData[1] == 20
+                  && d.ReadingsData[2] == 30,
+                  "[S10] v1 locates/decodes variable base; trailing ext bytes ignored");
+        }
+
+        // Older -> newer: v2 zero-fills the trailing extension field.
+        var parserV2 = new ProfileStandardParser(V2.MessageDefinitions.GetMessageInfo);
+
+        var orig2 = new V1.VariableExtensionMessage
+        {
+            NodeId = 9,
+            ReadingsCount = 2,
+            ReadingsData = new ushort[] { 1, 2 },
+        };
+        byte[] buffer2 = new byte[256];
+        int encoded2 = encoder.Encode(buffer2, 0, orig2);
+        var info2 = parserV2.Parse(buffer2, 0, encoded2);
+        Check(info2.Valid, "[S10] v1 variable (base-only) -> v2 validates CRC");
+        if (info2.Valid && info2.MsgData != null)
+        {
+            var d2 = V2.VariableExtensionMessage.Deserialize(
+                PadPayload(info2, V2.VariableExtensionMessage.MaxSize));
+            Check(d2.NodeId == 9
+                  && d2.ReadingsCount == 2
+                  && d2.ReadingsData != null
+                  && d2.ReadingsData[0] == 1
+                  && d2.ReadingsData[1] == 2,
+                  "[S10] v2 locates variable base after cross-version decode");
+            Check(d2.ExtTimestamp == 0, "[S10] v2 zero-fills the trailing extension field");
+        }
+    }
+
     public static int Main(string[] args)
     {
         Console.WriteLine("=== C# Cross-Version Wire-Evolution Interop Tests ===\n");
@@ -266,6 +374,12 @@ public class TestWireEvolutionInterop
         Scenario6();
         Console.WriteLine("\nScenario 7: corrupted extension bytes invalidate CRC");
         Scenario7();
+        Console.WriteLine("\nScenario 8: truncated payload rejected");
+        Scenario8();
+        Console.WriteLine("\nScenario 9: length-less profile guard (IPC)");
+        Scenario9();
+        Console.WriteLine("\nScenario 10: variable base + trailing extension (both directions)");
+        Scenario10();
 
         Console.WriteLine($"\nResults: {_passed} passed, {_failed} failed");
         return _failed == 0 ? 0 : 1;

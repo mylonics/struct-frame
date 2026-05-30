@@ -12,7 +12,7 @@
  * exercise genuine newer<->older interop over the length-bearing
  * Standard/Bulk/Network profiles plus negative coverage.
  *
- * Scenarios (mirrors the project's wire-evolution interop plan, 1-7):
+ * Scenarios (mirrors the project's wire-evolution interop plan, 1-10):
  *   1. Newer sender -> older receiver (v2 encodes extensions, v1 decodes base)
  *   2. Older sender -> newer receiver (v1 base-only, v2 zero-fills extensions)
  *   3. Same-version sanity (v2 -> v2 with extension variant)
@@ -20,6 +20,9 @@
  *   5. Older base oneof variant -> newer receiver decodes correctly
  *   6. Multi-oneof: base oneof unaffected while ext oneof exercises 4/5
  *   7. Corrupted extension bytes invalidate the full CRC
+ *   8. Truncated payload (fewer bytes than length field claims) is rejected
+ *   9. Length-less profile guard (IPC): both sides must agree on full size
+ *  10. Variable base array + trailing extension field, both interop directions
  *
  * Run:
  *   cd tests/ts && npx ts-node test_wire_evolution_interop.ts
@@ -30,6 +33,7 @@ import {
   OneOfExtensionMessage as V1OneOfExtensionMessage,
   OneOfExtensionMessageCommandField as V1CommandField,
   MultiOneOfExtensionMessage as V1MultiOneOfExtensionMessage,
+  VariableExtensionMessage as V1VariableExtensionMessage,
   getMessageInfo as v1GetMessageInfo,
 } from '../generated/ts/wire-evolution-v1.structframe';
 
@@ -40,6 +44,7 @@ import {
   MultiOneOfExtensionMessage as V2MultiOneOfExtensionMessage,
   MultiOneOfExtensionMessageBaseUnionField as V2BaseUnionField,
   MultiOneOfExtensionMessageExtUnionField as V2ExtUnionField,
+  VariableExtensionMessage as V2VariableExtensionMessage,
   getMessageInfo as v2GetMessageInfo,
 } from '../generated/ts/wire-evolution-v2.structframe';
 
@@ -47,8 +52,10 @@ import {
   ProfileStandardConfig,
   ProfileBulkConfig,
   ProfileNetworkConfig,
+  ProfileIPCConfig,
   encodeMessage,
   parseFrameWithCrc,
+  parseFrameMinimal,
 } from '../generated/ts/frame-profiles';
 
 let pass = 0;
@@ -228,6 +235,87 @@ function scenario7(): void {
   check(!info.valid, '[S7] corrupted extension byte invalidates full CRC');
 }
 
+// ---------------------------------------------------------------------------
+// Scenario 8: truncated payload is rejected
+// ---------------------------------------------------------------------------
+function scenario8(): void {
+  const orig = new V1BaseExtensionMessage({ header: 1, seq: 2 });
+  const frame = encodeMessage(ProfileStandardConfig, orig);
+  // Drop the last byte — fewer bytes than the length field claims.
+  const truncated = frame.slice(0, frame.length - 1);
+  const info = parseFrameWithCrc(ProfileStandardConfig, truncated, v1GetMessageInfo);
+  check(!info.valid, '[S8] truncated payload (fewer bytes than length claims) is rejected');
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 9: length-less profile guard (IPC)
+//
+// On a length-less (IPC) profile both sides must agree on the full fixed size.
+// An older (base-only, shorter) frame is NOT silently accepted by a newer
+// receiver because the frame size does not match the expected MAX_SIZE.
+// ---------------------------------------------------------------------------
+function scenario9(): void {
+  // Positive: same-version v2 over IPC validates.
+  const same = new V2BaseExtensionMessage({ header: 0xAA, seq: 5, crcSeed: 0x99 });
+  const frame = encodeMessage(ProfileIPCConfig, same);
+  const info = parseFrameMinimal(ProfileIPCConfig, frame, v2GetMessageInfo);
+  check(info.valid, '[S9] IPC same-version v2 frame validates');
+
+  // Negative: base-only v1 frame (shorter) rejected by newer v2 receiver.
+  const older = new V1BaseExtensionMessage({ header: 0xAA, seq: 5 });
+  const frame2 = encodeMessage(ProfileIPCConfig, older);
+  const info2 = parseFrameMinimal(ProfileIPCConfig, frame2, v2GetMessageInfo);
+  check(!info2.valid,
+    '[S9] IPC base-only older frame is rejected by newer receiver '
+    + '(both sides must agree on size)');
+}
+
+// ---------------------------------------------------------------------------
+// Scenario 10: variable base array + trailing extension, both directions
+// ---------------------------------------------------------------------------
+function scenario10(): void {
+  // Newer -> older: v1 locates variable base, ignores trailing ext bytes.
+  const orig = new V2VariableExtensionMessage({
+    nodeId: 7,
+    readingsCount: 3,
+    extTimestamp: 0x12345678,
+  });
+  orig.readingsData = [10, 20, 30];
+
+  const frame = encodeMessage(ProfileStandardConfig, orig);
+  const info = parseFrameWithCrc(ProfileStandardConfig, frame, v1GetMessageInfo);
+  check(info.valid, '[S10] v2 variable+ext -> v1 validates CRC');
+  if (info.valid && info.msgData) {
+    const d = V1VariableExtensionMessage.deserialize(info);
+    check(d.nodeId === 7
+      && d.readingsCount === 3
+      && d.readingsData[0] === 10
+      && d.readingsData[1] === 20
+      && d.readingsData[2] === 30,
+      '[S10] v1 locates/decodes variable base; trailing ext bytes ignored');
+  }
+
+  // Older -> newer: v2 zero-fills the trailing extension field.
+  const orig2 = new V1VariableExtensionMessage({
+    nodeId: 9,
+    readingsCount: 2,
+  });
+  orig2.readingsData = [1, 2];
+
+  const frame2 = encodeMessage(ProfileStandardConfig, orig2);
+  const info2 = parseFrameWithCrc(ProfileStandardConfig, frame2, v2GetMessageInfo);
+  check(info2.valid, '[S10] v1 variable (base-only) -> v2 validates CRC');
+  if (info2.valid && info2.msgData) {
+    const d2 = V2VariableExtensionMessage.deserialize(info2);
+    check(d2.nodeId === 9
+      && d2.readingsCount === 2
+      && d2.readingsData[0] === 1
+      && d2.readingsData[1] === 2,
+      '[S10] v2 locates variable base after cross-version decode');
+    check(d2.extTimestamp === 0, '[S10] v2 zero-fills the trailing extension field');
+  }
+}
+
 console.log('=== TypeScript Cross-Version Wire-Evolution Interop Tests ===\n');
 
 console.log('Scenario 1: newer sender -> older receiver (length-bearing)');
@@ -244,6 +332,12 @@ console.log('\nScenario 6: multi-oneof (ext only in 2nd union)');
 scenario6();
 console.log('\nScenario 7: corrupted extension bytes invalidate CRC');
 scenario7();
+console.log('\nScenario 8: truncated payload rejected');
+scenario8();
+console.log('\nScenario 9: length-less profile guard (IPC)');
+scenario9();
+console.log('\nScenario 10: variable base + trailing extension (both directions)');
+scenario10();
 
 console.log(`\nResults: ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

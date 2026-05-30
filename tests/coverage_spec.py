@@ -670,16 +670,13 @@ SECTIONS = [
                          "(magic from base still matches)",
                          {lang: "✅" for lang in LANGS}),
                     _row("Truncated payload (length < base_size) rejected",
-                         {"C": "❌", "C++": "❌", "Python": "✅", "TS": "❌",
-                          "JS": "❌", "C#": "❌", "Rust": "❌"}),
+                         {lang: "✅" for lang in LANGS}),
                     _row("Length-less profile guard (Sensor/IPC: both sides "
                          "must agree on full message size)",
-                         {"C": "❌", "C++": "❌", "Python": "✅", "TS": "❌",
-                          "JS": "❌", "C#": "❌", "Rust": "❌"}),
+                         {lang: "✅" for lang in LANGS}),
                     _row("Variable base array + trailing extension field "
                          "interop (both directions)",
-                         {"C": "❌", "C++": "❌", "Python": "✅", "TS": "❌",
-                          "JS": "❌", "C#": "❌", "Rust": "❌"}),
+                         {lang: "✅" for lang in LANGS}),
                 ],
                 "caption": (
                     "> Genuine cross-version interop uses a paired schema set, "
@@ -692,9 +689,8 @@ SECTIONS = [
                     "fields only, which is what lets cross-version CRC "
                     "validation work over the length-bearing Standard/Bulk/"
                     "Network profiles.\n>\n"
-                    "> Dedicated runners (scenarios 1–7 in every language):\n"
-                    "> - **Python** -- `tests/test_wire_evolution_interop.py` "
-                    "(also covers scenarios 8–10)\n"
+                    "> Dedicated runners (scenarios 1–10 in every language):\n"
+                    "> - **Python** -- `tests/test_wire_evolution_interop.py`\n"
                     "> - **C** -- `tests/c/test_wire_evolution_interop.c`\n"
                     "> - **C++** -- `tests/cpp/test_wire_evolution_interop.cpp`\n"
                     "> - **TypeScript** -- `tests/ts/test_wire_evolution_interop.ts`\n"
@@ -702,11 +698,7 @@ SECTIONS = [
                     "> - **C#** -- `tests/csharp/test_wire_evolution_interop.cs` "
                     "(`--runner test_wire_evolution_interop`)\n"
                     "> - **Rust** -- `tests/rust/src/main.rs` "
-                    "`test_wire_evolution_interop` runner\n>\n"
-                    "> **Gap (Low):** scenarios 8–10 (truncated-payload "
-                    "rejection, length-less profile guard, and the "
-                    "variable-base-array + trailing-extension combination) are "
-                    "currently exercised only by the Python runner."
+                    "`test_wire_evolution_interop` runner\n"
                 ),
             },
         ],
