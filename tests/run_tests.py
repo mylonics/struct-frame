@@ -168,6 +168,11 @@ PROTO_FILES = [
     "extended_messages.sf",
     "envelope_messages.sf",
     "wire_evolution_messages.sf",
+    # Paired schema set for genuine cross-version extension interop: v1 (base
+    # only) and v2 (base + extensions) are generated into separate namespaces so
+    # each side is truly unaware of the other's extra fields.
+    "wire_evolution_v1.sf",
+    "wire_evolution_v2.sf",
 ]
 
 # Frame format profiles to test
@@ -688,7 +693,7 @@ class TestRunner:
             success = True
             base_runners = ["test_standard", "test_extended", "test_variable_flag", 
                            "test_profiling", "test_profiling_generated", "test_negative",
-                           "test_wire_evolution"]
+                           "test_wire_evolution", "test_wire_evolution_interop"]
             sdk_runners = ["test_streaming"] if lang.id == "c" else ["test_sdk_units", "test_sdk_subscribe"]
             
             for runner in base_runners + sdk_runners:
@@ -1829,7 +1834,112 @@ class TestRunner:
             else:
                 print("  Skipping C# test_wire_evolution (binary not found)")
 
+        # ---- Cross-version interop runners (v1 <-> v2 separate namespaces) ----
+        all_success = self._run_wire_evolution_interop(results) and all_success
+
         return all_success
+
+    def _run_wire_evolution_interop(self, results: dict) -> bool:
+        """Run the dedicated cross-version (v1<->v2) interop runners per language."""
+        interop_success = True
+        # ---- C / C++: compiled test_wire_evolution_interop binary ----
+        for lang_id, label_name in (("c", "C"), ("cpp", "C++")):
+            lang = self.languages.get(lang_id)
+            if lang and lang_id not in self.skipped_languages and self.results["compilation"].get(lang_id, False):
+                exe = self.project_root / lang.build_dir / f"test_wire_evolution_interop{lang.exe_ext}"
+                if exe.exists():
+                    success, stdout, _ = self.run_cmd(str(exe), timeout=30)
+                    if stdout:
+                        for line in stdout.splitlines():
+                            print(f"  {line}")
+                    label = Colors.pass_text() if success else Colors.fail_text()
+                    print(f"\n  {label_name} test_wire_evolution_interop: {label}")
+                    results[f"{lang_id}_interop"] = success
+                    if not success:
+                        self.add_failure("wire_evolution", label_name, None, "test_wire_evolution_interop failed")
+                        interop_success = False
+                else:
+                    print(f"  Skipping {label_name} test_wire_evolution_interop (binary not found)")
+
+        # ---- TypeScript: compiled test_wire_evolution_interop.js ----
+        ts_lang = self.languages.get("ts")
+        if ts_lang and "ts" not in self.skipped_languages and self.results["compilation"].get("ts", False):
+            ts_compiled = self.project_root / ts_lang.build_dir / "ts" / "test_wire_evolution_interop.js"
+            if ts_compiled.exists():
+                success, stdout, _ = self.run_cmd(f'node "{ts_compiled}"', timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  TypeScript test_wire_evolution_interop: {label}")
+                results["ts_interop"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "TypeScript", None, "test_wire_evolution_interop failed")
+                    interop_success = False
+            else:
+                print("  Skipping TypeScript test_wire_evolution_interop (compiled file not found)")
+
+        # ---- JavaScript: test_wire_evolution_interop.js ----
+        js_lang = self.languages.get("js")
+        if js_lang and "js" not in self.skipped_languages and self.results["compilation"].get("js", True):
+            js_script = self.project_root / js_lang.test_dir / "test_wire_evolution_interop.js"
+            if js_script.exists():
+                success, stdout, _ = self.run_cmd(f'node "{js_script}"', timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  JavaScript test_wire_evolution_interop: {label}")
+                results["js_interop"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "JavaScript", None, "test_wire_evolution_interop failed")
+                    interop_success = False
+            else:
+                print("  Skipping JavaScript test_wire_evolution_interop (script not found)")
+
+        # ---- C#: test_wire_evolution_interop runner ----
+        csharp_lang = self.languages.get("csharp")
+        if csharp_lang and "csharp" not in self.skipped_languages and self.results["compilation"].get("csharp", False):
+            build_dir = self.project_root / csharp_lang.build_dir
+            test_exe = build_dir / "StructFrameTests.exe"
+            if not test_exe.exists():
+                test_exe = build_dir / "StructFrameTests.dll"
+                cmd = f'dotnet "{test_exe}" --runner test_wire_evolution_interop'
+            else:
+                cmd = f'"{test_exe}" --runner test_wire_evolution_interop'
+            if test_exe.exists():
+                success, stdout, _ = self.run_cmd(cmd, timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  C# test_wire_evolution_interop: {label}")
+                results["csharp_interop"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "C#", None, "test_wire_evolution_interop failed")
+                    interop_success = False
+            else:
+                print("  Skipping C# test_wire_evolution_interop (binary not found)")
+
+        # ---- Rust: dedicated wire-evolution interop runner ----
+        rust_lang = self.languages.get("rust")
+        if rust_lang and "rust" not in self.skipped_languages and self.results["compilation"].get("rust", False):
+            rust_runner = self.project_root / rust_lang.build_dir / f"struct_frame_rust_tests{rust_lang.exe_ext}"
+            if rust_runner.exists():
+                success, stdout, _ = self.run_cmd(f'"{rust_runner}" test_wire_evolution_interop', timeout=30)
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                label = Colors.pass_text() if success else Colors.fail_text()
+                print(f"\n  Rust test_wire_evolution_interop: {label}")
+                results["rust_interop"] = success
+                if not success:
+                    self.add_failure("wire_evolution", "Rust", None, "test_wire_evolution_interop failed")
+                    interop_success = False
+            else:
+                print("  Skipping Rust test_wire_evolution_interop (binary not found)")
+
+        return interop_success
 
     def run_roundtrip_tests(self) -> bool:
         """Phase: round-trip tests for every message across all 5 frame profiles.
@@ -2127,7 +2237,7 @@ class TestRunner:
     # =========================================================================
     # Summary
     # =========================================================================
-    
+
     def _print_summary_matrices(self) -> None:
         """Print three compact summary matrices at end-of-run."""
 

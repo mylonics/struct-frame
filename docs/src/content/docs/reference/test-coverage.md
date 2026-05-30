@@ -285,7 +285,7 @@ Each language's `test_negative.*` file runs 13 uniform scenarios. The test names
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
 |--------|--------|--------|--------|--------|--------|--------|--------|
 | `StructFrameSdk` subscribe/dispatch | N/A | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Serial transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
+| Serial transport | N/A | ❌ | ❌ | ❌ | ❌ | ✅ | N/A |
 | TCP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | UDP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | WebSocket transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
@@ -299,7 +299,14 @@ Each language's `test_negative.*` file runs 13 uniform scenarios. The test names
 > - **JavaScript** -- `tests/js/test_sdk.js` (10 tests)
 > - **Rust** -- `tests/rust/src/main.rs` `test_sdk_subscribe` runner (9 tests)
 >
-> **Gap (Low):** Transport-level tests (serial, TCP, UDP, WebSocket) remain uncovered.
+> The C# suite additionally registers five dedicated SDK runners (selected via `--runner <name>` in `tests/csharp/TestRunner.cs`):
+> - `test_sdk_strict_ordering` -- `tests/csharp/TestSdkStrictOrdering.cs` (`StrictOrdering=true` FIFO send-queue, cancel-on-disconnect, restart-after-reconnect)
+> - `test_sdk_lifecycle` -- `tests/csharp/TestSdkLifecycle.cs` (connect/close lifecycle, persistent + transient subscriber coexistence, error paths)
+> - `test_sdk_client_wrapper` -- `tests/csharp/TestSdkClientWrapper.cs` (generated package `Client` wrapper Subscribe/Send/SendViaCommandEnvelope)
+> - `test_sdk_profiles` -- `tests/csharp/TestSdkProfiles.cs` (SDK round-trip under Bulk and Sensor profiles)
+> - `test_base_transport` -- `tests/csharp/TestBaseTransport.cs` (`BaseTransport` semaphore/ROM overload/AutoReconnect and `SerialTransport` construction)
+>
+> **Gap (Low):** Serial transport is now covered for C# by `test_base_transport`; TCP, UDP and WebSocket transports remain uncovered.
 
 ---
 
@@ -356,6 +363,33 @@ Tests that verify backward-compatible message handling: unknown fields are ignor
 
 Proto source: `tests/proto/test_messages.sf` (Python generator + round-trip).
 
+### 9.1 Genuine Cross-Version Extension Interop
+
+| Cross-version interop scenario | C | C++ | Python | TS | JS | C# | Rust |
+|--------|--------|--------|--------|--------|--------|--------|--------|
+| Newer sender → older receiver (length-bearing; base decodes, trailing ext bytes skipped) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Older sender → newer receiver (extension fields zero-filled to defaults) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Same-version round-trip regression guard (v2 → v2) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Newer ext oneof variant → older receiver degrades gracefully (unknown discriminator) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Older base oneof variant → newer receiver decodes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Multi-oneof: base oneof unaffected while 2nd oneof carries an extension variant | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Corrupted extension bytes invalidate full CRC (magic from base still matches) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Truncated payload (length < base_size) rejected | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Length-less profile guard (Sensor/IPC: both sides must agree on full message size) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Variable base array + trailing extension field interop (both directions) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+> Genuine cross-version interop uses a paired schema set, `tests/proto/wire_evolution_v1.sf` (base only, no `extensions_start`) and `tests/proto/wire_evolution_v2.sf` (same `msg_id`/base fields + extension fields), generated into separate namespaces so each side is unaware of the other's extra fields. Magic bytes and `base_size` match across versions because they are computed from the base fields only, which is what lets cross-version CRC validation work over the length-bearing Standard/Bulk/Network profiles.
+>
+> Dedicated runners (scenarios 1–10 in every language):
+> - **Python** -- `tests/test_wire_evolution_interop.py`
+> - **C** -- `tests/c/test_wire_evolution_interop.c`
+> - **C++** -- `tests/cpp/test_wire_evolution_interop.cpp`
+> - **TypeScript** -- `tests/ts/test_wire_evolution_interop.ts`
+> - **JavaScript** -- `tests/js/test_wire_evolution_interop.js`
+> - **C#** -- `tests/csharp/test_wire_evolution_interop.cs` (`--runner test_wire_evolution_interop`)
+> - **Rust** -- `tests/rust/src/main.rs` `test_wire_evolution_interop` runner
+
+
 ---
 
 ## 10. Magic-Byte Tests
@@ -397,7 +431,7 @@ Open gaps: **5**. Each **track ↗** link opens a pre-filled issue (labels `test
 | `TC-6-2D690115` | Low | UDP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-2D690115%5D+UDP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-2D690115%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+UDP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-785BEC06` | Low | Async transport (Python) | §6 · 6.3 | ❌ | Python | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-785BEC06%5D+Async+transport+%28Python%29+%28Python%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-785BEC06%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Async+transport+%28Python%29%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Python%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-8B65C22F` | Low | TCP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-8B65C22F%5D+TCP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-8B65C22F%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+TCP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
-| `TC-6-929E31A2` | Low | Serial transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-929E31A2%5D+Serial+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-929E31A2%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Serial+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-929E31A2` | Low | Serial transport | §6 · 6.3 | ❌ | C++, Python, TS, JS | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-929E31A2%5D+Serial+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-929E31A2%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Serial+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 
 ---
 
