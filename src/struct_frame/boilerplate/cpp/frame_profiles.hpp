@@ -861,8 +861,6 @@ class AccumulatingReader {
    */
   void reset_diagnostics() {
     diagnostics_ = ParserDiagnostics{};
-    last_seq_ = 0;
-    last_seq_valid_ = false;
   }
 
   /**

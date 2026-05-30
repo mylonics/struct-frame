@@ -1101,8 +1101,6 @@ static inline frame_parser_diagnostics_t accumulating_reader_diagnostics(const a
 static inline void accumulating_reader_reset_diagnostics(accumulating_reader_t* reader) {
     frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0};
     reader->diagnostics = zero_diag;
-    reader->last_seq = 0;
-    reader->last_seq_valid = false;
 }
 
 static inline void accumulating_reader_reset(accumulating_reader_t* reader) {

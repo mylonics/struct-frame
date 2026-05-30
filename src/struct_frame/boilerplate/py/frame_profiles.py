@@ -1378,7 +1378,6 @@ class AccumulatingReader:
     def reset_diagnostics(self) -> None:
         """Reset all diagnostic counters to zero."""
         self._diag = ParserDiagnostics()
-        self._last_seq = None
     
     def reset(self):
         """Reset the reader, clearing any partial message data."""
