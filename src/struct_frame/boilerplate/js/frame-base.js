@@ -1,4 +1,6 @@
 // Struct-frame boilerplate: frame parser base utilities
+// NOTE: This file is the JavaScript twin of boilerplate/ts/frame-base.ts. Any algorithm
+// fix to GenericFrameParser or related helpers MUST also be applied to the TypeScript source.
 
 
 // Fletcher-16 checksum calculation

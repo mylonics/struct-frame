@@ -1,4 +1,4 @@
-from .base import version, NamingStyleC, NamingStyleCpp, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
+from .base import version, NamingStyleC, NamingStyleCpp, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
 
 from .c_gen import FileCGen, TestCGen
 from .ts_gen import FileTsGen, TestTsGen
@@ -12,4 +12,4 @@ from .rust_gen import FileRustGen, TestRustGen
 from .generate import main
 
 __all__ = ["main", "FileCGen", "TestCGen", "FileTsGen", "TestTsGen", "FileJsGen", "TestJsGen", "FilePyGen", "TestPyGen", "FileGqlGen", "FileCppGen", "TestCppGen", "FileCSharpGen", "TestCSharpGen", "FileRustGen", "TestRustGen", "version",
-           "NamingStyleC", "NamingStyleCpp", "camel_to_snake_case", "pascal_case", "build_enum_leading_comments", "build_enum_values"]
+           "NamingStyleC", "NamingStyleCpp", "camel_to_snake_case", "pascal_case", "build_enum_leading_comments", "build_enum_values", "get_discriminator_enum_name", "build_discriminator_enum_values"]

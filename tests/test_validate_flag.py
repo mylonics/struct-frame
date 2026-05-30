@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from test_utils import _check
 import tempfile
 from pathlib import Path
 
@@ -37,10 +38,6 @@ def _run_validate(proto_path: Path, extra_args=()) -> tuple[int, str, str]:
     return result.returncode, result.stdout, result.stderr
 
 
-def _check(condition, msg):
-    if not condition:
-        print(f"FAIL: {msg}")
-        sys.exit(1)
 
 
 def _validation_rejected(code: int, stdout: str, stderr: str) -> bool:

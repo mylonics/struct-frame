@@ -7,7 +7,7 @@ This module generates Python code for struct serialization using the struct
 module for binary packing/unpacking with dataclass-style message definitions.
 """
 
-from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
 import time
 
 _style_c = NamingStyleC()
@@ -81,20 +81,21 @@ class EnumPyGen():
         """Generate a discriminator enum for field_order oneofs in Python."""
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
             return ''
-        
-        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
+
+        enum_name = get_discriminator_enum_name(oneof, msg_name)
+
+        def none_entry():
+            return '    NONE = 0'
+
+        def field_entry(field_name, field_order, is_last):
+            return f'    {camel_to_snake_case(field_name).upper()} = {field_order}'
+
+        lines = build_discriminator_enum_values(oneof, none_entry, field_entry)
         result = f'class {enum_name}(Enum):\n'
         result += f'    """Discriminator enum for {msg_name}.{oneof.name} oneof"""\n'
-        result += f'    NONE = 0\n'
-        
-        for idx, (field_name, field) in enumerate(oneof.fields.items()):
-            field_order = idx + 1
-            # Use SCREAMING_SNAKE_CASE for enum values
-            enum_value = camel_to_snake_case(field_name).upper()
-            result += f'    {enum_value} = {field_order}\n'
-        
+        result += '\n'.join(lines) + '\n'
         return result
-    
+
     @staticmethod
     def generate_nested(field):
         """Generate a nested enum class indented inside the message class body."""
@@ -112,7 +113,7 @@ class EnumPyGen():
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascal_case(oneof.name)}Field'
+        return get_discriminator_enum_name(oneof, msg_name)
 
 
 class FieldPyGen():
@@ -600,7 +601,7 @@ class MessagePyGen():
         result = ''
         if leading_comment:
             for c in msg.comments:
-                result = '#%s\n' % c
+                result += '#%s\n' % c
 
         structName = msg.name
         result += 'class %s:\n' % structName

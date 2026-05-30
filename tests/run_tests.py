@@ -1959,7 +1959,7 @@ class TestRunner:
 
         # ---- C++ ----
         cpp = self.languages.get("cpp")
-        if cpp and self.results["compilation"].get("cpp", True):
+        if cpp and "cpp" not in self.skipped_languages and self.results["compilation"].get("cpp", False):
             gen_dir = self.project_root / cpp.gen_output_dir
             sources = sorted(gen_dir.glob("test_roundtrip_*.cpp"))
             if not sources:
@@ -2013,7 +2013,7 @@ class TestRunner:
 
         # ---- C ----
         c_lang = self.languages.get("c")
-        if c_lang and "c" not in self.skipped_languages and self.results["compilation"].get("c", True):
+        if c_lang and "c" not in self.skipped_languages and self.results["compilation"].get("c", False):
             gen_dir = self.project_root / c_lang.gen_output_dir
             sources = sorted(gen_dir.glob("test_roundtrip_*.c"))
             if not sources:

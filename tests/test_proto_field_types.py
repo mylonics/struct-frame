@@ -17,6 +17,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+from test_utils import _check
 import tempfile
 from pathlib import Path
 
@@ -25,10 +26,6 @@ SRC_DIR = REPO_ROOT / "src"
 PROTO_FILE = REPO_ROOT / "tests" / "proto" / "test_messages.sf"
 
 
-def _check(condition, msg):
-    if not condition:
-        print(f"FAIL: {msg}", file=sys.stderr)
-        sys.exit(1)
 
 
 def _generate(out_dir: Path) -> None:

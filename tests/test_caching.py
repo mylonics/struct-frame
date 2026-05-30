@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from test_utils import _check
 import tempfile
 from pathlib import Path
 
@@ -47,10 +48,6 @@ def _run_generator(proto: Path, out_dir: Path, force: bool = False) -> tuple[int
     return result.returncode, result.stdout + result.stderr
 
 
-def _check(condition, msg):
-    if not condition:
-        print(f"FAIL: {msg}")
-        sys.exit(1)
 
 
 def test_hash_file_created():

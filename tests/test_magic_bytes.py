@@ -22,6 +22,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+from test_utils import _check
 import tempfile
 import textwrap
 from pathlib import Path
@@ -34,14 +35,6 @@ SRC_DIR = REPO_ROOT / "src"
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _fail(msg: str) -> None:
-    print(f"FAIL: {msg}", file=sys.stderr)
-    sys.exit(1)
-
-
-def _check(condition: bool, msg: str) -> None:
-    if not condition:
-        _fail(msg)
 
 
 def _load_model(sf_text: str):

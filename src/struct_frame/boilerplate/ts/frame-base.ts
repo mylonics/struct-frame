@@ -1,4 +1,7 @@
 // Struct-frame boilerplate: frame parser base utilities
+// NOTE: This file is the TypeScript source of the GenericFrameParser and related helpers.
+// The JavaScript twin is boilerplate/js/frame-base.js. Any algorithm fix MUST be applied
+// to both files.
 
 // Fletcher-16 checksum calculation
 export function fletcherChecksum(buffer: Uint8Array | number[], start: number = 0, end?: number, 
@@ -240,8 +243,6 @@ export class GenericFrameParser {
     private getInitialState(): GenericParserState {
         if (this.config.startBytes.length === 0) {
             return GenericParserState.GETTING_MSG_ID;
-        } else if (this.config.startBytes.length === 1) {
-            return GenericParserState.LOOKING_FOR_START1;
         } else {
             return GenericParserState.LOOKING_FOR_START1;
         }

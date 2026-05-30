@@ -27,6 +27,7 @@ import os
 import shutil
 import subprocess
 import sys
+from test_utils import _check
 import tempfile
 from pathlib import Path
 
@@ -62,10 +63,6 @@ def _run_generator(out_dir: Path, *extra_args: str) -> None:
     subprocess.check_call(cmd, env=env)
 
 
-def _check(condition, msg):
-    if not condition:
-        print(f"FAIL: {msg}")
-        sys.exit(1)
 
 
 # ---------------------------------------------------------------------------

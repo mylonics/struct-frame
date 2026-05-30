@@ -7,7 +7,7 @@ This module generates C# code for struct serialization using
 classes with manual Pack/Unpack methods for binary compatibility.
 """
 
-from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
 import os
 import time
 
@@ -124,27 +124,28 @@ class EnumCSharpGen():
         """Generate a discriminator enum for field_order oneofs in C#."""
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
             return ''
-        
-        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
+
+        enum_name = get_discriminator_enum_name(oneof, msg_name)
+
+        def none_entry():
+            return '        None = 0,'
+
+        def field_entry(field_name, field_order, is_last):
+            comma = '' if is_last else ','
+            return f'        {pascal_case(field_name)} = {field_order}{comma}'
+
+        lines = build_discriminator_enum_values(oneof, none_entry, field_entry)
         result = f'    /// <summary>Discriminator enum for {msg_name}.{oneof.name} oneof</summary>\n'
         result += f'    public enum {enum_name} : byte\n'
         result += f'    {{\n'
-        result += f'        None = 0,\n'
-        
-        for idx, (field_name, field) in enumerate(oneof.fields.items()):
-            field_order = idx + 1
-            # Use PascalCase for C# enum values
-            enum_value = pascal_case(field_name)
-            comma = ',' if idx < len(oneof.fields) - 1 else ''
-            result += f'        {enum_value} = {field_order}{comma}\n'
-        
+        result += '\n'.join(lines) + '\n'
         result += f'    }}\n'
         return result
-    
+
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascal_case(oneof.name)}Field'
+        return get_discriminator_enum_name(oneof, msg_name)
 
 
 class FieldCSharpGen():
