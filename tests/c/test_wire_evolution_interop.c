@@ -87,10 +87,12 @@ static void scenario_1(void) {
         frame_msg_info_t r = parse_with(configs[i], buffer, fs, wire_evolution_v1_get_message_info);
         check(r.valid, label);
 
-        WireEvolutionV1BaseExtensionMessage d = {0};
-        WireEvolutionV1BaseExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
-        snprintf(label, sizeof(label), "[S1/%s] v1 decodes base; trailing ext bytes ignored", names[i]);
-        check(d.header == 0xBEEF && d.seq == 42, label);
+        if (r.valid && r.msg_data) {
+            WireEvolutionV1BaseExtensionMessage d = {0};
+            WireEvolutionV1BaseExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
+            snprintf(label, sizeof(label), "[S1/%s] v1 decodes base; trailing ext bytes ignored", names[i]);
+            check(d.header == 0xBEEF && d.seq == 42, label);
+        }
     }
 }
 
@@ -114,13 +116,16 @@ static void scenario_2(void) {
     frame_msg_info_t r = parse_with(&PROFILE_STANDARD_CONFIG, buffer, fs, wire_evolution_v2_get_message_info);
     check(r.valid, "[S2] v1->v2 base-only frame validates CRC");
 
-    /* Newer receiver zero-fills the missing extension bytes before decoding. */
-    uint8_t padded[WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_MAX_SIZE] = {0};
-    memcpy(padded, r.msg_data, r.msg_len);
-    WireEvolutionV2BaseExtensionMessage d = {0};
-    WireEvolutionV2BaseExtensionMessage_deserialize(padded, sizeof(padded), &d);
-    check(d.header == 0x1234 && d.seq == 7, "[S2] v2 decodes base fields correctly");
-    check(d.crc_seed == 0, "[S2] v2 extension field zero-filled to default");
+    if (r.valid && r.msg_data) {
+        /* Newer receiver zero-fills the missing extension bytes before decoding. */
+        uint8_t padded[WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_MAX_SIZE] = {0};
+        size_t copy_len = r.msg_len < sizeof(padded) ? r.msg_len : sizeof(padded);
+        memcpy(padded, r.msg_data, copy_len);
+        WireEvolutionV2BaseExtensionMessage d = {0};
+        WireEvolutionV2BaseExtensionMessage_deserialize(padded, sizeof(padded), &d);
+        check(d.header == 0x1234 && d.seq == 7, "[S2] v2 decodes base fields correctly");
+        check(d.crc_seed == 0, "[S2] v2 extension field zero-filled to default");
+    }
 }
 
 /* -------------------------------------------------------------------------
@@ -145,11 +150,13 @@ static void scenario_3(void) {
 
     frame_msg_info_t r = parse_with(&PROFILE_STANDARD_CONFIG, buffer, fs, wire_evolution_v2_get_message_info);
     check(r.valid, "[S3] v2->v2 (ext variant) frame validates CRC");
-    WireEvolutionV2OneOfExtensionMessage d = {0};
-    WireEvolutionV2OneOfExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
-    check(d.command_discriminator == WIRE_EVOLUTION_V2_ONE_OF_EXTENSION_MESSAGE_COMMAND_FIELD_CMD_C
-          && fabsf(d.command.cmd_c.value_c - 3.14f) < 1e-4f,
-          "[S3] v2 round-trips the extension variant");
+    if (r.valid && r.msg_data) {
+        WireEvolutionV2OneOfExtensionMessage d = {0};
+        WireEvolutionV2OneOfExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
+        check(d.command_discriminator == WIRE_EVOLUTION_V2_ONE_OF_EXTENSION_MESSAGE_COMMAND_FIELD_CMD_C
+              && fabsf(d.command.cmd_c.value_c - 3.14f) < 1e-4f,
+              "[S3] v2 round-trips the extension variant");
+    }
 }
 
 /* -------------------------------------------------------------------------
@@ -173,13 +180,15 @@ static void scenario_4(void) {
 
     frame_msg_info_t r = parse_with(&PROFILE_STANDARD_CONFIG, buffer, fs, wire_evolution_v1_get_message_info);
     check(r.valid, "[S4] v2 ext-variant -> v1 frame validates CRC");
-    WireEvolutionV1OneOfExtensionMessage d = {0};
-    WireEvolutionV1OneOfExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
-    check(d.device_id == 9, "[S4] v1 still decodes the base header field");
-    /* v1 knows nothing about discriminator 4; it must preserve the raw value
-     * without corrupting the base field. */
-    check((int)d.command_discriminator == 4,
-          "[S4] v1 preserves unknown ext discriminator without corruption");
+    if (r.valid && r.msg_data) {
+        WireEvolutionV1OneOfExtensionMessage d = {0};
+        WireEvolutionV1OneOfExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
+        check(d.device_id == 9, "[S4] v1 still decodes the base header field");
+        /* v1 knows nothing about discriminator 4; it must preserve the raw value
+         * without corrupting the base field. */
+        check((int)d.command_discriminator == 4,
+              "[S4] v1 preserves unknown ext discriminator without corruption");
+    }
 }
 
 /* -------------------------------------------------------------------------
@@ -204,13 +213,16 @@ static void scenario_5(void) {
 
     frame_msg_info_t r = parse_with(&PROFILE_STANDARD_CONFIG, buffer, fs, wire_evolution_v2_get_message_info);
     check(r.valid, "[S5] v1 base-variant -> v2 frame validates CRC");
-    uint8_t padded[WIRE_EVOLUTION_V2_ONE_OF_EXTENSION_MESSAGE_MAX_SIZE] = {0};
-    memcpy(padded, r.msg_data, r.msg_len);
-    WireEvolutionV2OneOfExtensionMessage d = {0};
-    WireEvolutionV2OneOfExtensionMessage_deserialize(padded, sizeof(padded), &d);
-    check(d.command_discriminator == WIRE_EVOLUTION_V2_ONE_OF_EXTENSION_MESSAGE_COMMAND_FIELD_CMD_B
-          && d.command.cmd_b.value_b == -1234,
-          "[S5] v2 decodes the older base oneof variant correctly");
+    if (r.valid && r.msg_data) {
+        uint8_t padded[WIRE_EVOLUTION_V2_ONE_OF_EXTENSION_MESSAGE_MAX_SIZE] = {0};
+        size_t copy_len = r.msg_len < sizeof(padded) ? r.msg_len : sizeof(padded);
+        memcpy(padded, r.msg_data, copy_len);
+        WireEvolutionV2OneOfExtensionMessage d = {0};
+        WireEvolutionV2OneOfExtensionMessage_deserialize(padded, sizeof(padded), &d);
+        check(d.command_discriminator == WIRE_EVOLUTION_V2_ONE_OF_EXTENSION_MESSAGE_COMMAND_FIELD_CMD_B
+              && d.command.cmd_b.value_b == -1234,
+              "[S5] v2 decodes the older base oneof variant correctly");
+    }
 }
 
 /* -------------------------------------------------------------------------
@@ -239,12 +251,14 @@ static void scenario_6(void) {
 
     frame_msg_info_t r = parse_with(&PROFILE_STANDARD_CONFIG, buffer, fs, wire_evolution_v1_get_message_info);
     check(r.valid, "[S6] v2 multi-oneof (ext in 2nd union) -> v1 validates CRC");
-    WireEvolutionV1MultiOneOfExtensionMessage d = {0};
-    WireEvolutionV1MultiOneOfExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
-    check(d.priority == 3
-          && d.base_union_discriminator == WIRE_EVOLUTION_V1_MULTI_ONE_OF_EXTENSION_MESSAGE_BASE_UNION_FIELD_FIRST_A
-          && d.base_union.first_a.value_a == 100,
-          "[S6] v1 decodes the FIRST (base) oneof unaffected by ext in the second");
+    if (r.valid && r.msg_data) {
+        WireEvolutionV1MultiOneOfExtensionMessage d = {0};
+        WireEvolutionV1MultiOneOfExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
+        check(d.priority == 3
+              && d.base_union_discriminator == WIRE_EVOLUTION_V1_MULTI_ONE_OF_EXTENSION_MESSAGE_BASE_UNION_FIELD_FIRST_A
+              && d.base_union.first_a.value_a == 100,
+              "[S6] v1 decodes the FIRST (base) oneof unaffected by ext in the second");
+    }
 }
 
 /* -------------------------------------------------------------------------
