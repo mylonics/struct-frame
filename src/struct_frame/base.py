@@ -195,3 +195,34 @@ def build_enum_values(field, naming_style, value_format=None, comment_formatter=
         enum_values.append(enum_value)
     
     return enum_values
+
+
+def get_discriminator_enum_name(oneof, msg_name):
+    """Return the standard discriminator enum type name used by most generators.
+
+    Produces ``{msg_name}{PascalCase(oneof.name)}Field``, which is the shared
+    convention for C, C#, JavaScript, Python, and TypeScript generators.
+    (C++ uses a scoped name without the message prefix and calls its own helper.)
+    """
+    return f'{msg_name}{pascal_case(oneof.name)}Field'
+
+
+def build_discriminator_enum_values(oneof, none_entry_fn, field_entry_fn):
+    """Build the ``None`` + per-field entries for a field_order discriminator enum.
+
+    Args:
+        oneof: The oneof model object with ``.fields`` (ordered dict of field_name→field).
+        none_entry_fn: Callable() → str — returns the formatted ``None = 0`` line.
+        field_entry_fn: Callable(field_name, field_order, is_last) → str — returns one
+            formatted enum-value line for the given field.
+
+    Returns:
+        List of formatted enum-value lines (strings, without trailing newlines).
+    """
+    lines = [none_entry_fn()]
+    items = list(oneof.fields.items())
+    for idx, (field_name, _field) in enumerate(items):
+        field_order = idx + 1
+        is_last = idx == len(items) - 1
+        lines.append(field_entry_fn(field_name, field_order, is_last))
+    return lines

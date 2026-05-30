@@ -30,6 +30,7 @@ import os
 import struct
 import subprocess
 import sys
+from test_utils import _check
 import tempfile
 from pathlib import Path
 
@@ -47,9 +48,6 @@ def _fail(msg: str) -> None:
     sys.exit(1)
 
 
-def _check(condition: bool, msg: str) -> None:
-    if not condition:
-        _fail(msg)
 
 
 def _generate(out_dir: Path) -> None:

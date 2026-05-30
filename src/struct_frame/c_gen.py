@@ -7,7 +7,7 @@ This module generates C code for struct serialization with manual Pack/Unpack
 functions for binary compatibility across platforms.
 """
 
-from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
 import time
 
 _style_c = NamingStyleC()
@@ -199,27 +199,28 @@ class OneOfCGen():
         """Generate a discriminator enum for field_order oneofs in C."""
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
             return ''
-        
-        result = ''
-        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
-        
-        result += f'/* Discriminator enum for {msg_name}::{oneof.name} oneof */\n'
+
+        enum_name = get_discriminator_enum_name(oneof, msg_name)
+        prefix = f'{camel_to_snake_case(msg_name).upper()}_{camel_to_snake_case(oneof.name).upper()}_FIELD'
+
+        def none_entry():
+            return f'    {prefix}_NONE = 0,'
+
+        def field_entry(field_name, field_order, is_last):
+            value = f'{prefix}_{camel_to_snake_case(field_name).upper()}'
+            return f'    {value} = {field_order},'
+
+        lines = build_discriminator_enum_values(oneof, none_entry, field_entry)
+        result = f'/* Discriminator enum for {msg_name}::{oneof.name} oneof */\n'
         result += f'typedef enum {enum_name} {{\n'
-        result += f'    {camel_to_snake_case(msg_name).upper()}_{camel_to_snake_case(oneof.name).upper()}_FIELD_NONE = 0,\n'
-        
-        for idx, (field_name, field) in enumerate(oneof.fields.items()):
-            field_order = idx + 1
-            # Use SCREAMING_SNAKE_CASE for enum values with message prefix
-            enum_value = f'{camel_to_snake_case(msg_name).upper()}_{camel_to_snake_case(oneof.name).upper()}_FIELD_{camel_to_snake_case(field_name).upper()}'
-            result += f'    {enum_value} = {field_order},\n'
-        
+        result += '\n'.join(lines) + '\n'
         result += f'}} {enum_name};\n\n'
         return result
-    
+
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascal_case(oneof.name)}Field'
+        return get_discriminator_enum_name(oneof, msg_name)
     
     @staticmethod
     def generate(oneof, package=None, msg_name=None):
@@ -332,7 +333,7 @@ class MessageCGen():
         result = ''
         if leading_comment:
             for c in msg.comments:
-                result = '%s\n' % c
+                result += '%s\n' % c
 
         structName = '%s%s' % (pascal_case(msg.package), msg.name)
         result += 'typedef struct %s {' % structName

@@ -8,7 +8,7 @@ It reuses the shared TypeScript/JavaScript base module for common logic
 but outputs JavaScript syntax (CommonJS) instead of TypeScript.
 """
 
-from struct_frame import version, NamingStyleC, pascal_case, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
 from struct_frame.ts_js_base import (
     common_types,
     common_typed_array_methods,
@@ -87,27 +87,28 @@ class EnumJsGen():
         """Generate a discriminator enum for field_order oneofs in JavaScript."""
         if not oneof.auto_discriminator or oneof.discriminator_type != "field_order":
             return ''
-        
-        enum_name = f'{msg_name}{pascal_case(oneof.name)}Field'
+
+        enum_name = get_discriminator_enum_name(oneof, msg_name)
+
+        def none_entry():
+            return '  None: 0,'
+
+        def field_entry(field_name, field_order, is_last):
+            comma = '' if is_last else ','
+            return f'  {pascal_case(field_name)}: {field_order}{comma}'
+
+        lines = build_discriminator_enum_values(oneof, none_entry, field_entry)
         result = f'/** Discriminator enum for {msg_name}.{oneof.name} oneof */\n'
         result += f'const {enum_name} = Object.freeze({{\n'
-        result += f'  None: 0,\n'
-        
-        for idx, (field_name, field) in enumerate(oneof.fields.items()):
-            field_order = idx + 1
-            # Use PascalCase for JavaScript enum values
-            enum_value = pascal_case(field_name)
-            comma = ',' if idx < len(oneof.fields) - 1 else ''
-            result += f'  {enum_value}: {field_order}{comma}\n'
-        
+        result += '\n'.join(lines) + '\n'
         result += f'}});\n'
         result += f'module.exports.{enum_name} = {enum_name};\n'
         return result
-    
+
     @staticmethod
     def get_discriminator_enum_name(oneof, msg_name):
         """Get the enum type name for a field_order discriminator."""
-        return f'{msg_name}{pascal_case(oneof.name)}Field'
+        return get_discriminator_enum_name(oneof, msg_name)
 
 
 class FieldJsGen():
@@ -134,7 +135,7 @@ class MessageJsGen():
         result = ''
         if leading_comment:
             for c in msg.comments:
-                result = '%s\n' % c
+                result += '%s\n' % c
 
         package_msg_name = '%s%s' % (package_name, msg.name)
 
@@ -198,7 +199,7 @@ class MessageJsClassGen():
         result = ''
         if leading_comment:
             for c in msg.comments:
-                result = '%s\n' % c
+                result += '%s\n' % c
 
         package_msg_name = msg.name
         

@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+from test_utils import _check
 import tempfile
 from pathlib import Path
 
@@ -51,10 +52,6 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _check(condition, msg):
-    if not condition:
-        print(f"FAIL: {msg}")
-        sys.exit(1)
 
 
 def test_no_packed_flag():
