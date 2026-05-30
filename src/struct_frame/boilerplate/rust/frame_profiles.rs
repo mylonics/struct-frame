@@ -839,8 +839,8 @@ impl AccumulatingReader {
                     }
                 }
 
-                // CRC failure: frame started correctly but didn't validate
-                if self.config.payload.has_crc {
+                // CRC failure: complete frame received but checksum did not validate
+                if result.status == FrameMsgStatus::CrcFailure {
                     self.diagnostics.cnt_crc_failures += 1;
                 }
             }

@@ -1090,7 +1090,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
     }
     
     /* Set status based on current parser state */
-    if (reader->state == ACC_STATE_LOOKING_FOR_START1 || reader->state == ACC_STATE_LOOKING_FOR_START2) {
+    if (reader->state == ACC_STATE_LOOKING_FOR_START1) {
         result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
     } else {
         result.status = FRAME_MSG_STATUS_COLLECTING;

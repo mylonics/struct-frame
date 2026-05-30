@@ -857,7 +857,7 @@ class AccumulatingReader {
   ParserDiagnostics diagnostics() const { return diagnostics_; }
 
   /**
-   * Reset all diagnostic counters to zero and clear the last-seen sequence.
+   * Reset all diagnostic counters to zero.
    */
   void reset_diagnostics() {
     diagnostics_ = ParserDiagnostics{};

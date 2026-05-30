@@ -167,11 +167,10 @@ class ParserDiagnostics:
         cnt_sync_recoveries: Times the parser had to discard bytes and
                             re-search for a frame start.  Indicates lost
                             bytes or buffer overflows.
-        cnt_len_errors:     Frames where the length in the header does not
-                            match the expected message-struct size returned
-                            by get_message_info().  Vital for detecting
-                            sender/receiver definition mismatches on the
-                            "Implicit Length" profile.
+        cnt_len_errors:     Frames where the explicit length in the header
+                            does not match the expected message-struct size
+                            returned by get_message_info().  Vital for
+                            detecting sender/receiver definition mismatches.
         cnt_seq_gaps:       Sequence-number gaps in received messages.
                             Only incremented on profiles that carry a
                             sequence field (e.g. ProfileNetwork).
