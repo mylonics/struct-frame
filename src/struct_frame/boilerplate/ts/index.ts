@@ -7,6 +7,7 @@ export type { MessageConstructor } from './struct-base';
 // Base utilities and generic parser infrastructure
 export type { FrameMsgInfo, FrameParserConfig } from './frame-base';
 export {
+    FrameMsgStatus,
     createFrameMsgInfo,
     fletcherChecksum,
     // Generic parser class (use createFrameParserClass for type-safe wrappers)
@@ -98,4 +99,4 @@ export {
     ProfileNetworkWriter,
     ProfileNetworkAccumulatingReader,
 } from './frame-profiles';
-
+export type { ParserDiagnostics } from './frame-profiles';

@@ -49,12 +49,22 @@ export function fletcherChecksumExt(buffer: Uint8Array | number[], start: number
     return [byte1, byte2];
 }
 
+// Parser status indicating the reason a FrameMsgInfo is not valid
+export enum FrameMsgStatus {
+    None = 0,
+    WaitingForStart = 1,
+    Collecting = 2,
+    CrcFailure = 3,
+    SyncRecovery = 4
+}
+
 // Parse result interface
 export interface FrameMsgInfo {
     valid: boolean;
     msgId: number;
     msgLen: number;
     msgData: Uint8Array;
+    status: FrameMsgStatus;
 }
 
 // Create default FrameMsgInfo
@@ -63,7 +73,8 @@ export function createFrameMsgInfo(): FrameMsgInfo {
         valid: false,
         msgId: 0,
         msgLen: 0,
-        msgData: new Uint8Array(0)
+        msgData: new Uint8Array(0),
+        status: FrameMsgStatus.None
     };
 }
 

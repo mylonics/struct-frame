@@ -1,7 +1,7 @@
 // Frame Profiles - Pre-defined Header + Payload combinations (Rust)
 // Mirrors frame_profiles.h from C boilerplate
 
-use crate::frame_base::{fletcher_checksum, fletcher_checksum_ext, FrameChecksum, FrameMsgInfo, MessageInfo, StructFrameMessage};
+use crate::frame_base::{fletcher_checksum, fletcher_checksum_ext, FrameChecksum, FrameMsgInfo, FrameMsgStatus, MessageInfo, ParserDiagnostics, StructFrameMessage};
 use crate::frame_headers::{
     get_basic_second_start_byte, get_tiny_start_byte, HeaderConfig, HeaderType,
     BASIC_START_BYTE, HEADER_BASIC_CONFIG, HEADER_NONE_CONFIG, HEADER_TINY_CONFIG,
@@ -389,7 +389,7 @@ pub fn parse_with_crc(
             fletcher_checksum(&buffer[crc_start..crc_start + crc_len], magic1, magic2)
         };
         if ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1] {
-            return FrameMsgInfo::invalid();
+            return FrameMsgInfo { status: FrameMsgStatus::CrcFailure, ..FrameMsgInfo::invalid() };
         }
     }
 
@@ -406,6 +406,7 @@ pub fn parse_with_crc(
         system_id: sys_id,
         component_id: comp_id,
         payload,
+        ..Default::default()
     }
 }
 
@@ -606,6 +607,10 @@ impl BufferReader {
 pub struct AccumulatingReader {
     config: ProfileConfig,
     buffer: Vec<u8>,
+    /// Diagnostic counters (stream mode)
+    diagnostics: ParserDiagnostics,
+    /// Last seen sequence number for gap detection
+    last_seq: Option<u8>,
 }
 
 impl AccumulatingReader {
@@ -613,7 +618,19 @@ impl AccumulatingReader {
         AccumulatingReader {
             config,
             buffer: Vec::with_capacity(capacity),
+            diagnostics: ParserDiagnostics::default(),
+            last_seq: None,
         }
+    }
+
+    /// Get a snapshot of the current diagnostic counters.
+    pub fn diagnostics(&self) -> ParserDiagnostics {
+        self.diagnostics
+    }
+
+    /// Reset all diagnostic counters to zero.
+    pub fn reset_diagnostics(&mut self) {
+        self.diagnostics = ParserDiagnostics::default();
     }
 
     /// Add data to the internal buffer
@@ -771,6 +788,18 @@ impl AccumulatingReader {
 
             if result.valid {
                 let frame_size = result.frame_size;
+
+                // Check for sequence gap on profiles that carry a sequence number
+                if self.config.payload.has_seq {
+                    let seq = self.buffer[self.config.header.num_start_bytes as usize];
+                    if let Some(last) = self.last_seq {
+                        if seq != last.wrapping_add(1) {
+                            self.diagnostics.cnt_seq_gaps += 1;
+                        }
+                    }
+                    self.last_seq = Some(seq);
+                }
+
                 self.buffer.drain(..frame_size);
                 return Some(result);
             }
@@ -779,6 +808,44 @@ impl AccumulatingReader {
             if bytes_to_drain == 0 {
                 return None;
             }
+
+            // We're about to drain past a failed frame attempt — record diagnostics.
+            if self.starts_with_possible_frame() {
+                // Check for length mismatch on profiles with an explicit length field
+                if self.config.payload.has_length {
+                    let header_size = self.config.header_size();
+                    if self.buffer.len() >= header_size {
+                        let mut len_offset = self.config.header.num_start_bytes as usize;
+                        if self.config.payload.has_seq { len_offset += 1; }
+                        if self.config.payload.has_sys_id { len_offset += 1; }
+                        if self.config.payload.has_comp_id { len_offset += 1; }
+                        let msg_len = if self.config.payload.length_bytes == 1 {
+                            self.buffer[len_offset] as usize
+                        } else {
+                            (self.buffer[len_offset] as usize) | ((self.buffer[len_offset + 1] as usize) << 8)
+                        };
+                        let mut id_offset = len_offset + self.config.payload.length_bytes as usize;
+                        let mut full_msg_id: u16 = 0;
+                        if self.config.payload.has_pkg_id {
+                            full_msg_id = (self.buffer[id_offset] as u16) << 8;
+                            id_offset += 1;
+                        }
+                        full_msg_id |= self.buffer[id_offset] as u16;
+                        if let Some(info) = get_message_info(full_msg_id) {
+                            if info.size != msg_len {
+                                self.diagnostics.cnt_len_errors += 1;
+                            }
+                        }
+                    }
+                }
+
+                // CRC failure: complete frame received but checksum did not validate
+                if result.status == FrameMsgStatus::CrcFailure {
+                    self.diagnostics.cnt_crc_failures += 1;
+                }
+            }
+
+            self.diagnostics.cnt_sync_recoveries += 1;
             self.buffer.drain(..bytes_to_drain);
         }
     }

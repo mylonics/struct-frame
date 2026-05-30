@@ -87,12 +87,46 @@ typedef struct message_info {
 } message_info_t;
 
 /* Parse result */
+typedef enum frame_msg_status {
+  FRAME_MSG_STATUS_NONE = 0,             /**< Default / unset. */
+  FRAME_MSG_STATUS_WAITING_FOR_START = 1,/**< Searching for a start byte. */
+  FRAME_MSG_STATUS_COLLECTING = 2,       /**< Accumulating bytes; frame in progress. */
+  FRAME_MSG_STATUS_CRC_FAILURE = 3,      /**< Complete frame but CRC did not match. */
+  FRAME_MSG_STATUS_SYNC_RECOVERY = 4,    /**< Bytes discarded to re-find frame start. */
+} frame_msg_status_t;
+
 typedef struct frame_msg_info {
   bool valid;
   uint16_t msg_id; /* 16-bit to support pkg_id (high byte) + msg_id (low byte) */
   size_t msg_len;
   uint8_t* msg_data;
+  frame_msg_status_t status;
 } frame_msg_info_t;
+
+/**
+ * Diagnostic counters for the accumulating_reader_t (stream mode).
+ *
+ * All counters accumulate over the reader's lifetime.  Call
+ * accumulating_reader_reset_diagnostics() to clear them.
+ *
+ * cnt_crc_failures:   Complete frames received with a bad CRC.
+ *                     Indicates noise or corruption on the line.
+ * cnt_sync_recoveries: Times the parser discarded bytes and re-searched for
+ *                     a frame start.  Indicates lost bytes or buffer overflows.
+ * cnt_len_errors:     Frames where the header length field does not match the
+ *                     expected message-struct size from get_message_info.
+ *                     Vital for detecting mismatched definitions on profiles
+ *                     with an explicit length field.
+ * cnt_seq_gaps:       Sequence-number gaps.  Only incremented on profiles that
+ *                     carry a sequence field (e.g. network_accumulating_reader).
+ *                     Indicates dropped packets.
+ */
+typedef struct frame_parser_diagnostics {
+  uint32_t cnt_crc_failures;
+  uint32_t cnt_sync_recoveries;
+  uint32_t cnt_len_errors;
+  uint32_t cnt_seq_gaps;
+} frame_parser_diagnostics_t;
 
 /*===========================================================================
  * Shared Payload Parsing Functions
@@ -113,7 +147,7 @@ typedef struct frame_msg_info {
  */
 static inline frame_msg_info_t frame_validate_payload_with_crc(const uint8_t* buffer, size_t length, size_t header_size,
                                                                size_t length_bytes, size_t crc_start_offset) {
-  frame_msg_info_t result = {false, 0, 0, NULL};
+  frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
   const size_t footer_size = 2; /* CRC is always 2 bytes */
   const size_t overhead = header_size + footer_size;
 
@@ -147,7 +181,7 @@ static inline frame_msg_info_t frame_validate_payload_with_crc(const uint8_t* bu
  */
 static inline frame_msg_info_t frame_validate_payload_minimal(const uint8_t* buffer, size_t length,
                                                               size_t header_size) {
-  frame_msg_info_t result = {false, 0, 0, NULL};
+  frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
 
   if (length < header_size) {
     return result;

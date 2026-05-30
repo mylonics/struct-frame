@@ -47,17 +47,25 @@ function fletcherChecksumExt(buffer, start, baseEnd, end, init1 = 0, init2 = 0) 
     return [byte1, byte2];
 }
 
+// Parser status indicating the reason a FrameMsgInfo is not valid
+const FrameMsgStatus = Object.freeze({
+    None: 0,
+    WaitingForStart: 1,
+    Collecting: 2,
+    CrcFailure: 3,
+    SyncRecovery: 4
+});
+
 // Create default FrameMsgInfo
 function createFrameMsgInfo() {
     return {
         valid: false,
         msgId: 0,
         msgLen: 0,
-        msgData: new Uint8Array(0)
+        msgData: new Uint8Array(0),
+        status: FrameMsgStatus.None
     };
 }
-
-// =============================================================================
 // Shared Payload Parsing Functions
 // =============================================================================
 // These functions handle payload validation/encoding independent of framing.
@@ -369,6 +377,7 @@ function createFrameParserClass(config) {
 module.exports = {
     fletcherChecksum,
     fletcherChecksumExt,
+    FrameMsgStatus,
     createFrameMsgInfo,
     validatePayloadWithCrc,
     validatePayloadMinimal,

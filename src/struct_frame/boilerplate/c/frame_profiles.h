@@ -260,7 +260,7 @@ static inline frame_msg_info_t profile_parse_with_crc(
     const uint8_t* buffer, size_t length,
     bool (*get_message_info_func)(uint16_t, message_info_t*)) {
     
-    frame_msg_info_t result = {false, 0, 0, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
     uint8_t header_size = profile_header_size(config);
     uint8_t footer_size = profile_footer_size(config);
     size_t overhead = header_size + footer_size;
@@ -364,7 +364,7 @@ static inline frame_msg_info_t profile_parse_minimal(
     const uint8_t* buffer, size_t length,
     bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
     
-    frame_msg_info_t result = {false, 0, 0, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
     uint8_t header_size = profile_header_size(config);
     
     if (length < header_size) {
@@ -510,7 +510,7 @@ static inline void buffer_reader_init(
 
 static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
     
     if (reader->offset >= reader->size) {
         return result;
@@ -709,6 +709,11 @@ typedef struct accumulating_reader {
     const uint8_t* current_buffer;
     size_t current_size;
     size_t current_offset;
+
+    /* Diagnostic counters (stream mode) */
+    frame_parser_diagnostics_t diagnostics;
+    uint8_t last_seq;
+    bool last_seq_valid;
 } accumulating_reader_t;
 
 static inline void accumulating_reader_init(
@@ -728,6 +733,10 @@ static inline void accumulating_reader_init(
     reader->current_buffer = NULL;
     reader->current_size = 0;
     reader->current_offset = 0;
+    frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0};
+    reader->diagnostics = zero_diag;
+    reader->last_seq = 0;
+    reader->last_seq_valid = false;
 }
 
 static inline void accumulating_reader_add_data(
@@ -756,7 +765,7 @@ static inline frame_msg_info_t _acc_parse_buffer(
 
 static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
     
     if (reader->state != ACC_STATE_BUFFER_MODE) {
         return result;
@@ -808,7 +817,7 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
 
 static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader_t* reader, uint8_t byte)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
     
     uint8_t header_size = profile_header_size(reader->config);
     uint8_t start_byte1 = reader->config->header.start_byte1;
@@ -845,6 +854,8 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             if (reader->expected_frame_size > reader->buffer_size) {
                                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                                 reader->internal_data_len = 0;
+                                reader->diagnostics.cnt_sync_recoveries++;
+                                result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                                 return result;
                             }
                             
@@ -861,12 +872,18 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             
                             reader->state = ACC_STATE_COLLECTING_PAYLOAD;
                         } else {
+                            reader->diagnostics.cnt_sync_recoveries++;
                             reader->state = ACC_STATE_LOOKING_FOR_START1;
                             reader->internal_data_len = 0;
+                            result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+                            return result;
                         }
                     } else {
+                        reader->diagnostics.cnt_sync_recoveries++;
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
+                        result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+                        return result;
                     }
                 } else {
                     reader->state = ACC_STATE_COLLECTING_HEADER;
@@ -893,15 +910,20 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                 reader->internal_buffer[0] = byte;
                 reader->internal_data_len = 1;
             } else {
+                reader->diagnostics.cnt_sync_recoveries++;
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
+                result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+                return result;
             }
             break;
             
         case ACC_STATE_COLLECTING_HEADER:
             if (reader->internal_data_len >= reader->buffer_size) {
+                reader->diagnostics.cnt_sync_recoveries++;
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
+                result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                 return result;
             }
             
@@ -917,8 +939,10 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             reader->expected_frame_size = header_size + msg_len;
                             
                             if (reader->expected_frame_size > reader->buffer_size) {
+                                reader->diagnostics.cnt_sync_recoveries++;
                                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                                 reader->internal_data_len = 0;
+                                result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                                 return result;
                             }
                             
@@ -935,12 +959,18 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             
                             reader->state = ACC_STATE_COLLECTING_PAYLOAD;
                         } else {
+                            reader->diagnostics.cnt_sync_recoveries++;
                             reader->state = ACC_STATE_LOOKING_FOR_START1;
                             reader->internal_data_len = 0;
+                            result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+                            return result;
                         }
                     } else {
+                        reader->diagnostics.cnt_sync_recoveries++;
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
+                        result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+                        return result;
                     }
                 } else {
                     size_t len_offset = reader->config->header.num_start_bytes;
@@ -957,18 +987,53 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                                          ((size_t)reader->internal_buffer[len_offset + 1] << 8);
                         }
                     }
+
+                    /* Check for length mismatch against expected message struct size */
+                    if (reader->config->payload.has_length && reader->get_message_info) {
+                        uint16_t full_msg_id = 0;
+                        if (reader->config->payload.has_pkg_id) {
+                            full_msg_id = (uint16_t)reader->internal_buffer[header_size - 2] << 8;
+                        }
+                        full_msg_id |= reader->internal_buffer[header_size - 1];
+                        message_info_t len_info;
+                        if (reader->get_message_info(full_msg_id, &len_info) &&
+                            len_info.size != payload_len) {
+                            reader->diagnostics.cnt_len_errors++;
+                        }
+                    }
                     
                     uint8_t footer_size = profile_footer_size(reader->config);
                     reader->expected_frame_size = header_size + footer_size + payload_len;
                     
                     if (reader->expected_frame_size > reader->buffer_size) {
+                        reader->diagnostics.cnt_sync_recoveries++;
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
+                        result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                         return result;
                     }
                     
                     if (reader->internal_data_len >= reader->expected_frame_size) {
                         result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
+                        if (result.valid) {
+                            if (reader->config->payload.has_seq) {
+                                uint8_t seq = reader->internal_buffer[reader->config->header.num_start_bytes];
+                                if (reader->last_seq_valid) {
+                                    uint8_t expected_seq = (uint8_t)(reader->last_seq + 1);
+                                    if (seq != expected_seq) reader->diagnostics.cnt_seq_gaps++;
+                                }
+                                reader->last_seq = seq;
+                                reader->last_seq_valid = true;
+                            }
+                        } else {
+                            if (reader->config->payload.has_crc) {
+                                reader->diagnostics.cnt_crc_failures++;
+                                result.status = FRAME_MSG_STATUS_CRC_FAILURE;
+                            } else {
+                                result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+                            }
+                            reader->diagnostics.cnt_sync_recoveries++;
+                        }
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
                         reader->expected_frame_size = 0;
@@ -982,8 +1047,10 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             
         case ACC_STATE_COLLECTING_PAYLOAD:
             if (reader->internal_data_len >= reader->buffer_size) {
+                reader->diagnostics.cnt_sync_recoveries++;
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
+                result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                 return result;
             }
             
@@ -991,6 +1058,25 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             
             if (reader->internal_data_len >= reader->expected_frame_size) {
                 result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
+                if (result.valid) {
+                    if (reader->config->payload.has_seq) {
+                        uint8_t seq = reader->internal_buffer[reader->config->header.num_start_bytes];
+                        if (reader->last_seq_valid) {
+                            uint8_t expected_seq = (uint8_t)(reader->last_seq + 1);
+                            if (seq != expected_seq) reader->diagnostics.cnt_seq_gaps++;
+                        }
+                        reader->last_seq = seq;
+                        reader->last_seq_valid = true;
+                    }
+                } else {
+                    if (reader->config->payload.has_crc) {
+                        reader->diagnostics.cnt_crc_failures++;
+                        result.status = FRAME_MSG_STATUS_CRC_FAILURE;
+                    } else {
+                        result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+                    }
+                    reader->diagnostics.cnt_sync_recoveries++;
+                }
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
                 reader->expected_frame_size = 0;
@@ -1003,6 +1089,12 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             break;
     }
     
+    /* Set status based on current parser state */
+    if (reader->state == ACC_STATE_LOOKING_FOR_START1) {
+        result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
+    } else {
+        result.status = FRAME_MSG_STATUS_COLLECTING;
+    }
     return result;
 }
 
@@ -1036,6 +1128,15 @@ static inline accumulating_reader_state_t accumulating_reader_state(const accumu
     return reader->state;
 }
 
+static inline frame_parser_diagnostics_t accumulating_reader_diagnostics(const accumulating_reader_t* reader) {
+    return reader->diagnostics;
+}
+
+static inline void accumulating_reader_reset_diagnostics(accumulating_reader_t* reader) {
+    frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0};
+    reader->diagnostics = zero_diag;
+}
+
 static inline void accumulating_reader_reset(accumulating_reader_t* reader) {
     reader->internal_data_len = 0;
     reader->expected_frame_size = 0;
@@ -1043,4 +1144,6 @@ static inline void accumulating_reader_reset(accumulating_reader_t* reader) {
     reader->current_buffer = NULL;
     reader->current_size = 0;
     reader->current_offset = 0;
+    reader->last_seq = 0;
+    reader->last_seq_valid = false;
 }

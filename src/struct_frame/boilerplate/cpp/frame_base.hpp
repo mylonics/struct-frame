@@ -65,23 +65,62 @@ inline FrameChecksum fletcher_checksum_ext(const uint8_t* data, size_t base_len,
 }
 
 // Parse result
+enum class FrameMsgStatus : uint8_t {
+  None = 0,            ///< Default / unset.
+  WaitingForStart = 1, ///< Parser is idle, searching for a start byte.
+  Collecting = 2,      ///< A frame is in progress; accumulating bytes.
+  CrcFailure = 3,      ///< Complete frame received but CRC did not match.
+  SyncRecovery = 4,    ///< Bytes discarded to re-find a valid frame start.
+};
+
 struct FrameMsgInfo {
   bool valid;
   uint16_t msg_id;
   size_t msg_len;     // Payload length (message data only)
   size_t frame_size;  // Total frame size (header + payload + footer)
   uint8_t* msg_data;
+  FrameMsgStatus status;
 
-  FrameMsgInfo() : valid(false), msg_id(0), msg_len(0), frame_size(0), msg_data(nullptr) {}
-  FrameMsgInfo(bool v, uint16_t id, size_t len, size_t fsize, uint8_t* data)
-      : valid(v), msg_id(id), msg_len(len), frame_size(fsize), msg_data(data) {}
+  FrameMsgInfo()
+      : valid(false), msg_id(0), msg_len(0), frame_size(0), msg_data(nullptr), status(FrameMsgStatus::None) {}
+  FrameMsgInfo(bool v, uint16_t id, size_t len, size_t fsize, uint8_t* data,
+               FrameMsgStatus st = FrameMsgStatus::None)
+      : valid(v), msg_id(id), msg_len(len), frame_size(fsize), msg_data(data), status(st) {}
 
   // Legacy constructor for backwards compatibility
   FrameMsgInfo(bool v, uint16_t id, size_t len, uint8_t* data)
-      : valid(v), msg_id(id), msg_len(len), frame_size(0), msg_data(data) {}
+      : valid(v), msg_id(id), msg_len(len), frame_size(0), msg_data(data), status(FrameMsgStatus::None) {}
 
   // Allow use in boolean context (e.g., while (auto result = reader.next()) { ... })
   explicit operator bool() const { return valid; }
+};
+
+/**
+ * Diagnostic counters for the AccumulatingReader (stream mode).
+ *
+ * All counters accumulate over the reader's lifetime. Call
+ * reset_diagnostics() to clear them.
+ *
+ * cnt_crc_failures:   Complete frames received with a bad CRC.
+ *                     Indicates noise or corruption on the line.
+ * cnt_sync_recoveries: Times the parser discarded bytes and re-searched for
+ *                     a frame start. Indicates lost bytes or buffer overflows.
+ * cnt_len_errors:     Frames where the header length field does not match the
+ *                     expected message-struct size from get_message_info().
+ *                     Vital for detecting mismatched definitions on profiles
+ *                     that carry an explicit length.
+ * cnt_seq_gaps:       Sequence-number gaps. Only incremented on profiles that
+ *                     carry a sequence field (e.g. ProfileNetwork). Indicates
+ *                     dropped packets.
+ */
+struct ParserDiagnostics {
+  uint32_t cnt_crc_failures;
+  uint32_t cnt_sync_recoveries;
+  uint32_t cnt_len_errors;
+  uint32_t cnt_seq_gaps;
+
+  ParserDiagnostics()
+      : cnt_crc_failures(0), cnt_sync_recoveries(0), cnt_len_errors(0), cnt_seq_gaps(0) {}
 };
 
 /**

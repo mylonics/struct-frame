@@ -93,6 +93,34 @@ def fletcher_checksum_ext(data: Union[bytes, List[int]], start: int, base_end: i
 # Parse Result
 # =============================================================================
 
+class FrameMsgStatus(Enum):
+    """
+    Reason code carried in FrameMsgInfo when valid is False.
+
+    This lets callers distinguish between "parser is still accumulating bytes"
+    (normal) and the various error conditions that cause the parser to discard
+    data or fail validation.
+
+    NONE              - Default / unset.  Used by one-shot buffer parsers when
+                        no specific reason is available.
+    WAITING_FOR_START - Parser is idle and searching for a start byte.  No
+                        frame has been started yet (or the previous frame was
+                        completed / reset).
+    COLLECTING        - A frame is in progress; the parser is still accumulating
+                        header or payload bytes.  More data is needed.
+    CRC_FAILURE       - A complete frame was received but its CRC did not match.
+                        Indicates noise or data corruption on the link.
+    SYNC_RECOVERY     - The parser discarded one or more bytes to re-find a
+                        valid frame start.  Triggered by bad bytes, unknown
+                        message IDs, or internal buffer overflows.
+    """
+    NONE = 0
+    WAITING_FOR_START = 1
+    COLLECTING = 2
+    CRC_FAILURE = 3
+    SYNC_RECOVERY = 4
+
+
 @dataclass
 class FrameMsgInfo:
     """
@@ -111,10 +139,47 @@ class FrameMsgInfo:
     sequence: int = 0
     system_id: int = 0
     component_id: int = 0
+
+    # Parser state / reason code (meaningful when valid is False)
+    status: FrameMsgStatus = FrameMsgStatus.NONE
     
     def __bool__(self) -> bool:
         """Allow use in boolean context: while (result := reader.next()): ..."""
         return self.valid
+
+
+# =============================================================================
+# Parser Diagnostics
+# =============================================================================
+
+@dataclass
+class ParserDiagnostics:
+    """
+    Error counters for parser diagnostics.
+
+    Tracks error events detected by the AccumulatingReader in stream mode.
+    These counters accumulate over the reader's lifetime and can be reset
+    with reset_diagnostics().
+
+    Attributes:
+        cnt_crc_failures:   Complete frames where CRC validation failed.
+                            Indicates noise or corruption on the line.
+        cnt_sync_recoveries: Times the parser had to discard bytes and
+                            re-search for a frame start.  Indicates lost
+                            bytes or buffer overflows.
+        cnt_len_errors:     Frames where the explicit length in the header
+                            does not match the expected message-struct size
+                            returned by get_message_info().  Vital for
+                            detecting sender/receiver definition mismatches.
+        cnt_seq_gaps:       Sequence-number gaps in received messages.
+                            Only incremented on profiles that carry a
+                            sequence field (e.g. ProfileNetwork).
+                            Indicates dropped packets.
+    """
+    cnt_crc_failures: int = 0
+    cnt_sync_recoveries: int = 0
+    cnt_len_errors: int = 0
+    cnt_seq_gaps: int = 0
 
 
 # =============================================================================

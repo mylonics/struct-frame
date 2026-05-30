@@ -55,6 +55,17 @@ pub fn fletcher_checksum_ext(base_data: &[u8], ext_data: &[u8], magic1: u8, magi
     FrameChecksum { byte1: b1, byte2: b2 }
 }
 
+/// Parser status indicating the reason a FrameMsgInfo is not valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FrameMsgStatus {
+    #[default]
+    None = 0,
+    WaitingForStart = 1,
+    Collecting = 2,
+    CrcFailure = 3,
+    SyncRecovery = 4,
+}
+
 /// Result from frame parsing.
 #[derive(Debug, Clone, Default)]
 pub struct FrameMsgInfo {
@@ -68,12 +79,39 @@ pub struct FrameMsgInfo {
     pub component_id: u8,
     /// The raw message payload bytes (excluding framing overhead).
     pub payload: Vec<u8>,
+    /// Status indicating the reason this result is not valid (only meaningful when valid is false).
+    pub status: FrameMsgStatus,
 }
 
 impl FrameMsgInfo {
     pub fn invalid() -> Self {
         Self::default()
     }
+}
+
+/// Diagnostic counters for AccumulatingReader (stream mode).
+///
+/// All counters accumulate over the reader's lifetime.
+/// Call `reset_diagnostics()` to clear them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ParserDiagnostics {
+    /// Number of complete frames received with a bad CRC.
+    /// Indicates noise or corruption on the line.
+    pub cnt_crc_failures: u32,
+
+    /// Number of times the parser discarded bytes and re-searched for a frame start.
+    /// Indicates lost bytes or buffer overflows.
+    pub cnt_sync_recoveries: u32,
+
+    /// Number of frames where the header length field does not match the expected
+    /// message-struct size from the message-info callback.
+    /// Vital for detecting mismatched definitions on profiles that carry an explicit length.
+    pub cnt_len_errors: u32,
+
+    /// Number of sequence-number gaps detected.
+    /// Only incremented on profiles that carry a sequence field (e.g. ProfileNetwork).
+    /// Indicates dropped packets.
+    pub cnt_seq_gaps: u32,
 }
 
 /// Message metadata used for parsing (size + magic numbers)

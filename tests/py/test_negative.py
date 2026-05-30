@@ -27,6 +27,8 @@ from frame_profiles import (
     ProfileSensorReader,
     ProfileNetworkWriter,
     ProfileNetworkReader,
+    ProfileNetworkAccumulatingReader,
+    FrameMsgStatus,
 )
 
 # Test result tracking
@@ -483,6 +485,162 @@ def test_network_sysid_compid():
     return not result.valid  # Expect failure: corrupted sys_id invalidates CRC
 
 
+def test_diagnostic_crc_failure():
+    """Diagnostics: cnt_crc_failures is incremented when a frame's CRC is corrupted."""
+    msg = _make_test_msg()
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    # Corrupt CRC (last 2 bytes)
+    buffer[frame_size - 1] ^= 0xFF
+    buffer[frame_size - 2] ^= 0xFF
+
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    for b in buffer[:frame_size]:
+        reader.push_byte(b)
+
+    diag = reader.diagnostics
+    return diag.cnt_crc_failures == 1 and diag.cnt_sync_recoveries >= 1
+
+
+def test_diagnostic_sync_recovery():
+    """Diagnostics: cnt_sync_recoveries increments when garbage bytes are fed."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+
+    # Feed clearly invalid bytes (not start bytes) so the parser stays in
+    # LOOKING_FOR_START2 and triggers at least one sync recovery when it
+    # sees an invalid second byte after a valid 0x90.
+    reader.push_byte(0x90)   # valid start1 for ProfileStandard
+    reader.push_byte(0xAB)   # invalid start2 → sync recovery
+
+    diag = reader.diagnostics
+    return diag.cnt_sync_recoveries >= 1
+
+
+def test_diagnostic_len_error():
+    """Diagnostics: cnt_len_errors is incremented when the header length field
+    doesn't match the expected message struct size.
+
+    ProfileStandard header: [0x90][0x71][LEN][MSG_ID][PAYLOAD...][CRC1][CRC2]
+    We build a valid frame and then set LEN to a wrong value while keeping CRC
+    consistent so the frame still parses as 'complete' and triggers the length
+    mismatch check inside _handle_collecting_header.
+    """
+    msg = _make_test_msg()
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    original = bytes(writer.data()[:writer.size()])
+    frame_size = writer.size()
+
+    # Build a tampered frame: change the length byte (index 2) so it doesn't
+    # match the actual payload size.  We use a smaller fake length so the frame
+    # is still well within the buffer (no overflow).  The CRC will be wrong,
+    # but cnt_len_errors is checked BEFORE CRC validation in the header state.
+    tampered = bytearray(original)
+    real_len = tampered[2]
+    tampered[2] = (real_len + 1) & 0xFF  # length mismatch
+
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    for b in tampered[:frame_size]:
+        reader.push_byte(b)
+
+    diag = reader.diagnostics
+    return diag.cnt_len_errors == 1
+
+
+def test_diagnostic_seq_gap():
+    """Diagnostics: cnt_seq_gaps is incremented when a sequence number is skipped.
+
+    ProfileNetwork carries an 8-bit sequence number.  Sending seq=0 followed by
+    seq=5 should be detected as a gap (4 dropped packets).
+    """
+    msg = _make_test_msg()
+
+    def encode(seq):
+        w = ProfileNetworkWriter(capacity=1024)
+        w.write(msg, seq=seq, sys_id=1, comp_id=1)
+        return bytes(w.data()[:w.size()])
+
+    frame0 = encode(0)
+    frame5 = encode(5)   # skips seq 1-4 → gap
+
+    reader = ProfileNetworkAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    for b in frame0:
+        reader.push_byte(b)
+    for b in frame5:
+        reader.push_byte(b)
+
+    diag = reader.diagnostics
+    return diag.cnt_seq_gaps == 1 and diag.cnt_crc_failures == 0
+
+
+def test_diagnostic_reset():
+    """Diagnostics: reset_diagnostics() clears all counters."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+
+    # Trigger a sync recovery
+    reader.push_byte(0x90)
+    reader.push_byte(0xAB)
+
+    assert reader.diagnostics.cnt_sync_recoveries >= 1, "Expected sync recovery to be counted"
+
+    reader.reset_diagnostics()
+    diag = reader.diagnostics
+    return (
+        diag.cnt_crc_failures == 0
+        and diag.cnt_sync_recoveries == 0
+        and diag.cnt_len_errors == 0
+        and diag.cnt_seq_gaps == 0
+    )
+
+
+def test_status_waiting_for_start():
+    """FrameMsgStatus: push_byte returns WAITING_FOR_START when no start byte seen yet."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    # 0x42 is not the start byte (0x90); parser stays in waiting state
+    result = reader.push_byte(0x42)
+    return result.status == FrameMsgStatus.WAITING_FOR_START
+
+
+def test_status_collecting():
+    """FrameMsgStatus: push_byte returns COLLECTING once a valid start byte is in progress."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    # 0x90 is startByte1 — move to LookingForStart2
+    result = reader.push_byte(0x90)
+    return result.status == FrameMsgStatus.COLLECTING
+
+
+def test_status_crc_failure():
+    """FrameMsgStatus: push_byte returns CRC_FAILURE when a complete frame has bad CRC."""
+    writer = ProfileStandardWriter(capacity=1024)
+    msg = BasicTypesMessage()
+    msg.uint8_field = 99
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    # Corrupt the last byte (CRC)
+    buffer[frame_size - 1] ^= 0xFF
+
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    result = None
+    for b in buffer[:frame_size]:
+        result = reader.push_byte(b)
+    return result is not None and result.status == FrameMsgStatus.CRC_FAILURE
+
+
+def test_status_sync_recovery():
+    """FrameMsgStatus: push_byte returns SYNC_RECOVERY when parser is forced to resync."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    # Start a frame then send a byte that forces resync at LookingForStart2
+    reader.push_byte(0x90)  # valid startByte1
+    # 0x42 is neither startByte2 (0xAB) nor startByte1 (0x90) — triggers resync
+    result = reader.push_byte(0x42)
+    return result.status == FrameMsgStatus.SYNC_RECOVERY
+
+
 def main():
     print("\n========================================")
     print("NEGATIVE TESTS - Python Parser")
@@ -493,12 +651,21 @@ def main():
         ("Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc),
         ("Corrupted CRC detection", test_corrupted_crc),
         ("Corrupted length field detection", test_corrupted_length),
+        ("Diagnostics: CRC failure counter", test_diagnostic_crc_failure),
+        ("Diagnostics: Length error counter", test_diagnostic_len_error),
+        ("Diagnostics: Reset diagnostics", test_diagnostic_reset),
+        ("Diagnostics: Sequence gap counter", test_diagnostic_seq_gap),
+        ("Diagnostics: Sync recovery counter", test_diagnostic_sync_recovery),
         ("Invalid message ID rejection", test_invalid_msg_id),
         ("Invalid start bytes detection", test_invalid_start_bytes),
         ("Minimal profile: Truncated frame", test_minimal_profile_truncated_frame),
         ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary", test_partial_frame_boundary),
+        ("Status: COLLECTING during frame reception", test_status_collecting),
+        ("Status: CRC_FAILURE on bad checksum", test_status_crc_failure),
+        ("Status: SYNC_RECOVERY on forced resync", test_status_sync_recovery),
+        ("Status: WAITING_FOR_START before first byte", test_status_waiting_for_start),
         ("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling", test_streaming_garbage),
         ("Truncated frame detection", test_truncated_frame),
