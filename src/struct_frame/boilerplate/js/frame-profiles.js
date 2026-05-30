@@ -627,6 +627,10 @@ class AccumulatingReader {
     this.currentBuffer = null;
     this.currentSize = 0;
     this.currentOffset = 0;
+
+    // Diagnostic counters (stream mode)
+    this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+    this._lastSeq = null;
   }
 
   // =========================================================================
@@ -767,6 +771,7 @@ class AccumulatingReader {
       this.internalBuffer[0] = byte;
       this.internalDataLen = 1;
     } else {
+      this._diagnostics.cntSyncRecoveries++;
       this._state = AccumulatingReaderState.LOOKING_FOR_START1;
       this.internalDataLen = 0;
     }
@@ -775,6 +780,7 @@ class AccumulatingReader {
 
   _handleCollectingHeader(byte) {
     if (this.internalDataLen >= this.bufferSize) {
+      this._diagnostics.cntSyncRecoveries++;
       this._state = AccumulatingReaderState.LOOKING_FOR_START1;
       this.internalDataLen = 0;
       return createFrameMsgInfo();
@@ -794,6 +800,7 @@ class AccumulatingReader {
             this.expectedFrameSize = headerSize + msgLen;
 
             if (this.expectedFrameSize > this.bufferSize) {
+              this._diagnostics.cntSyncRecoveries++;
               this._state = AccumulatingReaderState.LOOKING_FOR_START1;
               this.internalDataLen = 0;
               return createFrameMsgInfo();
@@ -813,10 +820,12 @@ class AccumulatingReader {
 
             this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
           } else {
+            this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
           }
         } else {
+          this._diagnostics.cntSyncRecoveries++;
           this._state = AccumulatingReaderState.LOOKING_FOR_START1;
           this.internalDataLen = 0;
         }
@@ -835,9 +844,23 @@ class AccumulatingReader {
           }
         }
 
+        // Check for length mismatch against expected message struct size
+        if (this.config.payload.hasLength && this.getMessageInfo) {
+          let fullMsgId = 0;
+          if (this.config.payload.hasPkgId) {
+            fullMsgId = (this.internalBuffer[headerSize - 2] << 8);
+          }
+          fullMsgId |= this.internalBuffer[headerSize - 1];
+          const info = this.getMessageInfo(fullMsgId);
+          if (info !== undefined && info.size !== payloadLen) {
+            this._diagnostics.cntLenErrors++;
+          }
+        }
+
         this.expectedFrameSize = headerSize + payloadLen + footerSize;
 
         if (this.expectedFrameSize > this.bufferSize) {
+          this._diagnostics.cntSyncRecoveries++;
           this._state = AccumulatingReaderState.LOOKING_FOR_START1;
           this.internalDataLen = 0;
           return createFrameMsgInfo();
@@ -856,6 +879,7 @@ class AccumulatingReader {
 
   _handleCollectingPayload(byte) {
     if (this.internalDataLen >= this.bufferSize) {
+      this._diagnostics.cntSyncRecoveries++;
       this._state = AccumulatingReaderState.LOOKING_FOR_START1;
       this.internalDataLen = 0;
       return createFrameMsgInfo();
@@ -879,6 +903,7 @@ class AccumulatingReader {
         this.expectedFrameSize = headerSize + msgLen;
 
         if (this.expectedFrameSize > this.bufferSize) {
+          this._diagnostics.cntSyncRecoveries++;
           this._state = AccumulatingReaderState.LOOKING_FOR_START1;
           this.internalDataLen = 0;
           return createFrameMsgInfo();
@@ -898,10 +923,12 @@ class AccumulatingReader {
 
         this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
       } else {
+        this._diagnostics.cntSyncRecoveries++;
         this._state = AccumulatingReaderState.LOOKING_FOR_START1;
         this.internalDataLen = 0;
       }
     } else {
+      this._diagnostics.cntSyncRecoveries++;
       this._state = AccumulatingReaderState.LOOKING_FOR_START1;
       this.internalDataLen = 0;
     }
@@ -915,6 +942,25 @@ class AccumulatingReader {
     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
     this.internalDataLen = 0;
     this.expectedFrameSize = 0;
+
+    if (result.valid) {
+      // Check for sequence gap on profiles that carry a sequence number
+      if (this.config.payload.hasSeq) {
+        const seq = this.internalBuffer[this.config.header.numStartBytes];
+        if (this._lastSeq !== null) {
+          const expectedSeq = (this._lastSeq + 1) & 0xFF;
+          if (seq !== expectedSeq) {
+            this._diagnostics.cntSeqGaps++;
+          }
+        }
+        this._lastSeq = seq;
+      }
+    } else {
+      if (this.config.payload.hasCrc) {
+        this._diagnostics.cntCrcFailures++;
+      }
+      this._diagnostics.cntSyncRecoveries++;
+    }
 
     return result;
   }
@@ -963,6 +1009,17 @@ class AccumulatingReader {
     this.currentBuffer = null;
     this.currentSize = 0;
     this.currentOffset = 0;
+    this._lastSeq = null;
+  }
+
+  /** Get a snapshot of the current diagnostic counters. */
+  get diagnostics() {
+    return { ...this._diagnostics };
+  }
+
+  /** Reset all diagnostic counters to zero. */
+  resetDiagnostics() {
+    this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntLenErrors: 0, cntSeqGaps: 0 };
   }
 }
 

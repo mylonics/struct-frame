@@ -40,6 +40,11 @@ namespace StructFrame.Framing
         private int _currentOffset;
         private int _currentSize;
 
+        // Diagnostic counters (stream mode)
+        private ParserDiagnostics _diagnostics;
+        private byte _lastSeq;
+        private bool _lastSeqValid;
+
         public AccumulatingReader(ProfileConfig config, int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             _config = config;
@@ -47,6 +52,9 @@ namespace StructFrame.Framing
             _getMessageInfo = getMessageInfo;
             _parser = new BufferParser(config, getMessageInfo);
             _internalBuffer = new byte[bufferSize];
+            _diagnostics = default;
+            _lastSeq = 0;
+            _lastSeqValid = false;
             Reset();
         }
 
@@ -61,6 +69,20 @@ namespace StructFrame.Framing
             _currentBuffer = null;
             _currentOffset = 0;
             _currentSize = 0;
+            _lastSeqValid = false;
+        }
+
+        /// <summary>
+        /// Get a snapshot of the current diagnostic counters.
+        /// </summary>
+        public ParserDiagnostics Diagnostics => _diagnostics;
+
+        /// <summary>
+        /// Reset all diagnostic counters to zero.
+        /// </summary>
+        public void ResetDiagnostics()
+        {
+            _diagnostics = default;
         }
 
         /// <summary>
@@ -276,6 +298,7 @@ namespace StructFrame.Framing
             }
             else
             {
+                _diagnostics.CntSyncRecoveries++;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
             }
@@ -286,6 +309,7 @@ namespace StructFrame.Framing
         {
             if (_internalDataLen >= _bufferSize)
             {
+                _diagnostics.CntSyncRecoveries++;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
                 return FrameMsgInfo.Invalid;
@@ -305,6 +329,7 @@ namespace StructFrame.Framing
 
                         if (_expectedFrameSize > _bufferSize)
                         {
+                            _diagnostics.CntSyncRecoveries++;
                             _state = State.LookingForStart1;
                             _internalDataLen = 0;
                             return FrameMsgInfo.Invalid;
@@ -323,6 +348,7 @@ namespace StructFrame.Framing
                     }
                     else
                     {
+                        _diagnostics.CntSyncRecoveries++;
                         _state = State.LookingForStart1;
                         _internalDataLen = 0;
                     }
@@ -347,10 +373,27 @@ namespace StructFrame.Framing
                         }
                     }
 
+                    // Check for length mismatch against expected message struct size
+                    if (_config.HasLength && _getMessageInfo != null)
+                    {
+                        int fullMsgId = 0;
+                        if (_config.HasPkgId)
+                        {
+                            fullMsgId = _internalBuffer[_config.HeaderSize - 2] << 8;
+                        }
+                        fullMsgId |= _internalBuffer[_config.HeaderSize - 1];
+                        var info = _getMessageInfo(fullMsgId);
+                        if (info.HasValue && info.Value.Size != payloadLen)
+                        {
+                            _diagnostics.CntLenErrors++;
+                        }
+                    }
+
                     _expectedFrameSize = _config.Overhead + payloadLen;
 
                     if (_expectedFrameSize > _bufferSize)
                     {
+                        _diagnostics.CntSyncRecoveries++;
                         _state = State.LookingForStart1;
                         _internalDataLen = 0;
                         return FrameMsgInfo.Invalid;
@@ -372,6 +415,7 @@ namespace StructFrame.Framing
         {
             if (_internalDataLen >= _bufferSize)
             {
+                _diagnostics.CntSyncRecoveries++;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
                 return FrameMsgInfo.Invalid;
@@ -396,6 +440,7 @@ namespace StructFrame.Framing
 
                 if (_expectedFrameSize > _bufferSize)
                 {
+                    _diagnostics.CntSyncRecoveries++;
                     _state = State.LookingForStart1;
                     _internalDataLen = 0;
                     return FrameMsgInfo.Invalid;
@@ -414,6 +459,7 @@ namespace StructFrame.Framing
             }
             else
             {
+                _diagnostics.CntSyncRecoveries++;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
             }
@@ -427,6 +473,32 @@ namespace StructFrame.Framing
             _state = State.LookingForStart1;
             _internalDataLen = 0;
             _expectedFrameSize = 0;
+
+            if (result.Valid)
+            {
+                if (_config.HasSeq)
+                {
+                    byte seq = _internalBuffer[_config.NumStartBytes];
+                    if (_lastSeqValid)
+                    {
+                        byte expectedSeq = (byte)((_lastSeq + 1) & 0xFF);
+                        if (seq != expectedSeq)
+                        {
+                            _diagnostics.CntSeqGaps++;
+                        }
+                    }
+                    _lastSeq = seq;
+                    _lastSeqValid = true;
+                }
+            }
+            else
+            {
+                if (_config.HasCrc)
+                {
+                    _diagnostics.CntCrcFailures++;
+                }
+                _diagnostics.CntSyncRecoveries++;
+            }
 
             return result;
         }

@@ -641,6 +641,31 @@ export enum AccumulatingReaderState {
 }
 
 /**
+ * Diagnostic counters for the AccumulatingReader (stream mode).
+ *
+ * All counters accumulate over the reader's lifetime. Call resetDiagnostics()
+ * to clear them.
+ *
+ * - cntCrcFailures:   Complete frames received with a bad CRC.
+ *                     Indicates noise or corruption on the line.
+ * - cntSyncRecoveries: Times the parser discarded bytes and re-searched for a
+ *                     frame start. Indicates lost bytes or buffer overflows.
+ * - cntLenErrors:     Frames where the header length field does not match the
+ *                     expected message-struct size from getMessageInfo().
+ *                     Vital for detecting mismatched definitions on profiles
+ *                     that carry an explicit length.
+ * - cntSeqGaps:       Sequence-number gaps. Only incremented on profiles that
+ *                     carry a sequence field (e.g. ProfileNetwork). Indicates
+ *                     dropped packets.
+ */
+export interface ParserDiagnostics {
+    cntCrcFailures: number;
+    cntSyncRecoveries: number;
+    cntLenErrors: number;
+    cntSeqGaps: number;
+}
+
+/**
  * AccumulatingReader - Unified parser for buffer and byte-by-byte streaming input.
  *
  * Handles partial messages across buffer boundaries and supports both:
@@ -682,6 +707,10 @@ export class AccumulatingReader {
     private currentSize: number;
     private currentOffset: number;
 
+    // Diagnostic counters (stream mode)
+    private _diagnostics: ParserDiagnostics;
+    private _lastSeq: number | null;
+
     constructor(
         config: FrameProfileConfig,
         getMessageInfo?: GetMessageInfo,
@@ -699,6 +728,9 @@ export class AccumulatingReader {
         this.currentBuffer = null;
         this.currentSize = 0;
         this.currentOffset = 0;
+
+        this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+        this._lastSeq = null;
     }
 
     // =========================================================================
@@ -839,6 +871,7 @@ export class AccumulatingReader {
             this.internalBuffer[0] = byte;
             this.internalDataLen = 1;
         } else {
+            this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
         }
@@ -847,6 +880,7 @@ export class AccumulatingReader {
 
     private handleCollectingHeader(byte: number): FrameMsgInfo {
         if (this.internalDataLen >= this.bufferSize) {
+            this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
             return createFrameMsgInfo();
@@ -866,6 +900,7 @@ export class AccumulatingReader {
                         this.expectedFrameSize = headerSize + msgLen;
 
                         if (this.expectedFrameSize > this.bufferSize) {
+                            this._diagnostics.cntSyncRecoveries++;
                             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                             this.internalDataLen = 0;
                             return createFrameMsgInfo();
@@ -885,10 +920,12 @@ export class AccumulatingReader {
 
                         this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
                     } else {
+                        this._diagnostics.cntSyncRecoveries++;
                         this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                         this.internalDataLen = 0;
                     }
                 } else {
+                    this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
                 }
@@ -907,9 +944,23 @@ export class AccumulatingReader {
                     }
                 }
 
+                // Check for length mismatch against expected message struct size
+                if (this.config.payload.hasLength && this.getMessageInfo) {
+                    let fullMsgId = 0;
+                    if (this.config.payload.hasPkgId) {
+                        fullMsgId = (this.internalBuffer[headerSize - 2] << 8);
+                    }
+                    fullMsgId |= this.internalBuffer[headerSize - 1];
+                    const info = this.getMessageInfo(fullMsgId);
+                    if (info !== undefined && info.size !== payloadLen) {
+                        this._diagnostics.cntLenErrors++;
+                    }
+                }
+
                 this.expectedFrameSize = headerSize + payloadLen + footerSize;
 
                 if (this.expectedFrameSize > this.bufferSize) {
+                    this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
                     return createFrameMsgInfo();
@@ -928,6 +979,7 @@ export class AccumulatingReader {
 
     private handleCollectingPayload(byte: number): FrameMsgInfo {
         if (this.internalDataLen >= this.bufferSize) {
+            this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
             return createFrameMsgInfo();
@@ -951,6 +1003,7 @@ export class AccumulatingReader {
                 this.expectedFrameSize = headerSize + msgLen;
 
                 if (this.expectedFrameSize > this.bufferSize) {
+                    this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
                     return createFrameMsgInfo();
@@ -970,10 +1023,12 @@ export class AccumulatingReader {
 
                 this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
             } else {
+                this._diagnostics.cntSyncRecoveries++;
                 this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                 this.internalDataLen = 0;
             }
         } else {
+            this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
         }
@@ -987,6 +1042,25 @@ export class AccumulatingReader {
         this._state = AccumulatingReaderState.LOOKING_FOR_START1;
         this.internalDataLen = 0;
         this.expectedFrameSize = 0;
+
+        if (result.valid) {
+            // Check for sequence gap on profiles that carry a sequence number
+            if (this.config.payload.hasSeq) {
+                const seq = this.internalBuffer[this.config.header.numStartBytes];
+                if (this._lastSeq !== null) {
+                    const expectedSeq = (this._lastSeq + 1) & 0xFF;
+                    if (seq !== expectedSeq) {
+                        this._diagnostics.cntSeqGaps++;
+                    }
+                }
+                this._lastSeq = seq;
+            }
+        } else {
+            if (this.config.payload.hasCrc) {
+                this._diagnostics.cntCrcFailures++;
+            }
+            this._diagnostics.cntSyncRecoveries++;
+        }
 
         return result;
     }
@@ -1035,6 +1109,17 @@ export class AccumulatingReader {
         this.currentBuffer = null;
         this.currentSize = 0;
         this.currentOffset = 0;
+        this._lastSeq = null;
+    }
+
+    /** Get a snapshot of the current diagnostic counters. */
+    get diagnostics(): ParserDiagnostics {
+        return { ...this._diagnostics };
+    }
+
+    /** Reset all diagnostic counters to zero. */
+    resetDiagnostics(): void {
+        this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntLenErrors: 0, cntSeqGaps: 0 };
     }
 }
 

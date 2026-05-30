@@ -85,6 +85,34 @@ struct FrameMsgInfo {
 };
 
 /**
+ * Diagnostic counters for the AccumulatingReader (stream mode).
+ *
+ * All counters accumulate over the reader's lifetime. Call
+ * reset_diagnostics() to clear them.
+ *
+ * cnt_crc_failures:   Complete frames received with a bad CRC.
+ *                     Indicates noise or corruption on the line.
+ * cnt_sync_recoveries: Times the parser discarded bytes and re-searched for
+ *                     a frame start. Indicates lost bytes or buffer overflows.
+ * cnt_len_errors:     Frames where the header length field does not match the
+ *                     expected message-struct size from get_message_info().
+ *                     Vital for detecting mismatched definitions on profiles
+ *                     that carry an explicit length.
+ * cnt_seq_gaps:       Sequence-number gaps. Only incremented on profiles that
+ *                     carry a sequence field (e.g. ProfileNetwork). Indicates
+ *                     dropped packets.
+ */
+struct ParserDiagnostics {
+  uint32_t cnt_crc_failures;
+  uint32_t cnt_sync_recoveries;
+  uint32_t cnt_len_errors;
+  uint32_t cnt_seq_gaps;
+
+  ParserDiagnostics()
+      : cnt_crc_failures(0), cnt_sync_recoveries(0), cnt_len_errors(0), cnt_seq_gaps(0) {}
+};
+
+/**
  * Base class for message types with associated metadata.
  * Template parameters embed msg_id, max_size, and magic bytes as compile-time constants.
  *

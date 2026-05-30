@@ -34,7 +34,7 @@ try:
         PAYLOAD_MINIMAL_CONFIG, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
         PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG
     )
-    from .frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameChecksum, ParserState
+    from .frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameChecksum, ParserState, ParserDiagnostics
 except ImportError:
     from frame_headers import (
         HeaderType, HeaderConfig,
@@ -46,7 +46,7 @@ except ImportError:
         PAYLOAD_MINIMAL_CONFIG, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
         PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG
     )
-    from frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameChecksum, ParserState
+    from frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameChecksum, ParserState, ParserDiagnostics
 
 
 # =============================================================================
@@ -994,6 +994,10 @@ class AccumulatingReader:
         self._current_buffer: Optional[bytes] = None
         self._current_size = 0
         self._current_offset = 0
+        
+        # Diagnostic counters (stream mode)
+        self._diag = ParserDiagnostics()
+        self._last_seq: Optional[int] = None  # last seen sequence number
     
     # =========================================================================
     # Buffer Mode API
@@ -1139,7 +1143,8 @@ class AccumulatingReader:
             self._internal_buffer[0] = byte
             self._internal_data_len = 1
         else:
-            # Invalid - go back to looking for start
+            # Invalid byte - lost sync; discard and restart
+            self._diag.cnt_sync_recoveries += 1
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
             self._internal_data_len = 0
         
@@ -1149,6 +1154,7 @@ class AccumulatingReader:
         """Handle COLLECTING_HEADER state"""
         if self._internal_data_len >= self._buffer_size:
             # Buffer overflow - reset
+            self._diag.cnt_sync_recoveries += 1
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
             self._internal_data_len = 0
             return FrameMsgInfo()
@@ -1168,6 +1174,7 @@ class AccumulatingReader:
                         self._expected_frame_size = self._config.header_size + msg_len
                         
                         if self._expected_frame_size > self._buffer_size:
+                            self._diag.cnt_sync_recoveries += 1
                             self._state = AccumulatingReaderState.LOOKING_FOR_START1
                             self._internal_data_len = 0
                             return FrameMsgInfo()
@@ -1188,9 +1195,11 @@ class AccumulatingReader:
                         
                         self._state = AccumulatingReaderState.COLLECTING_PAYLOAD
                     else:
+                        self._diag.cnt_sync_recoveries += 1
                         self._state = AccumulatingReaderState.LOOKING_FOR_START1
                         self._internal_data_len = 0
                 else:
+                    self._diag.cnt_sync_recoveries += 1
                     self._state = AccumulatingReaderState.LOOKING_FOR_START1
                     self._internal_data_len = 0
             else:
@@ -1212,9 +1221,22 @@ class AccumulatingReader:
                     else:
                         payload_len = self._internal_buffer[len_offset] | (self._internal_buffer[len_offset + 1] << 8)
                 
+                # Check for length mismatch against the expected message struct size
+                if self._config.has_length and self._get_message_info is not None:
+                    if self._config.has_package_id:
+                        pkg_id = self._internal_buffer[self._config.header_size - 2]
+                        low_msg_id = self._internal_buffer[self._config.header_size - 1]
+                        full_msg_id = (pkg_id << 8) | low_msg_id
+                    else:
+                        full_msg_id = self._internal_buffer[self._config.header_size - 1]
+                    msg_info = self._get_message_info(full_msg_id)
+                    if msg_info is not None and msg_info.size != payload_len:
+                        self._diag.cnt_len_errors += 1
+
                 self._expected_frame_size = self._config.overhead + payload_len
                 
                 if self._expected_frame_size > self._buffer_size:
+                    self._diag.cnt_sync_recoveries += 1
                     self._state = AccumulatingReaderState.LOOKING_FOR_START1
                     self._internal_data_len = 0
                     return FrameMsgInfo()
@@ -1231,6 +1253,7 @@ class AccumulatingReader:
         """Handle COLLECTING_PAYLOAD state"""
         if self._internal_data_len >= self._buffer_size:
             # Buffer overflow - reset
+            self._diag.cnt_sync_recoveries += 1
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
             self._internal_data_len = 0
             return FrameMsgInfo()
@@ -1290,6 +1313,20 @@ class AccumulatingReader:
         self._internal_data_len = 0
         self._expected_frame_size = 0
         
+        if result.valid:
+            # Check for sequence gap (profiles that carry a sequence number)
+            if self._config.has_sequence:
+                if self._last_seq is not None:
+                    expected_seq = (self._last_seq + 1) & 0xFF
+                    if result.sequence != expected_seq:
+                        self._diag.cnt_seq_gaps += 1
+                self._last_seq = result.sequence
+        else:
+            # Invalid frame — count CRC failures and sync recoveries
+            if self._config.has_crc:
+                self._diag.cnt_crc_failures += 1
+            self._diag.cnt_sync_recoveries += 1
+        
         return result
     
     def _parse_buffer(self, buffer: bytes) -> FrameMsgInfo:
@@ -1324,6 +1361,25 @@ class AccumulatingReader:
         """Get current parser state (for debugging)."""
         return self._state
     
+    @property
+    def diagnostics(self) -> ParserDiagnostics:
+        """Return a snapshot of the current diagnostic counters.
+
+        Counters accumulate over the reader's lifetime. Call
+        reset_diagnostics() to clear them.
+        """
+        return ParserDiagnostics(
+            cnt_crc_failures=self._diag.cnt_crc_failures,
+            cnt_sync_recoveries=self._diag.cnt_sync_recoveries,
+            cnt_len_errors=self._diag.cnt_len_errors,
+            cnt_seq_gaps=self._diag.cnt_seq_gaps,
+        )
+
+    def reset_diagnostics(self) -> None:
+        """Reset all diagnostic counters to zero."""
+        self._diag = ParserDiagnostics()
+        self._last_seq = None
+    
     def reset(self):
         """Reset the reader, clearing any partial message data."""
         self._internal_data_len = 0
@@ -1332,6 +1388,7 @@ class AccumulatingReader:
         self._current_buffer = None
         self._current_size = 0
         self._current_offset = 0
+        self._last_seq = None
 
 
 # =============================================================================

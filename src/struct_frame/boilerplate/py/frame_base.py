@@ -118,6 +118,41 @@ class FrameMsgInfo:
 
 
 # =============================================================================
+# Parser Diagnostics
+# =============================================================================
+
+@dataclass
+class ParserDiagnostics:
+    """
+    Error counters for parser diagnostics.
+
+    Tracks error events detected by the AccumulatingReader in stream mode.
+    These counters accumulate over the reader's lifetime and can be reset
+    with reset_diagnostics().
+
+    Attributes:
+        cnt_crc_failures:   Complete frames where CRC validation failed.
+                            Indicates noise or corruption on the line.
+        cnt_sync_recoveries: Times the parser had to discard bytes and
+                            re-search for a frame start.  Indicates lost
+                            bytes or buffer overflows.
+        cnt_len_errors:     Frames where the length in the header does not
+                            match the expected message-struct size returned
+                            by get_message_info().  Vital for detecting
+                            sender/receiver definition mismatches on the
+                            "Implicit Length" profile.
+        cnt_seq_gaps:       Sequence-number gaps in received messages.
+                            Only incremented on profiles that carry a
+                            sequence field (e.g. ProfileNetwork).
+                            Indicates dropped packets.
+    """
+    cnt_crc_failures: int = 0
+    cnt_sync_recoveries: int = 0
+    cnt_len_errors: int = 0
+    cnt_seq_gaps: int = 0
+
+
+# =============================================================================
 # Parser State (for streaming parsers)
 # =============================================================================
 

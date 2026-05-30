@@ -98,4 +98,4 @@ export {
     ProfileNetworkWriter,
     ProfileNetworkAccumulatingReader,
 } from './frame-profiles';
-
+export type { ParserDiagnostics } from './frame-profiles';

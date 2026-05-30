@@ -94,6 +94,31 @@ typedef struct frame_msg_info {
   uint8_t* msg_data;
 } frame_msg_info_t;
 
+/**
+ * Diagnostic counters for the accumulating_reader_t (stream mode).
+ *
+ * All counters accumulate over the reader's lifetime.  Call
+ * accumulating_reader_reset_diagnostics() to clear them.
+ *
+ * cnt_crc_failures:   Complete frames received with a bad CRC.
+ *                     Indicates noise or corruption on the line.
+ * cnt_sync_recoveries: Times the parser discarded bytes and re-searched for
+ *                     a frame start.  Indicates lost bytes or buffer overflows.
+ * cnt_len_errors:     Frames where the header length field does not match the
+ *                     expected message-struct size from get_message_info.
+ *                     Vital for detecting mismatched definitions on profiles
+ *                     with an explicit length field.
+ * cnt_seq_gaps:       Sequence-number gaps.  Only incremented on profiles that
+ *                     carry a sequence field (e.g. network_accumulating_reader).
+ *                     Indicates dropped packets.
+ */
+typedef struct frame_parser_diagnostics {
+  uint32_t cnt_crc_failures;
+  uint32_t cnt_sync_recoveries;
+  uint32_t cnt_len_errors;
+  uint32_t cnt_seq_gaps;
+} frame_parser_diagnostics_t;
+
 /*===========================================================================
  * Shared Payload Parsing Functions
  *===========================================================================
