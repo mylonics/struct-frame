@@ -34,7 +34,7 @@ try:
         PAYLOAD_MINIMAL_CONFIG, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
         PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG
     )
-    from .frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameChecksum, ParserState, ParserDiagnostics
+    from .frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameMsgStatus, FrameChecksum, ParserState, ParserDiagnostics
 except ImportError:
     from frame_headers import (
         HeaderType, HeaderConfig,
@@ -46,7 +46,7 @@ except ImportError:
         PAYLOAD_MINIMAL_CONFIG, PAYLOAD_DEFAULT_CONFIG, PAYLOAD_EXTENDED_CONFIG,
         PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG
     )
-    from frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameChecksum, ParserState, ParserDiagnostics
+    from frame_base import fletcher_checksum, fletcher_checksum_ext, FrameMsgInfo, FrameMsgStatus, FrameChecksum, ParserState, ParserDiagnostics
 
 
 # =============================================================================
@@ -1107,7 +1107,7 @@ class AccumulatingReader:
             return self._handle_collecting_payload(byte)
         else:
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
-            return FrameMsgInfo()
+            return FrameMsgInfo(status=FrameMsgStatus.WAITING_FOR_START)
     
     def _handle_looking_for_start1(self, byte: int) -> FrameMsgInfo:
         """Handle LOOKING_FOR_START1 state"""
@@ -1129,8 +1129,10 @@ class AccumulatingReader:
                     self._state = AccumulatingReaderState.COLLECTING_HEADER
                 else:
                     self._state = AccumulatingReaderState.LOOKING_FOR_START2
+            else:
+                return FrameMsgInfo(status=FrameMsgStatus.WAITING_FOR_START)
         
-        return FrameMsgInfo()
+        return FrameMsgInfo(status=FrameMsgStatus.COLLECTING)
     
     def _handle_looking_for_start2(self, byte: int) -> FrameMsgInfo:
         """Handle LOOKING_FOR_START2 state"""
@@ -1147,8 +1149,9 @@ class AccumulatingReader:
             self._diag.cnt_sync_recoveries += 1
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
             self._internal_data_len = 0
+            return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
         
-        return FrameMsgInfo()
+        return FrameMsgInfo(status=FrameMsgStatus.COLLECTING)
     
     def _handle_collecting_header(self, byte: int) -> FrameMsgInfo:
         """Handle COLLECTING_HEADER state"""
@@ -1157,7 +1160,7 @@ class AccumulatingReader:
             self._diag.cnt_sync_recoveries += 1
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
             self._internal_data_len = 0
-            return FrameMsgInfo()
+            return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
         
         self._internal_buffer[self._internal_data_len] = byte
         self._internal_data_len += 1
@@ -1177,7 +1180,7 @@ class AccumulatingReader:
                             self._diag.cnt_sync_recoveries += 1
                             self._state = AccumulatingReaderState.LOOKING_FOR_START1
                             self._internal_data_len = 0
-                            return FrameMsgInfo()
+                            return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
                         
                         if msg_len == 0:
                             # Zero-length message - complete!
@@ -1198,10 +1201,12 @@ class AccumulatingReader:
                         self._diag.cnt_sync_recoveries += 1
                         self._state = AccumulatingReaderState.LOOKING_FOR_START1
                         self._internal_data_len = 0
+                        return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
                 else:
                     self._diag.cnt_sync_recoveries += 1
                     self._state = AccumulatingReaderState.LOOKING_FOR_START1
                     self._internal_data_len = 0
+                    return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
             else:
                 # Calculate payload length from header
                 len_offset = self._config.num_start_bytes
@@ -1239,7 +1244,7 @@ class AccumulatingReader:
                     self._diag.cnt_sync_recoveries += 1
                     self._state = AccumulatingReaderState.LOOKING_FOR_START1
                     self._internal_data_len = 0
-                    return FrameMsgInfo()
+                    return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
                 
                 # Check if we already have the complete frame
                 if self._internal_data_len >= self._expected_frame_size:
@@ -1247,7 +1252,7 @@ class AccumulatingReader:
                 
                 self._state = AccumulatingReaderState.COLLECTING_PAYLOAD
         
-        return FrameMsgInfo()
+        return FrameMsgInfo(status=FrameMsgStatus.COLLECTING)
     
     def _handle_collecting_payload(self, byte: int) -> FrameMsgInfo:
         """Handle COLLECTING_PAYLOAD state"""
@@ -1256,7 +1261,7 @@ class AccumulatingReader:
             self._diag.cnt_sync_recoveries += 1
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
             self._internal_data_len = 0
-            return FrameMsgInfo()
+            return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
         
         self._internal_buffer[self._internal_data_len] = byte
         self._internal_data_len += 1
@@ -1264,7 +1269,7 @@ class AccumulatingReader:
         if self._internal_data_len >= self._expected_frame_size:
             return self._validate_and_return()
         
-        return FrameMsgInfo()
+        return FrameMsgInfo(status=FrameMsgStatus.COLLECTING)
     
     def _handle_minimal_msg_id(self, msg_id: int) -> FrameMsgInfo:
         """Handle minimal profile msg_id"""
@@ -1275,9 +1280,10 @@ class AccumulatingReader:
                 self._expected_frame_size = self._config.header_size + msg_len
                 
                 if self._expected_frame_size > self._buffer_size:
+                    self._diag.cnt_sync_recoveries += 1
                     self._state = AccumulatingReaderState.LOOKING_FOR_START1
                     self._internal_data_len = 0
-                    return FrameMsgInfo()
+                    return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
                 
                 if msg_len == 0:
                     # Zero-length message - complete!
@@ -1294,14 +1300,17 @@ class AccumulatingReader:
                     return result
                 
                 self._state = AccumulatingReaderState.COLLECTING_PAYLOAD
+                return FrameMsgInfo(status=FrameMsgStatus.COLLECTING)
             else:
+                self._diag.cnt_sync_recoveries += 1
                 self._state = AccumulatingReaderState.LOOKING_FOR_START1
                 self._internal_data_len = 0
+                return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
         else:
+            self._diag.cnt_sync_recoveries += 1
             self._state = AccumulatingReaderState.LOOKING_FOR_START1
             self._internal_data_len = 0
-        
-        return FrameMsgInfo()
+            return FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
     
     def _validate_and_return(self) -> FrameMsgInfo:
         """Validate and return completed message"""
@@ -1325,6 +1334,7 @@ class AccumulatingReader:
             # Invalid frame — count CRC failures and sync recoveries
             if self._config.has_crc:
                 self._diag.cnt_crc_failures += 1
+                result.status = FrameMsgStatus.CRC_FAILURE
             self._diag.cnt_sync_recoveries += 1
         
         return result

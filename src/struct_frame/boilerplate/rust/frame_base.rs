@@ -55,6 +55,17 @@ pub fn fletcher_checksum_ext(base_data: &[u8], ext_data: &[u8], magic1: u8, magi
     FrameChecksum { byte1: b1, byte2: b2 }
 }
 
+/// Parser status indicating the reason a FrameMsgInfo is not valid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FrameMsgStatus {
+    #[default]
+    None = 0,
+    WaitingForStart = 1,
+    Collecting = 2,
+    CrcFailure = 3,
+    SyncRecovery = 4,
+}
+
 /// Result from frame parsing.
 #[derive(Debug, Clone, Default)]
 pub struct FrameMsgInfo {
@@ -68,6 +79,8 @@ pub struct FrameMsgInfo {
     pub component_id: u8,
     /// The raw message payload bytes (excluding framing overhead).
     pub payload: Vec<u8>,
+    /// Status indicating the reason this result is not valid (only meaningful when valid is false).
+    pub status: FrameMsgStatus,
 }
 
 impl FrameMsgInfo {

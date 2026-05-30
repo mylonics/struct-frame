@@ -1,7 +1,7 @@
 // Frame Profiles - Pre-defined Header + Payload combinations (Rust)
 // Mirrors frame_profiles.h from C boilerplate
 
-use crate::frame_base::{fletcher_checksum, fletcher_checksum_ext, FrameChecksum, FrameMsgInfo, MessageInfo, ParserDiagnostics, StructFrameMessage};
+use crate::frame_base::{fletcher_checksum, fletcher_checksum_ext, FrameChecksum, FrameMsgInfo, FrameMsgStatus, MessageInfo, ParserDiagnostics, StructFrameMessage};
 use crate::frame_headers::{
     get_basic_second_start_byte, get_tiny_start_byte, HeaderConfig, HeaderType,
     BASIC_START_BYTE, HEADER_BASIC_CONFIG, HEADER_NONE_CONFIG, HEADER_TINY_CONFIG,
@@ -389,7 +389,7 @@ pub fn parse_with_crc(
             fletcher_checksum(&buffer[crc_start..crc_start + crc_len], magic1, magic2)
         };
         if ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1] {
-            return FrameMsgInfo::invalid();
+            return FrameMsgInfo { status: FrameMsgStatus::CrcFailure, ..FrameMsgInfo::invalid() };
         }
     }
 
@@ -406,6 +406,7 @@ pub fn parse_with_crc(
         system_id: sys_id,
         component_id: comp_id,
         payload,
+        ..Default::default()
     }
 }
 

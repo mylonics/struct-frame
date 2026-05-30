@@ -28,7 +28,7 @@ import {
     payloadHeaderSize,
     payloadFooterSize,
 } from './payload-types';
-import { fletcherChecksum, fletcherChecksumExt, createFrameMsgInfo, FrameMsgInfo } from './frame-base';
+import { fletcherChecksum, fletcherChecksumExt, createFrameMsgInfo, FrameMsgInfo, FrameMsgStatus } from './frame-base';
 import { MessageBase } from './struct-base';
 
 // =============================================================================
@@ -860,7 +860,11 @@ export class AccumulatingReader {
                 }
             }
         }
-        return createFrameMsgInfo();
+        const r = createFrameMsgInfo();
+        r.status = (this._state === AccumulatingReaderState.LOOKING_FOR_START1)
+            ? FrameMsgStatus.WaitingForStart
+            : FrameMsgStatus.Collecting;
+        return r;
     }
 
     private handleLookingForStart2(byte: number): FrameMsgInfo {
@@ -874,8 +878,13 @@ export class AccumulatingReader {
             this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
+            const r = createFrameMsgInfo();
+            r.status = FrameMsgStatus.SyncRecovery;
+            return r;
         }
-        return createFrameMsgInfo();
+        const r = createFrameMsgInfo();
+        r.status = FrameMsgStatus.Collecting;
+        return r;
     }
 
     private handleCollectingHeader(byte: number): FrameMsgInfo {
@@ -883,7 +892,7 @@ export class AccumulatingReader {
             this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
-            return createFrameMsgInfo();
+            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
         }
 
         this.internalBuffer[this.internalDataLen++] = byte;
@@ -903,7 +912,7 @@ export class AccumulatingReader {
                             this._diagnostics.cntSyncRecoveries++;
                             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                             this.internalDataLen = 0;
-                            return createFrameMsgInfo();
+                            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
                         }
 
                         if (msgLen === 0) {
@@ -923,11 +932,13 @@ export class AccumulatingReader {
                         this._diagnostics.cntSyncRecoveries++;
                         this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                         this.internalDataLen = 0;
+                        const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
                     }
                 } else {
                     this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
+                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
                 }
             } else {
                 let lenOffset = this.config.header.numStartBytes;
@@ -963,7 +974,7 @@ export class AccumulatingReader {
                     this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
-                    return createFrameMsgInfo();
+                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
                 }
 
                 if (this.internalDataLen >= this.expectedFrameSize) {
@@ -974,7 +985,9 @@ export class AccumulatingReader {
             }
         }
 
-        return createFrameMsgInfo();
+        const r = createFrameMsgInfo();
+        r.status = FrameMsgStatus.Collecting;
+        return r;
     }
 
     private handleCollectingPayload(byte: number): FrameMsgInfo {
@@ -982,7 +995,7 @@ export class AccumulatingReader {
             this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
-            return createFrameMsgInfo();
+            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
         }
 
         this.internalBuffer[this.internalDataLen++] = byte;
@@ -991,7 +1004,9 @@ export class AccumulatingReader {
             return this.validateAndReturn();
         }
 
-        return createFrameMsgInfo();
+        const r = createFrameMsgInfo();
+        r.status = FrameMsgStatus.Collecting;
+        return r;
     }
 
     private handleMinimalMsgId(msgId: number): FrameMsgInfo {
@@ -1006,7 +1021,7 @@ export class AccumulatingReader {
                     this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
-                    return createFrameMsgInfo();
+                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
                 }
 
                 if (msgLen === 0) {
@@ -1026,13 +1041,17 @@ export class AccumulatingReader {
                 this._diagnostics.cntSyncRecoveries++;
                 this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                 this.internalDataLen = 0;
+                const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
             }
         } else {
             this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
+            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
         }
-        return createFrameMsgInfo();
+        const r = createFrameMsgInfo();
+        r.status = FrameMsgStatus.Collecting;
+        return r;
     }
 
     private validateAndReturn(): FrameMsgInfo {
@@ -1058,6 +1077,9 @@ export class AccumulatingReader {
         } else {
             if (this.config.payload.hasCrc) {
                 this._diagnostics.cntCrcFailures++;
+                result.status = FrameMsgStatus.CrcFailure;
+            } else {
+                result.status = FrameMsgStatus.SyncRecovery;
             }
             this._diagnostics.cntSyncRecoveries++;
         }

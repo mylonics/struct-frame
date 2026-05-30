@@ -281,7 +281,9 @@ namespace StructFrame.Framing
                     }
                 }
             }
-            return FrameMsgInfo.Invalid;
+            return StatusResult(_state == State.LookingForStart1
+                ? FrameMsgStatus.WaitingForStart
+                : FrameMsgStatus.Collecting);
         }
 
         private FrameMsgInfo HandleLookingForStart2(byte b)
@@ -301,8 +303,9 @@ namespace StructFrame.Framing
                 _diagnostics.CntSyncRecoveries++;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
+                return StatusResult(FrameMsgStatus.SyncRecovery);
             }
-            return FrameMsgInfo.Invalid;
+            return StatusResult(FrameMsgStatus.Collecting);
         }
 
         private FrameMsgInfo HandleCollectingHeader(byte b)
@@ -312,7 +315,7 @@ namespace StructFrame.Framing
                 _diagnostics.CntSyncRecoveries++;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
-                return FrameMsgInfo.Invalid;
+                return StatusResult(FrameMsgStatus.SyncRecovery);
             }
 
             _internalBuffer[_internalDataLen++] = b;
@@ -332,7 +335,7 @@ namespace StructFrame.Framing
                             _diagnostics.CntSyncRecoveries++;
                             _state = State.LookingForStart1;
                             _internalDataLen = 0;
-                            return FrameMsgInfo.Invalid;
+                            return StatusResult(FrameMsgStatus.SyncRecovery);
                         }
 
                         if (msgInfo.Value.Size == 0)
@@ -351,6 +354,7 @@ namespace StructFrame.Framing
                         _diagnostics.CntSyncRecoveries++;
                         _state = State.LookingForStart1;
                         _internalDataLen = 0;
+                        return StatusResult(FrameMsgStatus.SyncRecovery);
                     }
                 }
                 else
@@ -396,7 +400,7 @@ namespace StructFrame.Framing
                         _diagnostics.CntSyncRecoveries++;
                         _state = State.LookingForStart1;
                         _internalDataLen = 0;
-                        return FrameMsgInfo.Invalid;
+                        return StatusResult(FrameMsgStatus.SyncRecovery);
                     }
 
                     if (_internalDataLen >= _expectedFrameSize)
@@ -408,7 +412,7 @@ namespace StructFrame.Framing
                 }
             }
 
-            return FrameMsgInfo.Invalid;
+            return StatusResult(FrameMsgStatus.Collecting);
         }
 
         private FrameMsgInfo HandleCollectingPayload(byte b)
@@ -418,7 +422,7 @@ namespace StructFrame.Framing
                 _diagnostics.CntSyncRecoveries++;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
-                return FrameMsgInfo.Invalid;
+                return StatusResult(FrameMsgStatus.SyncRecovery);
             }
 
             _internalBuffer[_internalDataLen++] = b;
@@ -428,7 +432,7 @@ namespace StructFrame.Framing
                 return ValidateAndReturn();
             }
 
-            return FrameMsgInfo.Invalid;
+            return StatusResult(FrameMsgStatus.Collecting);
         }
 
         private FrameMsgInfo HandleMinimalMsgId(byte msgId)
@@ -443,7 +447,7 @@ namespace StructFrame.Framing
                     _diagnostics.CntSyncRecoveries++;
                     _state = State.LookingForStart1;
                     _internalDataLen = 0;
-                    return FrameMsgInfo.Invalid;
+                    return StatusResult(FrameMsgStatus.SyncRecovery);
                 }
 
                 if (msgInfo.Value.Size == 0)
@@ -462,8 +466,9 @@ namespace StructFrame.Framing
                 _diagnostics.CntSyncRecoveries++;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
+                return StatusResult(FrameMsgStatus.SyncRecovery);
             }
-            return FrameMsgInfo.Invalid;
+            return StatusResult(FrameMsgStatus.Collecting);
         }
 
         private FrameMsgInfo ValidateAndReturn()
@@ -496,11 +501,23 @@ namespace StructFrame.Framing
                 if (_config.HasCrc)
                 {
                     _diagnostics.CntCrcFailures++;
+                    result.Status = FrameMsgStatus.CrcFailure;
+                }
+                else
+                {
+                    result.Status = FrameMsgStatus.SyncRecovery;
                 }
                 _diagnostics.CntSyncRecoveries++;
             }
 
             return result;
+        }
+
+        private static FrameMsgInfo StatusResult(FrameMsgStatus status)
+        {
+            var r = FrameMsgInfo.Invalid;
+            r.Status = status;
+            return r;
         }
     }
 

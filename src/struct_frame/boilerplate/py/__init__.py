@@ -6,6 +6,7 @@
 from .frame_base import (
     FrameChecksum,
     FrameMsgInfo,
+    FrameMsgStatus,
     ParserState,
     fletcher_checksum,
 )
@@ -101,6 +102,7 @@ __all__ = [
     # Frame base
     "FrameChecksum",
     "FrameMsgInfo",
+    "FrameMsgStatus",
     "ParserState",
     "fletcher_checksum",
     # Frame headers

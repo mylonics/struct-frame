@@ -93,6 +93,34 @@ def fletcher_checksum_ext(data: Union[bytes, List[int]], start: int, base_end: i
 # Parse Result
 # =============================================================================
 
+class FrameMsgStatus(Enum):
+    """
+    Reason code carried in FrameMsgInfo when valid is False.
+
+    This lets callers distinguish between "parser is still accumulating bytes"
+    (normal) and the various error conditions that cause the parser to discard
+    data or fail validation.
+
+    NONE              - Default / unset.  Used by one-shot buffer parsers when
+                        no specific reason is available.
+    WAITING_FOR_START - Parser is idle and searching for a start byte.  No
+                        frame has been started yet (or the previous frame was
+                        completed / reset).
+    COLLECTING        - A frame is in progress; the parser is still accumulating
+                        header or payload bytes.  More data is needed.
+    CRC_FAILURE       - A complete frame was received but its CRC did not match.
+                        Indicates noise or data corruption on the link.
+    SYNC_RECOVERY     - The parser discarded one or more bytes to re-find a
+                        valid frame start.  Triggered by bad bytes, unknown
+                        message IDs, or internal buffer overflows.
+    """
+    NONE = 0
+    WAITING_FOR_START = 1
+    COLLECTING = 2
+    CRC_FAILURE = 3
+    SYNC_RECOVERY = 4
+
+
 @dataclass
 class FrameMsgInfo:
     """
@@ -111,6 +139,9 @@ class FrameMsgInfo:
     sequence: int = 0
     system_id: int = 0
     component_id: int = 0
+
+    # Parser state / reason code (meaningful when valid is False)
+    status: FrameMsgStatus = FrameMsgStatus.NONE
     
     def __bool__(self) -> bool:
         """Allow use in boolean context: while (result := reader.next()): ..."""

@@ -5,6 +5,18 @@ using System;
 namespace StructFrame
 {
     /// <summary>
+    /// Parser status indicating the reason a FrameMsgInfo is not valid.
+    /// </summary>
+    public enum FrameMsgStatus
+    {
+        None = 0,
+        WaitingForStart = 1,
+        Collecting = 2,
+        CrcFailure = 3,
+        SyncRecovery = 4
+    }
+
+    /// <summary>
     /// Parse result structure containing message info.
     /// </summary>
     public struct FrameMsgInfo
@@ -22,6 +34,11 @@ namespace StructFrame
         public byte CompId { get; set; }
         public byte PkgId { get; set; }
 
+        /// <summary>
+        /// Status indicating the reason this result is not valid (only meaningful when Valid is false).
+        /// </summary>
+        public FrameMsgStatus Status { get; set; }
+
         public FrameMsgInfo(bool valid, ushort msgId, int msgLen, int frameSize, byte[]? msgData, int offset = 0)
         {
             Valid = valid;
@@ -34,6 +51,7 @@ namespace StructFrame
             SysId = 0;
             CompId = 0;
             PkgId = 0;
+            Status = FrameMsgStatus.None;
         }
 
         public static FrameMsgInfo Invalid => new FrameMsgInfo(false, 0, 0, 0, null);

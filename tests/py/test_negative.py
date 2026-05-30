@@ -28,6 +28,7 @@ from frame_profiles import (
     ProfileNetworkWriter,
     ProfileNetworkReader,
     ProfileNetworkAccumulatingReader,
+    FrameMsgStatus,
 )
 
 # Test result tracking
@@ -595,6 +596,51 @@ def test_diagnostic_reset():
     )
 
 
+def test_status_waiting_for_start():
+    """FrameMsgStatus: push_byte returns WAITING_FOR_START when no start byte seen yet."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    # 0x42 is not the start byte (0x90); parser stays in waiting state
+    result = reader.push_byte(0x42)
+    return result.status == FrameMsgStatus.WAITING_FOR_START
+
+
+def test_status_collecting():
+    """FrameMsgStatus: push_byte returns COLLECTING once a valid start byte is in progress."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    # 0x90 is startByte1 — move to LookingForStart2
+    result = reader.push_byte(0x90)
+    return result.status == FrameMsgStatus.COLLECTING
+
+
+def test_status_crc_failure():
+    """FrameMsgStatus: push_byte returns CRC_FAILURE when a complete frame has bad CRC."""
+    writer = ProfileStandardWriter(capacity=1024)
+    msg = BasicTypesMessage()
+    msg.uint8_field = 99
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    # Corrupt the last byte (CRC)
+    buffer[frame_size - 1] ^= 0xFF
+
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    result = None
+    for b in buffer[:frame_size]:
+        result = reader.push_byte(b)
+    return result is not None and result.status == FrameMsgStatus.CRC_FAILURE
+
+
+def test_status_sync_recovery():
+    """FrameMsgStatus: push_byte returns SYNC_RECOVERY when parser is forced to resync."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    # Start a frame then send a byte that forces resync at LookingForStart2
+    reader.push_byte(0x90)  # valid startByte1
+    # 0x42 is neither startByte2 (0xAB) nor startByte1 (0x90) — triggers resync
+    result = reader.push_byte(0x42)
+    return result.status == FrameMsgStatus.SYNC_RECOVERY
+
+
 def main():
     print("\n========================================")
     print("NEGATIVE TESTS - Python Parser")
@@ -616,6 +662,10 @@ def main():
         ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary", test_partial_frame_boundary),
+        ("Status: COLLECTING during frame reception", test_status_collecting),
+        ("Status: CRC_FAILURE on bad checksum", test_status_crc_failure),
+        ("Status: SYNC_RECOVERY on forced resync", test_status_sync_recovery),
+        ("Status: WAITING_FOR_START before first byte", test_status_waiting_for_start),
         ("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling", test_streaming_garbage),
         ("Truncated frame detection", test_truncated_frame),
