@@ -219,8 +219,16 @@ def check_message(index: int, info) -> bool:
     # Deserialize using the expected message's class
     msg_class = type(expected)
     decoded = msg_class.deserialize(info)
+    if decoded is None:
+        return False
     
     # Normalize expected for comparison (round-trip through serialize/deserialize)
     expected_normalized = msg_class.deserialize(expected.serialize())
+    if expected_normalized is None:
+        return False
+
+    # Strong check: serialized payload must match exactly.
+    if decoded.serialize() != expected_normalized.serialize():
+        return False
     
     return decoded.to_dict() == expected_normalized.to_dict()
