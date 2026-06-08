@@ -260,11 +260,13 @@ class TimedPhase:
 class TestRunner:
     """Main test runner class."""
     
-    def __init__(self, verbose: bool = False, quiet: bool = False):
+    def __init__(self, verbose: bool = False, quiet: bool = False,
+                 dotnet_framework: Optional[str] = None):
         self.verbose = verbose
         self.quiet = quiet
         self.project_root = Path(__file__).parent.parent
         self.tests_dir = self.project_root / "tests"
+        self.dotnet_framework = self._resolve_dotnet_framework(dotnet_framework)
         
         self.languages = self._init_languages()
         self.skipped_languages: List[str] = []
@@ -293,6 +295,18 @@ class TestRunner:
             "variable_decode": {},
             "negative": {},
         }
+
+    def _resolve_dotnet_framework(self, explicit_framework: Optional[str]) -> str:
+        """Resolve the C# framework used by the test runner."""
+        tfm = (explicit_framework or os.environ.get("SF_DOTNET_TFM", "")).strip().lower()
+        if tfm:
+            return tfm
+        ok, stdout, _ = self.run_cmd("dotnet --version", timeout=10)
+        if ok and stdout:
+            major = stdout.strip().split(".")[0]
+            if major.isdigit():
+                return f"net{major}.0"
+        return "net8.0"
     
     def _init_languages(self) -> Dict[str, Language]:
         """Initialize language configurations."""
@@ -364,7 +378,7 @@ class TestRunner:
                 compiler_check="dotnet --version",
                 interpreter="dotnet",
                 test_dir="tests/csharp",
-                build_dir="tests/csharp/bin/Release/net10.0",
+                build_dir=f"tests/csharp/bin/Release/{self.dotnet_framework}",
                 source_ext=".cs",
             ),
             "rust": Language(
@@ -740,7 +754,10 @@ class TestRunner:
         if lang.id == "csharp":
             csproj = test_dir / "StructFrameTests.csproj"
             if csproj.exists():
-                cmd = f'dotnet build "{csproj}" -c Release -o "{build_dir}" --verbosity quiet'
+                cmd = (
+                    f'dotnet build "{csproj}" -c Release --framework {self.dotnet_framework} '
+                    f'-o "{build_dir}" --verbosity quiet'
+                )
                 success, _, _ = self.run_cmd(cmd)
                 
                 # Also verify transport implementations compile
@@ -748,7 +765,10 @@ class TestRunner:
                 if gen_csproj.exists():
                     transport_build_dir = build_dir / "transport_verify"
                     transport_build_dir.mkdir(parents=True, exist_ok=True)
-                    transport_cmd = f'dotnet build "{gen_csproj}" -c Release -o "{transport_build_dir}" -p:IncludeTransports=true --verbosity quiet'
+                    transport_cmd = (
+                        f'dotnet build "{gen_csproj}" -c Release --framework {self.dotnet_framework} '
+                        f'-o "{transport_build_dir}" -p:IncludeTransports=true --verbosity quiet'
+                    )
                     transport_ok, _, _ = self.run_cmd(transport_cmd)
                     if not transport_ok:
                         print(f"  WARNING: Transport compilation verification failed (transport files may have errors)")
@@ -2166,7 +2186,7 @@ class TestRunner:
                     # with shared OutputPath; mirrors the convention used for
                     # the C# test runner above).
                     build_cmd = (
-                        f'dotnet build "{csproj}" -c Release --framework net8.0 '
+                        f'dotnet build "{csproj}" -c Release --framework {self.dotnet_framework} '
                         f'-p:OutputType=Exe -p:StartupObject={startup} '
                         f'-p:GenerateDocumentationFile=false '
                         f'-p:BaseIntermediateOutputPath="{out_dir}/obj/" '
@@ -2465,6 +2485,7 @@ class TestRunner:
         """
         print(Colors.bold("Starting struct-frame Test Suite"))
         print(f"Project root: {self.project_root}")
+        print(f"C# target framework: {self.dotnet_framework}")
         
         start_time = time.time()
         
@@ -2654,6 +2675,8 @@ Examples:
                         help="Disable colored output")
     parser.add_argument("--profiling", action="store_true", 
                         help="Run only time profiling tests (skips standard/extended/variable tests)")
+    parser.add_argument("--dotnet-framework", default=None,
+                        help="C# target framework moniker (e.g., net8.0, net10.0). Overrides SF_DOTNET_TFM.")
     
     args = parser.parse_args()
     
@@ -2667,7 +2690,11 @@ Examples:
         print(f"{Colors.warn_tag()} Cannot skip 'cpp' - it is required as the base encoder for decode tests")
         skip_languages = [lang for lang in skip_languages if lang != "cpp"]
     
-    runner = TestRunner(verbose=args.verbose, quiet=args.quiet)
+    runner = TestRunner(
+        verbose=args.verbose,
+        quiet=args.quiet,
+        dotnet_framework=args.dotnet_framework,
+    )
     if skip_languages:
         runner.skipped_languages = skip_languages
     

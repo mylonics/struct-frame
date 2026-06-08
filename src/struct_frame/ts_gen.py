@@ -355,7 +355,7 @@ class MessageTsClassGen():
         for f_name, f in msg.fields.items():
             # Lookup type annotation once and reuse
             base_ts_type = TS_TYPE_ANNOTATIONS.get(f.field_type, 'number')
-            if f.field_type == "string":
+            if f.field_type in ("string", "bytes"):
                 ts_type = "string"
             elif f.is_array:
                 ts_type = f'{base_ts_type}[]'
@@ -464,12 +464,12 @@ class MessageTsClassGen():
                 # Variable array - TypeScript uses name_count
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 count_size = 2 if field.max_size > 255 else 1
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field.field_type, (field.size - count_size) // field.max_size)
                 result += f'    size += {count_size} + (this.{name}Count * {element_size}); // {name}\n'
-            elif field.field_type == "string" and field.max_size is not None:
+            elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string - TypeScript uses name_length
                 length_size = 2 if field.max_size > 255 else 1
                 result += f'    size += {length_size} + this.{name}Length; // {name}\n'
@@ -538,7 +538,7 @@ class MessageTsClassGen():
             if field.is_array and field.max_size is not None:
                 # Variable array - TypeScript uses name_count and name_data
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field_type == "string":
+                if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
@@ -554,7 +554,7 @@ class MessageTsClassGen():
                     result += f'      nested._buffer.copy(buffer, offset);\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
-                elif field_type == "string":
+                elif field_type in ("string", "bytes"):
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
                     result += f'      const str = this.{name}Data[i] || \'\';\n'
                     result += f'      buffer.write(str.slice(0, {element_size}), offset);\n'
@@ -575,7 +575,7 @@ class MessageTsClassGen():
                     result += f'      buffer.{write_method_name}(this.{name}Data[i], offset);\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
-            elif field_type == "string" and field.max_size is not None:
+            elif field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string - copy from internal buffer (string is stored there)
                 max_len = field.max_size
                 result += f'    // {name}: variable string\n'
@@ -653,7 +653,7 @@ class MessageTsClassGen():
             if field.is_array and field.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field_type == "string":
+                if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
@@ -670,7 +670,7 @@ class MessageTsClassGen():
                     result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
-                elif field_type == "string":
+                elif field_type in ("string", "bytes"):
                     result += f'    // Write count to internal buffer\n'
                     result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
@@ -685,7 +685,7 @@ class MessageTsClassGen():
                     result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
-            elif field_type == "string" and field.max_size is not None:
+            elif field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string
                 max_len = field.max_size
                 result += f'    // {name}: variable string\n'
@@ -821,7 +821,7 @@ class MessageTsClassGen():
             if field_info.is_array or field_info.is_nested:
                 # Arrays and nested structs: delegate to getter
                 result += f'      {name}: this.{name},\n'
-            elif field_type == "string":
+            elif field_type in ("string", "bytes"):
                 # Strings: delegate to wrapper (UTF-8 decode cannot be trivially inlined)
                 size = field_info.element_size or field_info.size
                 result += f'      {name}: this._readString({offset}, {size}),\n'
@@ -844,14 +844,14 @@ class MessageTsClassGen():
         if field_info.is_array:
             if field_info.is_nested:
                 return f'({field_info.nested_type} | Record<string, unknown>)[]'
-            elif field_type == "string":
+            elif field_type in ("string", "bytes"):
                 return 'string[]'
             else:
                 if field_info.is_enum:
                     field_type = "uint8"
                 ts_elem_type = TS_ARRAY_TYPE_ANNOTATIONS.get(field_type, "number")
                 return f'{ts_elem_type}[]'
-        elif field_type == "string":
+        elif field_type in ("string", "bytes"):
             return 'string'
         else:
             if field_info.is_enum:
@@ -872,7 +872,7 @@ class MessageTsClassGen():
         
         if field_info.is_array:
             result += MessageTsClassGen._generate_array_accessors(field_info)
-        elif field_type == "string":
+        elif field_type in ("string", "bytes"):
             result += MessageTsClassGen._generate_string_accessors(field_info)
         elif field_info.is_enum or field_type in TYPE_SIZES:
             result += MessageTsClassGen._generate_primitive_accessors(field_info)
@@ -949,7 +949,7 @@ class MessageTsClassGen():
             result += f'  set {name}(value: ({nested_type} | Record<string, unknown>)[]) {{\n'
             result += f'    this._writeStructArray({offset}, {length}, {elem_size}, value, {nested_type});\n'
             result += f'  }}\n\n'
-        elif field_type == "string":
+        elif field_type in ("string", "bytes"):
             # String array using struct array internally (for fixed strings)
             # This is a special case handled by StructArray
             result = f'  get {name}(): string[] {{\n'
@@ -1140,7 +1140,7 @@ class TestTsGen():
         }
         if type_name in type_values:
             return type_values[type_name]
-        if type_name == "string":
+        if type_name in ("string", "bytes"):
             return f'"test_{index}"'
         if field.is_enum:
             return "0"
@@ -1158,7 +1158,7 @@ class TestTsGen():
         if field.is_array:
             if field.size_option is not None:
                 count = min(field.size_option, 3)
-                if type_name == "string":
+                if type_name in ("string", "bytes"):
                     items = [f'"test_{i}"' for i in range(count)]
                     pad = ['""' for _ in range(field.size_option - count)]
                 elif type_name == "bool":
@@ -1176,7 +1176,7 @@ class TestTsGen():
                 result += f"    {prefix}.{var_name} = {arr_literal};\n"
             elif field.max_size is not None:
                 num_elements = min(field.max_size, 3)
-                if type_name == "string":
+                if type_name in ("string", "bytes"):
                     items = [f'"test_{i}"' for i in range(num_elements)]
                 elif type_name == "bool":
                     items = [str((42 + i) % 2) for i in range(num_elements)]
@@ -1187,7 +1187,7 @@ class TestTsGen():
                 arr_literal = "[" + ", ".join(items) + "]"
                 result += f"    {prefix}.{var_name}Count = {num_elements};\n"
                 result += f"    {prefix}.{var_name}Data = {arr_literal};\n"
-        elif type_name == "string":
+        elif type_name in ("string", "bytes"):
             if field.size_option is not None:
                 result += f'    {prefix}.{var_name} = "test_string";\n'
             elif field.max_size is not None:

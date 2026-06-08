@@ -100,6 +100,7 @@ def test_no_packed_flag():
 
         # 5. Encode/decode round-trip with --no_packed succeeds.
         _roundtrip_c(nopacked_dir / "c")
+        _roundtrip_cpp(nopacked_dir / "cpp")
 
         # 6. Wire-size equivalence: for messages that contain only fixed-size
         #    fields (no bounded arrays / variable strings), the variable
@@ -168,6 +169,39 @@ def _roundtrip_c(c_dir: Path) -> None:
     out = c_dir / "_roundtrip.out"
     subprocess.check_call(
         ["gcc", "-std=c99", "-I", str(c_dir), str(src), "-o", str(out)],
+    )
+    subprocess.check_call([str(out)])
+
+
+def _roundtrip_cpp(cpp_dir: Path) -> None:
+    src = cpp_dir / "_roundtrip.cpp"
+    src.write_text(
+        '#include "serialization_test.structframe.hpp"\n'
+        'using structframe::serialization_test::BasicTypesMessage;\n'
+        "int main() {\n"
+        "    BasicTypesMessage m{}, m2{};\n"
+        "    m.small_int = -5; m.medium_int = 1000; m.regular_int = -123456;\n"
+        "    m.large_int = 9000000000LL; m.small_uint = 200;\n"
+        "    m.medium_uint = 50000; m.regular_uint = 4000000000U;\n"
+        "    m.large_uint = 18000000000000ULL;\n"
+        "    m.single_precision = 3.14f; m.double_precision = 2.71828;\n"
+        "    m.flag = true;\n"
+        "    uint8_t buf[512];\n"
+        "    size_t n = m.serialize(buf);\n"
+        "    if (n == 0) return 1;\n"
+        "    m2.deserialize(buf, n);\n"
+        "    if (m.small_int != m2.small_int || m.medium_int != m2.medium_int ||\n"
+        "        m.regular_int != m2.regular_int || m.large_int != m2.large_int ||\n"
+        "        m.small_uint != m2.small_uint || m.medium_uint != m2.medium_uint ||\n"
+        "        m.regular_uint != m2.regular_uint || m.large_uint != m2.large_uint ||\n"
+        "        m.flag != m2.flag) return 2;\n"
+        "    return 0;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    out = cpp_dir / "_roundtrip.out"
+    subprocess.check_call(
+        ["g++", "-std=c++20", "-I", str(cpp_dir), str(src), "-o", str(out)],
     )
     subprocess.check_call([str(out)])
 

@@ -36,19 +36,60 @@ void handle_status(const StatusMessage& msg, uint8_t msgId) {
 }
 
 int main() {
-    // Create SDK with transport and frame parser
-    StructFrame::StructFrameSdkConfig config{
-        .transport = &my_transport,
-        .frameParser = &my_frame_parser,
-    };
-    StructFrame::StructFrameSdk sdk(config);
+    // Create SDK with transport and message-info callback.
+    // The only template argument is the frame profile config.
+    StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+        sdk(&my_transport, &get_message_info);
 
     // Subscribe to messages by message ID
     sdk.subscribe<StatusMessage>(StatusMessage::MSG_ID, handle_status);
 
     // Connect the transport (incoming data is handled via callbacks)
-    sdk.connect();
+    sdk.Connect();
 }
+```
+
+## FrameMsgInfo Subscription And Forwarding
+
+You can subscribe to every valid parsed frame directly as `FrameMsgInfo`:
+
+```cpp
+StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+    sdk(&transport, &get_message_info);
+
+auto all_frames = sdk.subscribeFrameInfo(
+    [](const StructFrame::FrameMsgInfo& frame) {
+        std::cout << "msg_id=" << frame.msg_id
+                  << " len=" << frame.msg_len << std::endl;
+    });
+```
+
+And you can forward a parsed `FrameMsgInfo` directly through another SDK instance:
+
+```cpp
+StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+    sdk_a(&transport_a, &get_message_info);
+
+StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+    sdk_b(&transport_b, &get_message_info);
+
+auto forward = sdk_a.subscribeFrameInfo(
+    [&](const StructFrame::FrameMsgInfo& frame) {
+        sdk_b.Send(frame);  // Re-encode and forward through sdk_b transport
+    });
+```
+
+Use the same type for other profiles by changing only the config:
+
+```cpp
+StructFrame::StructFrameSdkT<StructFrame::ProfileSensorConfig>
+    sensor_sdk(&transport, &get_message_info);
+
+StructFrame::StructFrameSdkT<StructFrame::ProfileIPCConfig>
+    ipc_sdk(&transport, &get_message_info);
+
+StructFrame::StructFrameSdkT<StructFrame::ProfileBulkConfig>
+    bulk_sdk(&transport, &get_message_info);
 ```
 
 ## Transports (Full SDK)

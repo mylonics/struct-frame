@@ -7,7 +7,7 @@ This module generates C code for struct serialization with manual Pack/Unpack
 functions for binary compatibility across platforms.
 """
 
-from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values, normalize_bytes_type
 import time
 
 _style_c = NamingStyleC()
@@ -24,6 +24,7 @@ c_types = {"uint8": "uint8_t",
            "uint64": 'uint64_t',
            "int64":  'int64_t',
            "string": "char",  # Add string type support
+           "bytes": "char",   # bytes treated identically to string (same wire format)
            }
 
 
@@ -131,7 +132,7 @@ class FieldCGen():
 
         # Handle arrays
         if field.is_array:
-            if field.field_type == "string":
+            if field.field_type in ("string", "bytes"):
                 # String arrays need both array size and individual string size
                 if field.size_option is not None:
                     # Fixed string array: size_option strings, each element_size chars
@@ -163,7 +164,7 @@ class FieldCGen():
             result += f"    {declaration}{comment}"
 
         # Handle regular strings
-        elif field.field_type == "string":
+        elif field.field_type in ("string", "bytes"):
             if field.size_option is not None:
                 # Fixed string: exactly size_option characters
                 declaration = f"char {var_name}[{field.size_option}];"
@@ -273,7 +274,7 @@ class MessageCGen():
         
         # Handle arrays
         if field.is_array:
-            if field.field_type == "string":
+            if field.field_type in ("string", "bytes"):
                 if field.size_option is not None:
                     # Fixed string array: memcmp
                     return f'(memcmp(a->{var_name}, b->{var_name}, sizeof(a->{var_name})) == 0)'
@@ -294,7 +295,7 @@ class MessageCGen():
                     return f'(memcmp(a->{var_name}, b->{var_name}, sizeof(a->{var_name})) == 0)'
         
         # Handle regular strings
-        elif field.field_type == "string":
+        elif field.field_type in ("string", "bytes"):
             if field.size_option is not None:
                 # Fixed string: strncmp
                 return f'(strncmp(a->{var_name}, b->{var_name}, {field.size_option}) == 0)'
@@ -443,7 +444,7 @@ class MessageCGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 # Variable array: count byte + actual data
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                     result += f'    size += 1 + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
                 else:
@@ -456,7 +457,7 @@ class MessageCGen():
                         # For nested messages, we need the actual size
                         element_size = (field.size - 1) // field.max_size
                     result += f'    size += 1 + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
-            elif field.field_type == "string" and field.max_size is not None:
+            elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string: length byte + actual data
                 result += f'    size += 1 + msg->{var_name}.length;  // {var_name}: length + data\n'
             else:
@@ -508,7 +509,7 @@ class MessageCGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 # Variable array
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                     result += f'    // {var_name}: variable string array\n'
                     result += f'    buffer[offset++] = msg->{var_name}.count;\n'
@@ -524,7 +525,7 @@ class MessageCGen():
                     result += f'    buffer[offset++] = msg->{var_name}.count;\n'
                     result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
-            elif field.field_type == "string" and field.max_size is not None:
+            elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string
                 result += f'    // {var_name}: variable string\n'
                 result += f'    buffer[offset++] = msg->{var_name}.length;\n'
@@ -597,7 +598,7 @@ class MessageCGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 # Variable array
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                     result += f'    // {var_name}: variable string array\n'
                     result += f'    if (offset >= buffer_size) return 0;\n'
@@ -619,7 +620,7 @@ class MessageCGen():
                     result += f'    if (offset + msg->{var_name}.count * {element_size} > buffer_size) return 0;\n'
                     result += f'    memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
-            elif field.field_type == "string" and field.max_size is not None:
+            elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string
                 result += f'    // {var_name}: variable string\n'
                 result += f'    if (offset >= buffer_size) return 0;\n'
@@ -1006,7 +1007,7 @@ class TestCGen():
         out = ""
 
         if field.is_array:
-            if type_name == "string":
+            if type_name in ("string", "bytes"):
                 if field.size_option is not None:
                     count = min(field.size_option, 3)
                     for i in range(count):
@@ -1031,7 +1032,7 @@ class TestCGen():
                         for i in range(count):
                             out += f'    {prefix}.{var_name}.data[{i}] = {TestCGen._dummy_value(field, i)};\n'
                     # else: nested struct array – leave .data zero-initialised
-        elif type_name == "string":
+        elif type_name in ("string", "bytes"):
             if field.size_option is not None:
                 out += f'    strncpy({prefix}.{var_name}, "test_string", sizeof({prefix}.{var_name}) - 1);\n'
             elif field.max_size is not None:
@@ -1214,9 +1215,9 @@ class TestCGen():
         yield '        size_t passed = sf_run_all_tests_for_profile(p, verbose);\n'
         yield '        if (passed != SF_TEST_MESSAGE_COUNT) {\n'
         yield '            all_ok = false;\n'
-        yield '            printf("[FAIL] %s: %zu/%d passed\\n", p->name, passed, SF_TEST_MESSAGE_COUNT);\n'
+        yield f'            printf("[FAIL] %s: %zu/%d passed\\n", p->name, passed, SF_TEST_MESSAGE_COUNT);\n'
         yield '        } else if (verbose) {\n'
-        yield '            printf("[OK] %s: %zu/%d passed\\n", p->name, passed, SF_TEST_MESSAGE_COUNT);\n'
+        yield f'            printf("[OK] %s: %zu/%d passed\\n", p->name, passed, SF_TEST_MESSAGE_COUNT);\n'
         yield '        }\n'
         yield '    }\n'
         yield '    return all_ok;\n'

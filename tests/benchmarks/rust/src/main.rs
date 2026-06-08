@@ -17,6 +17,17 @@ fn fletcher(data: &[u8]) -> (u8, u8) {
     (a as u8, b as u8)
 }
 
+fn verify_payload(payload: &[u8]) {
+    let payload_len = payload.len();
+    if payload_len == 0 {
+        return;
+    }
+    for idx in [0usize, payload_len / 2, payload_len - 1] {
+        let expected = ((idx * 31 + payload_len) & 0xff) as u8;
+        assert_eq!(payload[idx], expected, "bad payload");
+    }
+}
+
 fn encode(s: &Scenario, seq: u8) -> Vec<u8> {
     let mut body = Vec::new();
     if s.network {
@@ -53,6 +64,7 @@ fn decode(f: &[u8]) -> usize {
     }
     let (c1, c2) = fletcher(&f[2..off + len]);
     assert_eq!((f[off + len], f[off + len + 1]), (c1, c2));
+    verify_payload(&f[off..off + len]);
     len
 }
 

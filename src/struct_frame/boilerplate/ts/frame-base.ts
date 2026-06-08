@@ -65,6 +65,7 @@ export interface FrameMsgInfo {
     msgLen: number;
     msgData: Uint8Array;
     status: FrameMsgStatus;
+    frameSize?: number;
 }
 
 // Create default FrameMsgInfo
@@ -74,7 +75,8 @@ export function createFrameMsgInfo(): FrameMsgInfo {
         msgId: 0,
         msgLen: 0,
         msgData: new Uint8Array(0),
-        status: FrameMsgStatus.None
+        status: FrameMsgStatus.None,
+        frameSize: 0
     };
 }
 

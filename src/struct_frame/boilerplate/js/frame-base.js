@@ -63,7 +63,8 @@ function createFrameMsgInfo() {
         msgId: 0,
         msgLen: 0,
         msgData: new Uint8Array(0),
-        status: FrameMsgStatus.None
+        status: FrameMsgStatus.None,
+        frameSize: 0
     };
 }
 // Shared Payload Parsing Functions

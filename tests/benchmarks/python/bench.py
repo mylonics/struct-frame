@@ -15,6 +15,16 @@ def fletcher(data):
         a = (a + x) & 0xff; b = (b + a) & 0xff
     return a, b
 
+def verify_payload(payload):
+    payload_len = len(payload)
+    if payload_len == 0:
+        return
+    checks = {0, payload_len // 2, payload_len - 1}
+    for i in checks:
+        expected = (i * 31 + payload_len) & 0xff
+        if payload[i] != expected:
+            raise ValueError("bad payload")
+
 def encode(profile, type_byte, payload_len, network=False, seq=1):
     payload = bytes((i * 31 + payload_len) & 0xff for i in range(payload_len))
     body = bytearray()
@@ -42,7 +52,9 @@ def decode(frame):
     c1, c2 = fletcher(frame[2:end])
     if frame[end] != c1 or frame[end+1] != c2:
         raise ValueError("bad crc")
-    return frame[off:end]
+    payload = frame[off:end]
+    verify_payload(payload)
+    return payload
 
 def pct(values, q):
     values.sort(); return values[min(len(values)-1, int((len(values)-1) * q))]

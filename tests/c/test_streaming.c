@@ -136,7 +136,11 @@ static bool test_streaming_sensor_positive(void) {
   if (!result.valid) return false;
   if (result.msg_id != SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID) return false;
 
-  return true;
+  /* Deserialise and verify the payload field */
+  SerializationTestBasicTypesMessage decoded;
+  memset(&decoded, 0, sizeof(decoded));
+  SerializationTestBasicTypesMessage_deserialize(result.msg_data, result.msg_len, &decoded);
+  return decoded.small_int == 7;
 }
 
 /* ------------------------------------------------------------------

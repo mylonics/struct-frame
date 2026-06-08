@@ -40,6 +40,19 @@ static void fletcher(const uint8_t* d, size_t n, uint8_t* o1, uint8_t* o2) {
   *o2 = (uint8_t)b;
 }
 
+static void verify_payload(const uint8_t* payload, size_t len) {
+  if (len == 0) return;
+  size_t checks[3] = {0, len / 2, len - 1};
+  for (size_t i = 0; i < 3; i++) {
+    size_t idx = checks[i];
+    uint8_t expected = (uint8_t)((idx * 31 + len) & 0xff);
+    if (payload[idx] != expected) {
+      fprintf(stderr, "bad payload\n");
+      exit(3);
+    }
+  }
+}
+
 static size_t encode(const char* profile, uint8_t type, size_t payload_len,
                      int network, uint8_t seq, uint8_t* out) {
   size_t b = 2;
@@ -92,6 +105,7 @@ static size_t decode(const uint8_t* f) {
     fprintf(stderr, "bad crc\n");
     exit(2);
   }
+  verify_payload(f + off, len);
   return len;
 }
 

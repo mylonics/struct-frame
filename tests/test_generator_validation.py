@@ -271,10 +271,10 @@ message Foo {
     return _report("string_array_missing_element_size", _rejected(result), expected_reject=True)
 
 
-def test_array_max_size_overflow() -> bool:
-    """An array with `max_size > 255` must be rejected (single-byte count)."""
+def test_array_max_size_over_255_allowed() -> bool:
+    """An array with `max_size > 255` must be accepted (two-byte count)."""
     proto = """\
-package max_size_overflow_test;
+package max_size_over_255_allowed_test;
 
 message Foo {
   option msgid = 1;
@@ -282,10 +282,27 @@ message Foo {
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
-        sf = Path(tmp) / "max_size_overflow.sf"
+        sf = Path(tmp) / "max_size_over_255_allowed.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("array_max_size_greater_than_255", _rejected(result), expected_reject=True)
+    return _report("array_max_size_greater_than_255_allowed", _rejected(result), expected_reject=False)
+
+
+def test_string_max_size_over_255_allowed() -> bool:
+    """A string with `max_size > 255` must be accepted (two-byte length)."""
+    proto = """\
+package string_max_size_over_255_allowed_test;
+
+message Foo {
+  option msgid = 1;
+  string name = 1 [max_size = 300];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "string_max_size_over_255_allowed.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    return _report("string_max_size_greater_than_255_allowed", _rejected(result), expected_reject=False)
 
 
 def test_envelope_zero_oneofs() -> bool:
@@ -396,27 +413,32 @@ message Foo {
 
 if __name__ == "__main__":
     print("Running generator validation tests...\n")
-    results = [
+    test_fns = [
         # Original three TODO cases + the working multi-package check
-        test_duplicate_msgid(),
-        test_duplicate_pkgid(),
-        test_circular_import(),
-        test_multi_package_missing_pkgid(),
+        test_duplicate_msgid,
+        test_duplicate_pkgid,
+        test_circular_import,
+        test_multi_package_missing_pkgid,
         # Tier B §3 additions (10 new TODO cases from test-coverage.md §8)
-        test_duplicate_field_numbers(),
-        test_array_missing_size(),
-        test_string_missing_size(),
-        test_string_array_missing_element_size(),
-        test_array_max_size_overflow(),
-        test_envelope_zero_oneofs(),
-        test_envelope_non_message_oneof_fields(),
-        test_envelope_msgid_discriminator_without_msgid(),
-        test_invalid_discriminator_value(),
-        test_field_number_zero(),
+        test_duplicate_field_numbers,
+        test_array_missing_size,
+        test_string_missing_size,
+        test_string_array_missing_element_size,
+        test_array_max_size_over_255_allowed,
+        test_string_max_size_over_255_allowed,
+        test_envelope_zero_oneofs,
+        test_envelope_non_message_oneof_fields,
+        test_envelope_msgid_discriminator_without_msgid,
+        test_invalid_discriminator_value,
+        test_field_number_zero,
     ]
+    results = [fn() for fn in test_fns]
     passed = sum(results)
     total = len(results)
+    todo_count = total - passed
     print(f"\n{passed}/{total} tests passed.")
-    print("(Tests marked TODO document desired behaviour not yet implemented in the generator.)")
-    # Exit 0 even when TODO tests fail — they are known pending items, not regressions.
-    sys.exit(0)
+    if todo_count > 0:
+        print(f"{todo_count} test(s) marked TODO — generator does not yet reject these inputs.")
+        print("These are known pending items, not regressions, but are tracked as failures.")
+        print("Implement the corresponding generator checks to make them pass.")
+    sys.exit(0 if todo_count == 0 else 1)

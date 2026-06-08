@@ -405,6 +405,7 @@ export function parseFrameWithCrc(
     result.msgId = msgId;
     result.msgLen = msgLen;
     result.msgData = buffer.slice(headerSize, headerSize + msgLen);
+    result.frameSize = totalSize;
 
     return result;
 }
@@ -461,6 +462,7 @@ export function parseFrameMinimal(
     result.msgId = msgId;
     result.msgLen = msgLen;
     result.msgData = buffer.slice(headerSize, headerSize + msgLen);
+    result.frameSize = totalSize;
 
     return result;
 }

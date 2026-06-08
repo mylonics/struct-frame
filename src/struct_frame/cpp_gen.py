@@ -24,6 +24,7 @@ cpp_types = {"uint8": "uint8_t",
              "uint64": 'uint64_t',
              "int64":  'int64_t',
              "string": "char",
+             "bytes": "char",   # bytes treated identically to string (same wire format)
              }
 
 
@@ -111,7 +112,7 @@ class FieldCppGen():
 
         # Handle arrays
         if field.is_array:
-            if field.field_type == "string":
+            if field.field_type in ("string", "bytes"):
                 # String arrays need both array size and individual string size
                 if field.size_option is not None:
                     # Fixed string array: size_option strings, each element_size chars
@@ -143,7 +144,7 @@ class FieldCppGen():
             result += f"    {declaration}{comment}"
 
         # Handle regular strings
-        elif field.field_type == "string":
+        elif field.field_type in ("string", "bytes"):
             if field.size_option is not None:
                 # Fixed string: exactly size_option characters
                 declaration = f"char {var_name}[{field.size_option}];"
@@ -273,7 +274,7 @@ class MessageCppGen():
             return MessageCppGen._mem_compare_expr(var_name)
         
         # String fields need special handling
-        if field.field_type == "string":
+        if field.field_type in ("string", "bytes"):
             if has_fixed_size:
                 return f'(std::strncmp({var_name}, other.{var_name}, {field.size_option}) == 0)'
             if has_max_size:
@@ -447,12 +448,12 @@ class MessageCppGen():
             if field.is_array and field.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
                 result += f'        size += 1 + ({var_name}.count * {element_size});  // {var_name}\n'
-            elif field.field_type == "string" and field.max_size is not None:
+            elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string
                 result += f'        size += 1 + {var_name}.length;  // {var_name}\n'
             else:
@@ -501,14 +502,14 @@ class MessageCppGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
                 result += f'        buffer[offset++] = {var_name}.count;\n'
                 result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.count * {element_size});\n'
                 result += f'        offset += {var_name}.count * {element_size};\n'
-            elif field.field_type == "string" and field.max_size is not None:
+            elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 result += f'        buffer[offset++] = {var_name}.length;\n'
                 result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.length);\n'
                 result += f'        offset += {var_name}.length;\n'
@@ -573,7 +574,7 @@ class MessageCppGen():
             var_name = field.name
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
@@ -583,7 +584,7 @@ class MessageCppGen():
                 result += f'        if (offset + {var_name}.count * {element_size} > buffer_size) return 0;\n'
                 result += f'        std::memcpy({var_name}.data, buffer + offset, {var_name}.count * {element_size});\n'
                 result += f'        offset += {var_name}.count * {element_size};\n'
-            elif field.field_type == "string" and field.max_size is not None:
+            elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 result += f'        if (offset >= buffer_size) return 0;\n'
                 result += f'        {var_name}.length = buffer[offset++];\n'
                 result += f'        if ({var_name}.length > {field.max_size}) {var_name}.length = {field.max_size};\n'
@@ -751,7 +752,7 @@ class MessageCppGen():
                 else:
                     cpp_type = '%s%s' % (pascal_case(f.package), f.field_type)
             
-            if f.is_array or f.field_type == "string":
+            if f.is_array or f.field_type in ("string", "bytes"):
                 pass  # Skip arrays/strings for simplicity
             else:
                 param_list.append(f'{cpp_type} {f.name}')
@@ -765,7 +766,7 @@ class MessageCppGen():
             result += f'     * @tparam T The payload message type (must be one of the valid types)\n'
             result += f'     * @param payload The message to wrap\n'
             for f_name, f in msg.fields.items():
-                if f.is_array or f.field_type == "string":
+                if f.is_array or f.field_type in ("string", "bytes"):
                     continue
                 result += f'     * @param {f.name} Envelope field value\n'
             result += f'     * @return A fully initialized {structName} envelope\n'
@@ -821,7 +822,7 @@ class MessageCppGen():
                 result += f'     * Create a {structName} envelope wrapping a {payload_type} payload.\n'
                 result += f'     * @param payload The {payload_type} message to wrap\n'
                 for f_name, f in msg.fields.items():
-                    if f.is_array or f.field_type == "string":
+                    if f.is_array or f.field_type in ("string", "bytes"):
                         continue
                     result += f'     * @param {f.name} Envelope field value\n'
                 result += f'     * @return A fully initialized {structName} envelope\n'
@@ -1028,7 +1029,7 @@ class TestCppGen():
         
         if type_name in type_values:
             return type_values[type_name]
-        elif type_name == "string":
+        elif type_name in ("string", "bytes"):
             return f'"test_{index}"'
         elif field.is_enum:
             # Return the first enum value - this is a safe default
@@ -1061,7 +1062,7 @@ class TestCppGen():
             if field.size_option is not None:
                 # Fixed array
                 for i in range(min(field.size_option, 3)):  # Initialize first 3 elements
-                    if type_name == "string":
+                    if type_name in ("string", "bytes"):
                         result += f'    std::strncpy({prefix}.{var_name}[{i}], "test_{i}", sizeof({prefix}.{var_name}[{i}]) - 1);\n'
                     else:
                         result += f"    {prefix}.{var_name}[{i}] = {TestCppGen._get_dummy_value(field, use_namespace, i)};\n"
@@ -1070,12 +1071,12 @@ class TestCppGen():
                 num_elements = min(field.max_size, 3)
                 result += f"    {prefix}.{var_name}.count = {num_elements};\n"
                 for i in range(num_elements):
-                    if type_name == "string":
+                    if type_name in ("string", "bytes"):
                         result += f'    std::strncpy({prefix}.{var_name}.data[{i}], "test_{i}", sizeof({prefix}.{var_name}.data[{i}]) - 1);\n'
                     else:
                         result += f"    {prefix}.{var_name}.data[{i}] = {TestCppGen._get_dummy_value(field, use_namespace, i)};\n"
         # Handle regular strings
-        elif type_name == "string":
+        elif type_name in ("string", "bytes"):
             if field.size_option is not None:
                 # Fixed string
                 result += f'    std::strncpy({prefix}.{var_name}, "test_string", sizeof({prefix}.{var_name}) - 1);\n'

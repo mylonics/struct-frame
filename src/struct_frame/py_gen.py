@@ -51,6 +51,7 @@ py_type_hints = {
     "uint64": "int",
     "int64": "int",
     "string": "bytes",
+    "bytes": "bytes",   # bytes treated identically to string (same wire format)
 }
 
 
@@ -133,11 +134,11 @@ class FieldPyGen():
         
         # Handle arrays
         if field.is_array:
-            if field.field_type == "string":
+            if field.field_type in ("string", "bytes"):
                 return "List[bytes]"
             else:
                 return f"List[{base_hint}]"
-        elif field.field_type == "string":
+        elif field.field_type in ("string", "bytes"):
             return "bytes"
         else:
             return base_hint
@@ -158,7 +159,7 @@ class FieldPyGen():
                 result += f'  # Fixed array: {field.size_option} elements'
             elif field.max_size is not None:
                 result += f'  # Bounded array: max {field.max_size} elements'
-        elif field.field_type == "string":
+        elif field.field_type in ("string", "bytes"):
             if field.size_option is not None:
                 result += f'  # Fixed string: {field.size_option} bytes'
             elif field.max_size is not None:
@@ -188,7 +189,7 @@ class MessagePyGen():
             base_fmt = py_struct_format[type_name]
         elif field.is_enum:
             base_fmt = "B"  # Enums are uint8
-        elif type_name == "string":
+        elif type_name in ("string", "bytes"):
             # Strings need special handling
             if field.size_option is not None:
                 return f"{field.size_option}s"
@@ -274,7 +275,7 @@ class MessagePyGen():
         
         # Pack regular fields
         for key, f in msg.fields.items():
-            if f.field_type == "string" and not f.is_array:
+            if f.field_type in ("string", "bytes") and not f.is_array:
                 # String field
                 if f.size_option is not None:
                     # Fixed string
@@ -289,7 +290,7 @@ class MessagePyGen():
                     result += f'        data += struct.pack("<{f.max_size}s", str_data)\n'
             elif f.is_array:
                 # Array field
-                if f.field_type == "string":
+                if f.field_type in ("string", "bytes"):
                     # String array
                     if f.size_option is not None:
                         # Fixed string array
@@ -412,7 +413,7 @@ class MessagePyGen():
         result += '        fields = {}\n'
         
         for key, f in msg.fields.items():
-            if f.field_type == "string" and not f.is_array:
+            if f.field_type in ("string", "bytes") and not f.is_array:
                 # String field
                 if f.size_option is not None:
                     # Fixed string
@@ -431,7 +432,7 @@ class MessagePyGen():
                     result += f'        offset += {f.max_size}\n'
             elif f.is_array:
                 # Array field
-                if f.field_type == "string":
+                if f.field_type in ("string", "bytes"):
                     # String array
                     if f.size_option is not None:
                         # Fixed string array
@@ -507,7 +508,6 @@ class MessagePyGen():
                             result += f'                fields["{f.name}"].append(val)\n'
                         else:
                             # Nested messages
-                            type_name = f.field_type
                             result += f'        # Bounded nested message array: {f.name}\n'
                             result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
                             result += f'        offset += {count_size}\n'
@@ -656,7 +656,7 @@ class MessagePyGen():
                     result += f'        self.{f.name} = [_truncate_float32(v) for v in {f.name}] if {f.name} is not None else []\n'
                 else:
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else []\n'
-            elif f.field_type == "string":
+            elif f.field_type in ("string", "bytes"):
                 result += f'        self.{f.name} = {f.name} if {f.name} is not None else b""\n'
             elif f.field_type in py_type_hints:
                 if f.field_type == "bool":
@@ -708,11 +708,11 @@ class MessagePyGen():
         result += '        out = {}\n'
         for key, f in msg.fields.items():
             if f.is_array:
-                if f.is_default_type or f.is_enum or f.field_type == "string":
+                if f.is_default_type or f.is_enum or f.field_type in ("string", "bytes"):
                     result += f'        out["{key}"] = self.{key}\n'
                 else:
                     result += f'        out["{key}"] = [item.to_dict(False, False) for item in self.{key}]\n'
-            elif f.is_default_type or f.is_enum or f.field_type == "string":
+            elif f.is_default_type or f.is_enum or f.field_type in ("string", "bytes"):
                 result += f'        out["{key}"] = self.{key}\n'
             else:
                 if getattr(f, 'flatten', False):
@@ -821,12 +821,12 @@ class MessagePyGen():
             if f.is_array and f.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if f.field_type == "string":
+                if f.field_type in ("string", "bytes"):
                     element_size = f.element_size if f.element_size else 1
                 else:
                     element_size = type_sizes.get(f.field_type, (f.size - 1) // f.max_size)
                 result += f'        size += 1 + (min(len(self.{f.name}), {f.max_size}) * {element_size})  # {f.name}\n'
-            elif f.field_type == "string" and f.max_size is not None:
+            elif f.field_type in ("string", "bytes") and f.max_size is not None:
                 # Variable string
                 result += f'        size += 1 + min(len(self.{f.name}), {f.max_size})  # {f.name}\n'
             else:
@@ -859,93 +859,89 @@ class MessagePyGen():
         result += '\n    def _serialize_variable(self) -> bytes:\n'
         result += '        """Serialize message using variable-length encoding (only serializes used bytes)."""\n'
         result += '        data = b""\n'
-        
+
         for key, f in msg.fields.items():
-            if f.is_array and f.max_size is not None:
-                # Variable array
-                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if f.field_type == "string":
-                    element_size = f.element_size if f.element_size else 1
-                    result += f'        # {f.name}: variable string array\n'
-                    result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
-                    result += f'        data += struct.pack("<B", count)\n'
-                    result += f'        for i in range(count):\n'
-                    result += f'            data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
-                elif f.is_enum:
-                    result += f'        # {f.name}: variable enum array\n'
-                    result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
-                    result += f'        data += struct.pack("<B", count)\n'
-                    result += f'        for i in range(count):\n'
-                    result += f'            data += struct.pack("<B", int(self.{f.name}[i]))\n'
-                elif f.field_type in type_sizes:
-                    element_size = type_sizes[f.field_type]
-                    fmt = py_struct_format.get(f.field_type, 'B')
-                    result += f'        # {f.name}: variable {f.field_type} array\n'
-                    result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
-                    result += f'        data += struct.pack("<B", count)\n'
-                    result += f'        for i in range(count):\n'
-                    result += f'            data += struct.pack("<{fmt}", self.{f.name}[i])\n'
+            if f.field_type in ("string", "bytes") and not f.is_array:
+                if f.size_option is not None:
+                    result += f'        # Fixed string: {f.name}\n'
+                    result += f'        data += struct.pack("<{f.size_option}s", self.{f.name}[:{f.size_option}])\n'
+                elif f.max_size is not None:
+                    count_fmt = "H" if f.max_size > 255 else "B"
+                    result += f'        # Variable string: {f.name}\n'
+                    result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
+                    result += f'        data += struct.pack("<{count_fmt}", len(str_data))\n'
+                    result += '        data += struct.pack(f"<{len(str_data)}s", str_data)\n'
+            elif f.is_array:
+                if f.field_type in ("string", "bytes"):
+                    element_size = f.element_size if f.element_size else 16
+                    if f.size_option is not None:
+                        result += f'        # Fixed string array: {f.name}\n'
+                        result += f'        for i in range({f.size_option}):\n'
+                        result += f'            if i < len(self.{f.name}):\n'
+                        result += f'                item = self.{f.name}[i][: {element_size}]\n'
+                        result += '                data += struct.pack(f"<{len(item)}s", item)\n'
+                        result += f'            else:\n'
+                        result += '                data += struct.pack("<0s", b"")\n'
+                    elif f.max_size is not None:
+                        count_fmt = "H" if f.max_size > 255 else "B"
+                        result += f'        # Bounded string array: {f.name}\n'
+                        result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
+                        result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
+                        result += f'            item = self.{f.name}[i][: {element_size}]\n'
+                        result += '            data += struct.pack(f"<{len(item)}s", item)\n'
                 else:
-                    # Nested message array
-                    result += f'        # {f.name}: variable nested message array\n'
-                    result += f'        count = min(len(self.{f.name}), {f.max_size})\n'
-                    result += f'        data += struct.pack("<B", count)\n'
-                    result += f'        for i in range(count):\n'
-                    result += f'            data += self.{f.name}[i].serialize()\n'
-            elif f.field_type == "string" and f.max_size is not None:
-                # Variable string
-                result += f'        # {f.name}: variable string\n'
-                result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
-                result += f'        data += struct.pack("<B", len(str_data))\n'
-                result += f'        data += str_data\n'
-            elif f.field_type == "string" and f.size_option is not None:
-                # Fixed string
-                result += f'        # {f.name}: fixed string\n'
-                result += f'        data += struct.pack("<{f.size_option}s", self.{f.name}[:{f.size_option}])\n'
-            elif f.is_array and f.size_option is not None:
-                # Fixed array (pack as usual)
-                if f.is_enum:
-                    result += f'        # {f.name}: fixed enum array\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
-                    result += f'            data += struct.pack("<B", int(val))\n'
-                elif f.field_type in py_struct_format:
-                    fmt = py_struct_format[f.field_type]
-                    result += f'        # {f.name}: fixed {f.field_type} array\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
-                    result += f'            data += struct.pack("<{fmt}", val)\n'
-                else:
-                    # Nested message fixed array
-                    type_name = f.field_type
-                    result += f'        # {f.name}: fixed nested message array\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            if i < len(self.{f.name}):\n'
-                    result += f'                data += self.{f.name}[i].serialize()\n'
-                    result += f'            else:\n'
-                    result += f'                data += {type_name}().serialize()\n'
-            elif f.field_type in py_struct_format:
-                fmt = py_struct_format[f.field_type]
-                result += f'        # {f.name}: {f.field_type}\n'
-                result += f'        data += struct.pack("<{fmt}", self.{f.name})\n'
-            elif f.is_enum:
-                result += f'        # {f.name}: enum\n'
-                result += f'        data += struct.pack("<B", int(self.{f.name}))\n'
+                    fmt = MessagePyGen.get_struct_format(f)
+                    if f.size_option is not None:
+                        if fmt:
+                            result += f'        # Fixed array: {f.name}\n'
+                            result += f'        for i in range({f.size_option}):\n'
+                            result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
+                            if f.is_enum:
+                                result += f'            data += struct.pack("<B", int(val))\n'
+                            else:
+                                base_fmt = py_struct_format[f.field_type]
+                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                        else:
+                            type_name = f.field_type
+                            result += f'        # Fixed nested message array: {f.name}\n'
+                            result += f'        for i in range({f.size_option}):\n'
+                            result += f'            if i < len(self.{f.name}):\n'
+                            result += f'                data += self.{f.name}[i].serialize()\n'
+                            result += f'            else:\n'
+                            result += f'                data += {type_name}().serialize()\n'
+                    elif f.max_size is not None:
+                        count_fmt = "H" if f.max_size > 255 else "B"
+                        if f.is_default_type or f.is_enum:
+                            result += f'        # Bounded array: {f.name}\n'
+                            result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
+                            result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
+                            result += f'            val = self.{f.name}[i]\n'
+                            if f.is_enum:
+                                result += f'            data += struct.pack("<B", int(val))\n'
+                            else:
+                                base_fmt = py_struct_format[f.field_type]
+                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                        else:
+                            result += f'        # Bounded nested message array: {f.name}\n'
+                            result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
+                            result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
+                            result += f'            data += self.{f.name}[i].serialize()\n'
             else:
-                # Nested message
-                result += f'        # {f.name}: nested message\n'
-                result += f'        data += self.{f.name}.serialize()\n'
-        
-        # Oneofs: write discriminator + union payload (or length-prefix + variant bytes for variable oneof)
+                fmt = MessagePyGen.get_struct_format(f)
+                if fmt:
+                    result += f'        data += struct.pack("<{fmt}", self.{f.name})\n'
+                else:
+                    result += f'        data += self.{f.name}.serialize()\n'
+
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
-                    result += f'        # Oneof {oneof_name} discriminator (uint16 - message ID)\n'
+                    result += f'        # Oneof {oneof_name} auto-discriminator (uint16 - message ID)\n'
                     result += f'        if self.{oneof_name}_which is not None:\n'
                     result += f'            data += struct.pack("<H", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
                     result += f'        else:\n'
                     result += f'            data += struct.pack("<H", 0)\n'
-                else:  # field_order
+                else:
                     result += f'        # Oneof {oneof_name} discriminator (uint8 - field order, 1-based)\n'
                     field_order_map = {field_name: idx + 1 for idx, field_name in enumerate(oneof.field_order)}
                     result += f'        _field_order_map = {field_order_map}\n'
@@ -980,7 +976,7 @@ class MessagePyGen():
                 result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
                 result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
                 result += f'        data += union_data\n'
-        
+
         result += '        return data\n'
         
         # Generate _deserialize_variable class method (internal method)
@@ -994,7 +990,7 @@ class MessagePyGen():
             if f.is_array and f.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if f.field_type == "string":
+                if f.field_type in ("string", "bytes"):
                     element_size = f.element_size if f.element_size else 1
                     result += f'        # {f.name}: variable string array\n'
                     result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
@@ -1036,7 +1032,7 @@ class MessagePyGen():
                     result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                     result += f'            fields["{f.name}"].append(msg)\n'
                     result += f'            offset += {type_name}.MAX_SIZE\n'
-            elif f.field_type == "string" and f.max_size is not None:
+            elif f.field_type in ("string", "bytes") and f.max_size is not None:
                 # Variable string
                 result += f'        # {f.name}: variable string\n'
                 result += f'        str_len = struct.unpack_from("<B", data, offset)[0]\n'
@@ -1044,7 +1040,7 @@ class MessagePyGen():
                 result += f'        str_len = min(str_len, {f.max_size})\n'
                 result += f'        fields["{f.name}"] = data[offset:offset+str_len]\n'
                 result += f'        offset += str_len\n'
-            elif f.field_type == "string" and f.size_option is not None:
+            elif f.field_type in ("string", "bytes") and f.size_option is not None:
                 # Fixed string
                 result += f'        # {f.name}: fixed string\n'
                 result += f'        fields["{f.name}"] = struct.unpack_from("<{f.size_option}s", data, offset)[0]\n'
@@ -1179,7 +1175,7 @@ class MessagePyGen():
         field_inits = []
         for f_name, f in msg.fields.items():
             type_hint = FieldPyGen.get_type_hint(f)
-            if f.is_array or f.field_type == "string":
+            if f.is_array or f.field_type in ("string", "bytes"):
                 field_params.append(f'{f.name}: {type_hint} = None')
             else:
                 field_params.append(f'{f.name}: {type_hint}')
@@ -1512,7 +1508,7 @@ class TestPyGen():
         
         if type_name in type_values:
             return type_values[type_name]
-        elif type_name == "string":
+        elif type_name in ("string", "bytes"):
             return f'b"test_{index}"'
         elif field.is_enum:
             # Return 0 as a safe default for enums
@@ -1535,7 +1531,7 @@ class TestPyGen():
             if field.size_option is not None:
                 # Fixed array - generated as a Python list, so initialise it before indexing
                 count = min(field.size_option, 3)
-                if type_name == "string":
+                if type_name in ("string", "bytes"):
                     items = ", ".join(f'b"test_{i}"' for i in range(count))
                 else:
                     items = ", ".join(TestPyGen._get_dummy_value(field, i) for i in range(count))
@@ -1543,7 +1539,7 @@ class TestPyGen():
                 # the message serialiser emitted by FilePyGen, which always
                 # iterates the full ``size_option`` count, finds a valid value
                 # at every index instead of raising IndexError.
-                if type_name == "string":
+                if type_name in ("string", "bytes"):
                     pad = ", ".join('b""' for _ in range(field.size_option - count))
                 else:
                     pad_val = "0" if field.is_enum or type_name != "bool" else "False"
@@ -1555,12 +1551,12 @@ class TestPyGen():
                 num_elements = min(field.max_size, 3)
                 result += f"    {prefix}.{var_name} = []\n"
                 for i in range(num_elements):
-                    if type_name == "string":
+                    if type_name in ("string", "bytes"):
                         result += f'    {prefix}.{var_name}.append(b"test_{i}")\n'
                     else:
                         result += f"    {prefix}.{var_name}.append({TestPyGen._get_dummy_value(field, i)})\n"
         # Handle regular strings
-        elif type_name == "string":
+        elif type_name in ("string", "bytes"):
             result += f'    {prefix}.{var_name} = b"test_string"\n'
         else:
             # Regular field

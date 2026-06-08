@@ -16,6 +16,8 @@ jobs:
   test:
     name: Run Test Suite (ubuntu / py3.11 / node20 / dotnet10)
     runs-on: ubuntu-latest
+    env:
+      SF_DOTNET_TFM: net10.0
 
     permissions:
       contents: read
@@ -164,20 +166,14 @@ jobs:
       - name: Run JS + TS suite
         run: python test_all.py --skip-lang csharp --skip-lang rust
 
-  # .NET SDK matrix: 8 (LTS) and 10 (preview, current dev target).
-  dotnet-matrix:
-    name: dotnet ${{ matrix.dotnet }}
+  # .NET 8 compatibility lane.
+  dotnet-8:
+    name: dotnet 8.0.x
     runs-on: ubuntu-latest
+    env:
+      SF_DOTNET_TFM: net8.0
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - dotnet: "8.0.x"
-            quality: "ga"
-          - dotnet: "10.0.x"
-            quality: "preview"
     steps:
       - uses: actions/checkout@v4
         with: { submodules: true }
@@ -185,16 +181,33 @@ jobs:
         with: { python-version: "3.11" }
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ matrix.dotnet }}
-          dotnet-quality: ${{ matrix.quality }}
+          dotnet-version: "8.0.x"
+          dotnet-quality: "ga"
       - name: Install Python deps
         run: pip install proto-schema-parser
       - name: Run C# slice
-        # The .NET 8 run will fail if any generated csproj pins net10.0
-        # exclusively — this matrix exists precisely to surface that.
-        # Allowed to fail today via continue-on-error; flip when the gap
-        # documented in test-coverage.md §8 is closed.
-        continue-on-error: ${{ matrix.dotnet == '8.0.x' }}
+        run: python test_all.py --skip-lang rust
+
+  # .NET 10 compatibility lane.
+  dotnet-10:
+    name: dotnet 10.0.x
+    runs-on: ubuntu-latest
+    env:
+      SF_DOTNET_TFM: net10.0
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+          dotnet-quality: "preview"
+      - name: Install Python deps
+        run: pip install proto-schema-parser
+      - name: Run C# slice
         run: python test_all.py --skip-lang rust
 
   # Compiler matrix: GCC vs Clang for the C / C++ binaries.
