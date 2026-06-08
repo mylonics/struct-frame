@@ -17,12 +17,19 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'generated', 'py'))
 
 from struct_frame.generated.serialization_test import BasicTypesMessage as BasicTypesMessage, get_message_info
+from struct_frame.generated.pkg_test_messages import (
+    PackageTestMessage, CrossPackageMessage, get_message_info as pkg_get_message_info,
+    PACKAGE_ID as PKG_PACKAGE_ID,
+)
+from struct_frame.generated.common_types import Timestamp, Status
+from struct_frame.generated.pkg_test_a import ActionType
 from frame_profiles import (
     ProfileStandardWriter,
     ProfileStandardReader,
     ProfileStandardAccumulatingReader,
     ProfileBulkWriter,
     ProfileBulkReader,
+    ProfileBulkAccumulatingReader,
     ProfileSensorWriter,
     ProfileSensorReader,
     ProfileNetworkWriter,
@@ -641,16 +648,132 @@ def test_status_sync_recovery():
     return result.status == FrameMsgStatus.SYNC_RECOVERY
 
 
+def _make_pkg_test_msg():
+    """Helper: create a PackageTestMessage with non-trivial data for negative tests."""
+    msg = PackageTestMessage()
+    msg.created_at = Timestamp(seconds=1704067200, nanoseconds=123456789)
+    msg.current_status = Status.ACTIVE.value
+    name_bytes = b"test_device_name_32bytes!"
+    msg.name = name_bytes[:32] + b"\x00" * max(0, 32 - len(name_bytes[:32]))
+    return msg
+
+
+def test_bulk_corrupted_pkg_id():
+    """Test: Bulk profile rejects frame with corrupted pkg_id byte.
+
+    ProfileBulk layout: [0x90][0x74][LEN_LO][LEN_HI][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+    pkg_id is at byte 4 (within CRC region); corrupting it causes CRC failure.
+    """
+    msg = _make_pkg_test_msg()
+    writer = ProfileBulkWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    if frame_size < 10:
+        return False
+
+    # Corrupt pkg_id byte at offset 4
+    buffer[4] ^= 0xFF
+
+    reader = ProfileBulkReader(buffer=bytes(buffer[:frame_size]), get_message_info=pkg_get_message_info)
+    result = reader.next()
+    return not result.valid  # Expect failure: CRC mismatch
+
+
+def test_network_corrupted_pkg_id():
+    """Test: Network profile rejects frame with corrupted pkg_id byte.
+
+    ProfileNetwork layout: [0x90][0x78][SEQ][SYS_ID][COMP_ID][LEN_LO][LEN_HI][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+    pkg_id is at byte 7 (within CRC region); corrupting it causes CRC failure.
+    """
+    msg = _make_pkg_test_msg()
+    writer = ProfileNetworkWriter(capacity=1024)
+    writer.write(msg, seq=1, sys_id=5, comp_id=10)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    if frame_size < 12:
+        return False
+
+    # Corrupt pkg_id byte at offset 7
+    buffer[7] ^= 0xFF
+
+    reader = ProfileNetworkReader(buffer=bytes(buffer[:frame_size]), get_message_info=pkg_get_message_info)
+    result = reader.next()
+    return not result.valid  # Expect failure: CRC mismatch
+
+
+def test_cross_package_rejection():
+    """Test: A frame with pkg_id=2 is rejected by a pkg_id=1 message handler.
+
+    We encode a valid PackageTestMessage (pkgid=1, msgid=1 → combined 257)
+    then change the pkg_id byte to 2 so the combined msgid becomes 513 (0x201).
+    The pkg_test_messages handler should reject this because pkgid=2 != PACKAGE_ID=1.
+    """
+    msg = _make_pkg_test_msg()
+    writer = ProfileBulkWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    if frame_size < 10:
+        return False
+
+    # Bulk frame: [start1][start2][len_lo][len_hi][pkg_id][msg_id][payload...][crc1][crc2]
+    # pkg_id is at byte 4. Original value is 1. Change to 2.
+    buffer[4] = 2
+
+    reader = ProfileBulkAccumulatingReader(get_message_info=pkg_get_message_info, buffer_size=2048)
+    reader.add_data(bytes(buffer[:frame_size]))
+    result = reader.next()
+
+    # The parser should either reject (CRC fail due to pkgid change) or
+    # get_message_info returns None for the wrong pkgid.
+    # Either way, we should NOT get a valid frame with the original msgid.
+    if result is not None and result.valid and result.msg_id == (PKG_PACKAGE_ID << 8 | 1):
+        return False  # Should NOT have decoded as PackageTestMessage
+    return True  # Correctly rejected
+
+
+def test_bulk_corrupted_msg_id_low_byte():
+    """Test: Bulk profile rejects frame with corrupted msg_id low byte.
+
+    ProfileBulk layout: [0x90][0x74][LEN_LO][LEN_HI][PKG_ID][MSG_ID_LO][PAYLOAD...][CRC1][CRC2]
+    msg_id low byte is at byte 5. Corrupting it changes the local msgid and
+    causes CRC failure (byte is within CRC region).
+    """
+    msg = _make_pkg_test_msg()
+    writer = ProfileBulkWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytearray(writer.data())
+    frame_size = writer.size()
+
+    if frame_size < 10:
+        return False
+
+    # Corrupt msg_id low byte at offset 5
+    buffer[5] = 0xFF
+
+    reader = ProfileBulkAccumulatingReader(get_message_info=pkg_get_message_info, buffer_size=2048)
+    reader.add_data(bytes(buffer[:frame_size]))
+    result = reader.next()
+    return not result.valid  # Expect failure: CRC mismatch
+
+
 def main():
     print("\n========================================")
     print("NEGATIVE TESTS - Python Parser")
     print("========================================\n")
-    
+
     # Define test matrix
     tests = [
         ("Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc),
+        ("Bulk profile: Corrupted pkg_id byte", test_bulk_corrupted_pkg_id),
+        ("Bulk profile: Corrupted msg_id low byte", test_bulk_corrupted_msg_id_low_byte),
         ("Corrupted CRC detection", test_corrupted_crc),
         ("Corrupted length field detection", test_corrupted_length),
+        ("Cross-package rejection (pkgid mismatch)", test_cross_package_rejection),
         ("Diagnostics: CRC failure counter", test_diagnostic_crc_failure),
         ("Diagnostics: Length error counter", test_diagnostic_len_error),
         ("Diagnostics: Reset diagnostics", test_diagnostic_reset),
@@ -660,6 +783,7 @@ def main():
         ("Invalid start bytes detection", test_invalid_start_bytes),
         ("Minimal profile: Truncated frame", test_minimal_profile_truncated_frame),
         ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
+        ("Network profile: Corrupted pkg_id byte", test_network_corrupted_pkg_id),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary", test_partial_frame_boundary),
         ("Status: COLLECTING during frame reception", test_status_collecting),

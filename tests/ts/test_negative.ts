@@ -25,6 +25,18 @@ import {
   getMessageInfo
 } from '../generated/ts/serialization-test.structframe';
 
+import {
+  PackageTestMessage,
+  CrossPackageMessage,
+  getMessageInfo as getPkgTestMessagesMessageInfo,
+  PACKAGE_ID as PKG_TEST_MESSAGES_PACKAGE_ID,
+} from '../generated/ts/pkg-test-messages.structframe';
+
+import {
+  ActionMessage,
+  PACKAGE_ID as PKG_TEST_A_PACKAGE_ID,
+} from '../generated/ts/pkg-test-a.structframe';
+
 // Test result tracking
 let testsRun = 0;
 let testsPassed = 0;
@@ -357,6 +369,117 @@ function testNetworkSysIdCompId(): boolean {
   return !result.valid;  // Expect failure: corrupted sys_id invalidates CRC
 }
 
+/**
+ * Test: Bulk profile rejects corrupted pkg_id byte.
+ * ProfileBulk layout: [0x90][0x71][LEN][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ * Corrupting pkg_id (byte 3) causes CRC failure.
+ */
+function testBulkCorruptedPkgId(): boolean {
+  const msg = new PackageTestMessage();
+  msg.createdAt = [{ seconds: BigInt(12345), nanoseconds: 67890 }];
+  msg.currentStatus = 1; // Active
+  msg.name = 'TestDevice';
+
+  const writer = new ProfileBulkWriter(1024);
+  writer.write(msg);
+  const buffer = Buffer.from(writer.data());
+  const frameSize = writer.size;
+
+  if (frameSize < 6) return false;
+
+  // Corrupt pkg_id byte (byte 3 for Bulk: [start1][start2][len][pkg_id][msg_id]...)
+  buffer[3] ^= 0xFF;
+
+  const reader = new ProfileBulkReader(buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
+  const result = reader.next();
+  return !result.valid;  // Expect failure: corrupted pkg_id invalidates CRC
+}
+
+/**
+ * Test: Network profile rejects corrupted pkg_id byte.
+ * ProfileNetwork layout: [0x90][0x78][SEQ][SYS_ID][COMP_ID][LEN_LO][LEN_HI][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ * Corrupting pkg_id (byte 7) causes CRC failure.
+ */
+function testNetworkCorruptedPkgId(): boolean {
+  const msg = new PackageTestMessage();
+  msg.createdAt = [{ seconds: BigInt(12345), nanoseconds: 67890 }];
+  msg.currentStatus = 1; // Active
+  msg.name = 'TestDevice';
+
+  const writer = new ProfileNetworkWriter(1024);
+  writer.write(msg, { seq: 1, sysId: 5, compId: 10 });
+  const buffer = Buffer.from(writer.data());
+  const frameSize = writer.size;
+
+  if (frameSize < 10) return false;
+
+  // Corrupt pkg_id byte (byte 7 for Network)
+  buffer[7] ^= 0xFF;
+
+  const reader = new ProfileNetworkReader(buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
+  const result = reader.next();
+  return !result.valid;  // Expect failure: corrupted pkg_id invalidates CRC
+}
+
+/**
+ * Test: Cross-package message rejection.
+ * Encode a pkg_test_a message (pkgid=2) and try to parse it as pkg_test_messages (pkgid=1).
+ * The parser should reject it because pkg_id won't match.
+ */
+function testCrossPackageRejection(): boolean {
+  // Encode a pkg_test_a message (pkgid=2, msg_id=513)
+  const msg = new ActionMessage();
+  msg.action = 0; // Start
+  msg.targetId = 42;
+  msg.descriptionLength = 4;
+  msg.descriptionData = 'test';
+
+  const writer = new ProfileBulkWriter(1024);
+  writer.write(msg);
+  const buffer = Buffer.from(writer.data());
+  const frameSize = writer.size;
+
+  if (frameSize < 6) return false;
+
+  // Try to parse with getPkgTestMessagesMessageInfo - the pkg_id (2) won't match pkg_test_messages (1)
+  const reader = new ProfileBulkReader(buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
+  const result = reader.next();
+
+  // The frame may parse as valid at the frame level, but the msg_id should be 513 (pkg_test_a)
+  // not a pkg_test_messages ID. Check that the msg_id doesn't belong to pkg_test_messages.
+  if (!result.valid) return true;  // If parsing failed, that's good
+
+  // If parsing succeeded, verify it's NOT a pkg_test_messages message
+  const expectedPkgId = (result.msgId >> 8) & 0xFF;
+  return expectedPkgId !== PKG_TEST_MESSAGES_PACKAGE_ID;
+}
+
+/**
+ * Test: Bulk profile rejects corrupted msg_id low byte.
+ * ProfileBulk layout: [0x90][0x71][LEN][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ * Corrupting msg_id low byte (byte 4) changes the message type → wrong magic → CRC fails.
+ */
+function testBulkCorruptedMsgIdLowByte(): boolean {
+  const msg = new PackageTestMessage();
+  msg.createdAt = [{ seconds: BigInt(12345), nanoseconds: 67890 }];
+  msg.currentStatus = 1; // Active
+  msg.name = 'TestDevice';
+
+  const writer = new ProfileBulkWriter(1024);
+  writer.write(msg);
+  const buffer = Buffer.from(writer.data());
+  const frameSize = writer.size;
+
+  if (frameSize < 6) return false;
+
+  // Corrupt msg_id low byte (byte 4 for Bulk)
+  buffer[4] ^= 0xFF;
+
+  const reader = new ProfileBulkReader(buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
+  const result = reader.next();
+  return !result.valid;  // Expect failure: wrong msg_id → wrong magic → CRC fails
+}
+
 function main(): number {
   console.log('\n========================================');
   console.log('NEGATIVE TESTS - TypeScript Parser');
@@ -365,12 +488,16 @@ function main(): number {
   // Define test matrix
   const tests: Array<[string, () => boolean]> = [
     ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],
+    ['Bulk profile: Corrupted pkg_id', testBulkCorruptedPkgId],
+    ['Bulk profile: Corrupted msg_id low byte', testBulkCorruptedMsgIdLowByte],
     ['Corrupted CRC detection', testCorruptedCrc],
     ['Corrupted length field detection', testCorruptedLength],
+    ['Cross-package message rejection', testCrossPackageRejection],
     ['Invalid message ID rejection', testInvalidMsgId],
     ['Invalid start bytes detection', testInvalidStartBytes],
     ['Minimal profile: Truncated frame', testMinimalProfileTruncatedFrame],
     ['Multiple frames: Corrupted middle frame', testMultipleCorruptedFrames],
+    ['Network profile: Corrupted pkg_id', testNetworkCorruptedPkgId],
     ['Network profile: SysId/CompId corruption', testNetworkSysIdCompId],
     ['Partial frame across buffer boundary', testPartialFrameBoundary],
     ['Streaming: Corrupted CRC detection', testStreamingCorruptedCrc],

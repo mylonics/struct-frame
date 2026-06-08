@@ -13,6 +13,12 @@ using StructFrame;
 using StructFrame.Framing;
 using StructFrame.Profiles;
 using StructFrame.SerializationTest;
+using StructFrame.PkgTestMessages;
+using StructFrame.PkgTestA;
+using SerializationTestMD = StructFrame.SerializationTest.MessageDefinitions;
+using PkgTestMessagesMD = StructFrame.PkgTestMessages.MessageDefinitions;
+using StructFrame.CommonTypes;
+using CommonTypesStatus = StructFrame.CommonTypes.Status;
 
 public class TestNegative
 {
@@ -71,7 +77,7 @@ public class TestNegative
             buffer[bytesWritten - 2] ^= 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
@@ -97,7 +103,7 @@ public class TestNegative
             var truncatedSize = bytesWritten - 5;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, truncatedSize);
             var result = reader.Next();
             
@@ -124,7 +130,7 @@ public class TestNegative
             buffer[1] = 0xAD;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
@@ -138,7 +144,7 @@ public class TestNegative
         {
             var buffer = new byte[0];
             
-            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer);
             var result = reader.Next();
             
@@ -164,7 +170,7 @@ public class TestNegative
             buffer[2] = 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
@@ -190,7 +196,7 @@ public class TestNegative
             buffer[bytesWritten - 1] ^= 0xFF;
             
             // Try streaming parse
-            var reader = new ProfileStandardAccumulatingReader(1024, MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardAccumulatingReader(1024, SerializationTestMD.GetMessageInfo);
             
             // Feed byte by byte
             for (int i = 0; i < bytesWritten; i++)
@@ -207,7 +213,7 @@ public class TestNegative
          */
         private static bool TestStreamingGarbage()
         {
-            var reader = new ProfileStandardAccumulatingReader(1024, MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardAccumulatingReader(1024, SerializationTestMD.GetMessageInfo);
             
             // Feed garbage bytes
             byte[] garbage = { 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A };
@@ -241,7 +247,7 @@ public class TestNegative
             buffer[bytesWritten - 2] ^= 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileBulkReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileBulkReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
@@ -278,7 +284,7 @@ public class TestNegative
             buffer[bytes2End - 1] ^= 0xFF;
             
             // Parse all frames
-            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, totalBytes);
             
             var result1 = reader.Next();
@@ -305,7 +311,7 @@ public class TestNegative
             
             int mid = frameSize / 2;
             
-            var reader = new ProfileStandardAccumulatingReader(1024, MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardAccumulatingReader(1024, SerializationTestMD.GetMessageInfo);
             
             // Feed first half via AddData, then call Next() to save partial data to internal buffer
             byte[] firstHalf = new byte[mid];
@@ -339,7 +345,7 @@ public class TestNegative
             // 0xFF is not a known message ID → GetMessageInfo returns null magic → CRC fails
             buffer[3] = 0xFF;
 
-            var reader = new ProfileStandardReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, frameSize);
             var result = reader.Next();
             return !result.Valid;  // Expect failure: CRC mismatch due to wrong magic values
@@ -360,7 +366,7 @@ public class TestNegative
             // Provide fewer bytes than the full frame to trigger truncation error
             int truncatedSize = frameSize - 5;
 
-            var reader = new ProfileSensorReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileSensorReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, truncatedSize);
             var result = reader.Next();
             return !result.Valid;  // Expect failure: buffer too small for expected payload
@@ -383,10 +389,154 @@ public class TestNegative
             // sys_id is inside the CRC-protected region so CRC will fail
             buffer[3] ^= 0xFF;
 
-            var reader = new ProfileNetworkReader(MessageDefinitions.GetMessageInfo);
+            var reader = new ProfileNetworkReader(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, frameSize);
             var result = reader.Next();
             return !result.Valid;  // Expect failure: corrupted sys_id invalidates CRC
+        }
+
+        /**
+         * Test: Bulk profile rejects frame with corrupted pkg_id byte.
+         * The pkg_id byte is inside the CRC-protected region, so corruption
+         * must cause CRC failure.
+         */
+        private static bool TestBulkCorruptedPkgId()
+        {
+            var msg = new PackageTestMessage
+            {
+                CreatedAt = new Timestamp { Seconds = 1704067200, Nanoseconds = 123456789 },
+                CurrentStatus = CommonTypesStatus.ACTIVE,
+                Name = new byte[32]
+            };
+            var nameBytes = System.Text.Encoding.UTF8.GetBytes("test_device");
+            Array.Copy(nameBytes, msg.Name, Math.Min(nameBytes.Length, 32));
+
+            byte[] buffer = new byte[1024];
+            var writer = new ProfileBulkWriter();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            var frameSize = writer.Size;
+
+            if (frameSize < 10) return false;
+
+            // Bulk frame layout: [start1][start2][len_lo][len_hi][pkg_id][msg_id][payload...][crc1][crc2]
+            // pkg_id is at byte 4
+            buffer[4] ^= 0xFF;
+
+            var reader = new ProfileBulkReader(PkgTestMessagesMD.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, frameSize);
+            var result = reader.Next();
+            return !result.Valid;  // Expect failure: CRC mismatch due to corrupted pkg_id
+        }
+
+        /**
+         * Test: Network profile rejects frame with corrupted pkg_id byte.
+         * The pkg_id byte is inside the CRC-protected region.
+         */
+        private static bool TestNetworkCorruptedPkgId()
+        {
+            var msg = new PackageTestMessage
+            {
+                CreatedAt = new Timestamp { Seconds = 1704067200, Nanoseconds = 123456789 },
+                CurrentStatus = CommonTypesStatus.ACTIVE,
+                Name = new byte[32]
+            };
+            var nameBytes = System.Text.Encoding.UTF8.GetBytes("test_device");
+            Array.Copy(nameBytes, msg.Name, Math.Min(nameBytes.Length, 32));
+
+            byte[] buffer = new byte[1024];
+            var writer = new ProfileNetworkWriter();
+            writer.SetBuffer(buffer);
+            writer.Write(msg, seq: 1, sysId: 5, compId: 10);
+            var frameSize = writer.Size;
+
+            if (frameSize < 12) return false;
+
+            // Network frame layout: [start1][start2][seq][sys_id][comp_id][len_lo][len_hi][pkg_id][msg_id][payload...][crc1][crc2]
+            // pkg_id is at byte 7
+            buffer[7] ^= 0xFF;
+
+            var reader = new ProfileNetworkReader(PkgTestMessagesMD.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, frameSize);
+            var result = reader.Next();
+            return !result.Valid;  // Expect failure: CRC mismatch due to corrupted pkg_id
+        }
+
+        /**
+         * Test: Cross-package rejection — a frame with pkg_id=2 is rejected
+         * by a pkg_id=1 message handler (GetMessageInfo returns null).
+         * We encode a valid PackageTestMessage (pkgid=1, msgid=257) then
+         * change the pkg_id byte to 2 so the combined msgid becomes 513 (0x201).
+         * The PkgTestMessages handler should reject this because pkgid != 1.
+         */
+        private static bool TestCrossPackageRejection()
+        {
+            var msg = new PackageTestMessage
+            {
+                CreatedAt = new Timestamp { Seconds = 1704067200, Nanoseconds = 0 },
+                CurrentStatus = CommonTypesStatus.IDLE,
+                Name = new byte[32]
+            };
+
+            byte[] buffer = new byte[1024];
+            var writer = new ProfileBulkWriter();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            var frameSize = writer.Size;
+
+            if (frameSize < 10) return false;
+
+            // Bulk frame: [start1][start2][len_lo][len_hi][pkg_id][msg_id][payload...][crc1][crc2]
+            // pkg_id is at byte 4. Original value is 1 (for pkgid=1).
+            // Change to 2 so combined msgid = (2 << 8) | 1 = 513.
+            buffer[4] = 2;
+
+            // Parse with PkgTestMessages handler — should reject because pkgid=2 != PackageInfo.PackageId=1
+            var reader = new ProfileBulkAccumulatingReader(2024, (id) => PkgTestMessagesMD.GetMessageInfo(id));
+            reader.AddData(buffer, 0, frameSize);
+            var result = reader.Next();
+
+            // The parser should either reject (CRC fail due to pkgid change) or
+            // GetMessageInfo returns null for the wrong pkgid, causing the frame to be skipped.
+            // Either way, we should NOT get a valid frame with msgid 257.
+            if (result.Valid && result.MsgId == PackageTestMessage.MsgId)
+                return false;  // Should NOT have decoded as PackageTestMessage
+
+            return true;  // Correctly rejected
+        }
+
+        /**
+         * Test: Bulk profile with corrupted msg_id low byte.
+         * Changes the local msg_id so GetMessageInfo returns null.
+         */
+        private static bool TestBulkCorruptedMsgIdLowByte()
+        {
+            var msg = new PackageTestMessage
+            {
+                CreatedAt = new Timestamp { Seconds = 1704067200, Nanoseconds = 0 },
+                CurrentStatus = CommonTypesStatus.IDLE,
+                Name = new byte[32]
+            };
+
+            byte[] buffer = new byte[1024];
+            var writer = new ProfileBulkWriter();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            var frameSize = writer.Size;
+
+            if (frameSize < 10) return false;
+
+            // Bulk frame: [start1][start2][len_lo][len_hi][pkg_id][msg_id_lo][payload...][crc1][crc2]
+            // msg_id low byte is at byte 5. Original value is 1 (msgid=257, low byte = 1).
+            // Change to 0xFF so combined msgid = (1 << 8) | 0xFF = 511.
+            buffer[5] = 0xFF;
+
+            var reader = new ProfileBulkAccumulatingReader(2024, (id) => PkgTestMessagesMD.GetMessageInfo(id));
+            reader.AddData(buffer, 0, frameSize);
+            var result = reader.Next();
+
+            // CRC will fail because we corrupted a byte in the CRC-protected region.
+            return !result.Valid;
         }
 
         public static int Main(string[] args)
@@ -394,17 +544,21 @@ public class TestNegative
             Console.WriteLine("\n========================================");
             Console.WriteLine("NEGATIVE TESTS - C# Parser");
             Console.WriteLine("========================================\n");
-            
+
             // Define test matrix
             var tests = new (string name, Func<bool> func)[]
             {
                 ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
+                ("Bulk profile: Corrupted pkg_id byte", TestBulkCorruptedPkgId),
+                ("Bulk profile: Corrupted msg_id low byte", TestBulkCorruptedMsgIdLowByte),
                 ("Corrupted CRC detection", TestCorruptedCrc),
                 ("Corrupted length field detection", TestCorruptedLength),
+                ("Cross-package rejection (pkgid mismatch)", TestCrossPackageRejection),
                 ("Invalid message ID rejection", TestInvalidMsgId),
                 ("Invalid start bytes detection", TestInvalidStartBytes),
                 ("Minimal profile: Truncated frame", TestMinimalProfileTruncatedFrame),
                 ("Multiple frames: Corrupted middle frame", TestMultipleCorruptedFrames),
+                ("Network profile: Corrupted pkg_id byte", TestNetworkCorruptedPkgId),
                 ("Network profile: SysId/CompId corruption", TestNetworkSysIdCompId),
                 ("Partial frame across buffer boundary", TestPartialFrameBoundary),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),

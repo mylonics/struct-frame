@@ -595,7 +595,7 @@ class MessagePyGen():
         return result
     
     @staticmethod
-    def generate(msg, equality=False):
+    def generate(msg, equality=False, package_id=None):
         leading_comment = msg.comments
 
         result = ''
@@ -610,13 +610,27 @@ class MessagePyGen():
         for enum_name, enum in msg.enums.items():
             result += EnumPyGen.generate_nested(enum) + '\n'
 
+        # Compute the effective message ID.
+        # When a package_id is present, the frame encoder/decoder use a
+        # 16-bit combined ID: (package_id << 8) | local_msg_id.
+        # The message class must expose this combined ID so that frame
+        # encoding (which reads msg.MSG_ID) produces the correct bytes.
+        effective_msg_id = msg.id
+        if package_id is not None and msg.id is not None:
+            effective_msg_id = (package_id << 8) | msg.id
+
         # Add both old and new naming for compatibility
         result += '    msg_size = %s\n' % msg.size
         result += '    MAX_SIZE = %s  # C++ compatible alias\n' % msg.size
         result += '    BASE_SIZE = %s  # Non-extension portion size (== MAX_SIZE when no extensions)\n' % msg.base_size
         if msg.id != None:
-            result += '    msg_id = %s\n' % msg.id
-            result += '    MSG_ID = %s  # C++ compatible alias\n' % msg.id
+            if package_id is not None:
+                result += '    # Combined 16-bit ID: (PACKAGE_ID << 8) | local_msg_id = (%s << 8) | %s = %s\n' % (package_id, msg.id, effective_msg_id)
+            result += '    msg_id = %s\n' % effective_msg_id
+            result += '    MSG_ID = %s  # C++ compatible alias' % effective_msg_id
+            if package_id is not None:
+                result += ' (combined: pkg_id=%s, local_id=%s)' % (package_id, msg.id)
+            result += '\n'
         
         # Add magic numbers for checksum
         if msg.id is not None and msg.magic_bytes:
@@ -693,7 +707,7 @@ class MessagePyGen():
 
         # Generate __str__ method
         result += '\n    def __str__(self):\n'
-        result += f'        out = "{msg.name} Msg, ID {msg.id}, Size {msg.size} \\n"\n'
+        result += f'        out = "{msg.name} Msg, ID {effective_msg_id}, Size {msg.size} \\n"\n'
         for key, f in msg.fields.items():
             result += f'        out += f"{key} = '
             result += '{self.' + key + '}\\n"\n'
@@ -728,7 +742,7 @@ class MessagePyGen():
         result += '        if include_name:\n'
         result += f'            out["name"] = "{msg.name}"\n'
         result += '        if include_id:\n'
-        result += f'            out["msg_id"] = "{msg.id}"\n'
+        result += f'            out["msg_id"] = "{effective_msg_id}"\n'
         result += '        return out\n'
 
         # Generate __eq__ method if requested
@@ -1369,7 +1383,7 @@ class FilePyGen():
             yield '# Message definitions \n'
             # Need to sort messages to make sure dependencies are properly met
             for key, msg in package.sortedMessages().items():
-                yield MessagePyGen.generate(msg, equality) + '\n'
+                yield MessagePyGen.generate(msg, equality, package.package_id) + '\n'
             yield '\n'
 
         # Generate __all__ to declare exported public names
