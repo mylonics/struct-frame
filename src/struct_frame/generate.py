@@ -494,9 +494,9 @@ class Field:
                         # Variable size for arrays or strings
                         try:
                             self.max_size = int(ovalue)
-                            if self.max_size <= 0 or self.max_size > 255:
+                            if self.max_size <= 0 or self.max_size > 65535:
                                 print(
-                                    f"Invalid max_size {self.max_size} for field {self.name}, must be 1-255")
+                                    f"Invalid max_size {self.max_size} for field {self.name}, must be 1-65535")
                                 return False
                         except (ValueError, TypeError):
                             print(

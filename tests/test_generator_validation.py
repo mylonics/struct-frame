@@ -271,10 +271,10 @@ message Foo {
     return _report("string_array_missing_element_size", _rejected(result), expected_reject=True)
 
 
-def test_array_max_size_overflow() -> bool:
-    """An array with `max_size > 255` must be rejected (single-byte count)."""
+def test_array_max_size_over_255_allowed() -> bool:
+    """An array with `max_size > 255` must be accepted (two-byte count)."""
     proto = """\
-package max_size_overflow_test;
+package max_size_over_255_allowed_test;
 
 message Foo {
   option msgid = 1;
@@ -282,10 +282,27 @@ message Foo {
 }
 """
     with tempfile.TemporaryDirectory() as tmp:
-        sf = Path(tmp) / "max_size_overflow.sf"
+        sf = Path(tmp) / "max_size_over_255_allowed.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("array_max_size_greater_than_255", _rejected(result), expected_reject=True)
+    return _report("array_max_size_greater_than_255_allowed", _rejected(result), expected_reject=False)
+
+
+def test_string_max_size_over_255_allowed() -> bool:
+    """A string with `max_size > 255` must be accepted (two-byte length)."""
+    proto = """\
+package string_max_size_over_255_allowed_test;
+
+message Foo {
+  option msgid = 1;
+  string name = 1 [max_size = 300];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "string_max_size_over_255_allowed.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    return _report("string_max_size_greater_than_255_allowed", _rejected(result), expected_reject=False)
 
 
 def test_envelope_zero_oneofs() -> bool:
@@ -407,7 +424,8 @@ if __name__ == "__main__":
         test_array_missing_size,
         test_string_missing_size,
         test_string_array_missing_element_size,
-        test_array_max_size_overflow,
+        test_array_max_size_over_255_allowed,
+        test_string_max_size_over_255_allowed,
         test_envelope_zero_oneofs,
         test_envelope_non_message_oneof_fields,
         test_envelope_msgid_discriminator_without_msgid,

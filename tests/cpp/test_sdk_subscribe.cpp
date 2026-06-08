@@ -29,6 +29,29 @@ using namespace structframe::sdk;
 // ============================================================================
 
 using TestSdk = StructFrameSdkT<ProfileStandardConfig>;
+using TestBulkSdk = StructFrameSdkT<ProfileBulkConfig>;
+
+struct ExtendedDummyMessage {
+  static constexpr uint16_t MSG_ID = 300;
+  static constexpr size_t MAX_SIZE = 1;
+  static constexpr uint8_t MAGIC_1 = 0;
+  static constexpr uint8_t MAGIC_2 = 0;
+
+  uint8_t value = 0;
+
+  void deserialize(const uint8_t* data, size_t len) {
+    value = (data != nullptr && len > 0) ? data[0] : 0;
+  }
+};
+
+static MessageInfo get_extended_dummy_message_info(uint16_t msg_id) {
+  if (msg_id == ExtendedDummyMessage::MSG_ID) {
+    return MessageInfo(ExtendedDummyMessage::MAX_SIZE,
+                       ExtendedDummyMessage::MAGIC_1,
+                       ExtendedDummyMessage::MAGIC_2);
+  }
+  return MessageInfo();
+}
 
 // ============================================================================
 // Mock transport
@@ -359,6 +382,71 @@ bool test_forward_frame_info_between_two_sdks() {
   return true;
 }
 
+/**
+ * Test: extended message IDs (>255) are preserved through SendRaw + dispatch.
+ */
+bool test_extended_msg_id_sendraw_roundtrip() {
+  LoopbackTransport transport;
+  TestBulkSdk sdk(&transport, &get_extended_dummy_message_info);
+
+  int dispatch_count = 0;
+  uint16_t observed_msg_id = 0;
+  uint8_t observed_value = 0;
+
+  auto sub = sdk.subscribe<ExtendedDummyMessage>(
+      ExtendedDummyMessage::MSG_ID,
+      [&](const ExtendedDummyMessage& msg, uint16_t msg_id) {
+        dispatch_count++;
+        observed_msg_id = msg_id;
+        observed_value = msg.value;
+      });
+
+  uint8_t payload[ExtendedDummyMessage::MAX_SIZE] = {0xAB};
+  if (!sdk.SendRaw(ExtendedDummyMessage::MSG_ID, payload, sizeof(payload))) return false;
+
+  return dispatch_count == 1 &&
+         observed_msg_id == ExtendedDummyMessage::MSG_ID &&
+         observed_value == payload[0];
+}
+
+/**
+ * Test: forwarding FrameMsgInfo preserves extended message IDs (>255).
+ */
+bool test_forward_extended_msg_id_between_two_sdks() {
+  LoopbackTransport source_transport;
+  LoopbackTransport target_transport;
+  TestBulkSdk source_sdk(&source_transport, &get_extended_dummy_message_info);
+  TestBulkSdk target_sdk(&target_transport, &get_extended_dummy_message_info);
+
+  int target_dispatch_count = 0;
+  int forwarded_from_source = 0;
+  uint16_t observed_msg_id = 0;
+  uint8_t observed_value = 0;
+
+  auto target_sub = target_sdk.subscribe<ExtendedDummyMessage>(
+      ExtendedDummyMessage::MSG_ID,
+      [&](const ExtendedDummyMessage& msg, uint16_t msg_id) {
+        target_dispatch_count++;
+        observed_msg_id = msg_id;
+        observed_value = msg.value;
+      });
+
+  auto forward_sub = source_sdk.subscribeFrameInfo(
+      [&](const FrameMsgInfo& frame) {
+        if (target_sdk.Send(frame)) {
+          forwarded_from_source++;
+        }
+      });
+
+  uint8_t payload[ExtendedDummyMessage::MAX_SIZE] = {0x6C};
+  if (!source_sdk.SendRaw(ExtendedDummyMessage::MSG_ID, payload, sizeof(payload))) return false;
+
+  return forwarded_from_source == 1 &&
+         target_dispatch_count == 1 &&
+         observed_msg_id == ExtendedDummyMessage::MSG_ID &&
+         observed_value == payload[0];
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -389,6 +477,10 @@ int main() {
            test_subscribe_frame_info_receives_valid_frames);
   run_test("FrameMsgInfo forwarding works across two SDK instances",
            test_forward_frame_info_between_two_sdks);
+  run_test("SendRaw preserves extended msg_id (>255) during dispatch",
+           test_extended_msg_id_sendraw_roundtrip);
+  run_test("FrameMsgInfo forwarding preserves extended msg_id (>255)",
+           test_forward_extended_msg_id_between_two_sdks);
 
   printf("\n========================================\n");
   printf("Summary: %d/%d tests passed\n", tests_passed, tests_run);

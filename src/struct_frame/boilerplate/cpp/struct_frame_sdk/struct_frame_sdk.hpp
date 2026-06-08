@@ -192,7 +192,7 @@ public:
      * Subscribe to messages of type TMessage identified by msgId.
      *
      * The callback is stored inline inside the SDK — no heap allocation.
-     * Callback signature: void(const TMessage&, uint8_t msgId)
+     * Callback signature: void(const TMessage&, uint16_t msgId)
      *
      * Returns a SubscriptionHandle (RAII). Keep it alive as long as the
      * subscription is needed; destroying it auto-unsubscribes.
@@ -201,7 +201,7 @@ public:
      * static_assert at compile time.
      */
     template<typename TMessage, typename Callable>
-    SubscriptionHandle subscribe(uint8_t msgId, Callable&& callback) {
+    SubscriptionHandle subscribe(uint16_t msgId, Callable&& callback) {
         static_assert(sizeof(Callable) <= MaxCallableSize,
             "Captured lambda/functor exceeds MaxCallableSize. "
             "Reduce captures or increase MaxCallableSize template parameter.");
@@ -221,13 +221,13 @@ public:
         new (slot.callable_storage) Callable(static_cast<Callable&&>(callback));
 
         slot.dispatch_bytes = [](const uint8_t* payload, size_t len,
-                                 uint8_t id, void* ctx) {
+                                 uint16_t id, void* ctx) {
             TMessage msg{};
             msg.deserialize(payload, len);
             (*static_cast<Callable*>(ctx))(msg, id);
         };
 
-        slot.dispatch_typed = [](const void* msg, uint8_t id, void* ctx) {
+        slot.dispatch_typed = [](const void* msg, uint16_t id, void* ctx) {
             (*static_cast<Callable*>(ctx))(
                 *static_cast<const TMessage*>(msg), id);
         };
@@ -243,10 +243,10 @@ public:
      * Subscribe with a plain function pointer (no capture needed).
      */
     template<typename TMessage>
-    SubscriptionHandle subscribe(uint8_t msgId,
-                                 void (*callback)(const TMessage&, uint8_t)) {
+    SubscriptionHandle subscribe(uint16_t msgId,
+                                 void (*callback)(const TMessage&, uint16_t)) {
         return subscribe<TMessage>(msgId,
-            [callback](const TMessage& msg, uint8_t id) { callback(msg, id); });
+            [callback](const TMessage& msg, uint16_t id) { callback(msg, id); });
     }
 
     /**
@@ -296,7 +296,7 @@ public:
      * Useful for injecting messages in tests or for internally generated events.
      */
     template<typename TMessage>
-    void NotifyObservers(uint8_t msgId, const TMessage& message) {
+    void NotifyObservers(uint16_t msgId, const TMessage& message) {
         for (size_t i = 0; i < MaxSubscriptions; ++i) {
             Slot& slot = slots_[i];
             if (slot.active && slot.msg_id == msgId &&
@@ -359,7 +359,7 @@ public:
      * Uses an internal raw-frame encoder — fully inlined, no virtual dispatch.
      * Returns true on success.
      */
-    bool SendRaw(uint8_t msgId, const uint8_t* data, size_t dataLen) {
+    bool SendRaw(uint16_t msgId, const uint8_t* data, size_t dataLen) {
         if (transport_ == nullptr) return false;
         uint8_t frame_buf[MaxFrameSize];
         const size_t framedLen = EncodeRawFrame(
@@ -377,7 +377,7 @@ public:
      */
     bool Send(const FrameMsgInfo& frame_info) {
         if (!frame_info.valid || frame_info.msg_data == nullptr) return false;
-        return SendRaw(static_cast<uint8_t>(frame_info.msg_id),
+        return SendRaw(frame_info.msg_id,
                        frame_info.msg_data,
                        frame_info.msg_len);
     }
@@ -390,12 +390,12 @@ public:
 private:
     struct Slot {
         bool active = false;
-        uint8_t msg_id = 0;
+        uint16_t msg_id = 0;
         bool match_all = false;
         void (*dispatch_bytes)(const uint8_t* payload, size_t len,
-                               uint8_t msgId, void* ctx) = nullptr;
+                               uint16_t msgId, void* ctx) = nullptr;
         void (*dispatch_typed)(const void* msg,
-                               uint8_t msgId, void* ctx)  = nullptr;
+                               uint16_t msgId, void* ctx)  = nullptr;
         void (*dispatch_frame_info)(const FrameMsgInfo& frame,
                                     void* ctx)              = nullptr;
         void (*destroy_fn)(void* ctx)                      = nullptr;
@@ -413,12 +413,12 @@ private:
     // Internal helpers
     // -----------------------------------------------------------------------
 
-    static size_t EncodeRawFrame(uint8_t msgId, const uint8_t* data, size_t dataLen,
+    static size_t EncodeRawFrame(uint16_t msgId, const uint8_t* data, size_t dataLen,
                                  uint8_t* output, size_t outputMaxLen,
                                  MessageInfoFn get_message_info) {
         if (get_message_info == nullptr) return 0;
 
-        const auto info = get_message_info(static_cast<uint16_t>(msgId));
+        const auto info = get_message_info(msgId);
         if (!info.valid) return 0;
 
         const size_t total = Config::overhead + dataLen;
@@ -526,7 +526,7 @@ private:
     }
 
     void Dispatch(const FrameMsgInfo& frame) {
-        const auto id8 = static_cast<uint8_t>(frame.msg_id);
+        const uint16_t msg_id = frame.msg_id;
         for (size_t i = 0; i < MaxSubscriptions; ++i) {
             Slot& slot = slots_[i];
             if (!slot.active) {
@@ -537,8 +537,8 @@ private:
                 slot.dispatch_frame_info(frame, slot.callable_storage);
             }
 
-            if (!slot.match_all && slot.msg_id == id8 && slot.dispatch_bytes != nullptr) {
-                slot.dispatch_bytes(frame.msg_data, frame.msg_len, id8, slot.callable_storage);
+            if (!slot.match_all && slot.msg_id == msg_id && slot.dispatch_bytes != nullptr) {
+                slot.dispatch_bytes(frame.msg_data, frame.msg_len, msg_id, slot.callable_storage);
             }
         }
     }

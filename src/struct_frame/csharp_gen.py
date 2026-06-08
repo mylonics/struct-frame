@@ -166,7 +166,7 @@ class FieldCSharpGen():
         if type_name in csharp_types:
             base_type = csharp_types[type_name]
         else:
-            # Use the type name directly ΓÇö namespace/using directives handle scoping
+            # Use the type name directly - namespace/using directives handle scoping
             type_pkg = field.type_package if field.type_package else field.package
             base_type = renamed_enums.get(type_name, type_name) if renamed_enums else type_name
 
@@ -625,7 +625,7 @@ class MessageCSharpGen():
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Deserialize a <see cref="ReadOnlySpan{byte}"/> into this message type.\n'
-        result += '        /// This is the primary implementation ΓÇö the <c>byte[]</c> and\n'
+        result += '        /// This is the primary implementation - the <c>byte[]</c> and\n'
         result += '        /// <see cref="FrameMsgInfo"/> overloads delegate here.\n'
         if msg.variable:
             result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding.\n'
@@ -721,7 +721,7 @@ class MessageCSharpGen():
         result += '            return msg;\n'
         result += '        }\n'
 
-        # byte[] overload ΓÇö delegates to the span overload (keeps API compatibility)
+        # byte[] overload - delegates to the span overload (keeps API compatibility)
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Deserialize a byte array. Delegates to <see cref="Deserialize(ReadOnlySpan{byte})"/>.\n'
@@ -1002,7 +1002,7 @@ class MessageCSharpGen():
         result += '        }\n'
         
         # Generate _DeserializeVariable static method (internal method)
-        # Keeps byte[] parameter ΓÇö variable messages receive a freshly-allocated slice
+        # Keeps byte[] parameter - variable messages receive a freshly-allocated slice
         # from the span dispatch path (data.ToArray()), so no additional allocation occurs.
         result += '\n'
         result += '        /// <summary>\n'
@@ -1969,7 +1969,7 @@ class TestCSharpGen():
             elif field.is_enum:
                 pass  # enum left at default 0 value
             else:
-                # Nested message ΓÇô default-construct
+                # Nested message - default-construct
                 out += f'        {prefix}.{var_name} = new {type_name}();\n'
         return out
 
