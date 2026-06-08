@@ -36,14 +36,10 @@ void handle_status(const StatusMessage& msg, uint8_t msgId) {
 }
 
 int main() {
-    // Create SDK with transport and message-info callback
-    // The profile Config and get_message_info are compile-time template parameters
-    // — all parse/encode calls are fully inlined with zero virtual dispatch.
-    using Sdk = StructFrame::StructFrameSdkT<
-        StructFrame::ProfileStandardConfig,
-        decltype(&get_message_info)>;
-
-    Sdk sdk(&my_transport, &get_message_info);
+    // Create SDK with transport and message-info callback.
+    // The only template argument is the frame profile config.
+    StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+        sdk(&my_transport, &get_message_info);
 
     // Subscribe to messages by message ID
     sdk.subscribe<StatusMessage>(StatusMessage::MSG_ID, handle_status);
@@ -53,25 +49,47 @@ int main() {
 }
 ```
 
-### Convenience Aliases
+## FrameMsgInfo Subscription And Forwarding
 
-Profile-specific aliases reduce boilerplate:
+You can subscribe to every valid parsed frame directly as `FrameMsgInfo`:
 
 ```cpp
-// ProfileStandardSdk — most common
-StructFrame::ProfileStandardSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+    sdk(&transport, &get_message_info);
 
-// ProfileSensorSdk — low-bandwidth sensors
-StructFrame::ProfileSensorSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+auto all_frames = sdk.subscribeFrameInfo(
+    [](const StructFrame::FrameMsgInfo& frame) {
+        std::cout << "msg_id=" << frame.msg_id
+                  << " len=" << frame.msg_len << std::endl;
+    });
+```
 
-// ProfileIPCSdk — trusted inter-process communication
-StructFrame::ProfileIPCSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+And you can forward a parsed `FrameMsgInfo` directly through another SDK instance:
 
-// ProfileBulkSdk — large data transfers
-StructFrame::ProfileBulkSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+```cpp
+StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+    sdk_a(&transport_a, &get_message_info);
 
-// ProfileNetworkSdk — multi-system networked communication
-StructFrame::ProfileNetworkSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+    sdk_b(&transport_b, &get_message_info);
+
+auto forward = sdk_a.subscribeFrameInfo(
+    [&](const StructFrame::FrameMsgInfo& frame) {
+        sdk_b.Send(frame);  // Re-encode and forward through sdk_b transport
+    });
+```
+
+Use the same type for other profiles by changing only the config:
+
+```cpp
+StructFrame::StructFrameSdkT<StructFrame::ProfileSensorConfig>
+    sensor_sdk(&transport, &get_message_info);
+
+StructFrame::StructFrameSdkT<StructFrame::ProfileIPCConfig>
+    ipc_sdk(&transport, &get_message_info);
+
+StructFrame::StructFrameSdkT<StructFrame::ProfileBulkConfig>
+    bulk_sdk(&transport, &get_message_info);
 ```
 
 ## Transports (Full SDK)

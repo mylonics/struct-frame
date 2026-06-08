@@ -25,10 +25,10 @@ using namespace structframe::serialization_test;
 using namespace structframe::sdk;
 
 // ============================================================================
-// SDK type alias for ProfileStandard + our get_message_info
+// SDK type alias for ProfileStandard
 // ============================================================================
 
-using TestSdk = StructFrameSdkT<ProfileStandardConfig, decltype(&get_message_info)>;
+using TestSdk = StructFrameSdkT<ProfileStandardConfig>;
 
 // ============================================================================
 // Mock transport
@@ -51,6 +51,22 @@ class MockTransport : public BaseTransport {
 
   // Simulate incoming data from the peer
   void inject_data(const uint8_t* data, size_t length) {
+    HandleData(data, length);
+  }
+};
+
+/**
+ * LoopbackTransport - anything sent is immediately fed back as incoming data.
+ * Useful for verifying end-to-end forwarding into another SDK instance.
+ */
+class LoopbackTransport : public BaseTransport {
+ public:
+  std::vector<std::vector<uint8_t>> sent_data;
+
+  void Connect() override { connected_ = true; }
+  void Disconnect() override { connected_ = false; }
+  void Send(const uint8_t* data, size_t length) override {
+    sent_data.push_back(std::vector<uint8_t>(data, data + length));
     HandleData(data, length);
   }
 };
@@ -275,6 +291,74 @@ bool test_end_to_end_parse_pipeline() {
   return true;
 }
 
+/**
+ * Test: subscribeFrameInfo receives each valid parsed frame.
+ */
+bool test_subscribe_frame_info_receives_valid_frames() {
+  MockTransport transport;
+  TestSdk sdk(&transport, &get_message_info);
+
+  int frame_count = 0;
+  uint16_t last_msg_id = 0;
+  size_t last_msg_len = 0;
+
+  auto sub = sdk.subscribeFrameInfo(
+      [&](const FrameMsgInfo& frame) {
+        frame_count++;
+        last_msg_id = frame.msg_id;
+        last_msg_len = frame.msg_len;
+      });
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 314;
+  if (!inject_encoded_message(transport, msg)) return false;
+
+  return frame_count == 1 &&
+         last_msg_id == BasicTypesMessage::MSG_ID &&
+         last_msg_len == BasicTypesMessage::MAX_SIZE;
+}
+
+/**
+ * Test: forwarding FrameMsgInfo between two SDK instances via Send(frame_info).
+ */
+bool test_forward_frame_info_between_two_sdks() {
+  MockTransport source_transport;
+  LoopbackTransport target_transport;
+
+  TestSdk source_sdk(&source_transport, &get_message_info);
+  TestSdk target_sdk(&target_transport, &get_message_info);
+
+  int target_dispatch_count = 0;
+  int forwarded_from_source = 0;
+  BasicTypesMessage target_received{};
+
+  auto target_sub = target_sdk.subscribe<BasicTypesMessage>(
+      BasicTypesMessage::MSG_ID,
+      [&](const BasicTypesMessage& msg, uint8_t) {
+        target_dispatch_count++;
+        target_received = msg;
+      });
+
+  auto forward_sub = source_sdk.subscribeFrameInfo(
+      [&](const FrameMsgInfo& frame) {
+        if (target_sdk.Send(frame)) {
+          forwarded_from_source++;
+        }
+      });
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 909;
+  msg.flag = true;
+  if (!inject_encoded_message(source_transport, msg)) return false;
+
+  if (forwarded_from_source != 1) return false;
+  if (target_dispatch_count != 1) return false;
+  if (target_received.regular_int != 909) return false;
+  if (!target_received.flag) return false;
+
+  return true;
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -301,6 +385,10 @@ int main() {
            test_incoming_data_triggers_parse);
   run_test("Full encode -> inject -> subscriber receives message",
            test_end_to_end_parse_pipeline);
+  run_test("subscribeFrameInfo receives valid parsed frames",
+           test_subscribe_frame_info_receives_valid_frames);
+  run_test("FrameMsgInfo forwarding works across two SDK instances",
+           test_forward_frame_info_between_two_sdks);
 
   printf("\n========================================\n");
   printf("Summary: %d/%d tests passed\n", tests_passed, tests_run);

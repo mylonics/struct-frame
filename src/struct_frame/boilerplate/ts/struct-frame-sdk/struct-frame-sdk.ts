@@ -201,7 +201,7 @@ export class StructFrameSdk {
     // profiles that track total frame size during parsing). Falls back
     // to re-framing the parsed payload so older parsers still trim the
     // exact frame length without relying on a guessed overhead.
-    if (result.frameSize > 0) {
+    if (typeof result.frameSize === 'number' && result.frameSize > 0) {
       return result.frameSize;
     }
     return this.frameParser.frame(result.msgId, result.msgData).length;

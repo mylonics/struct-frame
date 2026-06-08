@@ -870,7 +870,7 @@ class MessagePyGen():
                     result += f'        # Variable string: {f.name}\n'
                     result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
                     result += f'        data += struct.pack("<{count_fmt}", len(str_data))\n'
-                    result += f'        data += struct.pack("<{f.max_size}s", str_data)\n'
+                    result += '        data += struct.pack(f"<{len(str_data)}s", str_data)\n'
             elif f.is_array:
                 if f.field_type in ("string", "bytes"):
                     element_size = f.element_size if f.element_size else 16
@@ -878,15 +878,17 @@ class MessagePyGen():
                         result += f'        # Fixed string array: {f.name}\n'
                         result += f'        for i in range({f.size_option}):\n'
                         result += f'            if i < len(self.{f.name}):\n'
-                        result += f'                data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
+                        result += f'                item = self.{f.name}[i][: {element_size}]\n'
+                        result += '                data += struct.pack(f"<{len(item)}s", item)\n'
                         result += f'            else:\n'
-                        result += f'                data += struct.pack("<{element_size}s", b"")\n'
+                        result += '                data += struct.pack("<0s", b"")\n'
                     elif f.max_size is not None:
                         count_fmt = "H" if f.max_size > 255 else "B"
                         result += f'        # Bounded string array: {f.name}\n'
                         result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
                         result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
-                        result += f'            data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
+                        result += f'            item = self.{f.name}[i][: {element_size}]\n'
+                        result += '            data += struct.pack(f"<{len(item)}s", item)\n'
                 else:
                     fmt = MessagePyGen.get_struct_format(f)
                     if f.size_option is not None:
