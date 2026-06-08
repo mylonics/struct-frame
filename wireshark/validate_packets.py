@@ -237,7 +237,7 @@ def main():
             packet = f.read()
         if not validate_basic_default_packet(packet):
             all_passed = False
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"\n✗ FAIL: Could not validate standard.bin: {e}")
         all_passed = False
     
@@ -247,7 +247,7 @@ def main():
             packet = f.read()
         if not validate_tiny_minimal_packet(packet):
             all_passed = False
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"\n✗ FAIL: Could not validate sensor.bin: {e}")
         all_passed = False
     
@@ -257,7 +257,7 @@ def main():
             packet = f.read()
         if not validate_basic_extended_packet(packet):
             all_passed = False
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"\n✗ FAIL: Could not validate bulk.bin: {e}")
         all_passed = False
     
@@ -267,7 +267,7 @@ def main():
             packet = f.read()
         if not validate_basic_extended_multi_system_stream_packet(packet):
             all_passed = False
-    except Exception as e:
+    except (OSError, ValueError) as e:
         print(f"\n✗ FAIL: Could not validate network.bin: {e}")
         all_passed = False
     

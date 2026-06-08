@@ -118,7 +118,7 @@ def _init_colors():
             import ctypes
             kernel32 = ctypes.windll.kernel32
             kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
-        except Exception:
+        except (AttributeError, OSError):
             Colors.disable()
     
     # Disable colors if not a TTY or NO_COLOR is set
@@ -435,7 +435,7 @@ class TestRunner:
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
             return False, "", "Timeout"
-        except Exception as e:
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
             return False, "", str(e)
     
     def print_section(self, title: str):
@@ -671,7 +671,7 @@ class TestRunner:
                         if not success:
                             all_success = False
                             self.add_failure("compilation", lang.name, None, "Compilation failed")
-                    except Exception as e:
+                    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
                         self.results["compilation"][lang.id] = False
                         print(f"  {lang.name:>10}: {Colors.fail_text()} ({e})")
                         self.add_failure("compilation", lang.name, None, str(e))
@@ -855,7 +855,7 @@ class TestRunner:
                     self.results[encode_key][f"{lang.id}_{display_name}"] = result["success"]
                     if not result["success"]:
                         self.add_failure(f"{test_name}_encode", lang.name, display_name, "Encode failed")
-                except Exception as e:
+                except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
                     encode_results[display_name][lang.name] = {"success": False, "error": str(e)}
                     self.results[encode_key][f"{lang.id}_{display_name}"] = False
                     self.add_failure(f"{test_name}_encode", lang.name, display_name, str(e))
@@ -913,7 +913,7 @@ class TestRunner:
                             if not result.get("cpp_decode"):
                                 reason.append("C++ decode failed")
                             self.add_failure(f"{test_name}_validate", lang.name, display_name, ", ".join(reason))
-                    except Exception as e:
+                    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
                         validate_results[display_name][lang.name] = {
                             "success": False, "binary_match": False, "cpp_decode": False, "error": str(e)
                         }
@@ -963,7 +963,7 @@ class TestRunner:
                     if not result["success"]:
                         self.add_failure(f"{test_name}_decode", lang.name, display_name, 
                                         f"Decode failed (got {result.get('count', 0)}/{expected_count})")
-                except Exception as e:
+                except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
                     decode_results[display_name][lang.name] = {"success": False, "count": 0, "error": str(e)}
                     self.results[decode_key][f"{lang.id}_{display_name}"] = False
                     self.add_failure(f"{test_name}_decode", lang.name, display_name, str(e))
@@ -1033,7 +1033,7 @@ class TestRunner:
                 lang_data = f1.read()
                 cpp_data = f2.read()
                 result["binary_match"] = (lang_data == cpp_data)
-        except Exception as e:
+        except OSError as e:
             result["binary_match"] = False
             result["reason"] = f"Binary compare error: {e}"
         
@@ -2157,7 +2157,7 @@ class TestRunner:
                                 class_name = ls[len("public static class "):].split()[0].split("{")[0].strip()
                             if namespace and class_name:
                                 break
-                    except Exception:
+                    except (OSError, UnicodeDecodeError):
                         pass
                     if not (namespace and class_name):
                         print(f"  [C#] {Colors.fail_text()} {src.stem} (could not parse namespace/class)")
@@ -2626,7 +2626,7 @@ class TestRunner:
         except KeyboardInterrupt:
             print(f"\n{Colors.warn_tag()} Test run interrupted by user")
             return False
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
             print(f"\n{Colors.fail_tag()} Test run failed: {e}")
             import traceback
             traceback.print_exc()

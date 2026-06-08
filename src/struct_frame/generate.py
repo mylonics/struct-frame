@@ -146,9 +146,9 @@ def get_version():
     """Get the struct-frame version from pyproject.toml or package metadata."""
     try:
         # Try to get version from importlib.metadata (Python 3.8+)
-        from importlib.metadata import version as get_pkg_version
+        from importlib.metadata import PackageNotFoundError, version as get_pkg_version
         return get_pkg_version('struct-frame')
-    except Exception:
+    except (ImportError, ModuleNotFoundError, PackageNotFoundError):
         pass
 
     # Fallback: try to read from pyproject.toml
@@ -164,7 +164,7 @@ def get_version():
                         parts = line.split('=', 1)
                         if len(parts) == 2:
                             return parts[1].strip().strip('"\'')
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         pass
 
     # Last fallback
@@ -348,7 +348,7 @@ def read_previous_hash(hash_file_path):
         if os.path.exists(hash_file_path):
             with open(hash_file_path, 'r') as f:
                 return f.read().strip()
-    except Exception:
+    except OSError:
         pass
     return None
 
@@ -514,7 +514,7 @@ class Field:
                             print(
                                 f"Invalid element_size value {ovalue} for field {self.name}, must be an integer")
                             return False
-        except Exception:
+        except (AttributeError, TypeError):
             pass
         return True
 
@@ -1543,7 +1543,7 @@ def parseFile(filename, base_path=None, importing_package=None):
     except FileNotFoundError:
         print(f"Error: Could not find file {filename}")
         return False
-    except Exception as e:
+    except (OSError, ValueError, TypeError, SyntaxError, RuntimeError) as e:
         print(f"Error parsing file {filename}: {e}")
         return False
 

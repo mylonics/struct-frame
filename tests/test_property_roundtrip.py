@@ -22,7 +22,6 @@ the generator has not run yet — it must not block the standard suite.
 """
 from __future__ import annotations
 
-import importlib
 import os
 import sys
 from pathlib import Path
@@ -38,8 +37,11 @@ except ModuleNotFoundError:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GEN_PY = REPO_ROOT / "tests" / "generated" / "py"
 
-pytest.importorskip("hypothesis", reason="hypothesis not installed")
-from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
+if os.environ.get("CI"):
+    from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
+else:
+    pytest.importorskip("hypothesis", reason="hypothesis not installed")
+    from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
 
 if not GEN_PY.exists():
     pytest.skip(
@@ -65,7 +67,7 @@ try:
         BasicTypesMessage,
         get_message_info,
     )
-except Exception as exc:  # pragma: no cover  — fail soft, scaffold not yet wired
+except (ImportError, ModuleNotFoundError, SyntaxError) as exc:  # pragma: no cover
     pytest.skip(f"generated Python SDK not importable: {exc}", allow_module_level=True)
 
 

@@ -8,9 +8,9 @@ language-specific code generators.
 import re
 
 try:
-    from importlib.metadata import version as _pkg_version
+    from importlib.metadata import PackageNotFoundError, version as _pkg_version
     version = _pkg_version("struct-frame")
-except Exception:
+except (ImportError, ModuleNotFoundError, PackageNotFoundError):
     version = "0.0.1"
 
 

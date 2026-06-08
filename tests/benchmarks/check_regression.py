@@ -10,14 +10,26 @@ def main():
     cfg=json.loads((ROOT/'thresholds.json').read_text()); failures=[]; langs=args.lang or LANGS
     for lang in langs:
         base=ROOT/'baselines'/f'{lang}.json'; cur=ROOT/'results'/f'{lang}.json'
-        if not cur.exists(): print(f'::warning::{lang}: missing current result; skipping'); continue
+        if not cur.exists():
+            msg = f'{lang}: missing current result {cur}'
+            if args.allow_missing_baseline:
+                print('::warning::' + msg)
+                continue
+            failures.append((lang,'<all>','missing current result','',''))
+            continue
         if not base.exists():
             msg=f'{lang}: missing baseline {base}'
             if args.allow_missing_baseline: print('::warning::'+msg); continue
             failures.append((lang,'<all>','missing baseline','','')); continue
         base_data=json.loads(base.read_text())
         if base_data.get('runner_version')=='placeholder-baseline':
-            print(f'::warning::{lang}: baseline is a placeholder; skipping regression check (refresh baselines per tests/benchmarks/README.md)'); continue
+            msg=(f"{lang}: baseline is a placeholder; refresh baselines per "
+                 f"tests/benchmarks/README.md")
+            if args.allow_missing_baseline:
+                print('::warning::' + msg)
+                continue
+            failures.append((lang,'<all>','placeholder baseline','',''))
+            continue
         b=scenarios(base_data); c=scenarios(json.loads(cur.read_text())); th=cfg.get('languages',{}).get(lang,cfg['default'])
         for name,cs in c.items():
             if name not in b:
