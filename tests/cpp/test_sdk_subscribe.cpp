@@ -25,6 +25,12 @@ using namespace structframe::serialization_test;
 using namespace structframe::sdk;
 
 // ============================================================================
+// SDK type alias for ProfileStandard + our get_message_info
+// ============================================================================
+
+using TestSdk = StructFrameSdkT<ProfileStandardConfig, decltype(&get_message_info)>;
+
+// ============================================================================
 // Mock transport
 // ============================================================================
 
@@ -46,33 +52,6 @@ class MockTransport : public BaseTransport {
   // Simulate incoming data from the peer
   void inject_data(const uint8_t* data, size_t length) {
     HandleData(data, length);
-  }
-};
-
-// ============================================================================
-// Mock frame_parser
-// ============================================================================
-
-/**
- * MockFrameParser - wraps AccumulatingReader<ProfileStandardConfig> so that
- * StructFrameSdk can parse real encoded frames in tests.
- */
-class MockFrameParser : public frame_parser {
- public:
-  int parse_calls = 0;
-
-  FrameMsgInfo parse(const uint8_t* data, size_t length) override {
-    parse_calls++;
-    return BufferParserWithCrc<ProfileStandardConfig>::parse(data, length,
-                                                             get_message_info);
-  }
-
-  size_t frame(uint8_t msgId, const uint8_t* data, size_t dataLen,
-               uint8_t* output, size_t outputMaxLen) override {
-    // frame() is only called by SendRaw(). SendRaw is not exercised by any
-    // test in this file, so this mock returns 0 (unsupported).
-    (void)msgId; (void)data; (void)dataLen; (void)output; (void)outputMaxLen;
-    return 0;
   }
 };
 
@@ -107,17 +86,11 @@ static bool inject_encoded_message(MockTransport& transport, const MessageT& msg
 // ============================================================================
 
 /**
- * Test: subscribe + NotifyObservers dispatches to a registered lambda callback
+ * Test: subscribe + incoming frame dispatches to a registered lambda callback
  */
 bool test_subscribe_dispatch_lambda() {
   MockTransport transport;
-  MockFrameParser parser;
-
-  StructFrameSdkConfig config;
-  config.transport = &transport;
-  config.parser = &parser;
-
-  StructFrameSdk sdk(config);
+  TestSdk sdk(&transport, &get_message_info);
 
   int call_count = 0;
   BasicTypesMessage received{};
@@ -139,7 +112,6 @@ bool test_subscribe_dispatch_lambda() {
   if (call_count != 1) return false;
   if (received.regular_int != 42) return false;
   if (!received.flag) return false;
-  if (parser.parse_calls == 0) return false;
 
   return true;
 }
@@ -149,13 +121,7 @@ bool test_subscribe_dispatch_lambda() {
  */
 bool test_subscribe_multiple_observers() {
   MockTransport transport;
-  MockFrameParser parser;
-
-  StructFrameSdkConfig config;
-  config.transport = &transport;
-  config.parser = &parser;
-
-  StructFrameSdk sdk(config);
+  TestSdk sdk(&transport, &get_message_info);
 
   int count_a = 0, count_b = 0;
 
@@ -171,7 +137,7 @@ bool test_subscribe_multiple_observers() {
   msg.regular_int = 99;
   if (!inject_encoded_message(transport, msg)) return false;
 
-  return count_a == 1 && count_b == 1 && parser.parse_calls > 0;
+  return count_a == 1 && count_b == 1;
 }
 
 /**
@@ -179,13 +145,7 @@ bool test_subscribe_multiple_observers() {
  */
 bool test_subscription_raii_unsubscribe() {
   MockTransport transport;
-  MockFrameParser parser;
-
-  StructFrameSdkConfig config;
-  config.transport = &transport;
-  config.parser = &parser;
-
-  StructFrameSdk sdk(config);
+  TestSdk sdk(&transport, &get_message_info);
 
   int count = 0;
 
@@ -206,7 +166,7 @@ bool test_subscription_raii_unsubscribe() {
   msg.regular_int = 456;
   if (!inject_encoded_message(transport, msg)) return false;
   // count should still be 1 (second notify has no subscriber)
-  return count == 1 && parser.parse_calls >= 2;
+  return count == 1;
 }
 
 /**
@@ -215,13 +175,7 @@ bool test_subscription_raii_unsubscribe() {
  */
 bool test_notify_unregistered_id_is_noop() {
   MockTransport transport;
-  MockFrameParser parser;
-
-  StructFrameSdkConfig config;
-  config.transport = &transport;
-  config.parser = &parser;
-
-  StructFrameSdk sdk(config);
+  TestSdk sdk(&transport, &get_message_info);
 
   // Register a handler for a known ID to verify it's NOT called for unregistered IDs
   int call_count = 0;
@@ -242,7 +196,7 @@ bool test_notify_unregistered_id_is_noop() {
   sdk.NotifyObservers<BasicTypesMessage>(BasicTypesMessage::MSG_ID, msg);
   if (call_count != 1) return false;  // handler must fire once for registered ID
 
-  return parser.parse_calls > 0;
+  return true;
 }
 
 /**
@@ -250,38 +204,26 @@ bool test_notify_unregistered_id_is_noop() {
  */
 bool test_sdk_connect_delegates_to_transport() {
   MockTransport transport;
-  MockFrameParser parser;
-
-  StructFrameSdkConfig config;
-  config.transport = &transport;
-  config.parser = &parser;
-
-  StructFrameSdk sdk(config);
+  TestSdk sdk(&transport, &get_message_info);
   sdk.Connect();
 
   return transport.connect_calls == 1 && sdk.IsConnected();
 }
 
 /**
- * Test: Incoming data from transport triggers frame_parser->parse() and
+ * Test: Incoming data from transport triggers parse and
  *       auto-dispatches to a registered subscriber.
  */
 bool test_incoming_data_triggers_parse() {
   MockTransport transport;
-  MockFrameParser parser;
-
-  StructFrameSdkConfig config;
-  config.transport = &transport;
-  config.parser = &parser;
-
-  StructFrameSdk sdk(config);
+  TestSdk sdk(&transport, &get_message_info);
 
   int dispatch_count = 0;
   auto sub = sdk.subscribe<BasicTypesMessage>(
       BasicTypesMessage::MSG_ID,
       [&](const BasicTypesMessage&, uint8_t) { dispatch_count++; });
 
-  // Encode a real frame and inject it so parse() is called
+  // Encode a real frame and inject it
   BasicTypesMessage msg{};
   msg.regular_int = 55;
   uint8_t encoded[512];
@@ -291,8 +233,8 @@ bool test_incoming_data_triggers_parse() {
 
   transport.inject_data(encoded, frame_len);
 
-  // parse() was called and auto-dispatch fired
-  return parser.parse_calls > 0 && dispatch_count == 1;
+  // auto-dispatch fired
+  return dispatch_count == 1;
 }
 
 /**
@@ -301,13 +243,7 @@ bool test_incoming_data_triggers_parse() {
  */
 bool test_end_to_end_parse_pipeline() {
   MockTransport transport;
-  MockFrameParser parser;
-
-  StructFrameSdkConfig config;
-  config.transport = &transport;
-  config.parser = &parser;
-
-  StructFrameSdk sdk(config);
+  TestSdk sdk(&transport, &get_message_info);
 
   int dispatch_count = 0;
   BasicTypesMessage dispatched{};
@@ -351,7 +287,7 @@ int main() {
   printf("%-65s %s\n",
     "=================================================================", "======");
 
-  run_test("subscribe + NotifyObservers dispatches to lambda",
+  run_test("subscribe + incoming frame dispatches to lambda",
            test_subscribe_dispatch_lambda);
   run_test("multiple observers all receive notification",
            test_subscribe_multiple_observers);
@@ -361,7 +297,7 @@ int main() {
            test_notify_unregistered_id_is_noop);
   run_test("Connect() delegates to transport",
            test_sdk_connect_delegates_to_transport);
-  run_test("Incoming transport data triggers parse() + dispatch",
+  run_test("Incoming transport data triggers parse + dispatch",
            test_incoming_data_triggers_parse);
   run_test("Full encode -> inject -> subscriber receives message",
            test_end_to_end_parse_pipeline);

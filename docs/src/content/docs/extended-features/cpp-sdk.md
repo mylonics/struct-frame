@@ -36,19 +36,42 @@ void handle_status(const StatusMessage& msg, uint8_t msgId) {
 }
 
 int main() {
-    // Create SDK with transport and frame parser
-    StructFrame::StructFrameSdkConfig config{
-        .transport = &my_transport,
-        .frameParser = &my_frame_parser,
-    };
-    StructFrame::StructFrameSdk sdk(config);
+    // Create SDK with transport and message-info callback
+    // The profile Config and get_message_info are compile-time template parameters
+    // — all parse/encode calls are fully inlined with zero virtual dispatch.
+    using Sdk = StructFrame::StructFrameSdkT<
+        StructFrame::ProfileStandardConfig,
+        decltype(&get_message_info)>;
+
+    Sdk sdk(&my_transport, &get_message_info);
 
     // Subscribe to messages by message ID
     sdk.subscribe<StatusMessage>(StatusMessage::MSG_ID, handle_status);
 
     // Connect the transport (incoming data is handled via callbacks)
-    sdk.connect();
+    sdk.Connect();
 }
+```
+
+### Convenience Aliases
+
+Profile-specific aliases reduce boilerplate:
+
+```cpp
+// ProfileStandardSdk — most common
+StructFrame::ProfileStandardSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+
+// ProfileSensorSdk — low-bandwidth sensors
+StructFrame::ProfileSensorSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+
+// ProfileIPCSdk — trusted inter-process communication
+StructFrame::ProfileIPCSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+
+// ProfileBulkSdk — large data transfers
+StructFrame::ProfileBulkSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
+
+// ProfileNetworkSdk — multi-system networked communication
+StructFrame::ProfileNetworkSdk<decltype(&get_message_info)> sdk(&transport, &get_message_info);
 ```
 
 ## Transports (Full SDK)

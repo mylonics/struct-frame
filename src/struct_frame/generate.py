@@ -494,9 +494,9 @@ class Field:
                         # Variable size for arrays or strings
                         try:
                             self.max_size = int(ovalue)
-                            if self.max_size <= 0 or self.max_size > 65535:
+                            if self.max_size <= 0 or self.max_size > 255:
                                 print(
-                                    f"Invalid max_size {self.max_size} for field {self.name}, must be 1-65535")
+                                    f"Invalid max_size {self.max_size} for field {self.name}, must be 1-255")
                                 return False
                         except (ValueError, TypeError):
                             print(
@@ -1006,6 +1006,7 @@ class Message:
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
         self.magic_bytes_override = None  # User-specified magic bytes (option magic_bytes)
         self.variable = False  # Variable length message encoding
+        self.discriminator_mode = None  # Optional message-level discriminator override
         # True if this message is an envelope/container for other messages
         self.is_envelope = False
         self.source_file = None
@@ -1030,6 +1031,20 @@ class Message:
                     sval = str(e.value).strip().lower()
                     if sval in ('true', '1', 'yes', 'on') or e.value is True:
                         self.variable = True
+                elif e.name == "discriminator":
+                    val = e.value
+                    if hasattr(val, 'name'):
+                        sval = val.name.lower()
+                    else:
+                        sval = str(val).strip().lower().strip('"\'')
+                    if sval in ('auto', 'msgid', 'field_order', 'none', 'false', 'off', 'disabled'):
+                        if sval in ('false', 'off', 'disabled'):
+                            sval = 'none'
+                        self.discriminator_mode = sval
+                    else:
+                        print(f"Invalid discriminator option '{e.value}' in message {self.name}. "
+                              f"Valid values: auto, msgid, field_order, none")
+                        return False
                 elif e.name in ("is_envelope", "envelope"):
                     sval = str(e.value).strip().lower()
                     if sval in ('true', '1', 'yes', 'on') or e.value is True:
@@ -1154,6 +1169,11 @@ class Message:
                 self.base_size = self.base_size + value.size
 
         # Validate oneofs - they contribute their max size to the message
+        if self.discriminator_mode is not None and len(self.oneofs) == 1:
+            sole_oneof = next(iter(self.oneofs.values()))
+            if sole_oneof.discriminator_mode == "auto":
+                sole_oneof.discriminator_mode = self.discriminator_mode
+
         for key, oneof in self.oneofs.items():
             if not oneof.validate(current_package, packages, debug, current_message=self):
                 print(
@@ -1319,6 +1339,7 @@ class Package:
         self.enums = {}
         self.messages = {}
         self.package_id = None  # Package ID for extended message IDs (0-255)
+        self.package_id_explicit = False
 
     def addEnum(self, enum, comments, source_file=None):
         self.comments = comments
@@ -1364,8 +1385,16 @@ class Package:
             # Only error if the same package NAME has different IDs (checked in validate_package_id).
 
         # Validate message IDs based on whether package has a package ID
+        seen_msg_ids = {}
         for key, value in self.messages.items():
             if value.id is not None:
+                if value.id in seen_msg_ids:
+                    other = seen_msg_ids[value.id]
+                    print(
+                        f"Error: duplicate msgid {value.id} in package '{self.name}' used by messages '{other}' and '{value.name}'")
+                    return False
+                seen_msg_ids[value.id] = value.name
+
                 if self.package_id is not None:
                     # If package has a package ID, message IDs must be < 256
                     if value.id < 0 or value.id >= 256:
@@ -1421,6 +1450,12 @@ processed_file = []
 required_file = []
 # Track which package imports which other packages: {importing_pkg: [imported_pkg1, imported_pkg2, ...]}
 package_imports = {}
+# Imports that could not be resolved when first seen because the target
+# package had not been parsed yet: [(importing_pkg, imported_abs_path), ...]
+pending_package_imports = []
+# Track the owning package for each parsed file so repeated imports can still
+# contribute package-level edges even when parseFile short-circuits.
+file_to_package = {}
 
 parser = argparse.ArgumentParser(
     prog='struct_frame',
@@ -1488,6 +1523,10 @@ def parseFile(filename, base_path=None, importing_package=None):
     # Convert to absolute path for circular import detection
     abs_filename = os.path.abspath(filename)
 
+    if not processed_file and not packages and not package_imports:
+        file_to_package.clear()
+        pending_package_imports.clear()
+
     # Avoid circular imports
     if abs_filename in processed_file:
         return True
@@ -1511,6 +1550,18 @@ def parseFile(filename, base_path=None, importing_package=None):
     foundPackage = False
     package_name = ""
     comments = []
+    pending_imports = []
+
+    def record_package_import(importer, import_path):
+        imported_abs_path = os.path.abspath(import_path)
+        imported_package_name = file_to_package.get(imported_abs_path)
+        if not imported_package_name or importer == imported_package_name:
+            return False
+        if importer not in package_imports:
+            package_imports[importer] = []
+        if imported_package_name not in package_imports[importer]:
+            package_imports[importer].append(imported_package_name)
+        return True
 
     for e in result.file_elements:
         if (type(e) == ast.Package):
@@ -1522,12 +1573,13 @@ def parseFile(filename, base_path=None, importing_package=None):
             package_name = e.name
             if package_name not in packages:
                 packages[package_name] = Package(package_name)
+            file_to_package[abs_filename] = package_name
             # Track import relationship if this file was imported
             if importing_package and importing_package != package_name:
-                if importing_package not in package_imports:
-                    package_imports[importing_package] = []
-                if package_name not in package_imports[importing_package]:
-                    package_imports[importing_package].append(package_name)
+                record_package_import(importing_package, abs_filename)
+                for pending_import in pending_imports:
+                    record_package_import(package_name, pending_import)
+                pending_imports.clear()
 
         elif (type(e) == ast.Import):
             # Handle import statements
@@ -1548,6 +1600,13 @@ def parseFile(filename, base_path=None, importing_package=None):
                 print(f"  Tried: {import_path_base}")
                 print(f"  Tried: {import_path_current}")
                 return False
+
+            imported_abs_path = os.path.abspath(import_path)
+            if foundPackage and package_name:
+                if not record_package_import(package_name, imported_abs_path):
+                    pending_package_imports.append((package_name, imported_abs_path))
+            else:
+                pending_imports.append(imported_abs_path)
 
             # Recursively parse the imported file, passing current package as importer
             if not parseFile(import_path, base_path, package_name):
@@ -1588,6 +1647,11 @@ def parseFile(filename, base_path=None, importing_package=None):
         elif (type(e) == ast.Comment):
             comments.append(e.text)
 
+    if foundPackage and pending_imports:
+        for pending_import in pending_imports:
+            if not record_package_import(package_name, pending_import):
+                pending_package_imports.append((package_name, pending_import))
+
     return True
 
 
@@ -1616,6 +1680,7 @@ def validate_package_id(package_name, new_id, filename):
     else:
         # First assignment
         packages[package_name].package_id = new_id
+        packages[package_name].package_id_explicit = True
 
     return True
 
@@ -1641,6 +1706,7 @@ def apply_package_id_inheritance():
                 if importing_pkg_id is not None:
                     # Inheritance: imported package gets the importing package's ID
                     packages[imported_pkg].package_id = importing_pkg_id
+                    packages[imported_pkg].package_id_explicit = False
                 # else: Neither package has an ID - this will be caught by validatePackages if needed
             # If both packages have IDs, they are validated separately
             # Note: Same package name with different IDs is caught by validate_package_id()
@@ -1655,6 +1721,55 @@ def validate_packages(debug=False):
     # Apply package ID inheritance first
     if not apply_package_id_inheritance():
         return False
+
+    # Resolve deferred import edges now that all package/file mappings exist.
+    for importing_pkg, imported_abs_path in pending_package_imports:
+        imported_pkg = file_to_package.get(os.path.abspath(imported_abs_path))
+        if imported_pkg and importing_pkg != imported_pkg:
+            if importing_pkg not in package_imports:
+                package_imports[importing_pkg] = []
+            if imported_pkg not in package_imports[importing_pkg]:
+                package_imports[importing_pkg].append(imported_pkg)
+
+    # Reject package import cycles (A -> B -> A).
+    visiting = set()
+    visited = set()
+
+    def dfs(pkg_name, stack):
+        if pkg_name in visiting:
+            cycle_start = stack.index(pkg_name)
+            cycle = stack[cycle_start:] + [pkg_name]
+            print("Error: circular package import detected: " + " -> ".join(cycle))
+            return False
+        if pkg_name in visited:
+            return True
+
+        visiting.add(pkg_name)
+        stack.append(pkg_name)
+        for dep in package_imports.get(pkg_name, []):
+            if dep in packages and not dfs(dep, stack):
+                return False
+        stack.pop()
+        visiting.remove(pkg_name)
+        visited.add(pkg_name)
+        return True
+
+    for pkg_name in sorted(packages):
+        if not dfs(pkg_name, []):
+            return False
+
+    # Reject duplicate explicit package IDs across compiled packages.
+    seen_pkg_ids = {}
+    for pkg_name in sorted(packages):
+        pkg = packages[pkg_name]
+        if pkg.package_id is None or not pkg.package_id_explicit:
+            continue
+        if pkg.package_id in seen_pkg_ids:
+            other = seen_pkg_ids[pkg.package_id]
+            print(
+                f"Error: duplicate package ID {pkg.package_id} used by packages '{other}' and '{pkg_name}'")
+            return False
+        seen_pkg_ids[pkg.package_id] = pkg_name
 
     # Check if multiple packages exist
     if len(packages) > 1:

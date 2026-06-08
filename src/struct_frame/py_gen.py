@@ -859,115 +859,87 @@ class MessagePyGen():
         result += '\n    def _serialize_variable(self) -> bytes:\n'
         result += '        """Serialize message using variable-length encoding (only serializes used bytes)."""\n'
         result += '        data = b""\n'
-        
+
         for key, f in msg.fields.items():
-            if f.is_array and f.max_size is not None:
-                # Variable array
-                type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+            if f.field_type in ("string", "bytes") and not f.is_array:
+                if f.size_option is not None:
+                    result += f'        # Fixed string: {f.name}\n'
+                    result += f'        data += struct.pack("<{f.size_option}s", self.{f.name}[:{f.size_option}])\n'
+                elif f.max_size is not None:
+                    count_fmt = "H" if f.max_size > 255 else "B"
+                    result += f'        # Variable string: {f.name}\n'
+                    result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
+                    result += f'        data += struct.pack("<{count_fmt}", len(str_data))\n'
+                    result += f'        data += struct.pack("<{f.max_size}s", str_data)\n'
+            elif f.is_array:
                 if f.field_type in ("string", "bytes"):
-                    element_size = f.element_size if f.element_size else 1
-                    result += f'        # {f.name}: variable string array\n'
-                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            s = struct.unpack_from("<{element_size}s", data, offset)[0]\n'
-                    result += f'            fields["{f.name}"].append(s)\n'
-                    result += f'            offset += {element_size}\n'
-                elif f.is_enum:
-                    result += f'        # {f.name}: variable enum array\n'
-                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'            offset += 1\n'
-                    result += f'            fields["{f.name}"].append(val)\n'
-                elif f.field_type in type_sizes:
-                    element_size = type_sizes[f.field_type]
-                    fmt = py_struct_format.get(f.field_type, 'B')
-                    result += f'        # {f.name}: variable {f.field_type} array\n'
-                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            val = struct.unpack_from("<{fmt}", data, offset)[0]\n'
-                    result += f'            offset += {element_size}\n'
-                    result += f'            fields["{f.name}"].append(val)\n'
+                    element_size = f.element_size if f.element_size else 16
+                    if f.size_option is not None:
+                        result += f'        # Fixed string array: {f.name}\n'
+                        result += f'        for i in range({f.size_option}):\n'
+                        result += f'            if i < len(self.{f.name}):\n'
+                        result += f'                data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
+                        result += f'            else:\n'
+                        result += f'                data += struct.pack("<{element_size}s", b"")\n'
+                    elif f.max_size is not None:
+                        count_fmt = "H" if f.max_size > 255 else "B"
+                        result += f'        # Bounded string array: {f.name}\n'
+                        result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
+                        result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
+                        result += f'            data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
                 else:
-                    # Nested message array
-                    result += f'        # {f.name}: variable nested message array\n'
-                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
-                    result += f'            fields["{f.name}"].append(msg)\n'
-                    result += f'            offset += {type_name}.MAX_SIZE\n'
-            elif f.field_type in ("string", "bytes") and f.max_size is not None:
-                # Variable string
-                result += f'        # {f.name}: variable string\n'
-                result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
-                result += f'        data += struct.pack("<B", len(str_data))\n'
-                result += f'        data += str_data\n'
-            elif f.field_type in ("string", "bytes") and f.size_option is not None:
-                # Fixed string
-                result += f'        # {f.name}: fixed string\n'
-                result += f'        data += struct.pack("<{f.size_option}s", self.{f.name}[:{f.size_option}])\n'
-            elif f.is_array and f.size_option is not None:
-                # Fixed array (pack as usual)
-                if f.is_enum:
-                    result += f'        # {f.name}: fixed enum array\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'            offset += 1\n'
-                    result += f'            fields["{f.name}"].append(val)\n'
-                elif f.field_type in py_struct_format:
-                    fmt = py_struct_format[f.field_type]
-                    size = struct_format_sizes[fmt]
-                    result += f'        # {f.name}: fixed {f.field_type} array\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            val = struct.unpack_from("<{fmt}", data, offset)[0]\n'
-                    result += f'            offset += {size}\n'
-                    result += f'            fields["{f.name}"].append(val)\n'
-                else:
-                    # Nested message fixed array
-                    type_name = f.field_type
-                    result += f'        # {f.name}: fixed nested message array\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
-                    result += f'            fields["{f.name}"].append(msg)\n'
-                    result += f'            offset += {type_name}.MAX_SIZE\n'
-            elif f.field_type in py_struct_format:
-                fmt = py_struct_format[f.field_type]
-                size = struct_format_sizes[fmt]
-                result += f'        # {f.name}: {f.field_type}\n'
-                result += f'        fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]\n'
-                result += f'        offset += {size}\n'
-            elif f.is_enum:
-                result += f'        # {f.name}: enum\n'
-                result += f'        fields["{f.name}"] = struct.unpack_from("<B", data, offset)[0]\n'
-                result += f'        offset += 1\n'
+                    fmt = MessagePyGen.get_struct_format(f)
+                    if f.size_option is not None:
+                        if fmt:
+                            result += f'        # Fixed array: {f.name}\n'
+                            result += f'        for i in range({f.size_option}):\n'
+                            result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
+                            if f.is_enum:
+                                result += f'            data += struct.pack("<B", int(val))\n'
+                            else:
+                                base_fmt = py_struct_format[f.field_type]
+                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                        else:
+                            type_name = f.field_type
+                            result += f'        # Fixed nested message array: {f.name}\n'
+                            result += f'        for i in range({f.size_option}):\n'
+                            result += f'            if i < len(self.{f.name}):\n'
+                            result += f'                data += self.{f.name}[i].serialize()\n'
+                            result += f'            else:\n'
+                            result += f'                data += {type_name}().serialize()\n'
+                    elif f.max_size is not None:
+                        count_fmt = "H" if f.max_size > 255 else "B"
+                        if f.is_default_type or f.is_enum:
+                            result += f'        # Bounded array: {f.name}\n'
+                            result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
+                            result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
+                            result += f'            val = self.{f.name}[i]\n'
+                            if f.is_enum:
+                                result += f'            data += struct.pack("<B", int(val))\n'
+                            else:
+                                base_fmt = py_struct_format[f.field_type]
+                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                        else:
+                            result += f'        # Bounded nested message array: {f.name}\n'
+                            result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
+                            result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
+                            result += f'            data += self.{f.name}[i].serialize()\n'
             else:
-                # Nested message
-                type_name = f.field_type
-                result += f'        # {f.name}: nested message\n'
-                result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
-                result += f'        offset += {type_name}.MAX_SIZE\n'
-        
-        # Oneofs: write discriminator + union payload (or length-prefix + variant bytes for variable oneof)
+                fmt = MessagePyGen.get_struct_format(f)
+                if fmt:
+                    result += f'        data += struct.pack("<{fmt}", self.{f.name})\n'
+                else:
+                    result += f'        data += self.{f.name}.serialize()\n'
+
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
-                    result += f'        # Oneof {oneof_name} discriminator (uint16 - message ID)\n'
+                    result += f'        # Oneof {oneof_name} auto-discriminator (uint16 - message ID)\n'
                     result += f'        if self.{oneof_name}_which is not None:\n'
                     result += f'            data += struct.pack("<H", self.{oneof_name}[self.{oneof_name}_which].__class__.msg_id)\n'
                     result += f'        else:\n'
                     result += f'            data += struct.pack("<H", 0)\n'
-                else:  # field_order
+                else:
                     result += f'        # Oneof {oneof_name} discriminator (uint8 - field order, 1-based)\n'
                     field_order_map = {field_name: idx + 1 for idx, field_name in enumerate(oneof.field_order)}
                     result += f'        _field_order_map = {field_order_map}\n'
@@ -1002,7 +974,7 @@ class MessagePyGen():
                 result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
                 result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
                 result += f'        data += union_data\n'
-        
+
         result += '        return data\n'
         
         # Generate _deserialize_variable class method (internal method)

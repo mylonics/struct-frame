@@ -1,8 +1,10 @@
 // Struct Frame SDK Client for C++
-// Header-only, zero heap allocation implementation.
+// Header-only, zero heap allocation, zero virtual dispatch implementation.
 //
 // All internal state is preallocated. Incoming bytes are automatically
 // parsed and dispatched to registered subscribers with no dynamic memory use.
+// The frame profile Config and message-info callback are compile-time template
+// parameters — all parse/encode calls are fully inlined with no vtable overhead.
 
 #pragma once
 
@@ -11,35 +13,10 @@
 #include <cstdint>
 #include <cstring>
 #include <new>
+#include <type_traits>
 
 namespace structframe {
 namespace sdk {
-
-// ============================================================================
-// frame_parser interface
-// ============================================================================
-
-/**
- * Frame parser interface implemented by generated frame parsers.
- */
-class frame_parser {
-public:
-    virtual ~frame_parser() = default;
-
-    /**
-     * Parse a buffer and return the first valid frame found.
-     * Returns FrameMsgInfo with valid=true on success; valid=false if no
-     * complete frame is present yet.
-     */
-    virtual structframe::FrameMsgInfo parse(const uint8_t* data, size_t length) = 0;
-
-    /**
-     * Frame (serialize + wrap) a payload for sending.
-     * @return Number of bytes written to output, 0 on failure.
-     */
-    virtual size_t frame(uint8_t msgId, const uint8_t* data, size_t dataLen,
-                         uint8_t* output, size_t outputMaxLen) = 0;
-};
 
 // ============================================================================
 // IStructFrameSdk — non-template base used by SubscriptionHandle
@@ -110,11 +87,91 @@ private:
 
 struct StructFrameSdkConfig {
     Transport* transport = nullptr;
-    frame_parser* parser = nullptr;
 };
 
 // ============================================================================
-// StructFrameSdkT — main SDK (zero heap, auto-dispatch)
+// FrameRaw — encode a raw payload into a framed buffer (no MessageBase needed)
+// ============================================================================
+
+/**
+ * Encode a raw payload into a framed buffer for a given profile Config.
+ * This is the non-templated-message counterpart to FrameEncoderWithCrc::encode()
+ * and FrameEncoderMinimal::encode(), used by SendRaw() when no MessageBase
+ * object is available.
+ *
+ * @param msgId      Message ID (low byte; high byte used as pkg_id if Config::has_pkg_id)
+ * @param data       Raw payload bytes
+ * @param dataLen    Payload length
+ * @param output     Output buffer
+ * @param outputMaxLen Output buffer capacity
+ * @param get_message_info  Callable returning MessageInfo for a given msg_id
+ * @return Number of bytes written to output, 0 on failure
+ */
+template<typename Config, typename GetMsgInfoFn>
+static size_t FrameRaw(uint8_t msgId, const uint8_t* data, size_t dataLen,
+                       uint8_t* output, size_t outputMaxLen,
+                       GetMsgInfoFn get_message_info) {
+    const auto info = get_message_info(static_cast<uint16_t>(msgId));
+    if (!info.valid) return 0;
+
+    const size_t total = Config::overhead + dataLen;
+    if (outputMaxLen < total || dataLen > Config::max_payload) return 0;
+
+    size_t idx = 0;
+
+    // Start bytes
+    if constexpr (Config::num_start_bytes >= 1)
+        output[idx++] = Config::computed_start_byte1();
+    if constexpr (Config::num_start_bytes >= 2)
+        output[idx++] = Config::computed_start_byte2();
+
+    const size_t crc_start = idx;
+
+    // Optional header fields (defaults: seq=0, sys_id=0, comp_id=0)
+    if constexpr (Config::has_seq)    output[idx++] = 0;
+    if constexpr (Config::has_sys_id) output[idx++] = 0;
+    if constexpr (Config::has_comp_id) output[idx++] = 0;
+
+    // Length field
+    if constexpr (Config::has_length) {
+        if constexpr (Config::length_bytes == 1) {
+            output[idx++] = static_cast<uint8_t>(dataLen & 0xFF);
+        } else {
+            output[idx++] = static_cast<uint8_t>(dataLen & 0xFF);
+            output[idx++] = static_cast<uint8_t>((dataLen >> 8) & 0xFF);
+        }
+    }
+
+    // Message ID (16-bit: high byte is pkg_id when has_pkg_id)
+    if constexpr (Config::has_pkg_id)
+        output[idx++] = static_cast<uint8_t>((msgId >> 8) & 0xFF);
+    output[idx++] = static_cast<uint8_t>(msgId & 0xFF);
+
+    // Payload
+    std::memcpy(output + idx, data, dataLen);
+    idx += dataLen;
+
+    // CRC (extension-aware)
+    if constexpr (Config::has_crc) {
+        size_t crc_len = idx - crc_start;
+        size_t effective_base = crc_len;
+        if constexpr (Config::has_length) {
+            if (info.base_size <= dataLen) {
+                effective_base = (crc_len - dataLen) + info.base_size;
+            }
+        }
+        auto ck = structframe::fletcher_checksum_ext(
+            output + crc_start, effective_base, crc_len,
+            info.magic1, info.magic2);
+        output[idx++] = ck.byte1;
+        output[idx++] = ck.byte2;
+    }
+
+    return idx;
+}
+
+// ============================================================================
+// StructFrameSdkT — main SDK (zero heap, zero virtual dispatch, auto-dispatch)
 // ============================================================================
 
 /**
@@ -124,18 +181,33 @@ struct StructFrameSdkConfig {
  * Incoming bytes from the transport are automatically parsed and dispatched
  * to all matching subscribers without any explicit user action.
  *
+ * The frame profile Config and GetMsgInfoFn are compile-time template
+ * parameters, so all parse/encode calls are fully inlined with zero
+ * virtual dispatch overhead.
+ *
  * Template parameters (adjust for your platform):
- *   MaxBuffer        — receive ring buffer size in bytes          (default 8192)
- *   MaxSubscriptions — maximum concurrent subscriptions           (default 32)
- *   MaxFrameSize     — maximum outgoing frame size in bytes       (default 512)
- *   MaxCallableSize  — max size of a captured lambda/functor      (default 64)
+ *   Config           — frame profile configuration (e.g., ProfileStandardConfig)
+ *   GetMsgInfoFn     — callable type for MessageInfo lookup (e.g., function pointer)
+ *   MaxBuffer        — receive buffer size in bytes                    (default 8192)
+ *   MaxSubscriptions — maximum concurrent subscriptions               (default 32)
+ *   MaxFrameSize     — maximum outgoing frame size in bytes            (default 512)
+ *   MaxCallableSize  — max size of a captured lambda/functor           (default 64)
  *                      Exceeding this causes a compile-time error.
  *
  * Usage:
- *   StructFrameSdk sdk(config);          // default sizes
- *   StructFrameSdkT<4096,8,256> sdk(c); // custom sizes
+ *   // With function pointer:
+ *   StructFrameSdkT<ProfileStandardConfig, decltype(&get_message_info)> sdk(transport, &get_message_info);
+ *
+ *   // With lambda (deduced type):
+ *   auto get_info = [](uint16_t id) { return my_get_message_info(id); };
+ *   StructFrameSdkT<ProfileStandardConfig, decltype(get_info)> sdk(transport, get_info);
+ *
+ *   // Custom sizes for embedded:
+ *   StructFrameSdkT<ProfileSensorConfig, decltype(&get_msg_info), 2048, 8, 256, 32> sdk(t, &get_msg_info);
  */
 template<
+    typename Config,
+    typename GetMsgInfoFn,
     size_t MaxBuffer        = 8192,
     size_t MaxSubscriptions = 32,
     size_t MaxFrameSize     = 512,
@@ -149,9 +221,16 @@ public:
     StructFrameSdkT(StructFrameSdkT&&) = delete;
     StructFrameSdkT& operator=(StructFrameSdkT&&) = delete;
 
-    explicit StructFrameSdkT(const StructFrameSdkConfig& config)
-        : transport_(config.transport),
-          parser_(config.parser),
+    /**
+     * Construct the SDK with a transport and message-info callback.
+     *
+     * @param transport  Transport for sending/receiving data (may be nullptr for feed-only use)
+     * @param get_message_info  Callable: MessageInfo(uint16_t msg_id) — returns
+     *                          size/magic info for a given message ID
+     */
+    StructFrameSdkT(Transport* transport, GetMsgInfoFn get_message_info)
+        : transport_(transport),
+          get_message_info_(static_cast<GetMsgInfoFn&&>(get_message_info)),
           buffer_len_(0) {
         for (size_t i = 0; i < MaxSubscriptions; ++i) {
             slots_[i].active = false;
@@ -162,6 +241,12 @@ public:
             transport_->OnClose(&StructFrameSdkT::CloseCallbackWrapper, this);
         }
     }
+
+    /**
+     * Construct with a StructFrameSdkConfig (transport only; get_message_info still required).
+     */
+    StructFrameSdkT(const StructFrameSdkConfig& config, GetMsgInfoFn get_message_info)
+        : StructFrameSdkT(config.transport, static_cast<GetMsgInfoFn&&>(get_message_info)) {}
 
     ~StructFrameSdkT() {
         for (size_t i = 0; i < MaxSubscriptions; ++i) {
@@ -220,9 +305,6 @@ public:
 
         // Placement-construct the callable into the inline storage.
         new (slot.callable_storage) Callable(static_cast<Callable&&>(callback));
-
-        // Non-capturing lambdas that reference TMessage/Callable as template
-        // parameters are implicitly convertible to plain function pointers.
 
         slot.dispatch_bytes = [](const uint8_t* payload, size_t len,
                                  uint8_t id, void* ctx) {
@@ -297,25 +379,39 @@ public:
 
     /**
      * Serialize and send a typed message through the transport.
+     * Uses FrameEncoderWithCrc or FrameEncoderMinimal based on the profile
+     * — fully inlined, no virtual dispatch.
      * Returns true if the frame was successfully handed to the transport.
      */
     template<typename TMessage>
     bool Send(const TMessage& message) {
-        uint8_t payload[TMessage::MAX_SIZE];
-        message.serialize(payload);
-        return SendRaw(static_cast<uint8_t>(TMessage::MSG_ID), payload,
-                       TMessage::MAX_SIZE);
+        if (transport_ == nullptr) return false;
+        uint8_t frame_buf[MaxFrameSize];
+        size_t framedLen;
+
+        if constexpr (Config::has_length || Config::has_crc) {
+            framedLen = structframe::FrameEncoderWithCrc<Config>::encode(
+                frame_buf, MaxFrameSize, message);
+        } else {
+            framedLen = structframe::FrameEncoderMinimal<Config>::encode(
+                frame_buf, MaxFrameSize, message);
+        }
+
+        if (framedLen == 0) return false;
+        transport_->Send(frame_buf, framedLen);
+        return true;
     }
 
     /**
      * Frame and send a pre-serialized payload through the transport.
+     * Uses FrameRaw() — fully inlined, no virtual dispatch.
      * Returns true on success.
      */
     bool SendRaw(uint8_t msgId, const uint8_t* data, size_t dataLen) {
-        if (parser_ == nullptr || transport_ == nullptr) return false;
+        if (transport_ == nullptr) return false;
         uint8_t frame_buf[MaxFrameSize];
-        const size_t framedLen = parser_->frame(msgId, data, dataLen,
-                                                frame_buf, MaxFrameSize);
+        const size_t framedLen = FrameRaw<Config>(
+            msgId, data, dataLen, frame_buf, MaxFrameSize, get_message_info_);
         if (framedLen == 0) return false;
         transport_->Send(frame_buf, framedLen);
         return true;
@@ -339,11 +435,11 @@ private:
             uint8_t callable_storage[MaxCallableSize];
     };
 
-    Transport*   transport_;
-    frame_parser* parser_;
-    Slot         slots_[MaxSubscriptions];
-    uint8_t      buffer_[MaxBuffer];
-    size_t       buffer_len_;
+    Transport*     transport_;
+    GetMsgInfoFn   get_message_info_;
+    Slot           slots_[MaxSubscriptions];
+    uint8_t        buffer_[MaxBuffer];
+    size_t         buffer_len_;
 
     // -----------------------------------------------------------------------
     // Internal helpers
@@ -369,7 +465,17 @@ private:
 
     void ParseBuffer() {
         while (buffer_len_ > 0) {
-            const FrameMsgInfo result = parser_->parse(buffer_, buffer_len_);
+            FrameMsgInfo result;
+
+            // Compile-time dispatch: no virtual call, fully inlined.
+            if constexpr (Config::has_length || Config::has_crc) {
+                result = structframe::BufferParserWithCrc<Config>::parse(
+                    buffer_, buffer_len_, get_message_info_);
+            } else {
+                result = structframe::BufferParserMinimal<Config>::parse(
+                    buffer_, buffer_len_, get_message_info_);
+            }
+
             if (!result.valid) break;
 
             // Auto-dispatch: deserialize payload and notify all matching slots.
@@ -413,9 +519,72 @@ private:
     }
 };
 
-// Convenience alias with default sizing — covers the common case and keeps
-// existing code (StructFrameSdk sdk(config)) compiling unchanged.
-using StructFrameSdk = StructFrameSdkT<>;
+// ============================================================================
+// Convenience aliases
+// ============================================================================
+
+/**
+ * ProfileStandardSdk — most common alias for ProfileStandard with default sizing.
+ *
+ * Usage:
+ *   ProfileStandardSdk<decltype(&get_message_info)> sdk(transport, &get_message_info);
+ */
+template<typename GetMsgInfoFn,
+    size_t MaxBuffer        = 8192,
+    size_t MaxSubscriptions = 32,
+    size_t MaxFrameSize     = 512,
+    size_t MaxCallableSize  = 64>
+using ProfileStandardSdk = StructFrameSdkT<
+    structframe::ProfileStandardConfig, GetMsgInfoFn,
+    MaxBuffer, MaxSubscriptions, MaxFrameSize, MaxCallableSize>;
+
+/**
+ * ProfileSensorSdk — alias for ProfileSensor (Tiny + Minimal).
+ */
+template<typename GetMsgInfoFn,
+    size_t MaxBuffer        = 8192,
+    size_t MaxSubscriptions = 32,
+    size_t MaxFrameSize     = 512,
+    size_t MaxCallableSize  = 64>
+using ProfileSensorSdk = StructFrameSdkT<
+    structframe::ProfileSensorConfig, GetMsgInfoFn,
+    MaxBuffer, MaxSubscriptions, MaxFrameSize, MaxCallableSize>;
+
+/**
+ * ProfileIPCSdk — alias for ProfileIPC (None + Minimal).
+ */
+template<typename GetMsgInfoFn,
+    size_t MaxBuffer        = 8192,
+    size_t MaxSubscriptions = 32,
+    size_t MaxFrameSize     = 512,
+    size_t MaxCallableSize  = 64>
+using ProfileIPCSdk = StructFrameSdkT<
+    structframe::ProfileIPCConfig, GetMsgInfoFn,
+    MaxBuffer, MaxSubscriptions, MaxFrameSize, MaxCallableSize>;
+
+/**
+ * ProfileBulkSdk — alias for ProfileBulk (Basic + Extended).
+ */
+template<typename GetMsgInfoFn,
+    size_t MaxBuffer        = 8192,
+    size_t MaxSubscriptions = 32,
+    size_t MaxFrameSize     = 512,
+    size_t MaxCallableSize  = 64>
+using ProfileBulkSdk = StructFrameSdkT<
+    structframe::ProfileBulkConfig, GetMsgInfoFn,
+    MaxBuffer, MaxSubscriptions, MaxFrameSize, MaxCallableSize>;
+
+/**
+ * ProfileNetworkSdk — alias for ProfileNetwork (Basic + ExtendedMultiSystemStream).
+ */
+template<typename GetMsgInfoFn,
+    size_t MaxBuffer        = 8192,
+    size_t MaxSubscriptions = 32,
+    size_t MaxFrameSize     = 512,
+    size_t MaxCallableSize  = 64>
+using ProfileNetworkSdk = StructFrameSdkT<
+    structframe::ProfileNetworkConfig, GetMsgInfoFn,
+    MaxBuffer, MaxSubscriptions, MaxFrameSize, MaxCallableSize>;
 
 } // namespace sdk
 } // namespace structframe
