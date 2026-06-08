@@ -23,6 +23,7 @@ gql_types = {
     "float": "Float",
     "double": "Float",
     "string": "String",
+    "bytes": "String",    # bytes treated identically to string (same wire format)
 }
 
 
@@ -104,7 +105,7 @@ class FieldGqlGen:
             # Array field - use our size descriptions
             if getattr(field, 'size_option', None) is not None:
                 # Fixed array
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     comment_lines = [
                         f"Fixed string array: {field.size_option} strings, each {getattr(field, 'element_size', 'N/A')} chars"]
                 else:
@@ -112,13 +113,13 @@ class FieldGqlGen:
                         f"Fixed array: always {field.size_option} elements"]
             else:
                 # Variable array
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     comment_lines = [
                         f"Variable string array: up to {getattr(field, 'max_size', 'N/A')} strings, each max {getattr(field, 'element_size', 'N/A')} chars"]
                 else:
                     comment_lines = [
                         f"Variable array: up to {getattr(field, 'max_size', 'N/A')} elements"]
-        elif field.field_type == "string":
+        elif field.field_type in ("string", "bytes"):
             # Non-array string field
             if getattr(field, 'size_option', None) is not None:
                 comment_lines = [
@@ -171,7 +172,7 @@ class MessageGqlGen:
                 lines.append(desc)
         type_name = f"{pascal_case(msg.package)}{msg.name}"
         lines.append(f'type {type_name} @package(name: "{package.name}") {{')
-        if not msg.fields:
+        if not msg.fields and not getattr(msg, 'oneofs', {}):
             lines.append("  _empty: Boolean")
         else:
             for key, f in msg.fields.items():
@@ -180,6 +181,16 @@ class MessageGqlGen:
                         FieldGqlGen.generate_flattened_children(f, package, msg))
                 else:
                     lines.append(FieldGqlGen.generate(f))
+            # Generate oneof fields as nullable union-type fields
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                lines.append(f"  # oneof {oneof_name}")
+                for field_name, oneof_field in oneof.fields.items():
+                    gql_type = gql_types.get(oneof_field.field_type,
+                                              f"{pascal_case(oneof_field.package)}{oneof_field.field_type}")
+                    if getattr(oneof_field, 'is_array', False):
+                        gql_type = f"[{gql_type}!]!"
+                    # Oneof members are nullable since only one is populated
+                    lines.append(f"  {field_name}: {gql_type}")
         lines.append("}\n")
         return '\n'.join(lines)
 
@@ -199,12 +210,23 @@ class FileGqlGen:
         yield _PACKAGE_DIRECTIVE_DEF + '\n\n'
 
         first_block = True
-        # Enums
+        # Enums (package-level)
         for _, enum in package.enums.items():
             if not first_block:
                 yield '\n'
             first_block = False
             yield EnumGqlGen.generate(enum).rstrip() + '\n'
+
+        # Nested enums (message-scoped)
+        emitted_nested = set()
+        for _, msg in package.sortedMessages().items():
+            for enum_name, enum_obj in getattr(msg, 'enums', {}).items():
+                if enum_name not in emitted_nested:
+                    emitted_nested.add(enum_name)
+                    if not first_block:
+                        yield '\n'
+                    first_block = False
+                    yield EnumGqlGen.generate(enum_obj).rstrip() + '\n'
 
         # Messages (object types)
         for _, msg in package.sortedMessages().items():

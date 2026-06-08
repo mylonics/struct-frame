@@ -396,27 +396,31 @@ message Foo {
 
 if __name__ == "__main__":
     print("Running generator validation tests...\n")
-    results = [
+    test_fns = [
         # Original three TODO cases + the working multi-package check
-        test_duplicate_msgid(),
-        test_duplicate_pkgid(),
-        test_circular_import(),
-        test_multi_package_missing_pkgid(),
+        test_duplicate_msgid,
+        test_duplicate_pkgid,
+        test_circular_import,
+        test_multi_package_missing_pkgid,
         # Tier B §3 additions (10 new TODO cases from test-coverage.md §8)
-        test_duplicate_field_numbers(),
-        test_array_missing_size(),
-        test_string_missing_size(),
-        test_string_array_missing_element_size(),
-        test_array_max_size_overflow(),
-        test_envelope_zero_oneofs(),
-        test_envelope_non_message_oneof_fields(),
-        test_envelope_msgid_discriminator_without_msgid(),
-        test_invalid_discriminator_value(),
-        test_field_number_zero(),
+        test_duplicate_field_numbers,
+        test_array_missing_size,
+        test_string_missing_size,
+        test_string_array_missing_element_size,
+        test_array_max_size_overflow,
+        test_envelope_zero_oneofs,
+        test_envelope_non_message_oneof_fields,
+        test_envelope_msgid_discriminator_without_msgid,
+        test_invalid_discriminator_value,
+        test_field_number_zero,
     ]
+    results = [fn() for fn in test_fns]
     passed = sum(results)
     total = len(results)
+    todo_count = total - passed
     print(f"\n{passed}/{total} tests passed.")
-    print("(Tests marked TODO document desired behaviour not yet implemented in the generator.)")
-    # Exit 0 even when TODO tests fail — they are known pending items, not regressions.
-    sys.exit(0)
+    if todo_count > 0:
+        print(f"{todo_count} test(s) marked TODO — generator does not yet reject these inputs.")
+        print("These are known pending items, not regressions, but are tracked as failures.")
+        print("Implement the corresponding generator checks to make them pass.")
+    sys.exit(0 if todo_count == 0 else 1)

@@ -20,6 +20,16 @@ function fletcher(buf: Buffer): [number, number] {
   return [a, b];
 }
 
+function verifyPayload(payload: Buffer): void {
+  const payloadLen = payload.length;
+  if (payloadLen === 0) return;
+  const checks = new Set([0, Math.floor(payloadLen / 2), payloadLen - 1]);
+  for (const i of checks) {
+    const expected = (i * 31 + payloadLen) & 0xff;
+    if (payload[i] !== expected) throw new Error('bad payload');
+  }
+}
+
 function encode(profile: string, typeByte: number, payloadLen: number, network = false, seq = 1): Buffer {
   const payload = Buffer.alloc(payloadLen);
   for (let i = 0; i < payloadLen; i++) {
@@ -57,7 +67,9 @@ function decode(frame: Buffer): Buffer {
   const end = off + len;
   const [c1, c2] = fletcher(frame.subarray(2, end));
   if (frame[end] !== c1 || frame[end + 1] !== c2) throw new Error('bad crc');
-  return frame.subarray(off, end);
+  const payload = frame.subarray(off, end);
+  verifyPayload(payload);
+  return payload;
 }
 
 function pct(v: number[], q: number): number {

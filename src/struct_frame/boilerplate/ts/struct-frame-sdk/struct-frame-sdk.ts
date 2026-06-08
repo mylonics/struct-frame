@@ -196,12 +196,15 @@ export class StructFrameSdk {
   }
 
   private calculateFrameSize(result: FrameMsgInfo): number {
-    // Calculate total frame size including headers and footers
-    // For BasicDefault format: 2 start bytes + 1 length + 1 msg_id + payload + 2 crc = 6 + payload
-    // For TinyDefault format: 1 start byte + 1 length + 1 msg_id + payload + 2 crc = 5 + payload
-    // Using conservative estimate of 10 bytes overhead to handle various frame formats
-    // TODO: Query frame parser for exact overhead to avoid buffering issues
-    return result.msgLen + 10;
+    // Calculate total frame size including headers and footers.
+    // Uses frameSize from the parser result when available (set by
+    // profiles that track total frame size during parsing). Falls back
+    // to re-framing the parsed payload so older parsers still trim the
+    // exact frame length without relying on a guessed overhead.
+    if (result.frameSize > 0) {
+      return result.frameSize;
+    }
+    return this.frameParser.frame(result.msgId, result.msgData).length;
   }
 
   private handleError(error: Error): void {

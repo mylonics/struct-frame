@@ -7,7 +7,7 @@ This module generates Rust code for struct serialization with explicit
 pack/unpack methods for binary compatibility across platforms.
 """
 
-from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, normalize_bytes_type
 import os
 import time
 
@@ -27,6 +27,7 @@ rust_types = {
     "uint64": "u64",
     "int64": "i64",
     "string": "u8",  # strings are byte arrays in Rust
+    "bytes": "u8",   # bytes fields are byte arrays in Rust (same wire format as string)
 }
 
 # Rust reserved keywords that need escaping with r# prefix
@@ -45,6 +46,11 @@ def _escape_rust_field_name(name):
     if name in RUST_KEYWORDS:
         return f'r#{name}'
     return name
+
+def _normalize_bytes_type(type_name):
+    """Normalize 'bytes' to 'string' since they share the same wire format
+    and Rust representation ([u8; N] byte arrays)."""
+    return normalize_bytes_type(type_name)
 
 # Byte sizes for each proto type
 rust_type_sizes = {
@@ -199,7 +205,7 @@ def _get_field_type(field):
 def _generate_field_decl(field):
     """Generate a Rust struct field declaration."""
     var_name = _escape_rust_field_name(field.name)
-    type_name = field.field_type
+    type_name = _normalize_bytes_type(field.field_type)
 
     if field.is_array:
         if type_name == "string":
@@ -238,7 +244,7 @@ def _generate_pack_field(field, indent='        ', variable=False):
     always packs max_size elements (fixed-size encoding).
     """
     var_name = _escape_rust_field_name(field.name)
-    type_name = field.field_type
+    type_name = _normalize_bytes_type(field.field_type)
     lines = []
 
     if field.is_array:
@@ -372,7 +378,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
     always reads max_size elements.
     """
     var_name = _escape_rust_field_name(field.name)
-    type_name = field.field_type
+    type_name = _normalize_bytes_type(field.field_type)
     lines = []
 
     if field.is_array:
@@ -569,7 +575,7 @@ def _large_array_size(field):
             return field.size_option
         if field.max_size is not None and field.max_size > 32:
             return field.max_size
-    if field.field_type == "string":
+    if field.field_type in ("string", "bytes"):
         if field.size_option is not None and field.size_option > 32:
             return field.size_option
         if field.max_size is not None and field.max_size > 32:
@@ -582,8 +588,8 @@ def _needs_manual_default(msg):
     for field in msg.fields.values():
         if _large_array_size(field) > 0:
             return True
-        # Non-array string fields with large max_size or size_option
-        if field.field_type == "string" and not field.is_array:
+        # Non-array string/bytes fields with large max_size or size_option
+        if field.field_type in ("string", "bytes") and not field.is_array:
             if field.size_option is not None and field.size_option > 32:
                 return True
             if field.max_size is not None and field.max_size > 32:
@@ -612,7 +618,7 @@ def _generate_default_impl(msg, struct_name):
     result += '        Self {\n'
     for field in msg.fields.values():
         var_name = _escape_rust_field_name(field.name)
-        type_name = field.field_type
+        type_name = _normalize_bytes_type(field.field_type)
         if field.is_array:
             if field.size_option is not None:
                 if type_name == "string":
@@ -927,13 +933,13 @@ class MessageRustGen():
                         min_size += 2 if field.max_size > 255 else 1  # just the count
                     elif field.size_option is not None:
                         ts = rust_type_sizes.get(field.field_type, 1)
-                        elem_size = field.element_size if (field.field_type == "string" and field.element_size) else ts
-                        if field.field_type == "string":
+                        elem_size = field.element_size if (field.field_type in ("string", "bytes") and field.element_size) else ts
+                        if field.field_type in ("string", "bytes"):
                             elem_size = field.element_size if field.element_size else 16
                         min_size += field.size_option * elem_size
                     else:
                         min_size += field.size if field.size else 0
-                elif field.field_type == "string":
+                elif field.field_type in ("string", "bytes"):
                     if field.max_size is not None and field.size_option is None:
                         min_size += 2 if field.max_size > 255 else 1  # just the length
                     elif field.size_option is not None:
@@ -1033,13 +1039,6 @@ class MessageRustGen():
             result += f'}}\n\n'
 
         return result
-
-
-class FileCSharpGen():
-    """Placeholder to avoid import errors from tests that reference this."""
-    pass
-
-
 class FileRustGen():
     """Generator for Rust files from proto definitions."""
 
@@ -1251,7 +1250,7 @@ class TestRustGen():
         accompanying ``_count``/``_length`` field.
         """
         var_name = _escape_rust_field_name(field.name)
-        type_name = field.field_type
+        type_name = _normalize_bytes_type(field.field_type)
         result = ""
 
         if field.is_array:

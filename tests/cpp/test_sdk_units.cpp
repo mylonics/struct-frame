@@ -110,7 +110,7 @@ bool test_encoder_with_crc_bulk_profile() {
       buffer, encoded, get_message_info);
 
   if (!result.valid) return false;
-  if ((result.msg_id & 0xFF) != (BasicTypesMessage::MSG_ID & 0xFF)) return false;
+  if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
 
   return true;
 }
@@ -151,6 +151,12 @@ bool test_encoder_minimal_roundtrip() {
   // Sensor profile overhead: 1 start byte + 1 msg_id = 2 bytes header, 0 footer
   size_t expected_size = ProfileSensorConfig::overhead + BasicTypesMessage::MAX_SIZE;
   if (encoded != expected_size) return false;
+
+  // Parse it back to verify round-trip
+  auto result = BufferParserMinimal<ProfileSensorConfig>::parse(
+      buffer, encoded, get_message_info);
+  if (!result.valid) return false;
+  if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
 
   return true;
 }
@@ -202,6 +208,12 @@ bool test_encoder_minimal_ipc_profile() {
   // IPC profile: no start bytes, just msg_id + payload
   size_t expected_size = ProfileIPCConfig::overhead + BasicTypesMessage::MAX_SIZE;
   if (encoded != expected_size) return false;
+
+  // Parse it back to verify round-trip
+  auto result = BufferParserMinimal<ProfileIPCConfig>::parse(
+      buffer, encoded, get_message_info);
+  if (!result.valid) return false;
+  if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
 
   return true;
 }

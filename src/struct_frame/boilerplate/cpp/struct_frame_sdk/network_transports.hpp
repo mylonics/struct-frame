@@ -42,7 +42,8 @@ private:
                 if (!error && bytes_transferred > 0) {
                     HandleData(receive_buffer_.data(), bytes_transferred);
                 } else if (error) {
-                    HandleError("UDP receive error: " + error.message());
+                    const std::string err = "UDP receive error: " + error.message();
+                    HandleError(err.c_str());
                 }
                 if (connected_) {
                     startReceive();
@@ -89,7 +90,8 @@ public:
                 io_context_.run();
             });
         } catch (const std::exception& e) {
-            HandleError("UDP connect error: " + std::string(e.what()));
+            const std::string err = "UDP connect error: " + std::string(e.what());
+            HandleError(err.c_str());
             throw;
         }
     }
@@ -115,7 +117,8 @@ public:
         try {
             socket_.send_to(asio::buffer(data, length), remote_endpoint_);
         } catch (const std::exception& e) {
-            HandleError("UDP send error: " + std::string(e.what()));
+            const std::string err = "UDP send error: " + std::string(e.what());
+            HandleError(err.c_str());
         }
     }
 };
@@ -153,7 +156,8 @@ private:
                     if (error == asio::error::eof) {
                         HandleClose();
                     } else {
-                        HandleError("TCP receive error: " + error.message());
+                        const std::string err = "TCP receive error: " + error.message();
+                        HandleError(err.c_str());
                     }
                 }
             }
@@ -191,7 +195,8 @@ public:
                 io_context_.run();
             });
         } catch (const std::exception& e) {
-            HandleError("TCP connect error: " + std::string(e.what()));
+            const std::string err = "TCP connect error: " + std::string(e.what());
+            HandleError(err.c_str());
             throw;
         }
     }
@@ -219,7 +224,8 @@ public:
         try {
             asio::write(socket_, asio::buffer(data, length));
         } catch (const std::exception& e) {
-            HandleError("TCP send error: " + std::string(e.what()));
+            const std::string err = "TCP send error: " + std::string(e.what());
+            HandleError(err.c_str());
         }
     }
 };
@@ -254,7 +260,8 @@ private:
                         startReceive();
                     }
                 } else if (error) {
-                    HandleError("Serial receive error: " + error.message());
+                    const std::string err = "Serial receive error: " + error.message();
+                    HandleError(err.c_str());
                 }
             }
         );
@@ -295,7 +302,8 @@ public:
                 io_context_.run();
             });
         } catch (const std::exception& e) {
-            HandleError("Serial connect error: " + std::string(e.what()));
+            const std::string err = "Serial connect error: " + std::string(e.what());
+            HandleError(err.c_str());
             throw;
         }
     }
@@ -321,7 +329,8 @@ public:
         try {
             asio::write(serial_port_, asio::buffer(data, length));
         } catch (const std::exception& e) {
-            HandleError("Serial send error: " + std::string(e.what()));
+            const std::string err = "Serial send error: " + std::string(e.what());
+            HandleError(err.c_str());
         }
     }
 };

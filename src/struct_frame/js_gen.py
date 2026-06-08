@@ -451,12 +451,12 @@ class MessageJsClassGen():
             name = to_camel_case(field.name)
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field.field_type == "string":
+                if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
                 result += f'    size += 1 + (this.{name}Count * {element_size}); // {name}\n'
-            elif field.field_type == "string" and field.max_size is not None:
+            elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 result += f'    size += 1 + this.{name}Length; // {name}\n'
             else:
                 result += f'    size += {field.size}; // {name}\n'
@@ -522,7 +522,7 @@ class MessageJsClassGen():
             field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field_type == "string":
+                if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
@@ -538,7 +538,7 @@ class MessageJsClassGen():
                 result += f'      buffer.{write_method_name}(this.{name}Data[i], offset);\n'
                 result += f'      offset += {element_size};\n'
                 result += f'    }}\n'
-            elif field_type == "string" and field.max_size is not None:
+            elif field_type in ("string", "bytes") and field.max_size is not None:
                 result += f'    // {name}: variable string\n'
                 result += f'    const {name}Len = this.{name}Length;\n'
                 result += f'    buffer.writeUInt8({name}Len, offset++);\n'
@@ -614,7 +614,7 @@ class MessageJsClassGen():
             field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if field_type == "string":
+                if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
@@ -625,7 +625,7 @@ class MessageJsClassGen():
                 result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
                 result += f'      offset += {element_size};\n'
                 result += f'    }}\n'
-            elif field_type == "string" and field.max_size is not None:
+            elif field_type in ("string", "bytes") and field.max_size is not None:
                 result += f'    // {name}: variable string\n'
                 result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
                 result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
@@ -728,7 +728,7 @@ class MessageJsClassGen():
         
         if field_info.is_array:
             result += MessageJsClassGen._generate_array_accessors(field_info)
-        elif field_type == "string":
+        elif field_type in ("string", "bytes"):
             result += MessageJsClassGen._generate_string_accessors(field_info)
         elif field_info.is_enum or field_type in TYPE_SIZES:
             result += MessageJsClassGen._generate_primitive_accessors(field_info)
@@ -792,7 +792,7 @@ class MessageJsClassGen():
             offset = field_info.offset
             if field_info.is_array or field_info.is_nested:
                 result += f'      {name}: this.{name},\n'
-            elif field_type == "string":
+            elif field_type in ("string", "bytes"):
                 size = field_info.element_size or field_info.size
                 result += f'      {name}: this._readString({offset}, {size}),\n'
             elif field_type == "bool":
@@ -839,7 +839,7 @@ class MessageJsClassGen():
             result += f'  set {name}(value) {{\n'
             result += f'    this._writeStructArray({offset}, {length}, {elem_size}, value, {nested_type});\n'
             result += f'  }}\n\n'
-        elif field_type == "string":
+        elif field_type in ("string", "bytes"):
             # String array
             result = f'  get {name}() {{\n'
             result += f'    const result = [];\n'
@@ -1033,7 +1033,7 @@ class TestJsGen():
         }
         if type_name in type_values:
             return type_values[type_name]
-        if type_name == "string":
+        if type_name in ("string", "bytes"):
             return f'"test_{index}"'
         if field.is_enum:
             return "0"
@@ -1049,7 +1049,7 @@ class TestJsGen():
         if field.is_array:
             if field.size_option is not None:
                 count = min(field.size_option, 3)
-                if type_name == "string":
+                if type_name in ("string", "bytes"):
                     items = [f'"test_{i}"' for i in range(count)]
                     pad = ['""' for _ in range(field.size_option - count)]
                 elif type_name == "bool":
@@ -1065,7 +1065,7 @@ class TestJsGen():
                 result += f"    {prefix}.{var_name} = {arr_literal};\n"
             elif field.max_size is not None:
                 num_elements = min(field.max_size, 3)
-                if type_name == "string":
+                if type_name in ("string", "bytes"):
                     items = [f'"test_{i}"' for i in range(num_elements)]
                 elif type_name == "bool":
                     items = [str((42 + i) % 2) for i in range(num_elements)]
@@ -1076,7 +1076,7 @@ class TestJsGen():
                 arr_literal = "[" + ", ".join(items) + "]"
                 result += f"    {prefix}.{var_name}Count = {num_elements};\n"
                 result += f"    {prefix}.{var_name}Data = {arr_literal};\n"
-        elif type_name == "string":
+        elif type_name in ("string", "bytes"):
             if field.size_option is not None:
                 result += f'    {prefix}.{var_name} = "test_string";\n'
             elif field.max_size is not None:

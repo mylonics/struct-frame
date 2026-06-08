@@ -218,10 +218,19 @@ def test_no_handler_for_unknown_id():
     fired = [False]
     sdk.subscribe(BasicTypesMessage.MSG_ID, lambda *_: fired.__setitem__(0, True))
 
+    # Test 1: known ID fires the handler
     msg = BasicTypesMessage()
     transport.inject_data(encode_basic_types(msg))
-
     run_test("known id: handler fires", fired[0] is True)
+
+    # Test 2: unknown ID does not fire the handler
+    fired[0] = False
+    # Encode a frame with a message ID that has no subscriber
+    UNKNOWN_MSG_ID = 0xFFFE
+    parser = StandardFrameParser()
+    unknown_frame = parser.frame(UNKNOWN_MSG_ID, b'\x00' * 4)
+    transport.inject_data(unknown_frame)
+    run_test("unknown id: handler does not fire", fired[0] is False)
 
 
 def test_send_raw_frames_through_transport():

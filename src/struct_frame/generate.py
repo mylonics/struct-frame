@@ -42,7 +42,8 @@ default_types = {
     "double": {"size": 8},
     "int64": {"size": 8},
     "uint64": {"size": 8},
-    "string": {"size": 4}  # Variable length, estimated size for length prefix
+    "string": {"size": 4},  # Variable length, estimated size for length prefix
+    "bytes": {"size": 4},   # Variable length byte array, same wire format as string
 }
 
 # Type codes for magic number calculation
@@ -59,6 +60,7 @@ type_codes = {
     "int64": 10,
     "uint64": 11,
     "string": 12,
+    "bytes": 14,  # Raw byte array (distinct from string for magic number purposes)
     "enum": 13,  # Fixed code for all enum types (name-independent)
 }
 
@@ -581,7 +583,7 @@ class Field:
 
         # Calculate size for arrays and strings
         if self.is_array:
-            if self.field_type == "string":
+            if self.field_type in ("string", "bytes"):
                 # String arrays need both array size AND individual element size
                 if self.element_size is None:
                     print(
@@ -613,7 +615,7 @@ class Field:
                     print(
                         f"Array field {self.name} missing required size or max_size option")
                     return False
-        elif self.field_type == "string":
+        elif self.field_type in ("string", "bytes"):
             if self.size_option is not None:
                 # Fixed string: exactly size_option characters
                 self.size = self.size_option
@@ -632,7 +634,7 @@ class Field:
         if debug:
             array_info = ""
             if self.is_array:
-                if self.field_type == "string":
+                if self.field_type in ("string", "bytes"):
                     # String arrays show both array size and individual element size
                     if self.size_option is not None:
                         array_info = f", fixed_string_array size={self.size_option}, element_size={self.element_size}"
@@ -644,7 +646,7 @@ class Field:
                         array_info = f", fixed_array size={self.size_option}"
                     elif self.max_size is not None:
                         array_info = f", bounded_array max_size={self.max_size}"
-            elif self.field_type == "string":
+            elif self.field_type in ("string", "bytes"):
                 # Regular strings
                 if self.size_option is not None:
                     array_info = f", fixed_string size={self.size_option}"
@@ -667,7 +669,7 @@ class Field:
                 array_info = f", Array[max_size={self.max_size}]"
             else:
                 array_info = ", Array[no size specified]"
-        elif self.field_type == "string":
+        elif self.field_type in ("string", "bytes"):
             if self.size_option is not None:
                 array_info = f", String[size={self.size_option}]"
             elif self.max_size is not None:
@@ -1201,7 +1203,7 @@ class Message:
                     print(
                         f"Array field {key} in Message {self.name}: must specify size or max_size option")
                     return False
-            elif value.field_type == "string":
+            elif value.field_type in ("string", "bytes"):
                 # Strings must have size or max_size specified
                 if value.size_option is None and value.max_size is None:
                     print(
@@ -1270,7 +1272,7 @@ class Message:
                     # Bounded array: only the count bytes (1 or 2, no data when empty)
                     count_bytes = 2 if value.max_size > 255 else 1
                     self.min_size += count_bytes
-                elif value.field_type == "string" and value.max_size is not None:
+                elif value.field_type in ("string", "bytes") and value.max_size is not None:
                     # Variable string: only the length bytes (1 or 2, no data when empty)
                     length_bytes = 2 if value.max_size > 255 else 1
                     self.min_size += length_bytes

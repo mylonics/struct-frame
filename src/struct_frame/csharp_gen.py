@@ -7,7 +7,7 @@ This module generates C# code for struct serialization using
 classes with manual Pack/Unpack methods for binary compatibility.
 """
 
-from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values
+from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, get_discriminator_enum_name, build_discriminator_enum_values, normalize_bytes_type
 import os
 import time
 
@@ -27,6 +27,7 @@ csharp_types = {
     "uint64": "ulong",
     "int64": "long",
     "string": "byte[]",
+    "bytes": "byte[]",
 }
 
 # Mapping from proto types to byte sizes
@@ -154,7 +155,7 @@ class FieldCSharpGen():
         """Generate C# field declaration"""
         result = ''
         var_name = pascal_case(field.name)
-        type_name = field.field_type
+        type_name = normalize_bytes_type(field.field_type)
 
         # Add leading comments
         leading_comment = field.comments
@@ -165,13 +166,13 @@ class FieldCSharpGen():
         if type_name in csharp_types:
             base_type = csharp_types[type_name]
         else:
-            # Use the type name directly — namespace/using directives handle scoping
+            # Use the type name directly ΓÇö namespace/using directives handle scoping
             type_pkg = field.type_package if field.type_package else field.package
             base_type = renamed_enums.get(type_name, type_name) if renamed_enums else type_name
 
         # Handle arrays
         if field.is_array:
-            if field.field_type == "string":
+            if type_name == "string":
                 # String arrays
                 if field.size_option is not None:
                     # Fixed string array
@@ -199,7 +200,7 @@ class FieldCSharpGen():
                         result += f'        public {base_type}[] {var_name}Data {{ get; set; }} = null!;  // Variable array: up to {field.max_size} elements\n'
 
         # Handle regular strings
-        elif field.field_type == "string":
+        elif type_name == "string":
             if field.size_option is not None:
                 # Fixed string
                 result += f'        public byte[] {var_name} {{ get; set; }} = null!;  // Fixed string: exactly {field.size_option} chars\n'
@@ -242,7 +243,7 @@ class FieldCSharpGen():
         """
         lines = []
         var_name = pascal_case(field.name)
-        type_name = field.field_type
+        type_name = normalize_bytes_type(field.field_type)
         
         # Local helper to format offset expressions
         def fmt_offset(off):
@@ -252,7 +253,7 @@ class FieldCSharpGen():
 
         # IMPORTANT: Check is_array FIRST to handle arrays of primitives correctly
         if field.is_array:
-            if field.field_type == "string":
+            if type_name == "string":
                 if field.size_option is not None:
                     # Fixed string array
                     total_size = field.size_option * field.element_size
@@ -328,7 +329,7 @@ class FieldCSharpGen():
                 lines.append(f'            BinaryPrimitives.WriteDoubleLittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 8), {var_name});')
             elif type_name == "bool":
                 lines.append(f'            buffer[{fmt_offset(base_offset)}] = (byte)({var_name} ? 1 : 0);')
-        elif field.field_type == "string":
+        elif type_name == "string":
             if field.size_option is not None:
                 # Fixed string
                 lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length, {field.size_option}));')
@@ -359,11 +360,11 @@ class FieldCSharpGen():
         """Generate code to unpack this field from a ReadOnlySpan<byte>."""
         lines = []
         var_name = pascal_case(field.name)
-        type_name = field.field_type
+        type_name = normalize_bytes_type(field.field_type)
 
         # IMPORTANT: Check is_array FIRST to handle arrays of primitives correctly
         if field.is_array:
-            if field.field_type == "string":
+            if normalize_bytes_type(field.field_type) == "string":
                 if field.size_option is not None:
                     # Fixed string array
                     total_size = field.size_option * field.element_size
@@ -448,7 +449,7 @@ class FieldCSharpGen():
                 lines.append(f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(data.Slice({offset}, 8));')
             elif type_name == "bool":
                 lines.append(f'            msg.{var_name} = data[{offset}] != 0;')
-        elif field.field_type == "string":
+        elif normalize_bytes_type(field.field_type) == "string":
             if field.size_option is not None:
                 # Fixed string
                 lines.append(f'            msg.{var_name} = new byte[{field.size_option}];')
@@ -624,7 +625,7 @@ class MessageCSharpGen():
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Deserialize a <see cref="ReadOnlySpan{byte}"/> into this message type.\n'
-        result += '        /// This is the primary implementation — the <c>byte[]</c> and\n'
+        result += '        /// This is the primary implementation ΓÇö the <c>byte[]</c> and\n'
         result += '        /// <see cref="FrameMsgInfo"/> overloads delegate here.\n'
         if msg.variable:
             result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding.\n'
@@ -720,7 +721,7 @@ class MessageCSharpGen():
         result += '            return msg;\n'
         result += '        }\n'
 
-        # byte[] overload — delegates to the span overload (keeps API compatibility)
+        # byte[] overload ΓÇö delegates to the span overload (keeps API compatibility)
         result += '\n'
         result += '        /// <summary>\n'
         result += '        /// Deserialize a byte array. Delegates to <see cref="Deserialize(ReadOnlySpan{byte})"/>.\n'
@@ -867,7 +868,7 @@ class MessageCSharpGen():
             type_name = f.field_type
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if type_name == "string":
+                if normalize_bytes_type(type_name) == "string":
                     element_size = f.element_size if f.element_size else 1
                 else:
                     element_size = type_sizes.get(type_name, (f.size - 1) // f.max_size)
@@ -886,7 +887,7 @@ class MessageCSharpGen():
                     result += f'                for (int i = 0; i < {var_name}Count; i++)\n'
                     result += f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Serialize(); Array.Copy(bytes, 0, buffer, offset + i * {element_size}, bytes.Length); }}\n'
                     result += f'            offset += {var_name}Count * {element_size};\n'
-            elif type_name == "string" and f.max_size is not None:
+            elif normalize_bytes_type(type_name) == "string" and f.max_size is not None:
                 result += f'            // {f.name}: variable string\n'
                 result += f'            buffer[offset++] = {var_name}Length;\n'
                 result += f'            if ({var_name}Data != null)\n'
@@ -918,7 +919,7 @@ class MessageCSharpGen():
                         result += f'            BinaryPrimitives.WriteDoubleLittleEndian(buffer.AsSpan(offset, 8), {var_name}); offset += 8;\n'
                     elif type_name == "bool":
                         result += f'            buffer[offset++] = (byte)({var_name} ? 1 : 0);\n'
-                elif type_name == "string" and f.size_option is not None:
+                elif normalize_bytes_type(type_name) == "string" and f.size_option is not None:
                     # Fixed string - copy from byte array
                     result += f'            if ({var_name} != null)\n'
                     result += f'                Array.Copy({var_name}, 0, buffer, offset, Math.Min({var_name}.Length, {f.size}));\n'
@@ -1001,7 +1002,7 @@ class MessageCSharpGen():
         result += '        }\n'
         
         # Generate _DeserializeVariable static method (internal method)
-        # Keeps byte[] parameter — variable messages receive a freshly-allocated slice
+        # Keeps byte[] parameter ΓÇö variable messages receive a freshly-allocated slice
         # from the span dispatch path (data.ToArray()), so no additional allocation occurs.
         result += '\n'
         result += '        /// <summary>\n'
@@ -1017,7 +1018,7 @@ class MessageCSharpGen():
             type_name = f.field_type
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                if type_name == "string":
+                if normalize_bytes_type(type_name) == "string":
                     element_size = f.element_size if f.element_size else 1
                 else:
                     count_size = 2 if f.max_size > 255 else 1
@@ -1044,7 +1045,7 @@ class MessageCSharpGen():
                     result += f'            for (int i = 0; i < msg.{var_name}Count; i++)\n'
                     result += f'                msg.{var_name}Data[i] = {nested_type}.Deserialize(data[(offset + i * {element_size})..(offset + (i + 1) * {element_size})]);\n'
                     result += f'            offset += msg.{var_name}Count * {element_size};\n'
-            elif type_name == "string" and f.max_size is not None:
+            elif normalize_bytes_type(type_name) == "string" and f.max_size is not None:
                 result += f'            // {f.name}: variable string\n'
                 if f.max_size > 255:
                     result += f'            msg.{var_name}Length = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(offset, 2)), (ushort){f.max_size});\n'
@@ -1079,7 +1080,7 @@ class MessageCSharpGen():
                         result += f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(data.AsSpan(offset, 8)); offset += 8;\n'
                     elif type_name == "bool":
                         result += f'            msg.{var_name} = data[offset++] != 0;\n'
-                elif type_name == "string" and f.size_option is not None:
+                elif normalize_bytes_type(type_name) == "string" and f.size_option is not None:
                     # Fixed string - copy into byte array
                     result += f'            msg.{var_name} = new byte[{f.size}];\n'
                     result += f'            data.AsSpan(offset, {f.size}).CopyTo(msg.{var_name}.AsSpan());\n'
@@ -1906,7 +1907,7 @@ class TestCSharpGen():
         out = ""
 
         if field.is_array:
-            if type_name == "string":
+            if normalize_bytes_type(type_name) == "string":
                 if field.size_option is not None:
                     # Fixed string array: byte[] flattened, size_option strings * element_size bytes
                     total = field.size_option * field.element_size
@@ -1954,7 +1955,7 @@ class TestCSharpGen():
                         out += f'        {prefix}.{var_name}Data = new {elem_type}[] {{ '
                         out += ', '.join(TestCSharpGen._dummy_value(field, i) for i in range(count))
                         out += ' };\n'
-        elif type_name == "string":
+        elif normalize_bytes_type(type_name) == "string":
             if field.size_option is not None:
                 out += f'        {prefix}.{var_name} = {TestCSharpGen._bytes_literal("test_string", field.size_option)};\n'
             elif field.max_size is not None:
@@ -1968,7 +1969,7 @@ class TestCSharpGen():
             elif field.is_enum:
                 pass  # enum left at default 0 value
             else:
-                # Nested message – default-construct
+                # Nested message ΓÇô default-construct
                 out += f'        {prefix}.{var_name} = new {type_name}();\n'
         return out
 

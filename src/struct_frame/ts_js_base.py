@@ -33,6 +33,7 @@ common_types = {
     "int64":    'BigInt64LE',
     "uint64":   'BigUInt64LE',
     "string":   'String',
+    "bytes":    'String',     # bytes treated identically to string (same wire format)
 }
 
 # TypeScript type mappings for array declarations (TypeScript only)
@@ -49,6 +50,7 @@ ts_array_types = {
     "uint64":   'bigint',
     "int64":    'bigint',
     "string":   'string',
+    "bytes":    'string',     # bytes treated identically to string
 }
 
 # Common typed array methods for array fields
@@ -66,6 +68,7 @@ common_typed_array_methods = {
     "int64":    'BigInt64Array',
     "uint64":   'BigUInt64Array',
     "string":   'StructArray',  # String arrays use StructArray
+    "bytes":    'StructArray',  # bytes arrays treated identically to string arrays
 }
 
 
@@ -145,7 +148,7 @@ class BaseFieldGen:
 
         # Handle arrays
         if field.is_array:
-            if field.field_type == "string":
+            if field.field_type in ("string", "bytes"):
                 result = BaseFieldGen._generate_string_array(field, var_name)
             else:
                 base_type, array_method = BaseFieldGen._resolve_array_type(
@@ -153,7 +156,7 @@ class BaseFieldGen:
                 result = BaseFieldGen._generate_typed_array(field, var_name, base_type, array_method)
         else:
             # Non-array fields
-            if field.field_type == "string":
+            if field.field_type in ("string", "bytes"):
                 if hasattr(field, 'size_option') and field.size_option is not None:
                     result += '    // Fixed string: exactly %d chars\n' % field.size_option
                     result += "    .String('%s', %d)" % (var_name, field.size_option)
@@ -258,6 +261,7 @@ TS_TYPE_ANNOTATIONS = {
     "double": "number",
     "bool": "boolean",
     "string": "string",
+    "bytes": "string",     # bytes treated identically to string
 }
 
 # TypeScript type annotations for array elements
@@ -275,6 +279,7 @@ TS_ARRAY_TYPE_ANNOTATIONS = {
     "double": "number",
     "bool": "number",  # Boolean arrays stored as UInt8Array return number[]
     "string": "string",
+    "bytes": "string",     # bytes treated identically to string
 }
 
 # Read method names for MessageBase helper methods
@@ -415,7 +420,7 @@ def calculate_field_layout(msg, package, packages):
         
         if field.is_array:
             # Array field
-            if field_type == "string":
+            if field_type in ("string", "bytes"):
                 # String array
                 if field.size_option is not None:
                     # Fixed string array
@@ -526,7 +531,7 @@ def calculate_field_layout(msg, package, packages):
                         is_variable=True
                     ))
                     offset += total_data_size
-        elif field_type == "string":
+        elif field_type in ("string", "bytes"):
             # Non-array string
             if field.size_option is not None:
                 # Fixed string

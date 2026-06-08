@@ -14,6 +14,12 @@ except Exception:
     version = "0.0.1"
 
 
+def normalize_bytes_type(type_name):
+    """Normalize 'bytes' to 'string' since they share the same wire format
+    (variable-length byte arrays). All generators treat them identically."""
+    return "string" if type_name == "bytes" else type_name
+
+
 class NamingStyle:
     """
     Base class for naming conventions across different languages.

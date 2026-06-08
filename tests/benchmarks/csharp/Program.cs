@@ -17,6 +17,19 @@ class P
         return ((byte)a, (byte)b);
     }
 
+    static void VerifyPayload(byte[] payload, int off, int len)
+    {
+        if (len == 0) return;
+        foreach (var idx in new[] { 0, len / 2, len - 1 })
+        {
+            byte expected = (byte)((idx * 31 + len) & 0xff);
+            if (payload[off + idx] != expected)
+            {
+                throw new Exception("bad payload");
+            }
+        }
+    }
+
     static byte[] Encode(Scenario s, byte seq)
     {
         var body = new List<byte>();
@@ -74,6 +87,7 @@ class P
         {
             throw new Exception("crc");
         }
+        VerifyPayload(f, off, len);
         return len;
     }
 

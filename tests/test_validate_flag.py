@@ -68,15 +68,21 @@ def test_validate_success():
 
 def test_validate_no_output_files():
     """--validate must not create any output files in a target directory."""
-    # Run validate on the standard proto (no output path flags).
-    # The important thing is that a directory we control stays empty.
+    # Run validate with an output path pointing to a temp directory.
+    # If --validate is working correctly, no files should be written there.
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        code, stdout, stderr = _run_validate(PROTO_FILE)
-        # tmp_path was never referenced as an output dir, so it must be empty.
-        _check(not list(tmp_path.iterdir()),
-               f"--validate should not write files, but found: "
-               f"{list(tmp_path.iterdir())}")
+        code, stdout, stderr = _run_validate(
+            PROTO_FILE,
+            extra_args=["--py_path", str(tmp_path / "py"),
+                        "--c_path", str(tmp_path / "c"),
+                        "--cpp_path", str(tmp_path / "cpp")],
+        )
+        # Even though output paths were provided, --validate must not write files.
+        written = list(tmp_path.rglob("*"))
+        _check(not written,
+               f"--validate should not write files even when output paths are given, "
+               f"but found: {written}")
     _check(code == 0,
            f"--validate on valid proto should succeed, got {code}")
 

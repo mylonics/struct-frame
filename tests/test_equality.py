@@ -76,7 +76,7 @@ def test_python_equality(gen_dir: Path) -> None:
     try:
         from struct_frame.generated.serialization_test import BasicTypesMessage  # type: ignore
     except ImportError as exc:
-        print(f"SKIP: cannot import generated Python module: {exc}")
+        _check(False, f"failed to import generated Python module: {exc}")
         return
     finally:
         sys.path.pop(0)
@@ -84,14 +84,41 @@ def test_python_equality(gen_dir: Path) -> None:
     a = BasicTypesMessage()
     a.small_int = 42
     a.medium_int = 1000
+    a.regular_int = 9876
+    a.large_int = -123456789
+    a.small_uint = 200
+    a.medium_uint = 50000
+    a.regular_uint = 300000
+    a.large_uint = 999999999
+    a.single_precision = 3.14
+    a.double_precision = 2.71828
+    a.flag = True
 
     b = BasicTypesMessage()
     b.small_int = 42
     b.medium_int = 1000
+    b.regular_int = 9876
+    b.large_int = -123456789
+    b.small_uint = 200
+    b.medium_uint = 50000
+    b.regular_uint = 300000
+    b.large_uint = 999999999
+    b.single_precision = 3.14
+    b.double_precision = 2.71828
+    b.flag = True
 
     c = BasicTypesMessage()
-    c.small_int = 99
+    c.small_int = 99  # differs from a
     c.medium_int = 1000
+    c.regular_int = 9876
+    c.large_int = -123456789
+    c.small_uint = 200
+    c.medium_uint = 50000
+    c.regular_uint = 300000
+    c.large_uint = 999999999
+    c.single_precision = 3.14
+    c.double_precision = 2.71828
+    c.flag = True
 
     _check(a == b, "equal messages should compare as equal")
     _check(not (a == c), "messages with differing fields should not be equal")
@@ -190,12 +217,13 @@ def test_ts_equality(gen_dir: Path) -> None:
     node_modules = repo_ts_dir / "node_modules"
     # Write a minimal tsconfig so tsc can compile standalone
     tsconfig = ts_dir / "tsconfig.json"
+    type_roots = f'"typeRoots":["{(node_modules / "@types").as_posix()}"],' if node_modules.exists() else ''
+    types = '"types":["node"],' if node_modules.exists() else ''
     tsconfig.write_text(
         '{"compilerOptions":{"target":"ES2020","module":"commonjs",'
         '"outDir":"./build","strict":false,"skipLibCheck":true,'
-        f'"typeRoots":["{node_modules / "@types"}"],"types":["node"],'
-        '"lib":["ES2020"],'
-        '"ignoreDeprecations":"6.0"},"include":["*.ts"]}',
+        f'{type_roots}{types}'
+        '"lib":["ES2020"]},"include":["*.ts"]}',
         encoding="utf-8",
     )
     # Determine field names: TS generator uses camelCase
@@ -347,7 +375,7 @@ def test_rust_equality(gen_dir: Path) -> None:
         'version = "0.1.0"\n'
         'edition = "2021"\n'
         "\n[dependencies]\n"
-        f'struct_frame_sdk = {{ path = "{rust_lib_dir}" }}\n',
+        f'struct_frame_sdk = {{ path = "{rust_lib_dir.as_posix()}" }}\n',
         encoding="utf-8",
     )
     src_dir = test_proj / "src"
@@ -380,31 +408,31 @@ def test_equality_flag():
         _run_generator(gen_dir)
 
         # 1. Verify equality functions / operators are present in generated code
-        c_header = (gen_dir / "c" / "serialization_test.structframe.h").read_text()
+        c_header = (gen_dir / "c" / "serialization_test.structframe.h").read_text(encoding="utf-8")
         _check("_equals(" in c_header,
                "C header should contain *_equals() functions")
 
-        cpp_header = (gen_dir / "cpp" / "serialization_test.structframe.hpp").read_text()
+        cpp_header = (gen_dir / "cpp" / "serialization_test.structframe.hpp").read_text(encoding="utf-8")
         _check("operator==" in cpp_header,
                "C++ header should contain operator== methods")
 
         py_files = list((gen_dir / "py").rglob("*.py"))
-        _check(any("def __eq__" in f.read_text() for f in py_files),
+        _check(any("def __eq__" in f.read_text(encoding="utf-8") for f in py_files),
                "Generated Python files should contain __eq__ methods")
 
-        ts_src = (gen_dir / "ts" / "serialization-test.structframe.ts").read_text()
+        ts_src = (gen_dir / "ts" / "serialization-test.structframe.ts").read_text(encoding="utf-8")
         _check("equals(" in ts_src,
                "Generated TypeScript file should contain equals() method")
 
-        js_src = (gen_dir / "js" / "serialization-test.structframe.js").read_text()
+        js_src = (gen_dir / "js" / "serialization-test.structframe.js").read_text(encoding="utf-8")
         _check("equals(" in js_src,
                "Generated JavaScript file should contain equals() method")
 
         cs_files = list((gen_dir / "csharp").rglob("*.cs"))
-        _check(any("Equals(" in f.read_text() for f in cs_files),
+        _check(any("Equals(" in f.read_text(encoding="utf-8", errors="replace") for f in cs_files),
                "Generated C# files should contain Equals() method")
 
-        rust_src = (gen_dir / "rust" / "serialization_test.structframe.rs").read_text()
+        rust_src = (gen_dir / "rust" / "serialization_test.structframe.rs").read_text(encoding="utf-8")
         _check("PartialEq" in rust_src,
                "Generated Rust file should derive PartialEq")
 
