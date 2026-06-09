@@ -104,12 +104,14 @@ function testSubscribeAndDispatch(): void {
   const transport = new MockTransport();
   const sdk = makeSdk(transport);
 
-  let receivedPayload: any = null;
+  let receivedPayload: Uint8Array | null = null;
   let receivedMsgId: number | null = null;
+  let decoded: any = null;
 
   sdk.subscribe<Uint8Array>(BasicTypesMessage._msgid, (payload, msgId) => {
     receivedPayload = payload;
     receivedMsgId = msgId;
+    decoded = BasicTypesMessage.deserialize(Buffer.from(payload));
   });
 
   transport.injectData(encodeBasicTypes(777, true));
@@ -117,6 +119,8 @@ function testSubscribeAndDispatch(): void {
   assert('subscribe: handler invoked on DataReceived', receivedPayload !== null);
   assert('subscribe: msgId matches BasicTypesMessage._msgid',
     receivedMsgId === BasicTypesMessage._msgid);
+  assert('subscribe: regularInt field preserved', decoded?.regularInt === 777);
+  assert('subscribe: flag field preserved', decoded?.flag === true);
 }
 
 function testMultipleHandlers(): void {
@@ -124,13 +128,23 @@ function testMultipleHandlers(): void {
   const sdk = makeSdk(transport);
 
   let countA = 0, countB = 0;
-  sdk.subscribe(BasicTypesMessage._msgid, () => { countA++; });
-  sdk.subscribe(BasicTypesMessage._msgid, () => { countB++; });
+  let lastA: any = null;
+  let lastB: any = null;
+  sdk.subscribe(BasicTypesMessage._msgid, (payload: Uint8Array) => {
+    countA++;
+    lastA = BasicTypesMessage.deserialize(Buffer.from(payload));
+  });
+  sdk.subscribe(BasicTypesMessage._msgid, (payload: Uint8Array) => {
+    countB++;
+    lastB = BasicTypesMessage.deserialize(Buffer.from(payload));
+  });
 
   transport.injectData(encodeBasicTypes(1, false));
 
   assert('multiple handlers: first handler fires', countA === 1);
   assert('multiple handlers: second handler fires', countB === 1);
+  assert('multiple handlers: first handler payload correct', lastA?.regularInt === 1);
+  assert('multiple handlers: second handler payload correct', lastB?.regularInt === 1);
 }
 
 function testUnsubscribe(): void {
@@ -138,15 +152,21 @@ function testUnsubscribe(): void {
   const sdk = makeSdk(transport);
 
   let count = 0;
-  const unsubscribe = sdk.subscribe(BasicTypesMessage._msgid, () => { count++; });
+  let lastRegularInt = -1;
+  const unsubscribe = sdk.subscribe(BasicTypesMessage._msgid, (payload: Uint8Array) => {
+    count++;
+    lastRegularInt = BasicTypesMessage.deserialize(Buffer.from(payload)).regularInt;
+  });
 
   transport.injectData(encodeBasicTypes(1, false));
   assert('unsubscribe: handler fires before unsubscribe', count === 1);
+  assert('unsubscribe: payload captured before unsubscribe', lastRegularInt === 1);
 
   unsubscribe();
 
   transport.injectData(encodeBasicTypes(2, true));
   assert('unsubscribe: handler silent after unsubscribe', count === 1);
+  assert('unsubscribe: payload remains unchanged after unsubscribe', lastRegularInt === 1);
 }
 
 function testNoHandlerForUnregisteredId(): void {

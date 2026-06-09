@@ -84,7 +84,7 @@ namespace StructFrameTests
             while (true)
             {
                 var result = reader.Next();
-                if (result == null || !result.Valid) break;
+                if (!result.Valid) break;
 
                 // Use callback to check if message matches expected
                 if (!checkMessage(count, result)) break;

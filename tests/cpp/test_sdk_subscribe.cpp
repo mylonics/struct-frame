@@ -120,6 +120,16 @@ static bool inject_encoded_message(MockTransport& transport, const MessageT& msg
   return true;
 }
 
+template <typename Config, typename TransportT>
+static bool parse_last_sent_frame(TransportT& transport,
+                                  MessageInfo (*get_info)(uint16_t),
+                                  FrameMsgInfo& out) {
+  if (transport.sent_data.empty()) return false;
+  auto& frame = transport.sent_data.back();
+  out = BufferParserWithCrc<Config>::parse(frame.data(), frame.size(), get_info);
+  return out.valid;
+}
+
 // ============================================================================
 // Tests
 // ============================================================================
@@ -324,21 +334,27 @@ bool test_subscribe_frame_info_receives_valid_frames() {
   int frame_count = 0;
   uint16_t last_msg_id = 0;
   size_t last_msg_len = 0;
+  BasicTypesMessage decoded{};
 
   auto sub = sdk.subscribeFrameInfo(
       [&](const FrameMsgInfo& frame) {
+        if (!frame.valid || frame.msg_data == nullptr) return;
         frame_count++;
         last_msg_id = frame.msg_id;
         last_msg_len = frame.msg_len;
+        decoded.deserialize(frame.msg_data, frame.msg_len);
       });
 
   BasicTypesMessage msg{};
   msg.regular_int = 314;
+  msg.flag = true;
   if (!inject_encoded_message(transport, msg)) return false;
 
   return frame_count == 1 &&
          last_msg_id == BasicTypesMessage::MSG_ID &&
-         last_msg_len == BasicTypesMessage::MAX_SIZE;
+         last_msg_len == BasicTypesMessage::MAX_SIZE &&
+         decoded.regular_int == 314 &&
+         decoded.flag;
 }
 
 /**
@@ -404,6 +420,17 @@ bool test_extended_msg_id_sendraw_roundtrip() {
   uint8_t payload[ExtendedDummyMessage::MAX_SIZE] = {0xAB};
   if (!sdk.SendRaw(ExtendedDummyMessage::MSG_ID, payload, sizeof(payload))) return false;
 
+  if (transport.sent_data.size() != 1) return false;
+  FrameMsgInfo parsed{};
+  if (!parse_last_sent_frame<ProfileBulkConfig>(transport,
+                                                 &get_extended_dummy_message_info,
+                                                 parsed)) {
+    return false;
+  }
+  if (parsed.msg_id != ExtendedDummyMessage::MSG_ID) return false;
+  if (parsed.msg_len != ExtendedDummyMessage::MAX_SIZE) return false;
+  if (parsed.msg_data == nullptr || parsed.msg_data[0] != payload[0]) return false;
+
   return dispatch_count == 1 &&
          observed_msg_id == ExtendedDummyMessage::MSG_ID &&
          observed_value == payload[0];
@@ -440,6 +467,27 @@ bool test_forward_extended_msg_id_between_two_sdks() {
 
   uint8_t payload[ExtendedDummyMessage::MAX_SIZE] = {0x6C};
   if (!source_sdk.SendRaw(ExtendedDummyMessage::MSG_ID, payload, sizeof(payload))) return false;
+
+  if (source_transport.sent_data.size() != 1) return false;
+  if (target_transport.sent_data.size() != 1) return false;
+
+  FrameMsgInfo source_parsed{};
+  if (!parse_last_sent_frame<ProfileBulkConfig>(source_transport,
+                                                 &get_extended_dummy_message_info,
+                                                 source_parsed)) {
+    return false;
+  }
+  if (source_parsed.msg_id != ExtendedDummyMessage::MSG_ID) return false;
+  if (source_parsed.msg_data == nullptr || source_parsed.msg_data[0] != payload[0]) return false;
+
+  FrameMsgInfo target_parsed{};
+  if (!parse_last_sent_frame<ProfileBulkConfig>(target_transport,
+                                                 &get_extended_dummy_message_info,
+                                                 target_parsed)) {
+    return false;
+  }
+  if (target_parsed.msg_id != ExtendedDummyMessage::MSG_ID) return false;
+  if (target_parsed.msg_data == nullptr || target_parsed.msg_data[0] != payload[0]) return false;
 
   return forwarded_from_source == 1 &&
          target_dispatch_count == 1 &&

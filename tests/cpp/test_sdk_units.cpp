@@ -51,6 +51,21 @@ bool test_encoder_with_crc_roundtrip() {
   size_t expected_size = ProfileStandardConfig::overhead + BasicTypesMessage::MAX_SIZE;
   if (encoded != expected_size) return false;
 
+  auto result = BufferParserWithCrc<ProfileStandardConfig>::parse(
+      buffer, encoded, get_message_info);
+  if (!result.valid || result.msg_data == nullptr) return false;
+  if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
+  if (result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+
+  BasicTypesMessage decoded{};
+  decoded.deserialize(result.msg_data, result.msg_len);
+  if (decoded.small_int != -10) return false;
+  if (std::strcmp(decoded.device_id, "dev-01") != 0) return false;
+  const char* expected_desc = "encoder-unit-test";
+  const size_t expected_desc_len = std::strlen(expected_desc);
+  if (decoded.description.length != expected_desc_len) return false;
+  if (std::strncmp(decoded.description.data, expected_desc, expected_desc_len) != 0) return false;
+
   return true;
 }
 
@@ -111,6 +126,13 @@ bool test_encoder_with_crc_bulk_profile() {
 
   if (!result.valid) return false;
   if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
+  if (result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+  if (result.msg_data == nullptr) return false;
+
+  BasicTypesMessage decoded{};
+  decoded.deserialize(result.msg_data, result.msg_len);
+  if (decoded.small_int != 1) return false;
+  if (!decoded.flag) return false;
 
   return true;
 }
@@ -148,6 +170,8 @@ bool test_encoder_minimal_roundtrip() {
 
   if (encoded == 0) return false;
 
+  if (buffer[0] != ProfileSensorConfig::computed_start_byte1()) return false;
+
   // Sensor profile overhead: 1 start byte + 1 msg_id = 2 bytes header, 0 footer
   size_t expected_size = ProfileSensorConfig::overhead + BasicTypesMessage::MAX_SIZE;
   if (encoded != expected_size) return false;
@@ -157,6 +181,12 @@ bool test_encoder_minimal_roundtrip() {
       buffer, encoded, get_message_info);
   if (!result.valid) return false;
   if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
+  if (result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+
+  BasicTypesMessage decoded{};
+  decoded.deserialize(result.msg_data, result.msg_len);
+  if (decoded.small_int != -5) return false;
+  if (!decoded.flag) return false;
 
   return true;
 }
@@ -214,6 +244,11 @@ bool test_encoder_minimal_ipc_profile() {
       buffer, encoded, get_message_info);
   if (!result.valid) return false;
   if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
+  if (result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+
+  BasicTypesMessage decoded{};
+  decoded.deserialize(result.msg_data, result.msg_len);
+  if (decoded.small_int != 99) return false;
 
   return true;
 }
@@ -298,6 +333,7 @@ bool test_parser_with_crc_rejects_wrong_start_bytes() {
   uint8_t buffer[512];
   size_t encoded = FrameEncoderWithCrc<ProfileStandardConfig>::encode(
       buffer, sizeof(buffer), msg);
+  if (encoded == 0) return false;
 
   // Corrupt the first start byte
   buffer[0] ^= 0xFF;
@@ -331,6 +367,10 @@ bool test_parser_minimal_accepts_valid() {
   if (!result.valid) return false;
   if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
   if (result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+
+  BasicTypesMessage decoded{};
+  decoded.deserialize(result.msg_data, result.msg_len);
+  if (decoded.medium_int != 12345) return false;
 
   return true;
 }
