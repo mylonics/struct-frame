@@ -1,23 +1,12 @@
 #!/usr/bin/env python3
-"""
-Generator-validation tests: documents the intended error-detection behaviour
-for semantically invalid .sf inputs.
+"""Generator-validation tests for semantically invalid .sf inputs.
 
-Three negative-test scenarios are covered:
-  1. Duplicate message IDs within a package (two messages share the same msgid).
-  2. Duplicate package IDs across imported packages (two pkgs share pkgid).
-  3. Circular imports (A imports B and B imports A).
-
-Each test calls the generator with --validate and asserts that the exit code is
-non-zero OR that the output contains an error indicator.  A test fails when the
-generator silently accepts input that should be rejected.
-
-NOTE: Tests 1-3 are currently EXPECTED TO FAIL because the generator does not
-yet implement this validation.  They serve as documentation of desired behaviour
-and will become green once the corresponding generator checks are added.
+Each case calls the generator with --validate and asserts that the observed
+result matches the expected accept/reject behaviour. These are regression
+tests, not TODO markers.
 
 Usage:
-    python tests/test_generator_validation.py
+        python tests/test_generator_validation.py
 """
 from __future__ import annotations
 
@@ -44,19 +33,12 @@ def _run(sf_path: str, cwd: str | None = None) -> subprocess.CompletedProcess:
 
 
 def _rejected(result: subprocess.CompletedProcess) -> bool:
-    """Return True if the generator produced a visible rejection."""
-    combined = (result.stdout + result.stderr).lower()
-    return (result.returncode != 0
-            or "error" in combined
-            or "fail" in combined
-            or "duplicate" in combined
-            or "circular" in combined
-            or "cycle" in combined)
+    """Return True if the generator rejected the input."""
+    return result.returncode != 0
 
 
 PASS_MARKER = "PASS"
 FAIL_MARKER = "FAIL"
-TODO_MARKER = "TODO"   # test fails because generator does not yet catch this case
 
 
 def _report(name: str, rejected: bool, expected_reject: bool) -> bool:
@@ -64,10 +46,8 @@ def _report(name: str, rejected: bool, expected_reject: bool) -> bool:
     if rejected == expected_reject:
         print(f"  {PASS_MARKER}: {name}")
         return True
-    # The generator does not yet implement this check → mark as TODO
-    marker = TODO_MARKER if expected_reject else FAIL_MARKER
     adjective = "reject" if expected_reject else "accept"
-    print(f"  {marker}: {name} — generator should {adjective} this input")
+    print(f"  {FAIL_MARKER}: {name} — generator should {adjective} this input")
     return False
 
 
@@ -195,11 +175,8 @@ message MainMsg {
 
 
 # =============================================================================
-# Tier B §3 additions — 10 untested generator-validation rules from
-# docs/.../test-coverage.md §8.  Each test is currently EXPECTED TO FAIL
-# (marked TODO) and serves as documentation for the generator change that
-# must follow.  Drop the test into the suite, ship the generator rejection
-# in a follow-up PR, and the TODO flips to PASS without further edits here.
+# Tier B §3 additions — generator-validation regression cases from
+# docs/.../test-coverage.md §8.
 # =============================================================================
 
 def test_duplicate_field_numbers() -> bool:
@@ -435,10 +412,5 @@ if __name__ == "__main__":
     results = [fn() for fn in test_fns]
     passed = sum(results)
     total = len(results)
-    todo_count = total - passed
     print(f"\n{passed}/{total} tests passed.")
-    if todo_count > 0:
-        print(f"{todo_count} test(s) marked TODO — generator does not yet reject these inputs.")
-        print("These are known pending items, not regressions, but are tracked as failures.")
-        print("Implement the corresponding generator checks to make them pass.")
-    sys.exit(0 if todo_count == 0 else 1)
+    sys.exit(0 if passed == total else 1)

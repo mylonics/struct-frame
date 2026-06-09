@@ -8,6 +8,7 @@
 
 import { BasicTypesMessage, getMessageInfo } from '../generated/ts/serialization-test.structframe';
 import {
+  encodeMessage,
   ProfileStandardWriter,
   ProfileStandardConfig,
   parseFrameWithCrc,
@@ -51,9 +52,16 @@ class StandardFrameParser implements FrameParser {
     return parseFrameWithCrc(ProfileStandardConfig, data, getMessageInfo);
   }
 
-  frame(_msgId: number, _data: Uint8Array): Uint8Array {
-    // Not needed for receive-path tests; return empty frame
-    return new Uint8Array(0);
+  frame(msgId: number, data: Uint8Array): Uint8Array {
+    const info = getMessageInfo(msgId);
+    const rawMsg: any = {
+      _buffer: data,
+      getMsgId: () => msgId,
+      getMagic1: () => info?.magic1 ?? 0,
+      getMagic2: () => info?.magic2 ?? 0,
+      isVariable: () => false,
+    };
+    return encodeMessage(ProfileStandardConfig, rawMsg);
   }
 }
 
@@ -181,26 +189,52 @@ function testWithCodecDeserializesMessage(): void {
   assert('codec: flag field correct', (decoded as any)?.flag === true);
 }
 
+async function testSendRawFramesThroughTransport(): Promise<void> {
+  const transport = new MockTransport();
+  const sdk = makeSdk(transport);
+
+  const payloadMsg = new BasicTypesMessage({ regularInt: 42, flag: true });
+  const payload = payloadMsg.serialize();
+
+  await sdk.sendRaw(BasicTypesMessage._msgid, payload);
+
+  assert('sendRaw: transport.send was invoked', transport.sentData.length === 1);
+  const sentFrame = transport.sentData[0];
+  const parsed = parseFrameWithCrc(ProfileStandardConfig, sentFrame, getMessageInfo);
+  assert('sendRaw: emitted frame parses as valid', parsed.valid === true);
+  assert('sendRaw: emitted frame msgId preserved', parsed.msgId === BasicTypesMessage._msgid);
+  assert('sendRaw: emitted frame payload preserved',
+    Buffer.from(parsed.msgData).equals(Buffer.from(payload)));
+}
+
 // =============================================================================
 // Main
 // =============================================================================
 
-console.log();
-console.log('========================================');
-console.log('SDK SUBSCRIBE/DISPATCH TESTS - TypeScript');
-console.log('========================================');
-console.log();
+async function main(): Promise<void> {
+  console.log();
+  console.log('========================================');
+  console.log('SDK SUBSCRIBE/DISPATCH TESTS - TypeScript');
+  console.log('========================================');
+  console.log();
 
-testSubscribeAndDispatch();
-testMultipleHandlers();
-testUnsubscribe();
-testNoHandlerForUnregisteredId();
-testWithCodecDeserializesMessage();
+  testSubscribeAndDispatch();
+  testMultipleHandlers();
+  testUnsubscribe();
+  testNoHandlerForUnregisteredId();
+  testWithCodecDeserializesMessage();
+  await testSendRawFramesThroughTransport();
 
-console.log();
-console.log('========================================');
-console.log(`Summary: ${passed}/${passed + failed} tests passed`);
-console.log('========================================');
-console.log();
+  console.log();
+  console.log('========================================');
+  console.log(`Summary: ${passed}/${passed + failed} tests passed`);
+  console.log('========================================');
+  console.log();
 
-process.exit(failed > 0 ? 1 : 0);
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

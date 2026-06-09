@@ -9,7 +9,7 @@
 'use strict';
 
 const { BasicTypesMessage, getMessageInfo } = require('../generated/js/serialization-test.structframe');
-const { ProfileStandardConfig, ProfileStandardWriter, parseFrameWithCrc } = require('../generated/js/frame-profiles');
+const { ProfileStandardConfig, ProfileStandardWriter, parseFrameWithCrc, encodeMessage } = require('../generated/js/frame-profiles');
 const { StructFrameSdk } = require('../generated/js/struct-frame-sdk/struct-frame-sdk');
 
 // =============================================================================
@@ -45,9 +45,16 @@ const standardFrameParser = {
   parse(data) {
     return parseFrameWithCrc(ProfileStandardConfig, data, getMessageInfo);
   },
-  frame(_msgId, _data) {
-    // Not needed for receive-path tests
-    return new Uint8Array(0);
+  frame(msgId, data) {
+    const info = getMessageInfo(msgId);
+    const rawMsg = {
+      _buffer: data,
+      getMsgId: () => msgId,
+      getMagic1: () => (info?.magic1 ?? 0),
+      getMagic2: () => (info?.magic2 ?? 0),
+      isVariable: () => false,
+    };
+    return encodeMessage(ProfileStandardConfig, rawMsg);
   },
 };
 
@@ -172,13 +179,18 @@ function testSendRaw() {
   const transport = new MockTransport();
   const sdk = makeSdk(transport);
 
-  // Frame the data ourselves so we know what to expect back
   const msg = new BasicTypesMessage({ regularInt: 42 });
-  const payload = new Uint8Array(msg._buffer);
+  const payload = msg.serialize();
 
   // sendRaw is async; drive it to completion before asserting
   return sdk.sendRaw(BasicTypesMessage._msgid, payload).then(() => {
-    assert('sendRaw: transport.send was invoked', transport.sentData.length > 0);
+    assert('sendRaw: transport.send was invoked', transport.sentData.length === 1);
+    const sentFrame = transport.sentData[0];
+    const parsed = parseFrameWithCrc(ProfileStandardConfig, sentFrame, getMessageInfo);
+    assert('sendRaw: emitted frame parses as valid', parsed.valid === true);
+    assert('sendRaw: emitted frame msgId preserved', parsed.msgId === BasicTypesMessage._msgid);
+    assert('sendRaw: emitted frame payload preserved',
+      Buffer.from(parsed.msgData).equals(Buffer.from(payload)));
   });
 }
 

@@ -2489,7 +2489,7 @@ def main():
     if not args.filename:
         print("Error: filename is required")
         parser.print_help()
-        return
+        return 1
 
     parseFile(args.filename)
 
@@ -2510,7 +2510,7 @@ def main():
         print("Running in validate mode - no files will be generated")
     elif (not args.build_c and not args.build_ts and not args.build_js and not args.build_py and not args.build_cpp and not args.build_csharp and not args.build_gql and not args.build_rust):
         print("Select at least one build argument")
-        return
+        return 1
 
     valid = False
     try:
@@ -2518,18 +2518,18 @@ def main():
     except RecursionError as err:
         print(
             f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {current_error_message} and Field: {current_error_field}')
-        return
+        return 1
 
     if not valid:
         print("Validation failed")
-        return
+        return 1
 
     if args.validate:
         # In validate mode, only perform validation - no file generation
         print("Validation successful")
         if args.debug:
             printPackages()
-        return
+        return 0
 
     # Compute generation hash and check if regeneration is needed
     current_hash = compute_generation_hash(args, packages)
@@ -2824,7 +2824,8 @@ def main():
     if args.debug:
         printPackages()
     print("Struct Frame successfully completed")
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
