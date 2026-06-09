@@ -102,6 +102,11 @@ sdk.Subscribe<SensorDataMessage>(msg => {
     Console.WriteLine($"Sensor value: {msg.Value}, ID: {msg.GetMsgId()}");
 });
 
+// Subscribe to every complete frame (valid and CRC-failed complete frames)
+sdk.FrameReceived += frame => {
+    Console.WriteLine($"Frame ID: {frame.MsgId}, Valid: {frame.Valid}, Size: {frame.FrameSize}");
+};
+
 // Send messages (uses IStructFrameMessage interface)
 var command = new CommandMessage { Action = 1 };
 await sdk.SendAsync(command);
@@ -110,6 +115,46 @@ await sdk.SendAsync(command);
 sdk.UnhandledMessage += frame => {
     Console.WriteLine($"Unknown message ID: {frame.MsgId}");
 };
+```
+
+## Frame Forwarding And Send Modes
+
+The C# SDK has three send paths:
+
+- `SendAsync(message)` for normal typed message sending (SDK serializes + frames)
+- `Send(frameInfo)` to re-encode from parsed payload metadata for the current profile
+- `SendDirect(frameInfo)` to forward original frame bytes without re-encoding
+
+Use `SendDirect(frameInfo)` only when source and destination use the same profile.
+Use `Send(frameInfo)` when forwarding between different profiles.
+
+```csharp
+using StructFrame;
+using StructFrame.Sdk;
+
+var sdk = new StructFrameSdk(new StructFrameSdkConfig(
+    transport: transport,
+    getMessageInfo: MessageDefinitions.GetMessageInfo,
+    profile: Profiles.Standard
+));
+
+await sdk.ConnectAsync();
+
+sdk.FrameReceived += async frame =>
+{
+    // Fast path: no re-encode, forwards original wire bytes
+    if (!frame.FrameData.IsEmpty)
+    {
+        await sdk.SendDirect(frame);
+    }
+};
+
+// Typed send
+await sdk.SendAsync(new CommandMessage { Action = 1 });
+
+// Re-encode send from parsed frame metadata
+FrameMsgInfo parsed = default; // from BufferParser/AccumulatingReader
+await sdk.Send(parsed);
 ```
 
 ## Generated SDK Interface
