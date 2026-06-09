@@ -128,6 +128,7 @@ namespace StructFrame.Sdk
         private readonly ProfileConfig _profile;
         private readonly FrameEncoder _encoder;
         private readonly AccumulatingReader _reader;
+        private readonly Func<int, MessageInfo?> _getMessageInfo;
         private readonly bool _debug;
         private readonly Dictionary<ushort, List<IMessageHandler>> _messageHandlers;
         private readonly int _bufferSize;
@@ -156,12 +157,18 @@ namespace StructFrame.Sdk
         /// <summary>
         /// Event fired when an unhandled message is received
         /// </summary>
+        public event RawMessageHandler? FrameReceived;
+
+        /// <summary>
+        /// Event fired when a frame is received but no typed handler is registered.
+        /// </summary>
         public event RawMessageHandler? UnhandledMessage;
 
         public StructFrameSdk(StructFrameSdkConfig config)
         {
             _transport = config.Transport;
             _profile = config.Profile;
+            _getMessageInfo = config.GetMessageInfo;
             _debug = config.Debug;
             _messageHandlers = new Dictionary<ushort, List<IMessageHandler>>();
 
@@ -281,24 +288,59 @@ namespace StructFrame.Sdk
             byte[] framedData = new byte[bytesWritten];
             Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
 
-            if (_strictOrdering)
-            {
-                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-                if (!_sendQueue!.Writer.TryWrite(new QueuedMessage(framedData, tcs)))
-                {
-                    throw new InvalidOperationException("Send queue is closed - transport may be disconnected");
-                }
-
-                Log($"Queued message ID {message.GetMsgId()}, {bytesWritten} bytes");
-                await tcs.Task.ConfigureAwait(false);
-            }
-            else
-            {
-                await _transport.SendAsync(framedData).ConfigureAwait(false);
-            }
+            await SendFramedBytesAsync(framedData).ConfigureAwait(false);
 
             Log($"Sent message ID {message.GetMsgId()}, {bytesWritten} bytes total");
+        }
+
+        /// <summary>
+        /// Send a parsed frame using the current profile. This re-encodes from
+        /// payload metadata rather than forwarding the original wire bytes.
+        /// </summary>
+        public async Task Send(FrameMsgInfo frame)
+        {
+            if (frame.MsgData == null)
+            {
+                throw new InvalidOperationException("Cannot re-encode an empty frame");
+            }
+
+            byte[] buffer = new byte[_profile.MaxPayload + _profile.Overhead];
+            var info = _getMessageInfo(frame.MsgId);
+            int bytesWritten = _encoder.EncodeRaw(
+                buffer,
+                0,
+                frame.MsgId,
+                frame.GetPayloadSpan(),
+                frame.Seq,
+                frame.SysId,
+                frame.CompId,
+                frame.PkgId,
+                info);
+
+            if (bytesWritten == 0)
+            {
+                throw new InvalidOperationException("Failed to re-encode frame - buffer too small or payload exceeds max size");
+            }
+
+            byte[] framedData = new byte[bytesWritten];
+            Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
+            await SendFramedBytesAsync(framedData).ConfigureAwait(false);
+            Log($"Sent frame ID {frame.MsgId}, {bytesWritten} bytes total");
+        }
+
+        /// <summary>
+        /// Directly forward an already framed message without re-encoding.
+        /// Assumes the source and destination profiles are the same.
+        /// </summary>
+        public async Task SendDirect(FrameMsgInfo frame)
+        {
+            if (frame.FrameData.IsEmpty)
+            {
+                throw new InvalidOperationException("FrameData is required for direct forwarding");
+            }
+
+            await SendFramedBytesAsync(frame.FrameData).ConfigureAwait(false);
+            Log($"Directly forwarded frame ID {frame.MsgId}, {frame.FrameData.Length} bytes total");
         }
 
         /// <summary>
@@ -309,8 +351,13 @@ namespace StructFrame.Sdk
         private void HandleIncomingData(byte[] data)
         {
             _reader.AddData(data);
-            while (_reader.TryNext(out var frame))
+            while (true)
             {
+                var frame = _reader.Next();
+                if (!frame.Valid && frame.FrameData.Length == 0)
+                {
+                    break;
+                }
                 ProcessFrame(frame);
             }
         }
@@ -318,6 +365,8 @@ namespace StructFrame.Sdk
         private void ProcessFrame(FrameMsgInfo frame)
         {
             Log($"Received message ID {frame.MsgId}, {frame.MsgLen} bytes payload");
+
+            FrameReceived?.Invoke(frame);
 
             if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers))
             {
@@ -335,9 +384,29 @@ namespace StructFrame.Sdk
                     }
                 }
             }
-            else
+            else if (frame.Valid)
             {
                 UnhandledMessage?.Invoke(frame);
+            }
+        }
+
+        private async Task SendFramedBytesAsync(ReadOnlyMemory<byte> framedData)
+        {
+            if (_strictOrdering)
+            {
+                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+                byte[] bytes = framedData.ToArray();
+                if (!_sendQueue!.Writer.TryWrite(new QueuedMessage(bytes, tcs)))
+                {
+                    throw new InvalidOperationException("Send queue is closed - transport may be disconnected");
+                }
+
+                await tcs.Task.ConfigureAwait(false);
+            }
+            else
+            {
+                await _transport.SendAsync(framedData).ConfigureAwait(false);
             }
         }
 

@@ -150,7 +150,83 @@ static class TestSdkSubscribe
     }
 
     // -------------------------------------------------------------------------
-    // Test 5: Two distinct message types are dispatched independently
+    // Test 5: FrameReceived fires for all complete frames, including CRC failure.
+    // -------------------------------------------------------------------------
+    static void TestFrameReceivedIncludesCrcFailure()
+    {
+        var transport = new MockTransport();
+        using var sdk = new StructFrameSdk(SdkTestHelpers.MakeConfig(transport));
+
+        int frameCount = 0;
+        bool sawCrcFailure = false;
+        sdk.FrameReceived += frame =>
+        {
+            frameCount++;
+            sawCrcFailure = !frame.Valid && frame.Status == FrameMsgStatus.CrcFailure && frame.FrameData.Length > 0;
+        };
+
+        var outgoing = new BasicTypesMessage { RegularInt = 77, Flag = true };
+        byte[] frame = SdkTestHelpers.EncodeStandard(outgoing);
+        frame[frame.Length - 1] ^= 0xFF;
+        transport.InjectData(frame);
+
+        Assert("frame-received: callback fires for checksum failure", frameCount == 1);
+        Assert("frame-received: invalid complete frame is preserved", sawCrcFailure);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 6: SendDirect forwards raw bytes without re-encoding.
+    // -------------------------------------------------------------------------
+    static void TestSendDirectForwardsRawFrame()
+    {
+        var transport = new MockTransport();
+        using var sdk = new StructFrameSdk(SdkTestHelpers.MakeConfig(transport));
+
+        int frameCount = 0;
+        sdk.FrameReceived += frame =>
+        {
+            frameCount++;
+            sdk.SendDirect(frame).GetAwaiter().GetResult();
+        };
+
+        var outgoing = new BasicTypesMessage { RegularInt = 123, Flag = true };
+        byte[] rawFrame = SdkTestHelpers.EncodeStandard(outgoing);
+        transport.InjectData(rawFrame);
+
+        Assert("send-direct: frame callback fired once", frameCount == 1);
+        Assert("send-direct: transport received forwarded frame", transport.SentData.Count == 1);
+        Assert("send-direct: forwarded bytes match original raw bytes",
+               transport.SentData[0].SequenceEqual(rawFrame));
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 7: Send(FrameMsgInfo) re-encodes using payload metadata.
+    // -------------------------------------------------------------------------
+    static async Task TestSendFrameInfoReencodes()
+    {
+        var transport = new MockTransport();
+        using var sdk = new StructFrameSdk(SdkTestHelpers.MakeConfig(transport));
+
+        var outgoing = new BasicTypesMessage { RegularInt = 456, Flag = true };
+        byte[] rawFrame = SdkTestHelpers.EncodeStandard(outgoing);
+        var parser = new BufferParser(StructFrame.Profiles.Profiles.Standard,
+                                       StructFrame.SerializationTest.MessageDefinitions.GetMessageInfo);
+        var parsed = parser.Parse(rawFrame, 0, rawFrame.Length);
+        parsed.FrameData = default;
+
+        await sdk.Send(parsed);
+
+        Assert("send-frameinfo: transport received one frame", transport.SentData.Count == 1);
+        Assert("send-frameinfo: re-encoded frame parses valid",
+               new BufferParser(StructFrame.Profiles.Profiles.Standard,
+                                StructFrame.SerializationTest.MessageDefinitions.GetMessageInfo)
+                   .Parse(transport.SentData[0], 0, transport.SentData[0].Length).Valid);
+        Assert("send-frameinfo: re-encoded bytes match same-profile source",
+               transport.SentData[0].SequenceEqual(rawFrame));
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 8: Two distinct message types are dispatched independently
     // -------------------------------------------------------------------------
     static void TestTwoMessageTypes()
     {
@@ -184,7 +260,7 @@ static class TestSdkSubscribe
     }
 
     // -------------------------------------------------------------------------
-    // Test 6: SendAsync frames and emits through the transport
+    // Test 9: SendAsync frames and emits through the transport
     // -------------------------------------------------------------------------
     static async Task TestSendAsync()
     {
@@ -227,6 +303,9 @@ static class TestSdkSubscribe
         TestMultipleHandlers();
         TestUnsubscribe();
         TestUnhandledMessage();
+        TestFrameReceivedIncludesCrcFailure();
+        TestSendDirectForwardsRawFrame();
+        TestSendFrameInfoReencodes().GetAwaiter().GetResult();
         TestTwoMessageTypes();
         TestSendAsync().GetAwaiter().GetResult();
 

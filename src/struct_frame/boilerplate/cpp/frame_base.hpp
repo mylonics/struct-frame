@@ -79,17 +79,20 @@ struct FrameMsgInfo {
   size_t msg_len;     // Payload length (message data only)
   size_t frame_size;  // Total frame size (header + payload + footer)
   uint8_t* msg_data;
+  const uint8_t* frame_data;  // Full frame bytes, including framing overhead
   FrameMsgStatus status;
 
   FrameMsgInfo()
-      : valid(false), msg_id(0), msg_len(0), frame_size(0), msg_data(nullptr), status(FrameMsgStatus::None) {}
+      : valid(false), msg_id(0), msg_len(0), frame_size(0), msg_data(nullptr), frame_data(nullptr),
+        status(FrameMsgStatus::None) {}
   FrameMsgInfo(bool v, uint16_t id, size_t len, size_t fsize, uint8_t* data,
-               FrameMsgStatus st = FrameMsgStatus::None)
-      : valid(v), msg_id(id), msg_len(len), frame_size(fsize), msg_data(data), status(st) {}
+               const uint8_t* frame = nullptr, FrameMsgStatus st = FrameMsgStatus::None)
+      : valid(v), msg_id(id), msg_len(len), frame_size(fsize), msg_data(data), frame_data(frame), status(st) {}
 
   // Legacy constructor for backwards compatibility
   FrameMsgInfo(bool v, uint16_t id, size_t len, uint8_t* data)
-      : valid(v), msg_id(id), msg_len(len), frame_size(0), msg_data(data), status(FrameMsgStatus::None) {}
+      : valid(v), msg_id(id), msg_len(len), frame_size(0), msg_data(data), frame_data(nullptr),
+        status(FrameMsgStatus::None) {}
 
   // Allow use in boolean context (e.g., while (auto result = reader.next()) { ... })
   explicit operator bool() const { return valid; }
@@ -183,10 +186,13 @@ inline FrameMsgInfo validate_payload_with_crc(const uint8_t* buffer, size_t leng
   FrameChecksum ck = fletcher_checksum(buffer + crc_start_offset, crc_data_len, magic1, magic2);
 
   if (ck.byte1 == buffer[length - 2] && ck.byte2 == buffer[length - 1]) {
-    return FrameMsgInfo(true, buffer[header_size - 1], msg_length, const_cast<uint8_t*>(buffer + header_size));
+    return FrameMsgInfo(true, buffer[header_size - 1], msg_length, length,
+                        const_cast<uint8_t*>(buffer + header_size), buffer);
   }
 
-  return FrameMsgInfo();
+  return FrameMsgInfo(false, buffer[header_size - 1], msg_length, length,
+                      const_cast<uint8_t*>(buffer + header_size), buffer,
+                      FrameMsgStatus::CrcFailure);
 }
 
 /**
@@ -197,7 +203,8 @@ inline FrameMsgInfo validate_payload_minimal(const uint8_t* buffer, size_t lengt
     return FrameMsgInfo();
   }
 
-  return FrameMsgInfo(true, buffer[header_size - 1], length - header_size, const_cast<uint8_t*>(buffer + header_size));
+  return FrameMsgInfo(true, buffer[header_size - 1], length - header_size, length,
+                      const_cast<uint8_t*>(buffer + header_size), buffer);
 }
 
 /**

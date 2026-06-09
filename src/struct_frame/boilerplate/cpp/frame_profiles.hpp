@@ -332,11 +332,14 @@ class BufferParserWithCrc {
       }
       FrameChecksum ck = fletcher_checksum_ext(buffer + crc_start, effective_base, crc_len, info.magic1, info.magic2);
       if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
-        return FrameMsgInfo();
+        return FrameMsgInfo(false, msg_id, msg_len, total_size,
+                            const_cast<uint8_t*>(buffer + Config::header_size), buffer,
+                            FrameMsgStatus::CrcFailure);
       }
     }
 
-    return FrameMsgInfo(true, msg_id, msg_len, total_size, const_cast<uint8_t*>(buffer + Config::header_size));
+    return FrameMsgInfo(true, msg_id, msg_len, total_size,
+                        const_cast<uint8_t*>(buffer + Config::header_size), buffer);
   }
 };
 
@@ -390,7 +393,8 @@ class BufferParserMinimal {
       return FrameMsgInfo();
     }
 
-    return FrameMsgInfo(true, msg_id, msg_len, total_size, const_cast<uint8_t*>(buffer + Config::header_size));
+    return FrameMsgInfo(true, msg_id, msg_len, total_size,
+                        const_cast<uint8_t*>(buffer + Config::header_size), buffer);
   }
 };
 

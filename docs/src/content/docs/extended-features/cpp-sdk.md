@@ -51,7 +51,7 @@ int main() {
 
 ## FrameMsgInfo Subscription And Forwarding
 
-You can subscribe to every valid parsed frame directly as `FrameMsgInfo`:
+You can subscribe to every complete parsed frame directly as `FrameMsgInfo`:
 
 ```cpp
 StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
@@ -59,23 +59,50 @@ StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
 
 auto all_frames = sdk.subscribeFrameInfo(
     [](const StructFrame::FrameMsgInfo& frame) {
+        // Complete frame metadata is available even for CRC-failed frames.
         std::cout << "msg_id=" << frame.msg_id
-                  << " len=" << frame.msg_len << std::endl;
+                  << " len=" << frame.msg_len
+                  << " valid=" << frame.valid << std::endl;
     });
 ```
 
-And you can forward a parsed `FrameMsgInfo` directly through another SDK instance:
+To bridge two SDKs, use one of two forwarding modes:
+
+- `SendDirect(frame_info)` for same-profile forwarding (most efficient, no re-encode)
+- `Send(frame_info)` for cross-profile forwarding (re-encodes for destination profile)
+
+Most efficient same-profile bridge:
 
 ```cpp
 StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
-    sdk_a(&transport_a, &get_message_info);
+    source_sdk(&transport_a, &get_message_info);
 
 StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
-    sdk_b(&transport_b, &get_message_info);
+    target_sdk(&transport_b, &get_message_info);
 
-auto forward = sdk_a.subscribeFrameInfo(
+auto forward = source_sdk.subscribeFrameInfo(
     [&](const StructFrame::FrameMsgInfo& frame) {
-        sdk_b.Send(frame);  // Re-encode and forward through sdk_b transport
+        target_sdk.SendDirect(frame);  // fastest: forwards original frame bytes
+    });
+
+// Encode once on source side and inject/send as needed
+StatusMessage msg{};
+msg.value = 42;
+
+uint8_t wire[512];
+size_t wire_len = StructFrame::FrameEncoderWithCrc<StructFrame::ProfileStandardConfig>::encode(
+    wire, sizeof(wire), msg);
+
+// Feed encoded bytes into source SDK parse path:
+source_sdk.Feed(wire, wire_len);
+```
+
+Cross-profile bridge (re-encode on destination):
+
+```cpp
+auto forward_cross_profile = source_sdk.subscribeFrameInfo(
+    [&](const StructFrame::FrameMsgInfo& frame) {
+        target_sdk.Send(frame);  // profile-aware re-encode
     });
 ```
 

@@ -144,7 +144,7 @@ namespace StructFrame.Framing
         public bool TryNext(out FrameMsgInfo result)
         {
             result = Next();
-            return result.Valid;
+            return result.Valid || result.FrameData.Length > 0;
         }
 
         /// <summary>
@@ -162,7 +162,7 @@ namespace StructFrame.Framing
             {
                 var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
 
-                if (result.Valid)
+                if (result.Valid || result.FrameData.Length > 0)
                 {
                     int partialLen = _internalDataLen > _currentSize ? _internalDataLen - _currentSize : 0;
                     int bytesFromCurrent = result.FrameSize > partialLen ? result.FrameSize - partialLen : 0;
@@ -171,10 +171,8 @@ namespace StructFrame.Framing
                     _expectedFrameSize = 0;
                     return result;
                 }
-                else
-                {
-                    return FrameMsgInfo.Invalid;
-                }
+
+                return FrameMsgInfo.Invalid;
             }
 
             // Parse from current buffer
@@ -185,7 +183,7 @@ namespace StructFrame.Framing
 
             var parseResult = _parser.Parse(_currentBuffer, _currentOffset, _currentSize - _currentOffset);
 
-            if (parseResult.Valid && parseResult.FrameSize > 0)
+            if (parseResult.FrameSize > 0)
             {
                 _currentOffset += parseResult.FrameSize;
                 return parseResult;
@@ -340,7 +338,10 @@ namespace StructFrame.Framing
 
                         if (msgInfo.Value.Size == 0)
                         {
-                            var result = new FrameMsgInfo(true, msgId, 0, _expectedFrameSize, _internalBuffer, _config.HeaderSize);
+                            var result = new FrameMsgInfo(true, msgId, 0, _expectedFrameSize, _internalBuffer, _config.HeaderSize)
+                            {
+                                FrameData = _internalBuffer.AsMemory(0, _expectedFrameSize)
+                            };
                             _state = State.LookingForStart1;
                             _internalDataLen = 0;
                             _expectedFrameSize = 0;
@@ -452,7 +453,10 @@ namespace StructFrame.Framing
 
                 if (msgInfo.Value.Size == 0)
                 {
-                    var result = new FrameMsgInfo(true, msgId, 0, _expectedFrameSize, _internalBuffer, _config.HeaderSize);
+                    var result = new FrameMsgInfo(true, msgId, 0, _expectedFrameSize, _internalBuffer, _config.HeaderSize)
+                    {
+                        FrameData = _internalBuffer.AsMemory(0, _expectedFrameSize)
+                    };
                     _state = State.LookingForStart1;
                     _internalDataLen = 0;
                     _expectedFrameSize = 0;
@@ -508,6 +512,11 @@ namespace StructFrame.Framing
                     result.Status = FrameMsgStatus.SyncRecovery;
                 }
                 _diagnostics.CntSyncRecoveries++;
+            }
+
+            if (result.FrameSize > 0)
+            {
+                result.FrameData = _internalBuffer.AsMemory(0, result.FrameSize);
             }
 
             return result;

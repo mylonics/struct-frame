@@ -27,6 +27,7 @@ namespace StructFrame
         public int FrameSize { get; set; }
         public byte[]? MsgData { get; set; }
         public int MsgDataOffset { get; set; }
+        public ReadOnlyMemory<byte> FrameData { get; set; }
 
         // Additional fields for extended profiles
         public byte Seq { get; set; }
@@ -47,6 +48,7 @@ namespace StructFrame
             FrameSize = frameSize;
             MsgData = msgData;
             MsgDataOffset = offset;
+            FrameData = default;
             Seq = 0;
             SysId = 0;
             CompId = 0;

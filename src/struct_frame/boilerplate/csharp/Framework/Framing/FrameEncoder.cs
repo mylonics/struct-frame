@@ -133,6 +133,101 @@ namespace StructFrame.Framing
 
             return idx - offset;
         }
+
+        /// <summary>
+        /// Encode a raw payload into a framed message using the current profile.
+        /// </summary>
+        public int EncodeRaw(byte[] buffer, int offset, ushort msgId, ReadOnlySpan<byte> payload,
+                             byte seq = 0, byte sysId = 0, byte compId = 0, byte pkgId = 0,
+                             MessageInfo? info = null)
+        {
+            int payloadSize = payload.Length;
+            int totalSize = _config.Overhead + payloadSize;
+
+            if (buffer.Length - offset < totalSize)
+            {
+                return 0;
+            }
+
+            if (_config.HasLength && payloadSize > _config.MaxPayload)
+            {
+                return 0;
+            }
+
+            int idx = offset;
+
+            if (_config.NumStartBytes >= 1)
+            {
+                buffer[idx++] = _config.ComputedStartByte1;
+            }
+            if (_config.NumStartBytes >= 2)
+            {
+                buffer[idx++] = _config.ComputedStartByte2;
+            }
+
+            int crcStart = idx;
+
+            if (_config.HasSeq)
+            {
+                buffer[idx++] = seq;
+            }
+            if (_config.HasSysId)
+            {
+                buffer[idx++] = sysId;
+            }
+            if (_config.HasCompId)
+            {
+                buffer[idx++] = compId;
+            }
+
+            if (_config.HasLength)
+            {
+                if (_config.LengthBytes == 1)
+                {
+                    buffer[idx++] = (byte)(payloadSize & 0xFF);
+                }
+                else
+                {
+                    buffer[idx++] = (byte)(payloadSize & 0xFF);
+                    buffer[idx++] = (byte)((payloadSize >> 8) & 0xFF);
+                }
+            }
+
+            if (_config.HasPkgId)
+            {
+                buffer[idx++] = pkgId;
+            }
+            buffer[idx++] = (byte)(msgId & 0xFF);
+
+            if (payloadSize > 0)
+            {
+                payload.CopyTo(buffer.AsSpan(idx, payloadSize));
+                idx += payloadSize;
+            }
+
+            if (_config.HasCrc)
+            {
+                int crcLen = idx - crcStart;
+                int baseSize = info?.BaseSize ?? payloadSize;
+                byte magic1 = info?.Magic1 ?? 0;
+                byte magic2 = info?.Magic2 ?? 0;
+
+                FrameChecksum ck;
+                if (_config.HasLength && baseSize < payloadSize)
+                {
+                    int effectiveBase = crcLen - payloadSize + baseSize;
+                    ck = FrameBase.FletcherChecksumExt(buffer, crcStart, effectiveBase, crcLen, magic1, magic2);
+                }
+                else
+                {
+                    ck = FrameBase.FletcherChecksum(buffer, crcStart, crcLen, magic1, magic2);
+                }
+                buffer[idx++] = ck.Byte1;
+                buffer[idx++] = ck.Byte2;
+            }
+
+            return idx - offset;
+        }
     }
 
     /// <summary>
