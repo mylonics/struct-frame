@@ -326,8 +326,11 @@ SECTIONS = [
                 "caption": (
                     "Files: `tests/cpp/test_profiling.cpp`, "
                     "`tests/cpp/test_profiling_generated.cpp`\n\n"
-                    "> **Gap (Low):** Performance baseline tests only exist for "
-                    "C++. No benchmarks for Python, TypeScript, or Rust."
+                    "> **Gap (Low):** Direct in-suite profiling assertions only "
+                    "exist for C++. A separate multi-language benchmark harness "
+                    "exists under `tests/benchmarks/`, but its committed "
+                    "baselines are placeholders and the CI workflow is advisory, "
+                    "so it is not counted here as enforced regression coverage."
                 ),
             },
             {
@@ -506,7 +509,7 @@ SECTIONS = [
                           "JS": "✅", "C#": "✅", "Rust": "✅"}),
                     _row("Serial transport",
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
-                          "JS": "❌", "C#": "✅", "Rust": "N/A"}),
+                          "JS": "❌", "C#": "❌", "Rust": "N/A"}),
                     _row("TCP transport",
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
                           "JS": "❌", "C#": "❌", "Rust": "N/A"}),
@@ -545,11 +548,14 @@ SECTIONS = [
                     "> - `test_sdk_profiles` -- `tests/csharp/TestSdkProfiles.cs` "
                     "(SDK round-trip under Bulk and Sensor profiles)\n"
                     "> - `test_base_transport` -- `tests/csharp/TestBaseTransport.cs` "
-                    "(`BaseTransport` semaphore/ROM overload/AutoReconnect and "
-                    "`SerialTransport` construction)\n>\n"
-                    "> **Gap (Low):** Serial transport is now covered for C# by "
-                    "`test_base_transport`; TCP, UDP and WebSocket transports "
-                    "remain uncovered."
+                    "(`BaseTransport` semaphore/ROM overload/AutoReconnect; "
+                    "the file explicitly omits `SerialTransport` because the "
+                    "test project does not enable the optional `System.IO.Ports` "
+                    "dependency)\n>\n"
+                    "> **Gap (Low):** Runtime serial, TCP, UDP, and WebSocket "
+                    "transport behavior remains uncovered. `StructFrameSdk` "
+                    "routing is tested with mock transports, but the concrete "
+                    "socket/serial/WebSocket classes are not exercised end to end."
                 ),
             },
         ],
@@ -782,14 +788,22 @@ TRAILING_SECTIONS = [
             "generator + Codecov upload |\n"
             "| `wireshark-dissector.yml` | Runs `wireshark/test_dissector.py` "
             "against the Lua dissector via `tshark` on golden pcaps |\n"
-            "| `benchmark-regression.yml` | Tracks encode/decode benchmark "
-            "results and flags performance regressions |\n"
-            "| `api-stability.yml` | Guards the public generated-API surface "
-            "against unintended breaking changes |\n\n"
+            "| `benchmark-regression.yml` | Advisory quick benchmark smoke; "
+            "runs available language benchmarks and uploads results, but the "
+            "job is `continue-on-error` and committed baselines are placeholders |\n"
+            "| `api-stability.yml` | Advisory public API checks; Python, "
+            "NuGet, and crates baselines are present, npm lacks a baseline, and "
+            "the workflow is `continue-on-error` |\n"
+            "| `doc-samples.yml` | Doctest-style extraction plus quick sample "
+            "compilation; quick mode skips C, C++, TypeScript, Rust, and C# "
+            "samples, and fragment-like snippets are intentionally skipped |\n\n"
             "Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / "
             "`CXXFLAGS` / `LDFLAGS`, which `tests/run_tests.py` honours at every "
             "C/C++ compile site. No runner changes are needed to introduce "
-            "additional sanitizer or coverage jobs.\n\n"
+            "additional sanitizer or coverage jobs. Benchmark regression and "
+            "API-stability jobs are signal-only today; failures there do not "
+            "block merges until real baselines are established and "
+            "`continue-on-error` is removed.\n\n"
             "### Fuzzing harnesses\n\n"
             "| Harness | File | Tooling |\n"
             "|---------|------|---------|\n"
@@ -808,6 +822,56 @@ TRAILING_SECTIONS = [
             "### Stability & flake policy\n\n"
             "Retry budgets, quarantine rules, and triage ownership for flaky "
             "tests are documented in [Test Stability Policy](test-stability)."
+        ),
+    },
+    {
+        "number": "14",
+        "title": "Implementation And Shortcut Audit Notes",
+        "body": (
+            "A source/test sweep for `TODO`, `FIXME`, `NotImplemented`, "
+            "placeholder, stub, dummy, and skip patterns found no dummy "
+            "implementation in the core serialization generators or runtime "
+            "encode/decode paths. The remaining findings are limited, "
+            "intentional, or coverage-related:\n\n"
+            "| Finding | Current status | Follow-up |\n"
+            "|---------|----------------|-----------|\n"
+            "| C++ generated envelope `wrap()` helper skips non-oneof array, "
+            "string, and bytes envelope fields when building the convenience "
+            "parameter list | Core serialization still handles those fields, "
+            "but the helper is ergonomically incomplete | Implement helper "
+            "parameters/initialization for bounded arrays, strings, and bytes |\n"
+            "| C# `TcpTransport` / `UdpTransport` comments still describe the "
+            "classes as stubs | The classes now contain `System.Net.Sockets` "
+            "implementations; the stale comments are documentation debt, not "
+            "a dummy implementation | Update comments and add socket-level "
+            "transport tests |\n"
+            "| C++ `serial_transport.hpp` includes an `EXAMPLE_IMPLEMENTATION` "
+            "UART stub | This is behind a compile-time example macro; the real "
+            "transport depends on a user-provided `ISerialPort` | Keep as an "
+            "example, but cover concrete serial behavior with a fake `ISerialPort` |\n"
+            "| Wireshark dissector cannot auto-detect no-header/no-start-byte "
+            "frames | This is a genuine protocol-context limitation documented "
+            "in `wireshark/struct_frame.lua` | Add manual profile configuration "
+            "if no-header dissection is required |\n"
+            "| Generated round-trip suites count profile/message incompatibility "
+            "skips as passes | This is intentional to avoid false negatives for "
+            "unsupported combinations, but pass totals can hide broad profile "
+            "incompatibility when skip counts are high | Report pass/fail/skip "
+            "separately per profile and fail when a profile is entirely skipped |\n"
+            "| C++ SDK unit/subscribe tests use many bare `return false` checks "
+            "with limited per-assert diagnostics | Behavioral coverage is good, "
+            "but failures can be slower to triage than message-rich assertions "
+            "| Add assertion helpers that include failed condition context "
+            "without changing test semantics |\n"
+            "| Multi-language benchmark baselines are placeholders | The runner "
+            "validates result schema, but regression checks are advisory and "
+            "non-gating | Refresh baselines from reviewed full benchmark runs "
+            "and remove `continue-on-error` |\n"
+            "| Documentation sample CI runs `tests/docs/run_samples.py` with "
+            "`--quick` "
+            "| Quick mode skips compiled C/C++/TS/Rust/C# samples and fragment-like "
+            "snippets, so it is syntax-smoke coverage rather than full sample "
+            "execution | Add a scheduled or release-blocking full sample job |"
         ),
     },
 ]

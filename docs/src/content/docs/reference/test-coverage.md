@@ -184,7 +184,7 @@ Files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_variable_flag.*`
 
 Files: `tests/cpp/test_profiling.cpp`, `tests/cpp/test_profiling_generated.cpp`
 
-> **Gap (Low):** Performance baseline tests only exist for C++. No benchmarks for Python, TypeScript, or Rust.
+> **Gap (Low):** Direct in-suite profiling assertions only exist for C++. A separate multi-language benchmark harness exists under `tests/benchmarks/`, but its committed baselines are placeholders and the CI workflow is advisory, so it is not counted here as enforced regression coverage.
 
 ### 3.5 Per-Message Round-trip Tests (`test_roundtrip_<pkg>.*`)
 
@@ -285,7 +285,7 @@ Each language's `test_negative.*` file runs 13 uniform scenarios. The test names
 | Feature | C | C++ | Python | TS | JS | C# | Rust |
 |--------|--------|--------|--------|--------|--------|--------|--------|
 | `StructFrameSdk` subscribe/dispatch | N/A | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Serial transport | N/A | ❌ | ❌ | ❌ | ❌ | ✅ | N/A |
+| Serial transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | TCP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | UDP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | WebSocket transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
@@ -304,9 +304,9 @@ Each language's `test_negative.*` file runs 13 uniform scenarios. The test names
 > - `test_sdk_lifecycle` -- `tests/csharp/TestSdkLifecycle.cs` (connect/close lifecycle, persistent + transient subscriber coexistence, error paths)
 > - `test_sdk_client_wrapper` -- `tests/csharp/TestSdkClientWrapper.cs` (generated package `Client` wrapper Subscribe/Send/SendViaCommandEnvelope)
 > - `test_sdk_profiles` -- `tests/csharp/TestSdkProfiles.cs` (SDK round-trip under Bulk and Sensor profiles)
-> - `test_base_transport` -- `tests/csharp/TestBaseTransport.cs` (`BaseTransport` semaphore/ROM overload/AutoReconnect and `SerialTransport` construction)
+> - `test_base_transport` -- `tests/csharp/TestBaseTransport.cs` (`BaseTransport` semaphore/ROM overload/AutoReconnect; the file explicitly omits `SerialTransport` because the test project does not enable the optional `System.IO.Ports` dependency)
 >
-> **Gap (Low):** Serial transport is now covered for C# by `test_base_transport`; TCP, UDP and WebSocket transports remain uncovered.
+> **Gap (Low):** Runtime serial, TCP, UDP, and WebSocket transport behavior remains uncovered. `StructFrameSdk` routing is tested with mock transports, but the concrete socket/serial/WebSocket classes are not exercised end to end.
 
 ---
 
@@ -431,7 +431,7 @@ Open gaps: **5**. Each **track ↗** link opens a pre-filled issue (labels `test
 | `TC-6-2D690115` | Low | UDP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-2D690115%5D+UDP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-2D690115%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+UDP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-785BEC06` | Low | Async transport (Python) | §6 · 6.3 | ❌ | Python | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-785BEC06%5D+Async+transport+%28Python%29+%28Python%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-785BEC06%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Async+transport+%28Python%29%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Python%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-8B65C22F` | Low | TCP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-8B65C22F%5D+TCP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-8B65C22F%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+TCP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
-| `TC-6-929E31A2` | Low | Serial transport | §6 · 6.3 | ❌ | C++, Python, TS, JS | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-929E31A2%5D+Serial+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-929E31A2%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Serial+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-929E31A2` | Low | Serial transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-929E31A2%5D+Serial+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-929E31A2%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Serial+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 
 ---
 
@@ -446,10 +446,11 @@ Tier B/C of the test-suite-vs-protobuf gap analysis added the following CI surfa
 | `fuzz.yml` | Short per-push libFuzzer run on the C parser harness; atheris run on the Python parser |
 | `coverage.yml` | `coverage.py` instrumentation of the Python generator + Codecov upload |
 | `wireshark-dissector.yml` | Runs `wireshark/test_dissector.py` against the Lua dissector via `tshark` on golden pcaps |
-| `benchmark-regression.yml` | Tracks encode/decode benchmark results and flags performance regressions |
-| `api-stability.yml` | Guards the public generated-API surface against unintended breaking changes |
+| `benchmark-regression.yml` | Advisory quick benchmark smoke; runs available language benchmarks and uploads results, but the job is `continue-on-error` and committed baselines are placeholders |
+| `api-stability.yml` | Advisory public API checks; Python, NuGet, and crates baselines are present, npm lacks a baseline, and the workflow is `continue-on-error` |
+| `doc-samples.yml` | Doctest-style extraction plus quick sample compilation; quick mode skips C, C++, TypeScript, Rust, and C# samples, and fragment-like snippets are intentionally skipped |
 
-Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / `CXXFLAGS` / `LDFLAGS`, which `tests/run_tests.py` honours at every C/C++ compile site. No runner changes are needed to introduce additional sanitizer or coverage jobs.
+Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / `CXXFLAGS` / `LDFLAGS`, which `tests/run_tests.py` honours at every C/C++ compile site. No runner changes are needed to introduce additional sanitizer or coverage jobs. Benchmark regression and API-stability jobs are signal-only today; failures there do not block merges until real baselines are established and `continue-on-error` is removed.
 
 ### Fuzzing harnesses
 
@@ -466,6 +467,23 @@ Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / `CXXFLAGS` /
 ### Stability & flake policy
 
 Retry budgets, quarantine rules, and triage ownership for flaky tests are documented in [Test Stability Policy](test-stability).
+
+---
+
+## 14. Implementation And Shortcut Audit Notes
+
+A source/test sweep for `TODO`, `FIXME`, `NotImplemented`, placeholder, stub, dummy, and skip patterns found no dummy implementation in the core serialization generators or runtime encode/decode paths. The remaining findings are limited, intentional, or coverage-related:
+
+| Finding | Current status | Follow-up |
+|---------|----------------|-----------|
+| C++ generated envelope `wrap()` helper skips non-oneof array, string, and bytes envelope fields when building the convenience parameter list | Core serialization still handles those fields, but the helper is ergonomically incomplete | Implement helper parameters/initialization for bounded arrays, strings, and bytes |
+| C# `TcpTransport` / `UdpTransport` comments still describe the classes as stubs | The classes now contain `System.Net.Sockets` implementations; the stale comments are documentation debt, not a dummy implementation | Update comments and add socket-level transport tests |
+| C++ `serial_transport.hpp` includes an `EXAMPLE_IMPLEMENTATION` UART stub | This is behind a compile-time example macro; the real transport depends on a user-provided `ISerialPort` | Keep as an example, but cover concrete serial behavior with a fake `ISerialPort` |
+| Wireshark dissector cannot auto-detect no-header/no-start-byte frames | This is a genuine protocol-context limitation documented in `wireshark/struct_frame.lua` | Add manual profile configuration if no-header dissection is required |
+| Generated round-trip suites count profile/message incompatibility skips as passes | This is intentional to avoid false negatives for unsupported combinations, but pass totals can hide broad profile incompatibility when skip counts are high | Report pass/fail/skip separately per profile and fail when a profile is entirely skipped |
+| C++ SDK unit/subscribe tests use many bare `return false` checks with limited per-assert diagnostics | Behavioral coverage is good, but failures can be slower to triage than message-rich assertions | Add assertion helpers that include failed condition context without changing test semantics |
+| Multi-language benchmark baselines are placeholders | The runner validates result schema, but regression checks are advisory and non-gating | Refresh baselines from reviewed full benchmark runs and remove `continue-on-error` |
+| Documentation sample CI runs `tests/docs/run_samples.py` with `--quick` | Quick mode skips compiled C/C++/TS/Rust/C# samples and fragment-like snippets, so it is syntax-smoke coverage rather than full sample execution | Add a scheduled or release-blocking full sample job |
 
 ---
 
