@@ -24,7 +24,7 @@ def collect_public_items() -> list[str]:
         print(f'Generated directory not found: {GENERATED_DIR}', file=sys.stderr)
         sys.exit(1)
     for f in sorted(GENERATED_DIR.rglob('*.cs')):
-        rel = f.relative_to(GENERATED_DIR)
+        rel = f.relative_to(GENERATED_DIR).as_posix()
         for line in f.read_text(errors='replace').splitlines():
             m = PUB_RE.match(line.strip())
             if m:
@@ -47,10 +47,13 @@ def main() -> int:
         return 1
 
     current = collect_public_items()
-    expected = [
-        l.strip() for l in BASELINE.read_text().splitlines()
-        if l.strip() and not l.startswith('#')
-    ]
+    expected = []
+    for raw in BASELINE.read_text().splitlines():
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        # Allow baseline entries produced on either Windows or POSIX hosts.
+        expected.append(line.replace('\\', '/'))
 
     removed = [e for e in expected if e not in current]
     added = [c for c in current if c not in expected]
