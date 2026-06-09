@@ -338,7 +338,7 @@ bool test_subscribe_frame_info_receives_valid_frames() {
 
   auto sub = sdk.subscribeFrameInfo(
       [&](const FrameMsgInfo& frame) {
-        if (!frame.valid || frame.msg_data == nullptr) return;
+        if (!frame.valid || frame.msg_data == nullptr || frame.frame_data == nullptr || frame.frame_size == 0) return;
         frame_count++;
         last_msg_id = frame.msg_id;
         last_msg_len = frame.msg_len;
@@ -388,12 +388,68 @@ bool test_forward_frame_info_between_two_sdks() {
   BasicTypesMessage msg{};
   msg.regular_int = 909;
   msg.flag = true;
-  if (!inject_encoded_message(source_transport, msg)) return false;
+  uint8_t encoded[512];
+  size_t frame_len =
+      FrameEncoderWithCrc<ProfileStandardConfig>::encode(encoded, sizeof(encoded), msg);
+  if (frame_len == 0) return false;
+  source_transport.inject_data(encoded, frame_len);
 
   if (forwarded_from_source != 1) return false;
   if (target_dispatch_count != 1) return false;
   if (target_received.regular_int != 909) return false;
   if (!target_received.flag) return false;
+  if (target_transport.sent_data.size() != 1) return false;
+  const auto& forwarded = target_transport.sent_data.back();
+  if (forwarded.size() != frame_len) return false;
+  if (std::memcmp(forwarded.data(), encoded, frame_len) != 0) return false;
+
+  return true;
+}
+
+/**
+ * Test: checksum-failed complete frames still reach subscribeFrameInfo and can be forwarded raw.
+ */
+bool test_checksum_failed_frame_still_forwards_raw() {
+  MockTransport source_transport;
+  LoopbackTransport target_transport;
+  TestSdk source_sdk(&source_transport, &get_message_info);
+  TestSdk target_sdk(&target_transport, &get_message_info);
+
+  int frame_count = 0;
+  int forwarded_count = 0;
+  bool saw_crc_failure = false;
+
+  auto target_sub = target_sdk.subscribeFrameInfo(
+      [&](const FrameMsgInfo&) {
+        // No-op: forwarding validation happens against the raw bytes.
+      });
+
+  auto source_sub = source_sdk.subscribeFrameInfo(
+      [&](const FrameMsgInfo& frame) {
+        frame_count++;
+        saw_crc_failure = !frame.valid && frame.status == FrameMsgStatus::CrcFailure;
+        if (target_sdk.SendDirect(frame)) {
+          forwarded_count++;
+        }
+      });
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 1234;
+  msg.flag = true;
+  uint8_t encoded[512];
+  size_t frame_len =
+      FrameEncoderWithCrc<ProfileStandardConfig>::encode(encoded, sizeof(encoded), msg);
+  if (frame_len == 0) return false;
+  encoded[frame_len - 1] ^= 0xFF;
+  source_transport.inject_data(encoded, frame_len);
+
+  if (frame_count != 1) return false;
+  if (!saw_crc_failure) return false;
+  if (forwarded_count != 1) return false;
+  if (target_transport.sent_data.size() != 1) return false;
+  const auto& forwarded = target_transport.sent_data.back();
+  if (forwarded.size() != frame_len) return false;
+  if (std::memcmp(forwarded.data(), encoded, frame_len) != 0) return false;
 
   return true;
 }
@@ -525,6 +581,8 @@ int main() {
            test_subscribe_frame_info_receives_valid_frames);
   run_test("FrameMsgInfo forwarding works across two SDK instances",
            test_forward_frame_info_between_two_sdks);
+  run_test("Checksum-failed complete frames still forward raw",
+           test_checksum_failed_frame_still_forwards_raw);
   run_test("SendRaw preserves extended msg_id (>255) during dispatch",
            test_extended_msg_id_sendraw_roundtrip);
   run_test("FrameMsgInfo forwarding preserves extended msg_id (>255)",

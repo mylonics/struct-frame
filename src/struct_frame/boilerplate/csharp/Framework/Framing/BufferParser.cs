@@ -128,11 +128,23 @@ namespace StructFrame.Framing
                 }
                 if (ck.Byte1 != buffer[offset + totalSize - 2] || ck.Byte2 != buffer[offset + totalSize - 1])
                 {
-                    return FrameMsgInfo.Invalid;
+                    var failedResult = new FrameMsgInfo(false, msgId, msgLen, totalSize, buffer, offset + _config.HeaderSize)
+                    {
+                        FrameData = buffer.AsMemory(offset, totalSize),
+                        Status = FrameMsgStatus.CrcFailure
+                    };
+                    failedResult.Seq = seq;
+                    failedResult.SysId = sysId;
+                    failedResult.CompId = compId;
+                    failedResult.PkgId = pkgId;
+                    return failedResult;
                 }
             }
 
-            var result = new FrameMsgInfo(true, msgId, msgLen, totalSize, buffer, offset + _config.HeaderSize);
+            var result = new FrameMsgInfo(true, msgId, msgLen, totalSize, buffer, offset + _config.HeaderSize)
+            {
+                FrameData = buffer.AsMemory(offset, totalSize)
+            };
             result.Seq = seq;
             result.SysId = sysId;
             result.CompId = compId;
@@ -186,7 +198,10 @@ namespace StructFrame.Framing
                 return FrameMsgInfo.Invalid;
             }
 
-            return new FrameMsgInfo(true, msgId, msgInfo.Value.Size, totalSize, buffer, offset + _config.HeaderSize);
+            return new FrameMsgInfo(true, msgId, msgInfo.Value.Size, totalSize, buffer, offset + _config.HeaderSize)
+            {
+                FrameData = buffer.AsMemory(offset, totalSize)
+            };
         }
     }
 
