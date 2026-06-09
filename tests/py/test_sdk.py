@@ -89,11 +89,15 @@ class StandardFrameParser:
         return parse_frame_buffer(PROFILE_STANDARD_CONFIG, data, get_message_info)
 
     def frame(self, msg_id: int, data: bytes) -> bytes:
+        info = get_message_info(msg_id)
+        magic1 = info.magic1 if info is not None else 0
+        magic2 = info.magic2 if info is not None else 0
+
         # Construct a minimal duck-typed message object for the writer
         class _RawMsg:
             MSG_ID = msg_id
-            MAGIC1 = 0
-            MAGIC2 = 0
+            MAGIC1 = magic1
+            MAGIC2 = magic2
             def serialize(self_): return bytes(data)
         writer = ProfileStandardWriter()
         writer.write(_RawMsg())
@@ -170,9 +174,17 @@ def test_subscribe_dispatch_raw_bytes():
                  decoded.regular_int == 42)
         run_test("subscribe: flag round-trips correctly",
                  decoded.flag is True)
+        run_test("subscribe: payload byte-for-byte matches serialize()",
+                 received_payload[0] == msg.serialize())
     else:
         run_test("subscribe: regular_int round-trips correctly", False)
         run_test("subscribe: flag round-trips correctly", False)
+        run_test("subscribe: payload byte-for-byte matches serialize()", False)
+
+    unsubscribe()
+    transport.inject_data(encode_basic_types(msg))
+    run_test("subscribe: unsubscribe callback stops delivery",
+             len(received_payload) == 1)
 
 
 def test_multiple_handlers_same_id():
@@ -244,6 +256,62 @@ def test_send_raw_frames_through_transport():
     run_test("send_raw: transport received data", len(transport.sent_data) == 1)
     run_test("send_raw: frame is non-empty", len(transport.sent_data[0]) > 0)
 
+    frame = transport.sent_data[0]
+    parsed = parse_frame_buffer(PROFILE_STANDARD_CONFIG, frame, get_message_info)
+    run_test("send_raw: emitted frame parses as valid", parsed.valid)
+    run_test("send_raw: emitted frame msg_id preserved",
+             parsed.msg_id == BasicTypesMessage.MSG_ID)
+    run_test("send_raw: emitted frame payload preserved",
+             parsed.msg_data == payload)
+
+
+def test_codec_registration_and_message_decoding():
+    """Registered codecs are used before notifying handlers."""
+    transport = MockTransport()
+    sdk = make_sdk(transport)
+
+    class _Codec:
+        msg_id = BasicTypesMessage.MSG_ID
+
+        def deserialize(self, data: bytes):
+            msg = BasicTypesMessage.deserialize(data)
+            return {
+                "regular_int": msg.regular_int,
+                "flag": msg.flag,
+            }
+
+    received = []
+    sdk.register_codec(_Codec())
+    sdk.subscribe(BasicTypesMessage.MSG_ID,
+                  lambda payload, _msg_id: received.append(payload))
+
+    msg = BasicTypesMessage()
+    msg.regular_int = 77
+    msg.flag = True
+    transport.inject_data(encode_basic_types(msg))
+
+    run_test("codec: handler invoked", len(received) == 1)
+    run_test("codec: handler receives decoded object", isinstance(received[0], dict))
+    run_test("codec: decoded regular_int preserved", received[0].get("regular_int") == 77)
+    run_test("codec: decoded flag preserved", received[0].get("flag") is True)
+
+
+def test_close_callback_clears_buffer_state():
+    """Transport close callback resets SDK parse buffer."""
+    transport = MockTransport()
+    sdk = make_sdk(transport)
+
+    # Inject a truncated frame so parse buffer retains unread bytes.
+    msg = BasicTypesMessage()
+    msg.regular_int = 5
+    encoded = encode_basic_types(msg)
+    transport.inject_data(encoded[: max(1, len(encoded) // 2)])
+    run_test("close: buffer contains partial frame before close", len(sdk.buffer) > 0)
+
+    if transport._close_cb:
+        transport._close_cb()
+    run_test("close: buffer cleared after close callback", len(sdk.buffer) == 0)
+
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -261,6 +329,8 @@ def main():
     test_unsubscribe_removes_handler()
     test_no_handler_for_unknown_id()
     test_send_raw_frames_through_transport()
+    test_codec_registration_and_message_decoding()
+    test_close_callback_clears_buffer_state()
 
     print()
     print("========================================")

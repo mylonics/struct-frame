@@ -76,13 +76,7 @@ def _drive(data: bytes) -> None:
 
 
 def TestOneInput(data: bytes) -> None:  # noqa: N802  (atheris convention)
-    try:
-        _drive(data)
-    except (ValueError, IndexError, OverflowError, TypeError):
-        # These are acceptable parser-rejection signals.  Anything else
-        # (MemoryError, RecursionError, AttributeError, AssertionError)
-        # propagates and atheris reports it as a finding.
-        pass
+    _drive(data)
 
 
 def main() -> None:

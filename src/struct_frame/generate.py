@@ -146,9 +146,9 @@ def get_version():
     """Get the struct-frame version from pyproject.toml or package metadata."""
     try:
         # Try to get version from importlib.metadata (Python 3.8+)
-        from importlib.metadata import version as get_pkg_version
+        from importlib.metadata import PackageNotFoundError, version as get_pkg_version
         return get_pkg_version('struct-frame')
-    except Exception:
+    except (ImportError, ModuleNotFoundError, PackageNotFoundError):
         pass
 
     # Fallback: try to read from pyproject.toml
@@ -164,7 +164,7 @@ def get_version():
                         parts = line.split('=', 1)
                         if len(parts) == 2:
                             return parts[1].strip().strip('"\'')
-    except Exception:
+    except (OSError, UnicodeDecodeError):
         pass
 
     # Last fallback
@@ -348,7 +348,7 @@ def read_previous_hash(hash_file_path):
         if os.path.exists(hash_file_path):
             with open(hash_file_path, 'r') as f:
                 return f.read().strip()
-    except Exception:
+    except OSError:
         pass
     return None
 
@@ -514,7 +514,7 @@ class Field:
                             print(
                                 f"Invalid element_size value {ovalue} for field {self.name}, must be an integer")
                             return False
-        except Exception:
+        except (AttributeError, TypeError):
             pass
         return True
 
@@ -1543,7 +1543,7 @@ def parseFile(filename, base_path=None, importing_package=None):
     except FileNotFoundError:
         print(f"Error: Could not find file {filename}")
         return False
-    except Exception as e:
+    except (OSError, ValueError, TypeError, SyntaxError, RuntimeError) as e:
         print(f"Error parsing file {filename}: {e}")
         return False
 
@@ -2489,7 +2489,7 @@ def main():
     if not args.filename:
         print("Error: filename is required")
         parser.print_help()
-        return
+        return 1
 
     parseFile(args.filename)
 
@@ -2510,7 +2510,7 @@ def main():
         print("Running in validate mode - no files will be generated")
     elif (not args.build_c and not args.build_ts and not args.build_js and not args.build_py and not args.build_cpp and not args.build_csharp and not args.build_gql and not args.build_rust):
         print("Select at least one build argument")
-        return
+        return 1
 
     valid = False
     try:
@@ -2518,18 +2518,18 @@ def main():
     except RecursionError as err:
         print(
             f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {current_error_message} and Field: {current_error_field}')
-        return
+        return 1
 
     if not valid:
         print("Validation failed")
-        return
+        return 1
 
     if args.validate:
         # In validate mode, only perform validation - no file generation
         print("Validation successful")
         if args.debug:
             printPackages()
-        return
+        return 0
 
     # Compute generation hash and check if regeneration is needed
     current_hash = compute_generation_hash(args, packages)
@@ -2824,7 +2824,8 @@ def main():
     if args.debug:
         printPackages()
     print("Struct Frame successfully completed")
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

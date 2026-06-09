@@ -29,6 +29,8 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Install Python dependencies
         run: pip install proto-schema-parser
+      - name: Generate code (ts + csharp + rust)
+        run: python tests/run_tests.py --only-generate --skip-lang c --skip-lang cpp --skip-lang py --skip-lang js --skip-lang gql
       - name: Run Python API stability
         run: PYTHONPATH=src python tests/api_stability/python/test_api_stability.py
       - name: Run npm API scaffold

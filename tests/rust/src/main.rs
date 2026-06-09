@@ -1011,23 +1011,35 @@ fn run_sdk_subscribe_tests() {
         writer.data().to_vec()
     }
 
+    fn expected_basic_payload(regular_int: i32) -> Vec<u8> {
+        let mut msg = BasicTypesMessage::default();
+        msg.regular_int = regular_int;
+        let mut payload = vec![0u8; BasicTypesMessage::MAX_SIZE];
+        let n = msg.pack(&mut payload);
+        payload[..n].to_vec()
+    }
+
     // Test 1: subscribe + inject_data dispatches to handler
     {
         let reader = struct_frame_sdk::new_standard_reader(512);
         let mut sdk = StructFrameSdk::new(reader, struct_frame_sdk::serialization_test::get_message_info);
 
-        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<i32>::new()));
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(u16, i32, Vec<u8>)>::new()));
         let received2 = received.clone();
         sdk.subscribe(BasicTypesMessage::MSG_ID, move |frame| {
             if let Some(m) = BasicTypesMessage::unpack(&frame.payload) {
-                received2.lock().unwrap().push(m.regular_int);
+            received2.lock().unwrap().push((frame.msg_id, m.regular_int, frame.payload.clone()));
             }
         });
 
         sdk.inject_data(&encode_basic(42));
         let vals = received.lock().unwrap();
         expect!(vals.len() == 1, "subscribe: handler invoked on inject_data");
-        expect!(vals.first() == Some(&42), "subscribe: regular_int value correct");
+        expect!(vals.first().map(|v| v.0) == Some(BasicTypesMessage::MSG_ID),
+            "subscribe: msg_id value correct");
+        expect!(vals.first().map(|v| v.1) == Some(42), "subscribe: regular_int value correct");
+        expect!(vals.first().map(|v| v.2.as_slice()) == Some(expected_basic_payload(42).as_slice()),
+            "subscribe: payload bytes preserved");
     }
 
     // Test 2: multiple handlers for same message ID
@@ -1064,13 +1076,19 @@ fn run_sdk_subscribe_tests() {
         expect!(*count.lock().unwrap() == 1, "unsubscribe: handler silent after unsubscribe");
     }
 
-    // Test 4: no handler registered – inject_data is a no-op (does not panic)
+    // Test 4: no matching handler registered – frame does not dispatch
     {
         let reader = struct_frame_sdk::new_standard_reader(512);
         let mut sdk = StructFrameSdk::new(reader, struct_frame_sdk::serialization_test::get_message_info);
-        // No subscription; should not panic
+
+        let count = std::sync::Arc::new(std::sync::Mutex::new(0usize));
+        let c = count.clone();
+        // Subscribe to a different ID than the frame under test.
+        sdk.subscribe(SerializationTestMessage::MSG_ID, move |_| { *c.lock().unwrap() += 1; });
+
         sdk.inject_data(&encode_basic(99));
-        expect!(true, "no handler: inject_data with no subscriber does not panic");
+        expect!(*count.lock().unwrap() == 0,
+                "no handler: unmatched message id does not dispatch");
     }
 
     // Test 5: push_byte byte-by-byte dispatches on the final byte
@@ -1078,11 +1096,11 @@ fn run_sdk_subscribe_tests() {
         let reader = struct_frame_sdk::new_standard_reader(512);
         let mut sdk = StructFrameSdk::new(reader, struct_frame_sdk::serialization_test::get_message_info);
 
-        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<i32>::new()));
+        let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(u16, i32, Vec<u8>)>::new()));
         let recv2 = received.clone();
         sdk.subscribe(BasicTypesMessage::MSG_ID, move |frame| {
             if let Some(m) = BasicTypesMessage::unpack(&frame.payload) {
-                recv2.lock().unwrap().push(m.regular_int);
+                recv2.lock().unwrap().push((frame.msg_id, m.regular_int, frame.payload.clone()));
             }
         });
 
@@ -1093,7 +1111,11 @@ fn run_sdk_subscribe_tests() {
         }
         expect!(dispatched_count == 1, "push_byte: exactly one frame dispatched");
         let vals = received.lock().unwrap();
-        expect!(vals.first() == Some(&777), "push_byte: regular_int value correct");
+        expect!(vals.first().map(|v| v.0) == Some(BasicTypesMessage::MSG_ID),
+            "push_byte: msg_id value correct");
+        expect!(vals.first().map(|v| v.1) == Some(777), "push_byte: regular_int value correct");
+        expect!(vals.first().map(|v| v.2.as_slice()) == Some(expected_basic_payload(777).as_slice()),
+            "push_byte: payload bytes preserved");
     }
 
     println!("\n========================================");

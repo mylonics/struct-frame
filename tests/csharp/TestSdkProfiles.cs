@@ -68,6 +68,13 @@ static class TestSdkProfiles
         Assert($"{label}: SDK wire bytes match independent encoder",
                tx.SentData[0].SequenceEqual(expected));
 
+         var parser = new BufferParser(profile, MessageDefinitions.GetMessageInfo);
+         var parsed = parser.Parse(tx.SentData[0], 0, tx.SentData[0].Length);
+         Assert($"{label}: emitted frame parses valid", parsed.Valid);
+         Assert($"{label}: emitted msg_id preserved", parsed.MsgId == BasicTypesMessage.MsgId);
+         Assert($"{label}: emitted payload preserved",
+             parsed.ExtractPayload().SequenceEqual(msg.Serialize()));
+
         // 3) Decode through a fresh SDK with the same profile.
         var rx = new MockTransport();
         using var rxSdk = new StructFrameSdk(MakeConfig(rx, profile, bufferSize));

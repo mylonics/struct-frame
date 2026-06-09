@@ -30,6 +30,63 @@ def capture():
         snap[modname] = entries
     return snap
 
+
+def _split_signature_params(sig: str):
+    """Split a signature string into top-level parameter tokens."""
+    s = sig.strip()
+    if not (s.startswith('(') and s.endswith(')')):
+        return []
+    body = s[1:-1].strip()
+    if not body:
+        return []
+
+    parts = []
+    buf = []
+    depth = 0
+    for ch in body:
+        if ch in '([{':
+            depth += 1
+        elif ch in ')]}':
+            depth -= 1
+        if ch == ',' and depth == 0:
+            token = ''.join(buf).strip()
+            if token:
+                parts.append(token)
+            buf = []
+            continue
+        buf.append(ch)
+    token = ''.join(buf).strip()
+    if token:
+        parts.append(token)
+    return parts
+
+
+def _extract_param_info(sig: str):
+    """Return (all_param_names, required_param_names) for a signature string."""
+    all_names = []
+    required = []
+    for token in _split_signature_params(sig):
+        if token in ('/', '*'):
+            # Positional-only and keyword-only separators
+            continue
+
+        has_default = '=' in token
+        left = token.split('=', 1)[0].strip() if has_default else token
+        name = left.split(':', 1)[0].strip()
+        name = name.lstrip('*')
+        if not name:
+            continue
+
+        all_names.append(name)
+
+        # *args / **kwargs are not "required parameters" for compatibility checks
+        if token.startswith('*'):
+            continue
+        if not has_default:
+            required.append(name)
+
+    return set(all_names), set(required)
+
 def compatible(old_sig, new_sig):
     if old_sig in (None, ''):
         return True
@@ -37,9 +94,21 @@ def compatible(old_sig, new_sig):
         return False
     if old_sig == new_sig:
         return True
-    # Conservative compatibility: existing required parameter names must remain present.
-    old = [p.strip().split('=')[0].split(':')[0].lstrip('*') for p in old_sig.strip('()').split(',') if p.strip()]
-    return all(p in new_sig for p in old)
+
+    old_all, _old_required = _extract_param_info(old_sig)
+    new_all, new_required = _extract_param_info(new_sig)
+
+    # Existing parameters must remain available.
+    if not old_all.issubset(new_all):
+        return False
+
+    # New required parameters are breaking changes.
+    added_required = new_required - old_all
+    if added_required:
+        return False
+
+    # Existing required parameters may become optional without breaking callers.
+    return True
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--update', action='store_true'); args = ap.parse_args()

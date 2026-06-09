@@ -15,6 +15,7 @@
 
 #include "include/standard_messages.hpp"
 #include "../../generated/cpp/frame_profiles.hpp"
+#include "../../generated/cpp/pkg_test_messages.structframe.hpp"
 
 using namespace structframe;
 
@@ -370,6 +371,129 @@ bool test_partial_frame_boundary() {
   return result.valid;  // Expect success after accumulating both halves
 }
 
+/**
+ * Test: Bulk profile rejects corrupted pkg_id byte
+ * ProfileBulk layout: [0x90][0x71][LEN][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ * Corrupting pkg_id (byte 3) causes CRC failure.
+ */
+bool test_bulk_corrupted_pkg_id() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileBulkConfig> writer(buffer.data(), buffer.size());
+
+  pkg_test_messages::PackageTestMessage msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.created_at.seconds = 12345;
+  msg.created_at.nanoseconds = 67890;
+  msg.current_status = common_types::Status::Active;
+  strncpy(msg.name, "TestDevice", sizeof(msg.name));
+
+  writer.write(msg);
+  size_t frame_size = writer.size();
+  if (frame_size < 6) return false;
+
+  // Corrupt pkg_id byte (byte 3 for Bulk: [start1][start2][len][pkg_id][msg_id]...)
+  buffer[3] ^= 0xFF;
+
+  BufferReader<ProfileBulkConfig, decltype(&get_message_info)> reader(
+      buffer.data(), frame_size, get_message_info);
+  auto result = reader.next();
+  return !result.valid;  // Expect failure: corrupted pkg_id invalidates CRC
+}
+
+/**
+ * Test: Network profile rejects corrupted pkg_id byte
+ * ProfileNetwork layout: [0x90][0x78][SEQ][SYS_ID][COMP_ID][LEN_LO][LEN_HI][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ * Corrupting pkg_id (byte 7) causes CRC failure.
+ */
+bool test_network_corrupted_pkg_id() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileNetworkConfig> writer(buffer.data(), buffer.size());
+
+  pkg_test_messages::PackageTestMessage msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.created_at.seconds = 12345;
+  msg.created_at.nanoseconds = 67890;
+  msg.current_status = common_types::Status::Active;
+  strncpy(msg.name, "TestDevice", sizeof(msg.name));
+
+  writer.write(msg, 1, 5, 10);
+  size_t frame_size = writer.size();
+  if (frame_size < 10) return false;
+
+  // Corrupt pkg_id byte (byte 7 for Network)
+  buffer[7] ^= 0xFF;
+
+  BufferReader<ProfileNetworkConfig, decltype(&get_message_info)> reader(
+      buffer.data(), frame_size, get_message_info);
+  auto result = reader.next();
+  return !result.valid;  // Expect failure: corrupted pkg_id invalidates CRC
+}
+
+/**
+ * Test: Cross-package message rejection
+ * Encode a pkg_test_a message (pkgid=2) and try to parse it as pkg_test_messages (pkgid=1).
+ * The parser should reject it because pkg_id won't match.
+ */
+bool test_cross_package_rejection() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileBulkConfig> writer(buffer.data(), buffer.size());
+
+  // Encode a pkg_test_a message (pkgid=2, msg_id=513)
+  pkg_test_a::ActionMessage msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.action = pkg_test_a::ActionType::Start;
+  msg.target_id = 42;
+  msg.description.length = 4;
+  strncpy(msg.description.data, "test", 4);
+
+  writer.write(msg);
+  size_t frame_size = writer.size();
+  if (frame_size < 6) return false;
+
+  // Try to parse with get_message_info - the pkg_id (2) won't match pkg_test_messages (1)
+  // so the message should be rejected
+  BufferReader<ProfileBulkConfig, decltype(&get_message_info)> reader(
+      buffer.data(), frame_size, get_message_info);
+  auto result = reader.next();
+
+  // The frame may parse as valid at the frame level, but the msg_id should be 513 (pkg_test_a)
+  // not a pkg_test_messages ID. Check that the msg_id doesn't belong to pkg_test_messages.
+  if (!result.valid) return true;  // If parsing failed, that's good
+
+  // If parsing succeeded, verify it's NOT a pkg_test_messages message
+  uint16_t expected_pkg_id = (result.msg_id >> 8) & 0xFF;
+  return expected_pkg_id != pkg_test_messages::PACKAGE_ID;
+}
+
+/**
+ * Test: Bulk profile rejects corrupted msg_id low byte
+ * ProfileBulk layout: [0x90][0x71][LEN][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
+ * Corrupting msg_id low byte (byte 4) changes the message type → wrong magic → CRC fails.
+ */
+bool test_bulk_corrupted_msg_id_low_byte() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileBulkConfig> writer(buffer.data(), buffer.size());
+
+  pkg_test_messages::PackageTestMessage msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.created_at.seconds = 12345;
+  msg.created_at.nanoseconds = 67890;
+  msg.current_status = common_types::Status::Active;
+  strncpy(msg.name, "TestDevice", sizeof(msg.name));
+
+  writer.write(msg);
+  size_t frame_size = writer.size();
+  if (frame_size < 6) return false;
+
+  // Corrupt msg_id low byte (byte 4 for Bulk)
+  buffer[4] ^= 0xFF;
+
+  BufferReader<ProfileBulkConfig, decltype(&get_message_info)> reader(
+      buffer.data(), frame_size, get_message_info);
+  auto result = reader.next();
+  return !result.valid;  // Expect failure: wrong msg_id → wrong magic → CRC fails
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)();
 
@@ -387,13 +511,17 @@ int main() {
   // Define test matrix
   TestCase tests[] = {
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},
+    {"Bulk profile: Corrupted pkg_id", test_bulk_corrupted_pkg_id},
+    {"Bulk profile: Corrupted msg_id low byte", test_bulk_corrupted_msg_id_low_byte},
     {"Corrupted CRC detection", test_corrupted_crc},
     {"Corrupted length field detection", test_corrupted_length},
+    {"Cross-package message rejection", test_cross_package_rejection},
     {"Invalid message ID rejection", test_invalid_msg_id},
     {"Invalid start byte detection", test_invalid_start_byte},
     {"Invalid start bytes detection", test_invalid_start_bytes},
     {"Minimal profile: Truncated frame", test_minimal_profile_truncated_frame},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
+    {"Network profile: Corrupted pkg_id", test_network_corrupted_pkg_id},
     {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},

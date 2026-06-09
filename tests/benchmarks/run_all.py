@@ -53,8 +53,10 @@ def main():
         if not available(lang): print(f'::warning::{lang} toolchain unavailable; skipping'); continue
         out=Path('tests/benchmarks/results')/f'{lang}.json'; rc=run(command(lang, iterations, out)).returncode
         if rc: failures.append((lang, f'exit {rc}')); continue
-        try: all_data.append(validate(ROOT/out, lang))
-        except Exception as e: failures.append((lang, str(e)))
+        try:
+            all_data.append(validate(ROOT/out, lang))
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            failures.append((lang, str(e)))
     summary={'schema_version':'1','host':{'os':platform.system(),'arch':platform.machine()},'languages':all_data}
     (RESULTS/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
     lines=['| language | scenario | msg/sec | MB/sec | p99 ns |','|---|---:|---:|---:|---:|']

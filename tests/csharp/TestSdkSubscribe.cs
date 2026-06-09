@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using StructFrame;
 using StructFrame.Framing;
@@ -195,6 +196,20 @@ static class TestSdkSubscribe
 
         Assert("SendAsync: transport received data", transport.SentData.Count == 1);
         Assert("SendAsync: frame is non-empty", transport.SentData[0].Length > 0);
+
+        var parser = new BufferParser(StructFrame.Profiles.Profiles.Standard, MessageDefinitions.GetMessageInfo);
+        var frame = parser.Parse(transport.SentData[0], 0, transport.SentData[0].Length);
+
+        Assert("SendAsync: emitted frame parses as valid", frame.Valid);
+        Assert("SendAsync: emitted frame msg_id preserved", frame.MsgId == BasicTypesMessage.MsgId);
+
+        var expectedPayload = msg.Serialize();
+        var actualPayload = frame.ExtractPayload();
+        Assert("SendAsync: emitted frame payload preserved",
+             Enumerable.SequenceEqual(actualPayload, expectedPayload));
+
+        var decoded = BasicTypesMessage.Deserialize(frame);
+        Assert("SendAsync: decoded payload round-trips MediumInt", decoded.MediumInt == msg.MediumInt);
     }
 
     // -------------------------------------------------------------------------

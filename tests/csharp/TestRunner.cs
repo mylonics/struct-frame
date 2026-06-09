@@ -50,6 +50,10 @@ class TestRunner
             {
                 testSuite = "test_negative";
             }
+            else if (exeName.Contains("pkg_test_messages"))
+            {
+                testSuite = "test_roundtrip_pkg_test_messages";
+            }
         }
 
         // Route to the appropriate test suite
@@ -100,6 +104,10 @@ class TestRunner
         else if (testSuite == "test_wire_evolution_interop")
         {
             return TestWireEvolutionInterop.Main(filteredArgs);
+        }
+        else if (testSuite == "test_roundtrip_pkg_test_messages")
+        {
+            return StructFrame.PkgTestMessages.TestRoundtripPkgTestMessages.Main(filteredArgs);
         }
         else
         {

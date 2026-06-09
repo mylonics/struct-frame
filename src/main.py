@@ -1,3 +1,3 @@
 import struct_frame
 
-struct_frame.main()
+raise SystemExit(struct_frame.main())

@@ -8,6 +8,7 @@
 
 import { BasicTypesMessage, getMessageInfo } from '../generated/ts/serialization-test.structframe';
 import {
+  encodeMessage,
   ProfileStandardWriter,
   ProfileStandardConfig,
   parseFrameWithCrc,
@@ -51,9 +52,16 @@ class StandardFrameParser implements FrameParser {
     return parseFrameWithCrc(ProfileStandardConfig, data, getMessageInfo);
   }
 
-  frame(_msgId: number, _data: Uint8Array): Uint8Array {
-    // Not needed for receive-path tests; return empty frame
-    return new Uint8Array(0);
+  frame(msgId: number, data: Uint8Array): Uint8Array {
+    const info = getMessageInfo(msgId);
+    const rawMsg: any = {
+      _buffer: data,
+      getMsgId: () => msgId,
+      getMagic1: () => info?.magic1 ?? 0,
+      getMagic2: () => info?.magic2 ?? 0,
+      isVariable: () => false,
+    };
+    return encodeMessage(ProfileStandardConfig, rawMsg);
   }
 }
 
@@ -96,12 +104,14 @@ function testSubscribeAndDispatch(): void {
   const transport = new MockTransport();
   const sdk = makeSdk(transport);
 
-  let receivedPayload: any = null;
+  let receivedPayload: Uint8Array | null = null;
   let receivedMsgId: number | null = null;
+  let decoded: any = null;
 
   sdk.subscribe<Uint8Array>(BasicTypesMessage._msgid, (payload, msgId) => {
     receivedPayload = payload;
     receivedMsgId = msgId;
+    decoded = BasicTypesMessage.deserialize(Buffer.from(payload));
   });
 
   transport.injectData(encodeBasicTypes(777, true));
@@ -109,6 +119,8 @@ function testSubscribeAndDispatch(): void {
   assert('subscribe: handler invoked on DataReceived', receivedPayload !== null);
   assert('subscribe: msgId matches BasicTypesMessage._msgid',
     receivedMsgId === BasicTypesMessage._msgid);
+  assert('subscribe: regularInt field preserved', decoded?.regularInt === 777);
+  assert('subscribe: flag field preserved', decoded?.flag === true);
 }
 
 function testMultipleHandlers(): void {
@@ -116,13 +128,23 @@ function testMultipleHandlers(): void {
   const sdk = makeSdk(transport);
 
   let countA = 0, countB = 0;
-  sdk.subscribe(BasicTypesMessage._msgid, () => { countA++; });
-  sdk.subscribe(BasicTypesMessage._msgid, () => { countB++; });
+  let lastA: any = null;
+  let lastB: any = null;
+  sdk.subscribe(BasicTypesMessage._msgid, (payload: Uint8Array) => {
+    countA++;
+    lastA = BasicTypesMessage.deserialize(Buffer.from(payload));
+  });
+  sdk.subscribe(BasicTypesMessage._msgid, (payload: Uint8Array) => {
+    countB++;
+    lastB = BasicTypesMessage.deserialize(Buffer.from(payload));
+  });
 
   transport.injectData(encodeBasicTypes(1, false));
 
   assert('multiple handlers: first handler fires', countA === 1);
   assert('multiple handlers: second handler fires', countB === 1);
+  assert('multiple handlers: first handler payload correct', lastA?.regularInt === 1);
+  assert('multiple handlers: second handler payload correct', lastB?.regularInt === 1);
 }
 
 function testUnsubscribe(): void {
@@ -130,15 +152,21 @@ function testUnsubscribe(): void {
   const sdk = makeSdk(transport);
 
   let count = 0;
-  const unsubscribe = sdk.subscribe(BasicTypesMessage._msgid, () => { count++; });
+  let lastRegularInt = -1;
+  const unsubscribe = sdk.subscribe(BasicTypesMessage._msgid, (payload: Uint8Array) => {
+    count++;
+    lastRegularInt = BasicTypesMessage.deserialize(Buffer.from(payload)).regularInt;
+  });
 
   transport.injectData(encodeBasicTypes(1, false));
   assert('unsubscribe: handler fires before unsubscribe', count === 1);
+  assert('unsubscribe: payload captured before unsubscribe', lastRegularInt === 1);
 
   unsubscribe();
 
   transport.injectData(encodeBasicTypes(2, true));
   assert('unsubscribe: handler silent after unsubscribe', count === 1);
+  assert('unsubscribe: payload remains unchanged after unsubscribe', lastRegularInt === 1);
 }
 
 function testNoHandlerForUnregisteredId(): void {
@@ -181,26 +209,52 @@ function testWithCodecDeserializesMessage(): void {
   assert('codec: flag field correct', (decoded as any)?.flag === true);
 }
 
+async function testSendRawFramesThroughTransport(): Promise<void> {
+  const transport = new MockTransport();
+  const sdk = makeSdk(transport);
+
+  const payloadMsg = new BasicTypesMessage({ regularInt: 42, flag: true });
+  const payload = payloadMsg.serialize();
+
+  await sdk.sendRaw(BasicTypesMessage._msgid, payload);
+
+  assert('sendRaw: transport.send was invoked', transport.sentData.length === 1);
+  const sentFrame = transport.sentData[0];
+  const parsed = parseFrameWithCrc(ProfileStandardConfig, sentFrame, getMessageInfo);
+  assert('sendRaw: emitted frame parses as valid', parsed.valid === true);
+  assert('sendRaw: emitted frame msgId preserved', parsed.msgId === BasicTypesMessage._msgid);
+  assert('sendRaw: emitted frame payload preserved',
+    Buffer.from(parsed.msgData).equals(Buffer.from(payload)));
+}
+
 // =============================================================================
 // Main
 // =============================================================================
 
-console.log();
-console.log('========================================');
-console.log('SDK SUBSCRIBE/DISPATCH TESTS - TypeScript');
-console.log('========================================');
-console.log();
+async function main(): Promise<void> {
+  console.log();
+  console.log('========================================');
+  console.log('SDK SUBSCRIBE/DISPATCH TESTS - TypeScript');
+  console.log('========================================');
+  console.log();
 
-testSubscribeAndDispatch();
-testMultipleHandlers();
-testUnsubscribe();
-testNoHandlerForUnregisteredId();
-testWithCodecDeserializesMessage();
+  testSubscribeAndDispatch();
+  testMultipleHandlers();
+  testUnsubscribe();
+  testNoHandlerForUnregisteredId();
+  testWithCodecDeserializesMessage();
+  await testSendRawFramesThroughTransport();
 
-console.log();
-console.log('========================================');
-console.log(`Summary: ${passed}/${passed + failed} tests passed`);
-console.log('========================================');
-console.log();
+  console.log();
+  console.log('========================================');
+  console.log(`Summary: ${passed}/${passed + failed} tests passed`);
+  console.log('========================================');
+  console.log();
 
-process.exit(failed > 0 ? 1 : 0);
+  process.exit(failed > 0 ? 1 : 0);
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

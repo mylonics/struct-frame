@@ -17,19 +17,23 @@ Run:
     python test_all.py --only-generate   # produce tests/generated/py
     python -m pytest tests/test_property_roundtrip.py -v
 
-The test is intentionally skipped when Hypothesis is not installed or when
-the generator has not run yet — it must not block the standard suite.
+The test is intentionally skippable in local/dev environments when Hypothesis
+or generated artifacts are missing. In CI, missing dependencies/artifacts are
+treated as hard failures.
 """
 from __future__ import annotations
 
-import importlib
 import os
 import sys
 from pathlib import Path
 
+CI_MODE = bool(os.environ.get("CI"))
+
 try:
     import pytest
 except ModuleNotFoundError:
+    if CI_MODE:
+        raise
     if __name__ == "__main__":
         print("SKIP: pytest not installed")
         raise SystemExit(0)
@@ -38,14 +42,17 @@ except ModuleNotFoundError:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GEN_PY = REPO_ROOT / "tests" / "generated" / "py"
 
-pytest.importorskip("hypothesis", reason="hypothesis not installed")
-from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
+if CI_MODE:
+    from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
+else:
+    pytest.importorskip("hypothesis", reason="hypothesis not installed")
+    from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
 
 if not GEN_PY.exists():
-    pytest.skip(
-        "tests/generated/py does not exist — run `python test_all.py --only-generate` first.",
-        allow_module_level=True,
-    )
+    msg = "tests/generated/py does not exist — run `python test_all.py --only-generate` first."
+    if CI_MODE:
+        raise RuntimeError(msg)
+    pytest.skip(msg, allow_module_level=True)
 
 sys.path.insert(0, str(GEN_PY))
 
@@ -65,8 +72,11 @@ try:
         BasicTypesMessage,
         get_message_info,
     )
-except Exception as exc:  # pragma: no cover  — fail soft, scaffold not yet wired
-    pytest.skip(f"generated Python SDK not importable: {exc}", allow_module_level=True)
+except (ImportError, ModuleNotFoundError, SyntaxError) as exc:  # pragma: no cover
+    msg = f"generated Python SDK not importable: {exc}"
+    if CI_MODE:
+        raise RuntimeError(msg) from exc
+    pytest.skip(msg, allow_module_level=True)
 
 
 # ---------------------------------------------------------------------------

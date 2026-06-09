@@ -9,7 +9,7 @@
 'use strict';
 
 const { BasicTypesMessage, getMessageInfo } = require('../generated/js/serialization-test.structframe');
-const { ProfileStandardConfig, ProfileStandardWriter, parseFrameWithCrc } = require('../generated/js/frame-profiles');
+const { ProfileStandardConfig, ProfileStandardWriter, parseFrameWithCrc, encodeMessage } = require('../generated/js/frame-profiles');
 const { StructFrameSdk } = require('../generated/js/struct-frame-sdk/struct-frame-sdk');
 
 // =============================================================================
@@ -45,9 +45,16 @@ const standardFrameParser = {
   parse(data) {
     return parseFrameWithCrc(ProfileStandardConfig, data, getMessageInfo);
   },
-  frame(_msgId, _data) {
-    // Not needed for receive-path tests
-    return new Uint8Array(0);
+  frame(msgId, data) {
+    const info = getMessageInfo(msgId);
+    const rawMsg = {
+      _buffer: data,
+      getMsgId: () => msgId,
+      getMagic1: () => (info?.magic1 ?? 0),
+      getMagic2: () => (info?.magic2 ?? 0),
+      isVariable: () => false,
+    };
+    return encodeMessage(ProfileStandardConfig, rawMsg);
   },
 };
 
@@ -88,10 +95,12 @@ function testSubscribeAndDispatch() {
 
   let receivedPayload = null;
   let receivedMsgId = null;
+  let decoded = null;
 
   sdk.subscribe(BasicTypesMessage._msgid, (payload, msgId) => {
     receivedPayload = payload;
     receivedMsgId = msgId;
+    decoded = BasicTypesMessage.deserialize(Buffer.from(payload));
   });
 
   transport.injectData(encodeBasicTypes(777, true));
@@ -99,6 +108,8 @@ function testSubscribeAndDispatch() {
   assert('subscribe: handler invoked on DataReceived', receivedPayload !== null);
   assert('subscribe: msgId matches BasicTypesMessage._msgid',
     receivedMsgId === BasicTypesMessage._msgid);
+  assert('subscribe: regularInt field preserved', decoded?.regularInt === 777);
+  assert('subscribe: flag field preserved', decoded?.flag === true);
 }
 
 function testMultipleHandlers() {
@@ -106,13 +117,23 @@ function testMultipleHandlers() {
   const sdk = makeSdk(transport);
 
   let countA = 0, countB = 0;
-  sdk.subscribe(BasicTypesMessage._msgid, () => { countA++; });
-  sdk.subscribe(BasicTypesMessage._msgid, () => { countB++; });
+  let lastA = null;
+  let lastB = null;
+  sdk.subscribe(BasicTypesMessage._msgid, (payload) => {
+    countA++;
+    lastA = BasicTypesMessage.deserialize(Buffer.from(payload));
+  });
+  sdk.subscribe(BasicTypesMessage._msgid, (payload) => {
+    countB++;
+    lastB = BasicTypesMessage.deserialize(Buffer.from(payload));
+  });
 
   transport.injectData(encodeBasicTypes(1, false));
 
   assert('multiple handlers: first handler fires', countA === 1);
   assert('multiple handlers: second handler fires', countB === 1);
+  assert('multiple handlers: first handler payload correct', lastA?.regularInt === 1);
+  assert('multiple handlers: second handler payload correct', lastB?.regularInt === 1);
 }
 
 function testUnsubscribe() {
@@ -120,15 +141,21 @@ function testUnsubscribe() {
   const sdk = makeSdk(transport);
 
   let count = 0;
-  const unsub = sdk.subscribe(BasicTypesMessage._msgid, () => { count++; });
+  let lastRegularInt = -1;
+  const unsub = sdk.subscribe(BasicTypesMessage._msgid, (payload) => {
+    count++;
+    lastRegularInt = BasicTypesMessage.deserialize(Buffer.from(payload)).regularInt;
+  });
 
   transport.injectData(encodeBasicTypes(1, false));
   assert('unsubscribe: handler fires before unsubscribe', count === 1);
+  assert('unsubscribe: payload captured before unsubscribe', lastRegularInt === 1);
 
   unsub();
 
   transport.injectData(encodeBasicTypes(2, true));
   assert('unsubscribe: handler silent after unsubscribe', count === 1);
+  assert('unsubscribe: payload remains unchanged after unsubscribe', lastRegularInt === 1);
 }
 
 function testNoHandlerForUnregisteredId() {
@@ -172,13 +199,18 @@ function testSendRaw() {
   const transport = new MockTransport();
   const sdk = makeSdk(transport);
 
-  // Frame the data ourselves so we know what to expect back
   const msg = new BasicTypesMessage({ regularInt: 42 });
-  const payload = new Uint8Array(msg._buffer);
+  const payload = msg.serialize();
 
   // sendRaw is async; drive it to completion before asserting
   return sdk.sendRaw(BasicTypesMessage._msgid, payload).then(() => {
-    assert('sendRaw: transport.send was invoked', transport.sentData.length > 0);
+    assert('sendRaw: transport.send was invoked', transport.sentData.length === 1);
+    const sentFrame = transport.sentData[0];
+    const parsed = parseFrameWithCrc(ProfileStandardConfig, sentFrame, getMessageInfo);
+    assert('sendRaw: emitted frame parses as valid', parsed.valid === true);
+    assert('sendRaw: emitted frame msgId preserved', parsed.msgId === BasicTypesMessage._msgid);
+    assert('sendRaw: emitted frame payload preserved',
+      Buffer.from(parsed.msgData).equals(Buffer.from(payload)));
   });
 }
 

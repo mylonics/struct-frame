@@ -17,7 +17,7 @@ Usage:
     python tests/check_golden.py            # verify (default; CI mode)
     python tests/check_golden.py --update   # regenerate goldens
     python tests/check_golden.py --verbose  # show per-file pass/fail detail
-    python tests/check_golden.py --no-decode  # skip the decode phase
+    python tests/check_golden.py --no-decode  # deprecated (decode still runs)
 
 Exit codes:
     0 — all goldens match (and all decodes pass)
@@ -133,7 +133,7 @@ def main() -> int:
     parser.add_argument("--verbose", "-v", action="store_true",
                         help="show per-file detail")
     parser.add_argument("--no-decode", action="store_true",
-                        help="skip the decode phase")
+                        help="deprecated: decode phase is now always enforced")
     args = parser.parse_args()
 
     GOLDEN_DIR.mkdir(parents=True, exist_ok=True)
@@ -196,7 +196,7 @@ def main() -> int:
     # byte sequences (conformance §6/§7 row 1).
     # -----------------------------------------------------------------
     if args.no_decode:
-        return 0
+        print("[WARN] --no-decode is deprecated and ignored; decode verification is always enforced.")
 
     decode_failures: List[str] = []
     for script, profile, golden_name in SUITES:

@@ -6,6 +6,7 @@ generated C# source files are scanned for ``public`` declarations and
 compared to the baseline.  Removed items cause a failure; new items
 are reported as non-breaking additions.
 """
+import argparse
 from pathlib import Path
 import re, sys
 
@@ -31,9 +32,19 @@ def collect_public_items() -> list[str]:
     return sorted(items)
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--allow-missing-baseline', action='store_true',
+                    help='warn and skip when baseline file is missing')
+    args = ap.parse_args()
+
     if not BASELINE.exists():
-        print('NuGet API stability: no PublicAPI.Shipped.txt yet; skipping.')
-        return 0
+        msg = 'NuGet API stability: missing PublicAPI.Shipped.txt baseline.'
+        if args.allow_missing_baseline:
+            print(msg + ' (allowed; skipping)')
+            return 0
+        print(msg, file=sys.stderr)
+        print('Create tests/api_stability/nuget/PublicAPI.Shipped.txt or run with --allow-missing-baseline.', file=sys.stderr)
+        return 1
 
     current = collect_public_items()
     expected = [
