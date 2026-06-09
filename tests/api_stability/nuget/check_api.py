@@ -35,6 +35,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--allow-missing-baseline', action='store_true',
                     help='warn and skip when baseline file is missing')
+    ap.add_argument('--update', action='store_true',
+                    help='refresh PublicAPI.Shipped.txt from current generated output')
     args = ap.parse_args()
 
     if not BASELINE.exists():
@@ -47,6 +49,12 @@ def main() -> int:
         return 1
 
     current = collect_public_items()
+
+    if args.update:
+        BASELINE.write_text('\n'.join(current) + '\n', encoding='utf-8')
+        print(f'NuGet API stability: updated baseline {BASELINE} ({len(current)} items).')
+        return 0
+
     expected = []
     for raw in BASELINE.read_text().splitlines():
         line = raw.strip()
