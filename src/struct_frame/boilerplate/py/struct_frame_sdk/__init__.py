@@ -3,7 +3,7 @@ Export all SDK components for both sync and async usage
 """
 
 # Sync transports
-from .transport import ITransport, TransportConfig, BaseTransport
+from .transport import ITransport, TransportConfig, BaseTransport, SendResult
 from .udp_transport import UdpTransport, UdpTransportConfig
 from .tcp_transport import TcpTransport, TcpTransportConfig
 from .websocket_transport import WebSocketTransport, WebSocketTransportConfig
@@ -34,6 +34,7 @@ __all__ = [
     'ITransport',
     'TransportConfig',
     'BaseTransport',
+    'SendResult',
     'UdpTransport',
     'UdpTransportConfig',
     'TcpTransport',

@@ -27,7 +27,7 @@ class MockTransport {
 
   async connect() { this._connected = true; }
   async disconnect() { this._connected = false; }
-  async send(data) { this.sentData.push(data); }
+  async send(data) { this.sentData.push(data); return data.length; }
   isConnected() { return this._connected; }
   onData(cb) { this._dataCallback = cb; }
   onError(cb) { this._errorCallback = cb; }
@@ -203,8 +203,10 @@ function testSendRaw() {
   const payload = msg.serialize();
 
   // sendRaw is async; drive it to completion before asserting
-  return sdk.sendRaw(BasicTypesMessage._msgid, payload).then(() => {
+  return sdk.sendRaw(BasicTypesMessage._msgid, payload).then((result) => {
     assert('sendRaw: transport.send was invoked', transport.sentData.length === 1);
+    assert('sendRaw: result.success is true', result.success === true);
+    assert('sendRaw: attemptedBytes equals bytesWritten', result.attemptedBytes === result.bytesWritten);
     const sentFrame = transport.sentData[0];
     const parsed = parseFrameWithCrc(ProfileStandardConfig, sentFrame, getMessageInfo);
     assert('sendRaw: emitted frame parses as valid', parsed.valid === true);

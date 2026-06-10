@@ -56,6 +56,7 @@ class MockTransport(ITransport):
 
     def send(self, data: bytes):
         self.sent_data.append(bytes(data))
+        return len(data)
 
     def set_data_callback(self, callback):
         self._data_cb = callback
@@ -251,9 +252,12 @@ def test_send_raw_frames_through_transport():
     sdk = make_sdk(transport)
 
     payload = BasicTypesMessage().serialize()
-    sdk.send_raw(BasicTypesMessage.MSG_ID, payload)
+    send_result = sdk.send_raw(BasicTypesMessage.MSG_ID, payload)
 
     run_test("send_raw: transport received data", len(transport.sent_data) == 1)
+    run_test("send_raw: result.success is true", send_result.success is True)
+    run_test("send_raw: attempted_bytes equals bytes_written",
+             send_result.attempted_bytes == send_result.bytes_written)
     run_test("send_raw: frame is non-empty", len(transport.sent_data[0]) > 0)
 
     frame = transport.sent_data[0]

@@ -23,6 +23,14 @@ class SocketTransportConfig(TransportConfig):
     buffer_size: int = 4096
 
 
+@dataclass
+class SendResult:
+    """Verbose send result for SDK send operations."""
+    success: bool = False
+    attempted_bytes: int = 0
+    bytes_written: int = 0
+
+
 class ITransport(ABC):
     """Transport interface for sending and receiving data"""
 
@@ -37,8 +45,8 @@ class ITransport(ABC):
         pass
 
     @abstractmethod
-    def send(self, data: bytes) -> None:
-        """Send data through the transport"""
+    def send(self, data: bytes) -> int:
+        """Send data through the transport and return bytes written"""
         pass
 
     @abstractmethod

@@ -31,7 +31,7 @@ class MockTransport implements ITransport {
 
   async connect(): Promise<void> { this._connected = true; }
   async disconnect(): Promise<void> { this._connected = false; }
-  async send(data: Uint8Array): Promise<void> { this.sentData.push(data); }
+  async send(data: Uint8Array): Promise<number> { this.sentData.push(data); return data.length; }
 
   isConnected(): boolean { return this._connected; }
 
@@ -216,9 +216,11 @@ async function testSendRawFramesThroughTransport(): Promise<void> {
   const payloadMsg = new BasicTypesMessage({ regularInt: 42, flag: true });
   const payload = payloadMsg.serialize();
 
-  await sdk.sendRaw(BasicTypesMessage._msgid, payload);
+  const sendResult = await sdk.sendRaw(BasicTypesMessage._msgid, payload);
 
   assert('sendRaw: transport.send was invoked', transport.sentData.length === 1);
+  assert('sendRaw: result.success is true', sendResult.success === true);
+  assert('sendRaw: attemptedBytes equals bytesWritten', sendResult.attemptedBytes === sendResult.bytesWritten);
   const sentFrame = transport.sentData[0];
   const parsed = parseFrameWithCrc(ProfileStandardConfig, sentFrame, getMessageInfo);
   assert('sendRaw: emitted frame parses as valid', parsed.valid === true);

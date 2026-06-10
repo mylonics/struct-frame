@@ -145,9 +145,9 @@ namespace StructFrame.Sdk
         private readonly struct QueuedMessage
         {
             public readonly byte[] Data;
-            public readonly TaskCompletionSource<bool> Completion;
+            public readonly TaskCompletionSource<SendResult> Completion;
 
-            public QueuedMessage(byte[] data, TaskCompletionSource<bool> completion)
+            public QueuedMessage(byte[] data, TaskCompletionSource<SendResult> completion)
             {
                 Data = data;
                 Completion = completion;
@@ -267,16 +267,16 @@ namespace StructFrame.Sdk
         /// </code>
         /// </para>
         /// </summary>
-        public async Task SendAsync<T>(T message, byte seq = 0, byte sysId = 0, byte compId = 0) where T : IStructFrameMessage<T>
+        public async Task<SendResult> SendAsync<T>(T message, byte seq = 0, byte sysId = 0, byte compId = 0) where T : IStructFrameMessage<T>
         {
-            await SendRawAsync(message, seq, sysId, compId).ConfigureAwait(false);
+            return await SendRawAsync(message, seq, sysId, compId).ConfigureAwait(false);
         }
 
         /// <summary>
         /// Send any <see cref="IStructFrameMessage"/> (including non-generic wrappers).
         /// Prefer <see cref="SendAsync{T}"/> for normal messages.
         /// </summary>
-        public async Task SendRawAsync(IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
+        public async Task<SendResult> SendRawAsync(IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
             byte[] buffer = new byte[_profile.MaxPayload + _profile.Overhead];
             int bytesWritten = _encoder.Encode(buffer, 0, message, seq, sysId, compId);
@@ -288,16 +288,17 @@ namespace StructFrame.Sdk
             byte[] framedData = new byte[bytesWritten];
             Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
 
-            await SendFramedBytesAsync(framedData).ConfigureAwait(false);
+            var result = await SendFramedBytesAsync(framedData).ConfigureAwait(false);
 
             Log($"Sent message ID {message.GetMsgId()}, {bytesWritten} bytes total");
+            return result;
         }
 
         /// <summary>
         /// Send a parsed frame using the current profile. This re-encodes from
         /// payload metadata rather than forwarding the original wire bytes.
         /// </summary>
-        public async Task Send(FrameMsgInfo frame)
+        public async Task<SendResult> Send(FrameMsgInfo frame)
         {
             if (frame.MsgData == null)
             {
@@ -324,23 +325,25 @@ namespace StructFrame.Sdk
 
             byte[] framedData = new byte[bytesWritten];
             Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
-            await SendFramedBytesAsync(framedData).ConfigureAwait(false);
+            var result = await SendFramedBytesAsync(framedData).ConfigureAwait(false);
             Log($"Sent frame ID {frame.MsgId}, {bytesWritten} bytes total");
+            return result;
         }
 
         /// <summary>
         /// Directly forward an already framed message without re-encoding.
         /// Assumes the source and destination profiles are the same.
         /// </summary>
-        public async Task SendDirect(FrameMsgInfo frame)
+        public async Task<SendResult> SendDirect(FrameMsgInfo frame)
         {
             if (frame.FrameData.IsEmpty)
             {
                 throw new InvalidOperationException("FrameData is required for direct forwarding");
             }
 
-            await SendFramedBytesAsync(frame.FrameData).ConfigureAwait(false);
+            var result = await SendFramedBytesAsync(frame.FrameData).ConfigureAwait(false);
             Log($"Directly forwarded frame ID {frame.MsgId}, {frame.FrameData.Length} bytes total");
+            return result;
         }
 
         /// <summary>
@@ -390,11 +393,11 @@ namespace StructFrame.Sdk
             }
         }
 
-        private async Task SendFramedBytesAsync(ReadOnlyMemory<byte> framedData)
+        private async Task<SendResult> SendFramedBytesAsync(ReadOnlyMemory<byte> framedData)
         {
             if (_strictOrdering)
             {
-                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var tcs = new TaskCompletionSource<SendResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 
                 byte[] bytes = framedData.ToArray();
                 if (!_sendQueue!.Writer.TryWrite(new QueuedMessage(bytes, tcs)))
@@ -402,11 +405,13 @@ namespace StructFrame.Sdk
                     throw new InvalidOperationException("Send queue is closed - transport may be disconnected");
                 }
 
-                await tcs.Task.ConfigureAwait(false);
+                return await tcs.Task.ConfigureAwait(false);
             }
             else
             {
-                await _transport.SendAsync(framedData).ConfigureAwait(false);
+                int attempted = framedData.Length;
+                int bytesWritten = await _transport.SendAsync(framedData).ConfigureAwait(false);
+                return new SendResult(bytesWritten == attempted, attempted, bytesWritten);
             }
         }
 
@@ -454,8 +459,9 @@ namespace StructFrame.Sdk
                 {
                     try
                     {
-                        await _transport.SendAsync(queued.Data).ConfigureAwait(false);
-                        queued.Completion.TrySetResult(true);
+                        int attempted = queued.Data.Length;
+                        int bytesWritten = await _transport.SendAsync(queued.Data).ConfigureAwait(false);
+                        queued.Completion.TrySetResult(new SendResult(bytesWritten == attempted, attempted, bytesWritten));
                     }
                     catch (Exception ex)
                     {

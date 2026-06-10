@@ -83,11 +83,28 @@ class StructFrameSdk {
    * Send raw (already-serialized) payload for the given message ID.
    * @param {number} msgId
    * @param {Uint8Array} data
+   * @returns {Promise<{success: boolean, attemptedBytes: number, bytesWritten: number}>}
    */
   async sendRaw(msgId, data) {
     const framed = this._frameParser.frame(msgId, data);
-    await this._transport.send(framed);
+    const attemptedBytes = framed.length;
+    const bytesWritten = await this._transport.send(framed);
     this._log(`Sent message ID ${msgId}, ${data.length} bytes`);
+    return {
+      success: bytesWritten === attemptedBytes,
+      attemptedBytes,
+      bytesWritten,
+    };
+  }
+
+  /**
+   * Send a message object (requires pack() and msgId).
+   * @param {{ pack: () => Uint8Array, msgId: number }} message
+   * @returns {Promise<{success: boolean, attemptedBytes: number, bytesWritten: number}>}
+   */
+  async send(message) {
+    const data = message.pack();
+    return this.sendRaw(message.msgId, data);
   }
 
   /** @returns {boolean} */

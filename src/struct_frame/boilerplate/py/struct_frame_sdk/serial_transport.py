@@ -77,14 +77,15 @@ class SerialTransport(BaseTransport):
             self.receive_thread = None
         self.connected = False
 
-    def send(self, data: bytes) -> None:
+    def send(self, data: bytes) -> int:
         """Send data via serial port"""
         if not self.serial_port or not self.connected or not self.serial_port.is_open:
             raise RuntimeError('Serial port not connected')
         
         try:
-            self.serial_port.write(data)
+            written = self.serial_port.write(data)
             self.serial_port.flush()
+            return written
         except Exception as e:
             self._handle_error(e)
             raise

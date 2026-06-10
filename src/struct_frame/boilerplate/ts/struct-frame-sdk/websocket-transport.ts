@@ -82,7 +82,7 @@ export class WebSocketTransport extends BaseTransport {
     });
   }
 
-  async send(data: Uint8Array): Promise<void> {
+  async send(data: Uint8Array): Promise<number> {
     return new Promise((resolve, reject) => {
       if (!this.ws || !this.connected || this.ws.readyState !== WebSocket.OPEN) {
         reject(new Error('WebSocket not connected'));
@@ -90,8 +90,8 @@ export class WebSocketTransport extends BaseTransport {
       }
 
       try {
-        this.ws.send(data);
-        resolve();
+        (this.ws as any)['send'](data);
+        resolve(data.length);
       } catch (error) {
         reject(error);
       }

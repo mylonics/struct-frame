@@ -93,23 +93,26 @@ class AsyncSerialTransport(BaseAsyncTransport):
             await loop.run_in_executor(None, self.serial_port.close)
             self.serial_port = None
 
-    async def send(self, data: bytes) -> None:
+    async def send(self, data: bytes) -> int:
         """Send data via serial port"""
         if not self.serial_port or not self.connected or not self.serial_port.is_open:
             raise RuntimeError('Serial port not connected')
         
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, self._write_serial, data)
+            written = await loop.run_in_executor(None, self._write_serial, data)
+            return written
         except Exception as e:
             self._handle_error(e)
             raise
 
-    def _write_serial(self, data: bytes) -> None:
+    def _write_serial(self, data: bytes) -> int:
         """Write to serial port (blocking operation)"""
         if self.serial_port:
-            self.serial_port.write(data)
+            written = self.serial_port.write(data)
             self.serial_port.flush()
+            return written
+        return 0
 
     async def _receive_loop(self) -> None:
         """Receive loop"""

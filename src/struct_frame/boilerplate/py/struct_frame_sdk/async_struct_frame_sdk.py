@@ -6,6 +6,7 @@ import asyncio
 from typing import Callable, Dict, List, Optional, Any, Protocol
 from dataclasses import dataclass
 from .async_transport import IAsyncTransport
+from .transport import SendResult
 
 
 class FrameParser(Protocol):
@@ -94,16 +95,19 @@ class AsyncStructFrameSdk:
 
         return unsubscribe
 
-    async def send_raw(self, msg_id: int, data: bytes) -> None:
+    async def send_raw(self, msg_id: int, data: bytes) -> SendResult:
         """Send a raw message (already serialized)"""
         framed_data = self.frame_parser.frame(msg_id, data)
-        await self.transport.send(framed_data)
+        attempted = len(framed_data)
+        written = await self.transport.send(framed_data)
+        result = SendResult(success=written == attempted, attempted_bytes=attempted, bytes_written=written)
         self._log(f'Sent message ID {msg_id}, {len(data)} bytes')
+        return result
 
-    async def send(self, message: Any) -> None:
+    async def send(self, message: Any) -> SendResult:
         """Send a message object (requires pack() method and msg_id attribute)"""
         data = message.pack()
-        await self.send_raw(message.msg_id, data)
+        return await self.send_raw(message.msg_id, data)
 
     def is_connected(self) -> bool:
         """Check if connected"""
