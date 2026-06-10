@@ -7,4 +7,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <StartupObject>TestRunner</StartupObject>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\generated\csharp\StructFrame.csproj" />
+  </ItemGroup>
 </Project>

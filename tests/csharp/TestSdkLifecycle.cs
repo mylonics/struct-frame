@@ -321,8 +321,8 @@ class CountingTransport : ITransport
         return Task.CompletedTask;
     }
 
-    public Task SendAsync(byte[] data) => Task.CompletedTask;
-    public Task SendAsync(ReadOnlyMemory<byte> data) => Task.CompletedTask;
+    public Task<int> SendAsync(byte[] data) => Task.FromResult(data.Length);
+    public Task<int> SendAsync(ReadOnlyMemory<byte> data) => Task.FromResult(data.Length);
 
     // Suppress "unused event" warnings — they exist to satisfy ITransport.
     void Touch()
@@ -353,9 +353,9 @@ class RomCountingTransport : BaseTransport
         return Task.CompletedTask;
     }
 
-    protected override Task SendCoreAsync(byte[] data)
+    protected override Task<int> SendCoreAsync(byte[] data)
     {
         LastSent = (byte[])data.Clone();
-        return Task.CompletedTask;
+        return Task.FromResult(data.Length);
     }
 }

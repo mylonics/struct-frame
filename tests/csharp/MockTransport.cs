@@ -62,7 +62,7 @@ class MockTransport : ITransport
     return Task.CompletedTask;
   }
 
-  public async Task SendAsync(byte[] data)
+  public async Task<int> SendAsync(byte[] data)
   {
     if (SendGate != null)
     {
@@ -84,9 +84,10 @@ class MockTransport : ITransport
     {
       SentData.Add(copy);
     }
+    return data.Length;
   }
 
-  public Task SendAsync(ReadOnlyMemory<byte> data) => SendAsync(data.ToArray());
+  public Task<int> SendAsync(ReadOnlyMemory<byte> data) => SendAsync(data.ToArray());
 
   /// <summary>Simulates arriving data (e.g., received over the network).</summary>
   public void InjectData(byte[] data) => DataReceived?.Invoke(this, data);
