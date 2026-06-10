@@ -102,6 +102,10 @@ public:
     bool IsConnected() const {
         return connected_;
     }
+
+    virtual void Connect() {}
+    virtual void Disconnect() {}
+    virtual size_t Send(const uint8_t*, size_t) { return 0; }
 };
 
 } // namespace sdk

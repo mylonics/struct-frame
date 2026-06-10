@@ -16,20 +16,14 @@ using System.Threading.Tasks;
 using StructFrame.Sdk;
 
 /// <summary>
-/// A minimal ITransport implementation for tests. Supports:
-///   - Recording every byte[] handed to SendAsync (SentData)
+/// A minimal BaseTransport implementation for tests. Supports:
+///   - Recording every byte[] handed to SendCoreAsync (SentData)
 ///   - Injecting "received" data via InjectData (raises DataReceived)
 ///   - Optional gating: hold SendAsync until a manual reset event is signaled
 ///     (used by strict-ordering tests to force concurrent interleaving).
 /// </summary>
-class MockTransport : ITransport
+class MockTransport : BaseTransport
 {
-  public bool IsConnected { get; private set; }
-
-  public event EventHandler<byte[]>? DataReceived;
-  public event EventHandler<Exception>? ErrorOccurred;
-  public event EventHandler? ConnectionClosed;
-
   public List<byte[]> SentData { get; } = new();
 
   /// <summary>
@@ -49,20 +43,20 @@ class MockTransport : ITransport
   /// </summary>
   public Action<byte[]>? OnSend { get; set; }
 
-  public Task ConnectAsync()
+  public override Task ConnectAsync()
   {
-    IsConnected = true;
+    _connected = true;
     return Task.CompletedTask;
   }
 
-  public Task DisconnectAsync()
+  public override Task DisconnectAsync()
   {
-    IsConnected = false;
-    ConnectionClosed?.Invoke(this, EventArgs.Empty);
+    _connected = false;
+    OnConnectionClosed();
     return Task.CompletedTask;
   }
 
-  public async Task<int> SendAsync(byte[] data)
+  protected override async Task<int> SendCoreAsync(byte[] data)
   {
     if (SendGate != null)
     {
@@ -87,14 +81,12 @@ class MockTransport : ITransport
     return data.Length;
   }
 
-  public Task<int> SendAsync(ReadOnlyMemory<byte> data) => SendAsync(data.ToArray());
-
   /// <summary>Simulates arriving data (e.g., received over the network).</summary>
-  public void InjectData(byte[] data) => DataReceived?.Invoke(this, data);
+  public void InjectData(byte[] data) => OnDataReceived(data);
 
   /// <summary>Raises the ErrorOccurred event with the given exception.</summary>
-  public void InjectError(Exception ex) => ErrorOccurred?.Invoke(this, ex);
+  public void InjectError(Exception ex) => OnErrorOccurred(ex);
 
   /// <summary>Raises the ConnectionClosed event without changing IsConnected.</summary>
-  public void InjectClose() => ConnectionClosed?.Invoke(this, EventArgs.Empty);
+  public void InjectClose() => OnConnectionClosed();
 }
