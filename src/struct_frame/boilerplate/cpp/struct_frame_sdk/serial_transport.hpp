@@ -84,7 +84,7 @@ public:
         receiveBuffer_.resize(config.bufferSize);
     }
 
-    void Connect() override {
+    void Connect() {
         if (!serialPort_) {
             HandleError("Serial port not initialized");
             return;
@@ -99,7 +99,7 @@ public:
         running_ = true;
     }
 
-    void Disconnect() override {
+    void Disconnect() {
         running_ = false;
         if (serialPort_ && serialPort_->isOpen()) {
             serialPort_->close();
@@ -107,16 +107,17 @@ public:
         connected_ = false;
     }
 
-    void Send(const uint8_t* data, size_t length) override {
+    size_t Send(const uint8_t* data, size_t length) {
         if (!serialPort_ || !connected_ || !serialPort_->isOpen()) {
             HandleError("Serial port not connected");
-            return;
+            return 0;
         }
 
         size_t written = serialPort_->write(data, length);
         if (written != length) {
             HandleError("Failed to write all data to serial port");
         }
+        return written;
     }
 
     /**

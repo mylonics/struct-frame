@@ -65,7 +65,7 @@ public:
         }
     }
 
-    void Connect() override {
+    void Connect() {
         try {
             // Resolve remote endpoint
             asio::ip::udp::resolver resolver(io_context_);
@@ -96,7 +96,7 @@ public:
         }
     }
 
-    void Disconnect() override {
+    void Disconnect() {
         connected_ = false;
         io_context_.stop();
         if (socket_.is_open()) {
@@ -108,17 +108,18 @@ public:
         io_context_.restart();
     }
 
-    void Send(const uint8_t* data, size_t length) override {
+    size_t Send(const uint8_t* data, size_t length) {
         if (!connected_ || !socket_.is_open()) {
             HandleError("UDP socket not connected");
-            return;
+            return 0;
         }
 
         try {
-            socket_.send_to(asio::buffer(data, length), remote_endpoint_);
+            return socket_.send_to(asio::buffer(data, length), remote_endpoint_);
         } catch (const std::exception& e) {
             const std::string err = "UDP send error: " + std::string(e.what());
             HandleError(err.c_str());
+            return 0;
         }
     }
 };
@@ -177,7 +178,7 @@ public:
         }
     }
 
-    void Connect() override {
+    void Connect() {
         try {
             // Resolve endpoint
             asio::ip::tcp::resolver resolver(io_context_);
@@ -201,7 +202,7 @@ public:
         }
     }
 
-    void Disconnect() override {
+    void Disconnect() {
         connected_ = false;
         io_context_.stop();
         if (socket_.is_open()) {
@@ -215,17 +216,18 @@ public:
         io_context_.restart();
     }
 
-    void Send(const uint8_t* data, size_t length) override {
+    size_t Send(const uint8_t* data, size_t length) {
         if (!connected_ || !socket_.is_open()) {
             HandleError("TCP socket not connected");
-            return;
+            return 0;
         }
 
         try {
-            asio::write(socket_, asio::buffer(data, length));
+            return asio::write(socket_, asio::buffer(data, length));
         } catch (const std::exception& e) {
             const std::string err = "TCP send error: " + std::string(e.what());
             HandleError(err.c_str());
+            return 0;
         }
     }
 };
@@ -280,7 +282,7 @@ public:
         }
     }
 
-    void Connect() override {
+    void Connect() {
         try {
             // Open serial port
             serial_port_.open(serial_config_.port);
@@ -308,7 +310,7 @@ public:
         }
     }
 
-    void Disconnect() override {
+    void Disconnect() {
         connected_ = false;
         io_context_.stop();
         if (serial_port_.is_open()) {
@@ -320,17 +322,18 @@ public:
         io_context_.restart();
     }
 
-    void Send(const uint8_t* data, size_t length) override {
+    size_t Send(const uint8_t* data, size_t length) {
         if (!connected_ || !serial_port_.is_open()) {
             HandleError("Serial port not connected");
-            return;
+            return 0;
         }
 
         try {
-            asio::write(serial_port_, asio::buffer(data, length));
+            return asio::write(serial_port_, asio::buffer(data, length));
         } catch (const std::exception& e) {
             const std::string err = "Serial send error: " + std::string(e.what());
             HandleError(err.c_str());
+            return 0;
         }
     }
 };
