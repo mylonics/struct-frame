@@ -90,7 +90,7 @@ export class WebSocketTransport extends BaseTransport {
       }
 
       try {
-        (this.ws as any)['send'](data);
+        this.ws.send(data);
         resolve(data.length);
       } catch (error) {
         reject(error);

@@ -82,6 +82,8 @@ public:
     BaseTransport(const TransportConfig& config = TransportConfig())
         : config_(config) {}
 
+    virtual ~BaseTransport() = default;
+
     void OnData(DataCallbackFn callback, void* user_data) {
         data_callback_ = callback;
         data_user_data_ = user_data;

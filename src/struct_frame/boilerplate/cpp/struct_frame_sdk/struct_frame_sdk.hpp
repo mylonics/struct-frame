@@ -130,7 +130,7 @@ struct SendResult {
  *       sdk(&transport, &get_msg_info);
  */
 template <typename Config, size_t MaxBuffer = 8192, size_t MaxSubscriptions = 32, size_t MaxFrameSize = 512,
-          size_t MaxCallableSize = 64, typename TransportT = BaseTransport>
+          size_t MaxCallableSize = 64, typename TransportT>
 class StructFrameSdkT : public IStructFrameSdk {
  public:
   using MessageInfoFn = structframe::MessageInfo (*)(uint16_t);

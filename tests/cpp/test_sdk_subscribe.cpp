@@ -555,6 +555,88 @@ bool test_forward_extended_msg_id_between_two_sdks() {
 }
 
 // ============================================================================
+// SendResult tests
+// ============================================================================
+
+/**
+ * Test: Send<TMessage> returns a successful SendResult with correct byte counts.
+ */
+bool test_send_returns_success_result() {
+  MockTransport transport;
+  transport.Connect();
+  TestSdk sdk(&transport, &get_message_info);
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 42;
+  msg.flag = true;
+
+  SendResult result = sdk.Send(msg);
+
+  if (!result.success) return false;
+  if (result.attempted_bytes == 0) return false;
+  if (result.bytes_written != result.attempted_bytes) return false;
+  if (transport.sent_data.empty()) return false;
+  if (transport.sent_data.back().size() != result.attempted_bytes) return false;
+
+  return true;
+}
+
+/**
+ * Test: Send returns a failed SendResult when transport is nullptr.
+ */
+bool test_send_returns_failure_when_no_transport() {
+  TestSdk sdk(nullptr, &get_message_info);
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 1;
+
+  SendResult result = sdk.Send(msg);
+
+  if (result.success) return false;
+  if (result.attempted_bytes != 0) return false;
+  if (result.bytes_written != 0) return false;
+
+  return true;
+}
+
+/**
+ * Test: SendRaw returns a successful SendResult with correct byte counts.
+ */
+bool test_send_raw_returns_success_result() {
+  MockTransport transport;
+  transport.Connect();
+  TestSdk sdk(&transport, &get_message_info);
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 99;
+  uint8_t payload[BasicTypesMessage::MAX_SIZE];
+  msg.serialize(payload);
+
+  SendResult result = sdk.SendRaw(BasicTypesMessage::MSG_ID, payload, BasicTypesMessage::MAX_SIZE);
+
+  if (!result.success) return false;
+  if (result.attempted_bytes == 0) return false;
+  if (result.bytes_written != result.attempted_bytes) return false;
+
+  return true;
+}
+
+/**
+ * Test: SendResult bool conversion reflects success field.
+ */
+bool test_send_result_bool_conversion() {
+  SendResult ok{true, 10, 10};
+  SendResult fail{false, 10, 5};
+  SendResult empty{};
+
+  if (!ok) return false;
+  if (fail) return false;
+  if (empty) return false;
+
+  return true;
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -590,6 +672,14 @@ int main() {
            test_extended_msg_id_sendraw_roundtrip);
   run_test("FrameMsgInfo forwarding preserves extended msg_id (>255)",
            test_forward_extended_msg_id_between_two_sdks);
+  run_test("Send<T> returns successful SendResult with correct byte counts",
+           test_send_returns_success_result);
+  run_test("Send<T> returns failed SendResult when transport is nullptr",
+           test_send_returns_failure_when_no_transport);
+  run_test("SendRaw returns successful SendResult with correct byte counts",
+           test_send_raw_returns_success_result);
+  run_test("SendResult bool conversion reflects success field",
+           test_send_result_bool_conversion);
 
   printf("\n========================================\n");
   printf("Summary: %d/%d tests passed\n", tests_passed, tests_run);
