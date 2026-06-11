@@ -24,13 +24,6 @@ using namespace structframe;
 using namespace structframe::serialization_test;
 using namespace structframe::sdk;
 
-// ============================================================================
-// SDK type alias for ProfileStandard
-// ============================================================================
-
-using TestSdk = StructFrameSdkT<ProfileStandardConfig>;
-using TestBulkSdk = StructFrameSdkT<ProfileBulkConfig>;
-
 struct ExtendedDummyMessage {
   static constexpr uint16_t MSG_ID = 300;
   static constexpr size_t MAX_SIZE = 1;
@@ -68,8 +61,9 @@ class MockTransport : public BaseTransport {
 
   void Connect() override { connect_calls++; connected_ = true; }
   void Disconnect() override { disconnect_calls++; connected_ = false; }
-  void Send(const uint8_t* data, size_t length) override {
+  size_t Send(const uint8_t* data, size_t length) override {
     sent_data.push_back(std::vector<uint8_t>(data, data + length));
+    return length;
   }
 
   // Simulate incoming data from the peer
@@ -88,11 +82,20 @@ class LoopbackTransport : public BaseTransport {
 
   void Connect() override { connected_ = true; }
   void Disconnect() override { connected_ = false; }
-  void Send(const uint8_t* data, size_t length) override {
+  size_t Send(const uint8_t* data, size_t length) override {
     sent_data.push_back(std::vector<uint8_t>(data, data + length));
     HandleData(data, length);
+    return length;
   }
 };
+
+// ============================================================================
+// SDK type aliases
+// ============================================================================
+
+using TestSdk = StructFrameSdkT<ProfileStandardConfig, 8192, 32, 512, 64, MockTransport>;
+using TestSdkLoopback = StructFrameSdkT<ProfileStandardConfig, 8192, 32, 512, 64, LoopbackTransport>;
+using TestBulkSdk = StructFrameSdkT<ProfileBulkConfig, 8192, 32, 512, 64, LoopbackTransport>;
 
 // ============================================================================
 // Test helpers
@@ -365,7 +368,7 @@ bool test_forward_frame_info_between_two_sdks() {
   LoopbackTransport target_transport;
 
   TestSdk source_sdk(&source_transport, &get_message_info);
-  TestSdk target_sdk(&target_transport, &get_message_info);
+  TestSdkLoopback target_sdk(&target_transport, &get_message_info);
 
   int target_dispatch_count = 0;
   int forwarded_from_source = 0;
@@ -413,7 +416,7 @@ bool test_checksum_failed_frame_still_forwards_raw() {
   MockTransport source_transport;
   LoopbackTransport target_transport;
   TestSdk source_sdk(&source_transport, &get_message_info);
-  TestSdk target_sdk(&target_transport, &get_message_info);
+  TestSdkLoopback target_sdk(&target_transport, &get_message_info);
 
   int frame_count = 0;
   int forwarded_count = 0;
@@ -552,6 +555,88 @@ bool test_forward_extended_msg_id_between_two_sdks() {
 }
 
 // ============================================================================
+// SendResult tests
+// ============================================================================
+
+/**
+ * Test: Send<TMessage> returns a successful SendResult with correct byte counts.
+ */
+bool test_send_returns_success_result() {
+  MockTransport transport;
+  transport.Connect();
+  TestSdk sdk(&transport, &get_message_info);
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 42;
+  msg.flag = true;
+
+  SendResult result = sdk.Send(msg);
+
+  if (!result.success) return false;
+  if (result.attempted_bytes == 0) return false;
+  if (result.bytes_written != result.attempted_bytes) return false;
+  if (transport.sent_data.empty()) return false;
+  if (transport.sent_data.back().size() != result.attempted_bytes) return false;
+
+  return true;
+}
+
+/**
+ * Test: Send returns a failed SendResult when transport is nullptr.
+ */
+bool test_send_returns_failure_when_no_transport() {
+  TestSdk sdk(nullptr, &get_message_info);
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 1;
+
+  SendResult result = sdk.Send(msg);
+
+  if (result.success) return false;
+  if (result.attempted_bytes != 0) return false;
+  if (result.bytes_written != 0) return false;
+
+  return true;
+}
+
+/**
+ * Test: SendRaw returns a successful SendResult with correct byte counts.
+ */
+bool test_send_raw_returns_success_result() {
+  MockTransport transport;
+  transport.Connect();
+  TestSdk sdk(&transport, &get_message_info);
+
+  BasicTypesMessage msg{};
+  msg.regular_int = 99;
+  uint8_t payload[BasicTypesMessage::MAX_SIZE];
+  msg.serialize(payload);
+
+  SendResult result = sdk.SendRaw(BasicTypesMessage::MSG_ID, payload, BasicTypesMessage::MAX_SIZE);
+
+  if (!result.success) return false;
+  if (result.attempted_bytes == 0) return false;
+  if (result.bytes_written != result.attempted_bytes) return false;
+
+  return true;
+}
+
+/**
+ * Test: SendResult bool conversion reflects success field.
+ */
+bool test_send_result_bool_conversion() {
+  SendResult ok{true, 10, 10};
+  SendResult fail{false, 10, 5};
+  SendResult empty{};
+
+  if (!ok) return false;
+  if (fail) return false;
+  if (empty) return false;
+
+  return true;
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -587,6 +672,14 @@ int main() {
            test_extended_msg_id_sendraw_roundtrip);
   run_test("FrameMsgInfo forwarding preserves extended msg_id (>255)",
            test_forward_extended_msg_id_between_two_sdks);
+  run_test("Send<T> returns successful SendResult with correct byte counts",
+           test_send_returns_success_result);
+  run_test("Send<T> returns failed SendResult when transport is nullptr",
+           test_send_returns_failure_when_no_transport);
+  run_test("SendRaw returns successful SendResult with correct byte counts",
+           test_send_raw_returns_success_result);
+  run_test("SendResult bool conversion reflects success field",
+           test_send_result_bool_conversion);
 
   printf("\n========================================\n");
   printf("Summary: %d/%d tests passed\n", tests_passed, tests_run);

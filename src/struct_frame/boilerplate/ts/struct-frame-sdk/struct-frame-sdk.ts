@@ -1,7 +1,7 @@
 // Struct Frame SDK Client
 // High-level interface for sending and receiving framed messages
 
-import { ITransport } from './transport';
+import { ITransport, SendResult } from './transport';
 import { FrameMsgInfo } from '../frame-base';
 
 /**
@@ -121,18 +121,25 @@ export class StructFrameSdk {
   /**
    * Send a raw message (already serialized)
    */
-  async sendRaw(msgId: number, data: Uint8Array): Promise<void> {
+  async sendRaw(msgId: number, data: Uint8Array): Promise<SendResult> {
     const framedData = this.frameParser.frame(msgId, data);
-    await this.transport.send(framedData);
+    const attemptedBytes = framedData.length;
+    const bytesWritten = await this.transport.send(framedData);
+    const result: SendResult = {
+      success: bytesWritten === attemptedBytes,
+      attemptedBytes,
+      bytesWritten,
+    };
     this.log(`Sent message ID ${msgId}, ${data.length} bytes`);
+    return result;
   }
 
   /**
    * Send a message object (requires pack() method)
    */
-  async send<T extends { pack(): Uint8Array; msgId: number }>(message: T): Promise<void> {
+  async send<T extends { pack(): Uint8Array; msgId: number }>(message: T): Promise<SendResult> {
     const data = message.pack();
-    await this.sendRaw(message.msgId, data);
+    return await this.sendRaw(message.msgId, data);
   }
 
   /**

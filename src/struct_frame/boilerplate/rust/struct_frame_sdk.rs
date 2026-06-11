@@ -16,6 +16,14 @@ pub struct Subscription {
 /// A registered message handler callback.
 pub type MessageHandler = Box<dyn Fn(&FrameMsgInfo) + Send + 'static>;
 
+/// Verbose send result used by SDK send helpers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SendResult {
+    pub success: bool,
+    pub attempted_bytes: usize,
+    pub bytes_written: usize,
+}
+
 /// High-level SDK that routes incoming framed data to per-message-ID handlers.
 ///
 /// # Example
@@ -108,6 +116,30 @@ impl StructFrameSdk {
                 true
             }
         }
+    }
+
+    /// Send already-framed bytes through a transport closure.
+    ///
+    /// The transport closure must return the number of bytes actually written.
+    pub fn send_framed<F>(&self, frame: &[u8], mut send: F) -> SendResult
+    where
+        F: FnMut(&[u8]) -> usize,
+    {
+        let attempted = frame.len();
+        let written = send(frame);
+        SendResult {
+            success: written == attempted,
+            attempted_bytes: attempted,
+            bytes_written: written,
+        }
+    }
+
+    /// Alias for `send_framed` when forwarding complete frame bytes unchanged.
+    pub fn send_direct<F>(&self, frame: &[u8], send: F) -> SendResult
+    where
+        F: FnMut(&[u8]) -> usize,
+    {
+        self.send_framed(frame, send)
     }
 
     fn dispatch(&self, frame: FrameMsgInfo) {

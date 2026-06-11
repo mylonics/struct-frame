@@ -1,7 +1,7 @@
 // Struct Frame SDK - TypeScript/JavaScript
 // Export all SDK components
 
-export { ITransport, TransportConfig, BaseTransport } from './transport';
+export { ITransport, TransportConfig, BaseTransport, SendResult } from './transport';
 export { UdpTransport, UdpTransportConfig } from './udp-transport';
 export { TcpTransport, TcpTransportConfig } from './tcp-transport';
 export { WebSocketTransport, WebSocketTransportConfig } from './websocket-transport';

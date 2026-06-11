@@ -59,7 +59,7 @@ class AsyncTcpTransport(BaseAsyncTransport):
         
         self.reader = None
 
-    async def send(self, data: bytes) -> None:
+    async def send(self, data: bytes) -> int:
         """Send data via TCP"""
         if not self.writer or not self.connected:
             raise RuntimeError('TCP socket not connected')
@@ -67,6 +67,7 @@ class AsyncTcpTransport(BaseAsyncTransport):
         try:
             self.writer.write(data)
             await self.writer.drain()
+            return len(data)
         except Exception as e:
             self._handle_error(e)
             raise

@@ -42,13 +42,14 @@ class TcpTransport(BaseSocketTransport):
             self.socket.close()
             self.socket = None
 
-    def send(self, data: bytes) -> None:
+    def send(self, data: bytes) -> int:
         """Send data via TCP"""
         if not self.socket or not self.connected:
             raise RuntimeError('TCP socket not connected')
         
         try:
             self.socket.sendall(data)
+            return len(data)
         except Exception as e:
             self._handle_error(e)
             raise

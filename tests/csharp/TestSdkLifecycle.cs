@@ -298,38 +298,25 @@ static class TestSdkLifecycle
 /// <summary>
 /// Transport that counts how many times ConnectAsync is invoked.
 /// </summary>
-class CountingTransport : ITransport
+class CountingTransport : BaseTransport
 {
-    public bool IsConnected { get; private set; }
     public int ConnectCount { get; private set; }
 
-    public event EventHandler<byte[]>? DataReceived;
-    public event EventHandler<Exception>? ErrorOccurred;
-    public event EventHandler? ConnectionClosed;
-
-    public Task ConnectAsync()
+    public override Task ConnectAsync()
     {
         ConnectCount++;
-        IsConnected = true;
+        _connected = true;
         return Task.CompletedTask;
     }
 
-    public Task DisconnectAsync()
+    public override Task DisconnectAsync()
     {
-        IsConnected = false;
-        ConnectionClosed?.Invoke(this, EventArgs.Empty);
+        _connected = false;
+        OnConnectionClosed();
         return Task.CompletedTask;
     }
 
-    public Task SendAsync(byte[] data) => Task.CompletedTask;
-    public Task SendAsync(ReadOnlyMemory<byte> data) => Task.CompletedTask;
-
-    // Suppress "unused event" warnings — they exist to satisfy ITransport.
-    void Touch()
-    {
-        DataReceived?.Invoke(this, Array.Empty<byte>());
-        ErrorOccurred?.Invoke(this, new Exception());
-    }
+    protected override Task<int> SendCoreAsync(byte[] data) => Task.FromResult(data.Length);
 }
 
 /// <summary>
@@ -353,9 +340,9 @@ class RomCountingTransport : BaseTransport
         return Task.CompletedTask;
     }
 
-    protected override Task SendCoreAsync(byte[] data)
+    protected override Task<int> SendCoreAsync(byte[] data)
     {
         LastSent = (byte[])data.Clone();
-        return Task.CompletedTask;
+        return Task.FromResult(data.Length);
     }
 }

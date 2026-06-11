@@ -1,4 +1,4 @@
-// Transport interface for C++ struct-frame SDK
+// Transport primitives for C++ struct-frame SDK
 // Header-only implementation
 
 #pragma once
@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <cstdint>
+#include <cstddef>
 
 namespace structframe {
 namespace sdk {
@@ -27,61 +28,9 @@ using ErrorCallbackFn = void (*)(const char*, void*);
 using CloseCallbackFn = void (*)(void*);
 
 /**
- * Transport interface for sending and receiving data
- * Uses function pointers with user_data for callback context
- */
-class Transport {
-public:
-    virtual ~Transport() = default;
-
-    /**
-     * Connect to the transport endpoint
-     */
-    virtual void Connect() = 0;
-
-    /**
-     * Disconnect from the transport endpoint
-     */
-    virtual void Disconnect() = 0;
-
-    /**
-     * Send data through the transport
-     * @param data Pointer to data buffer
-     * @param length Length of data
-     */
-    virtual void Send(const uint8_t* data, size_t length) = 0;
-
-    /**
-     * Set callback for receiving data
-     * @param callback Function to call when data is received
-     * @param user_data User context passed to callback
-     */
-    virtual void OnData(DataCallbackFn callback, void* user_data) = 0;
-
-    /**
-     * Set callback for connection errors
-     * @param callback Function to call when error occurs
-     * @param user_data User context passed to callback
-     */
-    virtual void OnError(ErrorCallbackFn callback, void* user_data) = 0;
-
-    /**
-     * Set callback for connection close
-     * @param callback Function to call when connection closes
-     * @param user_data User context passed to callback
-     */
-    virtual void OnClose(CloseCallbackFn callback, void* user_data) = 0;
-
-    /**
-     * Check if transport is connected
-     */
-    virtual bool IsConnected() const = 0;
-};
-
-/**
  * Base transport with common functionality
  */
-class BaseTransport : public Transport {
+class BaseTransport {
 protected:
     bool connected_ = false;
     DataCallbackFn data_callback_ = nullptr;
@@ -133,24 +82,45 @@ public:
     BaseTransport(const TransportConfig& config = TransportConfig())
         : config_(config) {}
 
-    void OnData(DataCallbackFn callback, void* user_data) override {
+    virtual ~BaseTransport() = default;
+
+    void OnData(DataCallbackFn callback, void* user_data) {
         data_callback_ = callback;
         data_user_data_ = user_data;
     }
 
-    void OnError(ErrorCallbackFn callback, void* user_data) override {
+    void OnError(ErrorCallbackFn callback, void* user_data) {
         error_callback_ = callback;
         error_user_data_ = user_data;
     }
 
-    void OnClose(CloseCallbackFn callback, void* user_data) override {
+    void OnClose(CloseCallbackFn callback, void* user_data) {
         close_callback_ = callback;
         close_user_data_ = user_data;
     }
 
-    bool IsConnected() const override {
+    bool IsConnected() const {
         return connected_;
     }
+
+    /**
+     * Establish a connection. Subclasses should override to provide actual
+     * connection logic. Default implementation is a no-op.
+     */
+    virtual void Connect() {}
+
+    /**
+     * Close the connection. Subclasses should override to provide actual
+     * disconnection logic. Default implementation is a no-op.
+     */
+    virtual void Disconnect() {}
+
+    /**
+     * Send data through the transport. Subclasses should override to provide
+     * actual send logic. Default implementation is a no-op that returns 0.
+     * @return Number of bytes sent.
+     */
+    virtual size_t Send(const uint8_t*, size_t) { return 0; }
 };
 
 } // namespace sdk

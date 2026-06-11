@@ -26,5 +26,5 @@ pub use frame_profiles::{
     new_network_reader, new_network_writer, new_sensor_reader, new_sensor_writer,
     new_standard_reader, new_standard_writer, parse_minimal, parse_with_crc,
 };
-pub use struct_frame_sdk::{MessageHandler, Subscription, StructFrameSdk};
+pub use struct_frame_sdk::{MessageHandler, SendResult, Subscription, StructFrameSdk};
 

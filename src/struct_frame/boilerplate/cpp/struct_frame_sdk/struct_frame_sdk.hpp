@@ -13,6 +13,7 @@
 #include <cstring>
 #include <new>
 #include <type_traits>
+#include <utility>
 
 #include "transport.hpp"
 
@@ -84,11 +85,20 @@ class SubscriptionHandle {
 };
 
 // ============================================================================
-// StructFrameSdkConfig
+// StructFrameSdkConfigT
 // ============================================================================
 
-struct StructFrameSdkConfig {
-  Transport* transport = nullptr;
+template <typename TransportT>
+struct StructFrameSdkConfigT {
+  TransportT* transport = nullptr;
+};
+
+struct SendResult {
+  bool success = false;
+  size_t attempted_bytes = 0;
+  size_t bytes_written = 0;
+
+  explicit operator bool() const { return success; }
 };
 
 // ============================================================================
@@ -112,14 +122,15 @@ struct StructFrameSdkConfig {
  *   MaxFrameSize     — maximum outgoing frame size in bytes            (default 512)
  *   MaxCallableSize  — max size of a captured lambda/functor           (default 64)
  *                      Exceeding this causes a compile-time error.
+ *   TransportT       — concrete transport type used by this SDK instance
  *
  * Usage:
- *   // With function pointer:
- *   // Custom sizes for embedded:
- *   StructFrameSdkT<ProfileSensorConfig, 2048, 8, 256, 32> sdk(t, &get_msg_info);
+ *   // Concrete transport type selected at compile time:
+ *   StructFrameSdkT<ProfileSensorConfig, 2048, 8, 256, 32, MyTransport>
+ *       sdk(&transport, &get_msg_info);
  */
 template <typename Config, size_t MaxBuffer = 8192, size_t MaxSubscriptions = 32, size_t MaxFrameSize = 512,
-          size_t MaxCallableSize = 64>
+          size_t MaxCallableSize = 64, typename TransportT = BaseTransport>
 class StructFrameSdkT : public IStructFrameSdk {
  public:
   using MessageInfoFn = structframe::MessageInfo (*)(uint16_t);
@@ -137,7 +148,7 @@ class StructFrameSdkT : public IStructFrameSdk {
    * @param get_message_info  Callable: MessageInfo(uint16_t msg_id) — returns
    *                          size/magic info for a given message ID
    */
-  StructFrameSdkT(Transport* transport, MessageInfoFn get_message_info)
+  StructFrameSdkT(TransportT* transport, MessageInfoFn get_message_info)
       : transport_(transport), get_message_info_(get_message_info), buffer_len_(0) {
     for (size_t i = 0; i < MaxSubscriptions; ++i) {
       slots_[i].active = false;
@@ -150,9 +161,9 @@ class StructFrameSdkT : public IStructFrameSdk {
   }
 
   /**
-   * Construct with a StructFrameSdkConfig (transport only; get_message_info still required).
+  * Construct with a StructFrameSdkConfigT (transport only; get_message_info still required).
    */
-  StructFrameSdkT(const StructFrameSdkConfig& config, MessageInfoFn get_message_info)
+  StructFrameSdkT(const StructFrameSdkConfigT<TransportT>& config, MessageInfoFn get_message_info)
       : StructFrameSdkT(config.transport, get_message_info) {}
 
   ~StructFrameSdkT() {
@@ -209,7 +220,7 @@ class StructFrameSdkT : public IStructFrameSdk {
     slot.msg_id = msgId;
 
     // Placement-construct the callable into the inline storage.
-    new (slot.callable_storage) Callable(static_cast<Callable&&>(callback));
+    new (slot.callable_storage) Callable(std::forward<Callable>(callback));
 
     slot.dispatch_bytes = [](const uint8_t* payload, size_t len, uint16_t id, void* ctx) {
       TMessage msg{};
@@ -257,7 +268,7 @@ class StructFrameSdkT : public IStructFrameSdk {
     slot.msg_id = 0;
     slot.match_all = true;
 
-    new (slot.callable_storage) Callable(static_cast<Callable&&>(callback));
+    new (slot.callable_storage) Callable(std::forward<Callable>(callback));
 
     slot.dispatch_bytes = nullptr;
     slot.dispatch_typed = nullptr;
@@ -313,11 +324,11 @@ class StructFrameSdkT : public IStructFrameSdk {
    * Serialize and send a typed message through the transport.
    * Uses FrameEncoderWithCrc or FrameEncoderMinimal based on the profile
    * — fully inlined, no virtual dispatch.
-   * Returns true if the frame was successfully handed to the transport.
+   * Returns verbose send result with attempted and actual bytes written.
    */
   template <typename TMessage>
-  bool Send(const TMessage& message) {
-    if (transport_ == nullptr) return false;
+  SendResult Send(const TMessage& message) {
+    if (transport_ == nullptr) return {};
     uint8_t frame_buf[MaxFrameSize];
     size_t framedLen;
 
@@ -327,23 +338,23 @@ class StructFrameSdkT : public IStructFrameSdk {
       framedLen = structframe::FrameEncoderMinimal<Config>::encode(frame_buf, MaxFrameSize, message);
     }
 
-    if (framedLen == 0) return false;
-    transport_->Send(frame_buf, framedLen);
-    return true;
+    if (framedLen == 0) return {};
+    const size_t written = transport_->Send(frame_buf, framedLen);
+    return SendResult{written == framedLen, framedLen, written};
   }
 
   /**
    * Frame and send a pre-serialized payload through the transport.
    * Uses an internal raw-frame encoder — fully inlined, no virtual dispatch.
-   * Returns true on success.
+   * Returns verbose send result with attempted and actual bytes written.
    */
-  bool SendRaw(uint16_t msgId, const uint8_t* data, size_t dataLen) {
-    if (transport_ == nullptr) return false;
+  SendResult SendRaw(uint16_t msgId, const uint8_t* data, size_t dataLen) {
+    if (transport_ == nullptr) return {};
     uint8_t frame_buf[MaxFrameSize];
     const size_t framedLen = EncodeRawFrame(msgId, data, dataLen, frame_buf, MaxFrameSize, get_message_info_);
-    if (framedLen == 0) return false;
-    transport_->Send(frame_buf, framedLen);
-    return true;
+    if (framedLen == 0) return {};
+    const size_t written = transport_->Send(frame_buf, framedLen);
+    return SendResult{written == framedLen, framedLen, written};
   }
 
   /**
@@ -352,9 +363,9 @@ class StructFrameSdkT : public IStructFrameSdk {
    * This is useful when bridging SDK instances with different profiles:
    * subscribeFrameInfo on one side, then Send(frame_info) on the other side.
    */
-  bool Send(const FrameMsgInfo& frame_info) {
-    if (transport_ == nullptr) return false;
-    if (!frame_info.valid || frame_info.msg_data == nullptr) return false;
+  SendResult Send(const FrameMsgInfo& frame_info) {
+    if (transport_ == nullptr) return {};
+    if (!frame_info.valid || frame_info.msg_data == nullptr) return {};
     return SendRaw(frame_info.msg_id, frame_info.msg_data, frame_info.msg_len);
   }
 
@@ -364,13 +375,13 @@ class StructFrameSdkT : public IStructFrameSdk {
    * This bypasses re-encoding and assumes the source and destination use
    * the same frame profile.
    */
-  bool SendDirect(const FrameMsgInfo& frame_info) {
-    if (transport_ == nullptr) return false;
+  SendResult SendDirect(const FrameMsgInfo& frame_info) {
+    if (transport_ == nullptr) return {};
     if (frame_info.frame_data != nullptr && frame_info.frame_size > 0) {
-      transport_->Send(frame_info.frame_data, frame_info.frame_size);
-      return true;
+      const size_t written = transport_->Send(frame_info.frame_data, frame_info.frame_size);
+      return SendResult{written == frame_info.frame_size, frame_info.frame_size, written};
     }
-    return false;
+    return {};
   }
 
   // IStructFrameSdk
@@ -390,7 +401,7 @@ class StructFrameSdkT : public IStructFrameSdk {
     alignas(alignof(std::max_align_t)) uint8_t callable_storage[MaxCallableSize];
   };
 
-  Transport* transport_;
+  TransportT* transport_;
   MessageInfoFn get_message_info_;
   Slot slots_[MaxSubscriptions];
   uint8_t buffer_[MaxBuffer];

@@ -95,7 +95,7 @@ export class SerialTransport extends BaseTransport {
     });
   }
 
-  async send(data: Uint8Array): Promise<void> {
+  async send(data: Uint8Array): Promise<number> {
     return new Promise((resolve, reject) => {
       if (!this.port || !this.connected || !this.port.isOpen) {
         reject(new Error('Serial port not connected'));
@@ -111,7 +111,7 @@ export class SerialTransport extends BaseTransport {
             if (drainErr) {
               reject(drainErr);
             } else {
-              resolve();
+              resolve(data.length);
             }
           });
         }

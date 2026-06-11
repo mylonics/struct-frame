@@ -76,7 +76,7 @@ export class TcpTransport extends BaseTransport {
     });
   }
 
-  async send(data: Uint8Array): Promise<void> {
+  async send(data: Uint8Array): Promise<number> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.connected) {
         reject(new Error('TCP socket not connected'));
@@ -87,7 +87,7 @@ export class TcpTransport extends BaseTransport {
         if (err) {
           reject(err);
         } else {
-          resolve();
+          resolve(data.length);
         }
       });
     });

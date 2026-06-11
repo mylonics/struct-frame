@@ -20,6 +20,23 @@ namespace StructFrame.Sdk
     }
 
     /// <summary>
+    /// Verbose send result returned by SDK send methods.
+    /// </summary>
+    public readonly struct SendResult
+    {
+        public bool Success { get; }
+        public int AttemptedBytes { get; }
+        public int BytesWritten { get; }
+
+        public SendResult(bool success, int attemptedBytes, int bytesWritten)
+        {
+            Success = success;
+            AttemptedBytes = attemptedBytes;
+            BytesWritten = bytesWritten;
+        }
+    }
+
+    /// <summary>
     /// Transport interface for sending and receiving data
     /// </summary>
     public interface ITransport
@@ -41,13 +58,13 @@ namespace StructFrame.Sdk
         /// SendAsync concurrently. If message order matters, the caller must
         /// await each SendAsync call sequentially.
         /// </summary>
-        Task SendAsync(byte[] data);
+        Task<int> SendAsync(byte[] data);
 
         /// <summary>
         /// Send data through the transport (memory-efficient overload).
         /// See <see cref="SendAsync(byte[])"/> for thread-safety and ordering notes.
         /// </summary>
-        Task SendAsync(ReadOnlyMemory<byte> data);
+        Task<int> SendAsync(ReadOnlyMemory<byte> data);
 
         /// <summary>
         /// Event fired when data is received
@@ -111,12 +128,12 @@ namespace StructFrame.Sdk
         /// </code>
         /// </para>
         /// </summary>
-        public async Task SendAsync(byte[] data)
+        public async Task<int> SendAsync(byte[] data)
         {
             await _sendSemaphore.WaitAsync().ConfigureAwait(false);
             try
             {
-                await SendCoreAsync(data).ConfigureAwait(false);
+                return await SendCoreAsync(data).ConfigureAwait(false);
             }
             finally
             {
@@ -129,12 +146,12 @@ namespace StructFrame.Sdk
         /// Serialized with a SemaphoreSlim to prevent concurrent writes.
         /// Default implementation converts to array - subclasses should override SendCoreAsync for zero-copy.
         /// </summary>
-        public async Task SendAsync(ReadOnlyMemory<byte> data)
+        public async Task<int> SendAsync(ReadOnlyMemory<byte> data)
         {
             await _sendSemaphore.WaitAsync().ConfigureAwait(false);
             try
             {
-                await SendCoreAsync(data.ToArray()).ConfigureAwait(false);
+                return await SendCoreAsync(data.ToArray()).ConfigureAwait(false);
             }
             finally
             {
@@ -146,7 +163,7 @@ namespace StructFrame.Sdk
         /// Implement the actual send logic in subclasses.
         /// Called under the send semaphore — only one call executes at a time.
         /// </summary>
-        protected abstract Task SendCoreAsync(byte[] data);
+        protected abstract Task<int> SendCoreAsync(byte[] data);
 
         protected void OnDataReceived(byte[] data)
         {

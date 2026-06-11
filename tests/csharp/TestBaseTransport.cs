@@ -197,7 +197,7 @@ class InstrumentedTransport : BaseTransport
     /// <summary>Force a ConnectionClosed event without changing internal flag-flip ordering.</summary>
     public void ForceClose() => OnConnectionClosed();
 
-    protected override async Task SendCoreAsync(byte[] data)
+    protected override async Task<int> SendCoreAsync(byte[] data)
     {
         int now = Interlocked.Increment(ref _inFlight);
         if (now > MaxConcurrent) MaxConcurrent = now;
@@ -209,6 +209,7 @@ class InstrumentedTransport : BaseTransport
             {
                 SendCalls.Add((byte[])data.Clone());
             }
+            return data.Length;
         }
         finally
         {

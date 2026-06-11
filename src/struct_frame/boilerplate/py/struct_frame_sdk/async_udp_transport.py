@@ -76,13 +76,14 @@ class AsyncUdpTransport(BaseAsyncTransport):
         self.protocol = None
         self.connected = False
 
-    async def send(self, data: bytes) -> None:
+    async def send(self, data: bytes) -> int:
         """Send data via UDP"""
         if not self.transport or not self.connected:
             raise RuntimeError('UDP socket not connected')
         
         try:
             self.transport.sendto(data, (self.udp_config.remote_host, self.udp_config.remote_port))
+            return len(data)
         except Exception as e:
             self._handle_error(e)
             raise

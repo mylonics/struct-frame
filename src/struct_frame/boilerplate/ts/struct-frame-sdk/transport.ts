@@ -1,6 +1,12 @@
 // Transport interface for struct-frame SDK
 // Provides abstraction for various communication channels
 
+export interface SendResult {
+  success: boolean;
+  attemptedBytes: number;
+  bytesWritten: number;
+}
+
 export interface ITransport {
   /**
    * Connect to the transport endpoint
@@ -16,7 +22,7 @@ export interface ITransport {
    * Send data through the transport
    * @param data - Data to send
    */
-  send(data: Uint8Array): Promise<void>;
+  send(data: Uint8Array): Promise<number>;
 
   /**
    * Set callback for receiving data
@@ -69,7 +75,7 @@ export abstract class BaseTransport implements ITransport {
 
   abstract connect(): Promise<void>;
   abstract disconnect(): Promise<void>;
-  abstract send(data: Uint8Array): Promise<void>;
+  abstract send(data: Uint8Array): Promise<number>;
 
   onData(callback: (data: Uint8Array) => void): void {
     this.dataCallback = callback;

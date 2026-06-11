@@ -53,10 +53,11 @@ namespace StructFrame.Sdk
             await Task.CompletedTask;
         }
 
-        public async Task SendAsync(byte[] data)
+        public async Task<int> SendAsync(byte[] data)
         {
             SendBinary(data);
             await Task.CompletedTask;
+            return data.Length;
         }
 
         protected override void OnWsConnected(HttpResponse response)

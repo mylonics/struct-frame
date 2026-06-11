@@ -78,7 +78,7 @@ export class UdpTransport extends BaseTransport {
     });
   }
 
-  async send(data: Uint8Array): Promise<void> {
+  async send(data: Uint8Array): Promise<number> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.connected) {
         reject(new Error('UDP socket not connected'));
@@ -89,11 +89,11 @@ export class UdpTransport extends BaseTransport {
         Buffer.from(data),
         this.udpConfig.remotePort,
         this.udpConfig.remoteHost,
-        (err) => {
+        (err, bytes) => {
           if (err) {
             reject(err);
           } else {
-            resolve();
+            resolve(bytes);
           }
         }
       );

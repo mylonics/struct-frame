@@ -61,13 +61,14 @@ class AsyncWebSocketTransport(BaseAsyncTransport):
             await self.websocket.close()
             self.websocket = None
 
-    async def send(self, data: bytes) -> None:
+    async def send(self, data: bytes) -> int:
         """Send data via WebSocket"""
         if not self.websocket or not self.connected:
             raise RuntimeError('WebSocket not connected')
         
         try:
             await self.websocket.send(data)
+            return len(data)
         except Exception as e:
             self._handle_error(e)
             raise

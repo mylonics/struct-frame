@@ -105,7 +105,7 @@ namespace StructFrame.Sdk
             }
         }
 
-        protected override async Task SendCoreAsync(byte[] data)
+        protected override async Task<int> SendCoreAsync(byte[] data)
         {
             if (_serialPort == null || !_connected || !_serialPort.IsOpen)
             {
@@ -120,6 +120,7 @@ namespace StructFrame.Sdk
                 {
                     _serialPort.Write(data, 0, data.Length);
                 }).ConfigureAwait(false);
+                return data.Length;
             }
             catch (Exception ex)
             {
@@ -237,7 +238,7 @@ namespace StructFrame.Sdk
             }
         }
 
-        protected override async Task SendCoreAsync(byte[] data)
+        protected override async Task<int> SendCoreAsync(byte[] data)
         {
             if (!_connected || !_serialPort.IsOpen)
             {
@@ -247,6 +248,7 @@ namespace StructFrame.Sdk
             try
             {
                 await _serialPort.WriteAsync(data);
+                return data.Length;
             }
             catch (Exception ex)
             {

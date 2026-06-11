@@ -27,8 +27,8 @@ class IAsyncTransport(ABC):
         pass
 
     @abstractmethod
-    async def send(self, data: bytes) -> None:
-        """Send data through the transport"""
+    async def send(self, data: bytes) -> int:
+        """Send data through the transport and return bytes written"""
         pass
 
     @abstractmethod

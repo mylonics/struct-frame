@@ -90,7 +90,7 @@ namespace StructFrame.Sdk
             await Task.CompletedTask;
         }
 
-        protected override async Task SendCoreAsync(byte[] data)
+        protected override async Task<int> SendCoreAsync(byte[] data)
         {
             if (_stream == null || !_connected)
             {
@@ -101,6 +101,7 @@ namespace StructFrame.Sdk
             {
                 await _stream.WriteAsync(data, 0, data.Length);
                 await _stream.FlushAsync();
+                return data.Length;
             }
             catch (Exception ex)
             {

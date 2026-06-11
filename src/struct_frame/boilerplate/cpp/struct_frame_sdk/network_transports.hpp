@@ -108,17 +108,18 @@ public:
         io_context_.restart();
     }
 
-    void Send(const uint8_t* data, size_t length) override {
+    size_t Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !socket_.is_open()) {
             HandleError("UDP socket not connected");
-            return;
+            return 0;
         }
 
         try {
-            socket_.send_to(asio::buffer(data, length), remote_endpoint_);
+            return socket_.send_to(asio::buffer(data, length), remote_endpoint_);
         } catch (const std::exception& e) {
             const std::string err = "UDP send error: " + std::string(e.what());
             HandleError(err.c_str());
+            return 0;
         }
     }
 };
@@ -215,17 +216,18 @@ public:
         io_context_.restart();
     }
 
-    void Send(const uint8_t* data, size_t length) override {
+    size_t Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !socket_.is_open()) {
             HandleError("TCP socket not connected");
-            return;
+            return 0;
         }
 
         try {
-            asio::write(socket_, asio::buffer(data, length));
+            return asio::write(socket_, asio::buffer(data, length));
         } catch (const std::exception& e) {
             const std::string err = "TCP send error: " + std::string(e.what());
             HandleError(err.c_str());
+            return 0;
         }
     }
 };
@@ -320,17 +322,18 @@ public:
         io_context_.restart();
     }
 
-    void Send(const uint8_t* data, size_t length) override {
+    size_t Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !serial_port_.is_open()) {
             HandleError("Serial port not connected");
-            return;
+            return 0;
         }
 
         try {
-            asio::write(serial_port_, asio::buffer(data, length));
+            return asio::write(serial_port_, asio::buffer(data, length));
         } catch (const std::exception& e) {
             const std::string err = "Serial send error: " + std::string(e.what());
             HandleError(err.c_str());
+            return 0;
         }
     }
 };

@@ -4,7 +4,7 @@ High-level interface for sending and receiving framed messages
 
 from typing import Callable, Dict, List, Optional, Any, Protocol
 from dataclasses import dataclass
-from .transport import ITransport
+from .transport import ITransport, SendResult
 
 
 class FrameParser(Protocol):
@@ -93,16 +93,19 @@ class StructFrameSdk:
 
         return unsubscribe
 
-    def send_raw(self, msg_id: int, data: bytes) -> None:
+    def send_raw(self, msg_id: int, data: bytes) -> SendResult:
         """Send a raw message (already serialized)"""
         framed_data = self.frame_parser.frame(msg_id, data)
-        self.transport.send(framed_data)
+        attempted = len(framed_data)
+        written = self.transport.send(framed_data)
+        result = SendResult(success=written == attempted, attempted_bytes=attempted, bytes_written=written)
         self._log(f'Sent message ID {msg_id}, {len(data)} bytes')
+        return result
 
-    def send(self, message: Any) -> None:
+    def send(self, message: Any) -> SendResult:
         """Send a message object (requires pack() method and msg_id attribute)"""
         data = message.pack()
-        self.send_raw(message.msg_id, data)
+        return self.send_raw(message.msg_id, data)
 
     def is_connected(self) -> bool:
         """Check if connected"""

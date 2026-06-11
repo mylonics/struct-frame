@@ -37,13 +37,13 @@ class UdpTransport(BaseSocketTransport):
             self._handle_error(e)
             raise
 
-    def send(self, data: bytes) -> None:
+    def send(self, data: bytes) -> int:
         """Send data via UDP"""
         if not self.socket or not self.connected:
             raise RuntimeError('UDP socket not connected')
         
         try:
-            self.socket.sendto(data, (self.udp_config.remote_host, self.udp_config.remote_port))
+            return self.socket.sendto(data, (self.udp_config.remote_host, self.udp_config.remote_port))
         except Exception as e:
             self._handle_error(e)
             raise

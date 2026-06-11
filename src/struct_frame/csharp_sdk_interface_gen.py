@@ -190,9 +190,9 @@ class SdkInterfaceGen:
         yield f'        /// <param name="seq">Sequence number (optional)</param>\n'
         yield f'        /// <param name="sysId">System ID (optional)</param>\n'
         yield f'        /// <param name="compId">Component ID (optional)</param>\n'
-        yield f'        public async Task {method_name}({struct_name} message, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
+        yield f'        public async Task<SendResult> {method_name}({struct_name} message, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
         yield '        {\n'
-        yield '            await _sdk.SendAsync(message, seq, sysId, compId);\n'
+        yield '            return await _sdk.SendAsync(message, seq, sysId, compId);\n'
         yield '        }\n'
         yield '\n'
         
@@ -213,7 +213,7 @@ class SdkInterfaceGen:
                 params.append(f'{csharp_type} {param_name}')
             
             param_str = ', '.join(params)
-            yield f'        public async Task {method_name}({param_str})\n'
+            yield f'        public async Task<SendResult> {method_name}({param_str})\n'
             yield '        {\n'
             yield f'            var message = new {struct_name}();\n'
             
@@ -255,7 +255,7 @@ class SdkInterfaceGen:
                     # Regular fields
                     yield f'            message.{struct_field_name} = {param_name};\n'
             
-            yield f'            await {method_name}(message);\n'
+            yield f'            return await {method_name}(message);\n'
             yield '        }\n'
             yield '\n'
 
@@ -274,12 +274,12 @@ class SdkInterfaceGen:
         yield '        /// devices have been upgraded to firmware that understands the extension fields.\n'
         yield '        /// </remarks>\n'
         yield f'        [Obsolete("Use Send{struct_name} for extension-aware devices. {method_name} is a transitional helper for legacy firmware only.")]\n'
-        yield f'        public async Task {method_name}({struct_name} message, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
+        yield f'        public async Task<SendResult> {method_name}({struct_name} message, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
         yield '        {\n'
         yield f'#pragma warning disable CS0618 // {non_ext_name} is intentionally obsolete\n'
         yield f'            var wrapper = new {non_ext_name}(message);\n'
         yield '#pragma warning restore CS0618\n'
-        yield '            await _sdk.SendRawAsync(wrapper, seq, sysId, compId);\n'
+        yield '            return await _sdk.SendRawAsync(wrapper, seq, sysId, compId);\n'
         yield '        }\n'
         yield '\n'
 
@@ -317,9 +317,9 @@ class SdkInterfaceGen:
         
         # Generate helper with appropriate discriminator parameter type
         if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-            yield f'        private async Task SendAs{envelope_msg.name}<T>(T message, Action<{envelope_type}, T> setField, {enum_name} discriminator, byte seq = 0, byte sysId = 0, byte compId = 0) where T : class, IStructFrameMessage\n'
+            yield f'        private async Task<SendResult> SendAs{envelope_msg.name}<T>(T message, Action<{envelope_type}, T> setField, {enum_name} discriminator, byte seq = 0, byte sysId = 0, byte compId = 0) where T : class, IStructFrameMessage\n'
         else:
-            yield f'        private async Task SendAs{envelope_msg.name}<T>(T message, Action<{envelope_type}, T> setField, byte seq = 0, byte sysId = 0, byte compId = 0) where T : class, IStructFrameMessage\n'
+            yield f'        private async Task<SendResult> SendAs{envelope_msg.name}<T>(T message, Action<{envelope_type}, T> setField, byte seq = 0, byte sysId = 0, byte compId = 0) where T : class, IStructFrameMessage\n'
         
         yield '        {\n'
         yield f'            var envelope = new {envelope_type}();\n'
@@ -339,7 +339,7 @@ class SdkInterfaceGen:
                 yield f'            envelope.{pascal_case(oneof_name)}Discriminator = discriminator;\n'
         
         yield '            setField(envelope, message);\n'
-        yield '            await _sdk.SendAsync(envelope, seq, sysId, compId);\n'
+        yield '            return await _sdk.SendAsync(envelope, seq, sysId, compId);\n'
         yield '        }\n'
         yield '\n'
         
@@ -350,9 +350,9 @@ class SdkInterfaceGen:
             yield '        /// </summary>\n'
             
             if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
-                yield f'        private async Task SendAs{envelope_msg.name}<T>(T message, Action<{envelope_type}, T> setField, {enum_name} discriminator, Action<{envelope_type}> configureEnvelope, byte seq = 0, byte sysId = 0, byte compId = 0) where T : class, IStructFrameMessage\n'
+                yield f'        private async Task<SendResult> SendAs{envelope_msg.name}<T>(T message, Action<{envelope_type}, T> setField, {enum_name} discriminator, Action<{envelope_type}> configureEnvelope, byte seq = 0, byte sysId = 0, byte compId = 0) where T : class, IStructFrameMessage\n'
             else:
-                yield f'        private async Task SendAs{envelope_msg.name}<T>(T message, Action<{envelope_type}, T> setField, Action<{envelope_type}> configureEnvelope, byte seq = 0, byte sysId = 0, byte compId = 0) where T : class, IStructFrameMessage\n'
+                yield f'        private async Task<SendResult> SendAs{envelope_msg.name}<T>(T message, Action<{envelope_type}, T> setField, Action<{envelope_type}> configureEnvelope, byte seq = 0, byte sysId = 0, byte compId = 0) where T : class, IStructFrameMessage\n'
             
             yield '        {\n'
             yield f'            var envelope = new {envelope_type}();\n'
@@ -366,7 +366,7 @@ class SdkInterfaceGen:
                     yield f'            envelope.{pascal_case(oneof_name)}Discriminator = discriminator;\n'
             
             yield '            setField(envelope, message);\n'
-            yield '            await _sdk.SendAsync(envelope, seq, sysId, compId);\n'
+            yield '            return await _sdk.SendAsync(envelope, seq, sysId, compId);\n'
             yield '        }\n'
             yield '\n'
     
@@ -433,7 +433,7 @@ class SdkInterfaceGen:
                 
                 # Build parameter list
                 env_params = ', '.join([f'{csharp_type} {f_name}' for f_name, f, csharp_type in envelope_fields])
-                yield f'        public async Task {method_name}({payload_type} message, {env_params}, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
+                yield f'        public async Task<SendResult> {method_name}({payload_type} message, {env_params}, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
                 yield '        {\n'
                 
                 # Build the configure action
@@ -441,9 +441,9 @@ class SdkInterfaceGen:
                 
                 if oneof.auto_discriminator and oneof.discriminator_type == "field_order":
                     enum_entry = pascal_case(field_name)
-                    yield f'            await SendAs{envelope_msg.name}(message, (env, msg) => env.{pascal_case(field_name)} = msg, {enum_name}.{enum_entry}, env => {{ {field_assignments}; }}, seq, sysId, compId);\n'
+                    yield f'            return await SendAs{envelope_msg.name}(message, (env, msg) => env.{pascal_case(field_name)} = msg, {enum_name}.{enum_entry}, env => {{ {field_assignments}; }}, seq, sysId, compId);\n'
                 else:
-                    yield f'            await SendAs{envelope_msg.name}(message, (env, msg) => env.{pascal_case(field_name)} = msg, env => {{ {field_assignments}; }}, seq, sysId, compId);\n'
+                    yield f'            return await SendAs{envelope_msg.name}(message, (env, msg) => env.{pascal_case(field_name)} = msg, env => {{ {field_assignments}; }}, seq, sysId, compId);\n'
                 
                 yield '        }\n'
                 yield '\n'
@@ -470,7 +470,7 @@ class SdkInterfaceGen:
                 # Build parameter list: payload fields first, then envelope fields
                 payload_params = ', '.join([f'{pf_csharp_type} {pascal_case(pf_name).lower()}' for pf_name, pf, pf_csharp_type in payload_fields])
                 env_params = ', '.join([f'{csharp_type} {f_name}' for f_name, f, csharp_type in envelope_fields])
-                yield f'        public async Task {method_name}({payload_params}, {env_params}, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
+                yield f'        public async Task<SendResult> {method_name}({payload_params}, {env_params}, byte seq = 0, byte sysId = 0, byte compId = 0)\n'
                 yield '        {\n'
                 yield f'            var message = new {payload_type}();\n'
                 
@@ -504,7 +504,7 @@ class SdkInterfaceGen:
                 
                 # Call the message overload
                 env_args = ', '.join([f_name for f_name, f, csharp_type in envelope_fields])
-                yield f'            await {method_name}(message, {env_args}, seq, sysId, compId);\n'
+                yield f'            return await {method_name}(message, {env_args}, seq, sysId, compId);\n'
                 yield '        }\n'
                 yield '\n'
 
