@@ -1035,7 +1035,7 @@ class AccumulatingReader:
             FrameMsgInfo with valid=True if successful, valid=False if no more complete frames.
         """
         if self._state != AccumulatingReaderState.BUFFER_MODE:
-            return FrameMsgInfo()
+            return self._with_diag(FrameMsgInfo())
         
         # First, try to complete a partial message from the internal buffer
         if self._internal_data_len > 0 and self._current_offset == 0:
@@ -1056,11 +1056,11 @@ class AccumulatingReader:
                 return result
             else:
                 # Still not enough data for a complete message
-                return FrameMsgInfo()
+                return self._with_diag(FrameMsgInfo())
         
         # Parse from current buffer
         if self._current_buffer is None or self._current_offset >= self._current_size:
-            return FrameMsgInfo()
+            return self._with_diag(FrameMsgInfo())
         
         remaining = self._current_buffer[self._current_offset:]
         result = self._parse_buffer(remaining)
@@ -1076,7 +1076,7 @@ class AccumulatingReader:
             self._internal_data_len = remaining_len
             self._current_offset = self._current_size
         
-        return FrameMsgInfo()
+        return self._with_diag(FrameMsgInfo())
     
     # =========================================================================
     # Stream Mode API

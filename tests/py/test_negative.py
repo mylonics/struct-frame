@@ -403,6 +403,23 @@ def test_partial_frame_boundary():
     return result.valid  # Expect success after accumulating both halves
 
 
+def test_buffer_mode_invalid_result_has_diagnostics():
+    """Diagnostics: buffer-mode next() attaches diagnostics even for invalid results."""
+    msg = _make_test_msg()
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    buffer = bytes(writer.data())
+    frame_size = writer.size()
+
+    if frame_size < 10:
+        return False
+
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader.add_data(buffer[: frame_size // 2])
+    result = reader.next()
+    return (not result.valid) and (result.diagnostics is not None) and (result.diagnostics == reader.diagnostics)
+
+
 def _make_test_msg():
     """Helper: create a standard test message"""
     msg = BasicTypesMessage()
@@ -771,6 +788,7 @@ def main():
         ("Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc),
         ("Bulk profile: Corrupted pkg_id byte", test_bulk_corrupted_pkg_id),
         ("Bulk profile: Corrupted msg_id low byte", test_bulk_corrupted_msg_id_low_byte),
+        ("Buffer mode: invalid result carries diagnostics", test_buffer_mode_invalid_result_has_diagnostics),
         ("Corrupted CRC detection", test_corrupted_crc),
         ("Corrupted length field detection", test_corrupted_length),
         ("Cross-package rejection (pkgid mismatch)", test_cross_package_rejection),
