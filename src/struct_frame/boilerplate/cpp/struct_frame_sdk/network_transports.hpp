@@ -65,7 +65,7 @@ public:
         }
     }
 
-    void Connect() {
+    void Connect() override {
         try {
             // Resolve remote endpoint
             asio::ip::udp::resolver resolver(io_context_);
@@ -96,7 +96,7 @@ public:
         }
     }
 
-    void Disconnect() {
+    void Disconnect() override {
         connected_ = false;
         io_context_.stop();
         if (socket_.is_open()) {
@@ -108,7 +108,7 @@ public:
         io_context_.restart();
     }
 
-    size_t Send(const uint8_t* data, size_t length) {
+    size_t Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !socket_.is_open()) {
             HandleError("UDP socket not connected");
             return 0;
@@ -178,7 +178,7 @@ public:
         }
     }
 
-    void Connect() {
+    void Connect() override {
         try {
             // Resolve endpoint
             asio::ip::tcp::resolver resolver(io_context_);
@@ -202,7 +202,7 @@ public:
         }
     }
 
-    void Disconnect() {
+    void Disconnect() override {
         connected_ = false;
         io_context_.stop();
         if (socket_.is_open()) {
@@ -216,7 +216,7 @@ public:
         io_context_.restart();
     }
 
-    size_t Send(const uint8_t* data, size_t length) {
+    size_t Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !socket_.is_open()) {
             HandleError("TCP socket not connected");
             return 0;
@@ -282,7 +282,7 @@ public:
         }
     }
 
-    void Connect() {
+    void Connect() override {
         try {
             // Open serial port
             serial_port_.open(serial_config_.port);
@@ -310,7 +310,7 @@ public:
         }
     }
 
-    void Disconnect() {
+    void Disconnect() override {
         connected_ = false;
         io_context_.stop();
         if (serial_port_.is_open()) {
@@ -322,7 +322,7 @@ public:
         io_context_.restart();
     }
 
-    size_t Send(const uint8_t* data, size_t length) {
+    size_t Send(const uint8_t* data, size_t length) override {
         if (!connected_ || !serial_port_.is_open()) {
             HandleError("Serial port not connected");
             return 0;

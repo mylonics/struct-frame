@@ -103,8 +103,23 @@ public:
         return connected_;
     }
 
+    /**
+     * Establish a connection. Subclasses should override to provide actual
+     * connection logic. Default implementation is a no-op.
+     */
     virtual void Connect() {}
+
+    /**
+     * Close the connection. Subclasses should override to provide actual
+     * disconnection logic. Default implementation is a no-op.
+     */
     virtual void Disconnect() {}
+
+    /**
+     * Send data through the transport. Subclasses should override to provide
+     * actual send logic. Default implementation is a no-op that returns 0.
+     * @return Number of bytes sent.
+     */
     virtual size_t Send(const uint8_t*, size_t) { return 0; }
 };
 
