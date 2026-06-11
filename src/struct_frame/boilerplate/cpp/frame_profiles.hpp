@@ -976,10 +976,10 @@ class AccumulatingReader {
               diagnostics_.cnt_sync_recoveries++;
               state_ = State::LookingForStart1;
               internal_data_len_ = 0;
-            FrameMsgInfo r;
-            r.status = FrameMsgStatus::SyncRecovery;
-            return with_diagnostics(r);
-          }
+              FrameMsgInfo r;
+              r.status = FrameMsgStatus::SyncRecovery;
+              return with_diagnostics(r);
+            }
 
           if (msg_len == 0) {
             // Zero-length message - complete!

@@ -947,7 +947,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             
                             if (reader->expected_frame_size > reader->buffer_size) {
                                 reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
-                reader->diagnostics.cnt_sync_recoveries++;
+                                reader->diagnostics.cnt_sync_recoveries++;
                                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                                 reader->internal_data_len = 0;
                                 result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
@@ -1017,7 +1017,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                     
                     if (reader->expected_frame_size > reader->buffer_size) {
                         reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
-                reader->diagnostics.cnt_sync_recoveries++;
+                        reader->diagnostics.cnt_sync_recoveries++;
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
                         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
@@ -1044,7 +1044,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                                 result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                             }
                             reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
-                reader->diagnostics.cnt_sync_recoveries++;
+                            reader->diagnostics.cnt_sync_recoveries++;
                         }
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
@@ -1089,7 +1089,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                     }
                     reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
-                reader->diagnostics.cnt_sync_recoveries++;
+                    reader->diagnostics.cnt_sync_recoveries++;
                 }
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
@@ -1164,7 +1164,6 @@ static inline void accumulating_reader_reset(accumulating_reader_t* reader) {
     reader->last_seq = 0;
     reader->last_seq_valid = false;
 }
-
 
 
 
