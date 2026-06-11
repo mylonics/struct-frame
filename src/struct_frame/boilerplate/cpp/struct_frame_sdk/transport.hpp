@@ -67,7 +67,7 @@ protected:
         }
     }
 
-    virtual void AttemptReconnect() {
+    void AttemptReconnect() {
         if (config_.max_reconnect_attempts > 0 &&
             reconnect_attempts_ >= config_.max_reconnect_attempts) {
             return;
@@ -82,7 +82,7 @@ public:
     BaseTransport(const TransportConfig& config = TransportConfig())
         : config_(config) {}
 
-    virtual ~BaseTransport() = default;
+    ~BaseTransport() = default;
 
     void OnData(DataCallbackFn callback, void* user_data) {
         data_callback_ = callback;
@@ -104,23 +104,23 @@ public:
     }
 
     /**
-     * Establish a connection. Subclasses should override to provide actual
-     * connection logic. Default implementation is a no-op.
+     * Establish a connection. Concrete transports can hide this method to
+     * provide actual connection logic. Default implementation is a no-op.
      */
-    virtual void Connect() {}
+    void Connect() {}
 
     /**
-     * Close the connection. Subclasses should override to provide actual
-     * disconnection logic. Default implementation is a no-op.
+     * Close the connection. Concrete transports can hide this method to
+     * provide actual disconnection logic. Default implementation is a no-op.
      */
-    virtual void Disconnect() {}
+    void Disconnect() {}
 
     /**
-     * Send data through the transport. Subclasses should override to provide
-     * actual send logic. Default implementation is a no-op that returns 0.
+     * Send data through the transport. Concrete transports can hide this
+     * method to provide actual send logic. Default implementation returns 0.
      * @return Number of bytes sent.
      */
-    virtual size_t Send(const uint8_t*, size_t) { return 0; }
+    size_t Send(const uint8_t*, size_t) { return 0; }
 };
 
 } // namespace sdk
