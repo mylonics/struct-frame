@@ -85,7 +85,14 @@ except (ImportError, ModuleNotFoundError, SyntaxError) as exc:  # pragma: no cov
 
 @st.composite
 def basic_types_messages(draw):  # noqa: D401
-    """Random BasicTypesMessage with field values inside their declared ranges."""
+    """Random BasicTypesMessage with field values inside their declared ranges.
+
+    Floats deliberately *include* NaN/±Inf (and, via Hypothesis, ±0.0 and
+    subnormals): the round-trip compares the serialized byte representation, so
+    the special-value bit patterns must survive encode→decode. These were
+    previously excluded (allow_nan=False/allow_infinity=False), leaving a real
+    gap — IEEE-754 special values are a classic source of serialization bugs.
+    """
     return BasicTypesMessage(
         small_int=draw(st.integers(min_value=-(2**7), max_value=2**7 - 1)),
         medium_int=draw(st.integers(min_value=-(2**15), max_value=2**15 - 1)),
@@ -95,10 +102,20 @@ def basic_types_messages(draw):  # noqa: D401
         medium_uint=draw(st.integers(min_value=0, max_value=2**16 - 1)),
         regular_uint=draw(st.integers(min_value=0, max_value=2**32 - 1)),
         large_uint=draw(st.integers(min_value=0, max_value=2**64 - 1)),
-        single_precision=draw(st.floats(allow_nan=False, allow_infinity=False, width=32)),
-        double_precision=draw(st.floats(allow_nan=False, allow_infinity=False, width=64)),
+        single_precision=draw(st.floats(allow_nan=True, allow_infinity=True, width=32)),
+        double_precision=draw(st.floats(allow_nan=True, allow_infinity=True, width=64)),
         flag=draw(st.booleans()),
     )
+
+
+# Explicit IEEE-754 edge values that must round-trip bit-for-bit, in addition to
+# the randomized coverage above (guarantees these are always exercised).
+_EDGE_FLOATS = [
+    0.0, -0.0, 1.0, -1.0,
+    float("inf"), float("-inf"), float("nan"),
+    1.175494e-38,   # ~smallest normal float32
+    3.402823e38,    # ~largest finite float32
+]
 
 
 # ---------------------------------------------------------------------------
@@ -142,3 +159,16 @@ def test_basic_types_roundtrip_bulk(msg):
 def test_basic_types_roundtrip_network(msg):
     """Network profile (CRC + extended msg-id): encode → decode."""
     _roundtrip(PROFILE_NETWORK_CONFIG, msg)
+
+
+@pytest.mark.parametrize("value", _EDGE_FLOATS, ids=lambda v: repr(v))
+def test_ieee754_edge_floats_roundtrip(value):
+    """IEEE-754 edge values (±0.0, ±Inf, NaN, subnormal/max) must survive
+    encode→decode bit-for-bit via the serialized representation.
+
+    The round-trip compares ``serialize()`` bytes, so e.g. -0.0 (sign bit set)
+    must not collapse to +0.0 and a NaN bit pattern must be preserved.
+    """
+    msg = BasicTypesMessage(single_precision=value, double_precision=value)
+    result = _roundtrip(PROFILE_STANDARD_CONFIG, msg)
+    assert result.valid

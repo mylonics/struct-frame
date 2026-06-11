@@ -38,7 +38,13 @@ SRC_DIR = REPO_ROOT / "src"
 
 
 def _load_model(sf_text: str):
-    """Parse an in-memory .sf definition and return the package dict."""
+    """Parse an in-memory .sf definition.
+
+    Returns ``(packages, fname, output)`` where ``packages`` is None when the
+    generator rejected the input, and ``output`` is the captured stdout+stderr
+    (so negative tests can assert the rejection *reason*, not just that it was
+    rejected).
+    """
     sys.path.insert(0, str(SRC_DIR))
     import struct_frame.generate as gen_mod
 
@@ -50,17 +56,20 @@ def _load_model(sf_text: str):
         f.write(sf_text)
         fname = f.name
 
+    import contextlib
+    import io
+    buf = io.StringIO()
     try:
-        ok = gen_mod.parseFile(fname)
-        if not ok:
-            return None, None
-
-        packages = dict(gen_mod.packages)
-        for pkg in packages.values():
-            ok = pkg.validate_package(packages)
-            if not ok:
-                return None, None
-        return packages, fname
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            ok = gen_mod.parseFile(fname)
+            packages = None
+            if ok:
+                packages = dict(gen_mod.packages)
+                for pkg in packages.values():
+                    if not pkg.validate_package(packages):
+                        packages = None
+                        break
+        return packages, fname, buf.getvalue()
     finally:
         Path(fname).unlink(missing_ok=True)
 
@@ -104,7 +113,7 @@ def test_override_used():
           uint32 value = 1;
         }
     """)
-    packages, _ = _load_model(sf)
+    packages, _, output = _load_model(sf)
     _check(packages is not None, "model failed to load")
     msg = packages["magic_test"].messages["OverrideMsg"]
     _check(msg.magic_bytes == (0xAB, 0xCD),
@@ -134,7 +143,7 @@ def test_override_wins_over_calculated():
           double field_x = 1;
         }
     """)
-    packages, _ = _load_model(sf)
+    packages, _, output = _load_model(sf)
     _check(packages is not None, "model failed to load")
     msgs = packages["magic_test2"].messages
     _check(msgs["MsgA"].magic_bytes == (0x11, 0x22), "MsgA magic mismatch")
@@ -163,7 +172,7 @@ def test_different_overrides():
           uint8 x = 1;
         }
     """)
-    packages, _ = _load_model(sf)
+    packages, _, output = _load_model(sf)
     _check(packages is not None, "model failed to load")
     msgs = packages["magic_test3"].messages
     _check(msgs["MsgX"].magic_bytes == (0x01, 0x02), "MsgX magic mismatch")
@@ -186,7 +195,7 @@ def test_no_override_is_none():
           uint8 x = 1;
         }
     """)
-    packages, _ = _load_model(sf)
+    packages, _, output = _load_model(sf)
     _check(packages is not None, "model failed to load")
     msg = packages["magic_test4"].messages["PlainMsg"]
     _check(msg.magic_bytes_override is None,
@@ -210,7 +219,7 @@ def test_decimal_values():
           uint8 x = 1;
         }
     """)
-    packages, _ = _load_model(sf)
+    packages, _, output = _load_model(sf)
     _check(packages is not None, "model failed to load")
     msg = packages["magic_test5"].messages["DecimalMsg"]
     # 171 = 0xAB, 205 = 0xCD
@@ -234,9 +243,11 @@ def test_zero_byte_rejected():
               uint8 x = 1;
             }}
         """)
-        packages, _ = _load_model(sf)
+        packages, _, output = _load_model(sf)
         _check(packages is None,
                f"zero magic byte '{bad}' should have been rejected")
+        _check("magic bytes must be non-zero" in output,
+               f"'{bad}' rejected, but not for the non-zero reason; output was:\n{output}")
     print("  [PASS] zero byte rejected")
 
 
@@ -254,8 +265,10 @@ def test_out_of_range_rejected():
           uint8 x = 1;
         }
     """)
-    packages, _ = _load_model(sf)
+    packages, _, output = _load_model(sf)
     _check(packages is None, "value 256 should have been rejected")
+    _check("each byte must be in range 0-255" in output,
+           f"256 rejected, but not for the out-of-range reason; output was:\n{output}")
     print("  [PASS] out-of-range byte rejected")
 
 
@@ -274,9 +287,11 @@ def test_wrong_count_rejected():
               uint8 x = 1;
             }}
         """)
-        packages, _ = _load_model(sf)
+        packages, _, output = _load_model(sf)
         _check(packages is None,
                f"wrong-count magic_bytes '{bad}' should have been rejected")
+        _check("expected two comma-separated byte values" in output,
+               f"'{bad}' rejected, but not for the wrong-count reason; output was:\n{output}")
     print("  [PASS] wrong number of values rejected")
 
 

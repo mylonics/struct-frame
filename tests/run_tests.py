@@ -2471,9 +2471,10 @@ class TestRunner:
             compile_only: bool = False, skip_clean: bool = False,
             profile_filter: Optional[List[str]] = None,
             parallel_compile: bool = True,
-            profiling_only: bool = False) -> bool:
+            profiling_only: bool = False,
+            require_langs: Optional[List[str]] = None) -> bool:
         """Run the complete test suite.
-        
+
         Args:
             generate_only: Stop after code generation.
             check_tools_only: Only check tool availability.
@@ -2482,6 +2483,9 @@ class TestRunner:
             profile_filter: Only test specific profiles (e.g., ['ProfileStandard']).
             parallel_compile: Use parallel compilation (default True).
             profiling_only: Only run profiling tests (skips standard/extended/variable tests).
+            require_langs: Languages that MUST have their toolchain available; if
+                any is missing the run fails instead of silently skipping it
+                (use in CI to guarantee the full matrix actually executed).
         """
         print(Colors.bold("Starting struct-frame Test Suite"))
         print(f"Project root: {self.project_root}")
@@ -2512,7 +2516,17 @@ class TestRunner:
             with self.timed_phase("Tool Check"):
                 tool_results = self.check_tools()
             available = [lid for lid, info in tool_results.items() if info["available"]]
-            
+
+            # L5: in CI, guarantee the requested languages actually run instead of
+            # being silently skipped because a toolchain is missing.
+            if require_langs:
+                missing = [lid for lid in require_langs if lid not in available]
+                if missing:
+                    print(f"{Colors.fail_tag()} Required languages missing toolchains "
+                          f"(would be silently skipped): {', '.join(missing)}")
+                    print("  Refusing to report success without them (--require-langs).")
+                    return False
+
             if check_tools_only:
                 return all(info["available"] for info in tool_results.values())
             
@@ -2677,7 +2691,11 @@ Examples:
                         help="Run only time profiling tests (skips standard/extended/variable tests)")
     parser.add_argument("--dotnet-framework", default=None,
                         help="C# target framework moniker (e.g., net8.0, net10.0). Overrides SF_DOTNET_TFM.")
-    
+    parser.add_argument("--require-langs", default=None, metavar="LANG[,LANG...]",
+                        help="Comma-separated languages that MUST have toolchains available; "
+                             "fail (rather than silently skip) if any is missing. Use in CI to "
+                             "guarantee the full matrix ran, e.g. --require-langs c,cpp,py,ts,js,csharp,rust")
+
     args = parser.parse_args()
     
     # Handle color settings
@@ -2698,6 +2716,10 @@ Examples:
     if skip_languages:
         runner.skipped_languages = skip_languages
     
+    require_langs = None
+    if args.require_langs:
+        require_langs = [l.strip() for l in args.require_langs.split(",") if l.strip()]
+
     success = runner.run(
         generate_only=args.only_generate,
         check_tools_only=args.check_tools,
@@ -2705,7 +2727,8 @@ Examples:
         skip_clean=args.no_clean,
         profile_filter=args.profiles,
         parallel_compile=not args.no_parallel,
-        profiling_only=args.profiling
+        profiling_only=args.profiling,
+        require_langs=require_langs,
     )
     
     return 0 if success else 1

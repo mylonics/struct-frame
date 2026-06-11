@@ -161,7 +161,15 @@ def test_zero_length_buffer():
     return not result.valid  # Expect failure
 
 def test_corrupted_length():
-    """Test: Parser handles corrupted length field"""
+    """Test: Parser rejects a frame whose length byte is corrupted to 0xFF.
+
+    Note on mechanism: inflating the length to 0xFF makes the claimed payload
+    exceed the bytes actually present, so the parser rejects via *insufficient
+    data* (same path as a truncated frame) rather than a detected length
+    mismatch. The detected length-mismatch path (a small, in-bounds wrong
+    length that still lets the frame complete) is covered separately by
+    test_diagnostic_len_error, which asserts cnt_len_errors == 1.
+    """
     # Create a valid message
     msg = BasicTypesMessage()
     msg.small_int = 42
@@ -639,8 +647,9 @@ def test_status_collecting():
 def test_status_crc_failure():
     """FrameMsgStatus: push_byte returns CRC_FAILURE when a complete frame has bad CRC."""
     writer = ProfileStandardWriter(capacity=1024)
-    msg = BasicTypesMessage()
-    msg.uint8_field = 99
+    # Use a real BasicTypesMessage field (the class has no `uint8_field`; the
+    # previous assignment silently created an unused phantom attribute).
+    msg = _make_test_msg()
     writer.write(msg)
     buffer = bytearray(writer.data())
     frame_size = writer.size()

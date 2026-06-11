@@ -33,16 +33,29 @@ jobs:
       - name: Generate code (required by property tests)
         run: python test_all.py --only-generate --skip-lang csharp --skip-lang rust
       - name: Run Python suite under coverage
-        # Coverage focuses on the generator (src/struct_frame), which is what
-        # Python tooling can instrument end-to-end.  The generated message
-        # modules under tests/generated/py are imported by the property test
-        # and contribute incidentally.  Failures here propagate so Codecov's
-        # `fail_ci_if_error: false` is the only suppression knob.
+        # IMPORTANT — what this number does and does NOT measure.
+        # Only *in-process* execution of the generator (src/struct_frame) is
+        # instrumented. Two large sources of real exercise are NOT captured here,
+        # so the reported percentage UNDERSTATES actual coverage:
+        #   1. Tests that invoke the generator as a subprocess (`python main.py`)
+        #      — e.g. test_generator_validation.py — are not instrumented by the
+        #      parent `coverage` process.
+        #   2. The per-language code emitters (c_gen, cpp_gen, ts_gen, js_gen,
+        #      csharp_gen, rust_gen, gql_gen) are only imported when generating
+        #      those languages, which the full cross-language suite in
+        #      tests/run_tests.py does — but that suite is not run under coverage.
+        # test_magic_bytes.py is included because its `_load_model` parses and
+        # validates in-process, exercising the parser/option/validation front end.
+        # Follow-up to make this honest: enable coverage subprocess capture
+        # (COVERAGE_PROCESS_START + parallel mode + `coverage combine`) so the
+        # subprocess generator runs and per-language emitters are measured too.
         run: |
           coverage run --source=src/struct_frame --branch \
               -m pytest tests/test_property_roundtrip.py -v
           coverage run --source=src/struct_frame --branch --append \
               tests/test_generator_validation.py
+          coverage run --source=src/struct_frame --branch --append \
+              tests/test_magic_bytes.py
           coverage xml -o coverage.xml
           coverage report --skip-covered --skip-empty
       - name: Upload to Codecov
