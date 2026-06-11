@@ -40,6 +40,11 @@ namespace StructFrame
         /// </summary>
         public FrameMsgStatus Status { get; set; }
 
+        /// <summary>
+        /// Optional parser diagnostics snapshot attached by stream readers.
+        /// </summary>
+        public ParserDiagnostics? Diagnostics { get; set; }
+
         public FrameMsgInfo(bool valid, ushort msgId, int msgLen, int frameSize, byte[]? msgData, int offset = 0)
         {
             Valid = valid;
@@ -54,6 +59,7 @@ namespace StructFrame
             CompId = 0;
             PkgId = 0;
             Status = FrameMsgStatus.None;
+            Diagnostics = null;
         }
 
         public static FrameMsgInfo Invalid => new FrameMsgInfo(false, 0, 0, 0, null);

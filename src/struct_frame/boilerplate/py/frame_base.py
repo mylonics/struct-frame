@@ -142,6 +142,7 @@ class FrameMsgInfo:
 
     # Parser state / reason code (meaningful when valid is False)
     status: FrameMsgStatus = FrameMsgStatus.NONE
+    diagnostics: Optional['ParserDiagnostics'] = None
     
     def __bool__(self) -> bool:
         """Allow use in boolean context: while (result := reader.next()): ..."""
@@ -167,6 +168,8 @@ class ParserDiagnostics:
         cnt_sync_recoveries: Times the parser had to discard bytes and
                             re-search for a frame start.  Indicates lost
                             bytes or buffer overflows.
+        cnt_failed_bytes:   Total bytes discarded when failures forced the
+                    parser to restart searching for frame start.
         cnt_len_errors:     Frames where the explicit length in the header
                             does not match the expected message-struct size
                             returned by get_message_info().  Vital for
@@ -178,6 +181,7 @@ class ParserDiagnostics:
     """
     cnt_crc_failures: int = 0
     cnt_sync_recoveries: int = 0
+    cnt_failed_bytes: int = 0
     cnt_len_errors: int = 0
     cnt_seq_gaps: int = 0
 

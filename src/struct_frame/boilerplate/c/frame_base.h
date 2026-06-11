@@ -95,12 +95,15 @@ typedef enum frame_msg_status {
   FRAME_MSG_STATUS_SYNC_RECOVERY = 4,    /**< Bytes discarded to re-find frame start. */
 } frame_msg_status_t;
 
+struct frame_parser_diagnostics;
+
 typedef struct frame_msg_info {
   bool valid;
   uint16_t msg_id; /* 16-bit to support pkg_id (high byte) + msg_id (low byte) */
   size_t msg_len;
   uint8_t* msg_data;
   frame_msg_status_t status;
+  const struct frame_parser_diagnostics* diagnostics;
 } frame_msg_info_t;
 
 /**
@@ -113,6 +116,8 @@ typedef struct frame_msg_info {
  *                     Indicates noise or corruption on the line.
  * cnt_sync_recoveries: Times the parser discarded bytes and re-searched for
  *                     a frame start.  Indicates lost bytes or buffer overflows.
+ * cnt_failed_bytes:   Total bytes discarded when failures forced a reset to
+ *                     searching for frame start.
  * cnt_len_errors:     Frames where the header length field does not match the
  *                     expected message-struct size from get_message_info.
  *                     Vital for detecting mismatched definitions on profiles
@@ -124,6 +129,7 @@ typedef struct frame_msg_info {
 typedef struct frame_parser_diagnostics {
   uint32_t cnt_crc_failures;
   uint32_t cnt_sync_recoveries;
+  uint32_t cnt_failed_bytes;
   uint32_t cnt_len_errors;
   uint32_t cnt_seq_gaps;
 } frame_parser_diagnostics_t;
@@ -147,7 +153,7 @@ typedef struct frame_parser_diagnostics {
  */
 static inline frame_msg_info_t frame_validate_payload_with_crc(const uint8_t* buffer, size_t length, size_t header_size,
                                                                size_t length_bytes, size_t crc_start_offset) {
-  frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
+  frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
   const size_t footer_size = 2; /* CRC is always 2 bytes */
   const size_t overhead = header_size + footer_size;
 
@@ -181,7 +187,7 @@ static inline frame_msg_info_t frame_validate_payload_with_crc(const uint8_t* bu
  */
 static inline frame_msg_info_t frame_validate_payload_minimal(const uint8_t* buffer, size_t length,
                                                               size_t header_size) {
-  frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
+  frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
 
   if (length < header_size) {
     return result;

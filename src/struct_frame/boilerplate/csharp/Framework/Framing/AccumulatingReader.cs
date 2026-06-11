@@ -241,7 +241,7 @@ namespace StructFrame.Framing
                     return HandleCollectingPayload(b);
                 default:
                     _state = State.LookingForStart1;
-                    return FrameMsgInfo.Invalid;
+                    return AttachDiagnostics(FrameMsgInfo.Invalid);
             }
         }
 
@@ -299,6 +299,7 @@ namespace StructFrame.Framing
             else
             {
                 _diagnostics.CntSyncRecoveries++;
+                _diagnostics.CntFailedBytes += _internalDataLen + 1;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
                 return StatusResult(FrameMsgStatus.SyncRecovery);
@@ -311,6 +312,7 @@ namespace StructFrame.Framing
             if (_internalDataLen >= _bufferSize)
             {
                 _diagnostics.CntSyncRecoveries++;
+                _diagnostics.CntFailedBytes += _internalDataLen + 1;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
                 return StatusResult(FrameMsgStatus.SyncRecovery);
@@ -331,6 +333,7 @@ namespace StructFrame.Framing
                         if (_expectedFrameSize > _bufferSize)
                         {
                             _diagnostics.CntSyncRecoveries++;
+                            _diagnostics.CntFailedBytes += _internalDataLen;
                             _state = State.LookingForStart1;
                             _internalDataLen = 0;
                             return StatusResult(FrameMsgStatus.SyncRecovery);
@@ -345,7 +348,7 @@ namespace StructFrame.Framing
                             _state = State.LookingForStart1;
                             _internalDataLen = 0;
                             _expectedFrameSize = 0;
-                            return result;
+                            return AttachDiagnostics(result);
                         }
 
                         _state = State.CollectingPayload;
@@ -353,6 +356,7 @@ namespace StructFrame.Framing
                     else
                     {
                         _diagnostics.CntSyncRecoveries++;
+                        _diagnostics.CntFailedBytes += _internalDataLen;
                         _state = State.LookingForStart1;
                         _internalDataLen = 0;
                         return StatusResult(FrameMsgStatus.SyncRecovery);
@@ -399,6 +403,7 @@ namespace StructFrame.Framing
                     if (_expectedFrameSize > _bufferSize)
                     {
                         _diagnostics.CntSyncRecoveries++;
+                        _diagnostics.CntFailedBytes += _internalDataLen;
                         _state = State.LookingForStart1;
                         _internalDataLen = 0;
                         return StatusResult(FrameMsgStatus.SyncRecovery);
@@ -421,6 +426,7 @@ namespace StructFrame.Framing
             if (_internalDataLen >= _bufferSize)
             {
                 _diagnostics.CntSyncRecoveries++;
+                _diagnostics.CntFailedBytes += _internalDataLen + 1;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
                 return StatusResult(FrameMsgStatus.SyncRecovery);
@@ -446,6 +452,7 @@ namespace StructFrame.Framing
                 if (_expectedFrameSize > _bufferSize)
                 {
                     _diagnostics.CntSyncRecoveries++;
+                    _diagnostics.CntFailedBytes += _internalDataLen;
                     _state = State.LookingForStart1;
                     _internalDataLen = 0;
                     return StatusResult(FrameMsgStatus.SyncRecovery);
@@ -460,7 +467,7 @@ namespace StructFrame.Framing
                     _state = State.LookingForStart1;
                     _internalDataLen = 0;
                     _expectedFrameSize = 0;
-                    return result;
+                    return AttachDiagnostics(result);
                 }
 
                 _state = State.CollectingPayload;
@@ -468,6 +475,7 @@ namespace StructFrame.Framing
             else
             {
                 _diagnostics.CntSyncRecoveries++;
+                _diagnostics.CntFailedBytes += _internalDataLen;
                 _state = State.LookingForStart1;
                 _internalDataLen = 0;
                 return StatusResult(FrameMsgStatus.SyncRecovery);
@@ -511,6 +519,7 @@ namespace StructFrame.Framing
                 {
                     result.Status = FrameMsgStatus.SyncRecovery;
                 }
+                _diagnostics.CntFailedBytes += result.FrameSize;
                 _diagnostics.CntSyncRecoveries++;
             }
 
@@ -519,14 +528,20 @@ namespace StructFrame.Framing
                 result.FrameData = _internalBuffer.AsMemory(0, result.FrameSize);
             }
 
-            return result;
+            return AttachDiagnostics(result);
         }
 
-        private static FrameMsgInfo StatusResult(FrameMsgStatus status)
+        private FrameMsgInfo StatusResult(FrameMsgStatus status)
         {
             var r = FrameMsgInfo.Invalid;
             r.Status = status;
-            return r;
+            return AttachDiagnostics(r);
+        }
+
+        private FrameMsgInfo AttachDiagnostics(FrameMsgInfo result)
+        {
+            result.Diagnostics = _diagnostics;
+            return result;
         }
     }
 
