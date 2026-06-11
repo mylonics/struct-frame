@@ -21,6 +21,12 @@ namespace StructFrame
         public int CntSyncRecoveries;
 
         /// <summary>
+        /// Total bytes discarded when failures forced the parser to restart
+        /// searching for the frame start.
+        /// </summary>
+        public int CntFailedBytes;
+
+        /// <summary>
         /// Number of frames where the header length field does not match the expected
         /// message-struct size from the message-info callback.
         /// Vital for detecting mismatched definitions on profiles that carry an explicit length.

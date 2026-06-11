@@ -260,7 +260,7 @@ static inline frame_msg_info_t profile_parse_with_crc(
     const uint8_t* buffer, size_t length,
     bool (*get_message_info_func)(uint16_t, message_info_t*)) {
     
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
     uint8_t header_size = profile_header_size(config);
     uint8_t footer_size = profile_footer_size(config);
     size_t overhead = header_size + footer_size;
@@ -364,7 +364,7 @@ static inline frame_msg_info_t profile_parse_minimal(
     const uint8_t* buffer, size_t length,
     bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
     
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
     uint8_t header_size = profile_header_size(config);
     
     if (length < header_size) {
@@ -510,7 +510,7 @@ static inline void buffer_reader_init(
 
 static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
     
     if (reader->offset >= reader->size) {
         return result;
@@ -765,7 +765,8 @@ static inline frame_msg_info_t _acc_parse_buffer(
 
 static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
+    result.diagnostics = &reader->diagnostics;
     
     if (reader->state != ACC_STATE_BUFFER_MODE) {
         return result;
@@ -817,7 +818,8 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
 
 static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader_t* reader, uint8_t byte)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
+    result.diagnostics = &reader->diagnostics;
     
     uint8_t header_size = profile_header_size(reader->config);
     uint8_t start_byte1 = reader->config->header.start_byte1;
@@ -853,8 +855,9 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             
                             if (reader->expected_frame_size > reader->buffer_size) {
                                 reader->state = ACC_STATE_LOOKING_FOR_START1;
+                                reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
                                 reader->internal_data_len = 0;
-                                reader->diagnostics.cnt_sync_recoveries++;
+                reader->diagnostics.cnt_sync_recoveries++;
                                 result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                                 return result;
                             }
@@ -872,14 +875,16 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             
                             reader->state = ACC_STATE_COLLECTING_PAYLOAD;
                         } else {
-                            reader->diagnostics.cnt_sync_recoveries++;
+                            reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                reader->diagnostics.cnt_sync_recoveries++;
                             reader->state = ACC_STATE_LOOKING_FOR_START1;
                             reader->internal_data_len = 0;
                             result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                             return result;
                         }
                     } else {
-                        reader->diagnostics.cnt_sync_recoveries++;
+                        reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                reader->diagnostics.cnt_sync_recoveries++;
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
                         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
@@ -910,6 +915,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                 reader->internal_buffer[0] = byte;
                 reader->internal_data_len = 1;
             } else {
+                reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
                 reader->diagnostics.cnt_sync_recoveries++;
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
@@ -920,6 +926,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             
         case ACC_STATE_COLLECTING_HEADER:
             if (reader->internal_data_len >= reader->buffer_size) {
+                reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
                 reader->diagnostics.cnt_sync_recoveries++;
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
@@ -939,7 +946,8 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             reader->expected_frame_size = header_size + msg_len;
                             
                             if (reader->expected_frame_size > reader->buffer_size) {
-                                reader->diagnostics.cnt_sync_recoveries++;
+                                reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                reader->diagnostics.cnt_sync_recoveries++;
                                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                                 reader->internal_data_len = 0;
                                 result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
@@ -959,14 +967,16 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             
                             reader->state = ACC_STATE_COLLECTING_PAYLOAD;
                         } else {
-                            reader->diagnostics.cnt_sync_recoveries++;
+                            reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                reader->diagnostics.cnt_sync_recoveries++;
                             reader->state = ACC_STATE_LOOKING_FOR_START1;
                             reader->internal_data_len = 0;
                             result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                             return result;
                         }
                     } else {
-                        reader->diagnostics.cnt_sync_recoveries++;
+                        reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                reader->diagnostics.cnt_sync_recoveries++;
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
                         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
@@ -1006,7 +1016,8 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                     reader->expected_frame_size = header_size + footer_size + payload_len;
                     
                     if (reader->expected_frame_size > reader->buffer_size) {
-                        reader->diagnostics.cnt_sync_recoveries++;
+                        reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                reader->diagnostics.cnt_sync_recoveries++;
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
                         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
@@ -1032,7 +1043,8 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                             } else {
                                 result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                             }
-                            reader->diagnostics.cnt_sync_recoveries++;
+                            reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                reader->diagnostics.cnt_sync_recoveries++;
                         }
                         reader->state = ACC_STATE_LOOKING_FOR_START1;
                         reader->internal_data_len = 0;
@@ -1047,6 +1059,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
             
         case ACC_STATE_COLLECTING_PAYLOAD:
             if (reader->internal_data_len >= reader->buffer_size) {
+                reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
                 reader->diagnostics.cnt_sync_recoveries++;
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
@@ -1075,7 +1088,8 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                     } else {
                         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
                     }
-                    reader->diagnostics.cnt_sync_recoveries++;
+                    reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+                reader->diagnostics.cnt_sync_recoveries++;
                 }
                 reader->state = ACC_STATE_LOOKING_FOR_START1;
                 reader->internal_data_len = 0;
@@ -1103,11 +1117,14 @@ static inline frame_msg_info_t _acc_parse_buffer(
     const uint8_t* buffer,
     size_t size)
 {
+    frame_msg_info_t result;
     if (reader->config->payload.has_crc || reader->config->payload.has_length) {
-        return profile_parse_with_crc(reader->config, buffer, size, reader->get_message_info);
+        result = profile_parse_with_crc(reader->config, buffer, size, reader->get_message_info);
     } else {
-        return profile_parse_minimal(reader->config, buffer, size, reader->get_message_info);
+        result = profile_parse_minimal(reader->config, buffer, size, reader->get_message_info);
     }
+    result.diagnostics = &reader->diagnostics;
+    return result;
 }
 
 static inline bool accumulating_reader_has_more(const accumulating_reader_t* reader) {
@@ -1133,7 +1150,7 @@ static inline frame_parser_diagnostics_t accumulating_reader_diagnostics(const a
 }
 
 static inline void accumulating_reader_reset_diagnostics(accumulating_reader_t* reader) {
-    frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0};
+    frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0, 0};
     reader->diagnostics = zero_diag;
 }
 
@@ -1147,3 +1164,8 @@ static inline void accumulating_reader_reset(accumulating_reader_t* reader) {
     reader->last_seq = 0;
     reader->last_seq_valid = false;
 }
+
+
+
+
+

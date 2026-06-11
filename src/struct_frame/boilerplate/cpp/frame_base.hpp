@@ -73,6 +73,8 @@ enum class FrameMsgStatus : uint8_t {
   SyncRecovery = 4,    ///< Bytes discarded to re-find a valid frame start.
 };
 
+struct ParserDiagnostics;
+
 struct FrameMsgInfo {
   bool valid;
   uint16_t msg_id;
@@ -81,21 +83,27 @@ struct FrameMsgInfo {
   uint8_t* msg_data;
   const uint8_t* frame_data;  // Full frame bytes, including framing overhead
   FrameMsgStatus status;
+  const ParserDiagnostics* diagnostics;
 
   FrameMsgInfo()
       : valid(false), msg_id(0), msg_len(0), frame_size(0), msg_data(nullptr), frame_data(nullptr),
-        status(FrameMsgStatus::None) {}
+        status(FrameMsgStatus::None), diagnostics(nullptr) {}
   FrameMsgInfo(bool v, uint16_t id, size_t len, size_t fsize, uint8_t* data,
-               const uint8_t* frame = nullptr, FrameMsgStatus st = FrameMsgStatus::None)
-      : valid(v), msg_id(id), msg_len(len), frame_size(fsize), msg_data(data), frame_data(frame), status(st) {}
+               const uint8_t* frame = nullptr, FrameMsgStatus st = FrameMsgStatus::None,
+               const ParserDiagnostics* diag = nullptr)
+      : valid(v), msg_id(id), msg_len(len), frame_size(fsize), msg_data(data), frame_data(frame), status(st),
+        diagnostics(diag) {}
 
   // Legacy constructor for backwards compatibility
   FrameMsgInfo(bool v, uint16_t id, size_t len, uint8_t* data)
       : valid(v), msg_id(id), msg_len(len), frame_size(0), msg_data(data), frame_data(nullptr),
-        status(FrameMsgStatus::None) {}
+        status(FrameMsgStatus::None), diagnostics(nullptr) {}
 
   // Allow use in boolean context (e.g., while (auto result = reader.next()) { ... })
   explicit operator bool() const { return valid; }
+
+  // Returns an immutable diagnostics view; defaults to empty counters when unavailable.
+  const ParserDiagnostics& parser_diagnostics() const;
 };
 
 /**
@@ -108,6 +116,9 @@ struct FrameMsgInfo {
  *                     Indicates noise or corruption on the line.
  * cnt_sync_recoveries: Times the parser discarded bytes and re-searched for
  *                     a frame start. Indicates lost bytes or buffer overflows.
+ * cnt_failed_bytes:   Total bytes discarded when failures forced a reset to
+ *                     searching for frame start. Tracks how much data was
+ *                     dropped during sync recovery events.
  * cnt_len_errors:     Frames where the header length field does not match the
  *                     expected message-struct size from get_message_info().
  *                     Vital for detecting mismatched definitions on profiles
@@ -119,12 +130,18 @@ struct FrameMsgInfo {
 struct ParserDiagnostics {
   uint32_t cnt_crc_failures;
   uint32_t cnt_sync_recoveries;
+  uint32_t cnt_failed_bytes;
   uint32_t cnt_len_errors;
   uint32_t cnt_seq_gaps;
 
   ParserDiagnostics()
-      : cnt_crc_failures(0), cnt_sync_recoveries(0), cnt_len_errors(0), cnt_seq_gaps(0) {}
+      : cnt_crc_failures(0), cnt_sync_recoveries(0), cnt_failed_bytes(0), cnt_len_errors(0), cnt_seq_gaps(0) {}
 };
+
+inline const ParserDiagnostics& FrameMsgInfo::parser_diagnostics() const {
+  static const ParserDiagnostics kEmptyDiagnostics{};
+  return diagnostics ? *diagnostics : kEmptyDiagnostics;
+}
 
 /**
  * Base class for message types with associated metadata.

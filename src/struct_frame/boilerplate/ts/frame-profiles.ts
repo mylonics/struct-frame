@@ -28,7 +28,14 @@ import {
     payloadHeaderSize,
     payloadFooterSize,
 } from './payload-types';
-import { fletcherChecksum, fletcherChecksumExt, createFrameMsgInfo, FrameMsgInfo, FrameMsgStatus } from './frame-base';
+import {
+    fletcherChecksum,
+    fletcherChecksumExt,
+    createFrameMsgInfo,
+    FrameMsgInfo,
+    FrameMsgStatus,
+    FrameParserDiagnostics,
+} from './frame-base';
 import { MessageBase } from './struct-base';
 
 // =============================================================================
@@ -652,6 +659,8 @@ export enum AccumulatingReaderState {
  *                     Indicates noise or corruption on the line.
  * - cntSyncRecoveries: Times the parser discarded bytes and re-searched for a
  *                     frame start. Indicates lost bytes or buffer overflows.
+ * - cntFailedBytes:    Total bytes discarded when failures forced the parser
+ *                     to restart searching for frame start.
  * - cntLenErrors:     Frames where the header length field does not match the
  *                     expected message-struct size from getMessageInfo().
  *                     Vital for detecting mismatched definitions on profiles
@@ -660,12 +669,7 @@ export enum AccumulatingReaderState {
  *                     carry a sequence field (e.g. ProfileNetwork). Indicates
  *                     dropped packets.
  */
-export interface ParserDiagnostics {
-    cntCrcFailures: number;
-    cntSyncRecoveries: number;
-    cntLenErrors: number;
-    cntSeqGaps: number;
-}
+export type ParserDiagnostics = FrameParserDiagnostics;
 
 /**
  * AccumulatingReader - Unified parser for buffer and byte-by-byte streaming input.
@@ -731,7 +735,7 @@ export class AccumulatingReader {
         this.currentSize = 0;
         this.currentOffset = 0;
 
-        this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+        this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntFailedBytes: 0, cntLenErrors: 0, cntSeqGaps: 0 };
         this._lastSeq = null;
     }
 
@@ -762,7 +766,7 @@ export class AccumulatingReader {
      */
     next(): FrameMsgInfo {
         if (this._state !== AccumulatingReaderState.BUFFER_MODE) {
-            return createFrameMsgInfo();
+            return this.withDiagnostics(createFrameMsgInfo());
         }
 
         // First, try to complete a partial message from the internal buffer
@@ -779,15 +783,15 @@ export class AccumulatingReader {
                 this.internalDataLen = 0;
                 this.expectedFrameSize = 0;
 
-                return result;
+                return this.withDiagnostics(result);
             } else {
-                return createFrameMsgInfo();
+                return this.withDiagnostics(createFrameMsgInfo());
             }
         }
 
         // Parse from current buffer
         if (this.currentBuffer === null || this.currentOffset >= this.currentSize) {
-            return createFrameMsgInfo();
+            return this.withDiagnostics(createFrameMsgInfo());
         }
 
         const remaining = this.currentBuffer.slice(this.currentOffset);
@@ -796,7 +800,7 @@ export class AccumulatingReader {
         if (result.valid) {
             const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
             this.currentOffset += frameSize;
-            return result;
+            return this.withDiagnostics(result);
         }
 
         // Parse failed - might be partial message at end of buffer
@@ -807,7 +811,7 @@ export class AccumulatingReader {
             this.currentOffset = this.currentSize;
         }
 
-        return createFrameMsgInfo();
+        return this.withDiagnostics(createFrameMsgInfo());
     }
 
     // =========================================================================
@@ -836,7 +840,7 @@ export class AccumulatingReader {
                 return this.handleCollectingPayload(byte);
             default:
                 this._state = AccumulatingReaderState.LOOKING_FOR_START1;
-                return createFrameMsgInfo();
+                return this.withDiagnostics(createFrameMsgInfo());
         }
     }
 
@@ -866,7 +870,7 @@ export class AccumulatingReader {
         r.status = (this._state === AccumulatingReaderState.LOOKING_FOR_START1)
             ? FrameMsgStatus.WaitingForStart
             : FrameMsgStatus.Collecting;
-        return r;
+        return this.withDiagnostics(r);
     }
 
     private handleLookingForStart2(byte: number): FrameMsgInfo {
@@ -877,24 +881,26 @@ export class AccumulatingReader {
             this.internalBuffer[0] = byte;
             this.internalDataLen = 1;
         } else {
+            this._diagnostics.cntFailedBytes += this.internalDataLen + 1;
             this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
             const r = createFrameMsgInfo();
             r.status = FrameMsgStatus.SyncRecovery;
-            return r;
+            return this.withDiagnostics(r);
         }
         const r = createFrameMsgInfo();
         r.status = FrameMsgStatus.Collecting;
-        return r;
+        return this.withDiagnostics(r);
     }
 
     private handleCollectingHeader(byte: number): FrameMsgInfo {
         if (this.internalDataLen >= this.bufferSize) {
+            this._diagnostics.cntFailedBytes += this.internalDataLen + 1;
             this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
-            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
         }
 
         this.internalBuffer[this.internalDataLen++] = byte;
@@ -911,10 +917,11 @@ export class AccumulatingReader {
                         this.expectedFrameSize = headerSize + msgLen;
 
                         if (this.expectedFrameSize > this.bufferSize) {
+                            this._diagnostics.cntFailedBytes += this.internalDataLen;
                             this._diagnostics.cntSyncRecoveries++;
                             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                             this.internalDataLen = 0;
-                            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+                            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
                         }
 
                         if (msgLen === 0) {
@@ -926,21 +933,23 @@ export class AccumulatingReader {
                             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                             this.internalDataLen = 0;
                             this.expectedFrameSize = 0;
-                            return result;
+                            return this.withDiagnostics(result);
                         }
 
                         this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
                     } else {
+                        this._diagnostics.cntFailedBytes += this.internalDataLen;
                         this._diagnostics.cntSyncRecoveries++;
                         this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                         this.internalDataLen = 0;
-                        const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+                        const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
                     }
                 } else {
+                    this._diagnostics.cntFailedBytes += this.internalDataLen;
                     this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
-                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
                 }
             } else {
                 let lenOffset = this.config.header.numStartBytes;
@@ -973,14 +982,15 @@ export class AccumulatingReader {
                 this.expectedFrameSize = headerSize + payloadLen + footerSize;
 
                 if (this.expectedFrameSize > this.bufferSize) {
+                    this._diagnostics.cntFailedBytes += this.internalDataLen;
                     this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
-                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
                 }
 
                 if (this.internalDataLen >= this.expectedFrameSize) {
-                    return this.validateAndReturn();
+                    return this.withDiagnostics(this.validateAndReturn());
                 }
 
                 this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
@@ -989,26 +999,27 @@ export class AccumulatingReader {
 
         const r = createFrameMsgInfo();
         r.status = FrameMsgStatus.Collecting;
-        return r;
+        return this.withDiagnostics(r);
     }
 
     private handleCollectingPayload(byte: number): FrameMsgInfo {
         if (this.internalDataLen >= this.bufferSize) {
+            this._diagnostics.cntFailedBytes += this.internalDataLen + 1;
             this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
-            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
         }
 
         this.internalBuffer[this.internalDataLen++] = byte;
 
         if (this.internalDataLen >= this.expectedFrameSize) {
-            return this.validateAndReturn();
+            return this.withDiagnostics(this.validateAndReturn());
         }
 
         const r = createFrameMsgInfo();
         r.status = FrameMsgStatus.Collecting;
-        return r;
+        return this.withDiagnostics(r);
     }
 
     private handleMinimalMsgId(msgId: number): FrameMsgInfo {
@@ -1020,10 +1031,11 @@ export class AccumulatingReader {
                 this.expectedFrameSize = headerSize + msgLen;
 
                 if (this.expectedFrameSize > this.bufferSize) {
+                    this._diagnostics.cntFailedBytes += this.internalDataLen;
                     this._diagnostics.cntSyncRecoveries++;
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
-                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+                    const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
                 }
 
                 if (msgLen === 0) {
@@ -1035,25 +1047,27 @@ export class AccumulatingReader {
                     this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                     this.internalDataLen = 0;
                     this.expectedFrameSize = 0;
-                    return result;
+                    return this.withDiagnostics(result);
                 }
 
                 this._state = AccumulatingReaderState.COLLECTING_PAYLOAD;
             } else {
+                this._diagnostics.cntFailedBytes += this.internalDataLen;
                 this._diagnostics.cntSyncRecoveries++;
                 this._state = AccumulatingReaderState.LOOKING_FOR_START1;
                 this.internalDataLen = 0;
-                const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+                const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
             }
         } else {
+            this._diagnostics.cntFailedBytes += this.internalDataLen;
             this._diagnostics.cntSyncRecoveries++;
             this._state = AccumulatingReaderState.LOOKING_FOR_START1;
             this.internalDataLen = 0;
-            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return r;
+            const r = createFrameMsgInfo(); r.status = FrameMsgStatus.SyncRecovery; return this.withDiagnostics(r);
         }
         const r = createFrameMsgInfo();
         r.status = FrameMsgStatus.Collecting;
-        return r;
+        return this.withDiagnostics(r);
     }
 
     private validateAndReturn(): FrameMsgInfo {
@@ -1083,10 +1097,11 @@ export class AccumulatingReader {
             } else {
                 result.status = FrameMsgStatus.SyncRecovery;
             }
+            this._diagnostics.cntFailedBytes += result.frameSize ?? 0;
             this._diagnostics.cntSyncRecoveries++;
         }
 
-        return result;
+        return this.withDiagnostics(result);
     }
 
     private parseBuffer(buffer: Uint8Array): FrameMsgInfo {
@@ -1143,7 +1158,12 @@ export class AccumulatingReader {
 
     /** Reset all diagnostic counters to zero. */
     resetDiagnostics(): void {
-        this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+        this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntFailedBytes: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+    }
+
+    private withDiagnostics(result: FrameMsgInfo): FrameMsgInfo {
+        result.diagnostics = this._diagnostics;
+        return result;
     }
 }
 

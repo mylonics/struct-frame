@@ -58,6 +58,14 @@ export enum FrameMsgStatus {
     SyncRecovery = 4
 }
 
+export interface FrameParserDiagnostics {
+    cntCrcFailures: number;
+    cntSyncRecoveries: number;
+    cntFailedBytes: number;
+    cntLenErrors: number;
+    cntSeqGaps: number;
+}
+
 // Parse result interface
 export interface FrameMsgInfo {
     valid: boolean;
@@ -66,6 +74,7 @@ export interface FrameMsgInfo {
     msgData: Uint8Array;
     status: FrameMsgStatus;
     frameSize?: number;
+    diagnostics?: FrameParserDiagnostics;
 }
 
 // Create default FrameMsgInfo

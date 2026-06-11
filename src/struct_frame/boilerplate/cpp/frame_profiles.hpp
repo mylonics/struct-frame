@@ -734,7 +734,7 @@ class AccumulatingReader {
    */
   FrameMsgInfo next() {
     if (state_ != State::BufferMode) {
-      return FrameMsgInfo();
+      return with_diagnostics(FrameMsgInfo());
     }
 
     // First, try to complete a partial message from the internal buffer
@@ -753,24 +753,24 @@ class AccumulatingReader {
         internal_data_len_ = 0;
         expected_frame_size_ = 0;
 
-        return result;
+        return with_diagnostics(result);
       } else {
         // Still not enough data for a complete message
         // Keep partial state, wait for more data via add_data()
-        return FrameMsgInfo();
+        return with_diagnostics(FrameMsgInfo());
       }
     }
 
     // Parse from current buffer
     if (current_buffer_ == nullptr || current_offset_ >= current_size_) {
-      return FrameMsgInfo();
+      return with_diagnostics(FrameMsgInfo());
     }
 
     FrameMsgInfo result = parse_frame(current_buffer_ + current_offset_, current_size_ - current_offset_);
 
     if (result.valid && result.frame_size > 0) {
       current_offset_ += result.frame_size;
-      return result;
+      return with_diagnostics(result);
     }
 
     // Parse failed - might be partial message at end of buffer
@@ -782,7 +782,7 @@ class AccumulatingReader {
       current_offset_ = current_size_;  // Mark current buffer as consumed
     }
 
-    return FrameMsgInfo();
+    return with_diagnostics(FrameMsgInfo());
   }
 
   /*=========================================================================
@@ -821,7 +821,7 @@ class AccumulatingReader {
 
       default:
         state_ = State::LookingForStart1;
-        return FrameMsgInfo();
+        return with_diagnostics(FrameMsgInfo());
     }
   }
 
@@ -912,12 +912,12 @@ class AccumulatingReader {
         // No start byte found yet
         FrameMsgInfo r;
         r.status = FrameMsgStatus::WaitingForStart;
-        return r;
+        return with_diagnostics(r);
       }
     }
     FrameMsgInfo r;
     r.status = FrameMsgStatus::Collecting;
-    return r;
+    return with_diagnostics(r);
   }
 
   FrameMsgInfo handle_looking_for_start2(uint8_t byte) {
@@ -931,27 +931,29 @@ class AccumulatingReader {
       // Stay in LookingForStart2
     } else {
       // Invalid byte - lost sync; discard and restart
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_ + 1);
       diagnostics_.cnt_sync_recoveries++;
       state_ = State::LookingForStart1;
       internal_data_len_ = 0;
       FrameMsgInfo r;
       r.status = FrameMsgStatus::SyncRecovery;
-      return r;
+      return with_diagnostics(r);
     }
     FrameMsgInfo r;
     r.status = FrameMsgStatus::Collecting;
-    return r;
+    return with_diagnostics(r);
   }
 
   FrameMsgInfo handle_collecting_header(uint8_t byte) {
     if (internal_data_len_ >= BufferSize) {
       // Buffer overflow - reset
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_ + 1);
       diagnostics_.cnt_sync_recoveries++;
       state_ = State::LookingForStart1;
       internal_data_len_ = 0;
       FrameMsgInfo r;
       r.status = FrameMsgStatus::SyncRecovery;
-      return r;
+      return with_diagnostics(r);
     }
 
     internal_buffer_[internal_data_len_++] = byte;
@@ -970,12 +972,13 @@ class AccumulatingReader {
 
             if (expected_frame_size_ > BufferSize) {
               // Too large - reset
+              diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
               diagnostics_.cnt_sync_recoveries++;
               state_ = State::LookingForStart1;
               internal_data_len_ = 0;
             FrameMsgInfo r;
             r.status = FrameMsgStatus::SyncRecovery;
-            return r;
+            return with_diagnostics(r);
           }
 
           if (msg_len == 0) {
@@ -984,27 +987,29 @@ class AccumulatingReader {
             state_ = State::LookingForStart1;
             internal_data_len_ = 0;
             expected_frame_size_ = 0;
-            return result;
+            return with_diagnostics(result);
           }
 
           state_ = State::CollectingPayload;
         } else {
           // Unknown message ID - reset
+          diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
           diagnostics_.cnt_sync_recoveries++;
           state_ = State::LookingForStart1;
           internal_data_len_ = 0;
           FrameMsgInfo r;
           r.status = FrameMsgStatus::SyncRecovery;
-          return r;
+          return with_diagnostics(r);
         }
       } else {
         // Unknown message ID - reset
+        diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
         diagnostics_.cnt_sync_recoveries++;
         state_ = State::LookingForStart1;
         internal_data_len_ = 0;
         FrameMsgInfo r;
         r.status = FrameMsgStatus::SyncRecovery;
-        return r;
+        return with_diagnostics(r);
       }
     } else {
       // Calculate payload length from header
@@ -1043,17 +1048,18 @@ class AccumulatingReader {
 
       if (expected_frame_size_ > BufferSize) {
         // Too large - reset
+        diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
         diagnostics_.cnt_sync_recoveries++;
         state_ = State::LookingForStart1;
         internal_data_len_ = 0;
         FrameMsgInfo r;
         r.status = FrameMsgStatus::SyncRecovery;
-        return r;
+        return with_diagnostics(r);
       }
 
       // Check if we already have the complete frame
       if (internal_data_len_ >= expected_frame_size_) {
-        return validate_and_return();
+        return with_diagnostics(validate_and_return());
       }
 
       state_ = State::CollectingPayload;
@@ -1062,29 +1068,30 @@ class AccumulatingReader {
 
     FrameMsgInfo r;
     r.status = FrameMsgStatus::Collecting;
-    return r;
+    return with_diagnostics(r);
   }
 
   FrameMsgInfo handle_collecting_payload(uint8_t byte) {
     if (internal_data_len_ >= BufferSize) {
     // Buffer overflow - reset
+    diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_ + 1);
     diagnostics_.cnt_sync_recoveries++;
     state_ = State::LookingForStart1;
     internal_data_len_ = 0;
     FrameMsgInfo r;
     r.status = FrameMsgStatus::SyncRecovery;
-    return r;
+    return with_diagnostics(r);
     }
 
     internal_buffer_[internal_data_len_++] = byte;
 
     if (internal_data_len_ >= expected_frame_size_) {
-      return validate_and_return();
+      return with_diagnostics(validate_and_return());
     }
 
     FrameMsgInfo r;
     r.status = FrameMsgStatus::Collecting;
-    return r;
+    return with_diagnostics(r);
   }
 
   FrameMsgInfo handle_minimal_msg_id(uint8_t msg_id) {
@@ -1095,12 +1102,13 @@ class AccumulatingReader {
         expected_frame_size_ = Config::header_size + msg_len;
 
         if (expected_frame_size_ > BufferSize) {
+          diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
           diagnostics_.cnt_sync_recoveries++;
           state_ = State::LookingForStart1;
           internal_data_len_ = 0;
           FrameMsgInfo r;
           r.status = FrameMsgStatus::SyncRecovery;
-          return r;
+          return with_diagnostics(r);
         }
 
         if (msg_len == 0) {
@@ -1109,30 +1117,32 @@ class AccumulatingReader {
           state_ = State::LookingForStart1;
           internal_data_len_ = 0;
           expected_frame_size_ = 0;
-          return result;
+          return with_diagnostics(result);
         }
 
         state_ = State::CollectingPayload;
         FrameMsgInfo r;
         r.status = FrameMsgStatus::Collecting;
-        return r;
+        return with_diagnostics(r);
       } else {
         // Unknown msg_id - stay looking for valid start
+        diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
         diagnostics_.cnt_sync_recoveries++;
         state_ = State::LookingForStart1;
         internal_data_len_ = 0;
         FrameMsgInfo r;
         r.status = FrameMsgStatus::SyncRecovery;
-        return r;
+        return with_diagnostics(r);
       }
     } else {
       // Unknown msg_id - stay looking for valid start
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
       diagnostics_.cnt_sync_recoveries++;
       state_ = State::LookingForStart1;
       internal_data_len_ = 0;
       FrameMsgInfo r;
       r.status = FrameMsgStatus::SyncRecovery;
-      return r;
+      return with_diagnostics(r);
     }
   }
 
@@ -1163,9 +1173,15 @@ class AccumulatingReader {
         diagnostics_.cnt_crc_failures++;
         result.status = FrameMsgStatus::CrcFailure;
       }
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(result.frame_size);
       diagnostics_.cnt_sync_recoveries++;
     }
 
+    return result;
+  }
+
+  FrameMsgInfo with_diagnostics(FrameMsgInfo result) {
+    result.diagnostics = &diagnostics_;
     return result;
   }
 
