@@ -52,7 +52,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install proto-schema-parser
+          pip install proto-schema-parser pytest
 
       - name: Install Node.js dependencies
         run: npm ci
@@ -108,7 +108,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Install Python deps
-        run: pip install proto-schema-parser
+        run: pip install proto-schema-parser pytest
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -136,7 +136,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Install Python deps
-        run: pip install proto-schema-parser
+        run: pip install proto-schema-parser pytest
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -162,7 +162,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Install Python deps
-        run: pip install proto-schema-parser
+        run: pip install proto-schema-parser pytest
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -187,7 +187,7 @@ jobs:
           dotnet-version: "8.0.x"
           dotnet-quality: "ga"
       - name: Install Python deps
-        run: pip install proto-schema-parser
+        run: pip install proto-schema-parser pytest
       - name: Run C# slice
         run: python test_all.py --skip-lang rust
 
@@ -209,7 +209,7 @@ jobs:
           dotnet-version: "10.0.x"
           dotnet-quality: "preview"
       - name: Install Python deps
-        run: pip install proto-schema-parser
+        run: pip install proto-schema-parser pytest
       - name: Run C# slice
         run: python test_all.py --skip-lang rust
 

@@ -329,6 +329,75 @@ public class TestNegative
             return result.Valid;  // Expect success after accumulating both halves
         }
 
+        /**
+         * Test: BufferReader advances past a CRC-failed frame and returns the next valid frame.
+         * Mirrors the C++ "Buffer reader: skips CRC-failed frame" test.
+         */
+        private static bool TestBufferReaderSkipsCrcFailed()
+        {
+            var msg = CreateTestMessage();
+
+            byte[] buffer = new byte[4096];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            int frame1End = writer.Size;
+
+            msg.SmallInt = 99;
+            writer.Write(msg);
+            int totalBytes = writer.Size;
+
+            // Corrupt the CRC of the first frame.
+            buffer[frame1End - 1] ^= 0xFF;
+
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, totalBytes);
+
+            var result1 = reader.Next();
+            if (result1.Valid) return false;  // First frame must be CRC-failed
+
+            var result2 = reader.Next();
+            if (!result2.Valid) return false;  // Second frame must be valid
+
+            var decoded = BasicTypesMessage.Deserialize(result2);
+            return decoded.SmallInt == 99;
+        }
+
+        /**
+         * Test: AccumulatingReader in buffer mode recovers after a CRC-failed frame
+         * and successfully decodes the subsequent valid frame.
+         * Mirrors the C++ "Buffer mode: recovers after CRC failure" test.
+         */
+        private static bool TestBufferModeRecoverAfterCrcFailure()
+        {
+            var msg = CreateTestMessage();
+
+            byte[] buffer = new byte[4096];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            int frame1End = writer.Size;
+
+            msg.SmallInt = 55;
+            writer.Write(msg);
+            int totalBytes = writer.Size;
+
+            // Corrupt the CRC of the first frame.
+            buffer[frame1End - 1] ^= 0xFF;
+
+            var reader = new AccumulatingReader<StandardProfile>(4096, SerializationTestMD.GetMessageInfo);
+            reader.AddData(buffer, 0, totalBytes);
+
+            var result1 = reader.Next();
+            if (result1.Valid) return false;  // First frame must be CRC-failed
+
+            var result2 = reader.Next();
+            if (!result2.Valid) return false;  // Second frame must be valid
+
+            var decoded = BasicTypesMessage.Deserialize(result2);
+            return decoded.SmallInt == 55;
+        }
+
         private static bool TestInvalidMsgId()
         {
             var msg = CreateTestMessage();
@@ -548,6 +617,8 @@ public class TestNegative
             // Define test matrix
             var tests = new (string name, Func<bool> func)[]
             {
+                ("Buffer mode: recovers after CRC failure", TestBufferModeRecoverAfterCrcFailure),
+                ("Buffer reader: skips CRC-failed frame", TestBufferReaderSkipsCrcFailed),
                 ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
                 ("Bulk profile: Corrupted pkg_id byte", TestBulkCorruptedPkgId),
                 ("Bulk profile: Corrupted msg_id low byte", TestBulkCorruptedMsgIdLowByte),

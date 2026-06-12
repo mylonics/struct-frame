@@ -483,7 +483,7 @@ namespace StructFrame.Sdk
             }
         }
 
-        private async Task StopSendQueueAsync()
+        private Task StopSendQueueAsync()
         {
             Channel<QueuedMessage>? queue;
             CancellationTokenSource? cts;
@@ -512,11 +512,12 @@ namespace StructFrame.Sdk
             cts?.Cancel();
             cts?.Dispose();
 
-            if (consumerTask != null)
-            {
-                try { await consumerTask.ConfigureAwait(false); }
-                catch (OperationCanceledException) { }
-            }
+            // Do NOT await consumerTask: the consumer may be blocked inside an
+            // in-flight transport.SendAsync that has no cancellation support.
+            // We've completed the channel and cancelled the token, so the consumer
+            // will exit on its own after the current send finishes or throws.
+            _ = consumerTask; // suppress unused-variable warning
+            return Task.CompletedTask;
         }
 
         private async Task SendQueueConsumerAsync(Channel<QueuedMessage> queue, CancellationToken ct)
