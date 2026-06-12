@@ -84,3 +84,4 @@ tests/benchmarks/csharp/obj/
 tests/docs/_samples/
 
 docs/theme_overrides/
+.claude/

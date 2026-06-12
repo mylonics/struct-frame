@@ -3,16 +3,20 @@
 
 #pragma once
 
-#include <memory>
-#include <vector>
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 
 namespace structframe {
 namespace sdk {
 
 /**
- * Transport configuration base
+ * Transport configuration base.
+ *
+ * auto_reconnect, reconnect_delay_ms, and max_reconnect_attempts are
+ * configuration knobs inherited by concrete transports (SerialTransport,
+ * TcpTransport, etc.). Reconnect logic is NOT implemented in BaseTransport
+ * itself — concrete transports must implement AttemptReconnect() for these
+ * fields to have any effect.
  */
 struct TransportConfig {
     bool auto_reconnect = false;
@@ -67,16 +71,12 @@ protected:
         }
     }
 
-    void AttemptReconnect() {
-        if (config_.max_reconnect_attempts > 0 &&
-            reconnect_attempts_ >= config_.max_reconnect_attempts) {
-            return;
-        }
-
-        reconnect_attempts_++;
-        // Reconnect logic would go here
-        // In practice, this would use a timer/thread to delay reconnection
-    }
+    /**
+     * Attempt to reconnect after an error or close event.
+     * BaseTransport provides no implementation — concrete transports must
+     * override this method to support auto-reconnect.
+     */
+    void AttemptReconnect() {}
 
 public:
     BaseTransport(const TransportConfig& config = TransportConfig())

@@ -108,8 +108,7 @@ class FrameEncoderWithCrc {
    * Message must be derived from MessageBase and have MSG_ID, MAX_SIZE, MAGIC1, MAGIC2.
    * For variable messages (with IS_VARIABLE=true), uses serialize() for variable-length encoding.
    */
-  template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>>>
+  template <FramedMessage T>
   static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg, uint8_t seq = 0, uint8_t sys_id = 0,
                        uint8_t comp_id = 0) {
     // Determine if this is a variable message
@@ -219,8 +218,7 @@ class FrameEncoderMinimal {
    * Variable messages are always encoded at MAX_SIZE for minimal profiles
    * because the parser has no length field and cannot determine message boundaries.
    */
-  template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>>>
+  template <FramedMessage T>
   static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
     // Minimal profiles ALWAYS use MAX_SIZE (no variable-length support)
     constexpr size_t payload_size = T::MAX_SIZE;
@@ -269,7 +267,9 @@ class BufferParserWithCrc {
   template <typename GetMessageInfoFn>
   static FrameMsgInfo parse(const uint8_t* buffer, size_t length, GetMessageInfoFn get_message_info) {
     if (length < Config::overhead) {
-      return FrameMsgInfo();
+      FrameMsgInfo r;
+      r.status = FrameMsgStatus::Collecting;
+      return r;
     }
 
     size_t idx = 0;
@@ -277,12 +277,16 @@ class BufferParserWithCrc {
     // Verify start bytes (use computed values for dynamic payload type encoding)
     if constexpr (Config::num_start_bytes >= 1) {
       if (buffer[idx++] != Config::computed_start_byte1()) {
-        return FrameMsgInfo();
+        FrameMsgInfo r;
+        r.status = FrameMsgStatus::WaitingForStart;
+        return r;
       }
     }
     if constexpr (Config::num_start_bytes >= 2) {
       if (buffer[idx++] != Config::computed_start_byte2()) {
-        return FrameMsgInfo();
+        FrameMsgInfo r;
+        r.status = FrameMsgStatus::WaitingForStart;
+        return r;
       }
     }
 
@@ -314,32 +318,45 @@ class BufferParserWithCrc {
     // Verify total size
     size_t total_size = Config::overhead + msg_len;
     if (length < total_size) {
-      return FrameMsgInfo();
+      FrameMsgInfo r;
+      r.status = FrameMsgStatus::Collecting;
+      return r;
     }
 
-    // Verify CRC (extension-aware)
+    // Verify CRC (extension-aware).
+    // Magic bytes are obtained from the callback when one is provided.
+    // Without a callback (GetMessageInfoFn == nullptr_t), magic1=magic2=0 is used —
+    // CRC verification will succeed only for messages encoded with zero magic bytes.
     if constexpr (Config::has_crc) {
       size_t crc_len = total_size - crc_start - Config::footer_size;
 
-      // Get magic numbers and base_size for this message type
-      auto info = get_message_info(msg_id);
-
+      uint8_t magic1 = 0, magic2 = 0;
       size_t effective_base = crc_len;
-      if constexpr (Config::has_length) {
-        if (info.base_size <= msg_len) {
-          effective_base = (crc_len - msg_len) + info.base_size;
+      if constexpr (!std::is_same_v<GetMessageInfoFn, std::nullptr_t>) {
+        if (!is_null_callback(get_message_info)) {
+          auto info = get_message_info(msg_id);
+          if (info) {
+            magic1 = info.magic1;
+            magic2 = info.magic2;
+            if constexpr (Config::has_length) {
+              if (info.base_size <= msg_len) {
+                effective_base = (crc_len - msg_len) + info.base_size;
+              }
+            }
+          }
         }
       }
-      FrameChecksum ck = fletcher_checksum_ext(buffer + crc_start, effective_base, crc_len, info.magic1, info.magic2);
+
+      FrameChecksum ck = fletcher_checksum_ext(buffer + crc_start, effective_base, crc_len, magic1, magic2);
       if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
         return FrameMsgInfo(false, msg_id, msg_len, total_size,
-                            const_cast<uint8_t*>(buffer + Config::header_size), buffer,
+                            buffer + Config::header_size, buffer,
                             FrameMsgStatus::CrcFailure);
       }
     }
 
     return FrameMsgInfo(true, msg_id, msg_len, total_size,
-                        const_cast<uint8_t*>(buffer + Config::header_size), buffer);
+                        buffer + Config::header_size, buffer);
   }
 };
 
@@ -361,7 +378,9 @@ class BufferParserMinimal {
   template <typename GetMessageInfoFn>
   static FrameMsgInfo parse(const uint8_t* buffer, size_t length, GetMessageInfoFn get_message_info) {
     if (length < Config::header_size) {
-      return FrameMsgInfo();
+      FrameMsgInfo r;
+      r.status = FrameMsgStatus::Collecting;
+      return r;
     }
 
     size_t idx = 0;
@@ -369,12 +388,16 @@ class BufferParserMinimal {
     // Verify start bytes (use computed values for dynamic payload type encoding)
     if constexpr (Config::num_start_bytes >= 1) {
       if (buffer[idx++] != Config::computed_start_byte1()) {
-        return FrameMsgInfo();
+        FrameMsgInfo r;
+        r.status = FrameMsgStatus::WaitingForStart;
+        return r;
       }
     }
     if constexpr (Config::num_start_bytes >= 2) {
       if (buffer[idx++] != Config::computed_start_byte2()) {
-        return FrameMsgInfo();
+        FrameMsgInfo r;
+        r.status = FrameMsgStatus::WaitingForStart;
+        return r;
       }
     }
 
@@ -382,19 +405,30 @@ class BufferParserMinimal {
     uint8_t msg_id = buffer[idx];
 
     // Get message info from callback
-    auto info = get_message_info(msg_id);
-    if (!info) {
-      return FrameMsgInfo();
+    if constexpr (!std::is_same_v<GetMessageInfoFn, std::nullptr_t>) {
+      if (!is_null_callback(get_message_info)) {
+        auto info = get_message_info(msg_id);
+        if (!info) {
+          FrameMsgInfo r;
+          r.status = FrameMsgStatus::SyncRecovery;
+          return r;
+        }
+        size_t msg_len = info.size;
+        size_t total_size = Config::header_size + msg_len;
+        if (length < total_size) {
+          FrameMsgInfo r;
+          r.status = FrameMsgStatus::Collecting;
+          return r;
+        }
+        return FrameMsgInfo(true, msg_id, msg_len, total_size,
+                            buffer + Config::header_size, buffer);
+      }
     }
-    size_t msg_len = info.size;
 
-    size_t total_size = Config::header_size + msg_len;
-    if (length < total_size) {
-      return FrameMsgInfo();
-    }
-
-    return FrameMsgInfo(true, msg_id, msg_len, total_size,
-                        const_cast<uint8_t*>(buffer + Config::header_size), buffer);
+    // No callback — cannot determine message length; report sync recovery
+    FrameMsgInfo r;
+    r.status = FrameMsgStatus::SyncRecovery;
+    return r;
   }
 };
 
@@ -467,9 +501,26 @@ class BufferReader {
 
     FrameMsgInfo result = parse_frame(buffer_ + offset_, size_ - offset_);
 
-    if (result.valid && result.frame_size > 0) {
+    if (result.frame_size > 0) {
+      // Advance past complete frames (valid or CRC-failed)
       offset_ += result.frame_size;
+    } else if (result.status == FrameMsgStatus::WaitingForStart) {
+      // Head byte is not a frame start — scan forward to next start byte
+      if constexpr (Config::num_start_bytes >= 1) {
+        size_t scan_start = offset_ + 1;
+        if (scan_start < size_) {
+          const void* p = std::memchr(buffer_ + scan_start,
+                                      static_cast<int>(Config::computed_start_byte1()),
+                                      size_ - scan_start);
+          offset_ = p ? static_cast<size_t>(static_cast<const uint8_t*>(p) - buffer_) : size_;
+        } else {
+          offset_ = size_;
+        }
+      } else {
+        offset_ = size_;
+      }
     }
+    // Collecting: leave offset unchanged — frame is incomplete (normal end-of-buffer)
 
     return result;
   }
@@ -531,8 +582,7 @@ class BufferWriter {
    * Write a message to the buffer.
    * Returns the number of bytes written, or 0 on failure.
    */
-  template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>>>
+  template <FramedMessage T>
   size_t write(const T& msg) {
     if constexpr (Config::has_length || Config::has_crc) {
       // Profiles with CRC use the full encoder signature
@@ -554,8 +604,7 @@ class BufferWriter {
   /**
    * Write a message with sequence and addressing (for profiles that support it).
    */
-  template <typename T, typename = std::enable_if_t<
-                            std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>>>
+  template <FramedMessage T>
   size_t write(const T& msg, uint8_t seq, uint8_t sys_id = 0, uint8_t comp_id = 0) {
     static_assert(Config::has_seq || Config::has_sys_id || Config::has_comp_id,
                   "This profile does not support sequence/addressing fields");
@@ -658,6 +707,7 @@ class AccumulatingReader {
    */
   AccumulatingReader()
       : internal_data_len_(0),
+        bytes_appended_to_internal_(0),
         expected_frame_size_(0),
         state_(State::Idle),
         current_buffer_(nullptr),
@@ -673,6 +723,7 @@ class AccumulatingReader {
    */
   explicit AccumulatingReader(GetMessageInfoFn get_message_info)
       : internal_data_len_(0),
+        bytes_appended_to_internal_(0),
         expected_frame_size_(0),
         state_(State::Idle),
         current_buffer_(nullptr),
@@ -713,6 +764,7 @@ class AccumulatingReader {
     current_size_ = size;
     current_offset_ = 0;
     state_ = State::BufferMode;
+    bytes_appended_to_internal_ = 0;
 
     // If we have partial data in internal buffer, try to complete it
     if (internal_data_len_ > 0) {
@@ -722,6 +774,7 @@ class AccumulatingReader {
 
       std::memcpy(internal_buffer_ + internal_data_len_, buffer, bytes_to_copy);
       internal_data_len_ += bytes_to_copy;
+      bytes_appended_to_internal_ = bytes_to_copy;
     }
   }
 
@@ -737,28 +790,37 @@ class AccumulatingReader {
       return with_diagnostics(FrameMsgInfo());
     }
 
-    // First, try to complete a partial message from the internal buffer
-    size_t partial_len = internal_data_len_ > current_size_ ? internal_data_len_ - current_size_ : 0;
+    // First, try to complete a partial message from the internal buffer.
+    // partial_len = bytes in internal buffer that came from a PREVIOUS add_data call
+    // (i.e., before bytes_appended_to_internal_ were added this call).
     if (internal_data_len_ > 0 && current_offset_ == 0) {
-      // We have data in internal buffer that includes new data
+      size_t partial_len = internal_data_len_ - bytes_appended_to_internal_;
       FrameMsgInfo result = parse_frame(internal_buffer_, internal_data_len_);
 
       if (result.valid) {
-        // Successfully parsed from internal buffer
-        // Calculate how many bytes from the current buffer were consumed
+        // How many bytes from the *current* buffer were consumed to complete this frame
         size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
         current_offset_ = bytes_from_current;
-
-        // Clear internal buffer state
         internal_data_len_ = 0;
+        bytes_appended_to_internal_ = 0;
         expected_frame_size_ = 0;
-
         return with_diagnostics(result);
-      } else {
-        // Still not enough data for a complete message
-        // Keep partial state, wait for more data via add_data()
-        return with_diagnostics(FrameMsgInfo());
       }
+
+      if (result.frame_size > 0) {
+        // Complete but invalid frame (CRC failure) — count it and skip
+        diagnostics_.cnt_crc_failures++;
+        diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(result.frame_size);
+        size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
+        current_offset_ = bytes_from_current;
+        internal_data_len_ = 0;
+        bytes_appended_to_internal_ = 0;
+        expected_frame_size_ = 0;
+        return with_diagnostics(result);
+      }
+
+      // Still not enough data for a complete message — wait for next add_data()
+      return with_diagnostics(FrameMsgInfo());
     }
 
     // Parse from current buffer
@@ -773,13 +835,42 @@ class AccumulatingReader {
       return with_diagnostics(result);
     }
 
-    // Parse failed - might be partial message at end of buffer
-    // Save remaining bytes to internal buffer for next add_data() call
+    if (!result.valid && result.frame_size > 0) {
+      // Complete frame with bad CRC — count it, skip it, let caller call next() again
+      diagnostics_.cnt_crc_failures++;
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(result.frame_size);
+      current_offset_ += result.frame_size;
+      return with_diagnostics(result);
+    }
+
+    if (result.status == FrameMsgStatus::WaitingForStart) {
+      // Head byte is not a start byte — scan forward for the next one
+      if constexpr (Config::num_start_bytes >= 1) {
+        size_t scan_start = current_offset_ + 1;
+        if (scan_start < current_size_) {
+          const void* p = std::memchr(current_buffer_ + scan_start,
+                                      static_cast<int>(Config::computed_start_byte1()),
+                                      current_size_ - scan_start);
+          if (p) {
+            current_offset_ = static_cast<size_t>(
+                static_cast<const uint8_t*>(p) - current_buffer_);
+            // Return empty — caller should call next() again to parse from new position
+            return with_diagnostics(FrameMsgInfo());
+          }
+        }
+      }
+      // No start byte found in remainder — consume everything
+      current_offset_ = current_size_;
+      return with_diagnostics(FrameMsgInfo());
+    }
+
+    // Collecting — save remaining bytes to internal buffer for next add_data() call
     size_t remaining = current_size_ - current_offset_;
     if (remaining > 0 && remaining < BufferSize) {
       std::memcpy(internal_buffer_, current_buffer_ + current_offset_, remaining);
       internal_data_len_ = remaining;
-      current_offset_ = current_size_;  // Mark current buffer as consumed
+      bytes_appended_to_internal_ = 0;
+      current_offset_ = current_size_;
     }
 
     return with_diagnostics(FrameMsgInfo());
@@ -872,6 +963,7 @@ class AccumulatingReader {
    */
   void reset() {
     internal_data_len_ = 0;
+    bytes_appended_to_internal_ = 0;
     expected_frame_size_ = 0;
     state_ = State::Idle;
     current_buffer_ = nullptr;
@@ -1038,7 +1130,7 @@ class AccumulatingReader {
           }
           full_msg_id |= internal_buffer_[Config::header_size - 1];
           auto info = get_message_info_(full_msg_id);
-          if (info && info.size != payload_len) {
+          if (info && (payload_len > info.size || payload_len < info.base_size)) {
             diagnostics_.cnt_len_errors++;
           }
         }
@@ -1201,9 +1293,10 @@ class AccumulatingReader {
    * Member Variables
    *=========================================================================*/
 
-  uint8_t internal_buffer_[BufferSize];  // Internal buffer for partial messages (stack allocated)
-  size_t internal_data_len_;             // Current data length in internal buffer
-  size_t expected_frame_size_;           // Expected total frame size (0 if not yet known)
+  uint8_t internal_buffer_[BufferSize];       // Internal buffer for partial messages (stack allocated)
+  size_t internal_data_len_;                  // Current data length in internal buffer
+  size_t bytes_appended_to_internal_;         // Bytes copied from current buffer into internal buffer this add_data() call
+  size_t expected_frame_size_;                // Expected total frame size (0 if not yet known)
   State state_;                          // Current parser state
 
   // Buffer mode state

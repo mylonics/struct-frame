@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <type_traits>
 
 namespace structframe {
 
@@ -64,13 +65,23 @@ inline FrameChecksum fletcher_checksum_ext(const uint8_t* data, size_t base_len,
   return ck;
 }
 
-// Parse result
+// Parse result status.
+//
+// Buffer parsers (BufferParserWithCrc/BufferParserMinimal) report on failure:
+//   WaitingForStart — the data at the buffer head is not a frame start
+//                     (caller may discard bytes and re-scan for a start byte).
+//   Collecting      — the data looks like a frame but more bytes are needed.
+//   CrcFailure      — a complete frame was found but its CRC did not match
+//                     (frame_size is set so the caller can skip the bad frame).
+//   SyncRecovery    — the frame is definitively invalid (e.g. unknown msg_id
+//                     on a profile without a length field); caller should
+//                     discard bytes and re-find a frame start.
 enum class FrameMsgStatus : uint8_t {
   None = 0,            ///< Default / unset.
-  WaitingForStart = 1, ///< Parser is idle, searching for a start byte.
-  Collecting = 2,      ///< A frame is in progress; accumulating bytes.
+  WaitingForStart = 1, ///< No frame start at the current position.
+  Collecting = 2,      ///< A frame is in progress; more bytes are needed.
   CrcFailure = 3,      ///< Complete frame received but CRC did not match.
-  SyncRecovery = 4,    ///< Bytes discarded to re-find a valid frame start.
+  SyncRecovery = 4,    ///< Bytes must be discarded to re-find a valid frame start.
 };
 
 struct ParserDiagnostics;
@@ -80,7 +91,7 @@ struct FrameMsgInfo {
   uint16_t msg_id;
   size_t msg_len;     // Payload length (message data only)
   size_t frame_size;  // Total frame size (header + payload + footer)
-  uint8_t* msg_data;
+  const uint8_t* msg_data;
   const uint8_t* frame_data;  // Full frame bytes, including framing overhead
   FrameMsgStatus status;
   const ParserDiagnostics* diagnostics;
@@ -88,14 +99,14 @@ struct FrameMsgInfo {
   FrameMsgInfo()
       : valid(false), msg_id(0), msg_len(0), frame_size(0), msg_data(nullptr), frame_data(nullptr),
         status(FrameMsgStatus::None), diagnostics(nullptr) {}
-  FrameMsgInfo(bool v, uint16_t id, size_t len, size_t fsize, uint8_t* data,
+  FrameMsgInfo(bool v, uint16_t id, size_t len, size_t fsize, const uint8_t* data,
                const uint8_t* frame = nullptr, FrameMsgStatus st = FrameMsgStatus::None,
                const ParserDiagnostics* diag = nullptr)
       : valid(v), msg_id(id), msg_len(len), frame_size(fsize), msg_data(data), frame_data(frame), status(st),
         diagnostics(diag) {}
 
   // Legacy constructor for backwards compatibility
-  FrameMsgInfo(bool v, uint16_t id, size_t len, uint8_t* data)
+  FrameMsgInfo(bool v, uint16_t id, size_t len, const uint8_t* data)
       : valid(v), msg_id(id), msg_len(len), frame_size(0), msg_data(data), frame_data(nullptr),
         status(FrameMsgStatus::None), diagnostics(nullptr) {}
 
@@ -166,9 +177,15 @@ struct MessageBase {
   static constexpr size_t BASE_SIZE = BaseSize;  // Non-extension portion size
 
   // Get pointer to the message data (cast to derived type's data)
-  const uint8_t* data() const { return reinterpret_cast<const uint8_t*>(static_cast<const Derived*>(this)); }
+  const uint8_t* data() const {
+    static_assert(std::is_standard_layout_v<Derived>, "Message types must be standard-layout");
+    return reinterpret_cast<const uint8_t*>(static_cast<const Derived*>(this));
+  }
 
-  uint8_t* data() { return reinterpret_cast<uint8_t*>(static_cast<Derived*>(this)); }
+  uint8_t* data() {
+    static_assert(std::is_standard_layout_v<Derived>, "Message types must be standard-layout");
+    return reinterpret_cast<uint8_t*>(static_cast<Derived*>(this));
+  }
 
   // Get the message size
   static constexpr size_t size() { return MaxSize; }
@@ -177,105 +194,26 @@ struct MessageBase {
   static constexpr uint16_t msg_id() { return MsgId; }
 };
 
-// =============================================================================
-// Shared Payload Parsing Functions
-// =============================================================================
-// These functions handle payload validation/encoding independent of framing.
-// Frame formats (Tiny/Basic) use these for the common parsing logic.
+/**
+ * Concept satisfied by generated message types (anything derived from
+ * MessageBase). Used by encoders and the SDK so constraint failures produce
+ * a single readable diagnostic instead of an SFINAE wall.
+ */
+template <typename T>
+concept FramedMessage =
+    std::is_base_of_v<MessageBase<T, T::MSG_ID, T::MAX_SIZE, T::MAGIC1, T::MAGIC2, T::BASE_SIZE>, T>;
 
 /**
- * Validate a payload with CRC (shared by Default, Extended, etc. payload types).
+ * Returns true when a get_message_info callback is null. Callbacks that are
+ * not testable against null (e.g. capturing lambdas) are treated as non-null.
  */
-inline FrameMsgInfo validate_payload_with_crc(const uint8_t* buffer, size_t length, size_t header_size,
-                                              size_t length_bytes, size_t crc_start_offset, uint8_t magic1 = 0,
-                                              uint8_t magic2 = 0) {
-  constexpr size_t footer_size = 2;  // CRC is always 2 bytes
-  const size_t overhead = header_size + footer_size;
-
-  if (length < overhead) {
-    return FrameMsgInfo();
-  }
-
-  size_t msg_length = length - overhead;
-
-  // Calculate expected CRC range: from crc_start_offset to before the CRC bytes
-  size_t crc_data_len = msg_length + 1 + length_bytes;  // msg_id (1) + length_bytes + payload
-  FrameChecksum ck = fletcher_checksum(buffer + crc_start_offset, crc_data_len, magic1, magic2);
-
-  if (ck.byte1 == buffer[length - 2] && ck.byte2 == buffer[length - 1]) {
-    return FrameMsgInfo(true, buffer[header_size - 1], msg_length, length,
-                        const_cast<uint8_t*>(buffer + header_size), buffer);
-  }
-
-  return FrameMsgInfo(false, buffer[header_size - 1], msg_length, length,
-                      const_cast<uint8_t*>(buffer + header_size), buffer,
-                      FrameMsgStatus::CrcFailure);
-}
-
-/**
- * Validate a minimal payload (no CRC, no length field).
- */
-inline FrameMsgInfo validate_payload_minimal(const uint8_t* buffer, size_t length, size_t header_size) {
-  if (length < header_size) {
-    return FrameMsgInfo();
-  }
-
-  return FrameMsgInfo(true, buffer[header_size - 1], length - header_size, length,
-                      const_cast<uint8_t*>(buffer + header_size), buffer);
-}
-
-/**
- * Encode payload with length and CRC into output buffer.
- * Returns number of bytes written (length + msg_id + payload + CRC)
- */
-inline size_t encode_payload_with_crc(uint8_t* output, uint8_t msg_id, const uint8_t* msg, size_t msg_size,
-                                      size_t length_bytes, const uint8_t* crc_start, uint8_t magic1 = 0,
-                                      uint8_t magic2 = 0) {
-  size_t idx = 0;
-
-  // Add length field
-  if (length_bytes == 1) {
-    output[idx++] = static_cast<uint8_t>(msg_size & 0xFF);
+template <typename Fn>
+constexpr bool is_null_callback(const Fn& fn) {
+  if constexpr (std::is_convertible_v<const Fn&, bool>) {
+    return !static_cast<bool>(fn);
   } else {
-    output[idx++] = static_cast<uint8_t>(msg_size & 0xFF);
-    output[idx++] = static_cast<uint8_t>((msg_size >> 8) & 0xFF);
+    return false;
   }
-
-  // Add msg_id
-  output[idx++] = msg_id;
-
-  // Add payload
-  if (msg_size > 0 && msg != nullptr) {
-    std::memcpy(output + idx, msg, msg_size);
-    idx += msg_size;
-  }
-
-  // Calculate and add CRC
-  size_t crc_data_len = msg_size + 1 + length_bytes;
-  FrameChecksum ck = fletcher_checksum(crc_start, crc_data_len, magic1, magic2);
-  output[idx++] = ck.byte1;
-  output[idx++] = ck.byte2;
-
-  return idx;
-}
-
-/**
- * Encode minimal payload (no length, no CRC) into output buffer.
- * Returns number of bytes written (msg_id + payload)
- */
-inline size_t encode_payload_minimal(uint8_t* output, uint8_t msg_id, const uint8_t* msg, size_t msg_size) {
-  size_t idx = 0;
-
-  // Add msg_id
-  output[idx++] = msg_id;
-
-  // Add payload
-  if (msg_size > 0 && msg != nullptr) {
-    std::memcpy(output + idx, msg, msg_size);
-    idx += msg_size;
-  }
-
-  return idx;
 }
 
 }  // namespace structframe
