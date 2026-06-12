@@ -129,6 +129,23 @@ namespace StructFrame.Sdk
             }
         }
 
+        private async Task RunReceiveLoopAsync()
+        {
+            try
+            {
+                if (_readCts != null)
+                    await ReadLoopAsync(_readCts.Token);
+            }
+            catch (Exception ex)
+            {
+                if (_connected)
+                {
+                    OnErrorOccurred(ex);
+                    OnConnectionClosed();
+                }
+            }
+        }
+
         private async Task ReadLoopAsync(System.Threading.CancellationToken cancellationToken)
         {
             byte[] buffer = new byte[4096];
@@ -219,8 +236,8 @@ namespace StructFrame.Sdk
                 }
                 _connected = true;
 
-                // Start receive loop
-                _ = ReceiveLoopAsync();
+                // Start receive loop; route any unhandled exception through OnErrorOccurred.
+                _ = RunGenericReceiveLoopAsync();
             }
             catch (Exception ex)
             {
@@ -254,6 +271,22 @@ namespace StructFrame.Sdk
             {
                 OnErrorOccurred(ex);
                 throw;
+            }
+        }
+
+        private async Task RunGenericReceiveLoopAsync()
+        {
+            try
+            {
+                await ReceiveLoopAsync();
+            }
+            catch (Exception ex)
+            {
+                if (_connected)
+                {
+                    OnErrorOccurred(ex);
+                    OnConnectionClosed();
+                }
             }
         }
 

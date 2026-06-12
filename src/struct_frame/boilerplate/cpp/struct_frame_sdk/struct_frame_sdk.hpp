@@ -40,8 +40,12 @@ class IStructFrameSdk {
  * Returned by StructFrameSdk::subscribe(). Auto-unsubscribes on destruction.
  * Must be kept alive (as a class member or named local) for as long as the
  * subscription is needed.
+ *
+ * Discarding without assigning to a named variable immediately unsubscribes —
+ * mark the return type [[nodiscard]] at call site to catch this mistake at
+ * compile time. The class itself is [[nodiscard]] to trigger a warning.
  */
-class SubscriptionHandle {
+class [[nodiscard]] SubscriptionHandle {
  public:
   static constexpr size_t INVALID = ~size_t{0};
 
@@ -93,10 +97,18 @@ struct StructFrameSdkConfigT {
   TransportT* transport = nullptr;
 };
 
-struct SendResult {
+enum class SendError : uint8_t {
+  None = 0,
+  NoTransport,   ///< transport_ is null
+  EncodeFailed,  ///< frame did not fit in MaxFrameSize (or encode returned 0)
+  PartialWrite,  ///< transport wrote fewer bytes than the encoded frame
+};
+
+struct [[nodiscard]] SendResult {
   bool success = false;
   size_t attempted_bytes = 0;
   size_t bytes_written = 0;
+  SendError error = SendError::None;
 
   explicit operator bool() const { return success; }
 };
@@ -128,6 +140,21 @@ struct SendResult {
  *   // Concrete transport type selected at compile time:
  *   StructFrameSdkT<ProfileSensorConfig, 2048, 8, 256, 32, MyTransport>
  *       sdk(&transport, &get_msg_info);
+ *
+ * Thread safety:
+ *   This class is NOT thread-safe. All methods — including Feed(), Send(),
+ *   subscribe(), and subscribeFrameInfo() — must be called from a single
+ *   thread or protected by an external mutex.
+ *
+ *   The transport data callback (registered in the constructor) calls Feed()
+ *   on whatever thread the transport fires it. If that is a different thread
+ *   from the one calling Send() or subscribe(), external synchronisation is
+ *   required.
+ *
+ *   Subscribe/unsubscribe IS reentrant with respect to dispatch: it is safe
+ *   to call subscribe() or let a SubscriptionHandle go out of scope inside a
+ *   subscriber callback, because the slot array is never compacted during
+ *   dispatch.
  */
 template <typename Config, size_t MaxBuffer = 8192, size_t MaxSubscriptions = 32, size_t MaxFrameSize = 512,
           size_t MaxCallableSize = 64, typename TransportT = BaseTransport>
@@ -167,6 +194,13 @@ class StructFrameSdkT : public IStructFrameSdk {
       : StructFrameSdkT(config.transport, get_message_info) {}
 
   ~StructFrameSdkT() {
+    // Unregister transport callbacks first so the transport cannot call
+    // into a partially-destroyed object after this destructor returns.
+    if (transport_ != nullptr) {
+      transport_->OnData(nullptr, nullptr);
+      transport_->OnError(nullptr, nullptr);
+      transport_->OnClose(nullptr, nullptr);
+    }
     for (size_t i = 0; i < MaxSubscriptions; ++i) {
       DestroySlot(i);
     }
@@ -203,7 +237,7 @@ class StructFrameSdkT : public IStructFrameSdk {
    * static_assert at compile time.
    */
   template <typename TMessage, typename Callable>
-  SubscriptionHandle subscribe(uint16_t msgId, Callable&& callback) {
+  [[nodiscard]] SubscriptionHandle subscribe(uint16_t msgId, Callable&& callback) {
     static_assert(sizeof(Callable) <= MaxCallableSize,
                   "Captured lambda/functor exceeds MaxCallableSize. "
                   "Reduce captures or increase MaxCallableSize template parameter.");
@@ -241,7 +275,7 @@ class StructFrameSdkT : public IStructFrameSdk {
    * Subscribe with a plain function pointer (no capture needed).
    */
   template <typename TMessage>
-  SubscriptionHandle subscribe(uint16_t msgId, void (*callback)(const TMessage&, uint16_t)) {
+  [[nodiscard]] SubscriptionHandle subscribe(uint16_t msgId, void (*callback)(const TMessage&, uint16_t)) {
     return subscribe<TMessage>(msgId, [callback](const TMessage& msg, uint16_t id) { callback(msg, id); });
   }
 
@@ -251,7 +285,7 @@ class StructFrameSdkT : public IStructFrameSdk {
    * Callback signature: void(const FrameMsgInfo&)
    */
   template <typename Callable>
-  SubscriptionHandle subscribeFrameInfo(Callable&& callback) {
+  [[nodiscard]] SubscriptionHandle subscribeFrameInfo(Callable&& callback) {
     static_assert(sizeof(Callable) <= MaxCallableSize,
                   "Captured lambda/functor exceeds MaxCallableSize. "
                   "Reduce captures or increase MaxCallableSize template parameter.");
@@ -309,10 +343,12 @@ class StructFrameSdkT : public IStructFrameSdk {
   void Feed(const uint8_t* data, size_t length) {
     if (data == nullptr || length == 0) return;
     if (buffer_len_ + length > MaxBuffer) {
-      buffer_len_ = 0;  // overflow: drop buffered data
+      buffer_len_ = 0;  // overflow: drop buffered partial frame
     }
-    std::memcpy(buffer_ + buffer_len_, data, length);
-    buffer_len_ += length;
+    // Clamp to available space — prevents OOB write when length > MaxBuffer
+    const size_t to_copy = length < (MaxBuffer - buffer_len_) ? length : (MaxBuffer - buffer_len_);
+    std::memcpy(buffer_ + buffer_len_, data, to_copy);
+    buffer_len_ += to_copy;
     ParseBuffer();
   }
 
@@ -328,7 +364,15 @@ class StructFrameSdkT : public IStructFrameSdk {
    */
   template <typename TMessage>
   SendResult Send(const TMessage& message) {
-    if (transport_ == nullptr) return {};
+    // For fixed-size messages the frame size is known at compile time.
+    // Nested if constexpr is required because accessing T::IS_VARIABLE directly
+    // in a compound expression is a hard error when IS_VARIABLE doesn't exist.
+    if constexpr (!IsVariableMessage<TMessage>()) {
+      static_assert(Config::overhead + TMessage::MAX_SIZE <= MaxFrameSize,
+                    "Encoded frame exceeds MaxFrameSize. "
+                    "Increase MaxFrameSize template parameter or reduce the message size.");
+    }
+    if (transport_ == nullptr) return {false, 0, 0, SendError::NoTransport};
     uint8_t frame_buf[MaxFrameSize];
     size_t framedLen;
 
@@ -338,9 +382,10 @@ class StructFrameSdkT : public IStructFrameSdk {
       framedLen = structframe::FrameEncoderMinimal<Config>::encode(frame_buf, MaxFrameSize, message);
     }
 
-    if (framedLen == 0) return {};
+    if (framedLen == 0) return {false, 0, 0, SendError::EncodeFailed};
     const size_t written = transport_->Send(frame_buf, framedLen);
-    return SendResult{written == framedLen, framedLen, written};
+    const bool ok = (written == framedLen);
+    return {ok, framedLen, written, ok ? SendError::None : SendError::PartialWrite};
   }
 
   /**
@@ -384,6 +429,28 @@ class StructFrameSdkT : public IStructFrameSdk {
     return {};
   }
 
+  // -----------------------------------------------------------------------
+  // Transport event callbacks
+  // -----------------------------------------------------------------------
+
+  /**
+   * Register a callback to be invoked when the transport reports an error.
+   * Signature: void(const char* message, void* ctx)
+   */
+  void SetErrorCallback(void (*fn)(const char*, void*), void* ctx = nullptr) {
+    error_fn_ = fn;
+    error_ctx_ = ctx;
+  }
+
+  /**
+   * Register a callback to be invoked when the transport closes.
+   * Signature: void(void* ctx)
+   */
+  void SetCloseCallback(void (*fn)(void*), void* ctx = nullptr) {
+    close_fn_ = fn;
+    close_ctx_ = ctx;
+  }
+
   // IStructFrameSdk
   void FreeSlot(size_t idx) override {
     if (idx < MaxSubscriptions) DestroySlot(idx);
@@ -406,10 +473,23 @@ class StructFrameSdkT : public IStructFrameSdk {
   Slot slots_[MaxSubscriptions];
   uint8_t buffer_[MaxBuffer];
   size_t buffer_len_;
+  void (*error_fn_)(const char*, void*) = nullptr;
+  void* error_ctx_ = nullptr;
+  void (*close_fn_)(void*) = nullptr;
+  void* close_ctx_ = nullptr;
 
   // -----------------------------------------------------------------------
   // Internal helpers
   // -----------------------------------------------------------------------
+
+  template <typename T>
+  static constexpr bool IsVariableMessage() {
+    if constexpr (requires { T::IS_VARIABLE; }) {
+      return T::IS_VARIABLE;
+    } else {
+      return false;
+    }
+  }
 
   static size_t EncodeRawFrame(uint16_t msgId, const uint8_t* data, size_t dataLen, uint8_t* output,
                                size_t outputMaxLen, MessageInfoFn get_message_info) {
@@ -485,33 +565,52 @@ class StructFrameSdkT : public IStructFrameSdk {
   }
 
   void ParseBuffer() {
-    while (buffer_len_ > 0) {
+    size_t offset = 0;
+
+    while (offset < buffer_len_) {
+      const size_t remaining = buffer_len_ - offset;
       FrameMsgInfo result;
 
       // Compile-time dispatch: no virtual call, fully inlined.
       if constexpr (Config::has_length || Config::has_crc) {
-        result = structframe::BufferParserWithCrc<Config>::parse(buffer_, buffer_len_, get_message_info_);
+        result = structframe::BufferParserWithCrc<Config>::parse(buffer_ + offset, remaining, get_message_info_);
       } else {
-        result = structframe::BufferParserMinimal<Config>::parse(buffer_, buffer_len_, get_message_info_);
+        result = structframe::BufferParserMinimal<Config>::parse(buffer_ + offset, remaining, get_message_info_);
       }
 
-      if (result.frame_size == 0) break;
-
-      // Auto-dispatch: notify raw-frame subscriptions for every complete
-      // frame and typed subscriptions only for valid parsed messages.
-      Dispatch(result);
-
-      // Advance past the consumed frame.
-      // frame_size is populated by all profile parsers; fall back to a
-      // conservative estimate only if the parser does not set it.
-      const size_t frameSize = result.frame_size > 0 ? result.frame_size : result.msg_len + 10;
-
-      if (frameSize == 0 || frameSize > buffer_len_) {
-        buffer_len_ = 0;  // safety guard: prevents infinite loop
+      if (result.frame_size > 0) {
+        // Complete frame (valid or CRC-failed) — dispatch and advance.
+        Dispatch(result);
+        offset += result.frame_size;
+      } else if (result.status == FrameMsgStatus::WaitingForStart) {
+        // Head byte is not a frame start — skip forward to the next one (C2: memchr).
+        if constexpr (Config::num_start_bytes >= 1) {
+          const size_t scan_start = offset + 1;
+          if (scan_start < buffer_len_) {
+            const void* p = std::memchr(buffer_ + scan_start,
+                                        static_cast<int>(Config::computed_start_byte1()),
+                                        buffer_len_ - scan_start);
+            offset = p ? static_cast<size_t>(static_cast<const uint8_t*>(p) - buffer_) : buffer_len_;
+          } else {
+            offset = buffer_len_;
+          }
+        } else {
+          // No start bytes in this profile — cannot resync; discard all
+          offset = buffer_len_;
+          break;
+        }
+      } else {
+        // Collecting — frame is incomplete; need more data from next Feed()
         break;
       }
-      std::memmove(buffer_, buffer_ + frameSize, buffer_len_ - frameSize);
-      buffer_len_ -= frameSize;
+    }
+
+    // Single compact at the end (C1: O(n) instead of per-frame memmove).
+    if (offset > 0) {
+      if (offset < buffer_len_) {
+        std::memmove(buffer_, buffer_ + offset, buffer_len_ - offset);
+      }
+      buffer_len_ -= offset;
     }
   }
 
@@ -537,9 +636,16 @@ class StructFrameSdkT : public IStructFrameSdk {
     static_cast<StructFrameSdkT*>(user_data)->Feed(data, length);
   }
 
-  static void ErrorCallbackWrapper(const char*, void*) {}
+  static void ErrorCallbackWrapper(const char* msg, void* user_data) {
+    auto* self = static_cast<StructFrameSdkT*>(user_data);
+    if (self->error_fn_ != nullptr) self->error_fn_(msg, self->error_ctx_);
+  }
 
-  static void CloseCallbackWrapper(void* user_data) { static_cast<StructFrameSdkT*>(user_data)->buffer_len_ = 0; }
+  static void CloseCallbackWrapper(void* user_data) {
+    auto* self = static_cast<StructFrameSdkT*>(user_data);
+    self->buffer_len_ = 0;
+    if (self->close_fn_ != nullptr) self->close_fn_(self->close_ctx_);
+  }
 };
 
 }  // namespace sdk

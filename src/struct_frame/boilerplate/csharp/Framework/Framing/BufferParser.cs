@@ -39,7 +39,7 @@ namespace StructFrame.Framing
         {
             if (length < _config.Overhead)
             {
-                return FrameMsgInfo.Invalid;
+                return StatusInvalid(FrameMsgStatus.Collecting);
             }
 
             int idx = offset;
@@ -49,14 +49,14 @@ namespace StructFrame.Framing
             {
                 if (buffer[idx++] != _config.ComputedStartByte1)
                 {
-                    return FrameMsgInfo.Invalid;
+                    return StatusInvalid(FrameMsgStatus.WaitingForStart);
                 }
             }
             if (_config.NumStartBytes >= 2)
             {
                 if (buffer[idx++] != _config.ComputedStartByte2)
                 {
-                    return FrameMsgInfo.Invalid;
+                    return StatusInvalid(FrameMsgStatus.WaitingForStart);
                 }
             }
 
@@ -97,7 +97,7 @@ namespace StructFrame.Framing
             int totalSize = _config.Overhead + msgLen;
             if (length < totalSize)
             {
-                return FrameMsgInfo.Invalid;
+                return StatusInvalid(FrameMsgStatus.Collecting);
             }
 
             // Verify CRC (extension-aware)
@@ -156,7 +156,7 @@ namespace StructFrame.Framing
         {
             if (length < _config.HeaderSize)
             {
-                return FrameMsgInfo.Invalid;
+                return StatusInvalid(FrameMsgStatus.Collecting);
             }
 
             int idx = offset;
@@ -166,14 +166,14 @@ namespace StructFrame.Framing
             {
                 if (buffer[idx++] != _config.ComputedStartByte1)
                 {
-                    return FrameMsgInfo.Invalid;
+                    return StatusInvalid(FrameMsgStatus.WaitingForStart);
                 }
             }
             if (_config.NumStartBytes >= 2)
             {
                 if (buffer[idx++] != _config.ComputedStartByte2)
                 {
-                    return FrameMsgInfo.Invalid;
+                    return StatusInvalid(FrameMsgStatus.WaitingForStart);
                 }
             }
 
@@ -183,25 +183,32 @@ namespace StructFrame.Framing
             // Get message length from callback
             if (_getMessageInfo == null)
             {
-                return FrameMsgInfo.Invalid;
+                return StatusInvalid(FrameMsgStatus.WaitingForStart);
             }
 
             var msgInfo = _getMessageInfo(msgId);
             if (!msgInfo.HasValue)
             {
-                return FrameMsgInfo.Invalid;
+                return StatusInvalid(FrameMsgStatus.WaitingForStart);
             }
 
             int totalSize = _config.HeaderSize + msgInfo.Value.Size;
             if (length < totalSize)
             {
-                return FrameMsgInfo.Invalid;
+                return StatusInvalid(FrameMsgStatus.Collecting);
             }
 
             return new FrameMsgInfo(true, msgId, msgInfo.Value.Size, totalSize, buffer, offset + _config.HeaderSize)
             {
                 FrameData = buffer.AsMemory(offset, totalSize)
             };
+        }
+
+        private static FrameMsgInfo StatusInvalid(FrameMsgStatus status)
+        {
+            var r = FrameMsgInfo.Invalid;
+            r.Status = status;
+            return r;
         }
     }
 

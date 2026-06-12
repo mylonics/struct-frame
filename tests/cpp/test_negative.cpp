@@ -494,6 +494,88 @@ bool test_bulk_corrupted_msg_id_low_byte() {
   return !result.valid;  // Expect failure: wrong msg_id → wrong magic → CRC fails
 }
 
+/**
+ * Test: BufferReader advances past a CRC-failed frame and decodes the next valid frame.
+ * Catches the A2 stall: BufferReader was not advancing past CRC failures.
+ */
+bool test_buffer_reader_skips_crc_failure() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+
+  auto msg = StandardMessages::get_message(0);
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg);
+  size_t first_frame_end = writer.size();
+
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg);
+  size_t total = writer.size();
+
+  // Corrupt the CRC of the first frame
+  buffer[first_frame_end - 1] ^= 0xFF;
+  buffer[first_frame_end - 2] ^= 0xFF;
+
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+      buffer.data(), total, get_message_info);
+
+  auto result1 = reader.next();
+  if (result1.valid) return false;  // First frame must fail (CRC corrupted)
+
+  auto result2 = reader.next();
+  return result2.valid;  // Second frame must succeed after skipping the bad one
+}
+
+/**
+ * Test: AccumulatingReader buffer mode recovers after a CRC failure in add_data path.
+ * Catches the A3 stall: CRC-bad frames caused a permanent loop in buffer mode.
+ */
+bool test_buffer_mode_recovers_after_crc_failure() {
+  std::vector<uint8_t> bad_buf(1024);
+  BufferWriter<ProfileStandardConfig> bad_writer(bad_buf.data(), bad_buf.size());
+  auto msg = StandardMessages::get_message(0);
+  std::visit([&bad_writer](auto&& m) { bad_writer.write(m); }, msg);
+  size_t frame_size = bad_writer.size();
+
+  // Corrupt the CRC
+  bad_buf[frame_size - 1] ^= 0xFF;
+  bad_buf[frame_size - 2] ^= 0xFF;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  reader.add_data(bad_buf.data(), frame_size);
+  auto result1 = reader.next();
+  if (result1.valid) return false;  // Must fail
+
+  // Feed a valid frame — reader must not be stuck on the bad one
+  std::vector<uint8_t> good_buf(1024);
+  BufferWriter<ProfileStandardConfig> good_writer(good_buf.data(), good_buf.size());
+  std::visit([&good_writer](auto&& m) { good_writer.write(m); }, msg);
+  size_t good_size = good_writer.size();
+
+  reader.add_data(good_buf.data(), good_size);
+  auto result2 = reader.next();
+  return result2.valid;
+}
+
+/**
+ * Test: Stream mode recovers after garbage prefix and decodes a valid frame.
+ */
+bool test_stream_recovers_after_garbage() {
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+
+  uint8_t garbage[] = {0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56};
+  for (auto b : garbage) reader.push_byte(b);
+
+  std::vector<uint8_t> frame_buf(1024);
+  BufferWriter<ProfileStandardConfig> writer(frame_buf.data(), frame_buf.size());
+  auto msg = StandardMessages::get_message(0);
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg);
+  size_t frame_size = writer.size();
+
+  for (size_t i = 0; i < frame_size; i++) {
+    auto r = reader.push_byte(frame_buf[i]);
+    if (r.valid) return true;
+  }
+  return false;
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)();
 
@@ -510,6 +592,8 @@ int main() {
   
   // Define test matrix
   TestCase tests[] = {
+    {"Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure},
+    {"Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure},
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},
     {"Bulk profile: Corrupted pkg_id", test_bulk_corrupted_pkg_id},
     {"Bulk profile: Corrupted msg_id low byte", test_bulk_corrupted_msg_id_low_byte},
@@ -523,6 +607,7 @@ int main() {
     {"Network profile: Corrupted pkg_id", test_network_corrupted_pkg_id},
     {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
+    {"Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage_data},
     {"Truncated frame detection", test_truncated_frame},

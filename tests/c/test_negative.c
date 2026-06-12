@@ -676,6 +676,126 @@ bool test_bulk_corrupted_msg_id_low_byte(void) {
   return !result.valid;  /* Expect failure: wrong msg_id → wrong magic → CRC fails */
 }
 
+/**
+ * Test: BufferReader advances past a CRC-failed frame and decodes the next valid frame.
+ * Catches the A2 stall: buffer_reader was not advancing past CRC failures.
+ */
+bool test_buffer_reader_skips_crc_failure(void) {
+  uint8_t buffer[2048];
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
+
+  uint8_t payload[256];
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      payload, payload_size, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  size_t first_frame_end = buffer_writer_size(&writer);
+
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      payload, payload_size, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  size_t total_size = buffer_writer_size(&writer);
+
+  /* Corrupt CRC of first frame */
+  buffer[first_frame_end - 1] ^= 0xFF;
+  buffer[first_frame_end - 2] ^= 0xFF;
+
+  buffer_reader_t reader;
+  buffer_reader_init(&reader, &PROFILE_STANDARD_CONFIG, buffer, total_size, get_message_info);
+
+  frame_msg_info_t result1 = buffer_reader_next(&reader);
+  if (result1.valid) return false;  /* First frame must fail */
+
+  frame_msg_info_t result2 = buffer_reader_next(&reader);
+  return result2.valid;  /* Second frame must succeed after skipping the bad one */
+}
+
+/**
+ * Test: AccumulatingReader buffer mode recovers after a CRC failure in add_data path.
+ * Catches the A3 stall: CRC-bad frames caused a permanent loop in buffer mode.
+ */
+bool test_buffer_mode_recovers_after_crc_failure(void) {
+  uint8_t bad_frame[1024];
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+
+  buffer_writer_t writer1;
+  buffer_writer_init(&writer1, &PROFILE_STANDARD_CONFIG, bad_frame, sizeof(bad_frame));
+
+  uint8_t payload1[256];
+  size_t payload_size1 = SerializationTestBasicTypesMessage_serialize(&msg, payload1);
+  size_t frame_size = buffer_writer_write(&writer1, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                                          payload1, payload_size1, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  if (frame_size < 4) return false;
+
+  bad_frame[frame_size - 1] ^= 0xFF;
+  bad_frame[frame_size - 2] ^= 0xFF;
+
+  uint8_t internal_buffer[2048];
+  accumulating_reader_t reader;
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), get_message_info);
+
+  accumulating_reader_add_data(&reader, bad_frame, frame_size);
+  frame_msg_info_t result1 = accumulating_reader_next(&reader);
+  if (result1.valid) return false;  /* Must fail */
+
+  /* Feed a valid frame - reader must not be stuck on the bad one */
+  uint8_t good_frame[1024];
+  buffer_writer_t writer2;
+  buffer_writer_init(&writer2, &PROFILE_STANDARD_CONFIG, good_frame, sizeof(good_frame));
+  uint8_t payload2[256];
+  size_t payload_size2 = SerializationTestBasicTypesMessage_serialize(&msg, payload2);
+  size_t good_size = buffer_writer_write(&writer2, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                                         payload2, payload_size2, 0, 0, 0, 0,
+                                         SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                         SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+
+  accumulating_reader_add_data(&reader, good_frame, good_size);
+  frame_msg_info_t result2 = accumulating_reader_next(&reader);
+  return result2.valid;
+}
+
+/**
+ * Test: Stream mode recovers after garbage prefix and decodes a valid frame.
+ */
+bool test_stream_recovers_after_garbage(void) {
+  uint8_t internal_buffer[1024];
+  accumulating_reader_t reader;
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), get_message_info);
+
+  uint8_t garbage[] = {0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56};
+  for (size_t i = 0; i < sizeof(garbage); i++) {
+    accumulating_reader_push_byte(&reader, garbage[i]);
+  }
+
+  uint8_t frame_buf[1024];
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, frame_buf, sizeof(frame_buf));
+
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+  uint8_t payload[256];
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+  size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+
+  for (size_t i = 0; i < frame_size; i++) {
+    frame_msg_info_t r = accumulating_reader_push_byte(&reader, frame_buf[i]);
+    if (r.valid) return true;
+  }
+  return false;
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)(void);
 
@@ -692,6 +812,8 @@ int main(void) {
   
   // Define test matrix
   TestCase tests[] = {
+    {"Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure},
+    {"Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure},
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},
     {"Bulk profile: Corrupted pkg_id", test_bulk_corrupted_pkg_id},
     {"Bulk profile: Corrupted msg_id low byte", test_bulk_corrupted_msg_id_low_byte},
@@ -705,6 +827,7 @@ int main(void) {
     {"Network profile: Corrupted pkg_id", test_network_corrupted_pkg_id},
     {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
+    {"Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage},
     {"Truncated frame detection", test_truncated_frame},

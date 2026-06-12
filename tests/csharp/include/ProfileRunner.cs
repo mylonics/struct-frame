@@ -99,11 +99,11 @@ namespace StructFrameTests
         {
             switch (profile.ToLower())
             {
-                case "standard": return new ProfileStandardWriter();
-                case "sensor": return new ProfileSensorWriter();
-                case "ipc": return new ProfileIPCWriter();
-                case "bulk": return new ProfileBulkWriter();
-                case "network": return new ProfileNetworkWriter();
+                case "standard": return new BufferWriter<StandardProfile>();
+                case "sensor": return new BufferWriter<SensorProfile>();
+                case "ipc": return new BufferWriter<IPCProfile>();
+                case "bulk": return new BufferWriter<BulkProfile>();
+                case "network": return new BufferWriter<NetworkProfile>();
                 default: return null;
             }
         }
@@ -111,14 +111,14 @@ namespace StructFrameTests
         private static AccumulatingReader CreateReader(string profile, GetMessageInfoFunc getMessageInfo, int bufferSize)
         {
             Func<int, MessageInfo?> msgInfoFunc = (msgId) => getMessageInfo(msgId);
-            
+
             switch (profile.ToLower())
             {
-                case "standard": return new ProfileStandardAccumulatingReader(bufferSize, msgInfoFunc);
-                case "sensor": return new ProfileSensorAccumulatingReader(bufferSize, msgInfoFunc);
-                case "ipc": return new ProfileIPCAccumulatingReader(bufferSize, msgInfoFunc);
-                case "bulk": return new ProfileBulkAccumulatingReader(bufferSize, msgInfoFunc);
-                case "network": return new ProfileNetworkAccumulatingReader(bufferSize, msgInfoFunc);
+                case "standard": return new AccumulatingReader<StandardProfile>(bufferSize, msgInfoFunc);
+                case "sensor": return new AccumulatingReader<SensorProfile>(bufferSize, msgInfoFunc);
+                case "ipc": return new AccumulatingReader<IPCProfile>(bufferSize, msgInfoFunc);
+                case "bulk": return new AccumulatingReader<BulkProfile>(bufferSize, msgInfoFunc);
+                case "network": return new AccumulatingReader<NetworkProfile>(bufferSize, msgInfoFunc);
                 default: return null;
             }
         }

@@ -10,6 +10,7 @@ export {
     FrameMsgStatus,
     createFrameMsgInfo,
     fletcherChecksum,
+    fletcherChecksumExt,
     // Generic parser class (use createFrameParserClass for type-safe wrappers)
     GenericFrameParser,
     GenericParserState,
@@ -61,7 +62,7 @@ export {
 } from './payload-types';
 
 // Frame profiles - Pre-defined Header + Payload combinations
-export type { FrameProfileConfig, EncodeOptions } from './frame-profiles';
+export type { FrameProfileConfig, EncodeOptions, MessageInfo, GetMessageInfo } from './frame-profiles';
 export {
     // Profile helper functions
     profileHeaderSize,

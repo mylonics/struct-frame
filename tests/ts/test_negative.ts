@@ -480,6 +480,79 @@ function testBulkCorruptedMsgIdLowByte(): boolean {
   return !result.valid;  // Expect failure: wrong msg_id → wrong magic → CRC fails
 }
 
+/**
+ * Test: BufferReader advances past a CRC-failed frame and decodes the next valid frame.
+ * Catches the A2 stall: BufferReader was not advancing past CRC failures.
+ */
+function testBufferReaderSkipsCrcFailure(): boolean {
+  const writer = new ProfileStandardWriter(2048);
+  const msg = createTestMessage();
+  writer.write(msg);
+  const firstFrameEnd = writer.size;
+  writer.write(msg);
+  const total = writer.size;
+
+  const buffer = Buffer.from(writer.data());
+  buffer[firstFrameEnd - 1] ^= 0xFF;
+  buffer[firstFrameEnd - 2] ^= 0xFF;
+
+  const reader = new ProfileStandardReader(buffer.subarray(0, total), getMessageInfo);
+
+  const result1 = reader.next();
+  if (result1.valid) return false;  // First frame must fail (CRC corrupted)
+
+  const result2 = reader.next();
+  return result2.valid;  // Second frame must succeed after skipping the bad one
+}
+
+/**
+ * Test: AccumulatingReader buffer mode recovers after a CRC failure in addData path.
+ * Catches the A3 stall: CRC-bad frames caused a permanent loop in buffer mode.
+ */
+function testBufferModeRecoversAfterCrcFailure(): boolean {
+  const writer = new ProfileStandardWriter(1024);
+  const msg = createTestMessage();
+  writer.write(msg);
+  const frameSize = writer.size;
+
+  const badFrame = Buffer.from(writer.data().subarray(0, frameSize));
+  badFrame[frameSize - 1] ^= 0xFF;
+  badFrame[frameSize - 2] ^= 0xFF;
+
+  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
+  reader.addData(badFrame);
+  const result1 = reader.next();
+  if (result1.valid) return false;  // Must fail
+
+  // Feed a valid frame — reader must not be stuck on the bad one
+  const goodWriter = new ProfileStandardWriter(1024);
+  goodWriter.write(msg);
+  reader.addData(goodWriter.data().subarray(0, goodWriter.size));
+  const result2 = reader.next();
+  return result2.valid;
+}
+
+/**
+ * Test: Stream mode recovers after garbage prefix and decodes a valid frame.
+ */
+function testStreamRecoversAfterGarbage(): boolean {
+  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
+
+  const garbage = new Uint8Array([0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56]);
+  for (const byte of garbage) reader.pushByte(byte);
+
+  const writer = new ProfileStandardWriter(1024);
+  const msg = createTestMessage();
+  writer.write(msg);
+  const frameData = writer.data().subarray(0, writer.size);
+
+  for (let i = 0; i < frameData.length; i++) {
+    const r = reader.pushByte(frameData[i]);
+    if (r.valid) return true;
+  }
+  return false;
+}
+
 function main(): number {
   console.log('\n========================================');
   console.log('NEGATIVE TESTS - TypeScript Parser');
@@ -487,6 +560,8 @@ function main(): number {
   
   // Define test matrix
   const tests: Array<[string, () => boolean]> = [
+    ['Buffer mode: recovers after CRC failure', testBufferModeRecoversAfterCrcFailure],
+    ['Buffer reader: skips CRC-failed frame', testBufferReaderSkipsCrcFailure],
     ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],
     ['Bulk profile: Corrupted pkg_id', testBulkCorruptedPkgId],
     ['Bulk profile: Corrupted msg_id low byte', testBulkCorruptedMsgIdLowByte],
@@ -500,6 +575,7 @@ function main(): number {
     ['Network profile: Corrupted pkg_id', testNetworkCorruptedPkgId],
     ['Network profile: SysId/CompId corruption', testNetworkSysIdCompId],
     ['Partial frame across buffer boundary', testPartialFrameBoundary],
+    ['Stream mode: recovers after garbage prefix', testStreamRecoversAfterGarbage],
     ['Streaming: Corrupted CRC detection', testStreamingCorruptedCrc],
     ['Streaming: Garbage data handling', testStreamingGarbage],
     ['Truncated frame detection', testTruncatedFrame],

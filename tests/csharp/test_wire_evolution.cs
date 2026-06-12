@@ -64,8 +64,8 @@ public class TestWireEvolution
 
     private static void TestBaseExtensionRoundtrip()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(MessageDefinitions.GetMessageInfo);
 
         var orig = new BaseExtensionMessage
         {
@@ -98,8 +98,8 @@ public class TestWireEvolution
 
     private static void TestOneOfExtensionVariantRoundtrip()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(MessageDefinitions.GetMessageInfo);
 
         var cmdC = new ExtCommandC
         {
@@ -142,8 +142,8 @@ public class TestWireEvolution
 
     private static void TestMultiOneOfExtensionRoundtrip()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(MessageDefinitions.GetMessageInfo);
 
         var extVariant = new ExtCommandC
         {
@@ -188,8 +188,8 @@ public class TestWireEvolution
 
     private static void TestLegacyFrameCompatibility()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(MessageDefinitions.GetMessageInfo);
 
         var orig = new BaseExtensionMessage
         {
@@ -232,8 +232,8 @@ public class TestWireEvolution
 #pragma warning disable CS0618 // NonExtension classes are intentionally obsolete
     private static void TestNonExtensionClass()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser  = new ProfileStandardParser(MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser  = new BufferParser<StandardProfile>(MessageDefinitions.GetMessageInfo);
 
         var full = new BaseExtensionMessage
         {

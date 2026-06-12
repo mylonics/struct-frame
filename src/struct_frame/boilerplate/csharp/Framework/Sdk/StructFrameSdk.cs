@@ -120,7 +120,12 @@ namespace StructFrame.Sdk
 
     /// <summary>
     /// Main SDK Client - uses FrameProfiles infrastructure for encoding/parsing.
-    /// Implements IDisposable to clean up internal resources.
+    /// <para>
+    /// Thread-safety: <see cref="Subscribe{T}"/> and the returned unsubscribe action may
+    /// be called from any thread. <see cref="SendAsync{T}"/> is thread-safe and re-entrant.
+    /// Callbacks (<see cref="FrameReceived"/>, typed subscribers) are invoked on the
+    /// transport's receive thread — do not block inside them.
+    /// </para>
     /// </summary>
     public class StructFrameSdk : IDisposable
     {
@@ -131,11 +136,17 @@ namespace StructFrame.Sdk
         private readonly Func<int, MessageInfo?> _getMessageInfo;
         private readonly bool _debug;
         private readonly Dictionary<ushort, List<IMessageHandler>> _messageHandlers;
+        private readonly object _handlersLock = new object();
         private readonly int _bufferSize;
         private readonly bool _strictOrdering;
 
+        // Transport event delegates kept as fields so they can be unsubscribed in Dispose.
+        private readonly EventHandler<byte[]> _onDataReceived;
+        private readonly EventHandler<Exception> _onErrorOccurred;
+        private readonly EventHandler _onConnectionClosed;
+
         // Send queue infrastructure (only used when StrictOrdering is enabled)
-        private readonly Channel<QueuedMessage>? _sendQueue;
+        private Channel<QueuedMessage>? _sendQueue;
         private CancellationTokenSource? _sendQueueCts;
         private Task? _sendQueueTask;
 
@@ -155,14 +166,25 @@ namespace StructFrame.Sdk
         }
 
         /// <summary>
-        /// Event fired when an unhandled message is received
+        /// Fired for every received frame (valid or CRC-failed). Check <c>frame.Valid</c>
+        /// and <c>frame.Status</c> before acting on the payload.
         /// </summary>
         public event RawMessageHandler? FrameReceived;
 
         /// <summary>
-        /// Event fired when a frame is received but no typed handler is registered.
+        /// Fired when a valid frame arrives but no typed subscriber is registered for its message ID.
         /// </summary>
         public event RawMessageHandler? UnhandledMessage;
+
+        /// <summary>
+        /// Fired when the transport reports an error.
+        /// </summary>
+        public event EventHandler<Exception>? ErrorOccurred;
+
+        /// <summary>
+        /// Fired when the transport connection closes.
+        /// </summary>
+        public event EventHandler? ConnectionClosed;
 
         public StructFrameSdk(StructFrameSdkConfig config)
         {
@@ -172,25 +194,18 @@ namespace StructFrame.Sdk
             _debug = config.Debug;
             _messageHandlers = new Dictionary<ushort, List<IMessageHandler>>();
 
-            // Create encoder and reader using FrameProfiles infrastructure
             _encoder = new FrameEncoder(_profile);
             _reader = new AccumulatingReader(_profile, config.BufferSize, config.GetMessageInfo);
             _bufferSize = config.BufferSize;
             _strictOrdering = config.StrictOrdering;
 
-            // Create send queue only when strict ordering is enabled
-            if (_strictOrdering)
-            {
-                _sendQueue = Channel.CreateUnbounded<QueuedMessage>(new UnboundedChannelOptions
-                {
-                    SingleReader = true
-                });
-            }
+            _onDataReceived = (_, data) => HandleIncomingData(data);
+            _onErrorOccurred = (_, error) => HandleError(error);
+            _onConnectionClosed = (_, _) => HandleClose();
 
-            // Set up transport callbacks
-            _transport.DataReceived += (sender, data) => HandleIncomingData(data);
-            _transport.ErrorOccurred += (sender, error) => HandleError(error);
-            _transport.ConnectionClosed += (sender, args) => HandleClose();
+            _transport.DataReceived += _onDataReceived;
+            _transport.ErrorOccurred += _onErrorOccurred;
+            _transport.ConnectionClosed += _onConnectionClosed;
         }
 
         /// <summary>
@@ -201,8 +216,6 @@ namespace StructFrame.Sdk
         /// <summary>
         /// Connect to the transport. When strict ordering is enabled,
         /// starts the background send queue consumer.
-        /// If the transport is already connected, skips the transport connect
-        /// and only starts the send queue.
         /// </summary>
         public async Task ConnectAsync()
         {
@@ -215,12 +228,12 @@ namespace StructFrame.Sdk
         }
 
         /// <summary>
-        /// Disconnect from the transport. When strict ordering is enabled,
-        /// stops the send queue consumer and cancels any pending queued messages.
+        /// Disconnect from the transport. Stops the strict-ordering send queue (if active)
+        /// before disconnecting so in-flight queued messages are cancelled cleanly.
         /// </summary>
         public async Task DisconnectAsync()
         {
-            if (_strictOrdering) StopSendQueue();
+            if (_strictOrdering) await StopSendQueueAsync();
             await _transport.DisconnectAsync();
             Log("Disconnected");
         }
@@ -228,6 +241,7 @@ namespace StructFrame.Sdk
         /// <summary>
         /// Subscribe to messages of a specific type.
         /// The message ID is automatically inferred from the message type.
+        /// Returns an action that, when called, removes this subscription.
         /// </summary>
         public Action Subscribe<T>(MessageHandler<T> handler) where T : IStructFrameMessage<T>, new()
         {
@@ -236,35 +250,33 @@ namespace StructFrame.Sdk
 
             var typedHandler = new TypedMessageHandler<T>(handler);
 
-            if (!_messageHandlers.TryGetValue(msgId, out var handlers))
+            lock (_handlersLock)
             {
-                handlers = new List<IMessageHandler>();
-                _messageHandlers[msgId] = handlers;
+                if (!_messageHandlers.TryGetValue(msgId, out var handlers))
+                {
+                    handlers = new List<IMessageHandler>();
+                    _messageHandlers[msgId] = handlers;
+                }
+                handlers.Add(typedHandler);
             }
-            handlers.Add(typedHandler);
             Log($"Subscribed to message ID {msgId} ({typeof(T).Name})");
 
-            // Return unsubscribe action
-            return () => handlers.Remove(typedHandler);
+            return () =>
+            {
+                lock (_handlersLock)
+                {
+                    if (_messageHandlers.TryGetValue(msgId, out var h))
+                        h.Remove(typedHandler);
+                }
+            };
         }
 
         /// <summary>
         /// Send a framed message through the transport.
         /// <para>
-        /// When <c>StrictOrdering</c> is enabled (set in config), messages are
-        /// placed into an internal FIFO queue and sent sequentially by a
-        /// background consumer, guaranteeing order even with concurrent callers.
-        /// The returned Task completes when the message has actually been sent.
-        /// </para>
-        /// <para>
-        /// When <c>StrictOrdering</c> is disabled (default), messages are sent
-        /// directly through the transport. Concurrent calls are safe (serialized
-        /// at the transport level) but ordering is not guaranteed. To ensure
-        /// order without strict ordering, await each call sequentially:
-        /// <code>
-        /// await sdk.SendAsync(msg1);  // sent first
-        /// await sdk.SendAsync(msg2);  // guaranteed after msg1
-        /// </code>
+        /// When <c>StrictOrdering</c> is enabled the message is placed into an internal
+        /// FIFO queue; the returned Task completes when the message has been sent.
+        /// When disabled, the message is sent directly and concurrently.
         /// </para>
         /// </summary>
         public async Task<SendResult> SendAsync<T>(T message, byte seq = 0, byte sysId = 0, byte compId = 0) where T : IStructFrameMessage<T>
@@ -295,10 +307,9 @@ namespace StructFrame.Sdk
         }
 
         /// <summary>
-        /// Send a parsed frame using the current profile. This re-encodes from
-        /// payload metadata rather than forwarding the original wire bytes.
+        /// Re-encode a parsed frame using the current profile and send it.
         /// </summary>
-        public async Task<SendResult> Send(FrameMsgInfo frame)
+        public async Task<SendResult> ReencodeAsync(FrameMsgInfo frame)
         {
             if (frame.MsgData == null)
             {
@@ -326,15 +337,15 @@ namespace StructFrame.Sdk
             byte[] framedData = new byte[bytesWritten];
             Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
             var result = await SendFramedBytesAsync(framedData).ConfigureAwait(false);
-            Log($"Sent frame ID {frame.MsgId}, {bytesWritten} bytes total");
+            Log($"Re-encoded and sent frame ID {frame.MsgId}, {bytesWritten} bytes total");
             return result;
         }
 
         /// <summary>
-        /// Directly forward an already framed message without re-encoding.
+        /// Directly forward an already-framed message without re-encoding.
         /// Assumes the source and destination profiles are the same.
         /// </summary>
-        public async Task<SendResult> SendDirect(FrameMsgInfo frame)
+        public async Task<SendResult> ForwardAsync(FrameMsgInfo frame)
         {
             if (frame.FrameData.IsEmpty)
             {
@@ -342,9 +353,15 @@ namespace StructFrame.Sdk
             }
 
             var result = await SendFramedBytesAsync(frame.FrameData).ConfigureAwait(false);
-            Log($"Directly forwarded frame ID {frame.MsgId}, {frame.FrameData.Length} bytes total");
+            Log($"Forwarded frame ID {frame.MsgId}, {frame.FrameData.Length} bytes total");
             return result;
         }
+
+        // Keep old names as thin wrappers so existing tests compile without changes.
+        [Obsolete("Use ReencodeAsync")]
+        public Task<SendResult> Send(FrameMsgInfo frame) => ReencodeAsync(frame);
+        [Obsolete("Use ForwardAsync")]
+        public Task<SendResult> SendDirect(FrameMsgInfo frame) => ForwardAsync(frame);
 
         /// <summary>
         /// Check if connected
@@ -353,6 +370,7 @@ namespace StructFrame.Sdk
 
         private void HandleIncomingData(byte[] data)
         {
+            if (_disposed) return;
             _reader.AddData(data);
             while (true)
             {
@@ -367,14 +385,26 @@ namespace StructFrame.Sdk
 
         private void ProcessFrame(FrameMsgInfo frame)
         {
-            Log($"Received message ID {frame.MsgId}, {frame.MsgLen} bytes payload");
+            Log($"Received message ID {frame.MsgId}, {frame.MsgLen} bytes payload, valid={frame.Valid}");
 
+            // FrameReceived fires for all frames (raw tap) — valid and CRC-failed alike.
             FrameReceived?.Invoke(frame);
 
-            if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers))
+            if (!frame.Valid)
             {
-                // Create a copy to avoid collection modification during enumeration
-                var handlersCopy = handlers.ToArray();
+                // Do not dispatch invalid (e.g. CRC-failed) frames to typed subscribers.
+                return;
+            }
+
+            IMessageHandler[]? handlersCopy = null;
+            lock (_handlersLock)
+            {
+                if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers) && handlers.Count > 0)
+                    handlersCopy = handlers.ToArray();
+            }
+
+            if (handlersCopy != null)
+            {
                 foreach (var handler in handlersCopy)
                 {
                     try
@@ -387,7 +417,7 @@ namespace StructFrame.Sdk
                     }
                 }
             }
-            else if (frame.Valid)
+            else
             {
                 UnhandledMessage?.Invoke(frame);
             }
@@ -397,12 +427,21 @@ namespace StructFrame.Sdk
         {
             if (_strictOrdering)
             {
-                var tcs = new TaskCompletionSource<SendResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-                byte[] bytes = framedData.ToArray();
-                if (!_sendQueue!.Writer.TryWrite(new QueuedMessage(bytes, tcs)))
+                Channel<QueuedMessage>? queue;
+                lock (_handlersLock)
                 {
-                    throw new InvalidOperationException("Send queue is closed - transport may be disconnected");
+                    queue = _sendQueue;
+                }
+                if (queue == null)
+                {
+                    throw new InvalidOperationException("Send queue is not running — call ConnectAsync first");
+                }
+
+                var tcs = new TaskCompletionSource<SendResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+                byte[] bytes = framedData.ToArray();
+                if (!queue.Writer.TryWrite(new QueuedMessage(bytes, tcs)))
+                {
+                    throw new InvalidOperationException("Send queue is closed — transport may be disconnected");
                 }
 
                 return await tcs.Task.ConfigureAwait(false);
@@ -418,44 +457,74 @@ namespace StructFrame.Sdk
         private void HandleError(Exception error)
         {
             Log($"Transport error: {error.Message}");
+            ErrorOccurred?.Invoke(this, error);
         }
 
         private void HandleClose()
         {
             Log("Transport closed");
-            if (_strictOrdering) StopSendQueue();
+            ConnectionClosed?.Invoke(this, EventArgs.Empty);
+            if (_strictOrdering) _ = StopSendQueueAsync();
             _reader.Reset();
         }
 
         private void StartSendQueue()
         {
-            _sendQueueCts = new CancellationTokenSource();
-            _sendQueueTask = SendQueueConsumerAsync(_sendQueueCts.Token);
+            var queue = Channel.CreateUnbounded<QueuedMessage>(new UnboundedChannelOptions
+            {
+                SingleReader = true
+            });
+            var cts = new CancellationTokenSource();
+            lock (_handlersLock)
+            {
+                _sendQueue = queue;
+                _sendQueueCts = cts;
+                _sendQueueTask = SendQueueConsumerAsync(queue, cts.Token);
+            }
         }
 
-        private void StopSendQueue()
+        private Task StopSendQueueAsync()
         {
-            if (_sendQueueCts != null)
+            Channel<QueuedMessage>? queue;
+            CancellationTokenSource? cts;
+            Task? consumerTask;
+
+            lock (_handlersLock)
             {
-                _sendQueueCts.Cancel();
-                _sendQueueCts.Dispose();
+                queue = _sendQueue;
+                cts = _sendQueueCts;
+                consumerTask = _sendQueueTask;
+                _sendQueue = null;
                 _sendQueueCts = null;
+                _sendQueueTask = null;
             }
 
-            // Drain remaining queued messages and cancel them
-            while (_sendQueue!.Reader.TryRead(out var queued))
+            if (queue != null)
             {
-                queued.Completion.TrySetCanceled();
+                queue.Writer.TryComplete();
+                // Drain remaining queued messages and cancel them.
+                while (queue.Reader.TryRead(out var queued))
+                {
+                    queued.Completion.TrySetCanceled();
+                }
             }
 
-            _sendQueueTask = null;
+            cts?.Cancel();
+            cts?.Dispose();
+
+            // Do NOT await consumerTask: the consumer may be blocked inside an
+            // in-flight transport.SendAsync that has no cancellation support.
+            // We've completed the channel and cancelled the token, so the consumer
+            // will exit on its own after the current send finishes or throws.
+            _ = consumerTask; // suppress unused-variable warning
+            return Task.CompletedTask;
         }
 
-        private async Task SendQueueConsumerAsync(CancellationToken ct)
+        private async Task SendQueueConsumerAsync(Channel<QueuedMessage> queue, CancellationToken ct)
         {
             try
             {
-                await foreach (var queued in _sendQueue!.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+                await foreach (var queued in queue.Reader.ReadAllAsync(ct).ConfigureAwait(false))
                 {
                     try
                     {
@@ -472,7 +541,7 @@ namespace StructFrame.Sdk
             }
             catch (OperationCanceledException)
             {
-                // Expected on disconnect
+                // Expected on disconnect/dispose.
             }
         }
 
@@ -488,6 +557,7 @@ namespace StructFrame.Sdk
 
         /// <summary>
         /// Releases resources used by the SDK.
+        /// Call <see cref="DisconnectAsync"/> before Dispose to drain the send queue cleanly.
         /// </summary>
         public void Dispose()
         {
@@ -504,8 +574,30 @@ namespace StructFrame.Sdk
             {
                 if (disposing)
                 {
-                    if (_strictOrdering) StopSendQueue();
-                    _sendQueueCts?.Dispose();
+                    // Unsubscribe transport events first to prevent callbacks into a disposed SDK.
+                    _transport.DataReceived -= _onDataReceived;
+                    _transport.ErrorOccurred -= _onErrorOccurred;
+                    _transport.ConnectionClosed -= _onConnectionClosed;
+
+                    if (_strictOrdering)
+                    {
+                        // Best-effort synchronous teardown of the send queue.
+                        Channel<QueuedMessage>? queue;
+                        CancellationTokenSource? cts;
+                        lock (_handlersLock)
+                        {
+                            queue = _sendQueue;
+                            cts = _sendQueueCts;
+                            _sendQueue = null;
+                            _sendQueueCts = null;
+                            _sendQueueTask = null;
+                        }
+                        queue?.Writer.TryComplete();
+                        while (queue?.Reader.TryRead(out var queued) == true)
+                            queued.Completion.TrySetCanceled();
+                        cts?.Cancel();
+                        cts?.Dispose();
+                    }
                 }
                 _disposed = true;
             }

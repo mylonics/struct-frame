@@ -293,32 +293,58 @@ class MessageTsClassGen():
         result += f'\n  /**\n'
         result += f'   * Deserialize message from binary data.\n'
         result += f'   * Works for both variable and non-variable messages.\n'
-        result += f'   * For variable messages with minimal profiles (buffer.length == _size),\n'
-        result += f'   * uses fixed-size deserialization instead of variable-length deserialization.\n'
+        result += f'   * For variable messages, raw buffers default to wire decoding to avoid ambiguous\n'
+        result += f'   * length-based guessing. Use mode="fixed" (or deserializeFixed()) for minimal frames.\n'
         result += f'   * @param buffer Input buffer containing serialized message data, or FrameMsgInfo from frame parser\n'
+        result += f'   * @param mode Decode mode for raw buffers: "wire", "fixed", or "auto" (backward-compat heuristic)\n'
         result += f'   * @returns New instance with deserialized data\n'
         result += f'   */\n'
-        result += f'  static deserialize(buffer: Buffer | any): {package_msg_name} {{\n'
-        result += f'    // Check if buffer is FrameMsgInfo (has msgData property)\n'
-        result += f'    if (buffer && typeof buffer === "object" && "msgData" in buffer) {{\n'
-        result += f'      buffer = Buffer.from(buffer.msgData);\n'
-        result += f'    }} else if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {{\n'
-        result += f'      buffer = Buffer.from(buffer);\n'
-        result += f'    }}\n'
-        result += f'    \n'
-        
+        result += f'  static deserialize(buffer: Buffer | Uint8Array | any, mode: "wire" | "fixed" | "auto" = "wire"): {package_msg_name} {{\n'
         if msg.variable:
-            result += f'    // Variable message - check encoding format\n'
-            result += f'    if (buffer.length === {package_msg_name}._size) {{\n'
-            result += f'      // Minimal profile format (MAX_SIZE encoding)\n'
-            result += f'      const msg = new {package_msg_name}();\n'
-            result += f'      buffer.copy(msg._buffer);\n'
-            result += f'      return msg;\n'
-            result += f'    }} else {{\n'
-            result += f'      // Variable-length format\n'
+            result += f'    // Check if buffer is FrameMsgInfo (has msgData property)\n'
+            result += f'    if (buffer && typeof buffer === "object" && "msgData" in buffer) {{\n'
+            result += f'      // msgLen from the frame header is authoritative: minimal profiles always send _size bytes\n'
+            result += f'      const isFixedEncoding = buffer.msgLen === {package_msg_name}._size;\n'
+            result += f'      buffer = Buffer.from(buffer.msgData);\n'
+            result += f'      if (isFixedEncoding) {{\n'
+            result += f'        return {package_msg_name}.deserializeFixed(buffer);\n'
+            result += f'      }}\n'
             result += f'      return {package_msg_name}._deserializeVariable(buffer);\n'
+            result += f'    }} else if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {{\n'
+            result += f'      buffer = Buffer.from(buffer);\n'
             result += f'    }}\n'
+            result += f'    if (mode === "fixed") {{\n'
+            result += f'      return {package_msg_name}.deserializeFixed(buffer);\n'
+            result += f'    }}\n'
+            result += f'    if (mode === "auto" && buffer.length === {package_msg_name}._size) {{\n'
+            result += f'      return {package_msg_name}.deserializeFixed(buffer);\n'
+            result += f'    }}\n'
+            result += f'    return {package_msg_name}._deserializeVariable(buffer);\n'
+            result += f'  }}\n'
+            result += f'\n'
+            result += f'  /** Decode a variable message from wire encoding (length-prefixed fields). */\n'
+            result += f'  static deserializeWire(buffer: Buffer | Uint8Array): {package_msg_name} {{\n'
+            result += f'    if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {{\n'
+            result += f'      buffer = Buffer.from(buffer);\n'
+            result += f'    }}\n'
+            result += f'    return {package_msg_name}._deserializeVariable(buffer as Buffer);\n'
+            result += f'  }}\n'
+            result += f'\n'
+            result += f'  /** Decode a variable message from fixed-width (minimal profile) encoding. */\n'
+            result += f'  static deserializeFixed(buffer: Buffer | Uint8Array): {package_msg_name} {{\n'
+            result += f'    if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {{\n'
+            result += f'      buffer = Buffer.from(buffer);\n'
+            result += f'    }}\n'
+            result += f'    const msg = new {package_msg_name}();\n'
+            result += f'    (buffer as Buffer).copy(msg._buffer);\n'
+            result += f'    return msg;\n'
         else:
+            result += f'    // Check if buffer is FrameMsgInfo (has msgData property)\n'
+            result += f'    if (buffer && typeof buffer === "object" && "msgData" in buffer) {{\n'
+            result += f'      buffer = Buffer.from(buffer.msgData);\n'
+            result += f'    }} else if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {{\n'
+            result += f'      buffer = Buffer.from(buffer);\n'
+            result += f'    }}\n'
             result += f'    // Fixed-size message - use direct copy\n'
             result += f'    const msg = new {package_msg_name}();\n'
             result += f'    buffer.copy(msg._buffer);\n'
@@ -1096,12 +1122,14 @@ class FileTsGen():
                     package_msg_name = msg.name
                     magic1 = msg.magic_bytes[0] if msg.magic_bytes else 0
                     magic2 = msg.magic_bytes[1] if msg.magic_bytes else 0
+                    min_size = msg.min_size if msg.variable else msg.size
+                    is_variable = 'true' if msg.variable else 'false'
                     if use_class_based:
-                        yield '        case %s._msgid: return { size: %s._size, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (
-                            package_msg_name, package_msg_name, package_msg_name, package_msg_name, package_msg_name)
+                        yield '        case %s._msgid: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (
+                            package_msg_name, package_msg_name, min_size, is_variable, package_msg_name, package_msg_name, package_msg_name)
                     else:
-                        yield '        case %s._msgid: return { size: %s._size, magic1: %d, magic2: %d, baseSize: %d };\n' % (
-                            package_msg_name, package_msg_name, magic1, magic2, msg.base_size)
+                        yield '        case %s._msgid: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %d, magic2: %d, baseSize: %d };\n' % (
+                            package_msg_name, package_msg_name, min_size, is_variable, magic1, magic2, msg.base_size)
 
                 yield '        default: return undefined;\n'
                 yield '    }\n'

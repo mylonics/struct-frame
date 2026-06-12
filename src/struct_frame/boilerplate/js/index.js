@@ -2,10 +2,10 @@
 
 // Base utilities and generic parser infrastructure
 const {
-  FrameMsgInfo,
   createFrameMsgInfo,
   fletcherChecksum,
-  FrameParserConfig,
+  fletcherChecksumExt,
+  FrameMsgStatus,
   GenericFrameParser,
   GenericParserState,
   createFrameParserClass,
@@ -65,8 +65,7 @@ const {
   ProfileBulkConfig,
   ProfileNetworkConfig,
   // Generic encode/parse functions
-  encodeFrameWithCrc,
-  encodeFrameMinimal,
+  encodeMessage,
   parseFrameWithCrc,
   parseFrameMinimal,
   // BufferReader/BufferWriter/AccumulatingReader base classes
@@ -94,10 +93,10 @@ const {
 
 module.exports = {
   // Base utilities
-  FrameMsgInfo,
   createFrameMsgInfo,
   fletcherChecksum,
-  FrameParserConfig,
+  fletcherChecksumExt,
+  FrameMsgStatus,
   GenericFrameParser,
   GenericParserState,
   createFrameParserClass,
@@ -147,8 +146,7 @@ module.exports = {
   ProfileBulkConfig,
   ProfileNetworkConfig,
   // Generic encode/parse functions
-  encodeFrameWithCrc,
-  encodeFrameMinimal,
+  encodeMessage,
   parseFrameWithCrc,
   parseFrameMinimal,
   // BufferReader/BufferWriter/AccumulatingReader base classes

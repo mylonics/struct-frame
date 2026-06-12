@@ -32,6 +32,7 @@ export class TcpTransport extends BaseTransport {
         this.socket.setTimeout(this.tcpConfig.timeout);
 
         this.socket.on('connect', () => {
+          this.socket?.setTimeout(0); // clear connect-phase timeout; keep socket alive indefinitely
           this.connected = true;
           resolve();
         });
@@ -64,6 +65,7 @@ export class TcpTransport extends BaseTransport {
   }
 
   async disconnect(): Promise<void> {
+    this._intentionalClose = true;
     return new Promise((resolve) => {
       if (this.socket) {
         this.socket.end(() => {
@@ -71,6 +73,7 @@ export class TcpTransport extends BaseTransport {
           resolve();
         });
       } else {
+        this._intentionalClose = false;
         resolve();
       }
     });

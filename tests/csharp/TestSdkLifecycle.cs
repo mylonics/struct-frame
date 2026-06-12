@@ -142,17 +142,10 @@ static class TestSdkLifecycle
         unsub();
         transport.InjectData(frame);
 
-        // NOTE: After unsubscribe, the dictionary still holds an entry with an
-        // empty list, so the SDK currently dispatches to zero handlers without
-        // raising UnhandledMessage. Document the observed behavior so a future
-        // fix flips this assertion intentionally.
         Assert("unsub-all: handler does not fire after unsubscribe",
                handled == 1);
-        // Behavior contract today: empty-list entry is *not* treated as
-        // "no subscriber" so UnhandledMessage stays 0. If you change the
-        // dictionary cleanup logic, update this expectation.
-        Assert("unsub-all: UnhandledMessage stays 0 (current contract: empty list != absent)",
-               unhandled == 0);
+        Assert("unsub-all: UnhandledMessage fires when no handlers remain",
+               unhandled == 1);
     }
 
     // -------------------------------------------------------------------------

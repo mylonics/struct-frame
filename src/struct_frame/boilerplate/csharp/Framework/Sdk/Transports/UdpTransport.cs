@@ -25,15 +25,15 @@ namespace StructFrame.Sdk
     /// <summary>
     /// UDP Transport using NetCoreServer
     /// NOTE: This is a stub implementation. Full implementation requires NetCoreServer package.
-    /// 
+    ///
     /// To implement:
     /// 1. Install NetCoreServer NuGet package
     /// 2. Inherit from NetCoreServer.UdpClient
     /// 3. Override OnReceived, OnSent, OnError methods
-    /// 
+    ///
     /// Example:
     /// using NetCoreServer;
-    /// 
+    ///
     /// public class UdpTransport : UdpClient, ITransport
     /// {
     ///     // Implement transport interface
@@ -61,7 +61,7 @@ namespace StructFrame.Sdk
             try
             {
                 _client = new UdpClient(_udpConfig.LocalPort);
-                
+
                 if (_udpConfig.EnableBroadcast)
                 {
                     _client.EnableBroadcast = true;
@@ -74,8 +74,8 @@ namespace StructFrame.Sdk
 
                 _connected = true;
 
-                // Start receiving
-                _ = ReceiveAsync();
+                // Start receive loop; route any unhandled exception through OnErrorOccurred.
+                _ = RunReceiveLoopAsync();
 
                 await Task.CompletedTask;
             }
@@ -95,7 +95,8 @@ namespace StructFrame.Sdk
             await Task.CompletedTask;
         }
 
-        protected override async Task<int> SendCoreAsync(byte[] data)
+        // UdpClient.SendAsync accepts byte[], so no zero-copy opportunity here.
+        protected override async Task<int> SendCoreAsync(ReadOnlyMemory<byte> data)
         {
             if (_client == null || !_connected)
             {
@@ -104,8 +105,9 @@ namespace StructFrame.Sdk
 
             try
             {
-                await _client.SendAsync(data, data.Length, _remoteEndpoint);
-                return data.Length;
+                byte[] bytes = data.ToArray();
+                await _client.SendAsync(bytes, bytes.Length, _remoteEndpoint);
+                return bytes.Length;
             }
             catch (Exception ex)
             {
@@ -114,7 +116,23 @@ namespace StructFrame.Sdk
             }
         }
 
-        private async Task ReceiveAsync()
+        private async Task RunReceiveLoopAsync()
+        {
+            try
+            {
+                await ReceiveLoopAsync();
+            }
+            catch (Exception ex)
+            {
+                if (_connected)
+                {
+                    OnErrorOccurred(ex);
+                    OnConnectionClosed();
+                }
+            }
+        }
+
+        private async Task ReceiveLoopAsync()
         {
             while (_connected && _client != null)
             {
@@ -126,9 +144,7 @@ namespace StructFrame.Sdk
                 catch (Exception ex)
                 {
                     if (_connected)
-                    {
                         OnErrorOccurred(ex);
-                    }
                     break;
                 }
             }

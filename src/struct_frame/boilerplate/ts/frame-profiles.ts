@@ -76,6 +76,10 @@ export interface EncodeOptions {
 export interface MessageInfo {
     /** Message size in bytes */
     size: number;
+    /** Minimum valid serialized size in bytes (defaults to size for fixed messages) */
+    minSize?: number;
+    /** Whether this message uses variable-length wire encoding */
+    isVariable?: boolean;
     /** Magic number 1 (added at end of CRC checksum calculation) */
     magic1: number;
     /** Magic number 2 (added at end of CRC checksum calculation) */
@@ -404,6 +408,10 @@ export function parseFrameWithCrc(
         ck = fletcherChecksum(buffer, crcStart, crcStart + crcLen, magic1, magic2);
     }
     if (ck[0] !== buffer[totalSize - 2] || ck[1] !== buffer[totalSize - 1]) {
+        // A complete frame was found but failed CRC. Expose frameSize so callers
+        // can skip this frame and continue scanning subsequent frames.
+        result.status = FrameMsgStatus.CrcFailure;
+        result.frameSize = totalSize;
         return result;
     }
 
@@ -517,7 +525,7 @@ export class BufferReader {
             return createFrameMsgInfo();
         }
 
-        const remaining = this.buffer.slice(this._offset);
+        const remaining = this.buffer.subarray(this._offset);
         let result: FrameMsgInfo;
 
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {
@@ -535,8 +543,13 @@ export class BufferReader {
             const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
             this._offset += frameSize;
         } else {
-            // No more valid frames - stop parsing
-            this._offset = this.size;
+            // If a complete frame failed CRC, skip it and continue on next call.
+            if (result.status === FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
+                this._offset += result.frameSize!;
+            } else {
+                // No more valid frames - stop parsing
+                this._offset = this.size;
+            }
         }
 
         return result;
@@ -785,6 +798,19 @@ export class AccumulatingReader {
 
                 return this.withDiagnostics(result);
             } else {
+                if (result.status === FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
+                    // Consume failed frame bytes from internal accumulation to avoid permanent retries.
+                    this._diagnostics.cntCrcFailures++;
+                    this._diagnostics.cntFailedBytes += result.frameSize!;
+                    this._diagnostics.cntSyncRecoveries++;
+                    const consumed = Math.min(result.frameSize!, this.internalDataLen);
+                    const remainingBytes = this.internalDataLen - consumed;
+                    if (remainingBytes > 0) {
+                        this.internalBuffer.copyWithin(0, consumed, this.internalDataLen);
+                    }
+                    this.internalDataLen = remainingBytes;
+                    this.expectedFrameSize = 0;
+                }
                 return this.withDiagnostics(createFrameMsgInfo());
             }
         }
@@ -800,6 +826,15 @@ export class AccumulatingReader {
         if (result.valid) {
             const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
             this.currentOffset += frameSize;
+            return this.withDiagnostics(result);
+        }
+
+        if (result.status === FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
+            // CRC-failed complete frame: skip it and keep scanning remaining data.
+            this._diagnostics.cntCrcFailures++;
+            this._diagnostics.cntFailedBytes += result.frameSize!;
+            this._diagnostics.cntSyncRecoveries++;
+            this.currentOffset += result.frameSize!;
             return this.withDiagnostics(result);
         }
 
@@ -974,8 +1009,11 @@ export class AccumulatingReader {
                     }
                     fullMsgId |= this.internalBuffer[headerSize - 1];
                     const info = this.getMessageInfo(fullMsgId);
-                    if (info !== undefined && info.size !== payloadLen) {
-                        this._diagnostics.cntLenErrors++;
+                    if (info !== undefined) {
+                        const minSize = info.minSize ?? (info.isVariable ? 0 : info.size);
+                        if (payloadLen > info.size || payloadLen < minSize) {
+                            this._diagnostics.cntLenErrors++;
+                        }
                     }
                 }
 
@@ -1097,7 +1135,7 @@ export class AccumulatingReader {
             } else {
                 result.status = FrameMsgStatus.SyncRecovery;
             }
-            this._diagnostics.cntFailedBytes += result.frameSize ?? 0;
+            this._diagnostics.cntFailedBytes += internalBytes.length;
             this._diagnostics.cntSyncRecoveries++;
         }
 
@@ -1162,7 +1200,7 @@ export class AccumulatingReader {
     }
 
     private withDiagnostics(result: FrameMsgInfo): FrameMsgInfo {
-        result.diagnostics = this._diagnostics;
+        result.diagnostics = { ...this._diagnostics };
         return result;
     }
 }
