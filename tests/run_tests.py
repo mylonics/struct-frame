@@ -129,6 +129,78 @@ _init_colors()
 
 
 # =============================================================================
+# Table rendering utility
+# =============================================================================
+
+def render_results_table(
+    rows: Dict[str, Dict[str, Any]],
+    languages: List[Any],
+    row_label: str = "Test",
+    col_width: int = 8,
+) -> None:
+    """Print a results table: rows = test/package names, columns = languages.
+
+    Status values in the inner dict:
+        True        -> green  "OK"
+        False       -> red    "FAIL"
+        "MISSING"   -> yellow "??"
+        None        -> plain  "--"   (not applicable)
+
+    Summary row counts only cells that actually ran (True or False), excluding
+    None (N/A) and "MISSING" (ran but couldn't even start).
+    """
+    if not rows or not languages:
+        return
+
+    row_names = list(rows.keys())
+    row_w = max(len(row_label), max(len(n) for n in row_names)) + 2
+
+    lang_display = {
+        "c": "C", "cpp": "C++", "py": "Py", "ts": "TS",
+        "js": "JS", "csharp": "C#", "rust": "Rust",
+    }
+
+    def _cell(status: Any) -> str:
+        if status is True:
+            return Colors.green("OK".center(col_width))
+        if status is False:
+            return Colors.red("FAIL".center(col_width))
+        if status == "MISSING":
+            return Colors.yellow("??".center(col_width))
+        return "--".center(col_width)
+
+    header = f"  {row_label:<{row_w}}" + "".join(
+        lang_display.get(l.id, l.id).center(col_width) for l in languages
+    )
+    sep = "  " + "-" * (row_w + col_width * len(languages))
+
+    print(header)
+    print(sep)
+    for name in row_names:
+        lang_results = rows[name]
+        row = f"  {name:<{row_w}}" + "".join(
+            _cell(lang_results.get(l.id)) for l in languages
+        )
+        print(row)
+
+    # Summary row
+    print(sep)
+    summary = f"  {'Summary (pass/run)':<{row_w}}"
+    for lang in languages:
+        lang_results = rows
+        total = sum(1 for n in row_names if rows[n].get(lang.id) in (True, False))
+        passed = sum(1 for n in row_names if rows[n].get(lang.id) is True)
+        if total == 0:
+            summary += "--".center(col_width)
+        elif passed == total:
+            summary += Colors.green(f"{passed}/{total}".center(col_width))
+        else:
+            summary += Colors.red(f"{passed}/{total}".center(col_width))
+    print(summary)
+    print()
+
+
+# =============================================================================
 # Compiler env-var resolution (sanitizer / cross-compiler injection)
 # =============================================================================
 
@@ -1494,79 +1566,72 @@ class TestRunner:
         self.print_section("ENVELOPE SDK TESTS")
 
         all_success = True
+        testable = self.get_testable_languages()
+        all_lang_ids = [l.id for l in testable]
 
-        # C# test
+        ENVELOPE_APPLICABILITY: Dict[str, List[str]] = {
+            "test_envelope_sdk":  ["csharp", "rust"],
+            "test_oneof_special": ["rust"],
+        }
+
+        table_data: Dict[str, Dict[str, Any]] = {
+            test_name: {
+                lid: ("MISSING" if lid in applicable else None)
+                for lid in all_lang_ids
+            }
+            for test_name, applicable in ENVELOPE_APPLICABILITY.items()
+        }
+        env_results = self.results.setdefault("envelope_sdk", {})
+
+        def _record(test_name: str, lang_id: str, success: bool,
+                    stdout: str, stderr: str, failure_msg: str) -> None:
+            table_data[test_name][lang_id] = success
+            env_results[f"{lang_id}:{test_name}"] = success
+            if not success:
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                if stderr:
+                    for line in stderr.splitlines():
+                        print(f"  {line}")
+                self.add_failure("envelope_sdk", lang_id, None, failure_msg)
+
+        # ---- C# ----
         csharp = self.languages.get("csharp")
-        if not csharp or not self.results["compilation"].get("csharp", False):
-            print("  Skipping C# envelope SDK test (C# not available / compilation failed)")
-        else:
+        if csharp and self.results["compilation"].get("csharp", False):
             build_dir = self.project_root / csharp.build_dir
             test_exe = build_dir / "StructFrameTests.exe"
             if not test_exe.exists():
                 test_exe = build_dir / "StructFrameTests.dll"
-                if not test_exe.exists():
-                    print("  Skipping C# envelope SDK test (C# binary not found)")
-                    test_exe = None
-                else:
-                    cmd = f'dotnet "{test_exe}" --runner test_envelope_sdk'
+                cmd = f'dotnet "{test_exe}" --runner test_envelope_sdk' if test_exe.exists() else None
             else:
                 cmd = f'"{test_exe}" --runner test_envelope_sdk'
 
-            if test_exe is not None:
+            if cmd:
                 success, stdout, stderr = self.run_cmd(cmd, timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-
-                status = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  C# EnvelopeSdk: {status}")
-
+                _record("test_envelope_sdk", "csharp", success, stdout, stderr,
+                        "Envelope SDK test failed")
                 if not success:
-                    self.add_failure("envelope_sdk", "C#", None, "Envelope SDK test failed")
                     all_success = False
 
-                self.results.setdefault("envelope_sdk", {})["csharp"] = success
-
-        # Rust test
+        # ---- Rust ----
         rust = self.languages.get("rust")
-        if not rust or not self.results["compilation"].get("rust", False):
-            print("  Skipping Rust envelope SDK test (Rust not available / compilation failed)")
-        else:
+        if rust and self.results["compilation"].get("rust", False):
             rust_runner = self.project_root / rust.build_dir / f"struct_frame_rust_tests{rust.exe_ext}"
-            if not rust_runner.exists():
-                print("  Skipping Rust envelope SDK test (Rust binary not found)")
-            else:
-                rust_cmd = f'"{rust_runner}" test_envelope_sdk'
-                success, stdout, stderr = self.run_cmd(rust_cmd, timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-
-                status = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  Rust EnvelopeSdk: {status}")
-
+            if rust_runner.exists():
+                success, stdout, stderr = self.run_cmd(f'"{rust_runner}" test_envelope_sdk', timeout=30)
+                _record("test_envelope_sdk", "rust", success, stdout, stderr,
+                        "Rust Envelope SDK test failed")
                 if not success:
-                    self.add_failure("envelope_sdk", "Rust", None, "Rust Envelope SDK test failed")
                     all_success = False
 
-                self.results.setdefault("envelope_sdk", {})["rust"] = success
-
-                # Also run oneof special tests (discriminator=none, multi-oneof)
-                rust_oneof_cmd = f'"{rust_runner}" test_oneof_special'
-                success2, stdout2, stderr2 = self.run_cmd(rust_oneof_cmd, timeout=30)
-                if stdout2:
-                    for line in stdout2.splitlines():
-                        print(f"  {line}")
-
-                status2 = Colors.pass_text() if success2 else Colors.fail_text()
-                print(f"\n  Rust OneofSpecial: {status2}")
-
+                success2, stdout2, stderr2 = self.run_cmd(f'"{rust_runner}" test_oneof_special', timeout=30)
+                _record("test_oneof_special", "rust", success2, stdout2, stderr2,
+                        "Rust oneof special test failed")
                 if not success2:
-                    self.add_failure("envelope_sdk", "Rust", None, "Rust oneof special test failed")
                     all_success = False
 
-                self.results.setdefault("envelope_sdk", {}).setdefault("rust_oneof", success2)
-
+        render_results_table(table_data, testable, row_label="Envelope Test")
         return all_success
 
     def run_sdk_tests(self) -> bool:
@@ -1575,6 +1640,43 @@ class TestRunner:
 
         all_success = True
         results = self.results.setdefault("sdk", {})
+        testable = self.get_testable_languages()
+        all_lang_ids = [l.id for l in testable]
+
+        # Which lang_ids each test row applies to (others show N/A)
+        SDK_APPLICABILITY: Dict[str, List[str]] = {
+            "test_streaming":           ["c", "rust"],
+            "test_sdk_units":           ["cpp"],
+            "test_sdk_subscribe":       ["cpp", "csharp", "rust"],
+            "test_sdk":                 ["py", "ts", "js"],
+            "test_sdk_strict_ordering": ["csharp"],
+            "test_sdk_lifecycle":       ["csharp"],
+            "test_sdk_client_wrapper":  ["csharp"],
+            "test_sdk_profiles":        ["csharp"],
+            "test_base_transport":      ["csharp"],
+        }
+
+        # Initialise table: None = N/A, "MISSING" = applicable but not yet run
+        table_data: Dict[str, Dict[str, Any]] = {
+            test_name: {
+                lid: ("MISSING" if lid in applicable else None)
+                for lid in all_lang_ids
+            }
+            for test_name, applicable in SDK_APPLICABILITY.items()
+        }
+
+        def _record(test_name: str, lang_id: str, success: bool,
+                    stdout: str, stderr: str, phase_key: str, failure_msg: str) -> None:
+            table_data[test_name][lang_id] = success
+            results[phase_key] = success
+            if not success:
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                if stderr:
+                    for line in stderr.splitlines():
+                        print(f"  {line}")
+                self.add_failure("sdk", lang_id, None, failure_msg)
 
         # ---- C: test_streaming (section 6.2 – push_byte positive cases) ----
         c_lang = self.languages.get("c")
@@ -1582,41 +1684,27 @@ class TestRunner:
             build_dir = self.project_root / c_lang.build_dir
             exe = build_dir / f"test_streaming{c_lang.exe_ext}"
             if exe.exists():
-                success, stdout, _ = self.run_cmd(str(exe), timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  C test_streaming: {label}")
-                results["c:streaming"] = success
+                success, stdout, stderr = self.run_cmd(str(exe), timeout=30)
+                _record("test_streaming", "c", success, stdout, stderr,
+                        "c:streaming", "test_streaming failed")
                 if not success:
-                    self.add_failure("sdk", "C", None, "test_streaming failed")
                     all_success = False
-            else:
-                print("  Skipping C test_streaming (binary not found)")
 
-        # ---- C++: test_sdk_units (sections 6.1 + 6.2) ----
+        # ---- C++: test_sdk_units + test_sdk_subscribe (sections 6.1 + 6.2) ----
         cpp_lang = self.languages.get("cpp")
         if cpp_lang and self.results["compilation"].get("cpp", False):
             build_dir = self.project_root / cpp_lang.build_dir
-            for runner, section_label in [
-                ("test_sdk_units", "C++ test_sdk_units"),
-                ("test_sdk_subscribe", "C++ test_sdk_subscribe"),
+            for runner, test_row in [
+                ("test_sdk_units",     "test_sdk_units"),
+                ("test_sdk_subscribe", "test_sdk_subscribe"),
             ]:
                 exe = build_dir / f"{runner}{cpp_lang.exe_ext}"
-                if not exe.exists():
-                    print(f"  Skipping {section_label} (binary not found)")
-                    continue
-                success, stdout, _ = self.run_cmd(str(exe), timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  {section_label}: {label}")
-                results[f"cpp:{runner}"] = success
-                if not success:
-                    self.add_failure("sdk", "C++", None, f"{runner} failed")
-                    all_success = False
+                if exe.exists():
+                    success, stdout, stderr = self.run_cmd(str(exe), timeout=30)
+                    _record(test_row, "cpp", success, stdout, stderr,
+                            f"cpp:{runner}", f"{runner} failed")
+                    if not success:
+                        all_success = False
 
         # ---- Python: test_sdk.py (section 6.3) ----
         py_lang = self.languages.get("py")
@@ -1624,19 +1712,10 @@ class TestRunner:
             script = self.project_root / py_lang.test_dir / "test_sdk.py"
             if script.exists():
                 success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                if stderr and not success:
-                    print(stderr)
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  Python test_sdk: {label}")
-                results["py:sdk"] = success
+                _record("test_sdk", "py", success, stdout, stderr,
+                        "py:sdk", "test_sdk.py failed")
                 if not success:
-                    self.add_failure("sdk", "Python", None, "test_sdk.py failed")
                     all_success = False
-            else:
-                print("  Skipping Python test_sdk (script not found)")
 
         # ---- TypeScript: test_sdk.ts (section 6.3) ----
         ts_lang = self.languages.get("ts")
@@ -1647,19 +1726,10 @@ class TestRunner:
                 success, stdout, stderr = self.run_cmd(
                     f'npx ts-node "{script}"', cwd=ts_dir, timeout=60
                 )
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                if stderr and not success:
-                    print(stderr)
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  TypeScript test_sdk: {label}")
-                results["ts:sdk"] = success
+                _record("test_sdk", "ts", success, stdout, stderr,
+                        "ts:sdk", "test_sdk.ts failed")
                 if not success:
-                    self.add_failure("sdk", "TypeScript", None, "test_sdk.ts failed")
                     all_success = False
-            else:
-                print("  Skipping TypeScript test_sdk (script not found)")
 
         # ---- JavaScript: test_sdk.js (section 6.3) ----
         js_lang = self.languages.get("js")
@@ -1670,19 +1740,10 @@ class TestRunner:
                 success, stdout, stderr = self.run_cmd(
                     f'node "{script}"', cwd=js_dir, timeout=30
                 )
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                if stderr and not success:
-                    print(stderr)
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  JavaScript test_sdk: {label}")
-                results["js:sdk"] = success
+                _record("test_sdk", "js", success, stdout, stderr,
+                        "js:sdk", "test_sdk.js failed")
                 if not success:
-                    self.add_failure("sdk", "JavaScript", None, "test_sdk.js failed")
                     all_success = False
-            else:
-                print("  Skipping JavaScript test_sdk (script not found)")
 
         # ---- C#: SDK test suites (subscribe + Magnum-review additions) ----
         csharp_lang = self.languages.get("csharp")
@@ -1696,53 +1757,37 @@ class TestRunner:
                 cmd_prefix = f'"{test_exe}"'
 
             if test_exe.exists():
-                csharp_sdk_runners = [
-                    ("test_sdk_subscribe", "C# test_sdk_subscribe"),
-                    ("test_sdk_strict_ordering", "C# test_sdk_strict_ordering"),
-                    ("test_sdk_lifecycle", "C# test_sdk_lifecycle"),
-                    ("test_sdk_client_wrapper", "C# test_sdk_client_wrapper"),
-                    ("test_sdk_profiles", "C# test_sdk_profiles"),
-                    ("test_base_transport", "C# test_base_transport"),
-                ]
-                for runner_arg, label_str in csharp_sdk_runners:
+                for runner_arg in [
+                    "test_sdk_subscribe",
+                    "test_sdk_strict_ordering",
+                    "test_sdk_lifecycle",
+                    "test_sdk_client_wrapper",
+                    "test_sdk_profiles",
+                    "test_base_transport",
+                ]:
                     cmd = f'{cmd_prefix} --runner {runner_arg}'
-                    success, stdout, _ = self.run_cmd(cmd, timeout=60)
-                    if stdout:
-                        for line in stdout.splitlines():
-                            print(f"  {line}")
-                    label = Colors.pass_text() if success else Colors.fail_text()
-                    print(f"\n  {label_str}: {label}")
-                    results[f"csharp:{runner_arg}"] = success
+                    success, stdout, stderr = self.run_cmd(cmd, timeout=60)
+                    _record(runner_arg, "csharp", success, stdout, stderr,
+                            f"csharp:{runner_arg}", f"{runner_arg} failed")
                     if not success:
-                        self.add_failure("sdk", "C#", None, f"{runner_arg} failed")
                         all_success = False
-            else:
-                print("  Skipping C# SDK tests (binary not found)")
 
         # ---- Rust: test_streaming + test_sdk_subscribe (sections 6.2, 6.3) ----
         rust_lang = self.languages.get("rust")
         if rust_lang and self.results["compilation"].get("rust", False):
             rust_runner = self.project_root / rust_lang.build_dir / f"struct_frame_rust_tests{rust_lang.exe_ext}"
             if rust_runner.exists():
-                for runner_arg, label_str in [
-                    ("test_streaming", "Rust test_streaming"),
-                    ("test_sdk_subscribe", "Rust test_sdk_subscribe"),
+                for runner_arg, test_row in [
+                    ("test_streaming",    "test_streaming"),
+                    ("test_sdk_subscribe","test_sdk_subscribe"),
                 ]:
                     success, stdout, stderr = self.run_cmd(f'"{rust_runner}" {runner_arg}', timeout=30)
-                    if stdout:
-                        for line in stdout.splitlines():
-                            print(f"  {line}")
-                    if stderr and not success:
-                        print(stderr)
-                    label = Colors.pass_text() if success else Colors.fail_text()
-                    print(f"\n  {label_str}: {label}")
-                    results[f"rust:{runner_arg}"] = success
+                    _record(test_row, "rust", success, stdout, stderr,
+                            f"rust:{runner_arg}", f"{runner_arg} failed")
                     if not success:
-                        self.add_failure("sdk", "Rust", None, f"{runner_arg} failed")
                         all_success = False
-            else:
-                print("  Skipping Rust SDK tests (binary not found)")
 
+        render_results_table(table_data, testable, row_label="SDK Test")
         return all_success
 
     def run_wire_evolution_tests(self) -> bool:
@@ -1751,215 +1796,120 @@ class TestRunner:
 
         all_success = True
         results = self.results.setdefault("wire_evolution", {})
+        testable = self.get_testable_languages()
+        all_lang_ids = [l.id for l in testable]
 
-        # ---- C: test_wire_evolution ----
+        WIRE_APPLICABILITY: Dict[str, List[str]] = {
+            "test_wire_evolution":        ["c", "cpp", "ts", "js", "csharp"],
+            "test_wire_evolution_interop": ["c", "cpp", "ts", "js", "csharp", "rust"],
+        }
+
+        table_data: Dict[str, Dict[str, Any]] = {
+            test_name: {
+                lid: ("MISSING" if lid in applicable else None)
+                for lid in all_lang_ids
+            }
+            for test_name, applicable in WIRE_APPLICABILITY.items()
+        }
+
+        def _record(test_name: str, lang_id: str, success: bool,
+                    stdout: str, stderr: str, failure_msg: str) -> None:
+            table_data[test_name][lang_id] = success
+            results[f"{lang_id}:{test_name}"] = success
+            if not success:
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"  {line}")
+                if stderr:
+                    for line in stderr.splitlines():
+                        print(f"  {line}")
+                self.add_failure("wire_evolution", lang_id, None, failure_msg)
+
+        # ---- C ----
         c_lang = self.languages.get("c")
         if c_lang and "c" not in self.skipped_languages and self.results["compilation"].get("c", False):
             build_dir = self.project_root / c_lang.build_dir
-            exe = build_dir / f"test_wire_evolution{c_lang.exe_ext}"
-            if exe.exists():
-                success, stdout, _ = self.run_cmd(str(exe), timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  C test_wire_evolution: {label}")
-                results["c"] = success
-                if not success:
-                    self.add_failure("wire_evolution", "C", None, "test_wire_evolution failed")
-                    all_success = False
-            else:
-                print("  Skipping C test_wire_evolution (binary not found)")
+            for test_name in ("test_wire_evolution", "test_wire_evolution_interop"):
+                exe = build_dir / f"{test_name}{c_lang.exe_ext}"
+                if exe.exists():
+                    success, stdout, stderr = self.run_cmd(str(exe), timeout=30)
+                    _record(test_name, "c", success, stdout, stderr, f"C {test_name} failed")
+                    if not success:
+                        all_success = False
 
-        # ---- C++: test_wire_evolution ----
+        # ---- C++ ----
         cpp_lang = self.languages.get("cpp")
         if cpp_lang and "cpp" not in self.skipped_languages and self.results["compilation"].get("cpp", False):
             build_dir = self.project_root / cpp_lang.build_dir
-            exe = build_dir / f"test_wire_evolution{cpp_lang.exe_ext}"
-            if exe.exists():
-                success, stdout, _ = self.run_cmd(str(exe), timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  C++ test_wire_evolution: {label}")
-                results["cpp"] = success
-                if not success:
-                    self.add_failure("wire_evolution", "C++", None, "test_wire_evolution failed")
-                    all_success = False
-            else:
-                print("  Skipping C++ test_wire_evolution (binary not found)")
+            for test_name in ("test_wire_evolution", "test_wire_evolution_interop"):
+                exe = build_dir / f"{test_name}{cpp_lang.exe_ext}"
+                if exe.exists():
+                    success, stdout, stderr = self.run_cmd(str(exe), timeout=30)
+                    _record(test_name, "cpp", success, stdout, stderr, f"C++ {test_name} failed")
+                    if not success:
+                        all_success = False
 
-        # ---- TypeScript: test_wire_evolution.ts ----
+        # ---- TypeScript ----
         ts_lang = self.languages.get("ts")
         if ts_lang and "ts" not in self.skipped_languages and self.results["compilation"].get("ts", False):
-            ts_dir = self.project_root / ts_lang.test_dir
-            build_dir = self.project_root / ts_lang.build_dir
-            ts_compiled = build_dir / "ts" / "test_wire_evolution.js"
-            if ts_compiled.exists():
-                success, stdout, _ = self.run_cmd(f'node "{ts_compiled}"', timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  TypeScript test_wire_evolution: {label}")
-                results["ts"] = success
-                if not success:
-                    self.add_failure("wire_evolution", "TypeScript", None, "test_wire_evolution failed")
-                    all_success = False
-            else:
-                print("  Skipping TypeScript test_wire_evolution (compiled file not found)")
+            ts_build = self.project_root / ts_lang.build_dir / "ts"
+            for test_name in ("test_wire_evolution", "test_wire_evolution_interop"):
+                js_out = ts_build / f"{test_name}.js"
+                if js_out.exists():
+                    success, stdout, stderr = self.run_cmd(f'node "{js_out}"', timeout=30)
+                    _record(test_name, "ts", success, stdout, stderr, f"TypeScript {test_name} failed")
+                    if not success:
+                        all_success = False
 
-        # ---- JavaScript: test_wire_evolution.js ----
+        # ---- JavaScript ----
         js_lang = self.languages.get("js")
         if js_lang and "js" not in self.skipped_languages and self.results["compilation"].get("js", True):
             js_dir = self.project_root / js_lang.test_dir
-            js_script = js_dir / "test_wire_evolution.js"
-            if js_script.exists():
-                success, stdout, _ = self.run_cmd(f'node "{js_script}"', timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  JavaScript test_wire_evolution: {label}")
-                results["js"] = success
-                if not success:
-                    self.add_failure("wire_evolution", "JavaScript", None, "test_wire_evolution failed")
-                    all_success = False
-            else:
-                print("  Skipping JavaScript test_wire_evolution (script not found)")
-
-        # ---- C#: test_wire_evolution ----
-        csharp_lang = self.languages.get("csharp")
-        if csharp_lang and "csharp" not in self.skipped_languages and self.results["compilation"].get("csharp", False):
-            build_dir = self.project_root / csharp_lang.build_dir
-            test_exe = build_dir / "StructFrameTests.exe"
-            if not test_exe.exists():
-                test_exe = build_dir / "StructFrameTests.dll"
-                cmd = f'dotnet "{test_exe}" --runner test_wire_evolution'
-            else:
-                cmd = f'"{test_exe}" --runner test_wire_evolution'
-
-            if test_exe.exists():
-                success, stdout, _ = self.run_cmd(cmd, timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  C# test_wire_evolution: {label}")
-                results["csharp"] = success
-                if not success:
-                    self.add_failure("wire_evolution", "C#", None, "test_wire_evolution failed")
-                    all_success = False
-            else:
-                print("  Skipping C# test_wire_evolution (binary not found)")
-
-        # ---- Cross-version interop runners (v1 <-> v2 separate namespaces) ----
-        all_success = self._run_wire_evolution_interop(results) and all_success
-
-        return all_success
-
-    def _run_wire_evolution_interop(self, results: dict) -> bool:
-        """Run the dedicated cross-version (v1<->v2) interop runners per language."""
-        interop_success = True
-        # ---- C / C++: compiled test_wire_evolution_interop binary ----
-        for lang_id, label_name in (("c", "C"), ("cpp", "C++")):
-            lang = self.languages.get(lang_id)
-            if lang and lang_id not in self.skipped_languages and self.results["compilation"].get(lang_id, False):
-                exe = self.project_root / lang.build_dir / f"test_wire_evolution_interop{lang.exe_ext}"
-                if exe.exists():
-                    success, stdout, _ = self.run_cmd(str(exe), timeout=30)
-                    if stdout:
-                        for line in stdout.splitlines():
-                            print(f"  {line}")
-                    label = Colors.pass_text() if success else Colors.fail_text()
-                    print(f"\n  {label_name} test_wire_evolution_interop: {label}")
-                    results[f"{lang_id}_interop"] = success
+            for test_name in ("test_wire_evolution", "test_wire_evolution_interop"):
+                js_script = js_dir / f"{test_name}.js"
+                if js_script.exists():
+                    success, stdout, stderr = self.run_cmd(f'node "{js_script}"', timeout=30)
+                    _record(test_name, "js", success, stdout, stderr, f"JavaScript {test_name} failed")
                     if not success:
-                        self.add_failure("wire_evolution", label_name, None, "test_wire_evolution_interop failed")
-                        interop_success = False
-                else:
-                    print(f"  Skipping {label_name} test_wire_evolution_interop (binary not found)")
+                        all_success = False
 
-        # ---- TypeScript: compiled test_wire_evolution_interop.js ----
-        ts_lang = self.languages.get("ts")
-        if ts_lang and "ts" not in self.skipped_languages and self.results["compilation"].get("ts", False):
-            ts_compiled = self.project_root / ts_lang.build_dir / "ts" / "test_wire_evolution_interop.js"
-            if ts_compiled.exists():
-                success, stdout, _ = self.run_cmd(f'node "{ts_compiled}"', timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  TypeScript test_wire_evolution_interop: {label}")
-                results["ts_interop"] = success
-                if not success:
-                    self.add_failure("wire_evolution", "TypeScript", None, "test_wire_evolution_interop failed")
-                    interop_success = False
-            else:
-                print("  Skipping TypeScript test_wire_evolution_interop (compiled file not found)")
-
-        # ---- JavaScript: test_wire_evolution_interop.js ----
-        js_lang = self.languages.get("js")
-        if js_lang and "js" not in self.skipped_languages and self.results["compilation"].get("js", True):
-            js_script = self.project_root / js_lang.test_dir / "test_wire_evolution_interop.js"
-            if js_script.exists():
-                success, stdout, _ = self.run_cmd(f'node "{js_script}"', timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  JavaScript test_wire_evolution_interop: {label}")
-                results["js_interop"] = success
-                if not success:
-                    self.add_failure("wire_evolution", "JavaScript", None, "test_wire_evolution_interop failed")
-                    interop_success = False
-            else:
-                print("  Skipping JavaScript test_wire_evolution_interop (script not found)")
-
-        # ---- C#: test_wire_evolution_interop runner ----
+        # ---- C# ----
         csharp_lang = self.languages.get("csharp")
         if csharp_lang and "csharp" not in self.skipped_languages and self.results["compilation"].get("csharp", False):
             build_dir = self.project_root / csharp_lang.build_dir
             test_exe = build_dir / "StructFrameTests.exe"
             if not test_exe.exists():
                 test_exe = build_dir / "StructFrameTests.dll"
-                cmd = f'dotnet "{test_exe}" --runner test_wire_evolution_interop'
+                cmd_prefix = f'dotnet "{test_exe}"'
             else:
-                cmd = f'"{test_exe}" --runner test_wire_evolution_interop'
+                cmd_prefix = f'"{test_exe}"'
             if test_exe.exists():
-                success, stdout, _ = self.run_cmd(cmd, timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  C# test_wire_evolution_interop: {label}")
-                results["csharp_interop"] = success
-                if not success:
-                    self.add_failure("wire_evolution", "C#", None, "test_wire_evolution_interop failed")
-                    interop_success = False
-            else:
-                print("  Skipping C# test_wire_evolution_interop (binary not found)")
+                for test_name in ("test_wire_evolution", "test_wire_evolution_interop"):
+                    cmd = f'{cmd_prefix} --runner {test_name}'
+                    success, stdout, stderr = self.run_cmd(cmd, timeout=30)
+                    _record(test_name, "csharp", success, stdout, stderr, f"C# {test_name} failed")
+                    if not success:
+                        all_success = False
 
-        # ---- Rust: dedicated wire-evolution interop runner ----
+        # ---- Rust (interop only) ----
         rust_lang = self.languages.get("rust")
         if rust_lang and "rust" not in self.skipped_languages and self.results["compilation"].get("rust", False):
             rust_runner = self.project_root / rust_lang.build_dir / f"struct_frame_rust_tests{rust_lang.exe_ext}"
             if rust_runner.exists():
-                success, stdout, _ = self.run_cmd(f'"{rust_runner}" test_wire_evolution_interop', timeout=30)
-                if stdout:
-                    for line in stdout.splitlines():
-                        print(f"  {line}")
-                label = Colors.pass_text() if success else Colors.fail_text()
-                print(f"\n  Rust test_wire_evolution_interop: {label}")
-                results["rust_interop"] = success
+                success, stdout, stderr = self.run_cmd(
+                    f'"{rust_runner}" test_wire_evolution_interop', timeout=30
+                )
+                _record("test_wire_evolution_interop", "rust", success, stdout, stderr,
+                        "Rust test_wire_evolution_interop failed")
                 if not success:
-                    self.add_failure("wire_evolution", "Rust", None, "test_wire_evolution_interop failed")
-                    interop_success = False
-            else:
-                print("  Skipping Rust test_wire_evolution_interop (binary not found)")
+                    all_success = False
 
-        return interop_success
+        render_results_table(table_data, testable, row_label="Wire Evolution Test")
+        return all_success
+
+    def _run_wire_evolution_interop(self, results: dict) -> bool:
+        """Deprecated stub — interop tests are now run inside run_wire_evolution_tests()."""
+        return True
 
     def run_roundtrip_tests(self) -> bool:
         """Phase: round-trip tests for every message across all 5 frame profiles.
@@ -1976,6 +1926,35 @@ class TestRunner:
 
         results = self.results.setdefault("roundtrip", {})
         all_success = True
+        testable = self.get_testable_languages()
+        all_lang_ids = [l.id for l in testable]
+
+        # Accumulated table: {pkg_stem: {lang_id: True/False/None}}
+        # Populated as each language finishes its tests.
+        table_data: Dict[str, Dict[str, Any]] = {}
+
+        def _rt_set(pkg_stem: str, lang_id: str, status: Any) -> None:
+            if pkg_stem not in table_data:
+                table_data[pkg_stem] = {lid: None for lid in all_lang_ids}
+            table_data[pkg_stem][lang_id] = status
+            results[f"{lang_id}:{pkg_stem}"] = status
+
+        def _rt_run(lang_tag: str, lang_id: str, src_stem: str, run_fn: Callable) -> None:
+            """Run one package's test, print a progress line, record in table."""
+            nonlocal all_success
+            ok, stdout, stderr = run_fn()
+            _rt_set(src_stem, lang_id, ok)
+            if ok:
+                print(f"  [{lang_tag}] {Colors.pass_text()} {src_stem}")
+            else:
+                print(f"  [{lang_tag}] {Colors.fail_text()} {src_stem}")
+                if stdout:
+                    for line in stdout.splitlines():
+                        print(f"    {line}")
+                if stderr:
+                    for line in stderr.splitlines():
+                        print(f"    {line}")
+                all_success = False
 
         # ---- C++ ----
         cpp = self.languages.get("cpp")
@@ -1993,19 +1972,17 @@ class TestRunner:
                     ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
                     if not ok:
                         print(f"  [C++] {Colors.fail_tag()} compile failed: {src.name}")
-                        results[f"cpp:{src.stem}"] = False
+                        if stderr:
+                            for line in stderr.splitlines():
+                                print(f"    {line}")
+                        _rt_set(src.stem, "cpp", False)
                         self.add_failure("roundtrip", "C++", None, f"compile {src.name}", stderr)
                         all_success = False
                         continue
-                    ok, stdout, stderr = self.run_cmd(f'"{exe}"', timeout=60)
-                    if ok:
-                        print(f"  [C++] {Colors.pass_text()} {src.stem}")
-                        results[f"cpp:{src.stem}"] = True
-                    else:
-                        print(f"  [C++] {Colors.fail_text()} {src.stem}")
-                        results[f"cpp:{src.stem}"] = False
-                        self.add_failure("roundtrip", "C++", None, f"run {src.name}", (stdout or "") + (stderr or ""))
-                        all_success = False
+                    _rt_run("C++", "cpp", src.stem,
+                            lambda e=exe: self.run_cmd(f'"{e}"', timeout=60))
+                    if not results.get(f"cpp:{src.stem}"):
+                        self.add_failure("roundtrip", "C++", None, f"run {src.name}")
         else:
             print("  [C++] Skipped (compilation failed or unavailable)")
 
@@ -2019,15 +1996,10 @@ class TestRunner:
             else:
                 env = {"PYTHONPATH": str(gen_dir)}
                 for src in sources:
-                    ok, stdout, stderr = self.run_cmd(f'{sys.executable} "{src}"', env=env, timeout=60)
-                    if ok:
-                        print(f"  [Python] {Colors.pass_text()} {src.stem}")
-                        results[f"py:{src.stem}"] = True
-                    else:
-                        print(f"  [Python] {Colors.fail_text()} {src.stem}")
-                        results[f"py:{src.stem}"] = False
-                        self.add_failure("roundtrip", "Python", None, f"run {src.name}", (stdout or "") + (stderr or ""))
-                        all_success = False
+                    _rt_run("Python", "py", src.stem,
+                            lambda s=src: self.run_cmd(f'{sys.executable} "{s}"', env=env, timeout=60))
+                    if not results.get(f"py:{src.stem}"):
+                        self.add_failure("roundtrip", "Python", None, f"run {src.name}")
         else:
             print("  [Python] Skipped")
 
@@ -2047,19 +2019,17 @@ class TestRunner:
                     ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
                     if not ok:
                         print(f"  [C] {Colors.fail_tag()} compile failed: {src.name}")
-                        results[f"c:{src.stem}"] = False
+                        if stderr:
+                            for line in stderr.splitlines():
+                                print(f"    {line}")
+                        _rt_set(src.stem, "c", False)
                         self.add_failure("roundtrip", "C", None, f"compile {src.name}", stderr)
                         all_success = False
                         continue
-                    ok, stdout, stderr = self.run_cmd(f'"{exe}"', timeout=60)
-                    if ok:
-                        print(f"  [C] {Colors.pass_text()} {src.stem}")
-                        results[f"c:{src.stem}"] = True
-                    else:
-                        print(f"  [C] {Colors.fail_text()} {src.stem}")
-                        results[f"c:{src.stem}"] = False
-                        self.add_failure("roundtrip", "C", None, f"run {src.name}", (stdout or "") + (stderr or ""))
-                        all_success = False
+                    _rt_run("C", "c", src.stem,
+                            lambda e=exe: self.run_cmd(f'"{e}"', timeout=60))
+                    if not results.get(f"c:{src.stem}"):
+                        self.add_failure("roundtrip", "C", None, f"run {src.name}")
         else:
             print("  [C] Skipped (compilation failed or unavailable)")
 
@@ -2076,8 +2046,6 @@ class TestRunner:
                 ts_test_dir = self.project_root / ts.test_dir
                 local_tsc = ts_test_dir / "node_modules" / ".bin" / "tsc"
                 tsc_cmd = f'"{local_tsc}"' if local_tsc.exists() else "npx tsc"
-                # Compile every top-level .ts file in gen_dir (excludes the
-                # bundled struct-frame-sdk subdirectory) to CommonJS in build_dir.
                 ts_inputs = ' '.join(f'"{p}"' for p in sorted(gen_dir.glob("*.ts")))
                 compile_cmd = (
                     f'{tsc_cmd} --target es2020 --module commonjs --esModuleInterop '
@@ -2088,27 +2056,25 @@ class TestRunner:
                 compile_ok, _, compile_err = self.run_cmd(compile_cmd, cwd=ts_test_dir, timeout=180)
                 if not compile_ok:
                     print(f"  [TS] {Colors.fail_tag()} compile failed")
+                    if compile_err:
+                        for line in compile_err.splitlines():
+                            print(f"    {line}")
                     self.add_failure("roundtrip", "TypeScript", None, "tsc compile", compile_err)
                     for src in sources:
-                        results[f"ts:{src.stem}"] = False
+                        _rt_set(src.stem, "ts", False)
                     all_success = False
                 else:
                     for src in sources:
                         js_file = build_dir / f"{src.stem}.js"
                         if not js_file.exists():
                             print(f"  [TS] {Colors.fail_text()} {src.stem} (no js output)")
-                            results[f"ts:{src.stem}"] = False
+                            _rt_set(src.stem, "ts", False)
                             all_success = False
                             continue
-                        ok, stdout, stderr = self.run_cmd(f'node "{js_file}"', timeout=60)
-                        if ok:
-                            print(f"  [TS] {Colors.pass_text()} {src.stem}")
-                            results[f"ts:{src.stem}"] = True
-                        else:
-                            print(f"  [TS] {Colors.fail_text()} {src.stem}")
-                            results[f"ts:{src.stem}"] = False
-                            self.add_failure("roundtrip", "TypeScript", None, f"run {src.name}", (stdout or "") + (stderr or ""))
-                            all_success = False
+                        _rt_run("TS", "ts", src.stem,
+                                lambda j=js_file: self.run_cmd(f'node "{j}"', timeout=60))
+                        if not results.get(f"ts:{src.stem}"):
+                            self.add_failure("roundtrip", "TypeScript", None, f"run {src.name}")
         else:
             print("  [TS] Skipped")
 
@@ -2121,15 +2087,10 @@ class TestRunner:
                 print("  [JS] No test_roundtrip_*.js files found - skipping")
             else:
                 for src in sources:
-                    ok, stdout, stderr = self.run_cmd(f'node "{src}"', timeout=60)
-                    if ok:
-                        print(f"  [JS] {Colors.pass_text()} {src.stem}")
-                        results[f"js:{src.stem}"] = True
-                    else:
-                        print(f"  [JS] {Colors.fail_text()} {src.stem}")
-                        results[f"js:{src.stem}"] = False
-                        self.add_failure("roundtrip", "JavaScript", None, f"run {src.name}", (stdout or "") + (stderr or ""))
-                        all_success = False
+                    _rt_run("JS", "js", src.stem,
+                            lambda s=src: self.run_cmd(f'node "{s}"', timeout=60))
+                    if not results.get(f"js:{src.stem}"):
+                        self.add_failure("roundtrip", "JavaScript", None, f"run {src.name}")
         else:
             print("  [JS] Skipped")
 
@@ -2143,9 +2104,6 @@ class TestRunner:
                 print("  [C#] No test_roundtrip_*.cs files found - skipping")
             else:
                 for src in sources:
-                    # Each generated test_roundtrip file declares a namespace and
-                    # class; build a fully-qualified StartupObject name so the
-                    # csproj (which contains many Main methods) builds as Exe.
                     namespace = None
                     class_name = None
                     try:
@@ -2161,30 +2119,17 @@ class TestRunner:
                         pass
                     if not (namespace and class_name):
                         print(f"  [C#] {Colors.fail_text()} {src.stem} (could not parse namespace/class)")
-                        results[f"csharp:{src.stem}"] = False
+                        _rt_set(src.stem, "csharp", False)
                         all_success = False
                         continue
                     startup = f"{namespace}.{class_name}"
-                    # Build outside the csproj source tree so that the
-                    # auto-generated obj/.../AssemblyInfo.cs isn't picked up
-                    # twice by the default Compile glob (which would produce
-                    # CS0579 duplicate-attribute errors).
                     out_dir = self.project_root / "tests" / "build" / "csharp_roundtrip" / src.stem
                     if out_dir.exists():
                         shutil.rmtree(out_dir, ignore_errors=True)
                     out_dir.mkdir(parents=True, exist_ok=True)
-                    # Also nuke the csproj's default obj/ so its stale
-                    # AssemblyInfo.cs from the main C# test build doesn't get
-                    # double-included into the launcher assembly.
                     default_obj = gen_dir / "obj"
                     if default_obj.exists():
                         shutil.rmtree(default_obj, ignore_errors=True)
-                    # Build to a per-launcher output directory with the right
-                    # StartupObject so the assembly has a single, correct entry
-                    # point. Then invoke the resulting DLL directly via
-                    # `dotnet <dll>` (avoids the race conditions of `dotnet run`
-                    # with shared OutputPath; mirrors the convention used for
-                    # the C# test runner above).
                     build_cmd = (
                         f'dotnet build "{csproj}" -c Release --framework {self.dotnet_framework} '
                         f'-p:OutputType=Exe -p:StartupObject={startup} '
@@ -2195,25 +2140,21 @@ class TestRunner:
                     ok, _, stderr = self.run_cmd(build_cmd, timeout=180)
                     if not ok:
                         print(f"  [C#] {Colors.fail_tag()} compile failed: {src.name}")
-                        results[f"csharp:{src.stem}"] = False
+                        if stderr:
+                            for line in stderr.splitlines():
+                                print(f"    {line}")
+                        _rt_set(src.stem, "csharp", False)
                         self.add_failure("roundtrip", "C#", None, f"compile {src.name}", stderr)
                         all_success = False
                         continue
                     dll = out_dir / "StructFrame.dll"
                     if not dll.exists():
-                        # Fall back to whatever .dll was produced (e.g. if the
-                        # AssemblyName was overridden upstream).
                         dlls = list(out_dir.glob("*.dll"))
                         dll = dlls[0] if dlls else dll
-                    ok, stdout, stderr = self.run_cmd(f'dotnet "{dll}"', timeout=60)
-                    if ok:
-                        print(f"  [C#] {Colors.pass_text()} {src.stem}")
-                        results[f"csharp:{src.stem}"] = True
-                    else:
-                        print(f"  [C#] {Colors.fail_text()} {src.stem}")
-                        results[f"csharp:{src.stem}"] = False
-                        self.add_failure("roundtrip", "C#", None, f"run {src.name}", (stdout or "") + (stderr or ""))
-                        all_success = False
+                    _rt_run("C#", "csharp", src.stem,
+                            lambda d=dll: self.run_cmd(f'dotnet "{d}"', timeout=60))
+                    if not results.get(f"csharp:{src.stem}"):
+                        self.add_failure("roundtrip", "C#", None, f"run {src.name}")
         else:
             print("  [C#] Skipped")
 
@@ -2232,23 +2173,25 @@ class TestRunner:
                     ok, _, stderr = self.run_cmd(build_cmd, cwd=gen_dir, timeout=300)
                     if not ok:
                         print(f"  [Rust] {Colors.fail_tag()} compile failed: {bin_name}")
-                        results[f"rust:{bin_name}"] = False
+                        if stderr:
+                            for line in stderr.splitlines():
+                                print(f"    {line}")
+                        _rt_set(bin_name, "rust", False)
                         self.add_failure("roundtrip", "Rust", None, f"compile {src.name}", stderr)
                         all_success = False
                         continue
                     exe_ext = ".exe" if sys.platform == "win32" else ""
                     exe = gen_dir / "target" / "release" / f"{bin_name}{exe_ext}"
-                    ok, stdout, stderr = self.run_cmd(f'"{exe}"', timeout=60)
-                    if ok:
-                        print(f"  [Rust] {Colors.pass_text()} {bin_name}")
-                        results[f"rust:{bin_name}"] = True
-                    else:
-                        print(f"  [Rust] {Colors.fail_text()} {bin_name}")
-                        results[f"rust:{bin_name}"] = False
-                        self.add_failure("roundtrip", "Rust", None, f"run {src.name}", (stdout or "") + (stderr or ""))
-                        all_success = False
+                    _rt_run("Rust", "rust", bin_name,
+                            lambda e=exe: self.run_cmd(f'"{e}"', timeout=60))
+                    if not results.get(f"rust:{bin_name}"):
+                        self.add_failure("roundtrip", "Rust", None, f"run {src.name}")
         else:
             print("  [Rust] Skipped")
+
+        if table_data:
+            print()
+            render_results_table(table_data, testable, row_label="Package")
 
         return all_success
 
@@ -2259,7 +2202,7 @@ class TestRunner:
     # =========================================================================
 
     def _print_summary_matrices(self) -> None:
-        """Print three compact summary matrices at end-of-run."""
+        """Print compact summary matrices at end-of-run."""
 
         lang_order = ["c", "cpp", "py", "ts", "js", "csharp", "rust"]
         lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#", "rust": "Rs"}
@@ -2293,37 +2236,7 @@ class TestRunner:
             print(row)
 
         # ------------------------------------------------------------------
-        # Matrix 2: Round-trip tests (package × language)
-        # ------------------------------------------------------------------
-        rt = self.results.get("roundtrip", {})
-        if rt:
-            # Build a set of packages and per-lang results
-            # Keys: "cpp:test_roundtrip_pkg_name"  or  "py:test_roundtrip_pkg_name"
-            pkgs_by_lang: Dict[str, Dict[str, bool]] = {}
-            for key, success in rt.items():
-                if ":" not in key:
-                    continue
-                lang_id, stem = key.split(":", 1)
-                pkg = stem.removeprefix("test_roundtrip_")
-                pkgs_by_lang.setdefault(pkg, {})[lang_id] = success
-
-            if pkgs_by_lang:
-                rt_langs = [lid for lid in all_lang_ids if any(lid in v for v in pkgs_by_lang.values())]
-                if rt_langs:
-                    header = f"  {'Package':<22}" + "".join(lang_display.get(lid, lid).center(col_w) for lid in rt_langs)
-                    print(f"\n  {Colors.bold('Matrix 2: Round-trip (pkg × language)')}")
-                    print(header)
-                    for pkg in sorted(pkgs_by_lang):
-                        row = f"  {pkg[:20]:<22}"
-                        for lid in rt_langs:
-                            if lid in pkgs_by_lang[pkg]:
-                                row += cell(pkgs_by_lang[pkg][lid])
-                            else:
-                                row += skip_cell()
-                        print(row)
-
-        # ------------------------------------------------------------------
-        # Matrix 3: Encode/Decode compatibility (test-phase × language)
+        # Matrix 2: Encode/Decode compatibility (test-phase × language)
         # Aggregates all standard+extended+variable phases for each language.
         # Cells show fraction of phases that passed (or OK / FAIL).
         # ------------------------------------------------------------------
@@ -2339,7 +2252,7 @@ class TestRunner:
         active_phases = [(rk, label) for rk, label in phase_keys if self.results.get(rk)]
         if active_phases:
             header = f"  {'Phase':<22}" + "".join(lang_display.get(lid, lid).center(col_w) for lid in all_lang_ids)
-            print(f"\n  {Colors.bold('Matrix 3: Encode/Decode phase summary (lang × phase)')}")
+            print(f"\n  {Colors.bold('Matrix 2: Encode/Decode phase summary (lang × phase)')}")
             print(header)
             for result_key, label in active_phases:
                 phase_data = self.results[result_key]
