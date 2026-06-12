@@ -787,6 +787,75 @@ def test_bulk_corrupted_msg_id_low_byte():
     return not result.valid  # Expect failure: CRC mismatch
 
 
+def test_buffer_reader_skips_crc_failure():
+    """BufferReader advances past a CRC-failed frame and decodes the next valid frame.
+    Catches the A2 stall: BufferReader was not advancing past CRC failures."""
+    msg = _make_test_msg()
+    writer = ProfileStandardWriter(capacity=2048)
+    writer.write(msg)
+    first_frame_end = writer.size()
+    writer.write(msg)
+    total = writer.size()
+
+    buffer = bytearray(writer.data())
+    buffer[first_frame_end - 1] ^= 0xFF
+    buffer[first_frame_end - 2] ^= 0xFF
+
+    reader = ProfileStandardReader(buffer=bytes(buffer[:total]), get_message_info=get_message_info)
+    result1 = reader.next()
+    if result1.valid:
+        return False  # First frame must fail
+
+    result2 = reader.next()
+    return result2.valid  # Second frame must succeed after skipping the bad one
+
+
+def test_buffer_mode_recovers_after_crc_failure():
+    """AccumulatingReader buffer mode recovers after a CRC failure in add_data path.
+    Catches the A3 stall: CRC-bad frames caused a permanent loop in buffer mode."""
+    msg = _make_test_msg()
+    bad_writer = ProfileStandardWriter(capacity=1024)
+    bad_writer.write(msg)
+    frame_size = bad_writer.size()
+
+    bad_frame = bytearray(bad_writer.data())
+    bad_frame[frame_size - 1] ^= 0xFF
+    bad_frame[frame_size - 2] ^= 0xFF
+
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader.add_data(bytes(bad_frame[:frame_size]))
+    result1 = reader.next()
+    if result1.valid:
+        return False  # Must fail
+
+    # Feed a valid frame — reader must not be stuck on the bad one
+    good_writer = ProfileStandardWriter(capacity=1024)
+    good_writer.write(msg)
+    good_frame = bytes(good_writer.data()[:good_writer.size()])
+    reader.add_data(good_frame)
+    result2 = reader.next()
+    return result2.valid
+
+
+def test_stream_recovers_after_garbage():
+    """Stream mode recovers after garbage prefix and decodes a valid frame."""
+    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+
+    for byte in bytes([0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56]):
+        reader.push_byte(byte)
+
+    msg = _make_test_msg()
+    writer = ProfileStandardWriter(capacity=1024)
+    writer.write(msg)
+    frame_bytes = bytes(writer.data()[:writer.size()])
+
+    for byte in frame_bytes:
+        result = reader.push_byte(byte)
+        if result.valid:
+            return True
+    return False
+
+
 def main():
     print("\n========================================")
     print("NEGATIVE TESTS - Python Parser")
@@ -794,10 +863,12 @@ def main():
 
     # Define test matrix
     tests = [
+        ("Buffer mode: invalid result carries diagnostics", test_buffer_mode_invalid_result_has_diagnostics),
+        ("Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure),
+        ("Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure),
         ("Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc),
         ("Bulk profile: Corrupted pkg_id byte", test_bulk_corrupted_pkg_id),
         ("Bulk profile: Corrupted msg_id low byte", test_bulk_corrupted_msg_id_low_byte),
-        ("Buffer mode: invalid result carries diagnostics", test_buffer_mode_invalid_result_has_diagnostics),
         ("Corrupted CRC detection", test_corrupted_crc),
         ("Corrupted length field detection", test_corrupted_length),
         ("Cross-package rejection (pkgid mismatch)", test_cross_package_rejection),
@@ -817,6 +888,7 @@ def main():
         ("Status: CRC_FAILURE on bad checksum", test_status_crc_failure),
         ("Status: SYNC_RECOVERY on forced resync", test_status_sync_recovery),
         ("Status: WAITING_FOR_START before first byte", test_status_waiting_for_start),
+        ("Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage),
         ("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling", test_streaming_garbage),
         ("Truncated frame detection", test_truncated_frame),

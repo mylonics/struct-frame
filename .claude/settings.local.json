@@ -25,7 +25,9 @@
       "PowerShell(Copy-Item \"C:\\\\Users\\\\Rijesh\\\\Source\\\\struct-frame\\\\src\\\\struct_frame\\\\boilerplate\\\\cpp\\\\payload_types.hpp\" \"C:\\\\Users\\\\Rijesh\\\\Source\\\\struct-frame\\\\tests\\\\generated\\\\cpp\\\\payload_types.hpp\" -Force)",
       "Bash(python tests/run_tests.py --skip-lang py --skip-lang js --skip-lang ts --skip-lang rust --skip-lang c --skip-lang cs --only-compile --verbose)",
       "Bash(python tests/run_tests.py --skip-lang py --skip-lang js --skip-lang ts --skip-lang rust --skip-lang c --skip-lang cs --no-clean)",
-      "Bash(grep -E '\\\\.\\(py|ts|js\\)$')"
+      "Bash(grep -E '\\\\.\\(py|ts|js\\)$')",
+      "Bash(grep -v \"^\\\\s*//\\\\|^\\\\s*\\\\*\")",
+      "Bash(python3 -c ' *)"
     ]
   },
   "allowDangerouslySkipPermissions": true

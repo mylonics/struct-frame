@@ -334,6 +334,75 @@ fn test_network_sysid_compid() -> bool {
     result.is_none() // Expect failure: corrupted sys_id invalidates CRC
 }
 
+/// Test: BufferReader advances past a CRC-failed frame and decodes the next valid frame.
+/// Catches the A2 stall: BufferReader was not advancing past CRC failures.
+fn test_buffer_reader_skips_crc_failure() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 2048);
+    writer.write_crc(&msg, 0);
+    let first_frame_end = writer.size();
+    writer.write_crc(&msg, 0);
+    let total = writer.size();
+
+    let mut data = writer.data().to_vec();
+    data[first_frame_end - 1] ^= 0xFF;
+    data[first_frame_end - 2] ^= 0xFF;
+
+    let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data[..total].to_vec());
+
+    let result1 = reader.next(&get_message_info);
+    if result1.is_some() {
+        return false; // First frame must fail (CRC corrupted)
+    }
+
+    let result2 = reader.next(&get_message_info);
+    result2.is_some() // Second frame must succeed after skipping the bad one
+}
+
+/// Test: AccumulatingReader buffer mode recovers after a CRC failure in add_data path.
+/// Catches the A3 stall: CRC-bad frames caused a permanent loop in buffer mode.
+fn test_buffer_mode_recovers_after_crc_failure() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer.write_crc(&msg, 0);
+    let frame_size = writer.size();
+
+    let mut bad_data = writer.data().to_vec();
+    bad_data[frame_size - 1] ^= 0xFF;
+    bad_data[frame_size - 2] ^= 0xFF;
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    reader.add_data(&bad_data[..frame_size]);
+    let result1 = reader.next(&get_message_info);
+    if result1.is_some() {
+        return false; // Must fail
+    }
+
+    // Feed a valid frame — reader must not be stuck on the bad one
+    let mut writer2 = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer2.write_crc(&msg, 0);
+    let good_data = writer2.data().to_vec();
+
+    reader.add_data(&good_data);
+    let result2 = reader.next(&get_message_info);
+    result2.is_some()
+}
+
+/// Test: Stream mode recovers after garbage prefix and decodes a valid frame.
+fn test_stream_recovers_after_garbage() -> bool {
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+
+    let garbage: &[u8] = &[0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56];
+    reader.add_data(garbage);
+
+    let msg = create_test_message();
+    let mut buf = vec![0u8; 1024];
+    let frame_size = encode_message_crc(&PROFILE_STANDARD_CONFIG, &mut buf, &msg, 0);
+
+    reader.add_data(&buf[..frame_size]);
+    reader.next(&get_message_info).is_some()
+}
+
 // ============================================================================
 // Test runner
 // ============================================================================
@@ -354,6 +423,8 @@ fn main() {
     println!("{:<50} {:>6}", "==================================================", "======");
 
     let tests: &[(&str, fn() -> bool)] = &[
+        ("Buffer mode: recovers after CRC failure",  test_buffer_mode_recovers_after_crc_failure),
+        ("Buffer reader: skips CRC-failed frame",    test_buffer_reader_skips_crc_failure),
         ("Bulk profile: Corrupted CRC",              test_bulk_profile_corrupted_crc),
         ("Corrupted CRC detection",                  test_corrupted_crc),
         ("Corrupted length field detection",         test_corrupted_length),
@@ -363,6 +434,7 @@ fn main() {
         ("Multiple frames: Corrupted middle frame",  test_multiple_corrupted_frames),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary",     test_partial_frame_boundary),
+        ("Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage),
         ("Streaming: Corrupted CRC detection",       test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling",         test_streaming_garbage),
         ("Truncated frame detection",                test_truncated_frame),
