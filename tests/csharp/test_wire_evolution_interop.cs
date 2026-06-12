@@ -70,14 +70,14 @@ public class TestWireEvolutionInterop
         var encoders = new (Func<byte[], int, V2.BaseExtensionMessage, int> Encode,
                             Func<byte[], int, int, FrameMsgInfo> Parse, string Name)[]
         {
-            (((b, o, m) => new ProfileStandardEncoder().Encode(b, o, m)),
-             ((b, o, n) => new ProfileStandardParser(V1.MessageDefinitions.GetMessageInfo).Parse(b, o, n)),
+            (((b, o, m) => new FrameEncoder<StandardProfile>().Encode(b, o, m)),
+             ((b, o, n) => new BufferParser<StandardProfile>(V1.MessageDefinitions.GetMessageInfo).Parse(b, o, n)),
              "standard"),
-            (((b, o, m) => new ProfileBulkEncoder().Encode(b, o, m)),
-             ((b, o, n) => new ProfileBulkParser(V1.MessageDefinitions.GetMessageInfo).Parse(b, o, n)),
+            (((b, o, m) => new FrameEncoder<BulkProfile>().Encode(b, o, m)),
+             ((b, o, n) => new BufferParser<BulkProfile>(V1.MessageDefinitions.GetMessageInfo).Parse(b, o, n)),
              "bulk"),
-            (((b, o, m) => new ProfileNetworkEncoder().Encode(b, o, m)),
-             ((b, o, n) => new ProfileNetworkParser(V1.MessageDefinitions.GetMessageInfo).Parse(b, o, n)),
+            (((b, o, m) => new FrameEncoder<NetworkProfile>().Encode(b, o, m)),
+             ((b, o, n) => new BufferParser<NetworkProfile>(V1.MessageDefinitions.GetMessageInfo).Parse(b, o, n)),
              "network"),
         };
 
@@ -102,8 +102,8 @@ public class TestWireEvolutionInterop
     // -------------------------------------------------------------------------
     private static void Scenario2()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(V2.MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(V2.MessageDefinitions.GetMessageInfo);
 
         var orig = new V1.BaseExtensionMessage { Header = 0x1234, Seq = 7 };
         byte[] buffer = new byte[256];
@@ -123,8 +123,8 @@ public class TestWireEvolutionInterop
     // -------------------------------------------------------------------------
     private static void Scenario3()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(V2.MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(V2.MessageDefinitions.GetMessageInfo);
 
         var orig = new V2.OneOfExtensionMessage
         {
@@ -150,8 +150,8 @@ public class TestWireEvolutionInterop
     // -------------------------------------------------------------------------
     private static void Scenario4()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(V1.MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(V1.MessageDefinitions.GetMessageInfo);
 
         var orig = new V2.OneOfExtensionMessage
         {
@@ -179,8 +179,8 @@ public class TestWireEvolutionInterop
     // -------------------------------------------------------------------------
     private static void Scenario5()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(V2.MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(V2.MessageDefinitions.GetMessageInfo);
 
         var orig = new V1.OneOfExtensionMessage
         {
@@ -206,8 +206,8 @@ public class TestWireEvolutionInterop
     // -------------------------------------------------------------------------
     private static void Scenario6()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(V1.MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(V1.MessageDefinitions.GetMessageInfo);
 
         var orig = new V2.MultiOneOfExtensionMessage
         {
@@ -236,8 +236,8 @@ public class TestWireEvolutionInterop
     // -------------------------------------------------------------------------
     private static void Scenario7()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(V1.MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(V1.MessageDefinitions.GetMessageInfo);
 
         var orig = new V2.BaseExtensionMessage { Header = 0xBEEF, Seq = 42, CrcSeed = 0xDEADC0DE };
         byte[] buffer = new byte[256];
@@ -256,8 +256,8 @@ public class TestWireEvolutionInterop
     // -------------------------------------------------------------------------
     private static void Scenario8()
     {
-        var encoder = new ProfileStandardEncoder();
-        var parser = new ProfileStandardParser(V1.MessageDefinitions.GetMessageInfo);
+        var encoder = new FrameEncoder<StandardProfile>();
+        var parser = new BufferParser<StandardProfile>(V1.MessageDefinitions.GetMessageInfo);
 
         var orig = new V1.BaseExtensionMessage { Header = 1, Seq = 2 };
         byte[] buffer = new byte[256];
@@ -277,8 +277,8 @@ public class TestWireEvolutionInterop
     private static void Scenario9()
     {
         // Positive: same-version v2 over IPC validates.
-        var ipcEncoder = new ProfileIPCEncoder();
-        var ipcParserV2 = new ProfileIPCParser(V2.MessageDefinitions.GetMessageInfo);
+        var ipcEncoder = new FrameEncoder<IPCProfile>();
+        var ipcParserV2 = new BufferParser<IPCProfile>(V2.MessageDefinitions.GetMessageInfo);
 
         var same = new V2.BaseExtensionMessage { Header = 0xAA, Seq = 5, CrcSeed = 0x99 };
         byte[] buffer = new byte[256];
@@ -301,10 +301,10 @@ public class TestWireEvolutionInterop
     // -------------------------------------------------------------------------
     private static void Scenario10()
     {
-        var encoder = new ProfileStandardEncoder();
+        var encoder = new FrameEncoder<StandardProfile>();
 
         // Newer -> older: v1 locates variable base, ignores trailing ext bytes.
-        var parserV1 = new ProfileStandardParser(V1.MessageDefinitions.GetMessageInfo);
+        var parserV1 = new BufferParser<StandardProfile>(V1.MessageDefinitions.GetMessageInfo);
 
         var orig = new V2.VariableExtensionMessage
         {
@@ -330,7 +330,7 @@ public class TestWireEvolutionInterop
         }
 
         // Older -> newer: v2 zero-fills the trailing extension field.
-        var parserV2 = new ProfileStandardParser(V2.MessageDefinitions.GetMessageInfo);
+        var parserV2 = new BufferParser<StandardProfile>(V2.MessageDefinitions.GetMessageInfo);
 
         var orig2 = new V1.VariableExtensionMessage
         {

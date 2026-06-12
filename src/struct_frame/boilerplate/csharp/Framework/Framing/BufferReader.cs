@@ -53,10 +53,29 @@ namespace StructFrame.Framing
 
             var result = _parser.Parse(_buffer, _offset, _size - _offset);
 
-            if (result.Valid && result.FrameSize > 0)
+            if (result.FrameSize > 0)
             {
+                // Advance past the frame whether valid (good frame) or not (CRC failure).
+                // CRC-failed frames are returned once to the caller with Status=CrcFailure.
                 _offset += result.FrameSize;
             }
+            else if (result.Status == FrameMsgStatus.WaitingForStart)
+            {
+                // Start byte mismatch at current offset: scan forward for the next candidate.
+                // Skip the bad byte and look for start byte 1 in the remaining data.
+                int searchFrom = _offset + 1;
+                int searchLen = _size - searchFrom;
+                if (searchLen > 0 && _config.NumStartBytes > 0)
+                {
+                    int found = Array.IndexOf(_buffer, _config.ComputedStartByte1, searchFrom, searchLen);
+                    _offset = found >= 0 ? found : _size;
+                }
+                else
+                {
+                    _offset = _size; // nothing useful left
+                }
+            }
+            // Status == Collecting: genuinely incomplete data — do not advance; let caller stop.
 
             return result;
         }

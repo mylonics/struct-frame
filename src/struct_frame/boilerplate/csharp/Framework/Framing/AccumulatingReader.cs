@@ -29,7 +29,7 @@ namespace StructFrame.Framing
         private readonly Func<int, MessageInfo?>? _getMessageInfo;
         private readonly int _bufferSize;
 
-        // Internal buffer for partial messages
+        // Internal buffer for partial messages (stream mode and buffer-mode cross-chunk frames)
         private byte[] _internalBuffer;
         private int _internalDataLen;
         private int _expectedFrameSize;
@@ -39,6 +39,10 @@ namespace StructFrame.Framing
         private byte[]? _currentBuffer;
         private int _currentOffset;
         private int _currentSize;
+
+        // How many bytes from _currentBuffer were appended into _internalBuffer by AddData.
+        // Used in Next() to correctly advance _currentOffset after consuming a cross-chunk frame.
+        private int _bytesAppendedToInternal;
 
         // Diagnostic counters (stream mode)
         private ParserDiagnostics _diagnostics;
@@ -69,6 +73,7 @@ namespace StructFrame.Framing
             _currentBuffer = null;
             _currentOffset = 0;
             _currentSize = 0;
+            _bytesAppendedToInternal = 0;
             _lastSeqValid = false;
         }
 
@@ -112,10 +117,11 @@ namespace StructFrame.Framing
         {
             _currentBuffer = buffer;
             _currentOffset = offset;
-            _currentSize = size;
+            _currentSize = offset + size;
+            _bytesAppendedToInternal = 0;
             _state = State.BufferMode;
 
-            // If we have partial data in internal buffer, append new data to complete it
+            // If we have partial data in the internal buffer, append new data to try to complete it.
             if (_internalDataLen > 0)
             {
                 int spaceAvailable = _bufferSize - _internalDataLen;
@@ -123,6 +129,7 @@ namespace StructFrame.Framing
 
                 Array.Copy(buffer, offset, _internalBuffer, _internalDataLen, bytesToCopy);
                 _internalDataLen += bytesToCopy;
+                _bytesAppendedToInternal = bytesToCopy;
             }
         }
 
@@ -137,9 +144,8 @@ namespace StructFrame.Framing
 
         /// <summary>
         /// Try to parse the next frame (buffer mode).
-        /// Returns true if a valid frame was found, false otherwise.
-        /// This method is useful for high-throughput scenarios where you want to avoid
-        /// checking the Valid property separately.
+        /// Returns true while there is something to consume (a complete frame or a
+        /// CRC-failed frame that the caller should inspect).
         /// </summary>
         public bool TryNext(out FrameMsgInfo result)
         {
@@ -153,35 +159,86 @@ namespace StructFrame.Framing
         public FrameMsgInfo Next()
         {
             if (_state != State.BufferMode)
-            {
                 return FrameMsgInfo.Invalid;
-            }
 
-            // First, try to complete a partial message from the internal buffer
-            if (_internalDataLen > 0 && _currentOffset == 0)
+            // --- Try to complete a partial message from the internal buffer ---
+            if (_internalDataLen > 0)
             {
-                var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
-
-                if (result.Valid || result.FrameData.Length > 0)
+                if (_bytesAppendedToInternal == 0)
                 {
-                    int partialLen = _internalDataLen > _currentSize ? _internalDataLen - _currentSize : 0;
-                    int bytesFromCurrent = result.FrameSize > partialLen ? result.FrameSize - partialLen : 0;
-                    _currentOffset = bytesFromCurrent;
+                    // Leftover from a previous call where the internal buffer was already full
+                    // and nothing new could be appended. Discard to avoid an infinite wedge.
                     _internalDataLen = 0;
-                    _expectedFrameSize = 0;
-                    return result;
                 }
+                else
+                {
+                    var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
 
-                return FrameMsgInfo.Invalid;
+                    if (result.Status == FrameMsgStatus.WaitingForStart)
+                    {
+                        // Garbage at the start of the internal buffer. Scan forward for the
+                        // next start-byte candidate and discard the skipped bytes.
+                        int skip = FindStartByteOffset(_internalBuffer, 1, _internalDataLen - 1);
+                        _diagnostics.CntSyncRecoveries++;
+                        _diagnostics.CntFailedBytes += skip;
+                        if (skip >= _internalDataLen)
+                        {
+                            _internalDataLen = 0;
+                            _bytesAppendedToInternal = 0;
+                        }
+                        else
+                        {
+                            int keep = _internalDataLen - skip;
+                            Array.Copy(_internalBuffer, skip, _internalBuffer, 0, keep);
+                            _internalDataLen = keep;
+                            _bytesAppendedToInternal = Math.Max(0, _bytesAppendedToInternal - skip);
+                        }
+                        return StatusResult(FrameMsgStatus.SyncRecovery);
+                    }
+
+                    if (result.FrameSize > 0)
+                    {
+                        // Frame completed (valid or CRC-failed). Advance _currentOffset past the
+                        // bytes in the current buffer that formed the tail of this cross-chunk frame.
+                        int internalPrior = _internalDataLen - _bytesAppendedToInternal;
+                        int bytesFromCurrent = Math.Max(0, result.FrameSize - internalPrior);
+                        _currentOffset += bytesFromCurrent;
+                        _internalDataLen = 0;
+                        _bytesAppendedToInternal = 0;
+                        return result;
+                    }
+
+                    if (result.Status == FrameMsgStatus.Collecting)
+                    {
+                        // Still incomplete — need more data from a future AddData call.
+                        return StatusResult(FrameMsgStatus.Collecting);
+                    }
+
+                    // Any other failure: drop partial and fall through to current-buffer parse.
+                    _internalDataLen = 0;
+                    _bytesAppendedToInternal = 0;
+                }
             }
 
-            // Parse from current buffer
+            // --- Parse from current buffer ---
             if (_currentBuffer == null || _currentOffset >= _currentSize)
-            {
                 return FrameMsgInfo.Invalid;
-            }
 
             var parseResult = _parser.Parse(_currentBuffer, _currentOffset, _currentSize - _currentOffset);
+
+            if (parseResult.Status == FrameMsgStatus.WaitingForStart)
+            {
+                // Garbage at current offset. Scan forward for the next start-byte candidate.
+                int searchFrom = _currentOffset + 1;
+                int searchLen = _currentSize - searchFrom;
+                int skip = searchLen > 0
+                    ? FindStartByteOffset(_currentBuffer, searchFrom, searchLen)
+                    : searchLen;
+                _diagnostics.CntSyncRecoveries++;
+                _diagnostics.CntFailedBytes += 1 + (skip < searchLen ? skip : searchLen);
+                _currentOffset = searchFrom + (skip < searchLen ? skip : searchLen);
+                return StatusResult(FrameMsgStatus.SyncRecovery);
+            }
 
             if (parseResult.FrameSize > 0)
             {
@@ -189,13 +246,24 @@ namespace StructFrame.Framing
                 return parseResult;
             }
 
-            // Parse failed - might be partial message at end of buffer
+            // Parse returned no frame — tail of buffer is a partial frame.
             int remaining = _currentSize - _currentOffset;
-            if (remaining > 0 && remaining < _bufferSize)
+            if (remaining > 0 && parseResult.Status == FrameMsgStatus.Collecting)
             {
-                Array.Copy(_currentBuffer, _currentOffset, _internalBuffer, 0, remaining);
-                _internalDataLen = remaining;
-                _currentOffset = _currentSize;
+                if (remaining < _bufferSize)
+                {
+                    Array.Copy(_currentBuffer, _currentOffset, _internalBuffer, 0, remaining);
+                    _internalDataLen = remaining;
+                    _bytesAppendedToInternal = 0;
+                    _currentOffset = _currentSize;
+                }
+                else
+                {
+                    // Partial too large to buffer — discard.
+                    _diagnostics.CntSyncRecoveries++;
+                    _diagnostics.CntFailedBytes += remaining;
+                    _currentOffset = _currentSize;
+                }
             }
 
             return FrameMsgInfo.Invalid;
@@ -249,7 +317,6 @@ namespace StructFrame.Framing
         {
             if (_config.NumStartBytes == 0)
             {
-                // No start bytes - this byte is the beginning of the frame
                 _internalBuffer[0] = b;
                 _internalDataLen = 1;
 
@@ -382,7 +449,10 @@ namespace StructFrame.Framing
                         }
                     }
 
-                    // Check for length mismatch against expected message struct size
+                    // Only count as a length error when the payload is definitively out of
+                    // range: strictly below BaseSize (can't even fill the non-variable fields)
+                    // or strictly above MaxSize. Variable messages legitimately sit anywhere
+                    // in [BaseSize, MaxSize], so those must NOT increment the counter.
                     if (_config.HasLength && _getMessageInfo != null)
                     {
                         int fullMsgId = 0;
@@ -392,7 +462,8 @@ namespace StructFrame.Framing
                         }
                         fullMsgId |= _internalBuffer[_config.HeaderSize - 1];
                         var info = _getMessageInfo(fullMsgId);
-                        if (info.HasValue && info.Value.Size != payloadLen)
+                        if (info.HasValue &&
+                            (payloadLen > info.Value.Size || payloadLen < info.Value.BaseSize))
                         {
                             _diagnostics.CntLenErrors++;
                         }
@@ -531,6 +602,15 @@ namespace StructFrame.Framing
             return AttachDiagnostics(result);
         }
 
+        // Returns the offset (relative to `start`) of the first candidate start byte,
+        // or `length` if none is found.
+        private int FindStartByteOffset(byte[] buf, int start, int length)
+        {
+            if (length <= 0 || _config.NumStartBytes == 0) return length;
+            int found = Array.IndexOf(buf, _config.ComputedStartByte1, start, length);
+            return found >= 0 ? found - start : length;
+        }
+
         private FrameMsgInfo StatusResult(FrameMsgStatus status)
         {
             var r = FrameMsgInfo.Invalid;
@@ -550,7 +630,7 @@ namespace StructFrame.Framing
     /// </summary>
     public class AccumulatingReader<TProfile> : AccumulatingReader where TProfile : struct, IProfileProvider
     {
-        public AccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null) 
+        public AccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null)
             : base(TProfile.Profile, bufferSize, getMessageInfo) { }
     }
 }

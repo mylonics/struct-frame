@@ -133,7 +133,7 @@ namespace StructFrame.Sdk
             await _sendSemaphore.WaitAsync().ConfigureAwait(false);
             try
             {
-                return await SendCoreAsync(data).ConfigureAwait(false);
+                return await SendCoreAsync(new ReadOnlyMemory<byte>(data)).ConfigureAwait(false);
             }
             finally
             {
@@ -144,14 +144,13 @@ namespace StructFrame.Sdk
         /// <summary>
         /// Send data through the transport (memory-efficient overload).
         /// Serialized with a SemaphoreSlim to prevent concurrent writes.
-        /// Default implementation converts to array - subclasses should override SendCoreAsync for zero-copy.
         /// </summary>
         public async Task<int> SendAsync(ReadOnlyMemory<byte> data)
         {
             await _sendSemaphore.WaitAsync().ConfigureAwait(false);
             try
             {
-                return await SendCoreAsync(data.ToArray()).ConfigureAwait(false);
+                return await SendCoreAsync(data).ConfigureAwait(false);
             }
             finally
             {
@@ -162,8 +161,18 @@ namespace StructFrame.Sdk
         /// <summary>
         /// Implement the actual send logic in subclasses.
         /// Called under the send semaphore — only one call executes at a time.
+        /// Subclasses that can write directly from a ReadOnlyMemory span avoid a ToArray() copy.
+        /// The default overload for byte[] is provided for convenience; prefer overriding this one.
         /// </summary>
-        protected abstract Task<int> SendCoreAsync(byte[] data);
+        protected virtual Task<int> SendCoreAsync(ReadOnlyMemory<byte> data)
+            => SendCoreAsync(data.ToArray());
+
+        /// <summary>
+        /// Convenience overload for subclasses that only handle byte[].
+        /// Override <see cref="SendCoreAsync(ReadOnlyMemory{byte})"/> to avoid the ToArray allocation.
+        /// </summary>
+        protected virtual Task<int> SendCoreAsync(byte[] data)
+            => throw new NotImplementedException("Override SendCoreAsync(ReadOnlyMemory<byte>) or SendCoreAsync(byte[])");
 
         protected void OnDataReceived(byte[] data)
         {

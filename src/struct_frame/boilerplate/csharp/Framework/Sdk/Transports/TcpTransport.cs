@@ -5,7 +5,6 @@
 
 using System;
 using System.Net.Sockets;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace StructFrame.Sdk
@@ -28,15 +27,15 @@ namespace StructFrame.Sdk
     /// <summary>
     /// TCP Transport using NetCoreServer
     /// NOTE: This is a stub implementation. Full implementation requires NetCoreServer package.
-    /// 
+    ///
     /// To implement:
     /// 1. Install NetCoreServer NuGet package
     /// 2. Inherit from NetCoreServer.TcpClient
     /// 3. Override OnConnected, OnDisconnected, OnReceived, OnError methods
-    /// 
+    ///
     /// Example:
     /// using NetCoreServer;
-    /// 
+    ///
     /// public class TcpTransport : TcpClient, ITransport
     /// {
     ///     protected override void OnReceived(byte[] buffer, long offset, long size)
@@ -70,8 +69,8 @@ namespace StructFrame.Sdk
                 _stream = _client.GetStream();
                 _connected = true;
 
-                // Start receiving
-                _ = ReceiveAsync();
+                // Start receive loop; route any unhandled exception through OnErrorOccurred.
+                _ = RunReceiveLoopAsync();
             }
             catch (Exception ex)
             {
@@ -90,7 +89,8 @@ namespace StructFrame.Sdk
             await Task.CompletedTask;
         }
 
-        protected override async Task<int> SendCoreAsync(byte[] data)
+        // Override the ReadOnlyMemory overload for zero-copy sends via NetworkStream.
+        protected override async Task<int> SendCoreAsync(ReadOnlyMemory<byte> data)
         {
             if (_stream == null || !_connected)
             {
@@ -99,7 +99,7 @@ namespace StructFrame.Sdk
 
             try
             {
-                await _stream.WriteAsync(data, 0, data.Length);
+                await _stream.WriteAsync(data);
                 await _stream.FlushAsync();
                 return data.Length;
             }
@@ -110,33 +110,48 @@ namespace StructFrame.Sdk
             }
         }
 
-        private async Task ReceiveAsync()
+        private async Task RunReceiveLoopAsync()
+        {
+            try
+            {
+                await ReceiveLoopAsync();
+            }
+            catch (Exception ex)
+            {
+                if (_connected)
+                {
+                    OnErrorOccurred(ex);
+                    OnConnectionClosed();
+                }
+            }
+        }
+
+        private async Task ReceiveLoopAsync()
         {
             while (_connected && _stream != null)
             {
+                int bytesRead;
                 try
                 {
-                    // Use pre-allocated buffer to avoid allocation per receive
-                    int bytesRead = await _stream.ReadAsync(_receiveBuffer, 0, _receiveBuffer.Length);
-                    if (bytesRead == 0)
-                    {
-                        OnConnectionClosed();
-                        break;
-                    }
-
-                    // Copy only the received bytes for the callback (maintains API compatibility)
-                    byte[] data = new byte[bytesRead];
-                    Array.Copy(_receiveBuffer, data, bytesRead);
-                    OnDataReceived(data);
+                    bytesRead = await _stream.ReadAsync(_receiveBuffer, 0, _receiveBuffer.Length);
                 }
                 catch (Exception ex)
                 {
                     if (_connected)
-                    {
                         OnErrorOccurred(ex);
-                    }
                     break;
                 }
+
+                if (bytesRead == 0)
+                {
+                    OnConnectionClosed();
+                    break;
+                }
+
+                // Copy only the received bytes (maintains byte[] callback API).
+                byte[] data = new byte[bytesRead];
+                Array.Copy(_receiveBuffer, data, bytesRead);
+                OnDataReceived(data);
             }
         }
     }

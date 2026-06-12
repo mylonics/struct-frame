@@ -65,7 +65,7 @@ public class TestNegative
             var msg = CreateTestMessage();
             
             byte[] buffer = new byte[1024];
-            var writer = new ProfileStandardWriter();
+            var writer = new BufferWriter<StandardProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var bytesWritten = writer.Size;
@@ -77,7 +77,7 @@ public class TestNegative
             buffer[bytesWritten - 2] ^= 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
@@ -92,7 +92,7 @@ public class TestNegative
             var msg = CreateTestMessage();
             
             byte[] buffer = new byte[1024];
-            var writer = new ProfileStandardWriter();
+            var writer = new BufferWriter<StandardProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var bytesWritten = writer.Size;
@@ -103,7 +103,7 @@ public class TestNegative
             var truncatedSize = bytesWritten - 5;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, truncatedSize);
             var result = reader.Next();
             
@@ -118,7 +118,7 @@ public class TestNegative
             var msg = CreateTestMessage();
             
             byte[] buffer = new byte[1024];
-            var writer = new ProfileStandardWriter();
+            var writer = new BufferWriter<StandardProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var bytesWritten = writer.Size;
@@ -130,7 +130,7 @@ public class TestNegative
             buffer[1] = 0xAD;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
@@ -144,7 +144,7 @@ public class TestNegative
         {
             var buffer = new byte[0];
             
-            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer);
             var result = reader.Next();
             
@@ -159,7 +159,7 @@ public class TestNegative
             var msg = CreateTestMessage();
             
             byte[] buffer = new byte[1024];
-            var writer = new ProfileStandardWriter();
+            var writer = new BufferWriter<StandardProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var bytesWritten = writer.Size;
@@ -170,7 +170,7 @@ public class TestNegative
             buffer[2] = 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
@@ -185,7 +185,7 @@ public class TestNegative
             var msg = CreateTestMessage();
             
             byte[] buffer = new byte[1024];
-            var writer = new ProfileStandardWriter();
+            var writer = new BufferWriter<StandardProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var bytesWritten = writer.Size;
@@ -196,7 +196,7 @@ public class TestNegative
             buffer[bytesWritten - 1] ^= 0xFF;
             
             // Try streaming parse
-            var reader = new ProfileStandardAccumulatingReader(1024, SerializationTestMD.GetMessageInfo);
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
             
             // Feed byte by byte
             for (int i = 0; i < bytesWritten; i++)
@@ -213,7 +213,7 @@ public class TestNegative
          */
         private static bool TestStreamingGarbage()
         {
-            var reader = new ProfileStandardAccumulatingReader(1024, SerializationTestMD.GetMessageInfo);
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
             
             // Feed garbage bytes
             byte[] garbage = { 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A };
@@ -235,7 +235,7 @@ public class TestNegative
             var msg = CreateTestMessage();
             
             byte[] buffer = new byte[1024];
-            var writer = new ProfileBulkWriter();
+            var writer = new BufferWriter<BulkProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var bytesWritten = writer.Size;
@@ -247,7 +247,7 @@ public class TestNegative
             buffer[bytesWritten - 2] ^= 0xFF;
             
             // Try to parse - should fail
-            var reader = new ProfileBulkReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<BulkProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, bytesWritten);
             var result = reader.Next();
             
@@ -261,7 +261,7 @@ public class TestNegative
         {
             // Create buffer with 3 messages
             byte[] buffer = new byte[4096];
-            var writer = new ProfileStandardWriter();
+            var writer = new BufferWriter<StandardProfile>();
             writer.SetBuffer(buffer);
             
             var msg1 = CreateTestMessage();
@@ -284,7 +284,7 @@ public class TestNegative
             buffer[bytes2End - 1] ^= 0xFF;
             
             // Parse all frames
-            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, totalBytes);
             
             var result1 = reader.Next();
@@ -302,7 +302,7 @@ public class TestNegative
             var msg = CreateTestMessage();
             
             byte[] buffer = new byte[1024];
-            var writer = new ProfileStandardWriter();
+            var writer = new BufferWriter<StandardProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var frameSize = writer.Size;
@@ -311,7 +311,7 @@ public class TestNegative
             
             int mid = frameSize / 2;
             
-            var reader = new ProfileStandardAccumulatingReader(1024, SerializationTestMD.GetMessageInfo);
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
             
             // Feed first half via AddData, then call Next() to save partial data to internal buffer
             byte[] firstHalf = new byte[mid];
@@ -334,7 +334,7 @@ public class TestNegative
             var msg = CreateTestMessage();
 
             byte[] buffer = new byte[1024];
-            var writer = new ProfileStandardWriter();
+            var writer = new BufferWriter<StandardProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var frameSize = writer.Size;
@@ -345,7 +345,7 @@ public class TestNegative
             // 0xFF is not a known message ID → GetMessageInfo returns null magic → CRC fails
             buffer[3] = 0xFF;
 
-            var reader = new ProfileStandardReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, frameSize);
             var result = reader.Next();
             return !result.Valid;  // Expect failure: CRC mismatch due to wrong magic values
@@ -356,7 +356,7 @@ public class TestNegative
             var msg = CreateTestMessage();
 
             byte[] buffer = new byte[1024];
-            var writer = new ProfileSensorWriter();
+            var writer = new BufferWriter<SensorProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var frameSize = writer.Size;
@@ -366,7 +366,7 @@ public class TestNegative
             // Provide fewer bytes than the full frame to trigger truncation error
             int truncatedSize = frameSize - 5;
 
-            var reader = new ProfileSensorReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<SensorProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, truncatedSize);
             var result = reader.Next();
             return !result.Valid;  // Expect failure: buffer too small for expected payload
@@ -377,7 +377,7 @@ public class TestNegative
             var msg = CreateTestMessage();
 
             byte[] buffer = new byte[1024];
-            var writer = new ProfileNetworkWriter();
+            var writer = new BufferWriter<NetworkProfile>();
             writer.SetBuffer(buffer);
             // Encode with seq=1, sysId=5, compId=10
             writer.Write(msg, seq: 1, sysId: 5, compId: 10);
@@ -389,7 +389,7 @@ public class TestNegative
             // sys_id is inside the CRC-protected region so CRC will fail
             buffer[3] ^= 0xFF;
 
-            var reader = new ProfileNetworkReader(SerializationTestMD.GetMessageInfo);
+            var reader = new BufferReader<NetworkProfile>(SerializationTestMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, frameSize);
             var result = reader.Next();
             return !result.Valid;  // Expect failure: corrupted sys_id invalidates CRC
@@ -412,7 +412,7 @@ public class TestNegative
             Array.Copy(nameBytes, msg.Name, Math.Min(nameBytes.Length, 32));
 
             byte[] buffer = new byte[1024];
-            var writer = new ProfileBulkWriter();
+            var writer = new BufferWriter<BulkProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var frameSize = writer.Size;
@@ -423,7 +423,7 @@ public class TestNegative
             // pkg_id is at byte 4
             buffer[4] ^= 0xFF;
 
-            var reader = new ProfileBulkReader(PkgTestMessagesMD.GetMessageInfo);
+            var reader = new BufferReader<BulkProfile>(PkgTestMessagesMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, frameSize);
             var result = reader.Next();
             return !result.Valid;  // Expect failure: CRC mismatch due to corrupted pkg_id
@@ -445,7 +445,7 @@ public class TestNegative
             Array.Copy(nameBytes, msg.Name, Math.Min(nameBytes.Length, 32));
 
             byte[] buffer = new byte[1024];
-            var writer = new ProfileNetworkWriter();
+            var writer = new BufferWriter<NetworkProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg, seq: 1, sysId: 5, compId: 10);
             var frameSize = writer.Size;
@@ -456,7 +456,7 @@ public class TestNegative
             // pkg_id is at byte 7
             buffer[7] ^= 0xFF;
 
-            var reader = new ProfileNetworkReader(PkgTestMessagesMD.GetMessageInfo);
+            var reader = new BufferReader<NetworkProfile>(PkgTestMessagesMD.GetMessageInfo);
             reader.SetBuffer(buffer, 0, frameSize);
             var result = reader.Next();
             return !result.Valid;  // Expect failure: CRC mismatch due to corrupted pkg_id
@@ -479,7 +479,7 @@ public class TestNegative
             };
 
             byte[] buffer = new byte[1024];
-            var writer = new ProfileBulkWriter();
+            var writer = new BufferWriter<BulkProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var frameSize = writer.Size;
@@ -492,7 +492,7 @@ public class TestNegative
             buffer[4] = 2;
 
             // Parse with PkgTestMessages handler — should reject because pkgid=2 != PackageInfo.PackageId=1
-            var reader = new ProfileBulkAccumulatingReader(2024, (id) => PkgTestMessagesMD.GetMessageInfo(id));
+            var reader = new AccumulatingReader<BulkProfile>(2024, (id) => PkgTestMessagesMD.GetMessageInfo(id));
             reader.AddData(buffer, 0, frameSize);
             var result = reader.Next();
 
@@ -519,7 +519,7 @@ public class TestNegative
             };
 
             byte[] buffer = new byte[1024];
-            var writer = new ProfileBulkWriter();
+            var writer = new BufferWriter<BulkProfile>();
             writer.SetBuffer(buffer);
             writer.Write(msg);
             var frameSize = writer.Size;
@@ -531,7 +531,7 @@ public class TestNegative
             // Change to 0xFF so combined msgid = (1 << 8) | 0xFF = 511.
             buffer[5] = 0xFF;
 
-            var reader = new ProfileBulkAccumulatingReader(2024, (id) => PkgTestMessagesMD.GetMessageInfo(id));
+            var reader = new AccumulatingReader<BulkProfile>(2024, (id) => PkgTestMessagesMD.GetMessageInfo(id));
             reader.AddData(buffer, 0, frameSize);
             var result = reader.Next();
 

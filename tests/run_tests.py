@@ -1940,20 +1940,18 @@ class TestRunner:
             results[f"{lang_id}:{pkg_stem}"] = status
 
         def _rt_run(lang_tag: str, lang_id: str, src_stem: str, run_fn: Callable) -> None:
-            """Run one package's test, print a progress line, record in table."""
+            """Run one package's test, record result; print only on failure."""
             nonlocal all_success
             ok, stdout, stderr = run_fn()
             _rt_set(src_stem, lang_id, ok)
-            if ok:
-                print(f"  [{lang_tag}] {Colors.pass_text()} {src_stem}")
-            else:
-                print(f"  [{lang_tag}] {Colors.fail_text()} {src_stem}")
+            if not ok:
+                print(f"    {Colors.fail_tag()} {src_stem}")
                 if stdout:
                     for line in stdout.splitlines():
-                        print(f"    {line}")
+                        print(f"      {line}")
                 if stderr:
                     for line in stderr.splitlines():
-                        print(f"    {line}")
+                        print(f"      {line}")
                 all_success = False
 
         # ---- C++ ----
@@ -1964,6 +1962,7 @@ class TestRunner:
             if not sources:
                 print("  [C++] No test_roundtrip_*.cpp files found - skipping")
             else:
+                print(f"  Running C++ ({len(sources)} packages)...")
                 build_dir = gen_dir / "roundtrip_bin"
                 build_dir.mkdir(parents=True, exist_ok=True)
                 for src in sources:
@@ -1971,10 +1970,10 @@ class TestRunner:
                     compile_cmd = f'{_cxx()} -std=c++20 -O0 {_cxxflags()} -I"{gen_dir}" -o "{exe}" "{src}" {_ldflags()}'
                     ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
                     if not ok:
-                        print(f"  [C++] {Colors.fail_tag()} compile failed: {src.name}")
+                        print(f"    {Colors.fail_tag()} compile failed: {src.name}")
                         if stderr:
                             for line in stderr.splitlines():
-                                print(f"    {line}")
+                                print(f"      {line}")
                         _rt_set(src.stem, "cpp", False)
                         self.add_failure("roundtrip", "C++", None, f"compile {src.name}", stderr)
                         all_success = False
@@ -1994,6 +1993,7 @@ class TestRunner:
             if not sources:
                 print("  [Python] No test_roundtrip_*.py files found - skipping")
             else:
+                print(f"  Running Python ({len(sources)} packages)...")
                 env = {"PYTHONPATH": str(gen_dir)}
                 for src in sources:
                     _rt_run("Python", "py", src.stem,
@@ -2011,6 +2011,7 @@ class TestRunner:
             if not sources:
                 print("  [C] No test_roundtrip_*.c files found - skipping")
             else:
+                print(f"  Running C ({len(sources)} packages)...")
                 build_dir = gen_dir / "roundtrip_bin"
                 build_dir.mkdir(parents=True, exist_ok=True)
                 for src in sources:
@@ -2018,10 +2019,10 @@ class TestRunner:
                     compile_cmd = f'{_cc()} -O0 {_cflags()} -I"{gen_dir}" -o "{exe}" "{src}" {_ldflags()} -lm'
                     ok, _, stderr = self.run_cmd(compile_cmd, timeout=120)
                     if not ok:
-                        print(f"  [C] {Colors.fail_tag()} compile failed: {src.name}")
+                        print(f"    {Colors.fail_tag()} compile failed: {src.name}")
                         if stderr:
                             for line in stderr.splitlines():
-                                print(f"    {line}")
+                                print(f"      {line}")
                         _rt_set(src.stem, "c", False)
                         self.add_failure("roundtrip", "C", None, f"compile {src.name}", stderr)
                         all_success = False
@@ -2053,12 +2054,13 @@ class TestRunner:
                     f'--types node --typeRoots "{ts_test_dir / "node_modules" / "@types"}" '
                     f'--outDir "{build_dir}" {ts_inputs}'
                 )
+                print(f"  Running TypeScript ({len(sources)} packages)...")
                 compile_ok, _, compile_err = self.run_cmd(compile_cmd, cwd=ts_test_dir, timeout=180)
                 if not compile_ok:
-                    print(f"  [TS] {Colors.fail_tag()} compile failed")
+                    print(f"    {Colors.fail_tag()} compile failed")
                     if compile_err:
                         for line in compile_err.splitlines():
-                            print(f"    {line}")
+                            print(f"      {line}")
                     self.add_failure("roundtrip", "TypeScript", None, "tsc compile", compile_err)
                     for src in sources:
                         _rt_set(src.stem, "ts", False)
@@ -2067,7 +2069,7 @@ class TestRunner:
                     for src in sources:
                         js_file = build_dir / f"{src.stem}.js"
                         if not js_file.exists():
-                            print(f"  [TS] {Colors.fail_text()} {src.stem} (no js output)")
+                            print(f"    {Colors.fail_tag()} {src.stem} (no js output)")
                             _rt_set(src.stem, "ts", False)
                             all_success = False
                             continue
@@ -2086,6 +2088,7 @@ class TestRunner:
             if not sources:
                 print("  [JS] No test_roundtrip_*.js files found - skipping")
             else:
+                print(f"  Running JavaScript ({len(sources)} packages)...")
                 for src in sources:
                     _rt_run("JS", "js", src.stem,
                             lambda s=src: self.run_cmd(f'node "{s}"', timeout=60))
@@ -2103,6 +2106,7 @@ class TestRunner:
             if not sources or not csproj.exists():
                 print("  [C#] No test_roundtrip_*.cs files found - skipping")
             else:
+                print(f"  Running C# ({len(sources)} packages)...")
                 for src in sources:
                     namespace = None
                     class_name = None
@@ -2118,7 +2122,7 @@ class TestRunner:
                     except (OSError, UnicodeDecodeError):
                         pass
                     if not (namespace and class_name):
-                        print(f"  [C#] {Colors.fail_text()} {src.stem} (could not parse namespace/class)")
+                        print(f"    {Colors.fail_tag()} {src.stem} (could not parse namespace/class)")
                         _rt_set(src.stem, "csharp", False)
                         all_success = False
                         continue
@@ -2139,10 +2143,10 @@ class TestRunner:
                     )
                     ok, _, stderr = self.run_cmd(build_cmd, timeout=180)
                     if not ok:
-                        print(f"  [C#] {Colors.fail_tag()} compile failed: {src.name}")
+                        print(f"    {Colors.fail_tag()} compile failed: {src.name}")
                         if stderr:
                             for line in stderr.splitlines():
-                                print(f"    {line}")
+                                print(f"      {line}")
                         _rt_set(src.stem, "csharp", False)
                         self.add_failure("roundtrip", "C#", None, f"compile {src.name}", stderr)
                         all_success = False
@@ -2167,15 +2171,16 @@ class TestRunner:
             if not sources or not cargo_toml.exists():
                 print("  [Rust] No test_roundtrip_*.rs files found - skipping")
             else:
+                print(f"  Running Rust ({len(sources)} packages)...")
                 for src in sources:
                     bin_name = src.stem
                     build_cmd = f'cargo build --release --bin {bin_name} --quiet'
                     ok, _, stderr = self.run_cmd(build_cmd, cwd=gen_dir, timeout=300)
                     if not ok:
-                        print(f"  [Rust] {Colors.fail_tag()} compile failed: {bin_name}")
+                        print(f"    {Colors.fail_tag()} compile failed: {bin_name}")
                         if stderr:
                             for line in stderr.splitlines():
-                                print(f"    {line}")
+                                print(f"      {line}")
                         _rt_set(bin_name, "rust", False)
                         self.add_failure("roundtrip", "Rust", None, f"compile {src.name}", stderr)
                         all_success = False
