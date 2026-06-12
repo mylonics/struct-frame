@@ -37,18 +37,36 @@ def _rejected(result: subprocess.CompletedProcess) -> bool:
     return result.returncode != 0
 
 
+def _output(result: subprocess.CompletedProcess) -> str:
+    """Combined stdout+stderr (validation errors land in either stream)."""
+    return (result.stdout or "") + "\n" + (result.stderr or "")
+
+
 PASS_MARKER = "PASS"
 FAIL_MARKER = "FAIL"
 
 
-def _report(name: str, rejected: bool, expected_reject: bool) -> bool:
-    """Print the result line and return overall test success."""
-    if rejected == expected_reject:
-        print(f"  {PASS_MARKER}: {name}")
-        return True
-    adjective = "reject" if expected_reject else "accept"
-    print(f"  {FAIL_MARKER}: {name} — generator should {adjective} this input")
-    return False
+def _report(name: str, result: subprocess.CompletedProcess, expected_reject: bool,
+            expected_msg: str | None = None) -> bool:
+    """Print the result line and return overall test success.
+
+    For reject cases an ``expected_msg`` substring (case-insensitive) must appear
+    in the generator's output. This guards against the test passing for the wrong
+    reason — e.g. a typo in the .sf making the generator reject at parse time
+    rather than hitting the validation rule under test.
+    """
+    rejected = _rejected(result)
+    if rejected != expected_reject:
+        adjective = "reject" if expected_reject else "accept"
+        print(f"  {FAIL_MARKER}: {name} — generator should {adjective} this input")
+        return False
+    if expected_reject and expected_msg is not None:
+        if expected_msg.lower() not in _output(result).lower():
+            print(f"  {FAIL_MARKER}: {name} — rejected, but not for the expected "
+                  f"reason (expected substring {expected_msg!r} in output)")
+            return False
+    print(f"  {PASS_MARKER}: {name}")
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +93,8 @@ message Beta {
         sf = Path(tmp) / "dup_msgid.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("duplicate_msgid", _rejected(result), expected_reject=True)
+    return _report("duplicate_msgid", result, expected_reject=True,
+                   expected_msg="duplicate msgid")
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +127,8 @@ message MainMsg {
         main_sf = Path(tmp) / "pkg_main.sf"
         main_sf.write_text(proto_main)
         result = _run(str(main_sf))
-    return _report("duplicate_pkgid", _rejected(result), expected_reject=True)
+    return _report("duplicate_pkgid", result, expected_reject=True,
+                   expected_msg="duplicate package ID")
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +159,8 @@ message MsgB {
 }
 """)
         result = _run("circ_a.sf", cwd=tmp)
-    return _report("circular_import", _rejected(result), expected_reject=True)
+    return _report("circular_import", result, expected_reject=True,
+                   expected_msg="circular")
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +192,8 @@ message MainMsg {
 }
 """)
         result = _run(str(main_sf))
-    return _report("multi_package_missing_pkgid", _rejected(result), expected_reject=True)
+    return _report("multi_package_missing_pkgid", result, expected_reject=True,
+                   expected_msg="Multiple packages are being compiled")
 
 
 # =============================================================================
@@ -194,7 +216,8 @@ message Foo {
         sf = Path(tmp) / "dup_field.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("duplicate_field_numbers", _rejected(result), expected_reject=True)
+    return _report("duplicate_field_numbers", result, expected_reject=True,
+                   expected_msg="must be numbered 1..N")
 
 
 def test_array_missing_size() -> bool:
@@ -211,7 +234,8 @@ message Foo {
         sf = Path(tmp) / "missing_array_size.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("array_missing_size_or_max_size", _rejected(result), expected_reject=True)
+    return _report("array_missing_size_or_max_size", result, expected_reject=True,
+                   expected_msg="missing required size or max_size")
 
 
 def test_string_missing_size() -> bool:
@@ -228,7 +252,8 @@ message Foo {
         sf = Path(tmp) / "missing_string_size.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("string_missing_size_or_max_size", _rejected(result), expected_reject=True)
+    return _report("string_missing_size_or_max_size", result, expected_reject=True,
+                   expected_msg="missing required size or max_size")
 
 
 def test_string_array_missing_element_size() -> bool:
@@ -245,7 +270,8 @@ message Foo {
         sf = Path(tmp) / "missing_element_size.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("string_array_missing_element_size", _rejected(result), expected_reject=True)
+    return _report("string_array_missing_element_size", result, expected_reject=True,
+                   expected_msg="missing required element_size")
 
 
 def test_array_max_size_over_255_allowed() -> bool:
@@ -262,7 +288,7 @@ message Foo {
         sf = Path(tmp) / "max_size_over_255_allowed.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("array_max_size_greater_than_255_allowed", _rejected(result), expected_reject=False)
+    return _report("array_max_size_greater_than_255_allowed", result, expected_reject=False)
 
 
 def test_string_max_size_over_255_allowed() -> bool:
@@ -279,7 +305,7 @@ message Foo {
         sf = Path(tmp) / "string_max_size_over_255_allowed.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("string_max_size_greater_than_255_allowed", _rejected(result), expected_reject=False)
+    return _report("string_max_size_greater_than_255_allowed", result, expected_reject=False)
 
 
 def test_envelope_zero_oneofs() -> bool:
@@ -296,7 +322,8 @@ message Empty {
         sf = Path(tmp) / "envelope_no_oneof.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("envelope_with_zero_oneofs", _rejected(result), expected_reject=True)
+    return _report("envelope_with_zero_oneofs", result, expected_reject=True,
+                   expected_msg="must have exactly one oneof")
 
 
 def test_envelope_non_message_oneof_fields() -> bool:
@@ -317,7 +344,8 @@ message Bad {
         sf = Path(tmp) / "envelope_scalar_oneof.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("envelope_non_message_oneof_field", _rejected(result), expected_reject=True)
+    return _report("envelope_non_message_oneof_field", result, expected_reject=True,
+                   expected_msg="must be a message type")
 
 
 def test_envelope_msgid_discriminator_without_msgid() -> bool:
@@ -341,7 +369,11 @@ message Outer {
         sf = Path(tmp) / "env_msgid_missing.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("envelope_msgid_discriminator_without_msgid", _rejected(result), expected_reject=True)
+    # Rejected at the oneof level: discriminator=msgid requires every arm to be a
+    # message that declares option msgid (Inner does not), which is exactly the
+    # condition under test.
+    return _report("envelope_msgid_discriminator_without_msgid", result, expected_reject=True,
+                   expected_msg="not all fields are messages with msgid")
 
 
 def test_invalid_discriminator_value() -> bool:
@@ -364,7 +396,8 @@ message Outer {
         sf = Path(tmp) / "invalid_disc.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("invalid_discriminator_value", _rejected(result), expected_reject=True)
+    return _report("invalid_discriminator_value", result, expected_reject=True,
+                   expected_msg="Invalid discriminator option")
 
 
 def test_field_number_zero() -> bool:
@@ -381,7 +414,8 @@ message Foo {
         sf = Path(tmp) / "zero_field_num.sf"
         sf.write_text(proto)
         result = _run(str(sf))
-    return _report("field_number_zero", _rejected(result), expected_reject=True)
+    return _report("field_number_zero", result, expected_reject=True,
+                   expected_msg="must be numbered 1..N")
 
 
 # ---------------------------------------------------------------------------

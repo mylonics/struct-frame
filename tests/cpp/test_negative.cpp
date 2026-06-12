@@ -517,7 +517,6 @@ int main() {
     {"Corrupted length field detection", test_corrupted_length},
     {"Cross-package message rejection", test_cross_package_rejection},
     {"Invalid message ID rejection", test_invalid_msg_id},
-    {"Invalid start byte detection", test_invalid_start_byte},
     {"Invalid start bytes detection", test_invalid_start_bytes},
     {"Minimal profile: Truncated frame", test_minimal_profile_truncated_frame},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
