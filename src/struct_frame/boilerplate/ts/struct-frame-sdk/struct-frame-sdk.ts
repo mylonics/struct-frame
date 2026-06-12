@@ -57,6 +57,7 @@ export interface StructFrameSdkConfig {
 export class StructFrameSdk {
   private transport: ITransport;
   private frameParser: FrameParser;
+  private minFrameSize: number;
   private debug: boolean;
   private messageHandlers: Map<number, MessageHandler[]> = new Map();
   private messageCodecs: Map<number, MessageCodec> = new Map();
@@ -65,6 +66,7 @@ export class StructFrameSdk {
   constructor(config: StructFrameSdkConfig) {
     this.transport = config.transport;
     this.frameParser = config.frameParser;
+    this.minFrameSize = this.estimateMinFrameSize();
     this.debug = config.debug ?? false;
 
     // Set up transport callbacks
@@ -135,11 +137,13 @@ export class StructFrameSdk {
   }
 
   /**
-   * Send a message object (requires pack() method)
+   * Send a generated message object. Calls serialize() and reads the static _msgid
+   * from the message's class. Optionally accepts an explicit msgId override.
    */
-  async send<T extends { pack(): Uint8Array; msgId: number }>(message: T): Promise<SendResult> {
-    const data = message.pack();
-    return await this.sendRaw(message.msgId, data);
+  async send<T extends { serialize(): Uint8Array }>(message: T, msgId?: number): Promise<SendResult> {
+    const data = message.serialize();
+    const id = msgId ?? (message.constructor as any)._msgid ?? 0;
+    return await this.sendRaw(id, data);
   }
 
   /**
@@ -165,7 +169,13 @@ export class StructFrameSdk {
       const result = this.frameParser.parse(this.buffer);
       
       if (!result.valid) {
-        // No valid frame found, keep buffer as is
+        // If we already have enough bytes for at least one frame attempt, drop one byte
+        // and continue scanning to recover from corrupted leading data.
+        if (this.buffer.length >= this.minFrameSize) {
+          this.log('Parser desync detected, discarding 1 byte for resync');
+          this.buffer = this.buffer.subarray(1);
+          continue;
+        }
         break;
       }
 
@@ -198,7 +208,16 @@ export class StructFrameSdk {
 
       // Remove parsed data from buffer
       const totalFrameSize = this.calculateFrameSize(result);
-      this.buffer = this.buffer.slice(totalFrameSize);
+      this.buffer = this.buffer.subarray(totalFrameSize);
+    }
+  }
+
+  private estimateMinFrameSize(): number {
+    try {
+      const probe = this.frameParser.frame(0, new Uint8Array(0));
+      return probe.length > 0 ? probe.length : 1;
+    } catch {
+      return 1;
     }
   }
 

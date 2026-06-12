@@ -76,6 +76,10 @@ export interface EncodeOptions {
 export interface MessageInfo {
     /** Message size in bytes */
     size: number;
+    /** Minimum valid serialized size in bytes (defaults to size for fixed messages) */
+    minSize?: number;
+    /** Whether this message uses variable-length wire encoding */
+    isVariable?: boolean;
     /** Magic number 1 (added at end of CRC checksum calculation) */
     magic1: number;
     /** Magic number 2 (added at end of CRC checksum calculation) */
@@ -974,8 +978,11 @@ export class AccumulatingReader {
                     }
                     fullMsgId |= this.internalBuffer[headerSize - 1];
                     const info = this.getMessageInfo(fullMsgId);
-                    if (info !== undefined && info.size !== payloadLen) {
-                        this._diagnostics.cntLenErrors++;
+                    if (info !== undefined) {
+                        const minSize = info.minSize ?? (info.isVariable ? 0 : info.size);
+                        if (payloadLen > info.size || payloadLen < minSize) {
+                            this._diagnostics.cntLenErrors++;
+                        }
                     }
                 }
 
@@ -1097,7 +1104,7 @@ export class AccumulatingReader {
             } else {
                 result.status = FrameMsgStatus.SyncRecovery;
             }
-            this._diagnostics.cntFailedBytes += result.frameSize ?? 0;
+            this._diagnostics.cntFailedBytes += internalBytes.length;
             this._diagnostics.cntSyncRecoveries++;
         }
 
@@ -1162,7 +1169,7 @@ export class AccumulatingReader {
     }
 
     private withDiagnostics(result: FrameMsgInfo): FrameMsgInfo {
-        result.diagnostics = this._diagnostics;
+        result.diagnostics = { ...this._diagnostics };
         return result;
     }
 }

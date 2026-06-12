@@ -64,6 +64,7 @@ export abstract class BaseTransport implements ITransport {
   protected closeCallback?: () => void;
   protected config: Required<TransportConfig>;
   protected reconnectAttempts: number = 0;
+  protected _intentionalClose: boolean = false;
 
   constructor(config?: TransportConfig) {
     this.config = {
@@ -113,9 +114,10 @@ export abstract class BaseTransport implements ITransport {
     if (this.closeCallback) {
       this.closeCallback();
     }
-    if (this.config.autoReconnect) {
+    if (this.config.autoReconnect && !this._intentionalClose) {
       this.attemptReconnect();
     }
+    this._intentionalClose = false;
   }
 
   protected async attemptReconnect(): Promise<void> {

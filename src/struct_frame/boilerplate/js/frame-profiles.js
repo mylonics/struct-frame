@@ -31,6 +31,8 @@ const { fletcherChecksum, fletcherChecksumExt, createFrameMsgInfo, FrameMsgStatu
 /**
  * @typedef {Object} MessageInfo
  * @property {number} size - Message size in bytes
+ * @property {number} [minSize] - Minimum valid serialized size (defaults to size for fixed messages)
+ * @property {boolean} [isVariable] - Whether the message uses variable-length wire encoding
  * @property {number} magic1 - First magic number for CRC
  * @property {number} magic2 - Second magic number for CRC
  */
@@ -631,7 +633,7 @@ class AccumulatingReader {
     this.currentOffset = 0;
 
     // Diagnostic counters (stream mode)
-    this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+    this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntFailedBytes: 0, cntLenErrors: 0, cntSeqGaps: 0 };
     this._lastSeq = null;
   }
 
@@ -863,8 +865,11 @@ class AccumulatingReader {
           }
           fullMsgId |= this.internalBuffer[headerSize - 1];
           const info = this.getMessageInfo(fullMsgId);
-          if (info !== undefined && info.size !== payloadLen) {
-            this._diagnostics.cntLenErrors++;
+          if (info !== undefined) {
+            const minSize = info.minSize ?? (info.isVariable ? 0 : info.size);
+            if (payloadLen > info.size || payloadLen < minSize) {
+              this._diagnostics.cntLenErrors++;
+            }
           }
         }
 
@@ -981,6 +986,7 @@ class AccumulatingReader {
       } else {
         result.status = FrameMsgStatus.SyncRecovery;
       }
+      this._diagnostics.cntFailedBytes += internalBytes.length;
       this._diagnostics.cntSyncRecoveries++;
     }
 
@@ -1041,7 +1047,7 @@ class AccumulatingReader {
 
   /** Reset all diagnostic counters to zero. */
   resetDiagnostics() {
-    this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntLenErrors: 0, cntSeqGaps: 0 };
+    this._diagnostics = { cntCrcFailures: 0, cntSyncRecoveries: 0, cntFailedBytes: 0, cntLenErrors: 0, cntSeqGaps: 0 };
   }
 }
 

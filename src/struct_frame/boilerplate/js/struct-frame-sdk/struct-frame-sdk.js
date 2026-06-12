@@ -21,6 +21,7 @@ class StructFrameSdk {
   constructor(config) {
     this._transport = config.transport;
     this._frameParser = config.frameParser;
+    this._minFrameSize = this._estimateMinFrameSize();
     this._debug = config.debug ?? false;
 
     /** @type {Map<number, Function[]>} */
@@ -124,7 +125,16 @@ class StructFrameSdk {
   _parseBuffer() {
     while (this._buffer.length > 0) {
       const result = this._frameParser.parse(this._buffer);
-      if (!result.valid) break;
+      if (!result.valid) {
+        // If we already have enough bytes for at least one frame attempt, drop one byte
+        // and continue scanning to recover from corrupted leading data.
+        if (this._buffer.length >= this._minFrameSize) {
+          this._log('Parser desync detected, discarding 1 byte for resync');
+          this._buffer = this._buffer.subarray(1);
+          continue;
+        }
+        break;
+      }
 
       this._log(`Received message ID ${result.msgId}, ${result.msgLen} bytes`);
 
@@ -142,13 +152,26 @@ class StructFrameSdk {
         });
       }
 
-      // Advance buffer past consumed frame.
-      // prefer the parser-reported frameSize (total bytes including header+payload+footer);
-      // fall back to payload + a conservative 10-byte estimate of framing overhead if the
-      // parser does not report a frame size (the TS SDK uses the same fallback).
-      const FRAME_OVERHEAD_ESTIMATE = 10;
-      const frameSize = result.frameSize > 0 ? result.frameSize : result.msgLen + FRAME_OVERHEAD_ESTIMATE;
-      this._buffer = this._buffer.slice(frameSize);
+      // Advance buffer past consumed frame. Use parser-reported frame size when available,
+      // otherwise re-frame the parsed payload to obtain exact encoded length.
+      const frameSize = this._calculateFrameSize(result);
+      this._buffer = this._buffer.subarray(frameSize);
+    }
+  }
+
+  _calculateFrameSize(result) {
+    if (typeof result.frameSize === 'number' && result.frameSize > 0) {
+      return result.frameSize;
+    }
+    return this._frameParser.frame(result.msgId, result.msgData).length;
+  }
+
+  _estimateMinFrameSize() {
+    try {
+      const probe = this._frameParser.frame(0, new Uint8Array(0));
+      return probe.length > 0 ? probe.length : 1;
+    } catch (_e) {
+      return 1;
     }
   }
 
