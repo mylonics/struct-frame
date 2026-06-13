@@ -563,14 +563,18 @@ class MessageTsClassGen():
             if field.is_array and field.max_size is not None:
                 # Variable array - TypeScript uses name_count and name_data
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field_type, (field.size - count_bytes) // field.max_size)
                 max_len = field.max_size
                 result += f'    // {name}: variable array\n'
                 result += f'    const {name}Count = this.{name}Count;\n'
-                result += f'    buffer.writeUInt8({name}Count, offset++);\n'
+                if count_bytes == 2:
+                    result += f'    buffer.writeUInt16LE({name}Count, offset); offset += 2;\n'
+                else:
+                    result += f'    buffer.writeUInt8({name}Count, offset++);\n'
                 
                 if field_type not in type_sizes and field_type != "string" and not field.is_enum:
                     # Nested struct array
@@ -603,11 +607,15 @@ class MessageTsClassGen():
             elif field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string - copy from internal buffer (string is stored there)
                 max_len = field.max_size
+                length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {name}: variable string\n'
                 result += f'    const {name}Len = this.{name}Length;\n'
-                result += f'    buffer.writeUInt8({name}Len, offset++);\n'
-                # Copy string data from internal buffer
-                result += f'    this._buffer.copy(buffer, offset, {msg_offset + 1}, {msg_offset + 1} + {name}Len);\n'
+                if length_bytes == 2:
+                    result += f'    buffer.writeUInt16LE({name}Len, offset); offset += 2;\n'
+                else:
+                    result += f'    buffer.writeUInt8({name}Len, offset++);\n'
+                # Copy string data from internal buffer (after the length field)
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset + length_bytes}, {msg_offset + length_bytes} + {name}Len);\n'
                 result += f'    offset += {name}Len;\n'
             else:
                 # Fixed field - copy from internal buffer
@@ -678,46 +686,66 @@ class MessageTsClassGen():
             if field.is_array and field.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field_type, (field.size - count_bytes) // field.max_size)
                 max_len = field.max_size
                 result += f'    // {name}: variable array\n'
-                result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {max_len});\n'
-                
+                if count_bytes == 2:
+                    result += f'    const {name}Count = Math.min(buffer.readUInt16LE(offset), {max_len}); offset += 2;\n'
+                else:
+                    result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {max_len});\n'
+
                 if field_type not in type_sizes and field_type != "string" and not field.is_enum:
                     # Nested struct array - need to set the internal buffer array elements
                     nested_type = '%s%s' % (pascal_case(field.package), field_type)
                     result += f'    // Write count to internal buffer\n'
-                    result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                    if count_bytes == 2:
+                        result += f'    msg._buffer.writeUInt16LE({name}Count, {msg_offset});\n'
+                    else:
+                        result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                    result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                    result += f'      buffer.copy(msg._buffer, {msg_offset + count_bytes} + i * {element_size}, offset, offset + {element_size});\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
                 elif field_type in ("string", "bytes"):
                     result += f'    // Write count to internal buffer\n'
-                    result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                    if count_bytes == 2:
+                        result += f'    msg._buffer.writeUInt16LE({name}Count, {msg_offset});\n'
+                    else:
+                        result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                    result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                    result += f'      buffer.copy(msg._buffer, {msg_offset + count_bytes} + i * {element_size}, offset, offset + {element_size});\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
                 else:
                     # Primitive array
                     result += f'    // Write count to internal buffer\n'
-                    result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                    if count_bytes == 2:
+                        result += f'    msg._buffer.writeUInt16LE({name}Count, {msg_offset});\n'
+                    else:
+                        result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
                     result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                    result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                    result += f'      buffer.copy(msg._buffer, {msg_offset + count_bytes} + i * {element_size}, offset, offset + {element_size});\n'
                     result += f'      offset += {element_size};\n'
                     result += f'    }}\n'
             elif field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string
                 max_len = field.max_size
+                length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {name}: variable string\n'
-                result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {max_len});\n'
+                if length_bytes == 2:
+                    result += f'    const {name}Len = Math.min(buffer.readUInt16LE(offset), {max_len}); offset += 2;\n'
+                else:
+                    result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {max_len});\n'
                 result += f'    // Write length to internal buffer\n'
-                result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
-                result += f'    buffer.copy(msg._buffer, {msg_offset + 1}, offset, offset + {name}Len);\n'
+                if length_bytes == 2:
+                    result += f'    msg._buffer.writeUInt16LE({name}Len, {msg_offset});\n'
+                else:
+                    result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset + length_bytes}, offset, offset + {name}Len);\n'
                 result += f'    offset += {name}Len;\n'
             else:
                 # Fixed field

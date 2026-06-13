@@ -477,13 +477,15 @@ class MessageJsClassGen():
             name = to_camel_case(field.name)
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
-                result += f'    size += 1 + (this.{name}Count * {element_size}); // {name}\n'
+                    element_size = type_sizes.get(field.field_type, (field.size - count_bytes) // field.max_size)
+                result += f'    size += {count_bytes} + (this.{name}Count * {element_size}); // {name}\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
-                result += f'    size += 1 + this.{name}Length; // {name}\n'
+                length_bytes = 2 if field.max_size > 255 else 1
+                result += f'    size += {length_bytes} + this.{name}Length; // {name}\n'
             else:
                 result += f'    size += {field.size}; // {name}\n'
         
@@ -548,13 +550,17 @@ class MessageJsClassGen():
             field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field_type, (field.size - count_bytes) // field.max_size)
                 result += f'    // {name}: variable array\n'
                 result += f'    const {name}Count = this.{name}Count;\n'
-                result += f'    buffer.writeUInt8({name}Count, offset++);\n'
+                if count_bytes == 2:
+                    result += f'    buffer.writeUInt16LE({name}Count, offset); offset += 2;\n'
+                else:
+                    result += f'    buffer.writeUInt8({name}Count, offset++);\n'
                 
                 write_method = WRITE_METHODS.get(field_type if not field.is_enum else "uint8", "_writeUInt8")
                 write_method_name = write_method.replace("_write", "write")
@@ -565,10 +571,14 @@ class MessageJsClassGen():
                 result += f'      offset += {element_size};\n'
                 result += f'    }}\n'
             elif field_type in ("string", "bytes") and field.max_size is not None:
+                length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {name}: variable string\n'
                 result += f'    const {name}Len = this.{name}Length;\n'
-                result += f'    buffer.writeUInt8({name}Len, offset++);\n'
-                result += f'    this._buffer.copy(buffer, offset, {msg_offset + 1}, {msg_offset + 1} + {name}Len);\n'
+                if length_bytes == 2:
+                    result += f'    buffer.writeUInt16LE({name}Len, offset); offset += 2;\n'
+                else:
+                    result += f'    buffer.writeUInt8({name}Len, offset++);\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset + length_bytes}, {msg_offset + length_bytes} + {name}Len);\n'
                 result += f'    offset += {name}Len;\n'
             else:
                 result += f'    // {name}: fixed size ({field.size} bytes)\n'
@@ -640,22 +650,32 @@ class MessageJsClassGen():
             field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field_type, (field.size - count_bytes) // field.max_size)
                 result += f'    // {name}: variable array\n'
-                result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
-                result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                if count_bytes == 2:
+                    result += f'    const {name}Count = Math.min(buffer.readUInt16LE(offset), {field.max_size}); offset += 2;\n'
+                    result += f'    msg._buffer.writeUInt16LE({name}Count, {msg_offset});\n'
+                else:
+                    result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
+                    result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
                 result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                result += f'      buffer.copy(msg._buffer, {msg_offset + count_bytes} + i * {element_size}, offset, offset + {element_size});\n'
                 result += f'      offset += {element_size};\n'
                 result += f'    }}\n'
             elif field_type in ("string", "bytes") and field.max_size is not None:
+                length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {name}: variable string\n'
-                result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
-                result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
-                result += f'    buffer.copy(msg._buffer, {msg_offset + 1}, offset, offset + {name}Len);\n'
+                if length_bytes == 2:
+                    result += f'    const {name}Len = Math.min(buffer.readUInt16LE(offset), {field.max_size}); offset += 2;\n'
+                    result += f'    msg._buffer.writeUInt16LE({name}Len, {msg_offset});\n'
+                else:
+                    result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
+                    result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset + length_bytes}, offset, offset + {name}Len);\n'
                 result += f'    offset += {name}Len;\n'
             else:
                 result += f'    // {name}: fixed size ({field.size} bytes)\n'

@@ -260,7 +260,7 @@ static inline frame_msg_info_t profile_parse_with_crc(
     const uint8_t* buffer, size_t length,
     bool (*get_message_info_func)(uint16_t, message_info_t*)) {
     
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
     uint8_t header_size = profile_header_size(config);
     uint8_t footer_size = profile_footer_size(config);
     size_t overhead = header_size + footer_size;
@@ -272,6 +272,7 @@ static inline frame_msg_info_t profile_parse_with_crc(
     /* Verify start bytes */
     size_t idx = 0;
     if (config->header.num_start_bytes >= 1 && buffer[idx++] != config->header.start_byte1) {
+        result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
         return result;
     }
     if (config->header.num_start_bytes >= 2) {
@@ -279,17 +280,18 @@ static inline frame_msg_info_t profile_parse_with_crc(
             get_basic_second_start_byte(config->payload.payload_type) :
             config->header.start_byte2;
         if (buffer[idx++] != expected_start2) {
+            result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
             return result;
         }
     }
-    
+
     size_t crc_start = idx;
-    
+
     /* Skip optional fields before length */
     if (config->payload.has_seq) idx++;
     if (config->payload.has_sys_id) idx++;
     if (config->payload.has_comp_id) idx++;
-    
+
     /* Read length field */
     size_t msg_len = 0;
     if (config->payload.has_length) {
@@ -300,24 +302,25 @@ static inline frame_msg_info_t profile_parse_with_crc(
             idx += 2;
         }
     }
-    
+
     /* Read message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id) */
     uint16_t msg_id = 0;
     if (config->payload.has_pkg_id) {
         msg_id = (uint16_t)buffer[idx++] << 8;  /* pkg_id (high byte) */
     }
     msg_id |= buffer[idx++];  /* msg_id (low byte) */
-    
+
     /* Verify total size */
     size_t total_size = overhead + msg_len;
     if (length < total_size) {
+        result.status = FRAME_MSG_STATUS_COLLECTING;
         return result;
     }
-    
+
     /* Verify CRC */
     if (config->payload.has_crc) {
         size_t crc_len = total_size - crc_start - footer_size;
-        
+
         /* Get magic numbers and base size for this message type */
         uint8_t magic1 = 0, magic2 = 0;
         size_t base_size = 0;
@@ -331,7 +334,7 @@ static inline frame_msg_info_t profile_parse_with_crc(
                 have_info = true;
             }
         }
-        
+
         /* effective_base mirrors the encoder logic: split the CRC input at
          * the offset where extension payload bytes begin. For non-length
          * profiles, base_size equals total payload size so the split is a
@@ -344,15 +347,18 @@ static inline frame_msg_info_t profile_parse_with_crc(
         frame_checksum_t ck = frame_fletcher_checksum_with_magic_ext(
             buffer + crc_start, effective_base, crc_len, magic1, magic2);
         if (ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1]) {
+            result.frame_size = total_size;
+            result.status = FRAME_MSG_STATUS_CRC_FAILURE;
             return result;
         }
     }
-    
+
     result.valid = true;
     result.msg_id = msg_id;
     result.msg_len = msg_len;
     result.msg_data = (uint8_t*)(buffer + header_size);
-    
+    result.frame_size = total_size;
+
     return result;
 }
 
@@ -364,7 +370,7 @@ static inline frame_msg_info_t profile_parse_minimal(
     const uint8_t* buffer, size_t length,
     bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
     
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
     uint8_t header_size = profile_header_size(config);
     
     if (length < header_size) {
@@ -379,107 +385,40 @@ static inline frame_msg_info_t profile_parse_minimal(
             expected_start1 = get_tiny_start_byte(config->payload.payload_type);
         }
         if (buffer[idx++] != expected_start1) {
+            result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
             return result;
         }
     }
     if (config->header.num_start_bytes >= 2 && buffer[idx++] != config->header.start_byte2) {
+        result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
         return result;
     }
-    
+
     /* Read message ID */
     uint8_t msg_id = buffer[idx];
-    
+
     /* Get message length from callback */
     size_t msg_len = 0;
     message_info_t info;
     if (!get_message_info || !get_message_info(msg_id, &info)) {
+        result.status = FRAME_MSG_STATUS_WAITING_FOR_START;
         return result;
     }
     msg_len = info.size;
-    
+
     size_t total_size = header_size + msg_len;
     if (length < total_size) {
+        result.status = FRAME_MSG_STATUS_COLLECTING;
         return result;
     }
-    
+
     result.valid = true;
     result.msg_id = msg_id;
     result.msg_len = msg_len;
     result.msg_data = (uint8_t*)(buffer + header_size);
-    
+    result.frame_size = total_size;
+
     return result;
-}
-
-/*===========================================================================
- * Profile-Specific Convenience Functions
- *===========================================================================*/
-
-/* Profile Standard (Basic + Default) */
-static inline size_t encode_profile_standard(uint8_t* buffer, size_t buffer_size,
-                                             uint8_t msg_id,
-                                             const uint8_t* payload, size_t payload_size) {
-    return profile_encode_with_crc(&PROFILE_STANDARD_CONFIG, buffer, buffer_size,
-                                   0, 0, 0, 0, msg_id, payload, payload_size, 0, 0);
-}
-
-static inline frame_msg_info_t parse_profile_standard_buffer(const uint8_t* buffer, size_t length) {
-    return profile_parse_with_crc(&PROFILE_STANDARD_CONFIG, buffer, length, NULL);
-}
-
-/* Profile Sensor (Tiny + Minimal) */
-static inline size_t encode_profile_sensor(uint8_t* buffer, size_t buffer_size,
-                                           uint8_t msg_id,
-                                           const uint8_t* payload, size_t payload_size) {
-    return profile_encode_minimal(&PROFILE_SENSOR_CONFIG, buffer, buffer_size,
-                                  msg_id, payload, payload_size);
-}
-
-static inline frame_msg_info_t parse_profile_sensor_buffer(const uint8_t* buffer, size_t length,
-                                                           bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
-    return profile_parse_minimal(&PROFILE_SENSOR_CONFIG, buffer, length, get_message_info);
-}
-
-/* Profile IPC (None + Minimal) */
-static inline size_t encode_profile_ipc(uint8_t* buffer, size_t buffer_size,
-                                        uint8_t msg_id,
-                                        const uint8_t* payload, size_t payload_size) {
-    return profile_encode_minimal(&PROFILE_IPC_CONFIG, buffer, buffer_size,
-                                  msg_id, payload, payload_size);
-}
-
-static inline frame_msg_info_t parse_profile_ipc_buffer(const uint8_t* buffer, size_t length,
-                                                        bool (*get_message_info)(uint16_t msg_id, message_info_t* info)) {
-    return profile_parse_minimal(&PROFILE_IPC_CONFIG, buffer, length, get_message_info);
-}
-
-/* Profile Bulk (Basic + Extended) */
-static inline size_t encode_profile_bulk(uint8_t* buffer, size_t buffer_size,
-                                         uint16_t msg_id,
-                                         const uint8_t* payload, size_t payload_size) {
-    uint8_t pkg_id = (uint8_t)((msg_id >> 8) & 0xFF);
-    uint8_t low_msg_id = (uint8_t)(msg_id & 0xFF);
-    return profile_encode_with_crc(&PROFILE_BULK_CONFIG, buffer, buffer_size,
-                                   0, 0, 0, pkg_id, low_msg_id, payload, payload_size, 0, 0);
-}
-
-static inline frame_msg_info_t parse_profile_bulk_buffer(const uint8_t* buffer, size_t length) {
-    return profile_parse_with_crc(&PROFILE_BULK_CONFIG, buffer, length, NULL);
-}
-
-/* Profile Network (Basic + ExtendedMultiSystemStream) */
-static inline size_t encode_profile_network(uint8_t* buffer, size_t buffer_size,
-                                            uint8_t sequence, uint8_t system_id,
-                                            uint8_t component_id, uint16_t msg_id,
-                                            const uint8_t* payload, size_t payload_size) {
-    uint8_t pkg_id = (uint8_t)((msg_id >> 8) & 0xFF);
-    uint8_t low_msg_id = (uint8_t)(msg_id & 0xFF);
-    return profile_encode_with_crc(&PROFILE_NETWORK_CONFIG, buffer, buffer_size,
-                                   sequence, system_id, component_id, pkg_id, low_msg_id,
-                                   payload, payload_size, 0, 0);
-}
-
-static inline frame_msg_info_t parse_profile_network_buffer(const uint8_t* buffer, size_t length) {
-    return profile_parse_with_crc(&PROFILE_NETWORK_CONFIG, buffer, length, NULL);
 }
 
 /*===========================================================================
@@ -510,15 +449,15 @@ static inline void buffer_reader_init(
 
 static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
-    
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
+
     if (reader->offset >= reader->size) {
         return result;
     }
-    
+
     const uint8_t* remaining = reader->buffer + reader->offset;
     size_t remaining_size = reader->size - reader->offset;
-    
+
     if (reader->config->payload.has_crc || reader->config->payload.has_length) {
         result = profile_parse_with_crc(reader->config, remaining, remaining_size, reader->get_message_info);
     } else {
@@ -528,14 +467,34 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
         }
         result = profile_parse_minimal(reader->config, remaining, remaining_size, reader->get_message_info);
     }
-    
-    if (result.valid) {
-        size_t frame_size = profile_overhead(reader->config) + result.msg_len;
-        reader->offset += frame_size;
-    } else {
-        reader->offset = reader->size;
+
+    if (result.frame_size > 0) {
+        /* Advance past complete frames — valid or CRC-failed */
+        reader->offset += result.frame_size;
+    } else if (result.status == FRAME_MSG_STATUS_WAITING_FOR_START) {
+        /* Head byte is not a valid start — scan forward to next start byte */
+        if (reader->config->header.num_start_bytes >= 1) {
+            /* Compute the expected start byte for this profile */
+            uint8_t sb1 = reader->config->header.start_byte1;
+            if (reader->config->header.header_type == HEADER_TINY &&
+                reader->config->header.encodes_payload_type) {
+                sb1 = get_tiny_start_byte(reader->config->payload.payload_type);
+            }
+            size_t scan_start = reader->offset + 1;
+            if (scan_start < reader->size) {
+                const void* p = memchr(reader->buffer + scan_start,
+                                       (int)sb1,
+                                       reader->size - scan_start);
+                reader->offset = p ? (size_t)((const uint8_t*)p - reader->buffer) : reader->size;
+            } else {
+                reader->offset = reader->size;
+            }
+        } else {
+            reader->offset = reader->size;
+        }
     }
-    
+    /* COLLECTING: leave offset unchanged — frame is incomplete (normal end-of-buffer) */
+
     return result;
 }
 
@@ -637,53 +596,6 @@ static inline size_t buffer_writer_remaining(const buffer_writer_t* writer) {
 static inline uint8_t* buffer_writer_data(buffer_writer_t* writer) { return writer->buffer; }
 
 /*===========================================================================
- * Helper Macros for Variable Message Encoding
- *===========================================================================*/
-
-/**
- * Get the payload and size for encoding a message.
- * For variable messages with length field support, uses pack_variable() to truncate unused space.
- * For non-variable messages or minimal profiles, uses the full buffer.
- * 
- * Usage:
- *   GET_PAYLOAD_FOR_ENCODING(SerializationTestMyMessage, &msg, payload_ptr, payload_len);
- *   buffer_writer_write(writer, msg_id, payload_ptr, payload_len, ...);
- */
-#define GET_PAYLOAD_FOR_ENCODING(MSG_TYPE, msg_ptr, out_payload, out_size) \
-    do { \
-        static uint8_t _temp_pack_buffer[MSG_TYPE##_MAX_SIZE]; \
-        (void)_temp_pack_buffer; \
-        if (SUPPORTS_VARIABLE_ENCODING(MSG_TYPE)) { \
-            (out_size) = MSG_TYPE##_pack_variable((msg_ptr), _temp_pack_buffer); \
-            (out_payload) = _temp_pack_buffer; \
-        } else { \
-            (out_payload) = (const uint8_t*)(msg_ptr); \
-            (out_size) = sizeof(*(msg_ptr)); \
-        } \
-    } while(0)
-
-/**
- * Check if variable encoding is supported for a message type.
- * Returns true if the message has IS_VARIABLE defined (message is variable)
- * AND the config has a length field (not a minimal profile).
- */
-#define SUPPORTS_VARIABLE_ENCODING(MSG_TYPE) \
-    (IS_VARIABLE_MESSAGE(MSG_TYPE) && has_length_field_for_variable_encoding)
-
-/**
- * Check if a message type has the IS_VARIABLE flag defined.
- */
-#define IS_VARIABLE_MESSAGE(MSG_TYPE) \
-    (defined(MSG_TYPE##_IS_VARIABLE) && MSG_TYPE##_IS_VARIABLE)
-
-/**
- * Set this variable based on the profile config before encoding.
- * For profiles with length fields (Standard, Bulk, Network): true
- * For minimal profiles (Sensor, IPC): false
- */
-static bool has_length_field_for_variable_encoding = true;
-
-/*===========================================================================
  * AccumulatingReader - Unified parser for buffer and byte-by-byte streaming
  *===========================================================================*/
 
@@ -699,13 +611,14 @@ typedef enum accumulating_reader_state {
 typedef struct accumulating_reader {
     const profile_config_t* config;
     bool (*get_message_info)(uint16_t msg_id, message_info_t* info);
-    
+
     uint8_t* internal_buffer;
     size_t buffer_size;
     size_t internal_data_len;
     size_t expected_frame_size;
+    size_t bytes_appended_to_internal; /* bytes copied from current buffer into internal buffer this add_data() call */
     accumulating_reader_state_t state;
-    
+
     const uint8_t* current_buffer;
     size_t current_size;
     size_t current_offset;
@@ -729,11 +642,12 @@ static inline void accumulating_reader_init(
     reader->buffer_size = buffer_size;
     reader->internal_data_len = 0;
     reader->expected_frame_size = 0;
+    reader->bytes_appended_to_internal = 0;
     reader->state = ACC_STATE_IDLE;
     reader->current_buffer = NULL;
     reader->current_size = 0;
     reader->current_offset = 0;
-    frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0};
+    frame_parser_diagnostics_t zero_diag = {0, 0, 0, 0, 0};
     reader->diagnostics = zero_diag;
     reader->last_seq = 0;
     reader->last_seq_valid = false;
@@ -748,12 +662,14 @@ static inline void accumulating_reader_add_data(
     reader->current_size = size;
     reader->current_offset = 0;
     reader->state = ACC_STATE_BUFFER_MODE;
-    
+    reader->bytes_appended_to_internal = 0;
+
     if (reader->internal_data_len > 0 && buffer != NULL) {
         size_t space_available = reader->buffer_size - reader->internal_data_len;
         size_t bytes_to_copy = (size < space_available) ? size : space_available;
         memcpy(reader->internal_buffer + reader->internal_data_len, buffer, bytes_to_copy);
         reader->internal_data_len += bytes_to_copy;
+        reader->bytes_appended_to_internal = bytes_to_copy;
     }
 }
 
@@ -765,60 +681,107 @@ static inline frame_msg_info_t _acc_parse_buffer(
 
 static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
     result.diagnostics = &reader->diagnostics;
-    
+
     if (reader->state != ACC_STATE_BUFFER_MODE) {
         return result;
     }
-    
-    uint8_t header_size = profile_header_size(reader->config);
-    uint8_t footer_size = profile_footer_size(reader->config);
-    
+
+    /* Compute start byte 1 (needed for memchr resync scan) */
+    uint8_t sb1 = reader->config->header.start_byte1;
+    if (reader->config->header.header_type == HEADER_TINY &&
+        reader->config->header.encodes_payload_type) {
+        sb1 = get_tiny_start_byte(reader->config->payload.payload_type);
+    }
+
+    /* First, try to complete a partial message from the internal buffer.
+     * partial_len = bytes that came from a PREVIOUS add_data call (before
+     * bytes_appended_to_internal were added this call). */
     if (reader->internal_data_len > 0 && reader->current_offset == 0) {
+        size_t partial_len = reader->internal_data_len - reader->bytes_appended_to_internal;
         result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
-        
+
         if (result.valid) {
-            size_t frame_size = header_size + footer_size + result.msg_len;
-            size_t partial_len = reader->internal_data_len > reader->current_size ? 
-                                 reader->internal_data_len - reader->current_size : 0;
-            size_t bytes_from_current = frame_size > partial_len ? frame_size - partial_len : 0;
+            size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
             reader->current_offset = bytes_from_current;
             reader->internal_data_len = 0;
+            reader->bytes_appended_to_internal = 0;
             reader->expected_frame_size = 0;
             return result;
-        } else {
+        }
+
+        if (result.frame_size > 0) {
+            /* Complete frame but CRC failed — count it and skip */
+            reader->diagnostics.cnt_crc_failures++;
+            reader->diagnostics.cnt_failed_bytes += (uint32_t)result.frame_size;
+            size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
+            reader->current_offset = bytes_from_current;
+            reader->internal_data_len = 0;
+            reader->bytes_appended_to_internal = 0;
+            reader->expected_frame_size = 0;
             return result;
         }
+
+        /* Still not enough data for a complete frame — wait for next add_data() */
+        return result;
     }
-    
+
+    /* Parse from current buffer */
     if (reader->current_buffer == NULL || reader->current_offset >= reader->current_size) {
         return result;
     }
-    
-    const uint8_t* remaining = reader->current_buffer + reader->current_offset;
-    size_t remaining_size = reader->current_size - reader->current_offset;
-    result = _acc_parse_buffer(reader, remaining, remaining_size);
-    
-    if (result.valid) {
-        size_t frame_size = header_size + footer_size + result.msg_len;
-        reader->current_offset += frame_size;
+
+    const uint8_t* cur = reader->current_buffer + reader->current_offset;
+    size_t cur_remaining = reader->current_size - reader->current_offset;
+    result = _acc_parse_buffer(reader, cur, cur_remaining);
+
+    if (result.valid && result.frame_size > 0) {
+        reader->current_offset += result.frame_size;
         return result;
     }
-    
-    size_t remaining_len = reader->current_size - reader->current_offset;
-    if (remaining_len > 0 && remaining_len < reader->buffer_size) {
-        memcpy(reader->internal_buffer, remaining, remaining_len);
-        reader->internal_data_len = remaining_len;
+
+    if (!result.valid && result.frame_size > 0) {
+        /* Complete frame with bad CRC — count it, skip it */
+        reader->diagnostics.cnt_crc_failures++;
+        reader->diagnostics.cnt_failed_bytes += (uint32_t)result.frame_size;
+        reader->current_offset += result.frame_size;
+        return result;
+    }
+
+    if (result.status == FRAME_MSG_STATUS_WAITING_FOR_START) {
+        /* Head byte is not a start byte — scan forward */
+        if (reader->config->header.num_start_bytes >= 1) {
+            size_t scan_start = reader->current_offset + 1;
+            if (scan_start < reader->current_size) {
+                const void* p = memchr(reader->current_buffer + scan_start,
+                                       (int)sb1,
+                                       reader->current_size - scan_start);
+                if (p) {
+                    reader->current_offset = (size_t)((const uint8_t*)p - reader->current_buffer);
+                    return result; /* caller calls next() again from new position */
+                }
+            }
+        }
+        reader->current_offset = reader->current_size;
+        return result;
+    }
+
+    /* COLLECTING — save remaining bytes to internal buffer for next add_data() */
+    size_t remaining = reader->current_size - reader->current_offset;
+    if (remaining > 0 && remaining < reader->buffer_size) {
+        memcpy(reader->internal_buffer, cur, remaining);
+        reader->internal_data_len = remaining;
+        reader->bytes_appended_to_internal = 0;
         reader->current_offset = reader->current_size;
     }
-    
+
     return result;
 }
 
 static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader_t* reader, uint8_t byte)
 {
-    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, NULL};
+    frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
     result.diagnostics = &reader->diagnostics;
     
     uint8_t header_size = profile_header_size(reader->config);
@@ -998,7 +961,9 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                         }
                     }
 
-                    /* Check for length mismatch against expected message struct size */
+                    /* Check for length out-of-range against expected message struct size.
+                     * Variable messages may legitimately encode shorter than max size, so
+                     * flag only when payload_len > size (truncated) or < min_size (too short). */
                     if (reader->config->payload.has_length && reader->get_message_info) {
                         uint16_t full_msg_id = 0;
                         if (reader->config->payload.has_pkg_id) {
@@ -1007,7 +972,7 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
                         full_msg_id |= reader->internal_buffer[header_size - 1];
                         message_info_t len_info;
                         if (reader->get_message_info(full_msg_id, &len_info) &&
-                            len_info.size != payload_len) {
+                            (payload_len > len_info.size || payload_len < len_info.min_size)) {
                             reader->diagnostics.cnt_len_errors++;
                         }
                     }
@@ -1157,6 +1122,7 @@ static inline void accumulating_reader_reset_diagnostics(accumulating_reader_t* 
 static inline void accumulating_reader_reset(accumulating_reader_t* reader) {
     reader->internal_data_len = 0;
     reader->expected_frame_size = 0;
+    reader->bytes_appended_to_internal = 0;
     reader->state = ACC_STATE_IDLE;
     reader->current_buffer = NULL;
     reader->current_size = 0;

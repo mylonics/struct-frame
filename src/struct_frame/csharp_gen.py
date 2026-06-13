@@ -817,13 +817,15 @@ class MessageCSharpGen():
             var_name = pascal_case(f.name)
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if f.max_size > 255 else 1
                 if f.field_type == "string":
                     element_size = f.element_size if f.element_size else 1
                 else:
-                    element_size = type_sizes.get(f.field_type, (f.size - 1) // f.max_size)
-                result += f'            size += 1 + ({var_name}Count * {element_size}); // {f.name}\n'
+                    element_size = type_sizes.get(f.field_type, (f.size - count_bytes) // f.max_size)
+                result += f'            size += {count_bytes} + ({var_name}Count * {element_size}); // {f.name}\n'
             elif f.field_type == "string" and f.max_size is not None:
-                result += f'            size += 1 + {var_name}Length; // {f.name}\n'
+                length_bytes = 2 if f.max_size > 255 else 1
+                result += f'            size += {length_bytes} + {var_name}Length; // {f.name}\n'
             else:
                 result += f'            size += {f.size}; // {f.name}\n'
         
@@ -870,12 +872,16 @@ class MessageCSharpGen():
             type_name = f.field_type
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if f.max_size > 255 else 1
                 if normalize_bytes_type(type_name) == "string":
                     element_size = f.element_size if f.element_size else 1
                 else:
-                    element_size = type_sizes.get(type_name, (f.size - 1) // f.max_size)
+                    element_size = type_sizes.get(type_name, (f.size - count_bytes) // f.max_size)
                 result += f'            // {f.name}: variable array\n'
-                result += f'            buffer[offset++] = {var_name}Count;\n'
+                if count_bytes == 2:
+                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), {var_name}Count); offset += 2;\n'
+                else:
+                    result += f'            buffer[offset++] = (byte){var_name}Count;\n'
                 if type_name in type_sizes:
                     result += f'            if ({var_name}Data != null)\n'
                     result += f'                Buffer.BlockCopy({var_name}Data, 0, buffer, offset, {var_name}Count * {element_size});\n'
@@ -890,8 +896,12 @@ class MessageCSharpGen():
                     result += f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Serialize(); Array.Copy(bytes, 0, buffer, offset + i * {element_size}, bytes.Length); }}\n'
                     result += f'            offset += {var_name}Count * {element_size};\n'
             elif normalize_bytes_type(type_name) == "string" and f.max_size is not None:
+                length_bytes = 2 if f.max_size > 255 else 1
                 result += f'            // {f.name}: variable string\n'
-                result += f'            buffer[offset++] = {var_name}Length;\n'
+                if length_bytes == 2:
+                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), {var_name}Length); offset += 2;\n'
+                else:
+                    result += f'            buffer[offset++] = (byte){var_name}Length;\n'
                 result += f'            if ({var_name}Data != null)\n'
                 result += f'                Array.Copy({var_name}Data, 0, buffer, offset, {var_name}Length);\n'
                 result += f'            offset += {var_name}Length;\n'
