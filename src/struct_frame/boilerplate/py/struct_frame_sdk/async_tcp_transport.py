@@ -43,7 +43,7 @@ class AsyncTcpTransport(BaseAsyncTransport):
     async def disconnect(self) -> None:
         """Disconnect TCP socket"""
         self.connected = False
-        
+
         if self.receive_task:
             self.receive_task.cancel()
             try:
@@ -51,12 +51,17 @@ class AsyncTcpTransport(BaseAsyncTransport):
             except asyncio.CancelledError:
                 pass
             self.receive_task = None
-        
+
         if self.writer:
             self.writer.close()
-            await self.writer.wait_closed()
+            try:
+                # wait_closed() can hang if the peer never acknowledges the close;
+                # bound it so disconnect() always returns.
+                await asyncio.wait_for(self.writer.wait_closed(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass
             self.writer = None
-        
+
         self.reader = None
 
     async def send(self, data: bytes) -> int:

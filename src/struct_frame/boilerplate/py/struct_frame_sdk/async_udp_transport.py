@@ -50,7 +50,7 @@ class AsyncUdpTransport(BaseAsyncTransport):
     async def connect(self) -> None:
         """Connect (bind) UDP socket"""
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             self.transport, self.protocol = await loop.create_datagram_endpoint(
                 lambda: AsyncUdpProtocol(self),
                 local_addr=(self.udp_config.local_address, self.udp_config.local_port)

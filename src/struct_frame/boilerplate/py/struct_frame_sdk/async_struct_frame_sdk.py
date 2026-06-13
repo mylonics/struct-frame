@@ -82,6 +82,16 @@ class AsyncStructFrameSdk:
         await self.transport.disconnect()
         self._log('Disconnected')
 
+    async def __aenter__(self) -> 'AsyncStructFrameSdk':
+        """Async context manager entry: connect and return self."""
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit: always disconnect."""
+        await self.disconnect()
+        return False
+
     def register_codec(self, codec: MessageCodec) -> None:
         """Register a message codec for automatic deserialization"""
         self.message_codecs[codec.msg_id] = codec

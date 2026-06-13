@@ -95,6 +95,16 @@ class StructFrameSdk:
         self.transport.disconnect()
         self._log('Disconnected')
 
+    def __enter__(self) -> 'StructFrameSdk':
+        """Context manager entry: connect and return self."""
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit: always disconnect."""
+        self.disconnect()
+        return False
+
     def register_codec(self, codec: MessageCodec) -> None:
         """Register a message codec for automatic deserialization"""
         self.message_codecs[codec.msg_id] = codec

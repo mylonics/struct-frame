@@ -75,6 +75,16 @@ class BaseAsyncTransport(IAsyncTransport):
     def is_connected(self) -> bool:
         return self.connected
 
+    async def __aenter__(self):
+        """Async context manager entry: connect and return self."""
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit: always disconnect."""
+        await self.disconnect()
+        return False
+
     def _handle_data(self, data: bytes) -> None:
         """Internal method to handle received data"""
         if self.data_callback:
