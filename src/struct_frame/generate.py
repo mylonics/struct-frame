@@ -2754,6 +2754,9 @@ def main():
             args.ts_path[0], exclude_sdk)
 
     if (args.build_js):
+        # boilerplate/js/ is compiled from boilerplate/ts/ via:
+        #   node_modules/.bin/tsc -p src/struct_frame/boilerplate/ts/tsconfig.cjs.json
+        # Do not hand-edit boilerplate/js/ — edit boilerplate/ts/ and recompile.
         copy_all_files(
             os.path.join(dir_path, "boilerplate/js"),
             args.js_path[0], exclude_sdk)

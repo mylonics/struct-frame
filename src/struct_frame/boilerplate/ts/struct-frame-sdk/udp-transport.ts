@@ -26,7 +26,7 @@ export class UdpTransport extends BaseTransport {
     this.udpConfig = {
       ...this.config,
       localPort: config.localPort ?? 0,
-      localAddress: config.localAddress ?? '0.0.0.0',
+      localAddress: config.localAddress ?? ((config.socketType ?? 'udp4') === 'udp6' ? '::' : '0.0.0.0'),
       remoteHost: config.remoteHost,
       remotePort: config.remotePort,
       socketType: config.socketType ?? 'udp4',

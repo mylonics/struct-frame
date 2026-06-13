@@ -8,13 +8,11 @@
 
 import { BasicTypesMessage, getMessageInfo } from '../generated/ts/serialization-test.structframe';
 import {
-  encodeMessage,
   ProfileStandardWriter,
   ProfileStandardConfig,
   parseFrameWithCrc,
 } from '../generated/ts/frame-profiles';
-import { FrameMsgInfo } from '../generated/ts/frame-base';
-import { StructFrameSdk, FrameParser } from '../generated/ts/struct-frame-sdk/struct-frame-sdk';
+import { StructFrameSdk } from '../generated/ts/struct-frame-sdk/struct-frame-sdk';
 import { ITransport } from '../generated/ts/struct-frame-sdk/transport';
 
 // =============================================================================
@@ -44,28 +42,6 @@ class MockTransport implements ITransport {
 }
 
 // =============================================================================
-// Frame parser backed by real ProfileStandard encode/decode
-// =============================================================================
-
-class StandardFrameParser implements FrameParser {
-  parse(data: Uint8Array): FrameMsgInfo {
-    return parseFrameWithCrc(ProfileStandardConfig, data, getMessageInfo);
-  }
-
-  frame(msgId: number, data: Uint8Array): Uint8Array {
-    const info = getMessageInfo(msgId);
-    const rawMsg: any = {
-      _buffer: data,
-      getMsgId: () => msgId,
-      getMagic1: () => info?.magic1 ?? 0,
-      getMagic2: () => info?.magic2 ?? 0,
-      isVariable: () => false,
-    };
-    return encodeMessage(ProfileStandardConfig, rawMsg);
-  }
-}
-
-// =============================================================================
 // Helpers
 // =============================================================================
 
@@ -79,7 +55,8 @@ function encodeBasicTypes(regularInt: number, flag: boolean): Uint8Array {
 function makeSdk(transport: MockTransport): StructFrameSdk {
   return new StructFrameSdk({
     transport,
-    frameParser: new StandardFrameParser(),
+    profile: ProfileStandardConfig,
+    getMessageInfo,
   });
 }
 
