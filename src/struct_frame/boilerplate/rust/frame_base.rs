@@ -121,15 +121,21 @@ pub struct MessageInfo {
     pub magic1: u8,
     pub magic2: u8,
     pub base_size: usize,  // Non-extension portion size (== size when no extensions)
+    /// Minimum valid wire payload length (< size only for variable messages).
+    pub min_size: usize,
 }
 
 impl MessageInfo {
     pub fn new(size: usize, magic1: u8, magic2: u8) -> Self {
-        MessageInfo { size, magic1, magic2, base_size: size }
+        MessageInfo { size, magic1, magic2, base_size: size, min_size: size }
     }
 
     pub fn new_with_base_size(size: usize, magic1: u8, magic2: u8, base_size: usize) -> Self {
-        MessageInfo { size, magic1, magic2, base_size }
+        MessageInfo { size, magic1, magic2, base_size, min_size: size }
+    }
+
+    pub fn new_variable(size: usize, magic1: u8, magic2: u8, base_size: usize, min_size: usize) -> Self {
+        MessageInfo { size, magic1, magic2, base_size, min_size }
     }
 }
 
