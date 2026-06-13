@@ -55,12 +55,26 @@ class UdpTransport(BaseSocketTransport):
         reducing socket-layer allocations. The bytes copy to pass to handler
         is necessary to maintain API compatibility with bytes-expecting callbacks.
         """
+        # WSAEMSGSIZE (Windows): a datagram larger than the receive buffer was
+        # truncated. recvfrom_into raises rather than silently delivering a partial
+        # datagram. We report and drop that datagram and keep listening instead of
+        # tearing down the receive loop; size buffer_size for the profile's largest
+        # expected frame to avoid this.
+        WSAEMSGSIZE = 10040
         while self.running and self.socket:
             try:
                 # Use recvfrom_into with pre-allocated buffer to reduce socket-layer allocation
                 nbytes, addr = self.socket.recvfrom_into(self._recv_view)
                 # Copy received bytes for handler (maintains bytes-based callback API)
                 self._handle_data(bytes(self._recv_buffer[:nbytes]))
+            except OSError as e:
+                if getattr(e, 'winerror', None) == WSAEMSGSIZE or getattr(e, 'errno', None) == WSAEMSGSIZE:
+                    if self.running:
+                        self._handle_error(e)
+                    continue
+                if self.running:  # Only handle error if still running
+                    self._handle_error(e)
+                break
             except Exception as e:
                 if self.running:  # Only handle error if still running
                     self._handle_error(e)
