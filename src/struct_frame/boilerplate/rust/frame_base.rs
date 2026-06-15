@@ -14,6 +14,7 @@ pub struct FrameChecksum {
 /// * `data` - Buffer to checksum
 /// * `magic1` - First magic number (mixed in after data)
 /// * `magic2` - Second magic number (mixed in after magic1)
+#[inline]
 pub fn fletcher_checksum(data: &[u8], magic1: u8, magic2: u8) -> FrameChecksum {
     let mut b1: u8 = 0;
     let mut b2: u8 = 0;
@@ -37,6 +38,7 @@ pub fn fletcher_checksum(data: &[u8], magic1: u8, magic2: u8) -> FrameChecksum {
 /// * `ext_data` - Extension portion of the payload (may be empty)
 /// * `magic1` - First magic number (mixed in after base_data)
 /// * `magic2` - Second magic number (mixed in after magic1)
+#[inline]
 pub fn fletcher_checksum_ext(base_data: &[u8], ext_data: &[u8], magic1: u8, magic2: u8) -> FrameChecksum {
     let mut b1: u8 = 0;
     let mut b2: u8 = 0;
