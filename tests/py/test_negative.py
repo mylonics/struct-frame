@@ -24,17 +24,13 @@ from struct_frame.generated.pkg_test_messages import (
 from struct_frame.generated.common_types import Timestamp, Status
 from struct_frame.generated.pkg_test_a import ActionType
 from frame_profiles import (
-    ProfileStandardWriter,
-    ProfileStandardReader,
-    ProfileStandardAccumulatingReader,
-    ProfileBulkWriter,
-    ProfileBulkReader,
-    ProfileBulkAccumulatingReader,
-    ProfileSensorWriter,
-    ProfileSensorReader,
-    ProfileNetworkWriter,
-    ProfileNetworkReader,
-    ProfileNetworkAccumulatingReader,
+    BufferWriter,
+    BufferReader,
+    AccumulatingReader,
+    PROFILE_STANDARD_CONFIG,
+    PROFILE_SENSOR_CONFIG,
+    PROFILE_BULK_CONFIG,
+    PROFILE_NETWORK_CONFIG,
     FrameMsgStatus,
 )
 
@@ -62,7 +58,7 @@ def test_corrupted_crc():
     msg.description = b"Test device"
     
     # Encode message
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     bytes_written = writer.size()
@@ -75,7 +71,7 @@ def test_corrupted_crc():
     buffer[bytes_written - 2] ^= 0xFF
     
     # Try to parse - should fail
-    reader = ProfileStandardReader(buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
     result = reader.next()
     
     return not result.valid  # Expect failure
@@ -99,7 +95,7 @@ def test_truncated_frame():
     msg.description = b"Test device"
     
     # Encode message
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     bytes_written = writer.size()
@@ -111,7 +107,7 @@ def test_truncated_frame():
     truncated_size = bytes_written - 5
     
     # Try to parse - should fail
-    reader = ProfileStandardReader(buffer=bytes(buffer[:truncated_size]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=bytes(buffer[:truncated_size]), get_message_info=get_message_info)
     result = reader.next()
     
     return not result.valid  # Expect failure
@@ -135,7 +131,7 @@ def test_invalid_start_bytes():
     msg.description = b"Test device"
     
     # Encode message
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     bytes_written = writer.size()
@@ -148,14 +144,14 @@ def test_invalid_start_bytes():
     buffer[1] = 0xAD
     
     # Try to parse - should fail
-    reader = ProfileStandardReader(buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
     result = reader.next()
     
     return not result.valid  # Expect failure
 
 def test_zero_length_buffer():
     """Test: Parser handles zero-length buffer"""
-    reader = ProfileStandardReader(buffer=b'', get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=b'', get_message_info=get_message_info)
     result = reader.next()
     
     return not result.valid  # Expect failure
@@ -187,7 +183,7 @@ def test_corrupted_length():
     msg.description = b"Test device"
     
     # Encode message
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     bytes_written = writer.size()
@@ -199,7 +195,7 @@ def test_corrupted_length():
     buffer[2] = 0xFF
     
     # Try to parse - should fail
-    reader = ProfileStandardReader(buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
     result = reader.next()
     
     return not result.valid  # Expect failure
@@ -223,7 +219,7 @@ def test_streaming_corrupted_crc():
     msg.description = b"Test device"
     
     # Encode message
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     bytes_written = writer.size()
@@ -235,7 +231,7 @@ def test_streaming_corrupted_crc():
     buffer[bytes_written - 1] ^= 0xFF
     
     # Try streaming parse
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     
     # Feed byte by byte
     for i in range(bytes_written):
@@ -246,7 +242,7 @@ def test_streaming_corrupted_crc():
 
 def test_streaming_garbage():
     """Test: Streaming parser handles garbage data"""
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     
     # Feed garbage bytes
     garbage = bytes([0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A])
@@ -260,7 +256,7 @@ def test_streaming_garbage():
 def test_multiple_corrupted_frames():
     """Test: Multiple frames with corrupted middle frame"""
     # Create buffer with 3 messages
-    writer = ProfileStandardWriter(capacity=4096)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=4096)
     
     msg1 = BasicTypesMessage()
     msg1.small_int = 1
@@ -322,7 +318,7 @@ def test_multiple_corrupted_frames():
     buffer[bytes2_end - 1] ^= 0xFF
     
     # Parse all frames
-    reader = ProfileStandardReader(buffer=bytes(buffer[:total_bytes]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=bytes(buffer[:total_bytes]), get_message_info=get_message_info)
     
     result1 = reader.next()
     if not result1.valid:
@@ -350,7 +346,7 @@ def test_bulk_profile_corrupted_crc():
     msg.description = b"Test device"
     
     # Encode message with bulk profile
-    writer = ProfileBulkWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_BULK_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     bytes_written = writer.size()
@@ -363,7 +359,7 @@ def test_bulk_profile_corrupted_crc():
     buffer[bytes_written - 2] ^= 0xFF
     
     # Try to parse - should fail
-    reader = ProfileBulkReader(buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_BULK_CONFIG, buffer=bytes(buffer[:bytes_written]), get_message_info=get_message_info)
     result = reader.next()
     
     return not result.valid  # Expect failure
@@ -386,7 +382,7 @@ def test_partial_frame_boundary():
     msg.description = b"Test device"
     
     # Encode message
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytes(writer.data())
     frame_size = writer.size()
@@ -397,7 +393,7 @@ def test_partial_frame_boundary():
     mid = frame_size // 2
     
     # Create accumulating reader (buffer mode)
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     
     # Feed first half via add_data, then call next() to save partial data to internal buffer
     reader.add_data(buffer[:mid])
@@ -414,7 +410,7 @@ def test_partial_frame_boundary():
 def test_buffer_mode_invalid_result_has_diagnostics():
     """Diagnostics: buffer-mode next() attaches diagnostics even for invalid results."""
     msg = _make_test_msg()
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytes(writer.data())
     frame_size = writer.size()
@@ -422,7 +418,7 @@ def test_buffer_mode_invalid_result_has_diagnostics():
     if frame_size < 10:
         return False
 
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     reader.add_data(buffer[: frame_size // 2])
     result = reader.next()
     return (not result.valid) and (result.diagnostics is not None) and (result.diagnostics == reader.diagnostics)
@@ -454,7 +450,7 @@ def test_invalid_msg_id():
     so the CRC check fails.
     """
     msg = _make_test_msg()
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     frame_size = writer.size()
@@ -466,7 +462,7 @@ def test_invalid_msg_id():
     # 0xFF is not a known message ID → get_message_info returns {0,0,0} magic → CRC fails
     buffer[3] = 0xFF
 
-    reader = ProfileStandardReader(buffer=bytes(buffer[:frame_size]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=bytes(buffer[:frame_size]), get_message_info=get_message_info)
     result = reader.next()
     return not result.valid  # Expect failure: CRC mismatch due to wrong magic values
 
@@ -477,7 +473,7 @@ def test_minimal_profile_truncated_frame():
     Parser uses get_message_info to determine expected payload size; truncated buffer → rejected.
     """
     msg = _make_test_msg()
-    writer = ProfileSensorWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_SENSOR_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytes(writer.data())
     frame_size = writer.size()
@@ -488,7 +484,7 @@ def test_minimal_profile_truncated_frame():
     # Provide fewer bytes than the full frame to trigger truncation error
     truncated = frame_size - 5
 
-    reader = ProfileSensorReader(buffer=buffer[:truncated], get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_SENSOR_CONFIG, buffer=buffer[:truncated], get_message_info=get_message_info)
     result = reader.next()
     return not result.valid  # Expect failure: buffer too small for expected payload
 
@@ -499,7 +495,7 @@ def test_network_sysid_compid():
     sys_id is at byte 3 (within CRC region); corrupting it causes CRC failure.
     """
     msg = _make_test_msg()
-    writer = ProfileNetworkWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_NETWORK_CONFIG, capacity=1024)
     # Encode with seq=1, sys_id=5, comp_id=10
     writer.write(msg, seq=1, sys_id=5, comp_id=10)
     buffer = bytearray(writer.data())
@@ -512,7 +508,7 @@ def test_network_sysid_compid():
     # sys_id is inside the CRC-protected region so CRC will fail
     buffer[3] ^= 0xFF
 
-    reader = ProfileNetworkReader(buffer=bytes(buffer[:frame_size]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_NETWORK_CONFIG, buffer=bytes(buffer[:frame_size]), get_message_info=get_message_info)
     result = reader.next()
     return not result.valid  # Expect failure: corrupted sys_id invalidates CRC
 
@@ -520,7 +516,7 @@ def test_network_sysid_compid():
 def test_diagnostic_crc_failure():
     """Diagnostics: cnt_crc_failures is incremented when a frame's CRC is corrupted."""
     msg = _make_test_msg()
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     frame_size = writer.size()
@@ -529,7 +525,7 @@ def test_diagnostic_crc_failure():
     buffer[frame_size - 1] ^= 0xFF
     buffer[frame_size - 2] ^= 0xFF
 
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     for b in buffer[:frame_size]:
         reader.push_byte(b)
 
@@ -539,7 +535,7 @@ def test_diagnostic_crc_failure():
 
 def test_diagnostic_sync_recovery():
     """Diagnostics: cnt_sync_recoveries increments when garbage bytes are fed."""
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
 
     # Feed clearly invalid bytes (not start bytes) so the parser stays in
     # LOOKING_FOR_START2 and triggers at least one sync recovery when it
@@ -561,7 +557,7 @@ def test_diagnostic_len_error():
     mismatch check inside _handle_collecting_header.
     """
     msg = _make_test_msg()
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     original = bytes(writer.data()[:writer.size()])
     frame_size = writer.size()
@@ -574,7 +570,7 @@ def test_diagnostic_len_error():
     real_len = tampered[2]
     tampered[2] = (real_len + 1) & 0xFF  # length mismatch
 
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     for b in tampered[:frame_size]:
         reader.push_byte(b)
 
@@ -591,14 +587,14 @@ def test_diagnostic_seq_gap():
     msg = _make_test_msg()
 
     def encode(seq):
-        w = ProfileNetworkWriter(capacity=1024)
+        w = BufferWriter(PROFILE_NETWORK_CONFIG, capacity=1024)
         w.write(msg, seq=seq, sys_id=1, comp_id=1)
         return bytes(w.data()[:w.size()])
 
     frame0 = encode(0)
     frame5 = encode(5)   # skips seq 1-4 → gap
 
-    reader = ProfileNetworkAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_NETWORK_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     for b in frame0:
         reader.push_byte(b)
     for b in frame5:
@@ -610,7 +606,7 @@ def test_diagnostic_seq_gap():
 
 def test_diagnostic_reset():
     """Diagnostics: reset_diagnostics() clears all counters."""
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
 
     # Trigger a sync recovery
     reader.push_byte(0x90)
@@ -630,7 +626,7 @@ def test_diagnostic_reset():
 
 def test_status_waiting_for_start():
     """FrameMsgStatus: push_byte returns WAITING_FOR_START when no start byte seen yet."""
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     # 0x42 is not the start byte (0x90); parser stays in waiting state
     result = reader.push_byte(0x42)
     return result.status == FrameMsgStatus.WAITING_FOR_START
@@ -638,7 +634,7 @@ def test_status_waiting_for_start():
 
 def test_status_collecting():
     """FrameMsgStatus: push_byte returns COLLECTING once a valid start byte is in progress."""
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     # 0x90 is startByte1 — move to LookingForStart2
     result = reader.push_byte(0x90)
     return result.status == FrameMsgStatus.COLLECTING
@@ -646,7 +642,7 @@ def test_status_collecting():
 
 def test_status_crc_failure():
     """FrameMsgStatus: push_byte returns CRC_FAILURE when a complete frame has bad CRC."""
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     # Use a real BasicTypesMessage field (the class has no `uint8_field`; the
     # previous assignment silently created an unused phantom attribute).
     msg = _make_test_msg()
@@ -657,7 +653,7 @@ def test_status_crc_failure():
     # Corrupt the last byte (CRC)
     buffer[frame_size - 1] ^= 0xFF
 
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     result = None
     for b in buffer[:frame_size]:
         result = reader.push_byte(b)
@@ -666,7 +662,7 @@ def test_status_crc_failure():
 
 def test_status_sync_recovery():
     """FrameMsgStatus: push_byte returns SYNC_RECOVERY when parser is forced to resync."""
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     # Start a frame then send a byte that forces resync at LookingForStart2
     reader.push_byte(0x90)  # valid startByte1
     # 0x42 is neither startByte2 (0xAB) nor startByte1 (0x90) — triggers resync
@@ -691,7 +687,7 @@ def test_bulk_corrupted_pkg_id():
     pkg_id is at byte 4 (within CRC region); corrupting it causes CRC failure.
     """
     msg = _make_pkg_test_msg()
-    writer = ProfileBulkWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_BULK_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     frame_size = writer.size()
@@ -702,7 +698,7 @@ def test_bulk_corrupted_pkg_id():
     # Corrupt pkg_id byte at offset 4
     buffer[4] ^= 0xFF
 
-    reader = ProfileBulkReader(buffer=bytes(buffer[:frame_size]), get_message_info=pkg_get_message_info)
+    reader = BufferReader(PROFILE_BULK_CONFIG, buffer=bytes(buffer[:frame_size]), get_message_info=pkg_get_message_info)
     result = reader.next()
     return not result.valid  # Expect failure: CRC mismatch
 
@@ -714,7 +710,7 @@ def test_network_corrupted_pkg_id():
     pkg_id is at byte 7 (within CRC region); corrupting it causes CRC failure.
     """
     msg = _make_pkg_test_msg()
-    writer = ProfileNetworkWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_NETWORK_CONFIG, capacity=1024)
     writer.write(msg, seq=1, sys_id=5, comp_id=10)
     buffer = bytearray(writer.data())
     frame_size = writer.size()
@@ -725,7 +721,7 @@ def test_network_corrupted_pkg_id():
     # Corrupt pkg_id byte at offset 7
     buffer[7] ^= 0xFF
 
-    reader = ProfileNetworkReader(buffer=bytes(buffer[:frame_size]), get_message_info=pkg_get_message_info)
+    reader = BufferReader(PROFILE_NETWORK_CONFIG, buffer=bytes(buffer[:frame_size]), get_message_info=pkg_get_message_info)
     result = reader.next()
     return not result.valid  # Expect failure: CRC mismatch
 
@@ -738,7 +734,7 @@ def test_cross_package_rejection():
     The pkg_test_messages handler should reject this because pkgid=2 != PACKAGE_ID=1.
     """
     msg = _make_pkg_test_msg()
-    writer = ProfileBulkWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_BULK_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     frame_size = writer.size()
@@ -750,7 +746,7 @@ def test_cross_package_rejection():
     # pkg_id is at byte 4. Original value is 1. Change to 2.
     buffer[4] = 2
 
-    reader = ProfileBulkAccumulatingReader(get_message_info=pkg_get_message_info, buffer_size=2048)
+    reader = AccumulatingReader(PROFILE_BULK_CONFIG, get_message_info=pkg_get_message_info, buffer_size=2048)
     reader.add_data(bytes(buffer[:frame_size]))
     result = reader.next()
 
@@ -770,7 +766,7 @@ def test_bulk_corrupted_msg_id_low_byte():
     causes CRC failure (byte is within CRC region).
     """
     msg = _make_pkg_test_msg()
-    writer = ProfileBulkWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_BULK_CONFIG, capacity=1024)
     writer.write(msg)
     buffer = bytearray(writer.data())
     frame_size = writer.size()
@@ -781,7 +777,7 @@ def test_bulk_corrupted_msg_id_low_byte():
     # Corrupt msg_id low byte at offset 5
     buffer[5] = 0xFF
 
-    reader = ProfileBulkAccumulatingReader(get_message_info=pkg_get_message_info, buffer_size=2048)
+    reader = AccumulatingReader(PROFILE_BULK_CONFIG, get_message_info=pkg_get_message_info, buffer_size=2048)
     reader.add_data(bytes(buffer[:frame_size]))
     result = reader.next()
     return not result.valid  # Expect failure: CRC mismatch
@@ -791,7 +787,7 @@ def test_buffer_reader_skips_crc_failure():
     """BufferReader advances past a CRC-failed frame and decodes the next valid frame.
     Catches the A2 stall: BufferReader was not advancing past CRC failures."""
     msg = _make_test_msg()
-    writer = ProfileStandardWriter(capacity=2048)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=2048)
     writer.write(msg)
     first_frame_end = writer.size()
     writer.write(msg)
@@ -801,7 +797,7 @@ def test_buffer_reader_skips_crc_failure():
     buffer[first_frame_end - 1] ^= 0xFF
     buffer[first_frame_end - 2] ^= 0xFF
 
-    reader = ProfileStandardReader(buffer=bytes(buffer[:total]), get_message_info=get_message_info)
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=bytes(buffer[:total]), get_message_info=get_message_info)
     result1 = reader.next()
     if result1.valid:
         return False  # First frame must fail
@@ -814,7 +810,7 @@ def test_buffer_mode_recovers_after_crc_failure():
     """AccumulatingReader buffer mode recovers after a CRC failure in add_data path.
     Catches the A3 stall: CRC-bad frames caused a permanent loop in buffer mode."""
     msg = _make_test_msg()
-    bad_writer = ProfileStandardWriter(capacity=1024)
+    bad_writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     bad_writer.write(msg)
     frame_size = bad_writer.size()
 
@@ -822,14 +818,14 @@ def test_buffer_mode_recovers_after_crc_failure():
     bad_frame[frame_size - 1] ^= 0xFF
     bad_frame[frame_size - 2] ^= 0xFF
 
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
     reader.add_data(bytes(bad_frame[:frame_size]))
     result1 = reader.next()
     if result1.valid:
         return False  # Must fail
 
     # Feed a valid frame — reader must not be stuck on the bad one
-    good_writer = ProfileStandardWriter(capacity=1024)
+    good_writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     good_writer.write(msg)
     good_frame = bytes(good_writer.data()[:good_writer.size()])
     reader.add_data(good_frame)
@@ -839,13 +835,13 @@ def test_buffer_mode_recovers_after_crc_failure():
 
 def test_stream_recovers_after_garbage():
     """Stream mode recovers after garbage prefix and decodes a valid frame."""
-    reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info, buffer_size=1024)
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
 
     for byte in bytes([0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56]):
         reader.push_byte(byte)
 
     msg = _make_test_msg()
-    writer = ProfileStandardWriter(capacity=1024)
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
     writer.write(msg)
     frame_bytes = bytes(writer.data()[:writer.size()])
 
@@ -922,3 +918,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+

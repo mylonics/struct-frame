@@ -1461,7 +1461,7 @@ class TestRustGen():
         yield '    if frame.msg_id != M::MSG_ID {\n'
         yield '        return Err(format!("msg_id mismatch: expected {}, got {}", M::MSG_ID, frame.msg_id));\n'
         yield '    }\n'
-        yield '    let decoded = match M::unpack(&frame.payload) {\n'
+        yield '    let decoded = match M::unpack(&frame.msg_data) {\n'
         yield '        Some(d) => d,\n'
         yield '        None => return Err("unpack returned None".to_string()),\n'
         yield '    };\n'

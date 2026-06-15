@@ -435,7 +435,7 @@ pub fn parse_with_crc(
     }
 
     // Extract payload bytes
-    let payload = buffer[header_size..header_size + msg_len].to_vec();
+    let msg_data = buffer[header_size..header_size + msg_len].to_vec();
 
     FrameMsgInfo {
         valid: true,
@@ -446,7 +446,7 @@ pub fn parse_with_crc(
         sequence: seq,
         system_id: sys_id,
         component_id: comp_id,
-        payload,
+        msg_data,
         ..Default::default()
     }
 }
@@ -496,14 +496,14 @@ pub fn parse_minimal(
     }
 
     // Extract payload bytes
-    let payload = buffer[header_size..header_size + msg_len].to_vec();
+    let msg_data = buffer[header_size..header_size + msg_len].to_vec();
 
     FrameMsgInfo {
         valid: true,
         msg_id,
         msg_len,
         frame_size: total_size,
-        payload,
+        msg_data,
         ..Default::default()
     }
 }
@@ -652,6 +652,41 @@ pub fn encode_message_minimal<M: StructFrameMessage>(
 
     debug_assert_eq!(idx, header_size);
     idx + payload_len
+}
+
+// =============================================================================
+// encode_message / parse_frame — config-dispatched entry points
+// Matches the Python/TS/C# single-function API: one call, profile decides path.
+// =============================================================================
+
+/// Encode any StructFrameMessage using the profile config.
+/// Dispatches to encode_message_crc or encode_message_minimal based on config.has_crc.
+/// Returns the number of bytes written, or 0 on error.
+pub fn encode_message<M: StructFrameMessage>(
+    config: &ProfileConfig,
+    buffer: &mut [u8],
+    msg: &M,
+    pkg_id: u8,
+) -> usize {
+    if config.payload.has_crc {
+        encode_message_crc(config, buffer, msg, pkg_id)
+    } else {
+        encode_message_minimal(config, buffer, msg)
+    }
+}
+
+/// Parse one frame from a buffer using the profile config.
+/// Dispatches to parse_with_crc or parse_minimal based on config.has_crc.
+pub fn parse_frame(
+    config: &ProfileConfig,
+    buffer: &[u8],
+    get_message_info: &dyn Fn(u16) -> Option<MessageInfo>,
+) -> FrameMsgInfo {
+    if config.payload.has_crc {
+        parse_with_crc(config, buffer, get_message_info)
+    } else {
+        parse_minimal(config, buffer, get_message_info)
+    }
 }
 
 // =============================================================================
@@ -829,6 +864,8 @@ impl AccumulatingReader {
         } else {
             // Partial fill to capacity, drop the rest
             self.buffer.extend_from_slice(&data[..available]);
+            let dropped = data.len() - available;
+            self.diagnostics.cnt_failed_bytes += dropped as u32;
             self.diagnostics.cnt_sync_recoveries += 1;
         }
     }
@@ -1137,6 +1174,7 @@ impl AccumulatingReader {
                 }
             }
 
+            self.diagnostics.cnt_failed_bytes += bytes_to_drain as u32;
             self.diagnostics.cnt_sync_recoveries += 1;
             self.drain_head(bytes_to_drain);
         }

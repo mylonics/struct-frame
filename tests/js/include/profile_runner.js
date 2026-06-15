@@ -8,35 +8,24 @@
  */
 
 const {
-  ProfileStandardWriter,
-  ProfileSensorWriter,
-  ProfileIPCWriter,
-  ProfileBulkWriter,
-  ProfileNetworkWriter,
-  ProfileStandardAccumulatingReader,
-  ProfileSensorAccumulatingReader,
-  ProfileIPCAccumulatingReader,
-  ProfileBulkAccumulatingReader,
-  ProfileNetworkAccumulatingReader,
+  BufferWriter,
+  AccumulatingReader,
+  ProfileStandardConfig,
+  ProfileSensorConfig,
+  ProfileIPCConfig,
+  ProfileBulkConfig,
+  ProfileNetworkConfig,
 } = require('../../generated/js/frame-profiles');
 
 // Buffer size for readers
 const BUFFER_SIZE = 16384;
 
-const writerClasses = {
-  'standard': ProfileStandardWriter,
-  'sensor': ProfileSensorWriter,
-  'ipc': ProfileIPCWriter,
-  'bulk': ProfileBulkWriter,
-  'network': ProfileNetworkWriter,
-};
-
-const readerClasses = {
-  'standard': ProfileStandardAccumulatingReader,
-  'sensor': ProfileSensorAccumulatingReader,
-  'ipc': ProfileIPCAccumulatingReader,
-  'bulk': ProfileBulkAccumulatingReader,
-  'network': ProfileNetworkAccumulatingReader,
+const profileConfigs = {
+  'standard': ProfileStandardConfig,
+  'sensor': ProfileSensorConfig,
+  'ipc': ProfileIPCConfig,
+  'bulk': ProfileBulkConfig,
+  'network': ProfileNetworkConfig,
 };
 
 /**
@@ -44,10 +33,10 @@ const readerClasses = {
  * Returns total bytes written.
  */
 function encode(messageCount, getMessage, profile, buffer) {
-  const WriterClass = writerClasses[profile];
-  if (!WriterClass) return 0;
+  const config = profileConfigs[profile];
+  if (!config) return 0;
 
-  const writer = new WriterClass(buffer.length);
+  const writer = new BufferWriter(config, buffer.length);
 
   for (let i = 0; i < messageCount; i++) {
     const msg = getMessage(i);
@@ -68,10 +57,10 @@ function encode(messageCount, getMessage, profile, buffer) {
  * Returns the number of messages that matched (messageCount if all pass).
  */
 function parse(messageCount, checkMessage, getMsgInfo, profile, buffer) {
-  const ReaderClass = readerClasses[profile];
-  if (!ReaderClass) return 0;
+  const config = profileConfigs[profile];
+  if (!config) return 0;
 
-  const reader = new ReaderClass(getMsgInfo, BUFFER_SIZE);
+  const reader = new AccumulatingReader(config, getMsgInfo, BUFFER_SIZE);
   reader.addData(buffer);
 
   let count = 0;

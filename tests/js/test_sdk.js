@@ -9,7 +9,7 @@
 'use strict';
 
 const { BasicTypesMessage, getMessageInfo } = require('../generated/js/serialization-test.structframe');
-const { ProfileStandardConfig, ProfileStandardWriter, parseFrameWithCrc } = require('../generated/js/frame-profiles');
+const { ProfileStandardConfig, BufferWriter, parseFrameWithCrc } = require('../generated/js/frame-profiles');
 const { StructFrameSdk } = require('../generated/js/struct-frame-sdk/struct-frame-sdk');
 
 // =============================================================================
@@ -43,7 +43,7 @@ class MockTransport {
 
 function encodeBasicTypes(regularInt, flag) {
   const msg = new BasicTypesMessage({ regularInt, flag });
-  const writer = new ProfileStandardWriter(512);
+  const writer = new BufferWriter(ProfileStandardConfig, 512);
   writer.write(msg);
   return writer.data();
 }

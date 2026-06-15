@@ -618,85 +618,6 @@ def _frame_format_parse_minimal(
 
 
 # =============================================================================
-# Profile-Specific Convenience Functions
-# =============================================================================
-
-def encode_profile_standard(msg) -> bytes:
-    """Encode using Profile Standard (Basic + Default)"""
-    return _frame_format_encode_with_crc(PROFILE_STANDARD_CONFIG, msg)
-
-
-def parse_profile_standard_buffer(buffer: bytes) -> FrameMsgInfo:
-    """Parse Profile Standard frame from buffer"""
-    return _frame_format_parse_with_crc(PROFILE_STANDARD_CONFIG, buffer)
-
-
-def encode_profile_sensor(msg) -> bytes:
-    """Encode using Profile Sensor (Tiny + Minimal)"""
-    return _frame_format_encode_minimal(PROFILE_SENSOR_CONFIG, msg)
-
-
-def parse_profile_sensor_buffer(buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]) -> FrameMsgInfo:
-    """Parse Profile Sensor frame from buffer (requires get_message_info callback)"""
-    return _frame_format_parse_minimal(PROFILE_SENSOR_CONFIG, buffer, get_message_info)
-
-
-def encode_profile_ipc(msg) -> bytes:
-    """Encode using Profile IPC (None + Minimal)"""
-    return _frame_format_encode_minimal(PROFILE_IPC_CONFIG, msg)
-
-
-def parse_profile_ipc_buffer(buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]) -> FrameMsgInfo:
-    """Parse Profile IPC frame from buffer (requires get_message_info callback)"""
-    return _frame_format_parse_minimal(PROFILE_IPC_CONFIG, buffer, get_message_info)
-
-
-def encode_profile_bulk(msg) -> bytes:
-    """Encode using Profile Bulk (Basic + Extended)
-    
-    Args:
-        msg: Message object (msg_id should be 16-bit with package ID in upper 8 bits: (pkg_id << 8) | msg_id)
-    
-    Returns:
-        Encoded frame as bytes
-    """
-    return _frame_format_encode_with_crc(PROFILE_BULK_CONFIG, msg)
-
-
-def parse_profile_bulk_buffer(buffer: bytes) -> FrameMsgInfo:
-    """Parse Profile Bulk frame from buffer"""
-    return _frame_format_parse_with_crc(PROFILE_BULK_CONFIG, buffer)
-
-
-def encode_profile_network(
-    msg,
-    seq: int = 0,
-    sys_id: int = 0,
-    comp_id: int = 0
-) -> bytes:
-    """Encode using Profile Network (Basic + ExtendedMultiSystemStream)
-    
-    Args:
-        msg: Message object (msg_id should be 16-bit with package ID in upper 8 bits: (pkg_id << 8) | msg_id)
-        seq: Sequence number
-        sys_id: System ID
-        comp_id: Component ID
-    
-    Returns:
-        Encoded frame as bytes
-    """
-    return _frame_format_encode_with_crc(
-        PROFILE_NETWORK_CONFIG, msg,
-        seq=seq, sys_id=sys_id, comp_id=comp_id
-    )
-
-
-def parse_profile_network_buffer(buffer: bytes) -> FrameMsgInfo:
-    """Parse Profile Network frame from buffer"""
-    return _frame_format_parse_with_crc(PROFILE_NETWORK_CONFIG, buffer)
-
-
-# =============================================================================
 # Generic Encoder/Parser Functions
 # =============================================================================
 
@@ -886,7 +807,7 @@ class BufferWriter:
         writer.write(0x01, payload, seq=1, sys_id=1, comp_id=1)
     """
     
-    def __init__(self, config: ProfileConfig, capacity: int):
+    def __init__(self, config: ProfileConfig, capacity: int = 1024):
         """
         Initialize buffer writer.
         
@@ -1485,91 +1406,6 @@ class AccumulatingReader:
         self._current_size = 0
         self._current_offset = 0
         self._last_seq = None
-
-
-# =============================================================================
-# Profile-Specific Classes (Direct Instantiation)
-# =============================================================================
-
-# Profile Standard: Basic + Default
-class ProfileStandardReader(BufferReader):
-    """BufferReader for Profile Standard"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
-        super().__init__(PROFILE_STANDARD_CONFIG, buffer, get_message_info)
-
-class ProfileStandardWriter(BufferWriter):
-    """BufferWriter for Profile Standard"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_STANDARD_CONFIG, capacity)
-
-class ProfileStandardAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile Standard"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
-        super().__init__(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
-
-# Profile Sensor: Tiny + Minimal
-class ProfileSensorReader(BufferReader):
-    """BufferReader for Profile Sensor"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]):
-        super().__init__(PROFILE_SENSOR_CONFIG, buffer, get_message_info)
-
-class ProfileSensorWriter(BufferWriter):
-    """BufferWriter for Profile Sensor"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_SENSOR_CONFIG, capacity)
-
-class ProfileSensorAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile Sensor"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]], buffer_size: int = 1024):
-        super().__init__(PROFILE_SENSOR_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
-
-# Profile IPC: None + Minimal
-class ProfileIPCReader(BufferReader):
-    """BufferReader for Profile IPC"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]):
-        super().__init__(PROFILE_IPC_CONFIG, buffer, get_message_info)
-
-class ProfileIPCWriter(BufferWriter):
-    """BufferWriter for Profile IPC"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_IPC_CONFIG, capacity)
-
-class ProfileIPCAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile IPC"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]], buffer_size: int = 1024):
-        super().__init__(PROFILE_IPC_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
-
-# Profile Bulk: Basic + Extended
-class ProfileBulkReader(BufferReader):
-    """BufferReader for Profile Bulk"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
-        super().__init__(PROFILE_BULK_CONFIG, buffer, get_message_info)
-
-class ProfileBulkWriter(BufferWriter):
-    """BufferWriter for Profile Bulk"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_BULK_CONFIG, capacity)
-
-class ProfileBulkAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile Bulk"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
-        super().__init__(PROFILE_BULK_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
-
-# Profile Network: Basic + ExtendedMultiSystemStream
-class ProfileNetworkReader(BufferReader):
-    """BufferReader for Profile Network"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
-        super().__init__(PROFILE_NETWORK_CONFIG, buffer, get_message_info)
-
-class ProfileNetworkWriter(BufferWriter):
-    """BufferWriter for Profile Network"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_NETWORK_CONFIG, capacity)
-
-class ProfileNetworkAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile Network"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
-        super().__init__(PROFILE_NETWORK_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
 
 
 # =============================================================================

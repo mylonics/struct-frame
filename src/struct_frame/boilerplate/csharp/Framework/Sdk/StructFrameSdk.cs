@@ -307,6 +307,27 @@ namespace StructFrame.Sdk
         }
 
         /// <summary>
+        /// Send pre-serialized payload bytes as a framed message.
+        /// Equivalent to Python's <c>send_raw(msg_id, data)</c> and TypeScript's <c>sendRaw(msgId, data)</c> —
+        /// frames the given payload under the configured profile without requiring a message object.
+        /// </summary>
+        public async Task<SendResult> SendRawAsync(ushort msgId, ReadOnlyMemory<byte> payload, byte seq = 0, byte sysId = 0, byte compId = 0, byte pkgId = 0)
+        {
+            byte[] buffer = new byte[_profile.MaxPayload + _profile.Overhead];
+            var info = _getMessageInfo(msgId);
+            int bytesWritten = _encoder.EncodeRaw(buffer, 0, msgId, payload.Span, seq, sysId, compId, pkgId, info);
+            if (bytesWritten == 0)
+            {
+                throw new InvalidOperationException("Failed to encode raw payload — buffer too small or payload exceeds max size");
+            }
+            byte[] framedData = new byte[bytesWritten];
+            Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
+            var result = await SendFramedBytesAsync(framedData).ConfigureAwait(false);
+            Log($"Sent raw message ID {msgId}, {bytesWritten} bytes total");
+            return result;
+        }
+
+        /// <summary>
         /// Re-encode a parsed frame using the current profile and send it.
         /// </summary>
         public async Task<SendResult> ReencodeAsync(FrameMsgInfo frame)

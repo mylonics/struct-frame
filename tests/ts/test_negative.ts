@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Negative tests for struct-frame TypeScript parser
  * 
  * Tests error handling for:
@@ -9,15 +9,13 @@
  */
 
 import {
-  ProfileStandardWriter,
-  ProfileStandardReader,
-  ProfileStandardAccumulatingReader,
-  ProfileBulkWriter,
-  ProfileBulkReader,
-  ProfileSensorWriter,
-  ProfileSensorReader,
-  ProfileNetworkWriter,
-  ProfileNetworkReader
+  BufferWriter,
+  BufferReader,
+  AccumulatingReader,
+  ProfileStandardConfig,
+  ProfileSensorConfig,
+  ProfileBulkConfig,
+  ProfileNetworkConfig,
 } from '../generated/ts/frame-profiles';
 
 import {
@@ -66,7 +64,7 @@ function createTestMessage(): BasicTypesMessage {
 function testCorruptedCrc(): boolean {
   const msg = createTestMessage();
   
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   writer.write(msg);
   const buffer = writer.data();
   const bytesWritten = writer.size;
@@ -78,7 +76,7 @@ function testCorruptedCrc(): boolean {
   buffer[bytesWritten - 2] ^= 0xFF;
   
   // Try to parse - should fail
-  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), getMessageInfo);
+  const reader = new BufferReader(ProfileStandardConfig, buffer.subarray(0, bytesWritten), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -90,7 +88,7 @@ function testCorruptedCrc(): boolean {
 function testTruncatedFrame(): boolean {
   const msg = createTestMessage();
   
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   writer.write(msg);
   const buffer = writer.data();
   const bytesWritten = writer.size;
@@ -101,7 +99,7 @@ function testTruncatedFrame(): boolean {
   const truncatedSize = bytesWritten - 5;
   
   // Try to parse - should fail
-  const reader = new ProfileStandardReader(buffer.subarray(0, truncatedSize), getMessageInfo);
+  const reader = new BufferReader(ProfileStandardConfig, buffer.subarray(0, truncatedSize), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -113,7 +111,7 @@ function testTruncatedFrame(): boolean {
 function testInvalidStartBytes(): boolean {
   const msg = createTestMessage();
   
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   writer.write(msg);
   const buffer = writer.data();
   const bytesWritten = writer.size;
@@ -125,7 +123,7 @@ function testInvalidStartBytes(): boolean {
   buffer[1] = 0xAD;
   
   // Try to parse - should fail
-  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), getMessageInfo);
+  const reader = new BufferReader(ProfileStandardConfig, buffer.subarray(0, bytesWritten), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -137,7 +135,7 @@ function testInvalidStartBytes(): boolean {
 function testZeroLengthBuffer(): boolean {
   const buffer = new Uint8Array(0);
   
-  const reader = new ProfileStandardReader(buffer, getMessageInfo);
+  const reader = new BufferReader(ProfileStandardConfig, buffer, getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -149,7 +147,7 @@ function testZeroLengthBuffer(): boolean {
 function testCorruptedLength(): boolean {
   const msg = createTestMessage();
   
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   writer.write(msg);
   const buffer = writer.data();
   const bytesWritten = writer.size;
@@ -160,7 +158,7 @@ function testCorruptedLength(): boolean {
   buffer[2] = 0xFF;
   
   // Try to parse - should fail
-  const reader = new ProfileStandardReader(buffer.subarray(0, bytesWritten), getMessageInfo);
+  const reader = new BufferReader(ProfileStandardConfig, buffer.subarray(0, bytesWritten), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -172,7 +170,7 @@ function testCorruptedLength(): boolean {
 function testStreamingCorruptedCrc(): boolean {
   const msg = createTestMessage();
   
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   writer.write(msg);
   const buffer = writer.data();
   const bytesWritten = writer.size;
@@ -183,7 +181,7 @@ function testStreamingCorruptedCrc(): boolean {
   buffer[bytesWritten - 1] ^= 0xFF;
   
   // Try streaming parse
-  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
   
   // Feed byte by byte
   for (let i = 0; i < bytesWritten; i++) {
@@ -198,7 +196,7 @@ function testStreamingCorruptedCrc(): boolean {
  * Test: Streaming parser handles garbage data
  */
 function testStreamingGarbage(): boolean {
-  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
   
   // Feed garbage bytes
   const garbage = new Uint8Array([0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56, 0x78, 0x9A]);
@@ -217,7 +215,7 @@ function testStreamingGarbage(): boolean {
 function testBulkProfileCorruptedCrc(): boolean {
   const msg = createTestMessage();
   
-  const writer = new ProfileBulkWriter(1024);
+  const writer = new BufferWriter(ProfileBulkConfig, 1024);
   writer.write(msg);
   const buffer = writer.data();
   const bytesWritten = writer.size;
@@ -229,7 +227,7 @@ function testBulkProfileCorruptedCrc(): boolean {
   buffer[bytesWritten - 2] ^= 0xFF;
   
   // Try to parse - should fail
-  const reader = new ProfileBulkReader(buffer.subarray(0, bytesWritten), getMessageInfo);
+  const reader = new BufferReader(ProfileBulkConfig, buffer.subarray(0, bytesWritten), getMessageInfo);
   const result = reader.next();
   
   return !result.valid;  // Expect failure
@@ -240,7 +238,7 @@ function testBulkProfileCorruptedCrc(): boolean {
  */
 function testMultipleCorruptedFrames(): boolean {
   // Create buffer with 3 messages
-  const writer = new ProfileStandardWriter(4096);
+  const writer = new BufferWriter(ProfileStandardConfig, 4096);
   
   const msg1 = createTestMessage();
   msg1.smallInt = 1;
@@ -263,7 +261,7 @@ function testMultipleCorruptedFrames(): boolean {
   buffer[bytes2End - 1] ^= 0xFF;
   
   // Parse all frames
-  const reader = new ProfileStandardReader(buffer.subarray(0, totalBytes), getMessageInfo);
+  const reader = new BufferReader(ProfileStandardConfig, buffer.subarray(0, totalBytes), getMessageInfo);
   
   const result1 = reader.next();
   if (!result1.valid) return false;  // First should be valid
@@ -278,7 +276,7 @@ function testMultipleCorruptedFrames(): boolean {
 function testPartialFrameBoundary(): boolean {
   const msg = createTestMessage();
   
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   writer.write(msg);
   const buffer = writer.data();
   const frameSize = writer.size;
@@ -287,7 +285,7 @@ function testPartialFrameBoundary(): boolean {
   
   const mid = Math.floor(frameSize / 2);
   
-  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
   
   // Feed first half via addData, then call next() to save partial data to internal buffer
   reader.addData(buffer.subarray(0, mid));
@@ -308,7 +306,7 @@ function testPartialFrameBoundary(): boolean {
  */
 function testInvalidMsgId(): boolean {
   const msg = createTestMessage();
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   writer.write(msg);
   const buffer = Buffer.from(writer.data());
   const frameSize = writer.size;
@@ -316,10 +314,10 @@ function testInvalidMsgId(): boolean {
   if (frameSize < 5) return false;
 
   // Corrupt the msg_id byte (byte 3: [start1][start2][len][msg_id]...)
-  // 0xFF is not a known message ID → getMessageInfo returns {0,0,0} magic → CRC fails
+  // 0xFF is not a known message ID â†’ getMessageInfo returns {0,0,0} magic â†’ CRC fails
   buffer[3] = 0xFF;
 
-  const reader = new ProfileStandardReader(buffer.subarray(0, frameSize), getMessageInfo);
+  const reader = new BufferReader(ProfileStandardConfig, buffer.subarray(0, frameSize), getMessageInfo);
   const result = reader.next();
   return !result.valid;  // Expect failure: CRC mismatch due to wrong magic values
 }
@@ -327,11 +325,11 @@ function testInvalidMsgId(): boolean {
 /**
  * Test: Minimal profile (no CRC) rejects a truncated frame.
  * ProfileSensor layout: [0x70][MSG_ID][PAYLOAD...]  (no CRC, no length field)
- * Parser uses getMessageInfo to determine expected payload size; truncated buffer → rejected.
+ * Parser uses getMessageInfo to determine expected payload size; truncated buffer â†’ rejected.
  */
 function testMinimalProfileTruncatedFrame(): boolean {
   const msg = createTestMessage();
-  const writer = new ProfileSensorWriter(1024);
+  const writer = new BufferWriter(ProfileSensorConfig, 1024);
   writer.write(msg);
   const buffer = writer.data();
   const frameSize = writer.size;
@@ -340,7 +338,7 @@ function testMinimalProfileTruncatedFrame(): boolean {
 
   // Provide fewer bytes than the full frame to trigger truncation error
   const truncated = frameSize - 5;
-  const reader = new ProfileSensorReader(buffer.subarray(0, truncated), getMessageInfo);
+  const reader = new BufferReader(ProfileSensorConfig, buffer.subarray(0, truncated), getMessageInfo);
   const result = reader.next();
   return !result.valid;  // Expect failure: buffer too small for expected payload
 }
@@ -352,7 +350,7 @@ function testMinimalProfileTruncatedFrame(): boolean {
  */
 function testNetworkSysIdCompId(): boolean {
   const msg = createTestMessage();
-  const writer = new ProfileNetworkWriter(1024);
+  const writer = new BufferWriter(ProfileNetworkConfig, 1024);
   // Encode with seq=1, sysId=5, compId=10
   writer.write(msg, { seq: 1, sysId: 5, compId: 10 });
   const buffer = Buffer.from(writer.data());
@@ -364,7 +362,7 @@ function testNetworkSysIdCompId(): boolean {
   // sys_id is inside the CRC-protected region so CRC will fail
   buffer[3] ^= 0xFF;
 
-  const reader = new ProfileNetworkReader(buffer.subarray(0, frameSize), getMessageInfo);
+  const reader = new BufferReader(ProfileNetworkConfig, buffer.subarray(0, frameSize), getMessageInfo);
   const result = reader.next();
   return !result.valid;  // Expect failure: corrupted sys_id invalidates CRC
 }
@@ -380,7 +378,7 @@ function testBulkCorruptedPkgId(): boolean {
   msg.currentStatus = 1; // Active
   msg.name = 'TestDevice';
 
-  const writer = new ProfileBulkWriter(1024);
+  const writer = new BufferWriter(ProfileBulkConfig, 1024);
   writer.write(msg);
   const buffer = Buffer.from(writer.data());
   const frameSize = writer.size;
@@ -390,7 +388,7 @@ function testBulkCorruptedPkgId(): boolean {
   // Corrupt pkg_id byte (byte 3 for Bulk: [start1][start2][len][pkg_id][msg_id]...)
   buffer[3] ^= 0xFF;
 
-  const reader = new ProfileBulkReader(buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
+  const reader = new BufferReader(ProfileBulkConfig, buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
   const result = reader.next();
   return !result.valid;  // Expect failure: corrupted pkg_id invalidates CRC
 }
@@ -406,7 +404,7 @@ function testNetworkCorruptedPkgId(): boolean {
   msg.currentStatus = 1; // Active
   msg.name = 'TestDevice';
 
-  const writer = new ProfileNetworkWriter(1024);
+  const writer = new BufferWriter(ProfileNetworkConfig, 1024);
   writer.write(msg, { seq: 1, sysId: 5, compId: 10 });
   const buffer = Buffer.from(writer.data());
   const frameSize = writer.size;
@@ -416,7 +414,7 @@ function testNetworkCorruptedPkgId(): boolean {
   // Corrupt pkg_id byte (byte 7 for Network)
   buffer[7] ^= 0xFF;
 
-  const reader = new ProfileNetworkReader(buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
+  const reader = new BufferReader(ProfileNetworkConfig, buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
   const result = reader.next();
   return !result.valid;  // Expect failure: corrupted pkg_id invalidates CRC
 }
@@ -434,7 +432,7 @@ function testCrossPackageRejection(): boolean {
   msg.descriptionLength = 4;
   msg.descriptionData = 'test';
 
-  const writer = new ProfileBulkWriter(1024);
+  const writer = new BufferWriter(ProfileBulkConfig, 1024);
   writer.write(msg);
   const buffer = Buffer.from(writer.data());
   const frameSize = writer.size;
@@ -442,7 +440,7 @@ function testCrossPackageRejection(): boolean {
   if (frameSize < 6) return false;
 
   // Try to parse with getPkgTestMessagesMessageInfo - the pkg_id (2) won't match pkg_test_messages (1)
-  const reader = new ProfileBulkReader(buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
+  const reader = new BufferReader(ProfileBulkConfig, buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
   const result = reader.next();
 
   // The frame may parse as valid at the frame level, but the msg_id should be 513 (pkg_test_a)
@@ -457,7 +455,7 @@ function testCrossPackageRejection(): boolean {
 /**
  * Test: Bulk profile rejects corrupted msg_id low byte.
  * ProfileBulk layout: [0x90][0x71][LEN][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
- * Corrupting msg_id low byte (byte 4) changes the message type → wrong magic → CRC fails.
+ * Corrupting msg_id low byte (byte 4) changes the message type â†’ wrong magic â†’ CRC fails.
  */
 function testBulkCorruptedMsgIdLowByte(): boolean {
   const msg = new PackageTestMessage();
@@ -465,7 +463,7 @@ function testBulkCorruptedMsgIdLowByte(): boolean {
   msg.currentStatus = 1; // Active
   msg.name = 'TestDevice';
 
-  const writer = new ProfileBulkWriter(1024);
+  const writer = new BufferWriter(ProfileBulkConfig, 1024);
   writer.write(msg);
   const buffer = Buffer.from(writer.data());
   const frameSize = writer.size;
@@ -475,9 +473,9 @@ function testBulkCorruptedMsgIdLowByte(): boolean {
   // Corrupt msg_id low byte (byte 4 for Bulk)
   buffer[4] ^= 0xFF;
 
-  const reader = new ProfileBulkReader(buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
+  const reader = new BufferReader(ProfileBulkConfig, buffer.subarray(0, frameSize), getPkgTestMessagesMessageInfo);
   const result = reader.next();
-  return !result.valid;  // Expect failure: wrong msg_id → wrong magic → CRC fails
+  return !result.valid;  // Expect failure: wrong msg_id â†’ wrong magic â†’ CRC fails
 }
 
 /**
@@ -485,7 +483,7 @@ function testBulkCorruptedMsgIdLowByte(): boolean {
  * Catches the A2 stall: BufferReader was not advancing past CRC failures.
  */
 function testBufferReaderSkipsCrcFailure(): boolean {
-  const writer = new ProfileStandardWriter(2048);
+  const writer = new BufferWriter(ProfileStandardConfig, 2048);
   const msg = createTestMessage();
   writer.write(msg);
   const firstFrameEnd = writer.size;
@@ -496,7 +494,7 @@ function testBufferReaderSkipsCrcFailure(): boolean {
   buffer[firstFrameEnd - 1] ^= 0xFF;
   buffer[firstFrameEnd - 2] ^= 0xFF;
 
-  const reader = new ProfileStandardReader(buffer.subarray(0, total), getMessageInfo);
+  const reader = new BufferReader(ProfileStandardConfig, buffer.subarray(0, total), getMessageInfo);
 
   const result1 = reader.next();
   if (result1.valid) return false;  // First frame must fail (CRC corrupted)
@@ -510,7 +508,7 @@ function testBufferReaderSkipsCrcFailure(): boolean {
  * Catches the A3 stall: CRC-bad frames caused a permanent loop in buffer mode.
  */
 function testBufferModeRecoversAfterCrcFailure(): boolean {
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   const msg = createTestMessage();
   writer.write(msg);
   const frameSize = writer.size;
@@ -519,13 +517,13 @@ function testBufferModeRecoversAfterCrcFailure(): boolean {
   badFrame[frameSize - 1] ^= 0xFF;
   badFrame[frameSize - 2] ^= 0xFF;
 
-  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
   reader.addData(badFrame);
   const result1 = reader.next();
   if (result1.valid) return false;  // Must fail
 
-  // Feed a valid frame — reader must not be stuck on the bad one
-  const goodWriter = new ProfileStandardWriter(1024);
+  // Feed a valid frame â€” reader must not be stuck on the bad one
+  const goodWriter = new BufferWriter(ProfileStandardConfig, 1024);
   goodWriter.write(msg);
   reader.addData(goodWriter.data().subarray(0, goodWriter.size));
   const result2 = reader.next();
@@ -536,12 +534,12 @@ function testBufferModeRecoversAfterCrcFailure(): boolean {
  * Test: Stream mode recovers after garbage prefix and decodes a valid frame.
  */
 function testStreamRecoversAfterGarbage(): boolean {
-  const reader = new ProfileStandardAccumulatingReader(getMessageInfo, 1024);
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
 
   const garbage = new Uint8Array([0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56]);
   for (const byte of garbage) reader.pushByte(byte);
 
-  const writer = new ProfileStandardWriter(1024);
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
   const msg = createTestMessage();
   writer.write(msg);
   const frameData = writer.data().subarray(0, writer.size);
@@ -609,3 +607,4 @@ function main(): number {
 }
 
 process.exit(main());
+

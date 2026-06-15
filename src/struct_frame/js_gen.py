@@ -1159,11 +1159,9 @@ class TestJsGen():
         yield '"use strict";\n\n'
 
         yield "const {\n"
-        yield "    ProfileStandardWriter, ProfileStandardAccumulatingReader,\n"
-        yield "    ProfileSensorWriter,   ProfileSensorAccumulatingReader,\n"
-        yield "    ProfileIPCWriter,      ProfileIPCAccumulatingReader,\n"
-        yield "    ProfileBulkWriter,     ProfileBulkAccumulatingReader,\n"
-        yield "    ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,\n"
+        yield "    BufferWriter, AccumulatingReader,\n"
+        yield "    ProfileStandardConfig, ProfileSensorConfig, ProfileIPCConfig,\n"
+        yield "    ProfileBulkConfig, ProfileNetworkConfig,\n"
         yield "} = require('./frame-profiles');\n"
         yield f"const Pkg = require('./{package_kebab}.structframe');\n"
         yield "const { getMessageInfo } = Pkg;\n"
@@ -1177,11 +1175,11 @@ class TestJsGen():
         # Profiles without ``hasPkgId`` cannot encode messages with msg_id > 255.
         # Profiles with a finite ``maxPayload`` reject messages whose ``_size`` exceeds it.
         yield "const PROFILES = [\n"
-        yield "    { name: 'ProfileStandard', WriterCls: ProfileStandardWriter, ReaderCls: ProfileStandardAccumulatingReader, hasPkgId: false, maxPayload: 255 },\n"
-        yield "    { name: 'ProfileSensor',   WriterCls: ProfileSensorWriter,   ReaderCls: ProfileSensorAccumulatingReader,   hasPkgId: false, maxPayload: null },\n"
-        yield "    { name: 'ProfileIPC',      WriterCls: ProfileIPCWriter,      ReaderCls: ProfileIPCAccumulatingReader,      hasPkgId: false, maxPayload: null },\n"
-        yield "    { name: 'ProfileBulk',     WriterCls: ProfileBulkWriter,     ReaderCls: ProfileBulkAccumulatingReader,     hasPkgId: true,  maxPayload: 65535 },\n"
-        yield "    { name: 'ProfileNetwork',  WriterCls: ProfileNetworkWriter,  ReaderCls: ProfileNetworkAccumulatingReader,  hasPkgId: true,  maxPayload: 65535 },\n"
+        yield "    { name: 'ProfileStandard', config: ProfileStandardConfig, hasPkgId: false, maxPayload: 255 },\n"
+        yield "    { name: 'ProfileSensor',   config: ProfileSensorConfig,   hasPkgId: false, maxPayload: null },\n"
+        yield "    { name: 'ProfileIPC',      config: ProfileIPCConfig,      hasPkgId: false, maxPayload: null },\n"
+        yield "    { name: 'ProfileBulk',     config: ProfileBulkConfig,     hasPkgId: true,  maxPayload: 65535 },\n"
+        yield "    { name: 'ProfileNetwork',  config: ProfileNetworkConfig,  hasPkgId: true,  maxPayload: 65535 },\n"
         yield "];\n\n"
 
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
@@ -1200,16 +1198,16 @@ class TestJsGen():
             yield '}\n'
             yield f'module.exports.{func_name} = {func_name};\n\n'
 
-        yield 'function verifyRoundtrip(msg, MsgCls, WriterCls, ReaderCls, getInfoFn) {\n'
+        yield 'function verifyRoundtrip(msg, MsgCls, config, getInfoFn) {\n'
         yield '    try {\n'
         yield '        const bufSize = Math.max(2048, (MsgCls._size || 0) + 128);\n'
-        yield '        const writer = new WriterCls(bufSize);\n'
+        yield '        const writer = new BufferWriter(config, bufSize);\n'
         yield '        const written = writer.write(msg);\n'
         yield '        if (!written) return [false, "encode failed"];\n'
         yield '        const encoded = writer.data();\n'
         yield '        if (!encoded || encoded.length === 0) return [false, "empty encoded buffer"];\n'
         yield '\n'
-        yield '        const reader = new ReaderCls(getInfoFn, Math.max(4096, bufSize * 2));\n'
+        yield '        const reader = new AccumulatingReader(config, getInfoFn, Math.max(4096, bufSize * 2));\n'
         yield '        reader.addData(Buffer.from(encoded));\n'
         yield '        const result = reader.next();\n'
         yield '        if (!result || !result.valid) return [false, "parse failed"];\n'
@@ -1248,9 +1246,9 @@ class TestJsGen():
             struct_name = msg.name
             create_func = f'createTest{struct_name}'
             test_func = f'test{struct_name}'
-            yield f'function {test_func}(WriterCls, ReaderCls, getInfoFn) {{\n'
+            yield f'function {test_func}(config, getInfoFn) {{\n'
             yield f'    const msg = {create_func}();\n'
-            yield f'    const [passed, reason] = verifyRoundtrip(msg, Pkg.{struct_name}, WriterCls, ReaderCls, getInfoFn);\n'
+            yield f'    const [passed, reason] = verifyRoundtrip(msg, Pkg.{struct_name}, config, getInfoFn);\n'
             yield f'    return {{ passed, name: "{struct_name}", error: passed ? "" : reason }};\n'
             yield '}\n\n'
 
@@ -1261,7 +1259,7 @@ class TestJsGen():
         yield '// messages are tracked separately from passes (NOT counted as passes);\n'
         yield '// tested[i] is set true when message i round-trips under this profile.\n'
         yield '// Returns [passed, skipped].\n'
-        yield 'function runAllTests(WriterCls, ReaderCls, getInfoFn, hasPkgId, maxPayload, tested, verbose) {\n'
+        yield 'function runAllTests(config, getInfoFn, hasPkgId, maxPayload, tested, verbose) {\n'
         yield '    let passed = 0;\n'
         yield '    let skipped = 0;\n'
         for idx, (key, msg) in enumerate(testable_messages):
@@ -1273,7 +1271,7 @@ class TestJsGen():
             yield f'            skipped += 1;\n'
             yield f'            if (verbose) console.log(`[SKIP] {struct_name}: ${{skip}}`);\n'
             yield f'        }} else {{\n'
-            yield f'            const r = {test_func}(WriterCls, ReaderCls, getInfoFn);\n'
+            yield f'            const r = {test_func}(config, getInfoFn);\n'
             yield f'            if (r.passed) {{\n'
             yield f'                passed += 1;\n'
             yield f'                tested[{idx}] = true;\n'
@@ -1293,7 +1291,7 @@ class TestJsGen():
         yield '    const tested = new Array(TEST_MESSAGE_COUNT).fill(false);\n'
         yield '    for (const p of PROFILES) {\n'
         yield '        if (verbose) console.log(`\\n--- ${p.name} ---`);\n'
-        yield '        const [passed, skipped] = runAllTests(p.WriterCls, p.ReaderCls, getMessageInfo, p.hasPkgId, p.maxPayload, tested, verbose);\n'
+        yield '        const [passed, skipped] = runAllTests(p.config, getMessageInfo, p.hasPkgId, p.maxPayload, tested, verbose);\n'
         yield '        const expected = TEST_MESSAGE_COUNT - skipped;\n'
         yield '        if (passed !== expected) {\n'
         yield '            allOk = false;\n'

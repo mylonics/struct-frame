@@ -610,13 +610,13 @@ where
             break;
         }
 
-        if frame.payload.len() != expected_len || frame.payload[..expected_len] != expected_buf[..expected_len] {
+        if frame.msg_data.len() != expected_len || frame.msg_data[..expected_len] != expected_buf[..expected_len] {
             eprintln!("[DECODE] msg {}: payload mismatch (got {} bytes, expected {} bytes)",
-                count, frame.payload.len(), expected_len);
-            for i in 0..frame.payload.len().min(expected_len) {
-                if frame.payload[i] != expected_buf[i] {
+                count, frame.msg_data.len(), expected_len);
+            for i in 0..frame.msg_data.len().min(expected_len) {
+                if frame.msg_data[i] != expected_buf[i] {
                     eprintln!("  First diff at byte {}: got 0x{:02x}, expected 0x{:02x}",
-                        i, frame.payload[i], expected_buf[i]);
+                        i, frame.msg_data[i], expected_buf[i]);
                     break;
                 }
             }
@@ -697,7 +697,7 @@ fn run_envelope_sdk_tests() {
     if let Some(f) = frame {
         expect!(f.valid, "CommandEnvelope: frame valid");
         expect!(f.msg_id == CommandEnvelope::MSG_ID, "CommandEnvelope: msg_id matches");
-        let decoded = CommandEnvelope::unpack(&f.payload);
+        let decoded = CommandEnvelope::unpack(&f.msg_data);
         expect!(decoded.is_some(), "CommandEnvelope: unpack succeeded");
         if let Some(d) = decoded {
             expect!(d.sequence_number == 42, "CommandEnvelope: sequence_number round-trips");
@@ -740,7 +740,7 @@ fn run_envelope_sdk_tests() {
     expect!(raw_frame.is_some(), "RawDataEnvelope: frame parsed");
     if let Some(f) = raw_frame {
         expect!(f.valid, "RawDataEnvelope: frame valid");
-        let raw_decoded = RawDataEnvelope::unpack(&f.payload);
+        let raw_decoded = RawDataEnvelope::unpack(&f.msg_data);
         expect!(raw_decoded.is_some(), "RawDataEnvelope: unpack succeeded");
         if let Some(d) = raw_decoded {
             expect!(d.priority == 3, "RawDataEnvelope: priority round-trips");
@@ -902,7 +902,7 @@ fn run_streaming_tests() {
         let valid = result.as_ref().map_or(false, |f| {
             f.valid
                 && f.msg_id == BasicTypesMessage::MSG_ID
-                && BasicTypesMessage::unpack(&f.payload)
+                && BasicTypesMessage::unpack(&f.msg_data)
                     .map_or(false, |m| m.regular_int == 9876)
         });
         expect!(valid, "Standard profile: push_byte decodes complete frame");
@@ -938,10 +938,10 @@ fn run_streaming_tests() {
             r2 = reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info);
         }
         let v1 = r1.as_ref().map_or(false, |f| {
-            f.valid && BasicTypesMessage::unpack(&f.payload).map_or(false, |m| m.regular_int == 1111)
+            f.valid && BasicTypesMessage::unpack(&f.msg_data).map_or(false, |m| m.regular_int == 1111)
         });
         let v2 = r2.as_ref().map_or(false, |f| {
-            f.valid && BasicTypesMessage::unpack(&f.payload).map_or(false, |m| m.regular_int == 2222)
+            f.valid && BasicTypesMessage::unpack(&f.msg_data).map_or(false, |m| m.regular_int == 2222)
         });
         expect!(v1, "Two consecutive frames: first frame decodes correctly");
         expect!(v2, "Two consecutive frames: second frame decodes correctly");
@@ -965,7 +965,7 @@ fn run_streaming_tests() {
         }
         expect!(!garbage_fired, "Garbage prefix: garbage bytes do not produce a frame");
         let valid = result.as_ref().map_or(false, |f| {
-            f.valid && BasicTypesMessage::unpack(&f.payload).map_or(false, |m| m.regular_int == 5555)
+            f.valid && BasicTypesMessage::unpack(&f.msg_data).map_or(false, |m| m.regular_int == 5555)
         });
         expect!(valid, "Garbage prefix: real frame after garbage is decoded correctly");
     }
@@ -1027,8 +1027,8 @@ fn run_sdk_subscribe_tests() {
         let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(u16, i32, Vec<u8>)>::new()));
         let received2 = received.clone();
         sdk.subscribe(BasicTypesMessage::MSG_ID, move |frame| {
-            if let Some(m) = BasicTypesMessage::unpack(&frame.payload) {
-            received2.lock().unwrap().push((frame.msg_id, m.regular_int, frame.payload.clone()));
+            if let Some(m) = BasicTypesMessage::unpack(&frame.msg_data) {
+            received2.lock().unwrap().push((frame.msg_id, m.regular_int, frame.msg_data.clone()));
             }
         });
 
@@ -1099,8 +1099,8 @@ fn run_sdk_subscribe_tests() {
         let received = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(u16, i32, Vec<u8>)>::new()));
         let recv2 = received.clone();
         sdk.subscribe(BasicTypesMessage::MSG_ID, move |frame| {
-            if let Some(m) = BasicTypesMessage::unpack(&frame.payload) {
-                recv2.lock().unwrap().push((frame.msg_id, m.regular_int, frame.payload.clone()));
+            if let Some(m) = BasicTypesMessage::unpack(&frame.msg_data) {
+                recv2.lock().unwrap().push((frame.msg_id, m.regular_int, frame.msg_data.clone()));
             }
         });
 
@@ -1194,7 +1194,7 @@ fn run_wire_evolution_interop_tests() -> ! {
             format!("[S1/{}] v2->v1 frame validates CRC (magic from base)", name)
         );
         if let Some(f) = frame {
-            let d = v1::BaseExtensionMessage::unpack(&f.payload);
+            let d = v1::BaseExtensionMessage::unpack(&f.msg_data);
             check!(
                 d.map_or(false, |x| x.header == 0xBEEF && x.seq == 42),
                 format!("[S1/{}] v1 decodes base; trailing ext bytes ignored", name)
@@ -1217,7 +1217,7 @@ fn run_wire_evolution_interop_tests() -> ! {
         if let Some(f) = frame {
             // Newer receiver zero-fills the missing extension bytes before decoding.
             let mut padded = vec![0u8; v2::BaseExtensionMessage::MAX_SIZE];
-            padded[..f.payload.len()].copy_from_slice(&f.payload);
+            padded[..f.msg_data.len()].copy_from_slice(&f.msg_data);
             let d = v2::BaseExtensionMessage::unpack(&padded);
             check!(
                 d.as_ref().map_or(false, |x| x.header == 0x1234 && x.seq == 7),
@@ -1246,7 +1246,7 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S3] v2->v2 (ext variant) frame validates CRC"
         );
         if let Some(f) = frame {
-            let d = v2::OneOfExtensionMessage::unpack(&f.payload);
+            let d = v2::OneOfExtensionMessage::unpack(&f.msg_data);
             check!(
                 d.map_or(false, |x| x.command_discriminator == 3
                     && x.get_cmd_c().map_or(false, |cc| (cc.value_c - 3.14).abs() < 1e-4)),
@@ -1270,7 +1270,7 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S4] v2 ext-variant -> v1 frame validates CRC"
         );
         if let Some(f) = frame {
-            let d = v1::OneOfExtensionMessage::unpack(&f.payload);
+            let d = v1::OneOfExtensionMessage::unpack(&f.msg_data);
             check!(
                 d.as_ref().map_or(false, |x| x.device_id == 9),
                 "[S4] v1 still decodes the base header field"
@@ -1301,7 +1301,7 @@ fn run_wire_evolution_interop_tests() -> ! {
         );
         if let Some(f) = frame {
             let mut padded = vec![0u8; v2::OneOfExtensionMessage::MAX_SIZE];
-            padded[..f.payload.len()].copy_from_slice(&f.payload);
+            padded[..f.msg_data.len()].copy_from_slice(&f.msg_data);
             let d = v2::OneOfExtensionMessage::unpack(&padded);
             check!(
                 d.map_or(false, |x| x.command_discriminator == 2
@@ -1331,7 +1331,7 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S6] v2 multi-oneof (ext in 2nd union) -> v1 validates CRC"
         );
         if let Some(f) = frame {
-            let d = v1::MultiOneOfExtensionMessage::unpack(&f.payload);
+            let d = v1::MultiOneOfExtensionMessage::unpack(&f.msg_data);
             check!(
                 d.map_or(false, |x| x.priority == 3
                     && x.base_union_discriminator == 1
@@ -1428,7 +1428,7 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S10] v2 variable+ext -> v1 validates CRC"
         );
         if let Some(f) = frame {
-            let d = v1::VariableExtensionMessage::unpack(&f.payload);
+            let d = v1::VariableExtensionMessage::unpack(&f.msg_data);
             check!(
                 d.map_or(false, |x|
                     x.node_id == 7
@@ -1454,8 +1454,8 @@ fn run_wire_evolution_interop_tests() -> ! {
         if let Some(f2) = frame2 {
             // Pad payload to MAX_SIZE so unpack() uses fixed-size read (zero-fills ext).
             let mut padded = vec![0u8; v2::VariableExtensionMessage::MAX_SIZE];
-            let copy_len = f2.payload.len().min(padded.len());
-            padded[..copy_len].copy_from_slice(&f2.payload[..copy_len]);
+            let copy_len = f2.msg_data.len().min(padded.len());
+            padded[..copy_len].copy_from_slice(&f2.msg_data[..copy_len]);
             let d2 = v2::VariableExtensionMessage::unpack(&padded);
             check!(
                 d2.as_ref().map_or(false, |x|

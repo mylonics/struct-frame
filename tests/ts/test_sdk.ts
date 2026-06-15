@@ -8,7 +8,7 @@
 
 import { BasicTypesMessage, getMessageInfo } from '../generated/ts/serialization-test.structframe';
 import {
-  ProfileStandardWriter,
+  BufferWriter,
   ProfileStandardConfig,
   parseFrameWithCrc,
 } from '../generated/ts/frame-profiles';
@@ -47,7 +47,7 @@ class MockTransport implements ITransport {
 
 function encodeBasicTypes(regularInt: number, flag: boolean): Uint8Array {
   const msg = new BasicTypesMessage({ regularInt, flag });
-  const writer = new ProfileStandardWriter(512);
+  const writer = new BufferWriter(ProfileStandardConfig, 512);
   writer.write(msg);
   return writer.data();
 }

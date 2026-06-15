@@ -422,6 +422,49 @@ static inline frame_msg_info_t profile_parse_minimal(
 }
 
 /*===========================================================================
+ * Config-dispatched entry points — match Python/TS/C# single-function API
+ *===========================================================================*/
+
+/**
+ * Encode a frame using the profile config.
+ * Dispatches to profile_encode_with_crc_ext or profile_encode_minimal based on
+ * config->payload.has_crc. Matches the Python encode_message() / TS encodeMessage()
+ * / C# FrameEncoder.Encode() calling convention.
+ */
+static inline size_t profile_encode_message(
+    const profile_config_t* config,
+    uint8_t* buffer, size_t buffer_size,
+    uint8_t seq, uint8_t sys_id, uint8_t comp_id, uint8_t pkg_id,
+    uint8_t msg_id, const uint8_t* payload_data, size_t payload_size,
+    size_t base_size, uint8_t magic1, uint8_t magic2)
+{
+    if (config->payload.has_crc) {
+        return profile_encode_with_crc_ext(config, buffer, buffer_size,
+            seq, sys_id, comp_id, pkg_id, msg_id,
+            payload_data, payload_size, base_size, magic1, magic2);
+    } else {
+        return profile_encode_minimal(config, buffer, buffer_size, msg_id, payload_data, payload_size);
+    }
+}
+
+/**
+ * Parse one frame from a buffer using the profile config.
+ * Dispatches to profile_parse_with_crc or profile_parse_minimal based on
+ * config->payload.has_crc. Matches the Python / TS / C# single parse entry point.
+ */
+static inline frame_msg_info_t profile_parse(
+    const profile_config_t* config,
+    const uint8_t* buffer, size_t length,
+    bool (*get_message_info_func)(uint16_t msg_id, message_info_t* info))
+{
+    if (config->payload.has_crc || config->payload.has_length) {
+        return profile_parse_with_crc(config, buffer, length, get_message_info_func);
+    } else {
+        return profile_parse_minimal(config, buffer, length, get_message_info_func);
+    }
+}
+
+/*===========================================================================
  * BufferReader - Iterate through multiple frames in a buffer
  *===========================================================================*/
 

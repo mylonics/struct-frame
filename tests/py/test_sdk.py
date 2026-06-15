@@ -25,7 +25,7 @@ from struct_frame_sdk.struct_frame_sdk import StructFrameSdk, StructFrameSdkConf
 from struct_frame_sdk.transport import ITransport
 
 from frame_profiles import (
-    ProfileStandardWriter,
+    BufferWriter,
     PROFILE_STANDARD_CONFIG,
     parse_frame_buffer,
     encode_message,
@@ -94,7 +94,7 @@ def make_unknown_frame(msg_id: int, data: bytes) -> bytes:
 
 def encode_basic_types(msg: BasicTypesMessage) -> bytes:
     """Encode a BasicTypesMessage into a ProfileStandard frame."""
-    writer = ProfileStandardWriter()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG)
     writer.write(msg)
     return bytes(writer.data())
 

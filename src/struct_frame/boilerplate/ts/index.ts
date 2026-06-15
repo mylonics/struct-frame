@@ -83,21 +83,5 @@ export {
     BufferWriter,
     AccumulatingReader,
     AccumulatingReaderState,
-    // Profile-specific subclasses
-    ProfileStandardReader,
-    ProfileStandardWriter,
-    ProfileStandardAccumulatingReader,
-    ProfileSensorReader,
-    ProfileSensorWriter,
-    ProfileSensorAccumulatingReader,
-    ProfileIPCReader,
-    ProfileIPCWriter,
-    ProfileIPCAccumulatingReader,
-    ProfileBulkReader,
-    ProfileBulkWriter,
-    ProfileBulkAccumulatingReader,
-    ProfileNetworkReader,
-    ProfileNetworkWriter,
-    ProfileNetworkAccumulatingReader,
 } from './frame-profiles';
 export type { ParserDiagnostics } from './frame-profiles';

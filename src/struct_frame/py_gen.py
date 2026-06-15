@@ -1570,11 +1570,9 @@ class TestPyGen():
             for imp in imported_packages:
                 yield f'from struct_frame.generated.{imp} import *\n'
         yield 'from frame_profiles import (\n'
-        yield '    ProfileStandardWriter, ProfileStandardAccumulatingReader,\n'
-        yield '    ProfileSensorWriter,   ProfileSensorAccumulatingReader,\n'
-        yield '    ProfileIPCWriter,      ProfileIPCAccumulatingReader,\n'
-        yield '    ProfileBulkWriter,     ProfileBulkAccumulatingReader,\n'
-        yield '    ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,\n'
+        yield '    BufferWriter, AccumulatingReader,\n'
+        yield '    PROFILE_STANDARD_CONFIG, PROFILE_SENSOR_CONFIG, PROFILE_IPC_CONFIG,\n'
+        yield '    PROFILE_BULK_CONFIG, PROFILE_NETWORK_CONFIG,\n'
         yield ')\n\n'
         
         # Collect testable messages (skip variant/oneof messages)
@@ -1599,22 +1597,22 @@ class TestPyGen():
             yield '    return msg\n\n'
         
         # Generate test function
-        yield 'def verify_roundtrip(msg, writer_cls, reader_cls, get_info_fn) -> Tuple[bool, str]:\n'
-        yield '    """Encode *msg* with ``writer_cls`` (a BufferWriter), decode it back\n'
-        yield '    using ``reader_cls`` (an AccumulatingReader) and compare field-by-field\n'
-        yield '    with the original. Returns (passed, reason)."""\n'
+        yield 'def verify_roundtrip(msg, config, get_info_fn) -> Tuple[bool, str]:\n'
+        yield '    """Encode *msg* with a BufferWriter configured by *config*, decode it\n'
+        yield '    back with an AccumulatingReader and compare field-by-field with the\n'
+        yield '    original. Returns (passed, reason)."""\n'
         yield '    try:\n'
         yield '        # Generously size the working buffers based on the message MAX_SIZE\n'
         yield '        # so that even the largest extended payloads fit with profile overhead.\n'
         yield '        buf_size = max(2048, getattr(msg, "MAX_SIZE", 0) + 128)\n'
-        yield '        writer = writer_cls(buf_size)\n'
+        yield '        writer = BufferWriter(config, buf_size)\n'
         yield '        if not writer.write(msg):\n'
         yield '            return (False, "encode failed")\n'
         yield '        encoded = writer.data()\n'
         yield '        if not encoded:\n'
         yield '            return (False, "empty encoded buffer")\n'
         yield '        \n'
-        yield '        reader = reader_cls(get_info_fn, max(4096, buf_size * 2))\n'
+        yield '        reader = AccumulatingReader(config, get_message_info=get_info_fn, buffer_size=max(4096, buf_size * 2))\n'
         yield '        reader.add_data(encoded)\n'
         yield '        result = reader.next()\n'
         yield '        if result is None or not result.valid:\n'
@@ -1648,26 +1646,26 @@ class TestPyGen():
             func_name = f'test_{camel_to_snake_case(msg.name)}'
             create_func = f'create_test_{camel_to_snake_case(msg.name)}'
             
-            yield f'def {func_name}(writer_cls, reader_cls, get_info_fn) -> TestResult:\n'
+            yield f'def {func_name}(config, get_info_fn) -> TestResult:\n'
             yield f'    """Test round-trip for {struct_name}."""\n'
             yield f'    msg = {create_func}()\n'
-            yield f'    passed, reason = verify_roundtrip(msg, writer_cls, reader_cls, get_info_fn)\n'
+            yield f'    passed, reason = verify_roundtrip(msg, config, get_info_fn)\n'
             yield f'    return TestResult(passed, "{struct_name}", None if passed else reason)\n\n'
         
         # Generate run_all_tests function
         yield 'TEST_MESSAGE_COUNT = %d\n\n' % len(testable_messages)
 
-        # Mapping of profile name -> (writer class, reader class, has_pkg_id, max_payload).
+        # Mapping of profile name -> (config, has_pkg_id, max_payload).
         # Used to determine if a (message, profile) pair is compatible. Profiles
         # without ``has_pkg_id`` cannot encode messages with ``MSG_ID > 255``.
         # Profiles with ``max_payload`` reject messages whose ``MAX_SIZE``
         # exceeds the limit.
         yield 'PROFILES = [\n'
-        yield '    ("ProfileStandard", ProfileStandardWriter, ProfileStandardAccumulatingReader, False, 255),\n'
-        yield '    ("ProfileSensor",   ProfileSensorWriter,   ProfileSensorAccumulatingReader,   False, None),\n'
-        yield '    ("ProfileIPC",      ProfileIPCWriter,      ProfileIPCAccumulatingReader,      False, None),\n'
-        yield '    ("ProfileBulk",     ProfileBulkWriter,     ProfileBulkAccumulatingReader,     True,  65535),\n'
-        yield '    ("ProfileNetwork",  ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,  True,  65535),\n'
+        yield '    ("ProfileStandard", PROFILE_STANDARD_CONFIG, False, 255),\n'
+        yield '    ("ProfileSensor",   PROFILE_SENSOR_CONFIG,   False, None),\n'
+        yield '    ("ProfileIPC",      PROFILE_IPC_CONFIG,      False, None),\n'
+        yield '    ("ProfileBulk",     PROFILE_BULK_CONFIG,     True,  65535),\n'
+        yield '    ("ProfileNetwork",  PROFILE_NETWORK_CONFIG,  True,  65535),\n'
         yield ']\n\n'
 
         yield 'def _is_compatible(msg, has_pkg_id: bool, max_payload: Optional[int], get_info_fn) -> Optional[str]:\n'
@@ -1683,7 +1681,7 @@ class TestPyGen():
         yield '        return "msg_id not registered for this profile (likely cross-package mismatch)"\n'
         yield '    return None\n\n'
 
-        yield 'def run_all_tests(writer_cls, reader_cls, get_info_fn, has_pkg_id: bool, max_payload: Optional[int], tested: list, verbose: bool = False) -> Tuple[int, int]:\n'
+        yield 'def run_all_tests(config, get_info_fn, has_pkg_id: bool, max_payload: Optional[int], tested: list, verbose: bool = False) -> Tuple[int, int]:\n'
         yield '    """Run all message tests for one profile.\n'
         yield '    Skipped (profile-incompatible) messages are tracked separately from\n'
         yield '    passes -- they are NOT counted as passes. ``tested[i]`` is set True\n'
@@ -1702,7 +1700,7 @@ class TestPyGen():
             yield f'        if verbose:\n'
             yield f'            print(f"[SKIP] {struct_name}: {{skip}}")\n'
             yield f'    else:\n'
-            yield f'        r = {func_name}(writer_cls, reader_cls, get_info_fn)\n'
+            yield f'        r = {func_name}(config, get_info_fn)\n'
             yield f'        if r.passed:\n'
             yield f'            passed += 1\n'
             yield f'            tested[{idx}] = True\n'
@@ -1724,10 +1722,10 @@ class TestPyGen():
         yield '    profiles (tested nowhere) is a hard failure."""\n'
         yield '    all_ok = True\n'
         yield '    tested = [False] * TEST_MESSAGE_COUNT\n'
-        yield '    for name, writer_cls, reader_cls, has_pkg_id, max_payload in PROFILES:\n'
+        yield '    for name, config, has_pkg_id, max_payload in PROFILES:\n'
         yield '        if verbose:\n'
         yield '            print(f"\\n--- {name} ---")\n'
-        yield '        passed, skipped = run_all_tests(writer_cls, reader_cls, get_message_info, has_pkg_id, max_payload, tested, verbose=verbose)\n'
+        yield '        passed, skipped = run_all_tests(config, get_message_info, has_pkg_id, max_payload, tested, verbose=verbose)\n'
         yield '        expected = TEST_MESSAGE_COUNT - skipped\n'
         yield '        if passed != expected:\n'
         yield '            all_ok = False\n'

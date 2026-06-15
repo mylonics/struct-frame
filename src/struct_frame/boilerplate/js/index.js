@@ -2,7 +2,7 @@
 // Struct-frame boilerplate: frame parser package
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.encodeMessage = exports.ProfileNetworkConfig = exports.ProfileBulkConfig = exports.ProfileIPCConfig = exports.ProfileSensorConfig = exports.ProfileStandardConfig = exports.profileOverhead = exports.profileFooterSize = exports.profileHeaderSize = exports.PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG = exports.PAYLOAD_MULTI_SYSTEM_STREAM_CONFIG = exports.PAYLOAD_SEQ_CONFIG = exports.PAYLOAD_SYS_COMP_CONFIG = exports.PAYLOAD_EXTENDED_CONFIG = exports.PAYLOAD_EXTENDED_LENGTH_CONFIG = exports.PAYLOAD_EXTENDED_MSG_IDS_CONFIG = exports.PAYLOAD_DEFAULT_CONFIG = exports.PAYLOAD_MINIMAL_CONFIG = exports.payloadMaxPayload = exports.payloadOverhead = exports.payloadFooterSize = exports.payloadHeaderSize = exports.MAX_PAYLOAD_TYPE_VALUE = exports.PayloadType = exports.HEADER_MAVLINK_V2_CONFIG = exports.HEADER_MAVLINK_V1_CONFIG = exports.HEADER_UBX_CONFIG = exports.HEADER_BASIC_CONFIG = exports.HEADER_TINY_CONFIG = exports.HEADER_NONE_CONFIG = exports.MAX_PAYLOAD_TYPE = exports.MAVLINK_V2_STX = exports.MAVLINK_V1_STX = exports.UBX_SYNC2 = exports.UBX_SYNC1 = exports.PAYLOAD_TYPE_BASE = exports.BASIC_START_BYTE = exports.HeaderType = exports.encodePayloadMinimal = exports.encodePayloadWithCrc = exports.validatePayloadMinimal = exports.validatePayloadWithCrc = exports.createFrameParserClass = exports.GenericParserState = exports.GenericFrameParser = exports.fletcherChecksumExt = exports.fletcherChecksum = exports.createFrameMsgInfo = exports.FrameMsgStatus = exports.MessageBase = void 0;
-exports.ProfileNetworkAccumulatingReader = exports.ProfileNetworkWriter = exports.ProfileNetworkReader = exports.ProfileBulkAccumulatingReader = exports.ProfileBulkWriter = exports.ProfileBulkReader = exports.ProfileIPCAccumulatingReader = exports.ProfileIPCWriter = exports.ProfileIPCReader = exports.ProfileSensorAccumulatingReader = exports.ProfileSensorWriter = exports.ProfileSensorReader = exports.ProfileStandardAccumulatingReader = exports.ProfileStandardWriter = exports.ProfileStandardReader = exports.AccumulatingReaderState = exports.AccumulatingReader = exports.BufferWriter = exports.BufferReader = exports.parseFrameMinimal = exports.parseFrameWithCrc = void 0;
+exports.AccumulatingReaderState = exports.AccumulatingReader = exports.BufferWriter = exports.BufferReader = exports.parseFrameMinimal = exports.parseFrameWithCrc = void 0;
 // Struct base class for message types
 var struct_base_1 = require("./struct-base");
 Object.defineProperty(exports, "MessageBase", { enumerable: true, get: function () { return struct_base_1.MessageBase; } });
@@ -71,19 +71,3 @@ Object.defineProperty(exports, "BufferReader", { enumerable: true, get: function
 Object.defineProperty(exports, "BufferWriter", { enumerable: true, get: function () { return frame_profiles_1.BufferWriter; } });
 Object.defineProperty(exports, "AccumulatingReader", { enumerable: true, get: function () { return frame_profiles_1.AccumulatingReader; } });
 Object.defineProperty(exports, "AccumulatingReaderState", { enumerable: true, get: function () { return frame_profiles_1.AccumulatingReaderState; } });
-// Profile-specific subclasses
-Object.defineProperty(exports, "ProfileStandardReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileStandardReader; } });
-Object.defineProperty(exports, "ProfileStandardWriter", { enumerable: true, get: function () { return frame_profiles_1.ProfileStandardWriter; } });
-Object.defineProperty(exports, "ProfileStandardAccumulatingReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileStandardAccumulatingReader; } });
-Object.defineProperty(exports, "ProfileSensorReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileSensorReader; } });
-Object.defineProperty(exports, "ProfileSensorWriter", { enumerable: true, get: function () { return frame_profiles_1.ProfileSensorWriter; } });
-Object.defineProperty(exports, "ProfileSensorAccumulatingReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileSensorAccumulatingReader; } });
-Object.defineProperty(exports, "ProfileIPCReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileIPCReader; } });
-Object.defineProperty(exports, "ProfileIPCWriter", { enumerable: true, get: function () { return frame_profiles_1.ProfileIPCWriter; } });
-Object.defineProperty(exports, "ProfileIPCAccumulatingReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileIPCAccumulatingReader; } });
-Object.defineProperty(exports, "ProfileBulkReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileBulkReader; } });
-Object.defineProperty(exports, "ProfileBulkWriter", { enumerable: true, get: function () { return frame_profiles_1.ProfileBulkWriter; } });
-Object.defineProperty(exports, "ProfileBulkAccumulatingReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileBulkAccumulatingReader; } });
-Object.defineProperty(exports, "ProfileNetworkReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileNetworkReader; } });
-Object.defineProperty(exports, "ProfileNetworkWriter", { enumerable: true, get: function () { return frame_profiles_1.ProfileNetworkWriter; } });
-Object.defineProperty(exports, "ProfileNetworkAccumulatingReader", { enumerable: true, get: function () { return frame_profiles_1.ProfileNetworkAccumulatingReader; } });
