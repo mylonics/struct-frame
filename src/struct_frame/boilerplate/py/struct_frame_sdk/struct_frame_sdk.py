@@ -132,7 +132,8 @@ class StructFrameSdk:
         info = self.get_message_info(msg_id) if self.get_message_info else None
         magic1 = info.magic1 if info is not None else 0
         magic2 = info.magic2 if info is not None else 0
-        payload = bytes(data)
+        # Avoid copying when already an immutable bytes object.
+        payload = data if type(data) is bytes else bytes(data)
 
         # encode_message reads MSG_ID and MAGIC1/MAGIC2 from the message's class,
         # so expose them as class attributes on a lightweight raw wrapper.

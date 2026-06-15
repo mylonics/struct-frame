@@ -119,7 +119,8 @@ class AsyncStructFrameSdk:
         info = self.get_message_info(msg_id) if self.get_message_info else None
         magic1 = info.magic1 if info is not None else 0
         magic2 = info.magic2 if info is not None else 0
-        payload = bytes(data)
+        # Avoid copying when already an immutable bytes object.
+        payload = data if type(data) is bytes else bytes(data)
 
         raw_cls = type('_RawMessage', (), {
             'MSG_ID': msg_id,

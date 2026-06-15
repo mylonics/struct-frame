@@ -273,9 +273,27 @@ class MessagePyGen():
             result += '        """Serialize the message into binary format"""\n'
         result += '        data = bytearray()\n'
 
+        # Coalesce runs of consecutive fixed scalar fields into a single struct.pack call.
+        # struct "<" uses standard sizes with no alignment padding, so concatenating the
+        # individual format chars produces byte-identical output to packing each separately,
+        # while cutting per-field struct.pack call overhead (significant in CPython).
+        _pending_fmt: list[str] = []
+        _pending_vals: list[str] = []
+
+        def _flush_scalars():
+            nonlocal result, _pending_fmt, _pending_vals
+            if not _pending_fmt:
+                return
+            joined_fmt = "".join(_pending_fmt)
+            joined_vals = ", ".join(_pending_vals)
+            result += f'        data += struct.pack("<{joined_fmt}", {joined_vals})\n'
+            _pending_fmt = []
+            _pending_vals = []
+
         # Pack regular fields
         for key, f in msg.fields.items():
             if f.field_type in ("string", "bytes") and not f.is_array:
+                _flush_scalars()
                 # String field
                 if f.size_option is not None:
                     # Fixed string
@@ -289,6 +307,7 @@ class MessagePyGen():
                     result += f'        data += struct.pack("<{count_fmt}", len(str_data))\n'
                     result += f'        data += struct.pack("<{f.max_size}s", str_data)\n'
             elif f.is_array:
+                _flush_scalars()
                 # Array field
                 if f.field_type in ("string", "bytes"):
                     # String array
@@ -365,12 +384,17 @@ class MessagePyGen():
                 # Regular field
                 fmt = MessagePyGen.get_struct_format(f)
                 if fmt:
-                    # Simple type
-                    result += f'        data += struct.pack("<{fmt}", self.{f.name})\n'
+                    # Simple scalar - buffer it so consecutive scalars pack in one call
+                    _pending_fmt.append(fmt)
+                    _pending_vals.append(f'self.{f.name}')
                 else:
                     # Nested message
+                    _flush_scalars()
                     result += f'        data += self.{f.name}.serialize()\n'
-        
+
+        # Flush any trailing scalar run before oneofs / return
+        _flush_scalars()
+
         # Pack oneofs
         for oneof_name, oneof in msg.oneofs.items():
             # Discriminator if enabled

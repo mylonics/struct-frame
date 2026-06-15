@@ -319,14 +319,14 @@ def _frame_format_encode_with_crc(
     if config.max_payload is not None and payload_size > config.max_payload:
         raise ValueError(f"Payload size {payload_size} exceeds maximum {config.max_payload}")
     
-    output = []
-    
+    output = bytearray()
+
     # Write start bytes (use computed values for dynamic payload type encoding)
     if config.num_start_bytes >= 1:
         output.append(config.computed_start_byte1())
     if config.num_start_bytes >= 2:
         output.append(config.computed_start_byte2())
-    
+
     crc_start = len(output)  # CRC calculation starts after start bytes
     
     # Write optional fields before length
@@ -408,15 +408,15 @@ def _frame_format_encode_minimal(
         payload = msg.serialize()
     else:
         raise ValueError("Message object must have serialize() or serialize_max_size() method")
-    
-    output = []
-    
+
+    output = bytearray()
+
     # Write start bytes (use computed values for dynamic payload type encoding)
     if config.num_start_bytes >= 1:
         output.append(config.computed_start_byte1())
     if config.num_start_bytes >= 2:
         output.append(config.computed_start_byte2())
-    
+
     # Write message ID
     output.append(msg_id & 0xFF)
     
