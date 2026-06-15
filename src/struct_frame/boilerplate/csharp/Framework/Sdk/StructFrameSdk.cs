@@ -135,7 +135,9 @@ namespace StructFrame.Sdk
         private readonly AccumulatingReader _reader;
         private readonly Func<int, MessageInfo?> _getMessageInfo;
         private readonly bool _debug;
-        private readonly Dictionary<ushort, List<IMessageHandler>> _messageHandlers;
+        // Copy-on-write handler arrays: Subscribe/Unsubscribe swap in a new array under lock,
+        // so the hot receive path can read the array reference without allocating a snapshot.
+        private readonly Dictionary<ushort, IMessageHandler[]> _messageHandlers;
         private readonly object _handlersLock = new object();
         private readonly int _bufferSize;
         private readonly bool _strictOrdering;
@@ -192,7 +194,7 @@ namespace StructFrame.Sdk
             _profile = config.Profile;
             _getMessageInfo = config.GetMessageInfo;
             _debug = config.Debug;
-            _messageHandlers = new Dictionary<ushort, List<IMessageHandler>>();
+            _messageHandlers = new Dictionary<ushort, IMessageHandler[]>();
 
             _encoder = new FrameEncoder(_profile);
             _reader = new AccumulatingReader(_profile, config.BufferSize, config.GetMessageInfo);
@@ -252,12 +254,12 @@ namespace StructFrame.Sdk
 
             lock (_handlersLock)
             {
-                if (!_messageHandlers.TryGetValue(msgId, out var handlers))
-                {
-                    handlers = new List<IMessageHandler>();
-                    _messageHandlers[msgId] = handlers;
-                }
-                handlers.Add(typedHandler);
+                _messageHandlers.TryGetValue(msgId, out var existing);
+                int n = existing?.Length ?? 0;
+                var updated = new IMessageHandler[n + 1];
+                if (existing != null) Array.Copy(existing, updated, n);
+                updated[n] = typedHandler;
+                _messageHandlers[msgId] = updated;
             }
             Log($"Subscribed to message ID {msgId} ({typeof(T).Name})");
 
@@ -265,8 +267,20 @@ namespace StructFrame.Sdk
             {
                 lock (_handlersLock)
                 {
-                    if (_messageHandlers.TryGetValue(msgId, out var h))
-                        h.Remove(typedHandler);
+                    if (!_messageHandlers.TryGetValue(msgId, out var arr)) return;
+                    int idx = Array.IndexOf(arr, typedHandler);
+                    if (idx < 0) return;
+                    if (arr.Length == 1)
+                    {
+                        _messageHandlers.Remove(msgId);
+                    }
+                    else
+                    {
+                        var updated = new IMessageHandler[arr.Length - 1];
+                        Array.Copy(arr, 0, updated, 0, idx);
+                        Array.Copy(arr, idx + 1, updated, idx, arr.Length - idx - 1);
+                        _messageHandlers[msgId] = updated;
+                    }
                 }
             };
         }
@@ -297,10 +311,9 @@ namespace StructFrame.Sdk
                 throw new InvalidOperationException("Failed to encode message - buffer too small or payload exceeds max size");
             }
 
-            byte[] framedData = new byte[bytesWritten];
-            Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
-
-            var result = await SendFramedBytesAsync(framedData).ConfigureAwait(false);
+            // buffer is a fresh, non-reused allocation; hand a view of the written bytes to
+            // the transport directly. The strict-ordering queue makes its own owned copy.
+            var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
 
             Log($"Sent message ID {message.GetMsgId()}, {bytesWritten} bytes total");
             return result;
@@ -320,9 +333,7 @@ namespace StructFrame.Sdk
             {
                 throw new InvalidOperationException("Failed to encode raw payload — buffer too small or payload exceeds max size");
             }
-            byte[] framedData = new byte[bytesWritten];
-            Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
-            var result = await SendFramedBytesAsync(framedData).ConfigureAwait(false);
+            var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
             Log($"Sent raw message ID {msgId}, {bytesWritten} bytes total");
             return result;
         }
@@ -355,9 +366,7 @@ namespace StructFrame.Sdk
                 throw new InvalidOperationException("Failed to re-encode frame - buffer too small or payload exceeds max size");
             }
 
-            byte[] framedData = new byte[bytesWritten];
-            Buffer.BlockCopy(buffer, 0, framedData, 0, bytesWritten);
-            var result = await SendFramedBytesAsync(framedData).ConfigureAwait(false);
+            var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
             Log($"Re-encoded and sent frame ID {frame.MsgId}, {bytesWritten} bytes total");
             return result;
         }
@@ -420,8 +429,10 @@ namespace StructFrame.Sdk
             IMessageHandler[]? handlersCopy = null;
             lock (_handlersLock)
             {
-                if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers) && handlers.Count > 0)
-                    handlersCopy = handlers.ToArray();
+                // COW array: safe to read the reference under the lock and iterate outside it
+                // without copying — Subscribe/Unsubscribe never mutate an array in place.
+                if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers) && handlers.Length > 0)
+                    handlersCopy = handlers;
             }
 
             if (handlersCopy != null)

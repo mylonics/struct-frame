@@ -284,7 +284,7 @@ class FieldCSharpGen():
                         if use_offset_param:
                             lines.append(f'                    if ({var_name}[i] != null) {var_name}[i].SerializeTo(buffer, {fmt_offset(base_offset)} + i * {element_size});')
                         else:
-                            lines.append(f'                    if ({var_name}[i] != null) {{ var bytes = {var_name}[i].Serialize(); Array.Copy(bytes, 0, buffer, {base_offset} + i * {element_size}, bytes.Length); }}')
+                            lines.append(f'                    if ({var_name}[i] != null) {var_name}[i].SerializeTo(buffer, {base_offset} + i * {element_size});')
                 elif field.max_size is not None:
                     # Variable array
                     count_size = 2 if field.max_size > 255 else 1
@@ -305,7 +305,7 @@ class FieldCSharpGen():
                         if use_offset_param:
                             lines.append(f'                    if ({var_name}Data[i] != null) {var_name}Data[i].SerializeTo(buffer, {fmt_offset(base_offset + count_size)} + i * {element_size});')
                         else:
-                            lines.append(f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Serialize(); Array.Copy(bytes, 0, buffer, {base_offset + count_size} + i * {element_size}, bytes.Length); }}')
+                            lines.append(f'                    if ({var_name}Data[i] != null) {var_name}Data[i].SerializeTo(buffer, {base_offset + count_size} + i * {element_size});')
         elif type_name in csharp_type_sizes:
             # Single primitive field (not array)
             size = csharp_type_sizes[type_name]
@@ -893,7 +893,7 @@ class MessageCSharpGen():
                 else:
                     result += f'            if ({var_name}Data != null)\n'
                     result += f'                for (int i = 0; i < {var_name}Count; i++)\n'
-                    result += f'                    if ({var_name}Data[i] != null) {{ var bytes = {var_name}Data[i].Serialize(); Array.Copy(bytes, 0, buffer, offset + i * {element_size}, bytes.Length); }}\n'
+                    result += f'                    if ({var_name}Data[i] != null) {var_name}Data[i].SerializeTo(buffer, offset + i * {element_size});\n'
                     result += f'            offset += {var_name}Count * {element_size};\n'
             elif normalize_bytes_type(type_name) == "string" and f.max_size is not None:
                 length_bytes = 2 if f.max_size > 255 else 1
@@ -940,7 +940,7 @@ class MessageCSharpGen():
                     result += f'            buffer[offset++] = (byte){var_name};\n'
                 else:
                     # Nested struct
-                    result += f'            if ({var_name} != null) {{ var nestedBytes = {var_name}.Serialize(); Array.Copy(nestedBytes, 0, buffer, offset, nestedBytes.Length); }}\n'
+                    result += f'            if ({var_name} != null) {var_name}.SerializeTo(buffer, offset);\n'
                     result += f'            offset += {f.size};\n'
         
         # Oneofs: write discriminator then union payload (or length-prefix + variant bytes for variable oneof)
@@ -960,10 +960,9 @@ class MessageCSharpGen():
                     effective_size = max(field_size, oneof.min_size_override) if oneof.min_size_override else field_size
                     result += f'            if ((int){oneof_pascal}Discriminator == {disc_val} && {field_var} != null)\n'
                     result += f'            {{\n'
-                    result += f'                var {field_name}Bytes = {field_var}.Serialize();\n'
                     result += f'                BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), (ushort){effective_size});\n'
                     result += f'                offset += 2;\n'
-                    result += f'                Array.Copy({field_name}Bytes, 0, buffer, offset, {field_name}Bytes.Length);\n'
+                    result += f'                {field_var}.SerializeTo(buffer, offset);\n'
                     result += f'                offset += {effective_size};\n'
                     result += f'            }}\n'
                 result += f'            else if ({oneof_pascal}Discriminator == 0 || ({" && ".join(f"(int){oneof_pascal}Discriminator != {dv}" for dv, _, _ in oneof.variant_info)}))\n'
@@ -989,8 +988,7 @@ class MessageCSharpGen():
                     else:
                         result += f'                else if ({field_var} != null)\n'
                     result += '                {\n'
-                    result += f'                    var {field_name}Bytes = {field_var}.Serialize();\n'
-                    result += f'                    Array.Copy({field_name}Bytes, 0, buffer, offset, {field_name}Bytes.Length);\n'
+                    result += f'                    {field_var}.SerializeTo(buffer, offset);\n'
                     result += '                }\n'
                 result += f'                offset += _{oneof_name}_tlen;\n'
                 result += f'            }}\n'
@@ -1005,8 +1003,7 @@ class MessageCSharpGen():
                     else:
                         result += f'            else if ({field_var} != null)\n'
                     result += '            {\n'
-                    result += f'                var {field_name}Bytes = {field_var}.Serialize();\n'
-                    result += f'                Array.Copy({field_name}Bytes, 0, buffer, offset, {field_name}Bytes.Length);\n'
+                    result += f'                {field_var}.SerializeTo(buffer, offset);\n'
                     result += '            }\n'
                 result += f'            offset += {oneof.size};\n'
         
@@ -1597,6 +1594,13 @@ class FileCSharpGen():
         result += '    public static class MessageDefinitions\n'
         result += '    {\n'
 
+        # Zero-copy span deserializer delegate (ReadOnlySpan cannot be a Func<> type argument).
+        result += '        /// <summary>\n'
+        result += '        /// Zero-copy deserializer over a payload span (avoids the byte[] allocation\n'
+        result += '        /// that the byte[]-based <see cref="MessageEntry.Deserializer"/> incurs).\n'
+        result += '        /// </summary>\n'
+        result += '        public delegate IStructFrameMessage? SpanDeserializerFn(ReadOnlySpan<byte> payload);\n\n'
+
         # Generate MessageEntry record for the registry
         result += '        /// <summary>\n'
         result += '        /// Information about a registered message type.\n'
@@ -1606,6 +1610,7 @@ class FileCSharpGen():
         result += '            string Name,\n'
         result += '            Type PayloadType,\n'
         result += '            Func<byte[], IStructFrameMessage?> Deserializer,\n'
+        result += '            SpanDeserializerFn SpanDeserializer,\n'
         result += '            int MaxSize,\n'
         result += '            byte Magic1,\n'
         result += '            byte Magic2\n'
@@ -1628,9 +1633,9 @@ class FileCSharpGen():
                     magic2 = f'{structName}.Magic2'
                 if package.package_id is not None:
                     combined_msg_id = (package.package_id << 8) | msg.id
-                    result += f'            {{ {combined_msg_id}, new MessageEntry({combined_msg_id}, "{msg.name}", typeof({structName}), data => {structName}.Deserialize(data), {structName}.MaxSize, {magic1}, {magic2}) }},\n'
+                    result += f'            {{ {combined_msg_id}, new MessageEntry({combined_msg_id}, "{msg.name}", typeof({structName}), data => {structName}.Deserialize(data), (ReadOnlySpan<byte> p) => {structName}.Deserialize(p), {structName}.MaxSize, {magic1}, {magic2}) }},\n'
                 else:
-                    result += f'            {{ {structName}.MsgId, new MessageEntry({structName}.MsgId, "{msg.name}", typeof({structName}), data => {structName}.Deserialize(data), {structName}.MaxSize, {magic1}, {magic2}) }},\n'
+                    result += f'            {{ {structName}.MsgId, new MessageEntry({structName}.MsgId, "{msg.name}", typeof({structName}), data => {structName}.Deserialize(data), (ReadOnlySpan<byte> p) => {structName}.Deserialize(p), {structName}.MaxSize, {magic1}, {magic2}) }},\n'
 
         result += '        };\n\n'
 
@@ -1774,8 +1779,12 @@ class FileCSharpGen():
         result += '            {\n'
         result += '                return null;\n'
         result += '            }\n'
-        result += '            \n'
-        result += '            return Deserialize(frameInfo.MsgId, frameInfo.ExtractPayload());\n'
+        result += '            // Zero-copy: deserialize straight from the payload span (no ExtractPayload alloc).\n'
+        result += '            if (_registryById.TryGetValue(frameInfo.MsgId, out var entry))\n'
+        result += '            {\n'
+        result += '                return entry.SpanDeserializer(frameInfo.GetPayloadSpan());\n'
+        result += '            }\n'
+        result += '            return null;\n'
         result += '        }\n\n'
 
         # Generic Deserialize<T>

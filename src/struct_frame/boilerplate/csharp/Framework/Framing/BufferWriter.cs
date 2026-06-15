@@ -91,6 +91,21 @@ namespace StructFrame.Framing
             Array.Copy(_buffer, 0, result, 0, _offset);
             return result;
         }
+
+        /// <summary>
+        /// Get the written bytes as a zero-copy view over the internal buffer.
+        /// Avoids the allocation + copy that <see cref="GetData"/> incurs; the returned
+        /// memory is only valid until the next write to this BufferWriter.
+        /// </summary>
+        public ReadOnlyMemory<byte> GetWrittenMemory()
+            => _buffer == null ? ReadOnlyMemory<byte>.Empty : _buffer.AsMemory(0, _offset);
+
+        /// <summary>
+        /// Get the written bytes as a zero-copy span over the internal buffer.
+        /// Valid only until the next write to this BufferWriter.
+        /// </summary>
+        public ReadOnlySpan<byte> GetWrittenSpan()
+            => _buffer == null ? ReadOnlySpan<byte>.Empty : _buffer.AsSpan(0, _offset);
     }
 
     /// <summary>
