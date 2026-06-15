@@ -35,7 +35,16 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument('--allow-missing-baseline', action='store_true',
                     help='warn and skip when baseline file is missing')
+    ap.add_argument('--update', action='store_true',
+                    help='refresh public-api.txt from current generated output')
     args = ap.parse_args()
+
+    current = collect_public_items()
+
+    if args.update:
+        BASELINE.write_text('\n'.join(current) + '\n', encoding='utf-8')
+        print(f'crates.io API stability: updated baseline {BASELINE} ({len(current)} items).')
+        return 0
 
     if not BASELINE.exists():
         msg = 'crates.io API stability: missing public-api.txt baseline.'
@@ -45,8 +54,6 @@ def main() -> int:
         print(msg, file=sys.stderr)
         print('Create tests/api_stability/crates/public-api.txt or run with --allow-missing-baseline.', file=sys.stderr)
         return 1
-
-    current = collect_public_items()
     expected = [
         l.strip() for l in BASELINE.read_text().splitlines()
         if l.strip() and not l.startswith('#')
