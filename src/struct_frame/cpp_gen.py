@@ -497,10 +497,25 @@ class MessageCppGen():
         result += f'     */\n'
         result += f'    size_t serialize(uint8_t* buffer) const {{\n'
         result += f'        size_t offset = 0;\n'
-        
+
+        # Coalesce runs of consecutive fixed-size fields into a single memcpy. Structs are
+        # #pragma pack(1) (no padding) in declaration order, so a run starting at &{first}
+        # for the summed byte count is contiguous and matches the wire layout.
+        _run_start = [None]
+        _run_size = [0]
+
+        def _flush_fixed_run():
+            if _run_start[0] is None:
+                return
+            nonlocal result
+            result += f'        std::memcpy(buffer + offset, &{_run_start[0]}, {_run_size[0]}); offset += {_run_size[0]};  // fixed run\n'
+            _run_start[0] = None
+            _run_size[0] = 0
+
         for key, field in msg.fields.items():
             var_name = field.name
             if field.is_array and field.max_size is not None:
+                _flush_fixed_run()
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
@@ -510,13 +525,19 @@ class MessageCppGen():
                 result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.count * {element_size});\n'
                 result += f'        offset += {var_name}.count * {element_size};\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
+                _flush_fixed_run()
                 result += f'        buffer[offset++] = {var_name}.length;\n'
                 result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.length);\n'
                 result += f'        offset += {var_name}.length;\n'
             else:
-                result += f'        std::memcpy(buffer + offset, &{var_name}, {field.size});\n'
-                result += f'        offset += {field.size};\n'
-        
+                # Fixed-size field - accumulate into the current contiguous run
+                if _run_start[0] is None:
+                    _run_start[0] = var_name
+                _run_size[0] += field.size
+
+        # Flush any trailing fixed run before the oneofs
+        _flush_fixed_run()
+
         # Oneofs: write discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:

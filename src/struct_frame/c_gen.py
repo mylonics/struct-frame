@@ -511,9 +511,26 @@ class MessageCGen():
         
         _type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4,
                        "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+
+        # Coalesce runs of consecutive fixed-size fields into a single memcpy. Structs are
+        # #pragma pack(1) (no padding) and laid out in declaration order, so a run starting at
+        # &msg->{first} for the summed byte count is contiguous and matches the wire layout.
+        _run_start = [None]   # name of first field in the current fixed run
+        _run_size = [0]
+
+        def _flush_fixed_run():
+            if _run_start[0] is None:
+                return
+            nonlocal result
+            result += f'    // fixed run ({_run_size[0]} bytes)\n'
+            result += f'    memcpy(buffer + offset, &msg->{_run_start[0]}, {_run_size[0]}); offset += {_run_size[0]};\n'
+            _run_start[0] = None
+            _run_size[0] = 0
+
         for key, field in msg.fields.items():
             var_name = field.name
             if field.is_array and field.max_size is not None:
+                _flush_fixed_run()
                 # Variable array: count is stored as uint8_t or uint16_t in the struct
                 count_bytes = 2 if field.max_size > 255 else 1
                 if field.field_type in ("string", "bytes"):
@@ -538,6 +555,7 @@ class MessageCGen():
                     result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
+                _flush_fixed_run()
                 # Variable string: length stored as uint8_t or uint16_t in the struct
                 length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {var_name}: variable string\n'
@@ -548,11 +566,14 @@ class MessageCGen():
                 result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.length);\n'
                 result += f'    offset += msg->{var_name}.length;\n'
             else:
-                # Fixed-size field - copy directly
-                result += f'    // {var_name}: fixed size ({field.size} bytes)\n'
-                result += f'    memcpy(buffer + offset, &msg->{var_name}, {field.size});\n'
-                result += f'    offset += {field.size};\n'
-        
+                # Fixed-size field - accumulate into the current contiguous run
+                if _run_start[0] is None:
+                    _run_start[0] = var_name
+                _run_size[0] += field.size
+
+        # Flush any trailing fixed run before the oneofs
+        _flush_fixed_run()
+
         # Oneofs: write discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
