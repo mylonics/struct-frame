@@ -30,11 +30,11 @@ SRC_DIR = REPO_ROOT / "src"
 PROTO_FILE = REPO_ROOT / "tests" / "proto" / "test_messages.sf"
 
 
-def _run_generator(extra_args, out_dir: Path) -> None:
+def _run_generator_for_proto(proto_file: Path, out_dir: Path, extra_args) -> None:
     cmd = [
         sys.executable,
         str(SRC_DIR / "main.py"),
-        str(PROTO_FILE),
+        str(proto_file),
         "--build_c",
         "--c_path",
         str(out_dir / "c") + os.sep,
@@ -46,6 +46,10 @@ def _run_generator(extra_args, out_dir: Path) -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
     subprocess.check_call(cmd, env=env)
+
+
+def _run_generator(extra_args, out_dir: Path) -> None:
+    _run_generator_for_proto(PROTO_FILE, out_dir, extra_args)
 
 
 def _read(path: Path) -> str:
@@ -111,6 +115,90 @@ def test_no_packed_flag():
         _wire_size_parity(baseline_dir / "c", nopacked_dir / "c")
 
     print("PASS: --no_packed flag tests")
+
+
+def test_all_variable_messages_no_fixed_run_memcpy() -> None:
+    """All-variable packages are not packed by default; fixed fields must serialize per-field."""
+    proto = """\
+package all_variable_pad;
+
+message PadMsg {
+  option msgid = 1;
+  option variable = true;
+
+  uint8 a = 1;
+  uint32 b = 2;
+  uint8 tail = 3;
+  string name = 4 [max_size=8];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        sf = tmp_path / "all_variable_pad.sf"
+        sf.write_text(proto, encoding="utf-8")
+        out_dir = tmp_path / "generated"
+        _run_generator_for_proto(sf, out_dir, [])
+
+        c_header = _read(out_dir / "c" / "all_variable_pad.structframe.h")
+        cpp_header = _read(out_dir / "cpp" / "all_variable_pad.structframe.hpp")
+        _check("#pragma pack(push, 1)" not in c_header,
+               "all-variable C package should not emit #pragma pack(push, 1)")
+        _check("#pragma pack(push, 1)" not in cpp_header,
+               "all-variable C++ package should not emit #pragma pack(push, 1)")
+
+        c_src = out_dir / "c" / "_all_variable_padding.c"
+        c_src.write_text(
+            '#include <string.h>\n'
+            '#include "all_variable_pad.structframe.h"\n'
+            "int main(void) {\n"
+            "    AllVariablePadPadMsg m = {0};\n"
+            "    m.a = 0x11;\n"
+            "    m.b = 0x22334455u;\n"
+            "    m.tail = 0x66;\n"
+            "    m.name.length = 2;\n"
+            "    m.name.data[0] = 'x';\n"
+            "    m.name.data[1] = 'y';\n"
+            "    uint8_t buf[64] = {0};\n"
+            "    size_t n = AllVariablePadPadMsg_serialize(&m, buf);\n"
+            "    if (n < 9) return 1;\n"
+            "    if (buf[0] != 0x11 || buf[1] != 0x55 || buf[2] != 0x44 ||\n"
+            "        buf[3] != 0x33 || buf[4] != 0x22 || buf[5] != 0x66) return 2;\n"
+            "    if (buf[6] != 2 || buf[7] != 'x' || buf[8] != 'y') return 3;\n"
+            "    return 0;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        c_out = out_dir / "c" / "_all_variable_padding.out"
+        subprocess.check_call(["gcc", "-std=c99", "-I", str(out_dir / "c"), str(c_src), "-o", str(c_out)])
+        subprocess.check_call([str(c_out)])
+
+        cpp_src = out_dir / "cpp" / "_all_variable_padding.cpp"
+        cpp_src.write_text(
+            '#include "all_variable_pad.structframe.hpp"\n'
+            "using structframe::all_variable_pad::PadMsg;\n"
+            "int main() {\n"
+            "    PadMsg m{};\n"
+            "    m.a = 0x11;\n"
+            "    m.b = 0x22334455u;\n"
+            "    m.tail = 0x66;\n"
+            "    m.name.length = 2;\n"
+            "    m.name.data[0] = 'x';\n"
+            "    m.name.data[1] = 'y';\n"
+            "    uint8_t buf[64]{};\n"
+            "    size_t n = m.serialize(buf);\n"
+            "    if (n < 9) return 1;\n"
+            "    if (buf[0] != 0x11 || buf[1] != 0x55 || buf[2] != 0x44 ||\n"
+            "        buf[3] != 0x33 || buf[4] != 0x22 || buf[5] != 0x66) return 2;\n"
+            "    if (buf[6] != 2 || buf[7] != 'x' || buf[8] != 'y') return 3;\n"
+            "    return 0;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        cpp_out = out_dir / "cpp" / "_all_variable_padding.out"
+        subprocess.check_call(["g++", "-std=c++20", "-I", str(out_dir / "cpp"), str(cpp_src), "-o", str(cpp_out)])
+        subprocess.check_call([str(cpp_out)])
+
+    print("PASS: all-variable fixed-field serialization test")
 
 
 def _compile_c(c_dir: Path) -> None:
@@ -296,3 +384,4 @@ def _wire_size_parity(baseline_c_dir: Path, nopacked_c_dir: Path) -> None:
 
 if __name__ == "__main__":
     test_no_packed_flag()
+    test_all_variable_messages_no_fixed_run_memcpy()

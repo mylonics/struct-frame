@@ -54,7 +54,7 @@ export function fletcherChecksumExt(buffer: Uint8Array | number[], start: number
 // produces for a typed-array input: a typed array is copied directly via its own slice().
 function copyPayload(buffer: Uint8Array | number[], start: number, end?: number): Uint8Array {
     if (buffer instanceof Uint8Array) {
-        return buffer.slice(start, end);
+        return Uint8Array.prototype.slice.call(buffer, start, end);
     }
     // number[] input: slice the array then build the typed array once.
     return new Uint8Array(end === undefined ? buffer.slice(start) : buffer.slice(start, end));

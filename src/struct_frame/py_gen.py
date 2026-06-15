@@ -277,8 +277,8 @@ class MessagePyGen():
         # struct "<" uses standard sizes with no alignment padding, so concatenating the
         # individual format chars produces byte-identical output to packing each separately,
         # while cutting per-field struct.pack call overhead (significant in CPython).
-        _pending_fmt: list[str] = []
-        _pending_vals: list[str] = []
+        _pending_fmt = []
+        _pending_vals = []
 
         def _flush_scalars():
             nonlocal result, _pending_fmt, _pending_vals
