@@ -86,7 +86,7 @@ export class UdpTransport extends BaseTransport {
       }
 
       this.socket.send(
-        Buffer.from(data),
+        this.toBuffer(data),
         this.udpConfig.remotePort,
         this.udpConfig.remoteHost,
         (err, bytes) => {

@@ -25,21 +25,25 @@ impl ProfileConfig {
     }
 
     /// Total header size (start bytes + payload header fields)
+    #[inline]
     pub fn header_size(&self) -> usize {
         self.header.num_start_bytes as usize + self.payload.header_size()
     }
 
     /// Footer size (CRC bytes)
+    #[inline]
     pub fn footer_size(&self) -> usize {
         self.payload.footer_size()
     }
 
     /// Total overhead
+    #[inline]
     pub fn overhead(&self) -> usize {
         self.header_size() + self.footer_size()
     }
 
     /// Compute start byte1 for this profile
+    #[inline]
     pub fn computed_start_byte1(&self) -> u8 {
         if self.header.encodes_payload_type && self.header.num_start_bytes == 1 {
             get_tiny_start_byte(self.payload.payload_type as u8)
@@ -49,6 +53,7 @@ impl ProfileConfig {
     }
 
     /// Compute start byte2 for this profile (Basic headers only)
+    #[inline]
     pub fn computed_start_byte2(&self) -> u8 {
         if self.header.encodes_payload_type && self.header.num_start_bytes == 2 {
             get_basic_second_start_byte(self.payload.payload_type as u8)
@@ -106,6 +111,7 @@ fn max_payload_for_length_bytes(length_bytes: u8) -> usize {
 /// Returns the number of bytes written, or 0 on error (buffer too small,
 /// payload exceeds length-field capacity, or msg_id > 255 on a profile
 /// without a pkg_id field).
+#[inline]
 pub fn encode_with_crc(
     config: &ProfileConfig,
     buffer: &mut [u8],
@@ -204,6 +210,7 @@ pub fn encode_with_crc(
 /// Same as encode_with_crc but accepts base_size for the extension-aware CRC algorithm.
 /// When base_size == payload.len(), produces identical output to encode_with_crc.
 #[allow(clippy::too_many_arguments)]
+#[inline]
 pub fn encode_with_crc_ext(
     config: &ProfileConfig,
     buffer: &mut [u8],
@@ -285,6 +292,7 @@ pub fn encode_with_crc_ext(
 /// Encode a minimal message (no length, no CRC) into a buffer.
 ///
 /// Returns the number of bytes written, or 0 on error.
+#[inline]
 pub fn encode_minimal(
     config: &ProfileConfig,
     buffer: &mut [u8],
@@ -329,6 +337,7 @@ pub fn encode_minimal(
 ///
 /// Returns FrameMsgInfo with valid=true if parsing succeeded.
 /// Sets status to WaitingForStart on bad start bytes, Collecting on insufficient data.
+#[inline]
 pub fn parse_with_crc(
     config: &ProfileConfig,
     buffer: &[u8],
@@ -453,6 +462,7 @@ pub fn parse_with_crc(
 
 /// Parse a minimal frame (no length, no CRC) from a buffer.
 /// Sets status to WaitingForStart or Collecting on failure.
+#[inline]
 pub fn parse_minimal(
     config: &ProfileConfig,
     buffer: &[u8],
@@ -662,6 +672,7 @@ pub fn encode_message_minimal<M: StructFrameMessage>(
 /// Encode any StructFrameMessage using the profile config.
 /// Dispatches to encode_message_crc or encode_message_minimal based on config.has_crc.
 /// Returns the number of bytes written, or 0 on error.
+#[inline]
 pub fn encode_message<M: StructFrameMessage>(
     config: &ProfileConfig,
     buffer: &mut [u8],

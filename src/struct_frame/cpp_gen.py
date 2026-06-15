@@ -303,7 +303,7 @@ class MessageCppGen():
         return ' && '.join(comparisons)
     
     @staticmethod
-    def generate(msg, use_namespace=False, package=None, equality=False):
+    def generate(msg, use_namespace=False, package=None, equality=False, packed_structs=True):
         leading_comment = msg.comments
 
         result = ''
@@ -411,7 +411,7 @@ class MessageCppGen():
         
         # Add variable message constants and methods
         if msg.variable:
-            result += MessageCppGen._generate_variable_methods(msg, structName)
+            result += MessageCppGen._generate_variable_methods(msg, structName, packed_structs)
         
         # Add unified unpack() method only for messages with MSG_ID (have MessageBase)
         if has_msg_id:
@@ -426,7 +426,7 @@ class MessageCppGen():
         return result + '\n'
     
     @staticmethod
-    def _generate_variable_methods(msg, structName):
+    def _generate_variable_methods(msg, structName, packed_structs=True):
         """Generate variable-length encoding methods for C++ structs."""
         result = ''
         
@@ -497,10 +497,26 @@ class MessageCppGen():
         result += f'     */\n'
         result += f'    size_t serialize(uint8_t* buffer) const {{\n'
         result += f'        size_t offset = 0;\n'
-        
+
+        # Coalesce runs of fixed-size fields only when struct packing is enabled.
+        # Without packing, padding can appear between fields and run memcpy would
+        # no longer match wire layout.
+        _run_start = [None]
+        _run_size = [0]
+
+        def _flush_fixed_run():
+            if _run_start[0] is None:
+                return
+            nonlocal result
+            result += f'        std::memcpy(buffer + offset, &{_run_start[0]}, {_run_size[0]}); offset += {_run_size[0]};  // fixed run\n'
+            _run_start[0] = None
+            _run_size[0] = 0
+
         for key, field in msg.fields.items():
             var_name = field.name
             if field.is_array and field.max_size is not None:
+                if packed_structs:
+                    _flush_fixed_run()
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
@@ -510,13 +526,26 @@ class MessageCppGen():
                 result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.count * {element_size});\n'
                 result += f'        offset += {var_name}.count * {element_size};\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
+                if packed_structs:
+                    _flush_fixed_run()
                 result += f'        buffer[offset++] = {var_name}.length;\n'
                 result += f'        std::memcpy(buffer + offset, {var_name}.data, {var_name}.length);\n'
                 result += f'        offset += {var_name}.length;\n'
             else:
-                result += f'        std::memcpy(buffer + offset, &{var_name}, {field.size});\n'
-                result += f'        offset += {field.size};\n'
-        
+                if packed_structs:
+                    # Fixed-size field - accumulate into the current contiguous run
+                    if _run_start[0] is None:
+                        _run_start[0] = var_name
+                    _run_size[0] += field.size
+                else:
+                    # Without packing, serialize each field independently to avoid padding bytes.
+                    result += f'        std::memcpy(buffer + offset, &{var_name}, {field.size});\n'
+                    result += f'        offset += {field.size};\n'
+
+        # Flush any trailing fixed run before the oneofs
+        if packed_structs:
+            _flush_fixed_run()
+
         # Oneofs: write discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
@@ -911,13 +940,14 @@ class FileCppGen():
             # When all messages are variable, struct packing is not needed because
             # serialization/deserialization is performed field-by-field.
             all_variable = all(m.variable for m in package.messages.values())
-            if not all_variable:
+            packed_structs = not all_variable
+            if packed_structs:
                 yield '#pragma pack(push, 1)\n'
             # Need to sort messages to make sure dependencies are properly met
 
             for key, msg in package.sortedMessages().items():
-                yield MessageCppGen.generate(msg, use_namespace, package, equality) + '\n'
-            if not all_variable:
+                yield MessageCppGen.generate(msg, use_namespace, package, equality, packed_structs) + '\n'
+            if packed_structs:
                 yield '#pragma pack(pop)\n\n'
             else:
                 yield '\n'

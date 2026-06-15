@@ -96,7 +96,7 @@ class UdpTransport extends transport_1.BaseTransport {
                 reject(new Error('UDP socket not connected'));
                 return;
             }
-            this.socket.send(Buffer.from(data), this.udpConfig.remotePort, this.udpConfig.remoteHost, (err, bytes) => {
+            this.socket.send(this.toBuffer(data), this.udpConfig.remotePort, this.udpConfig.remoteHost, (err, bytes) => {
                 if (err) {
                     reject(err);
                 }

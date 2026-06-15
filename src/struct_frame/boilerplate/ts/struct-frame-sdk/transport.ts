@@ -100,6 +100,18 @@ export abstract class BaseTransport implements ITransport {
     }
   }
 
+  /**
+   * Wrap a Uint8Array as a Node Buffer without copying when possible.
+   * Encoded frames are freshly-allocated, non-reused buffers, so a view over the
+   * backing ArrayBuffer is safe to hand to the socket (it stays alive until the write
+   * completes). Avoids the per-send copy that `Buffer.from(uint8array)` would incur.
+   */
+  protected toBuffer(data: Uint8Array): Buffer {
+    return Buffer.isBuffer(data)
+      ? data
+      : Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+  }
+
   protected handleError(error: Error): void {
     if (this.errorCallback) {
       this.errorCallback(error);

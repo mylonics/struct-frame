@@ -102,7 +102,7 @@ export class SerialTransport extends BaseTransport {
         return;
       }
 
-      this.port.write(Buffer.from(data), (err) => {
+      this.port.write(this.toBuffer(data), (err) => {
         if (err) {
           reject(err);
         } else {

@@ -13,7 +13,7 @@
  * header + payload configurations (mirroring the C++ FrameProfiles.hpp structure).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ProfileNetworkAccumulatingReader = exports.ProfileNetworkWriter = exports.ProfileNetworkReader = exports.ProfileBulkAccumulatingReader = exports.ProfileBulkWriter = exports.ProfileBulkReader = exports.ProfileIPCAccumulatingReader = exports.ProfileIPCWriter = exports.ProfileIPCReader = exports.ProfileSensorAccumulatingReader = exports.ProfileSensorWriter = exports.ProfileSensorReader = exports.ProfileStandardAccumulatingReader = exports.ProfileStandardWriter = exports.ProfileStandardReader = exports.AccumulatingReader = exports.AccumulatingReaderState = exports.BufferWriter = exports.BufferReader = exports.ProfileNetworkConfig = exports.ProfileBulkConfig = exports.ProfileIPCConfig = exports.ProfileSensorConfig = exports.ProfileStandardConfig = void 0;
+exports.AccumulatingReader = exports.AccumulatingReaderState = exports.BufferWriter = exports.BufferReader = exports.ProfileNetworkConfig = exports.ProfileBulkConfig = exports.ProfileIPCConfig = exports.ProfileSensorConfig = exports.ProfileStandardConfig = void 0;
 exports.profileHeaderSize = profileHeaderSize;
 exports.profileFooterSize = profileFooterSize;
 exports.profileOverhead = profileOverhead;
@@ -112,14 +112,17 @@ function encodeMessage(config, msg, options = {}) {
     // serialize() returns variable-length data for variable messages,
     // and MAX_SIZE data for non-variable messages
     // Note: Minimal profiles (no length field) use MAX_SIZE even for variable messages
+    // payload is read-only here (its bytes are bulk-copied into the frame via buffer.set
+    // below), so we use the message's buffer/serialize output directly without an extra
+    // defensive Uint8Array copy. The returned frame is always an independent allocation.
     let payload;
     if (isVariable && config.payload.hasLength && typeof msg.serialize === 'function') {
         // Variable message with length field - serialize() returns only used bytes
-        payload = new Uint8Array(msg.serialize());
+        payload = msg.serialize();
     }
     else {
         // Non-variable message OR minimal profile - use full buffer
-        payload = new Uint8Array(msg._buffer);
+        payload = msg._buffer;
     }
     const magic1 = msg.getMagic1();
     const magic2 = msg.getMagic2();
@@ -202,6 +205,8 @@ function encodeMessage(config, msg, options = {}) {
  */
 function parseFrameWithCrc(config, buffer, getMessageInfo) {
     const result = (0, frame_base_1.createFrameMsgInfo)();
+    const header = config.header;
+    const payload = config.payload;
     const length = buffer.length;
     const headerSize = profileHeaderSize(config);
     const footerSize = profileFooterSize(config);
@@ -210,28 +215,28 @@ function parseFrameWithCrc(config, buffer, getMessageInfo) {
     }
     let idx = 0;
     // Verify start bytes
-    if (config.header.numStartBytes >= 1) {
+    if (header.numStartBytes >= 1) {
         if (buffer[idx++] !== config.startByte1) {
             return result;
         }
     }
-    if (config.header.numStartBytes >= 2) {
+    if (header.numStartBytes >= 2) {
         if (buffer[idx++] !== config.startByte2) {
             return result;
         }
     }
     const crcStart = idx;
     // Skip optional fields before length
-    if (config.payload.hasSeq)
+    if (payload.hasSeq)
         idx++;
-    if (config.payload.hasSysId)
+    if (payload.hasSysId)
         idx++;
-    if (config.payload.hasCompId)
+    if (payload.hasCompId)
         idx++;
     // Read length field
     let msgLen = 0;
-    if (config.payload.hasLength) {
-        if (config.payload.lengthBytes === 1) {
+    if (payload.hasLength) {
+        if (payload.lengthBytes === 1) {
             msgLen = buffer[idx++];
         }
         else {
@@ -241,7 +246,7 @@ function parseFrameWithCrc(config, buffer, getMessageInfo) {
     }
     // Read message ID (16-bit: high byte is pkg_id when hasPkgId, low byte is msg_id)
     let msgId = 0;
-    if (config.payload.hasPkgId) {
+    if (payload.hasPkgId) {
         msgId = buffer[idx++] << 8; // pkg_id (high byte)
     }
     msgId |= buffer[idx++]; // msg_id (low byte)
@@ -264,7 +269,7 @@ function parseFrameWithCrc(config, buffer, getMessageInfo) {
         }
     }
     let ck;
-    if (config.payload.hasLength && baseSize < msgLen) {
+    if (payload.hasLength && baseSize < msgLen) {
         const baseEnd = crcStart + (crcLen - msgLen) + baseSize;
         ck = (0, frame_base_1.fletcherChecksumExt)(buffer, crcStart, baseEnd, crcStart + crcLen, magic1, magic2);
     }
@@ -294,18 +299,19 @@ function parseFrameWithCrc(config, buffer, getMessageInfo) {
  */
 function parseFrameMinimal(config, buffer, getMessageInfo) {
     const result = (0, frame_base_1.createFrameMsgInfo)();
+    const header = config.header;
     const headerSize = profileHeaderSize(config);
     if (buffer.length < headerSize) {
         return result;
     }
     let idx = 0;
     // Verify start bytes
-    if (config.header.numStartBytes >= 1) {
+    if (header.numStartBytes >= 1) {
         if (buffer[idx++] !== config.startByte1) {
             return result;
         }
     }
-    if (config.header.numStartBytes >= 2) {
+    if (header.numStartBytes >= 2) {
         if (buffer[idx++] !== config.startByte2) {
             return result;
         }
