@@ -111,8 +111,10 @@ export class StructFrameSdk {
    */
   async sendRaw(msgId: number, data: Uint8Array): Promise<SendResult> {
     const info = this.getMessageInfo?.(msgId);
+    // encodeMessage only reads _buffer (bulk-copied into the frame), so pass the
+    // caller's payload through directly instead of allocating a defensive copy.
     const wrapper = {
-      _buffer: Buffer.from(data),
+      _buffer: data,
       getMsgId: () => msgId,
       getMagic1: () => info?.magic1 ?? 0,
       getMagic2: () => info?.magic2 ?? 0,
@@ -158,13 +160,13 @@ export class StructFrameSdk {
             this.log(`Failed to deserialize message ID ${result.msgId}: ${error}`);
           }
         }
-        handlers.forEach(handler => {
+        for (let i = 0; i < handlers.length; i++) {
           try {
-            handler(message, result.msgId);
+            handlers[i](message, result.msgId);
           } catch (error) {
             this.log(`Handler error for message ID ${result.msgId}: ${error}`);
           }
-        });
+        }
       }
     }
   }

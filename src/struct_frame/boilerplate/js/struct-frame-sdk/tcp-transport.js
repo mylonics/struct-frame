@@ -101,7 +101,7 @@ class TcpTransport extends transport_1.BaseTransport {
                 reject(new Error('TCP socket not connected'));
                 return;
             }
-            this.socket.write(Buffer.from(data), (err) => {
+            this.socket.write(this.toBuffer(data), (err) => {
                 if (err) {
                     reject(err);
                 }

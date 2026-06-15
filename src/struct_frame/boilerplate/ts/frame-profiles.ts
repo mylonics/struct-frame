@@ -229,13 +229,16 @@ export function encodeMessage(
     // serialize() returns variable-length data for variable messages,
     // and MAX_SIZE data for non-variable messages
     // Note: Minimal profiles (no length field) use MAX_SIZE even for variable messages
+    // payload is read-only here (its bytes are bulk-copied into the frame via buffer.set
+    // below), so we use the message's buffer/serialize output directly without an extra
+    // defensive Uint8Array copy. The returned frame is always an independent allocation.
     let payload: Uint8Array;
     if (isVariable && config.payload.hasLength && typeof msg.serialize === 'function') {
         // Variable message with length field - serialize() returns only used bytes
-        payload = new Uint8Array(msg.serialize());
+        payload = msg.serialize();
     } else {
         // Non-variable message OR minimal profile - use full buffer
-        payload = new Uint8Array(msg._buffer);
+        payload = msg._buffer;
     }
     
     const magic1 = msg.getMagic1();
@@ -333,6 +336,8 @@ export function parseFrameWithCrc(
     getMessageInfo?: GetMessageInfo
 ): FrameMsgInfo {
     const result = createFrameMsgInfo();
+    const header = config.header;
+    const payload = config.payload;
     const length = buffer.length;
     const headerSize = profileHeaderSize(config);
     const footerSize = profileFooterSize(config);
@@ -344,12 +349,12 @@ export function parseFrameWithCrc(
     let idx = 0;
 
     // Verify start bytes
-    if (config.header.numStartBytes >= 1) {
+    if (header.numStartBytes >= 1) {
         if (buffer[idx++] !== config.startByte1) {
             return result;
         }
     }
-    if (config.header.numStartBytes >= 2) {
+    if (header.numStartBytes >= 2) {
         if (buffer[idx++] !== config.startByte2) {
             return result;
         }
@@ -358,14 +363,14 @@ export function parseFrameWithCrc(
     const crcStart = idx;
 
     // Skip optional fields before length
-    if (config.payload.hasSeq) idx++;
-    if (config.payload.hasSysId) idx++;
-    if (config.payload.hasCompId) idx++;
+    if (payload.hasSeq) idx++;
+    if (payload.hasSysId) idx++;
+    if (payload.hasCompId) idx++;
 
     // Read length field
     let msgLen = 0;
-    if (config.payload.hasLength) {
-        if (config.payload.lengthBytes === 1) {
+    if (payload.hasLength) {
+        if (payload.lengthBytes === 1) {
             msgLen = buffer[idx++];
         } else {
             msgLen = buffer[idx] | (buffer[idx + 1] << 8);
@@ -375,7 +380,7 @@ export function parseFrameWithCrc(
 
     // Read message ID (16-bit: high byte is pkg_id when hasPkgId, low byte is msg_id)
     let msgId = 0;
-    if (config.payload.hasPkgId) {
+    if (payload.hasPkgId) {
         msgId = buffer[idx++] << 8;  // pkg_id (high byte)
     }
     msgId |= buffer[idx++];  // msg_id (low byte)
@@ -402,7 +407,7 @@ export function parseFrameWithCrc(
     }
     
     let ck: [number, number];
-    if (config.payload.hasLength && baseSize < msgLen) {
+    if (payload.hasLength && baseSize < msgLen) {
         const baseEnd = crcStart + (crcLen - msgLen) + baseSize;
         ck = fletcherChecksumExt(buffer, crcStart, baseEnd, crcStart + crcLen, magic1, magic2);
     } else {
@@ -438,6 +443,7 @@ export function parseFrameMinimal(
     getMessageInfo: GetMessageInfo
 ): FrameMsgInfo {
     const result = createFrameMsgInfo();
+    const header = config.header;
     const headerSize = profileHeaderSize(config);
 
     if (buffer.length < headerSize) {
@@ -447,12 +453,12 @@ export function parseFrameMinimal(
     let idx = 0;
 
     // Verify start bytes
-    if (config.header.numStartBytes >= 1) {
+    if (header.numStartBytes >= 1) {
         if (buffer[idx++] !== config.startByte1) {
             return result;
         }
     }
-    if (config.header.numStartBytes >= 2) {
+    if (header.numStartBytes >= 2) {
         if (buffer[idx++] !== config.startByte2) {
             return result;
         }

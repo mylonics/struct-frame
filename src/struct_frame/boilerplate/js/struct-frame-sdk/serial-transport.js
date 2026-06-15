@@ -78,7 +78,7 @@ class SerialTransport extends transport_1.BaseTransport {
                 reject(new Error('Serial port not connected'));
                 return;
             }
-            this.port.write(Buffer.from(data), (err) => {
+            this.port.write(this.toBuffer(data), (err) => {
                 if (err) {
                     reject(err);
                 }

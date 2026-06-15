@@ -86,7 +86,7 @@ export class TcpTransport extends BaseTransport {
         return;
       }
 
-      this.socket.write(Buffer.from(data), (err) => {
+      this.socket.write(this.toBuffer(data), (err) => {
         if (err) {
           reject(err);
         } else {

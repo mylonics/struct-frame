@@ -14,15 +14,15 @@ export function fletcherChecksum(buffer: Uint8Array | number[], start: number = 
     let byte2 = 0;
 
     for (let i = start; i < end; i++) {
-        byte1 = (byte1 + buffer[i]) % 256;
-        byte2 = (byte2 + byte1) % 256;
+        byte1 = (byte1 + buffer[i]) & 0xFF;
+        byte2 = (byte2 + byte1) & 0xFF;
     }
 
     // Add magic numbers at the end
-    byte1 = (byte1 + init1) % 256;
-    byte2 = (byte2 + byte1) % 256;
-    byte1 = (byte1 + init2) % 256;
-    byte2 = (byte2 + byte1) % 256;
+    byte1 = (byte1 + init1) & 0xFF;
+    byte2 = (byte2 + byte1) & 0xFF;
+    byte1 = (byte1 + init2) & 0xFF;
+    byte2 = (byte2 + byte1) & 0xFF;
 
     return [byte1, byte2];
 }
@@ -35,18 +35,29 @@ export function fletcherChecksumExt(buffer: Uint8Array | number[], start: number
     let byte1 = 0;
     let byte2 = 0;
     for (let i = start; i < baseEnd; i++) {
-        byte1 = (byte1 + buffer[i]) % 256;
-        byte2 = (byte2 + byte1) % 256;
+        byte1 = (byte1 + buffer[i]) & 0xFF;
+        byte2 = (byte2 + byte1) & 0xFF;
     }
-    byte1 = (byte1 + init1) % 256;
-    byte2 = (byte2 + byte1) % 256;
-    byte1 = (byte1 + init2) % 256;
-    byte2 = (byte2 + byte1) % 256;
+    byte1 = (byte1 + init1) & 0xFF;
+    byte2 = (byte2 + byte1) & 0xFF;
+    byte1 = (byte1 + init2) & 0xFF;
+    byte2 = (byte2 + byte1) & 0xFF;
     for (let i = baseEnd; i < end; i++) {
-        byte1 = (byte1 + buffer[i]) % 256;
-        byte2 = (byte2 + byte1) % 256;
+        byte1 = (byte1 + buffer[i]) & 0xFF;
+        byte2 = (byte2 + byte1) & 0xFF;
     }
     return [byte1, byte2];
+}
+
+// Extract an owned copy of buffer[start:end] as a Uint8Array.
+// Avoids the boxed intermediate plain-Array that `new Uint8Array(Array.prototype.slice.call(...))`
+// produces for a typed-array input: a typed array is copied directly via its own slice().
+function copyPayload(buffer: Uint8Array | number[], start: number, end?: number): Uint8Array {
+    if (buffer instanceof Uint8Array) {
+        return buffer.slice(start, end);
+    }
+    // number[] input: slice the array then build the typed array once.
+    return new Uint8Array(end === undefined ? buffer.slice(start) : buffer.slice(start, end));
 }
 
 // Parser status indicating the reason a FrameMsgInfo is not valid
@@ -147,7 +158,7 @@ export function validatePayloadWithCrc(
         result.valid = true;
         result.msgId = buffer[headerSize - 1]; // msg_id is last byte of header
         result.msgLen = msgLength;
-        result.msgData = new Uint8Array(Array.prototype.slice.call(buffer, headerSize, buffer.length - footerSize));
+        result.msgData = copyPayload(buffer, headerSize, buffer.length - footerSize);
     }
 
     return result;
@@ -169,7 +180,7 @@ export function validatePayloadMinimal(
     result.valid = true;
     result.msgId = buffer[headerSize - 1]; // msg_id is last byte of header
     result.msgLen = buffer.length - headerSize;
-    result.msgData = new Uint8Array(Array.prototype.slice.call(buffer, headerSize));
+    result.msgData = copyPayload(buffer, headerSize);
 
     return result;
 }
