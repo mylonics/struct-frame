@@ -16,9 +16,6 @@ verifies:
 5. **JavaScript** – generated ``equals()`` method works correctly at runtime.
 6. **C#** – generated ``Equals()`` / ``==`` operator works correctly.
 7. **Rust** – ``PartialEq`` derive (added when ``--equality`` is used) works correctly.
-
-Usage:
-    python tests/test_equality.py
 """
 
 from __future__ import annotations
@@ -27,49 +24,31 @@ import os
 import shutil
 import subprocess
 import sys
-from test_utils import _check
-import tempfile
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = REPO_ROOT / "src"
-PROTO_FILE = REPO_ROOT / "tests" / "proto" / "test_messages.sf"
+from test_utils import _check, run_generator, PROTO_FILE
 
 
-def _run_generator(out_dir: Path, *extra_args: str) -> None:
-    cmd = [
-        sys.executable,
-        str(SRC_DIR / "main.py"),
-        str(PROTO_FILE),
-        "--build_c",
-        "--c_path", str(out_dir / "c") + os.sep,
-        "--build_cpp",
-        "--cpp_path", str(out_dir / "cpp") + os.sep,
-        "--build_py",
-        "--py_path", str(out_dir / "py") + os.sep,
-        "--build_ts",
-        "--ts_path", str(out_dir / "ts") + os.sep,
-        "--build_js",
-        "--js_path", str(out_dir / "js") + os.sep,
-        "--build_csharp",
-        "--csharp_path", str(out_dir / "csharp") + os.sep,
-        "--build_rust",
-        "--rust_path", str(out_dir / "rust") + os.sep,
-        "--equality",
-        "--force",
-    ] + list(extra_args)
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    subprocess.check_call(cmd, env=env)
-
-
+def _run_generator(out_dir: Path) -> None:
+    result = run_generator(
+        PROTO_FILE,
+        "--build_c", "--c_path", str(out_dir / "c") + os.sep,
+        "--build_cpp", "--cpp_path", str(out_dir / "cpp") + os.sep,
+        "--build_py", "--py_path", str(out_dir / "py") + os.sep,
+        "--build_ts", "--ts_path", str(out_dir / "ts") + os.sep,
+        "--build_js", "--js_path", str(out_dir / "js") + os.sep,
+        "--build_csharp", "--csharp_path", str(out_dir / "csharp") + os.sep,
+        "--build_rust", "--rust_path", str(out_dir / "rust") + os.sep,
+        "--equality", "--force",
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Generator failed:\n{result.stdout}\n{result.stderr}")
 
 
 # ---------------------------------------------------------------------------
 # Python equality tests
 # ---------------------------------------------------------------------------
 
-def test_python_equality(gen_dir: Path) -> None:
+def _python_equality(gen_dir: Path) -> None:
     """Generated Python __eq__ / __ne__ work correctly."""
     py_root = gen_dir / "py"
     sys.path.insert(0, str(py_root))
@@ -80,6 +59,12 @@ def test_python_equality(gen_dir: Path) -> None:
         return
     finally:
         sys.path.pop(0)
+        # Evict the generated struct_frame package from sys.modules so that
+        # subsequent tests importing src/struct_frame/generate.py don't get
+        # the generated version (which has no generate.py submodule).
+        for _k in list(sys.modules.keys()):
+            if _k == "struct_frame" or _k.startswith("struct_frame."):
+                del sys.modules[_k]
 
     a = BasicTypesMessage()
     a.small_int = 42
@@ -130,7 +115,7 @@ def test_python_equality(gen_dir: Path) -> None:
 # C equality tests
 # ---------------------------------------------------------------------------
 
-def test_c_equality(gen_dir: Path) -> None:
+def _c_equality(gen_dir: Path) -> None:
     """Generated C *_equals() functions compile and work correctly."""
     if not shutil.which("gcc"):
         print("SKIP: gcc not available")
@@ -166,7 +151,7 @@ def test_c_equality(gen_dir: Path) -> None:
 # C++ equality tests
 # ---------------------------------------------------------------------------
 
-def test_cpp_equality(gen_dir: Path) -> None:
+def _cpp_equality(gen_dir: Path) -> None:
     """Generated C++ operator== compiles and works correctly."""
     if not shutil.which("g++"):
         print("SKIP: g++ not available")
@@ -204,7 +189,7 @@ def test_cpp_equality(gen_dir: Path) -> None:
 # TypeScript equality tests
 # ---------------------------------------------------------------------------
 
-def test_ts_equality(gen_dir: Path) -> None:
+def _ts_equality(gen_dir: Path) -> None:
     """Generated TypeScript equals() method works correctly."""
     tsc = shutil.which("tsc")
     if not tsc or not shutil.which("node"):
@@ -267,7 +252,7 @@ def test_ts_equality(gen_dir: Path) -> None:
 # JavaScript equality tests
 # ---------------------------------------------------------------------------
 
-def test_js_equality(gen_dir: Path) -> None:
+def _js_equality(gen_dir: Path) -> None:
     """Generated JavaScript equals() method works correctly."""
     if not shutil.which("node"):
         print("SKIP: node not available")
@@ -299,7 +284,7 @@ def test_js_equality(gen_dir: Path) -> None:
 # C# equality tests
 # ---------------------------------------------------------------------------
 
-def test_csharp_equality(gen_dir: Path) -> None:
+def _csharp_equality(gen_dir: Path) -> None:
     """Generated C# Equals() / == operator compiles and works correctly."""
     if not shutil.which("dotnet"):
         print("SKIP: dotnet not available")
@@ -359,7 +344,7 @@ def test_csharp_equality(gen_dir: Path) -> None:
 # Rust equality tests
 # ---------------------------------------------------------------------------
 
-def test_rust_equality(gen_dir: Path) -> None:
+def _rust_equality(gen_dir: Path) -> None:
     """Rust PartialEq derive (added when --equality is used) works correctly."""
     if not shutil.which("cargo"):
         print("SKIP: cargo not available")
@@ -402,51 +387,49 @@ def test_rust_equality(gen_dir: Path) -> None:
            f"Rust equality test failed:\n{run_result.stdout}\n{run_result.stderr}")
 
 
-def test_equality_flag():
-    with tempfile.TemporaryDirectory() as tmp:
-        gen_dir = Path(tmp)
-        _run_generator(gen_dir)
+# ---------------------------------------------------------------------------
+# Single collected pytest entry point
+# ---------------------------------------------------------------------------
 
-        # 1. Verify equality functions / operators are present in generated code
-        c_header = (gen_dir / "c" / "serialization_test.structframe.h").read_text(encoding="utf-8")
-        _check("_equals(" in c_header,
-               "C header should contain *_equals() functions")
+def test_equality_flag(tmp_path: Path) -> None:
+    """--equality flag: all languages emit and correctly execute equality comparisons."""
+    gen_dir = tmp_path
+    _run_generator(gen_dir)
 
-        cpp_header = (gen_dir / "cpp" / "serialization_test.structframe.hpp").read_text(encoding="utf-8")
-        _check("operator==" in cpp_header,
-               "C++ header should contain operator== methods")
+    # Verify equality functions / operators are present in generated code
+    c_header = (gen_dir / "c" / "serialization_test.structframe.h").read_text(encoding="utf-8")
+    _check("_equals(" in c_header,
+           "C header should contain *_equals() functions")
 
-        py_files = list((gen_dir / "py").rglob("*.py"))
-        _check(any("def __eq__" in f.read_text(encoding="utf-8") for f in py_files),
-               "Generated Python files should contain __eq__ methods")
+    cpp_header = (gen_dir / "cpp" / "serialization_test.structframe.hpp").read_text(encoding="utf-8")
+    _check("operator==" in cpp_header,
+           "C++ header should contain operator== methods")
 
-        ts_src = (gen_dir / "ts" / "serialization-test.structframe.ts").read_text(encoding="utf-8")
-        _check("equals(" in ts_src,
-               "Generated TypeScript file should contain equals() method")
+    py_files = list((gen_dir / "py").rglob("*.py"))
+    _check(any("def __eq__" in f.read_text(encoding="utf-8") for f in py_files),
+           "Generated Python files should contain __eq__ methods")
 
-        js_src = (gen_dir / "js" / "serialization-test.structframe.js").read_text(encoding="utf-8")
-        _check("equals(" in js_src,
-               "Generated JavaScript file should contain equals() method")
+    ts_src = (gen_dir / "ts" / "serialization-test.structframe.ts").read_text(encoding="utf-8")
+    _check("equals(" in ts_src,
+           "Generated TypeScript file should contain equals() method")
 
-        cs_files = list((gen_dir / "csharp").rglob("*.cs"))
-        _check(any("Equals(" in f.read_text(encoding="utf-8", errors="replace") for f in cs_files),
-               "Generated C# files should contain Equals() method")
+    js_src = (gen_dir / "js" / "serialization-test.structframe.js").read_text(encoding="utf-8")
+    _check("equals(" in js_src,
+           "Generated JavaScript file should contain equals() method")
 
-        rust_src = (gen_dir / "rust" / "serialization_test.structframe.rs").read_text(encoding="utf-8")
-        _check("PartialEq" in rust_src,
-               "Generated Rust file should derive PartialEq")
+    cs_files = list((gen_dir / "csharp").rglob("*.cs"))
+    _check(any("Equals(" in f.read_text(encoding="utf-8", errors="replace") for f in cs_files),
+           "Generated C# files should contain Equals() method")
 
-        # 2. Functional tests
-        test_python_equality(gen_dir)
-        test_c_equality(gen_dir)
-        test_cpp_equality(gen_dir)
-        test_ts_equality(gen_dir)
-        test_js_equality(gen_dir)
-        test_csharp_equality(gen_dir)
-        test_rust_equality(gen_dir)
+    rust_src = (gen_dir / "rust" / "serialization_test.structframe.rs").read_text(encoding="utf-8")
+    _check("PartialEq" in rust_src,
+           "Generated Rust file should derive PartialEq")
 
-    print("PASS: --equality flag tests")
-
-
-if __name__ == "__main__":
-    test_equality_flag()
+    # Functional tests per language
+    _python_equality(gen_dir)
+    _c_equality(gen_dir)
+    _cpp_equality(gen_dir)
+    _ts_equality(gen_dir)
+    _js_equality(gen_dir)
+    _csharp_equality(gen_dir)
+    _rust_equality(gen_dir)

@@ -12,30 +12,21 @@ Verifies that:
   4. The override is preserved through code generation (Python round-trip).
   5. Negative cases: invalid values (zero byte, out-of-range, non-integer,
      wrong number of values) are rejected at parse time.
-
-Usage:
-    python tests/test_magic_bytes.py
 """
 from __future__ import annotations
 
-import importlib.util
-import os
-import subprocess
+import contextlib
+import io
 import sys
-from test_utils import _check
 import tempfile
 import textwrap
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = REPO_ROOT / "src"
+from test_utils import _check, run_generator, load_generated_module, SRC_DIR
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
 
 def _load_model(sf_text: str):
     """Parse an in-memory .sf definition.
@@ -56,8 +47,6 @@ def _load_model(sf_text: str):
         f.write(sf_text)
         fname = f.name
 
-    import contextlib
-    import io
     buf = io.StringIO()
     try:
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
@@ -78,25 +67,12 @@ def _generate_py(sf_text: str, out_dir: Path) -> bool:
     """Write sf_text to a temp file, run the generator, return success."""
     sf_path = out_dir / "test_magic.sf"
     sf_path.write_text(sf_text)
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    result = subprocess.run(
-        [sys.executable, str(SRC_DIR / "main.py"), str(sf_path),
-         "--build_py", "--py_path", str(out_dir / "py"),
-         "--force"],
-        env=env,
-        capture_output=True,
-        text=True,
+    result = run_generator(
+        sf_path,
+        "--build_py", "--py_path", str(out_dir / "py"),
+        "--force",
     )
     return result.returncode == 0
-
-
-def _import_module(py_dir: Path, module_name: str):
-    pyfile = py_dir / "struct_frame" / "generated" / f"{module_name}.py"
-    spec = importlib.util.spec_from_file_location(module_name, pyfile)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +96,6 @@ def test_override_used():
            f"expected (0xAB, 0xCD), got {msg.magic_bytes}")
     _check(msg.magic_bytes_override == (0xAB, 0xCD),
            "magic_bytes_override not set on message")
-    print("  [PASS] override is used verbatim")
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +125,6 @@ def test_override_wins_over_calculated():
     _check(msgs["MsgB"].magic_bytes == (0x11, 0x22), "MsgB magic mismatch")
     _check(msgs["MsgA"].magic_bytes == msgs["MsgB"].magic_bytes,
            "overridden messages should have identical magic")
-    print("  [PASS] override wins over calculated value")
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +153,6 @@ def test_different_overrides():
     _check(msgs["MsgY"].magic_bytes == (0x03, 0x04), "MsgY magic mismatch")
     _check(msgs["MsgX"].magic_bytes != msgs["MsgY"].magic_bytes,
            "different overrides must produce different magic")
-    print("  [PASS] different overrides produce different magic")
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +175,6 @@ def test_no_override_is_none():
            f"expected None, got {msg.magic_bytes_override}")
     _check(msg.magic_bytes is not None,
            "magic_bytes should still be calculated when no override")
-    print("  [PASS] no override → magic_bytes_override is None, magic_bytes calculated")
 
 
 # ---------------------------------------------------------------------------
@@ -225,11 +197,10 @@ def test_decimal_values():
     # 171 = 0xAB, 205 = 0xCD
     _check(msg.magic_bytes == (171, 205),
            f"expected (171, 205), got {msg.magic_bytes}")
-    print("  [PASS] decimal values accepted")
 
 
 # ---------------------------------------------------------------------------
-# Test 6: negative — zero byte rejected
+# Test 6: negative -- zero byte rejected
 # ---------------------------------------------------------------------------
 
 def test_zero_byte_rejected():
@@ -248,11 +219,10 @@ def test_zero_byte_rejected():
                f"zero magic byte '{bad}' should have been rejected")
         _check("magic bytes must be non-zero" in output,
                f"'{bad}' rejected, but not for the non-zero reason; output was:\n{output}")
-    print("  [PASS] zero byte rejected")
 
 
 # ---------------------------------------------------------------------------
-# Test 7: negative — out-of-range byte rejected
+# Test 7: negative -- out-of-range byte rejected
 # ---------------------------------------------------------------------------
 
 def test_out_of_range_rejected():
@@ -269,11 +239,10 @@ def test_out_of_range_rejected():
     _check(packages is None, "value 256 should have been rejected")
     _check("each byte must be in range 0-255" in output,
            f"256 rejected, but not for the out-of-range reason; output was:\n{output}")
-    print("  [PASS] out-of-range byte rejected")
 
 
 # ---------------------------------------------------------------------------
-# Test 8: negative — wrong number of values rejected
+# Test 8: negative -- wrong number of values rejected
 # ---------------------------------------------------------------------------
 
 def test_wrong_count_rejected():
@@ -292,7 +261,6 @@ def test_wrong_count_rejected():
                f"wrong-count magic_bytes '{bad}' should have been rejected")
         _check("expected two comma-separated byte values" in output,
                f"'{bad}' rejected, but not for the wrong-count reason; output was:\n{output}")
-    print("  [PASS] wrong number of values rejected")
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +282,7 @@ def test_codegen_preserves_override():
         ok = _generate_py(sf, out)
         _check(ok, "code generation failed")
 
-        mod = _import_module(out / "py", "gen_magic")
+        mod = load_generated_module(out / "py" / "struct_frame" / "generated" / "gen_magic.py", "gen_magic")
         cls = mod.OverrideGenMsg
         _check(hasattr(cls, "MAGIC1") and hasattr(cls, "MAGIC2"),
                f"generated class missing MAGIC1/MAGIC2 attributes; found: {[x for x in dir(cls) if 'magic' in x.lower() or 'MAGIC' in x]}")
@@ -322,27 +290,3 @@ def test_codegen_preserves_override():
                f"expected MAGIC1=0xA3 ({0xA3}), got {cls.MAGIC1}")
         _check(cls.MAGIC2 == 0x7F,
                f"expected MAGIC2=0x7F ({0x7F}), got {cls.MAGIC2}")
-    print("  [PASS] code generation preserves override in MAGIC_BYTES")
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-def main() -> int:
-    print("=== magic_bytes Option Tests ===\n")
-    test_override_used()
-    test_override_wins_over_calculated()
-    test_different_overrides()
-    test_no_override_is_none()
-    test_decimal_values()
-    test_zero_byte_rejected()
-    test_out_of_range_rejected()
-    test_wrong_count_rejected()
-    test_codegen_preserves_override()
-    print("\nAll magic_bytes tests PASSED.")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

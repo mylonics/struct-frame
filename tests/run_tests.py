@@ -366,6 +366,7 @@ class TestRunner:
             "variable_validate": {},
             "variable_decode": {},
             "negative": {},
+            "standalone": {},
         }
 
     def _resolve_dotnet_framework(self, explicit_framework: Optional[str]) -> str:
@@ -1367,24 +1368,18 @@ class TestRunner:
         return all_success
     
     def run_standalone_tests(self) -> bool:
-        """Run standalone Python test scripts."""
-        test_scripts = list(self.tests_dir.glob("test_*.py"))
-        if not test_scripts:
-            return True
-        
-        print(f"\n  Running {len(test_scripts)} standalone Python test(s)...")
-        
-        all_success = True
-        for script in test_scripts:
-            success, stdout, stderr = self.run_cmd(f'python "{script}"', cwd=self.tests_dir, timeout=30)
-            if stdout:
-                print(stdout)
-            if stderr and not success:
-                print(stderr)
-            if not success:
-                all_success = False
-        
-        return all_success
+        """Run the Python test suite via pytest."""
+        print("\n  Running Python test suite with pytest ...")
+        success, stdout, stderr = self.run_cmd(
+            f'python -m pytest "{self.tests_dir}" -q --tb=short',
+            cwd=self.project_root,
+            timeout=300,
+        )
+        if stdout:
+            print(stdout)
+        if stderr and not success:
+            print(stderr)
+        return success
     
     def run_negative_tests(self) -> bool:
         """Run negative tests (error handling tests) and display results in a matrix."""
@@ -2317,7 +2312,11 @@ class TestRunner:
         # Round-trip tests (per-package, all 5 profiles)
         rt_total = len(self.results.get("roundtrip", {}))
         rt_passed = sum(1 for v in self.results.get("roundtrip", {}).values() if v)
-        
+
+        # Standalone pytest suite
+        st_total = len(self.results.get("standalone", {}))
+        st_passed = sum(1 for v in self.results.get("standalone", {}).values() if v)
+
         # Helper to colorize counts
         def colorize_count(passed: int, total: int) -> str:
             if total == 0:
@@ -2325,7 +2324,7 @@ class TestRunner:
             if passed == total:
                 return Colors.green(f"{passed}/{total}")
             return Colors.red(f"{passed}/{total}")
-        
+
         # Print breakdown
         label_w = 24
         def fmt(label: str, p: int, t: int) -> str:
@@ -2344,17 +2343,18 @@ class TestRunner:
         print(fmt('Variable Flag Decode',   var_decode_passed,   var_decode_total))
         print(fmt('Negative Tests',         neg_passed,          neg_total))
         print(fmt('Round-trip Tests',       rt_passed,           rt_total))
-        
-        total = (gen_total + comp_total + 
-                 std_encode_total + std_validate_total + std_decode_total + 
+        print(fmt('Standalone Tests',       st_passed,           st_total))
+
+        total = (gen_total + comp_total +
+                 std_encode_total + std_validate_total + std_decode_total +
                  ext_encode_total + ext_validate_total + ext_decode_total +
                  var_encode_total + var_validate_total + var_decode_total +
-                 neg_total + rt_total)
-        passed = (gen_passed + comp_passed + 
-                  std_encode_passed + std_validate_passed + std_decode_passed + 
+                 neg_total + rt_total + st_total)
+        passed = (gen_passed + comp_passed +
+                  std_encode_passed + std_validate_passed + std_decode_passed +
                   ext_encode_passed + ext_validate_passed + ext_decode_passed +
                   var_encode_passed + var_validate_passed + var_decode_passed +
-                  neg_passed + rt_passed)
+                  neg_passed + rt_passed + st_passed)
         
         print(f"\n  Total: {colorize_count(passed, total)} tests passed")
         
@@ -2538,7 +2538,15 @@ class TestRunner:
             # Phase 11: Standalone tests
             if not profiling_only:
                 with self.timed_phase("Standalone Tests"):
-                    self.run_standalone_tests()
+                    pytest_ok = self.run_standalone_tests()
+                    self.results["standalone"]["pytest"] = pytest_ok
+                    if not pytest_ok:
+                        self.failures.append({
+                            "phase": "Standalone Tests",
+                            "language": "Python",
+                            "profile": "",
+                            "reason": "pytest failed",
+                        })
             else:
                 print(f"\n{Colors.yellow('[SKIP]')} Standalone tests (--profiling)")
 

@@ -7,45 +7,30 @@ The flag should:
    so that field-by-field serialize/deserialize functions are emitted.
 2. Cause the C and C++ generators to omit the ``#pragma pack(push, 1)`` /
    ``#pragma pack(pop)`` directives around struct definitions.
-3. Produce code that round-trips successfully (encode → decode preserves
+3. Produce code that round-trips successfully (encode -> decode preserves
    field values) even when the host platform would otherwise rely on packed
    memory layout.
-
-Usage:
-    python tests/test_no_packed.py
 """
 
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
-import sys
-from test_utils import _check
 import tempfile
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = REPO_ROOT / "src"
-PROTO_FILE = REPO_ROOT / "tests" / "proto" / "test_messages.sf"
+from test_utils import _check, run_generator, PROTO_FILE
 
 
 def _run_generator_for_proto(proto_file: Path, out_dir: Path, extra_args) -> None:
-    cmd = [
-        sys.executable,
-        str(SRC_DIR / "main.py"),
-        str(proto_file),
-        "--build_c",
-        "--c_path",
-        str(out_dir / "c") + os.sep,
-        "--build_cpp",
-        "--cpp_path",
-        str(out_dir / "cpp") + os.sep,
+    result = run_generator(
+        proto_file,
+        "--build_c", "--c_path", str(out_dir / "c") + os.sep,
+        "--build_cpp", "--cpp_path", str(out_dir / "cpp") + os.sep,
         "--force",
-    ] + list(extra_args)
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    subprocess.check_call(cmd, env=env)
+        *extra_args,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Generator failed:\n{result.stdout}\n{result.stderr}")
 
 
 def _run_generator(extra_args, out_dir: Path) -> None:
@@ -54,8 +39,6 @@ def _run_generator(extra_args, out_dir: Path) -> None:
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
-
-
 
 
 def test_no_packed_flag():
@@ -113,8 +96,6 @@ def test_no_packed_flag():
         #    baseline encoding. This guarantees binary compatibility on the
         #    wire when only --no_packed flips between the two modes.
         _wire_size_parity(baseline_dir / "c", nopacked_dir / "c")
-
-    print("PASS: --no_packed flag tests")
 
 
 def test_all_variable_messages_no_fixed_run_memcpy() -> None:
@@ -197,8 +178,6 @@ message PadMsg {
         cpp_out = out_dir / "cpp" / "_all_variable_padding.out"
         subprocess.check_call(["g++", "-std=c++20", "-I", str(out_dir / "cpp"), str(cpp_src), "-o", str(cpp_out)])
         subprocess.check_call([str(cpp_out)])
-
-    print("PASS: all-variable fixed-field serialization test")
 
 
 def _compile_c(c_dir: Path) -> None:
@@ -380,8 +359,3 @@ def _wire_size_parity(baseline_c_dir: Path, nopacked_c_dir: Path) -> None:
         f"wire bytes mismatch for fixed-size Sensor: packed={baseline_bytes.hex()} "
         f"!= no_packed={nopacked_bytes.hex()}",
     )
-
-
-if __name__ == "__main__":
-    test_no_packed_flag()
-    test_all_variable_messages_no_fixed_run_memcpy()

@@ -7,54 +7,39 @@ Verifies:
 - flatten=true option: Python to_dict() inlines child fields
 - discriminator=none oneof: no discriminator field generated
 - Multiple oneof fields in one message
-
-Usage:
-    python tests/test_proto_field_types.py
 """
 from __future__ import annotations
 
-import importlib.util
-import os
 import subprocess
-import sys
-from test_utils import _check
-import tempfile
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = REPO_ROOT / "src"
-PROTO_FILE = REPO_ROOT / "tests" / "proto" / "test_messages.sf"
-
-
+from test_utils import _check, run_generator, load_generated_module, PROTO_FILE
 
 
 def _generate(out_dir: Path) -> None:
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    subprocess.check_call(
-        [sys.executable, str(SRC_DIR / "main.py"), str(PROTO_FILE),
-         "--build_py", "--py_path", str(out_dir / "py"),
-         "--build_c", "--c_path", str(out_dir / "c"),
-         "--build_cpp", "--cpp_path", str(out_dir / "cpp"),
-         "--force"],
-        env=env,
+    result = run_generator(
+        PROTO_FILE,
+        "--build_py", "--py_path", str(out_dir / "py"),
+        "--build_c", "--c_path", str(out_dir / "c"),
+        "--build_cpp", "--cpp_path", str(out_dir / "cpp"),
+        "--force",
     )
+    if result.returncode != 0:
+        raise RuntimeError(f"Generator failed:\n{result.stdout}\n{result.stderr}")
 
 
 def _import_generated_module(py_dir: Path):
     """Import the generated serialization_test Python module."""
-    pyfile = py_dir / "struct_frame" / "generated" / "serialization_test.py"
-    spec = importlib.util.spec_from_file_location("serialization_test", pyfile)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    return load_generated_module(
+        py_dir / "struct_frame" / "generated" / "serialization_test.py",
+        "serialization_test",
+    )
 
 
 # ---------------------------------------------------------------------------
 # Python enum-to-string
 # ---------------------------------------------------------------------------
 
-def test_python_enum_to_string(mod) -> None:
+def _python_enum_to_string(mod) -> None:
     """Python enums expose .name for string conversion."""
     Priority = mod.Priority
     Status = mod.Status
@@ -97,7 +82,7 @@ int main(void) {
 """
 
 
-def test_c_enum_to_string(c_dir: Path) -> None:
+def _c_enum_to_string(c_dir: Path) -> None:
     """C generates {Pkg}{Enum}_to_string helpers; verify they return correct strings."""
     src = c_dir / "_enum_test.c"
     src.write_text(_C_ENUM_TEST_SRC, encoding="utf-8")
@@ -114,7 +99,7 @@ def test_c_enum_to_string(c_dir: Path) -> None:
     _check(result.returncode == 0,
            f"C enum-to-string binary failed:\n{result.stdout}{result.stderr}")
     # Verify actual constant names in generated header
-    header = (c_dir / "serialization_test.structframe.h").read_text()
+    header = (c_dir / "serialization_test.structframe.h").read_text(encoding="utf-8")
     _check("SERIALIZATION_TEST_PRIORITY_HIGH" in header,
            "C header missing SERIALIZATION_TEST_PRIORITY_HIGH constant")
     _check("SerializationTestPriority_to_string" in header,
@@ -145,7 +130,7 @@ int main() {
 """
 
 
-def test_cpp_enum_to_string(cpp_dir: Path) -> None:
+def _cpp_enum_to_string(cpp_dir: Path) -> None:
     """C++ generates {Enum}_to_string helpers; verify they return correct strings."""
     src = cpp_dir / "_enum_test.cpp"
     src.write_text(_CPP_ENUM_TEST_SRC, encoding="utf-8")
@@ -161,7 +146,7 @@ def test_cpp_enum_to_string(cpp_dir: Path) -> None:
     result = subprocess.run([str(out)], capture_output=True, text=True)
     _check(result.returncode == 0,
            f"C++ enum-to-string binary failed:\n{result.stdout}{result.stderr}")
-    header = (cpp_dir / "serialization_test.structframe.hpp").read_text()
+    header = (cpp_dir / "serialization_test.structframe.hpp").read_text(encoding="utf-8")
     _check("Priority_to_string" in header,
            "C++ header missing Priority_to_string function")
     _check("Status_to_string" in header,
@@ -172,7 +157,7 @@ def test_cpp_enum_to_string(cpp_dir: Path) -> None:
 # Python flatten=true
 # ---------------------------------------------------------------------------
 
-def test_python_flatten(mod) -> None:
+def _python_flatten(mod) -> None:
     """flatten=true causes inner fields to be inlined in to_dict() output."""
     FlattenMessage = mod.FlattenMessage
     FlattenInner = mod.FlattenInner
@@ -195,7 +180,7 @@ def test_python_flatten(mod) -> None:
     _check(d["a"] == 7, f"flatten: inner.a expected 7, got {d['a']}")
     _check(d["b"] == 300, f"flatten: inner.b expected 300, got {d['b']}")
 
-    # Round-trip: serialize → deserialize preserves field values
+    # Round-trip: serialize -> deserialize preserves field values
     raw = msg.serialize()
     msg2 = FlattenMessage.deserialize(raw)
     _check(msg2.seq == 42, f"flatten round-trip: seq expected 42, got {msg2.seq}")
@@ -207,7 +192,7 @@ def test_python_flatten(mod) -> None:
 # Python discriminator=none
 # ---------------------------------------------------------------------------
 
-def test_python_discriminator_none(mod) -> None:
+def _python_discriminator_none(mod) -> None:
     """discriminator=none oneof: no discriminator field; encode/decode works."""
     NoneDiscriminatorMessage = mod.NoneDiscriminatorMessage
     BasicTypesMessage = mod.BasicTypesMessage
@@ -246,11 +231,10 @@ def test_python_discriminator_none(mod) -> None:
 # Python multiple oneof
 # ---------------------------------------------------------------------------
 
-def test_python_multi_oneof(mod) -> None:
+def _python_multi_oneof(mod) -> None:
     """MultiOneofMessage has two independent oneof fields that encode/decode correctly."""
     MultiOneofMessage = mod.MultiOneofMessage
     BasicTypesMessage = mod.BasicTypesMessage
-    SerializationTestMessage = mod.SerializationTestMessage
 
     msg = MultiOneofMessage()
     msg.selector = 3
@@ -320,7 +304,7 @@ int main(void) {
     assert(dec1.data.basic.small_int == -42);
     assert(dec1.data.basic.medium_uint == 5000);
 
-    /* ---- MultiOneofMessage: two oneofs — first has msgid discriminator ---- */
+    /* ---- MultiOneofMessage: two oneofs -- first has msgid discriminator ---- */
     SerializationTestMultiOneofMessage msg2;
     memset(&msg2, 0, sizeof(msg2));
     msg2.selector = 7;
@@ -349,7 +333,7 @@ int main(void) {
 """
 
 
-def test_c_oneof(c_dir: Path) -> None:
+def _c_oneof(c_dir: Path) -> None:
     """C: discriminator=none oneof and multiple oneof fields both round-trip correctly."""
     src = c_dir / "_oneof_test.c"
     src.write_text(_C_ONEOF_TEST_SRC, encoding="utf-8")
@@ -398,7 +382,7 @@ int main() {
     assert(dec1.data.basic.small_int == -42);
     assert(dec1.data.basic.medium_uint == 5000);
 
-    // ---- MultiOneofMessage: two oneofs — first has msgid discriminator ----
+    // ---- MultiOneofMessage: two oneofs -- first has msgid discriminator ----
     MultiOneofMessage msg2{};
     msg2.selector = 7;
     msg2.first_payload_discriminator = BasicTypesMessage::MSG_ID;
@@ -424,7 +408,7 @@ int main() {
 """
 
 
-def test_cpp_oneof(cpp_dir: Path) -> None:
+def _cpp_oneof(cpp_dir: Path) -> None:
     """C++: discriminator=none oneof and multiple oneof fields both round-trip correctly."""
     src = cpp_dir / "_oneof_test.cpp"
     src.write_text(_CPP_ONEOF_TEST_SRC, encoding="utf-8")
@@ -445,31 +429,24 @@ def test_cpp_oneof(cpp_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Single collected pytest entry point
 # ---------------------------------------------------------------------------
 
-def main():
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        _generate(tmp_path)
+def test_proto_field_types(tmp_path: Path) -> None:
+    """Proto field type coverage: enums, flatten, discriminator=none, multi-oneof."""
+    _generate(tmp_path)
 
-        py_dir = tmp_path / "py"
-        c_dir = tmp_path / "c"
-        cpp_dir = tmp_path / "cpp"
+    py_dir = tmp_path / "py"
+    c_dir = tmp_path / "c"
+    cpp_dir = tmp_path / "cpp"
 
-        mod = _import_generated_module(py_dir)
+    mod = _import_generated_module(py_dir)
 
-        test_python_enum_to_string(mod)
-        test_c_enum_to_string(c_dir)
-        test_cpp_enum_to_string(cpp_dir)
-        test_python_flatten(mod)
-        test_python_discriminator_none(mod)
-        test_python_multi_oneof(mod)
-        test_c_oneof(c_dir)
-        test_cpp_oneof(cpp_dir)
-
-    print("PASS: Proto field type coverage tests")
-
-
-if __name__ == "__main__":
-    main()
+    _python_enum_to_string(mod)
+    _c_enum_to_string(c_dir)
+    _cpp_enum_to_string(cpp_dir)
+    _python_flatten(mod)
+    _python_discriminator_none(mod)
+    _python_multi_oneof(mod)
+    _c_oneof(c_dir)
+    _cpp_oneof(cpp_dir)

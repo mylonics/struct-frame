@@ -33,3 +33,7 @@ Issues = "https://github.com/mylonics/struct-frame/issues"
 
 #[tool.hatch.build.targets.wheel.force-include]
 #"src/struct_frame/boilerplate" = "struct_frame/boilerplate"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["generated", "py", "ts", "js", "c", "cpp", "csharp", "rust", "build", ".git"]

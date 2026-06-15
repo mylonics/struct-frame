@@ -6,38 +6,18 @@ The flag should:
 1. Parse and validate the proto file without generating any output files.
 2. Print "Validation successful" and exit 0 for a well-formed proto.
 3. Print "Validation failed" and exit non-zero for a malformed proto.
-
-Usage:
-    python tests/test_validate_flag.py
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
-from test_utils import _check
 import tempfile
 from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = REPO_ROOT / "src"
-PROTO_FILE = REPO_ROOT / "tests" / "proto" / "test_messages.sf"
+from test_utils import _check, run_generator, PROTO_FILE
 
 
 def _run_validate(proto_path: Path, extra_args=()) -> tuple[int, str, str]:
-    cmd = [
-        sys.executable,
-        str(SRC_DIR / "main.py"),
-        str(proto_path),
-        "--validate",
-    ] + list(extra_args)
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    result = run_generator(proto_path, "--validate", *extra_args)
     return result.returncode, result.stdout, result.stderr
-
-
 
 
 def _validation_rejected(code: int, stdout: str, stderr: str) -> bool:
@@ -105,10 +85,3 @@ def test_validate_failure():
         _check(_validation_rejected(code, stdout, stderr),
                f"--validate on an invalid proto should reject it.\n"
                f"stdout: {stdout}\nstderr: {stderr}")
-
-
-if __name__ == "__main__":
-    test_validate_success()
-    test_validate_no_output_files()
-    test_validate_failure()
-    print("PASS: --validate flag tests")

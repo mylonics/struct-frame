@@ -12,42 +12,24 @@ Covered behaviours:
 2. Second run without ``--force`` detects a matching hash and skips.
 3. Second run with ``--force`` ignores the hash and regenerates.
 4. Changing the proto content invalidates the hash and forces regeneration.
-
-Usage:
-    python tests/test_caching.py
 """
 
 from __future__ import annotations
 
 import os
-import subprocess
-import sys
-from test_utils import _check
 import tempfile
 from pathlib import Path
+from test_utils import _check, run_generator, PROTO_FILE
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SRC_DIR = REPO_ROOT / "src"
-PROTO_FILE = REPO_ROOT / "tests" / "proto" / "test_messages.sf"
 HASH_FILENAME = ".structframe.hash"
 
 
 def _run_generator(proto: Path, out_dir: Path, force: bool = False) -> tuple[int, str]:
-    cmd = [
-        sys.executable,
-        str(SRC_DIR / "main.py"),
-        str(proto),
-        "--build_py",
-        "--py_path", str(out_dir) + os.sep,
-    ]
+    flags = ["--build_py", "--py_path", str(out_dir) + os.sep]
     if force:
-        cmd.append("--force")
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        flags.append("--force")
+    result = run_generator(proto, *flags)
     return result.returncode, result.stdout + result.stderr
-
-
 
 
 def test_hash_file_created():
@@ -127,7 +109,7 @@ def test_changed_proto_invalidates_hash():
         hash_file = out / HASH_FILENAME
         original_hash = hash_file.read_text().strip()
 
-        # Modify proto: add a field (changes parsed structure → new hash)
+        # Modify proto: add a field (changes parsed structure -> new hash)
         proto_copy.write_text(proto_v2, encoding="utf-8")
 
         # Second run without --force: should regenerate because hash changed
@@ -138,15 +120,3 @@ def test_changed_proto_invalidates_hash():
                f"Modified proto should NOT be skipped, got:\n{output2}")
         _check(new_hash != original_hash,
                f"Hash should change after proto modification; was {original_hash}, still {new_hash}")
-
-
-def test_caching():
-    test_hash_file_created()
-    test_skip_on_unchanged_inputs()
-    test_force_bypasses_cache()
-    test_changed_proto_invalidates_hash()
-    print("PASS: hash / --force caching tests")
-
-
-if __name__ == "__main__":
-    test_caching()
