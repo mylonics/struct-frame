@@ -1370,6 +1370,17 @@ class TestRunner:
     def run_standalone_tests(self) -> bool:
         """Run the Python test suite via pytest."""
         print("\n  Running Python test suite with pytest ...")
+        # Probe for pytest before launching the full suite so that a missing
+        # installation produces a clear skip message rather than a cryptic
+        # "No module named pytest" failure buried in stderr.
+        probe_ok, _, probe_err = self.run_cmd(
+            "python -m pytest --version", cwd=self.project_root, timeout=10
+        )
+        if not probe_ok:
+            print("  SKIP: pytest not installed — run: pip install pytest")
+            if probe_err:
+                print(f"  ({probe_err.strip()})")
+            return True  # not a test failure; treat as skipped
         success, stdout, stderr = self.run_cmd(
             f'python -m pytest "{self.tests_dir}" -q --tb=short',
             cwd=self.project_root,
