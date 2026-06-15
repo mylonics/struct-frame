@@ -1644,6 +1644,7 @@ class TestRunner:
             "test_sdk_units":           ["cpp"],
             "test_sdk_subscribe":       ["cpp", "csharp", "rust"],
             "test_sdk":                 ["py", "ts", "js"],
+            "test_async_sdk":           ["py"],
             "test_sdk_strict_ordering": ["csharp"],
             "test_sdk_lifecycle":       ["csharp"],
             "test_sdk_client_wrapper":  ["csharp"],
@@ -1709,6 +1710,16 @@ class TestRunner:
                 success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
                 _record("test_sdk", "py", success, stdout, stderr,
                         "py:sdk", "test_sdk.py failed")
+                if not success:
+                    all_success = False
+
+        # ---- Python: test_async_sdk.py (section 6.3 – AsyncStructFrameSdk) ----
+        if py_lang:
+            script = self.project_root / py_lang.test_dir / "test_async_sdk.py"
+            if script.exists():
+                success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
+                _record("test_async_sdk", "py", success, stdout, stderr,
+                        "py:async_sdk", "test_async_sdk.py failed")
                 if not success:
                     all_success = False
 
