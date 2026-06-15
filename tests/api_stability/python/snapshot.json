@@ -87,6 +87,11 @@
     },
     {
       "kind": "function",
+      "name": "build_discriminator_enum_values",
+      "signature": "(oneof, none_entry_fn, field_entry_fn)"
+    },
+    {
+      "kind": "function",
       "name": "build_enum_leading_comments",
       "signature": "(comments, comment_prefix='', comment_suffix='')"
     },
@@ -102,8 +107,18 @@
     },
     {
       "kind": "function",
+      "name": "get_discriminator_enum_name",
+      "signature": "(oneof, msg_name)"
+    },
+    {
+      "kind": "function",
       "name": "main",
       "signature": "()"
+    },
+    {
+      "kind": "function",
+      "name": "normalize_bytes_type",
+      "signature": "(type_name)"
     },
     {
       "kind": "function",

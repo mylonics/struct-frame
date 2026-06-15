@@ -42,17 +42,17 @@ class AsyncSerialTransport(BaseAsyncTransport):
         """Connect serial port"""
         try:
             # Run serial port opening in executor to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             self.serial_port = await loop.run_in_executor(
                 None,
                 self._open_serial_port
             )
-            
+
             self.connected = True
-            
+
             # Start receive task
             self.receive_task = asyncio.create_task(self._receive_loop())
-            
+
         except Exception as e:
             self._handle_error(e)
             raise
@@ -89,7 +89,7 @@ class AsyncSerialTransport(BaseAsyncTransport):
             self.receive_task = None
         
         if self.serial_port and self.serial_port.is_open:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             await loop.run_in_executor(None, self.serial_port.close)
             self.serial_port = None
 
@@ -99,7 +99,7 @@ class AsyncSerialTransport(BaseAsyncTransport):
             raise RuntimeError('Serial port not connected')
         
         try:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             written = await loop.run_in_executor(None, self._write_serial, data)
             return written
         except Exception as e:
@@ -116,7 +116,7 @@ class AsyncSerialTransport(BaseAsyncTransport):
 
     async def _receive_loop(self) -> None:
         """Receive loop"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         while self.connected and self.serial_port and self.serial_port.is_open:
             try:
                 # Read in executor to avoid blocking

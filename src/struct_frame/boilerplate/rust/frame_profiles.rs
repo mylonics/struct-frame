@@ -84,9 +84,28 @@ pub const PROFILE_BULK_CONFIG: ProfileConfig =
 pub const PROFILE_NETWORK_CONFIG: ProfileConfig =
     ProfileConfig::new(HEADER_BASIC_CONFIG, PAYLOAD_EXTENDED_MULTI_SYSTEM_STREAM_CONFIG);
 
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/// Max representable payload length for a given number of length bytes.
+fn max_payload_for_length_bytes(length_bytes: u8) -> usize {
+    match length_bytes {
+        1 => 255,
+        2 => 65535,
+        _ => 0,
+    }
+}
+
+// =============================================================================
+// encode_with_crc
+// =============================================================================
+
 /// Encode a message with CRC into a buffer.
 ///
-/// Returns the number of bytes written, or 0 on error.
+/// Returns the number of bytes written, or 0 on error (buffer too small,
+/// payload exceeds length-field capacity, or msg_id > 255 on a profile
+/// without a pkg_id field).
 pub fn encode_with_crc(
     config: &ProfileConfig,
     buffer: &mut [u8],
@@ -99,6 +118,14 @@ pub fn encode_with_crc(
     magic1: u8,
     magic2: u8,
 ) -> usize {
+    // A2: reject oversized payloads before corrupting the length field
+    if config.payload.has_length {
+        let max_len = max_payload_for_length_bytes(config.payload.length_bytes);
+        if payload.len() > max_len {
+            return 0;
+        }
+    }
+
     let header_size = config.header_size();
     let footer_size = config.footer_size();
     let total_size = header_size + footer_size + payload.len();
@@ -161,7 +188,7 @@ pub fn encode_with_crc(
     buffer[idx..idx + payload.len()].copy_from_slice(payload);
     idx += payload.len();
 
-    // Calculate and write CRC (extension-aware; base_size defaults to full payload)
+    // Calculate and write CRC
     if config.payload.has_crc {
         let ck = fletcher_checksum(&buffer[crc_start..idx], magic1, magic2);
         buffer[idx] = ck.byte1;
@@ -190,6 +217,14 @@ pub fn encode_with_crc_ext(
     magic2: u8,
     base_size: usize,
 ) -> usize {
+    // A2: reject oversized payloads before corrupting the length field
+    if config.payload.has_length {
+        let max_len = max_payload_for_length_bytes(config.payload.length_bytes);
+        if payload.len() > max_len {
+            return 0;
+        }
+    }
+
     let header_size = config.header_size();
     let footer_size = config.footer_size();
     let total_size = header_size + footer_size + payload.len();
@@ -286,9 +321,14 @@ pub fn encode_minimal(
     idx
 }
 
+// =============================================================================
+// parse_with_crc / parse_minimal
+// =============================================================================
+
 /// Parse a frame with CRC from a buffer.
 ///
 /// Returns FrameMsgInfo with valid=true if parsing succeeded.
+/// Sets status to WaitingForStart on bad start bytes, Collecting on insufficient data.
 pub fn parse_with_crc(
     config: &ProfileConfig,
     buffer: &[u8],
@@ -299,21 +339,22 @@ pub fn parse_with_crc(
     let overhead = header_size + footer_size;
 
     if buffer.len() < overhead {
-        return FrameMsgInfo::invalid();
+        // B2: not enough data yet
+        return FrameMsgInfo { status: FrameMsgStatus::Collecting, ..FrameMsgInfo::invalid() };
     }
 
     let mut idx = 0;
 
-    // Verify start bytes
+    // Verify start bytes — B2: WaitingForStart on mismatch
     if config.header.num_start_bytes >= 1 {
         if buffer[idx] != config.computed_start_byte1() {
-            return FrameMsgInfo::invalid();
+            return FrameMsgInfo { status: FrameMsgStatus::WaitingForStart, ..FrameMsgInfo::invalid() };
         }
         idx += 1;
     }
     if config.header.num_start_bytes >= 2 {
         if buffer[idx] != config.computed_start_byte2() {
-            return FrameMsgInfo::invalid();
+            return FrameMsgInfo { status: FrameMsgStatus::WaitingForStart, ..FrameMsgInfo::invalid() };
         }
         idx += 1;
     }
@@ -352,7 +393,7 @@ pub fn parse_with_crc(
         0
     };
 
-    // Read message ID (16-bit: high byte is pkg_id when has_pkg_id, low byte is msg_id)
+    // Read message ID (high byte is pkg_id when has_pkg_id, low byte is msg_id)
     let mut msg_id: u16 = 0;
     let mut pkg_id: u8 = 0;
     if config.payload.has_pkg_id {
@@ -363,10 +404,10 @@ pub fn parse_with_crc(
     msg_id |= buffer[idx] as u16;
     let _ = idx;  // idx no longer needed after reading msg_id
 
-    // Verify total size
+    // Verify total size — B2: Collecting if not enough data
     let total_size = overhead + msg_len;
     if buffer.len() < total_size {
-        return FrameMsgInfo::invalid();
+        return FrameMsgInfo { status: FrameMsgStatus::Collecting, ..FrameMsgInfo::invalid() };
     }
 
     // Verify CRC (extension-aware)
@@ -394,7 +435,7 @@ pub fn parse_with_crc(
     }
 
     // Extract payload bytes
-    let payload = buffer[header_size..header_size + msg_len].to_vec();
+    let msg_data = buffer[header_size..header_size + msg_len].to_vec();
 
     FrameMsgInfo {
         valid: true,
@@ -405,12 +446,13 @@ pub fn parse_with_crc(
         sequence: seq,
         system_id: sys_id,
         component_id: comp_id,
-        payload,
+        msg_data,
         ..Default::default()
     }
 }
 
 /// Parse a minimal frame (no length, no CRC) from a buffer.
+/// Sets status to WaitingForStart or Collecting on failure.
 pub fn parse_minimal(
     config: &ProfileConfig,
     buffer: &[u8],
@@ -419,7 +461,7 @@ pub fn parse_minimal(
     let header_size = config.header_size();
 
     if buffer.len() < header_size {
-        return FrameMsgInfo::invalid();
+        return FrameMsgInfo { status: FrameMsgStatus::Collecting, ..FrameMsgInfo::invalid() };
     }
 
     let mut idx = 0;
@@ -427,13 +469,13 @@ pub fn parse_minimal(
     // Verify start bytes
     if config.header.num_start_bytes >= 1 {
         if buffer[idx] != config.computed_start_byte1() {
-            return FrameMsgInfo::invalid();
+            return FrameMsgInfo { status: FrameMsgStatus::WaitingForStart, ..FrameMsgInfo::invalid() };
         }
         idx += 1;
     }
     if config.header.num_start_bytes >= 2 {
         if buffer[idx] != config.computed_start_byte2() {
-            return FrameMsgInfo::invalid();
+            return FrameMsgInfo { status: FrameMsgStatus::WaitingForStart, ..FrameMsgInfo::invalid() };
         }
         idx += 1;
     }
@@ -444,74 +486,207 @@ pub fn parse_minimal(
     // Get message length from callback
     let info = match get_message_info(msg_id) {
         Some(info) => info,
-        None => return FrameMsgInfo::invalid(),
+        None => return FrameMsgInfo { status: FrameMsgStatus::WaitingForStart, ..FrameMsgInfo::invalid() },
     };
     let msg_len = info.size;
     let total_size = header_size + msg_len;
 
     if buffer.len() < total_size {
-        return FrameMsgInfo::invalid();
+        return FrameMsgInfo { status: FrameMsgStatus::Collecting, ..FrameMsgInfo::invalid() };
     }
 
     // Extract payload bytes
-    let payload = buffer[header_size..header_size + msg_len].to_vec();
+    let msg_data = buffer[header_size..header_size + msg_len].to_vec();
 
     FrameMsgInfo {
         valid: true,
         msg_id,
         msg_len,
         frame_size: total_size,
-        payload,
+        msg_data,
         ..Default::default()
     }
 }
 
+// =============================================================================
+// encode_message_crc / encode_message_minimal — C1: zero-allocation encode
+// =============================================================================
+
 /// High-level: encode any StructFrameMessage with CRC using a profile config.
 /// Uses variable-length pack() for variable messages (for profiles with length field).
+/// C1: packs directly into the output buffer — no intermediate Vec allocation.
 pub fn encode_message_crc<M: StructFrameMessage>(
     config: &ProfileConfig,
     buffer: &mut [u8],
     msg: &M,
     pkg_id: u8,
 ) -> usize {
-    let mut payload = vec![0u8; M::MAX_SIZE];
-    // Variable messages use pack() (variable-length); profiles with has_length support this.
-    // Fixed messages: pack() == pack_max_size().
-    let payload_len = msg.pack(&mut payload);
-    // When the profile encodes a pkg_id field, derive it from the high byte of MSG_ID,
-    // mirroring C++: buffer[idx++] = (T::MSG_ID >> 8) & 0xFF.
-    // The caller-supplied pkg_id is only used for profiles without a pkg_id field.
+    // A2: reject msg_id > 255 on profiles that have no pkg_id field
+    if !config.payload.has_pkg_id && M::MSG_ID > 255 {
+        return 0;
+    }
+
     let actual_pkg_id = if config.payload.has_pkg_id {
         (M::MSG_ID >> 8) as u8
     } else {
         pkg_id
     };
-    encode_with_crc_ext(
-        config,
-        buffer,
-        0,
-        0,
-        0,
-        actual_pkg_id,
-        (M::MSG_ID & 0xFF) as u8,
-        &payload[..payload_len],
-        M::MAGIC1,
-        M::MAGIC2,
-        M::BASE_SIZE,
-    )
+    let msg_id_byte = (M::MSG_ID & 0xFF) as u8;
+
+    // Compute header/footer to find where the payload window starts
+    let header_size = config.header_size();
+    let footer_size = config.footer_size();
+    // We need at least header + MAX_SIZE + footer to guarantee enough room for pack()
+    let min_needed = header_size + M::MAX_SIZE + footer_size;
+    if buffer.len() < min_needed {
+        return 0;
+    }
+
+    // Pack directly into the payload window of the output buffer
+    let payload_window = &mut buffer[header_size..header_size + M::MAX_SIZE];
+    let payload_len = msg.pack(payload_window);
+
+    // A2: payload_len must fit in the length field
+    if config.payload.has_length {
+        let max_len = max_payload_for_length_bytes(config.payload.length_bytes);
+        if payload_len > max_len {
+            return 0;
+        }
+    }
+
+    // Now write header before the payload and CRC after it using the low-level helper.
+    // We call encode_with_crc_ext on the full buffer, but the payload was already
+    // written into place — copy it to a stack-temp so we can hand the whole buffer to
+    // encode_with_crc_ext which expects an empty destination.
+    // Rather than a temp copy, we rebuild directly (mirrors encode_with_crc_ext logic):
+    let total_size = header_size + payload_len + footer_size;
+    let mut idx = 0usize;
+
+    if config.header.num_start_bytes >= 1 {
+        buffer[idx] = config.computed_start_byte1();
+        idx += 1;
+    }
+    if config.header.num_start_bytes >= 2 {
+        buffer[idx] = config.computed_start_byte2();
+        idx += 1;
+    }
+
+    let crc_start = idx;
+
+    if config.payload.has_seq { buffer[idx] = 0; idx += 1; }
+    if config.payload.has_sys_id { buffer[idx] = 0; idx += 1; }
+    if config.payload.has_comp_id { buffer[idx] = 0; idx += 1; }
+
+    if config.payload.has_length {
+        if config.payload.length_bytes == 1 {
+            buffer[idx] = payload_len as u8; idx += 1;
+        } else {
+            buffer[idx] = (payload_len & 0xFF) as u8;
+            buffer[idx + 1] = ((payload_len >> 8) & 0xFF) as u8;
+            idx += 2;
+        }
+    }
+
+    if config.payload.has_pkg_id { buffer[idx] = actual_pkg_id; idx += 1; }
+    buffer[idx] = msg_id_byte; idx += 1;
+
+    // Payload already in place at buffer[header_size..header_size+payload_len]
+    debug_assert_eq!(idx, header_size);
+    idx += payload_len;
+
+    if config.payload.has_crc {
+        let ck = if config.payload.has_length && M::BASE_SIZE < payload_len {
+            let overhead_in_crc = idx - crc_start - payload_len;
+            let base_end = crc_start + overhead_in_crc + M::BASE_SIZE;
+            fletcher_checksum_ext(
+                &buffer[crc_start..base_end],
+                &buffer[base_end..idx],
+                M::MAGIC1,
+                M::MAGIC2,
+            )
+        } else {
+            fletcher_checksum(&buffer[crc_start..idx], M::MAGIC1, M::MAGIC2)
+        };
+        buffer[idx] = ck.byte1;
+        buffer[idx + 1] = ck.byte2;
+        idx += 2;
+    }
+
+    debug_assert_eq!(idx, total_size);
+    idx
 }
 
 /// High-level: encode any StructFrameMessage minimal (no CRC) using a profile config.
 /// Uses fixed-size pack_max_size() so the receiver can determine size without a length field.
+/// C1: packs directly into the output buffer — no intermediate Vec allocation.
 pub fn encode_message_minimal<M: StructFrameMessage>(
     config: &ProfileConfig,
     buffer: &mut [u8],
     msg: &M,
 ) -> usize {
-    let mut payload = vec![0u8; M::MAX_SIZE];
-    // Minimal profiles have no length field: receiver uses MAX_SIZE, so must send fixed-size payload.
-    let payload_len = msg.pack_max_size(&mut payload);
-    encode_minimal(config, buffer, (M::MSG_ID & 0xFF) as u8, &payload[..payload_len])
+    // A2: reject msg_id > 255 when no pkg_id field
+    if !config.payload.has_pkg_id && M::MSG_ID > 255 {
+        return 0;
+    }
+
+    let header_size = config.header_size();
+    let total_size = header_size + M::MAX_SIZE;
+    if buffer.len() < total_size {
+        return 0;
+    }
+
+    // Pack directly into the payload window, then write start bytes + msg_id
+    let payload_len = msg.pack_max_size(&mut buffer[header_size..header_size + M::MAX_SIZE]);
+
+    let mut idx = 0usize;
+    if config.header.num_start_bytes >= 1 {
+        buffer[idx] = config.computed_start_byte1();
+        idx += 1;
+    }
+    if config.header.num_start_bytes >= 2 {
+        buffer[idx] = config.computed_start_byte2();
+        idx += 1;
+    }
+    buffer[idx] = (M::MSG_ID & 0xFF) as u8;
+    idx += 1;
+
+    debug_assert_eq!(idx, header_size);
+    idx + payload_len
+}
+
+// =============================================================================
+// encode_message / parse_frame — config-dispatched entry points
+// Matches the Python/TS/C# single-function API: one call, profile decides path.
+// =============================================================================
+
+/// Encode any StructFrameMessage using the profile config.
+/// Dispatches to encode_message_crc or encode_message_minimal based on config.has_crc.
+/// Returns the number of bytes written, or 0 on error.
+pub fn encode_message<M: StructFrameMessage>(
+    config: &ProfileConfig,
+    buffer: &mut [u8],
+    msg: &M,
+    pkg_id: u8,
+) -> usize {
+    if config.payload.has_crc {
+        encode_message_crc(config, buffer, msg, pkg_id)
+    } else {
+        encode_message_minimal(config, buffer, msg)
+    }
+}
+
+/// Parse one frame from a buffer using the profile config.
+/// Dispatches to parse_with_crc or parse_minimal based on config.has_crc.
+pub fn parse_frame(
+    config: &ProfileConfig,
+    buffer: &[u8],
+    get_message_info: &dyn Fn(u16) -> Option<MessageInfo>,
+) -> FrameMsgInfo {
+    if config.payload.has_crc {
+        parse_with_crc(config, buffer, get_message_info)
+    } else {
+        parse_minimal(config, buffer, get_message_info)
+    }
 }
 
 // =============================================================================
@@ -562,7 +737,7 @@ impl BufferWriter {
 }
 
 // =============================================================================
-// BufferReader - Parse multiple frames from a buffer
+// BufferReader - Parse multiple frames from a buffer (B1: advance past bad frames)
 // =============================================================================
 
 /// Reader for parsing multiple frames from a buffer
@@ -577,12 +752,16 @@ impl BufferReader {
         BufferReader { config, data, offset: 0 }
     }
 
-    /// Get the next frame from the buffer
+    /// Get the next frame from the buffer.
+    ///
+    /// B1: on CRC failure or bad start bytes, advances the internal offset to the next
+    /// candidate start-byte position and returns None, so the *next* call can attempt
+    /// the following frame.  Only stalls (returns None without advancing) when the
+    /// buffer has too little data to make a decision (Collecting status).
     pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
         if self.offset >= self.data.len() {
             return None;
         }
-
         let remaining = &self.data[self.offset..];
         let result = if self.config.payload.has_crc {
             parse_with_crc(&self.config, remaining, get_message_info)
@@ -592,21 +771,57 @@ impl BufferReader {
 
         if result.valid {
             self.offset += result.frame_size;
-            Some(result)
-        } else {
-            None
+            return Some(result);
+        }
+
+        // B1: advance past the bad position so the next call starts from the next candidate.
+        if result.status != FrameMsgStatus::Collecting {
+            let advance = self.find_next_start_byte_offset(remaining).max(1);
+            self.offset += advance;
+        }
+        None
+    }
+
+    /// Find the offset of the next possible start-byte sequence within `buf` starting at index 1.
+    fn find_next_start_byte_offset(&self, buf: &[u8]) -> usize {
+        match self.config.header.header_type {
+            HeaderType::None => 1,
+            HeaderType::Tiny => {
+                let sb = self.config.computed_start_byte1();
+                buf[1..].iter().position(|&b| b == sb).map(|p| p + 1).unwrap_or(buf.len())
+            }
+            HeaderType::Basic => {
+                let sb2 = self.config.computed_start_byte2();
+                for i in 1..buf.len().saturating_sub(1) {
+                    if buf[i] == BASIC_START_BYTE && buf[i + 1] == sb2 {
+                        return i;
+                    }
+                }
+                if buf.last() == Some(&BASIC_START_BYTE) {
+                    buf.len().saturating_sub(1)
+                } else {
+                    buf.len()
+                }
+            }
         }
     }
 }
 
 // =============================================================================
 // AccumulatingReader - Parse from streaming data
+// C2: head-pointer drain (no memmove per frame; compact only at threshold)
+// A6: IPC/None-header resync
+// A7: buffer overflow cap + early-reject on corrupted length
 // =============================================================================
 
-/// Accumulating reader that handles partial messages across buffer boundaries
+/// Accumulating reader that handles partial messages across buffer boundaries.
 pub struct AccumulatingReader {
     config: ProfileConfig,
     buffer: Vec<u8>,
+    /// Logical start of unconsumed data.
+    head: usize,
+    /// Maximum bytes to hold before enforcing overflow policy.
+    capacity: usize,
     /// Diagnostic counters (stream mode)
     diagnostics: ParserDiagnostics,
     /// Last seen sequence number for gap detection
@@ -618,6 +833,8 @@ impl AccumulatingReader {
         AccumulatingReader {
             config,
             buffer: Vec::with_capacity(capacity),
+            head: 0,
+            capacity,
             diagnostics: ParserDiagnostics::default(),
             last_seq: None,
         }
@@ -633,26 +850,59 @@ impl AccumulatingReader {
         self.diagnostics = ParserDiagnostics::default();
     }
 
-    /// Add data to the internal buffer
+    /// Add data to the internal buffer.
+    /// A7: when adding would exceed capacity, compact first; if still full, drop with diagnostic.
     pub fn add_data(&mut self, data: &[u8]) {
-        self.buffer.extend_from_slice(data);
+        // Compact first to reclaim drained space
+        if self.head > 0 {
+            self.buffer.drain(..self.head);
+            self.head = 0;
+        }
+        let available = self.capacity.saturating_sub(self.buffer.len());
+        if data.len() <= available {
+            self.buffer.extend_from_slice(data);
+        } else {
+            // Partial fill to capacity, drop the rest
+            self.buffer.extend_from_slice(&data[..available]);
+            let dropped = data.len() - available;
+            self.diagnostics.cnt_failed_bytes += dropped as u32;
+            self.diagnostics.cnt_sync_recoveries += 1;
+        }
     }
 
-    /// Returns true if the buffer starts with the expected start-byte sequence
+    fn buf(&self) -> &[u8] {
+        &self.buffer[self.head..]
+    }
+
+    /// Compact the buffer if head is past half capacity, to avoid growing indefinitely.
+    fn maybe_compact(&mut self) {
+        if self.head >= self.capacity / 2 {
+            self.buffer.drain(..self.head);
+            self.head = 0;
+        }
+    }
+
+    /// Drain `n` bytes from the logical front of the buffer.
+    fn drain_head(&mut self, n: usize) {
+        self.head = (self.head + n).min(self.buffer.len());
+        self.maybe_compact();
+    }
+
+    /// Returns true if the buffer front starts with the expected start-byte sequence
     fn starts_with_possible_frame(&self) -> bool {
-        if self.buffer.is_empty() {
+        let buf = self.buf();
+        if buf.is_empty() {
             return false;
         }
         match self.config.header.header_type {
             HeaderType::None => true,
             HeaderType::Tiny => {
-                self.buffer[0] == get_tiny_start_byte(self.config.payload.payload_type as u8)
+                buf[0] == get_tiny_start_byte(self.config.payload.payload_type as u8)
             }
             HeaderType::Basic => {
-                self.buffer.len() >= 2
-                    && self.buffer[0] == BASIC_START_BYTE
-                    && self.buffer[1]
-                        == get_basic_second_start_byte(self.config.payload.payload_type as u8)
+                buf.len() >= 2
+                    && buf[0] == BASIC_START_BYTE
+                    && buf[1] == get_basic_second_start_byte(self.config.payload.payload_type as u8)
             }
         }
     }
@@ -660,113 +910,189 @@ impl AccumulatingReader {
     /// Returns the number of bytes to drain to re-align the buffer to the next
     /// possible start-byte position (0 means "wait for more data").
     fn bytes_to_drain_for_resync(&self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> usize {
-        if self.buffer.is_empty() {
+        let buf = self.buf();
+        if buf.is_empty() {
             return 0;
         }
         match self.config.header.header_type {
-            HeaderType::None => 0,
+            // A6: for None-header profiles, drain 1 on unknown msg_id instead of stalling
+            HeaderType::None => {
+                if buf.is_empty() {
+                    return 0;
+                }
+                // The msg_id byte is the first byte
+                let msg_id = buf[0] as u16;
+                match get_message_info(msg_id) {
+                    Some(info) => {
+                        // Known msg_id — wait until full frame is present
+                        let total = 1 + info.size; // header_size=1 (msg_id) for None+Minimal
+                        if buf.len() < total { 0 } else { 1 } // resync past this bad frame
+                    }
+                    None => 1, // Unknown msg_id: drain to search for valid next frame
+                }
+            }
             HeaderType::Tiny => {
                 let start_byte =
                     get_tiny_start_byte(self.config.payload.payload_type as u8);
-                // If buffer starts with valid start byte, check if we might just
-                // need more data before deciding to drain.
                 if self.starts_with_possible_frame() {
                     if self.config.payload.has_length {
                         let header_size = 1 + self.config.payload.header_size();
                         let footer_size = self.config.footer_size();
-                        if self.buffer.len() < header_size {
-                            return 0; // Too early to determine frame size - wait for more data
+                        if buf.len() < header_size {
+                            return 0; // Wait for more data
                         }
-                        let len_offset = 1usize; // after 1 start byte
+                        // A7: validate length against get_message_info before waiting
+                        let len_offset = 1usize;
                         let msg_len = if self.config.payload.length_bytes == 1 {
-                            self.buffer[len_offset] as usize
+                            buf[len_offset] as usize
                         } else {
-                            (self.buffer[len_offset] as usize)
-                                | ((self.buffer[len_offset + 1] as usize) << 8)
+                            (buf[len_offset] as usize) | ((buf[len_offset + 1] as usize) << 8)
                         };
-                        if self.buffer.len() < header_size + msg_len + footer_size {
-                            return 0; // Not enough data for full frame - wait for more
+                        // Peek at msg_id to validate length early
+                        if buf.len() >= header_size {
+                            let id_offset = 1 + self.config.payload.length_bytes as usize
+                                + if self.config.payload.has_pkg_id { 1 } else { 0 };
+                            if buf.len() > id_offset {
+                                let mut full_id: u16 = 0;
+                                let mut off = 1 + self.config.payload.length_bytes as usize;
+                                if self.config.payload.has_pkg_id && buf.len() > off {
+                                    full_id = (buf[off] as u16) << 8;
+                                    off += 1;
+                                }
+                                if buf.len() > off {
+                                    full_id |= buf[off] as u16;
+                                    if let Some(info) = get_message_info(full_id) {
+                                        // A7: corrupted length → resync immediately
+                                        if msg_len > info.size || msg_len < info.min_size {
+                                            let search_from = 1;
+                                            return buf[search_from..].iter()
+                                                .position(|&b| b == start_byte)
+                                                .map(|p| search_from + p)
+                                                .unwrap_or(buf.len());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if buf.len() < header_size + msg_len + footer_size {
+                            return 0; // Wait for more data
                         }
                     } else {
-                        // No length field: need get_message_info to determine payload size.
-                        // The header is start_byte(s) + msg_id byte(s).
-                        let header_size = 1 + self.config.payload.header_size(); // start + payload_header
-                        if self.buffer.len() < header_size {
-                            return 0; // Haven't received the msg_id byte yet – wait
+                        // No length field: use get_message_info
+                        let header_size = 1 + self.config.payload.header_size();
+                        if buf.len() < header_size {
+                            return 0;
                         }
-                        // msg_id is the last byte of the header (after start byte(s))
-                        let msg_id = self.buffer[header_size - 1] as u16;
+                        let msg_id = buf[header_size - 1] as u16;
                         if let Some(info) = get_message_info(msg_id) {
-                            // Valid msg_id: we know total frame size; wait if incomplete
                             let total = header_size + info.size + self.config.footer_size();
-                            if self.buffer.len() < total {
-                                return 0; // Wait for payload (+ CRC if any) to arrive
+                            if buf.len() < total {
+                                return 0;
                             }
-                            // Full frame is present but parse still failed (e.g. bad CRC).
-                            // Fall through to drain past this start byte.
+                            // Full frame present but parse failed — fall through to drain
                         } else {
-                            // Unknown msg_id: this start byte is not the beginning of a
-                            // valid frame.  Drain past it.
-                            return 1;
+                            return 1; // Unknown msg_id
                         }
                     }
                 }
-                // Search from index 1 if index 0 already is the start byte (that parse
-                // failed, so skip past it), otherwise from index 0.
                 let search_from = if self.starts_with_possible_frame() { 1 } else { 0 };
-                if let Some(pos) = self.buffer[search_from..]
-                    .iter()
+                // D3: removed the dead `self.buffer.last() == Some(&start_byte)` arm;
+                // position() already handles the last-byte case correctly.
+                buf[search_from..].iter()
                     .position(|&b| b == start_byte)
-                {
-                    search_from + pos
-                } else if self.buffer.last() == Some(&start_byte) {
-                    self.buffer.len().saturating_sub(1)
-                } else {
-                    self.buffer.len()
-                }
+                    .map(|p| search_from + p)
+                    .unwrap_or(buf.len())
             }
             HeaderType::Basic => {
                 let second_start =
                     get_basic_second_start_byte(self.config.payload.payload_type as u8);
-                // If buffer starts with valid start bytes, check if we might just
-                // need more data before deciding to drain.
-                if self.starts_with_possible_frame() && self.config.payload.has_length {
-                    let header_size = 2 + self.config.payload.header_size();
-                    let footer_size = self.config.footer_size();
-                    if self.buffer.len() < header_size {
-                        return 0; // Too early to determine frame size - wait for more data
-                    }
-                    let len_offset = 2usize; // after 2 start bytes
-                    let msg_len = if self.config.payload.length_bytes == 1 {
-                        self.buffer[len_offset] as usize
+                if self.starts_with_possible_frame() {
+                    if self.config.payload.has_length {
+                        let header_size = 2 + self.config.payload.header_size();
+                        let footer_size = self.config.footer_size();
+                        if buf.len() < header_size {
+                            return 0;
+                        }
+                        let len_offset = 2usize;
+                        let msg_len = if self.config.payload.length_bytes == 1 {
+                            buf[len_offset] as usize
+                        } else {
+                            (buf[len_offset] as usize) | ((buf[len_offset + 1] as usize) << 8)
+                        };
+                        // A7: validate length against get_message_info
+                        if buf.len() >= header_size {
+                            let mut off = 2 + self.config.payload.length_bytes as usize;
+                            if self.config.payload.has_pkg_id && buf.len() > off {
+                                let pkg = (buf[off] as u16) << 8;
+                                off += 1;
+                                if buf.len() > off {
+                                    let full_id = pkg | buf[off] as u16;
+                                    if let Some(info) = get_message_info(full_id) {
+                                        if msg_len > info.size || msg_len < info.min_size {
+                                            return Self::scan_for_basic_start(&buf[1..], second_start)
+                                                .map(|p| p + 1)
+                                                .unwrap_or(buf.len());
+                                        }
+                                    }
+                                }
+                            } else if buf.len() > off {
+                                let full_id = buf[off] as u16;
+                                if let Some(info) = get_message_info(full_id) {
+                                    if msg_len > info.size || msg_len < info.min_size {
+                                        return Self::scan_for_basic_start(&buf[1..], second_start)
+                                            .map(|p| p + 1)
+                                            .unwrap_or(buf.len());
+                                    }
+                                }
+                            }
+                        }
+                        if buf.len() < header_size + msg_len + footer_size {
+                            return 0;
+                        }
                     } else {
-                        (self.buffer[len_offset] as usize)
-                            | ((self.buffer[len_offset + 1] as usize) << 8)
-                    };
-                    if self.buffer.len() < header_size + msg_len + footer_size {
-                        return 0; // Not enough data for full frame - wait for more
+                        // D2: no-length Basic header — mirror Tiny logic with get_message_info
+                        let header_size = 2 + self.config.payload.header_size();
+                        if buf.len() < header_size {
+                            return 0;
+                        }
+                        let msg_id = buf[header_size - 1] as u16;
+                        if let Some(info) = get_message_info(msg_id) {
+                            let total = header_size + info.size + self.config.footer_size();
+                            if buf.len() < total {
+                                return 0;
+                            }
+                            // Full frame present but parse failed — fall through to scan
+                        } else {
+                            // Unknown msg_id: scan for next start pair
+                            return Self::scan_for_basic_start(&buf[1..], second_start)
+                                .map(|p| p + 1)
+                                .unwrap_or(buf.len());
+                        }
                     }
                 }
                 let search_from = if self.starts_with_possible_frame() { 1 } else { 0 };
-                for idx in search_from..self.buffer.len().saturating_sub(1) {
-                    if self.buffer[idx] == BASIC_START_BYTE
-                        && self.buffer[idx + 1] == second_start
-                    {
-                        return idx;
-                    }
-                }
-                if self.buffer.last() == Some(&BASIC_START_BYTE) {
-                    self.buffer.len().saturating_sub(1)
-                } else {
-                    self.buffer.len()
-                }
+                Self::scan_for_basic_start(&buf[search_from..], second_start)
+                    .map(|p| search_from + p)
+                    .unwrap_or(buf.len())
             }
+        }
+    }
+
+    fn scan_for_basic_start(buf: &[u8], second_start: u8) -> Option<usize> {
+        for i in 0..buf.len().saturating_sub(1) {
+            if buf[i] == BASIC_START_BYTE && buf[i + 1] == second_start {
+                return Some(i);
+            }
+        }
+        if buf.last() == Some(&BASIC_START_BYTE) {
+            Some(buf.len().saturating_sub(1))
+        } else {
+            None
         }
     }
 
     /// Push a single byte and attempt to extract a complete frame.
     /// Returns `Some(FrameMsgInfo)` as soon as a frame is available.
-    /// Equivalent to calling `add_data(&[byte])` then `next(...)`.
     pub fn push_byte(&mut self, byte: u8, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
         self.add_data(&[byte]);
         self.next(get_message_info)
@@ -776,14 +1102,14 @@ impl AccumulatingReader {
     /// Automatically re-synchronizes past noise or partial frames.
     pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
         loop {
-            if self.buffer.is_empty() {
+            if self.buf().is_empty() {
                 return None;
             }
 
             let result = if self.config.payload.has_crc {
-                parse_with_crc(&self.config, &self.buffer, get_message_info)
+                parse_with_crc(&self.config, self.buf(), get_message_info)
             } else {
-                parse_minimal(&self.config, &self.buffer, get_message_info)
+                parse_minimal(&self.config, self.buf(), get_message_info)
             };
 
             if result.valid {
@@ -791,7 +1117,7 @@ impl AccumulatingReader {
 
                 // Check for sequence gap on profiles that carry a sequence number
                 if self.config.payload.has_seq {
-                    let seq = self.buffer[self.config.header.num_start_bytes as usize];
+                    let seq = self.buf()[self.config.header.num_start_bytes as usize];
                     if let Some(last) = self.last_seq {
                         if seq != last.wrapping_add(1) {
                             self.diagnostics.cnt_seq_gaps += 1;
@@ -800,7 +1126,7 @@ impl AccumulatingReader {
                     self.last_seq = Some(seq);
                 }
 
-                self.buffer.drain(..frame_size);
+                self.drain_head(frame_size);
                 return Some(result);
             }
 
@@ -809,44 +1135,48 @@ impl AccumulatingReader {
                 return None;
             }
 
-            // We're about to drain past a failed frame attempt — record diagnostics.
+            // Record diagnostics before draining
             if self.starts_with_possible_frame() {
-                // Check for length mismatch on profiles with an explicit length field
+                // A8: only fire cnt_len_errors when the length is genuinely wrong
                 if self.config.payload.has_length {
+                    let buf = self.buf();
                     let header_size = self.config.header_size();
-                    if self.buffer.len() >= header_size {
+                    if buf.len() >= header_size {
                         let mut len_offset = self.config.header.num_start_bytes as usize;
                         if self.config.payload.has_seq { len_offset += 1; }
                         if self.config.payload.has_sys_id { len_offset += 1; }
                         if self.config.payload.has_comp_id { len_offset += 1; }
                         let msg_len = if self.config.payload.length_bytes == 1 {
-                            self.buffer[len_offset] as usize
+                            buf[len_offset] as usize
                         } else {
-                            (self.buffer[len_offset] as usize) | ((self.buffer[len_offset + 1] as usize) << 8)
+                            (buf[len_offset] as usize) | ((buf[len_offset + 1] as usize) << 8)
                         };
                         let mut id_offset = len_offset + self.config.payload.length_bytes as usize;
                         let mut full_msg_id: u16 = 0;
-                        if self.config.payload.has_pkg_id {
-                            full_msg_id = (self.buffer[id_offset] as u16) << 8;
+                        if self.config.payload.has_pkg_id && buf.len() > id_offset {
+                            full_msg_id = (buf[id_offset] as u16) << 8;
                             id_offset += 1;
                         }
-                        full_msg_id |= self.buffer[id_offset] as u16;
-                        if let Some(info) = get_message_info(full_msg_id) {
-                            if info.size != msg_len {
-                                self.diagnostics.cnt_len_errors += 1;
+                        if buf.len() > id_offset {
+                            full_msg_id |= buf[id_offset] as u16;
+                            if let Some(info) = get_message_info(full_msg_id) {
+                                // A8: mirrors C++ / TS fix — only error on out-of-range
+                                if msg_len > info.size || msg_len < info.min_size {
+                                    self.diagnostics.cnt_len_errors += 1;
+                                }
                             }
                         }
                     }
                 }
 
-                // CRC failure: complete frame received but checksum did not validate
                 if result.status == FrameMsgStatus::CrcFailure {
                     self.diagnostics.cnt_crc_failures += 1;
                 }
             }
 
+            self.diagnostics.cnt_failed_bytes += bytes_to_drain as u32;
             self.diagnostics.cnt_sync_recoveries += 1;
-            self.buffer.drain(..bytes_to_drain);
+            self.drain_head(bytes_to_drain);
         }
     }
 }

@@ -30,7 +30,7 @@ pub struct SendResult {
 /// ```rust,ignore
 /// let sdk = StructFrameSdk::new(reader, serialization_test::get_message_info);
 /// let sub = sdk.subscribe(BasicTypesMessage::MSG_ID, |frame| {
-///     let msg = BasicTypesMessage::unpack(&frame.payload).unwrap();
+///     let msg = BasicTypesMessage::unpack(&frame.msg_data).unwrap();
 ///     println!("received regular_int={}", msg.regular_int);
 /// });
 /// sdk.inject_data(&raw_bytes);

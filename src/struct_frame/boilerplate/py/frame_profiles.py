@@ -444,22 +444,27 @@ def _frame_format_parse_with_crc(
     """
     result = FrameMsgInfo()
     length = len(buffer)
-    
+
     if length < config.overhead:
+        # Not enough bytes yet to even hold the header+footer
+        result.status = FrameMsgStatus.COLLECTING
         return result
-    
+
     idx = 0
-    
-    # Verify start bytes
+
+    # Verify start bytes. A mismatch means this position is not a frame start,
+    # so report WAITING_FOR_START to let buffer readers scan forward for a start byte.
     if config.num_start_bytes >= 1:
         if buffer[idx] != config.computed_start_byte1():
+            result.status = FrameMsgStatus.WAITING_FOR_START
             return result
         idx += 1
     if config.num_start_bytes >= 2:
         if buffer[idx] != config.computed_start_byte2():
+            result.status = FrameMsgStatus.WAITING_FOR_START
             return result
         idx += 1
-    
+
     crc_start = idx
     
     # Read optional fields before length
@@ -504,6 +509,8 @@ def _frame_format_parse_with_crc(
     # Verify total size
     total_size = config.overhead + msg_len
     if length < total_size:
+        # Header parsed but payload/footer not fully received yet
+        result.status = FrameMsgStatus.COLLECTING
         return result
     
     # Verify CRC (extension-aware)
@@ -527,6 +534,13 @@ def _frame_format_parse_with_crc(
             calc_crc = fletcher_checksum(buffer, crc_start, crc_start + crc_len, init1=magic1, init2=magic2)
         recv_crc = FrameChecksum(buffer[total_size - 2], buffer[total_size - 1])
         if calc_crc.byte1 != recv_crc.byte1 or calc_crc.byte2 != recv_crc.byte2:
+            # Structurally complete frame whose CRC did not match. Report the frame
+            # size and a CRC_FAILURE status so buffer/stream readers can skip exactly
+            # this frame and resync, instead of stalling on it forever.
+            result.msg_id = msg_id
+            result.msg_len = msg_len
+            result.frame_size = total_size
+            result.status = FrameMsgStatus.CRC_FAILURE
             return result
     
     # Extract message data
@@ -601,85 +615,6 @@ def _frame_format_parse_minimal(
     result.msg_data = msg_data
     
     return result
-
-
-# =============================================================================
-# Profile-Specific Convenience Functions
-# =============================================================================
-
-def encode_profile_standard(msg) -> bytes:
-    """Encode using Profile Standard (Basic + Default)"""
-    return _frame_format_encode_with_crc(PROFILE_STANDARD_CONFIG, msg)
-
-
-def parse_profile_standard_buffer(buffer: bytes) -> FrameMsgInfo:
-    """Parse Profile Standard frame from buffer"""
-    return _frame_format_parse_with_crc(PROFILE_STANDARD_CONFIG, buffer)
-
-
-def encode_profile_sensor(msg) -> bytes:
-    """Encode using Profile Sensor (Tiny + Minimal)"""
-    return _frame_format_encode_minimal(PROFILE_SENSOR_CONFIG, msg)
-
-
-def parse_profile_sensor_buffer(buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]) -> FrameMsgInfo:
-    """Parse Profile Sensor frame from buffer (requires get_message_info callback)"""
-    return _frame_format_parse_minimal(PROFILE_SENSOR_CONFIG, buffer, get_message_info)
-
-
-def encode_profile_ipc(msg) -> bytes:
-    """Encode using Profile IPC (None + Minimal)"""
-    return _frame_format_encode_minimal(PROFILE_IPC_CONFIG, msg)
-
-
-def parse_profile_ipc_buffer(buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]) -> FrameMsgInfo:
-    """Parse Profile IPC frame from buffer (requires get_message_info callback)"""
-    return _frame_format_parse_minimal(PROFILE_IPC_CONFIG, buffer, get_message_info)
-
-
-def encode_profile_bulk(msg) -> bytes:
-    """Encode using Profile Bulk (Basic + Extended)
-    
-    Args:
-        msg: Message object (msg_id should be 16-bit with package ID in upper 8 bits: (pkg_id << 8) | msg_id)
-    
-    Returns:
-        Encoded frame as bytes
-    """
-    return _frame_format_encode_with_crc(PROFILE_BULK_CONFIG, msg)
-
-
-def parse_profile_bulk_buffer(buffer: bytes) -> FrameMsgInfo:
-    """Parse Profile Bulk frame from buffer"""
-    return _frame_format_parse_with_crc(PROFILE_BULK_CONFIG, buffer)
-
-
-def encode_profile_network(
-    msg,
-    seq: int = 0,
-    sys_id: int = 0,
-    comp_id: int = 0
-) -> bytes:
-    """Encode using Profile Network (Basic + ExtendedMultiSystemStream)
-    
-    Args:
-        msg: Message object (msg_id should be 16-bit with package ID in upper 8 bits: (pkg_id << 8) | msg_id)
-        seq: Sequence number
-        sys_id: System ID
-        comp_id: Component ID
-    
-    Returns:
-        Encoded frame as bytes
-    """
-    return _frame_format_encode_with_crc(
-        PROFILE_NETWORK_CONFIG, msg,
-        seq=seq, sys_id=sys_id, comp_id=comp_id
-    )
-
-
-def parse_profile_network_buffer(buffer: bytes) -> FrameMsgInfo:
-    """Parse Profile Network frame from buffer"""
-    return _frame_format_parse_with_crc(PROFILE_NETWORK_CONFIG, buffer)
 
 
 # =============================================================================
@@ -819,13 +754,20 @@ class BufferReader:
                 return FrameMsgInfo()
             result = _frame_format_parse_minimal(self._config, remaining, self._get_message_info)
         
-        if result.valid and result.frame_size > 0:
+        if result.frame_size > 0:
+            # Advance past complete frames (valid, or CRC-failed but structurally known)
             self._offset += result.frame_size
+        elif result.status == FrameMsgStatus.WAITING_FOR_START and self._config.num_start_bytes >= 1:
+            # Head byte is not a frame start — scan forward to the next start byte
+            start1 = bytes([self._config.computed_start_byte1()])
+            nxt = self._buffer.find(start1, self._offset + 1, self._size)
+            self._offset = nxt if nxt != -1 else self._size
         else:
+            # Incomplete/garbage with no recoverable start — consume the rest
             self._offset = self._size
-        
+
         return result
-    
+
     def reset(self):
         """Reset the reader to the beginning of the buffer."""
         self._offset = 0
@@ -865,7 +807,7 @@ class BufferWriter:
         writer.write(0x01, payload, seq=1, sys_id=1, comp_id=1)
     """
     
-    def __init__(self, config: ProfileConfig, capacity: int):
+    def __init__(self, config: ProfileConfig, capacity: int = 1024):
         """
         Initialize buffer writer.
         
@@ -987,6 +929,10 @@ class AccumulatingReader:
         # Internal buffer for partial messages
         self._internal_buffer = bytearray(buffer_size)
         self._internal_data_len = 0
+        # Bytes appended to the internal buffer from the CURRENT add_data() call.
+        # Used to compute how many of the current buffer's bytes a completed frame
+        # consumed (partial_len = internal_data_len - bytes_appended_to_internal).
+        self._bytes_appended_to_internal = 0
         self._expected_frame_size = 0
         self._state = AccumulatingReaderState.IDLE
         
@@ -1021,11 +967,13 @@ class AccumulatingReader:
         self._state = AccumulatingReaderState.BUFFER_MODE
         
         # If we have partial data in internal buffer, try to complete it
+        self._bytes_appended_to_internal = 0
         if self._internal_data_len > 0:
             space_available = self._buffer_size - self._internal_data_len
             bytes_to_copy = min(len(buffer), space_available)
             self._internal_buffer[self._internal_data_len:self._internal_data_len + bytes_to_copy] = buffer[:bytes_to_copy]
             self._internal_data_len += bytes_to_copy
+            self._bytes_appended_to_internal = bytes_to_copy
     
     def next(self) -> FrameMsgInfo:
         """
@@ -1041,41 +989,75 @@ class AccumulatingReader:
         if self._internal_data_len > 0 and self._current_offset == 0:
             internal_bytes = bytes(self._internal_buffer[:self._internal_data_len])
             result = self._parse_buffer(internal_bytes)
-            
+            # Bytes already in the internal buffer before this add_data() appended to it
+            partial_len = self._internal_data_len - self._bytes_appended_to_internal
+
             if result.valid:
-                frame_size = result.frame_size
-                # Calculate how many bytes from current buffer were consumed
-                partial_len = self._internal_data_len - self._current_size if self._internal_data_len > self._current_size else 0
-                bytes_from_current = frame_size - partial_len if frame_size > partial_len else 0
+                # How many bytes from the current buffer were consumed to complete the frame
+                bytes_from_current = result.frame_size - partial_len if result.frame_size > partial_len else 0
                 self._current_offset = bytes_from_current
-                
-                # Clear internal buffer state
                 self._internal_data_len = 0
+                self._bytes_appended_to_internal = 0
                 self._expected_frame_size = 0
-                
                 return result
-            else:
-                # Still not enough data for a complete message
-                return self._with_diag(FrameMsgInfo())
-        
+
+            if result.frame_size > 0:
+                # Complete but invalid frame (CRC failure) — count it, skip it, resync
+                if self._config.has_crc:
+                    self._diag.cnt_crc_failures += 1
+                self._diag.cnt_failed_bytes += result.frame_size
+                self._diag.cnt_sync_recoveries += 1
+                bytes_from_current = result.frame_size - partial_len if result.frame_size > partial_len else 0
+                self._current_offset = bytes_from_current
+                self._internal_data_len = 0
+                self._bytes_appended_to_internal = 0
+                self._expected_frame_size = 0
+                return self._with_diag(result)
+
+            # Still not enough data for a complete message — wait for next add_data()
+            return self._with_diag(FrameMsgInfo())
+
         # Parse from current buffer
         if self._current_buffer is None or self._current_offset >= self._current_size:
             return self._with_diag(FrameMsgInfo())
-        
+
         remaining = self._current_buffer[self._current_offset:]
         result = self._parse_buffer(remaining)
-        
+
         if result.valid:
             self._current_offset += result.frame_size
             return result
-        
-        # Parse failed - might be partial message at end of buffer
+
+        if result.frame_size > 0:
+            # Complete frame with bad CRC — count it, skip it, let caller call next() again
+            if self._config.has_crc:
+                self._diag.cnt_crc_failures += 1
+            self._diag.cnt_failed_bytes += result.frame_size
+            self._diag.cnt_sync_recoveries += 1
+            self._current_offset += result.frame_size
+            return self._with_diag(result)
+
+        if result.status == FrameMsgStatus.WAITING_FOR_START and self._config.num_start_bytes >= 1:
+            # Head byte is not a frame start — scan forward to the next start byte
+            start1 = bytes([self._config.computed_start_byte1()])
+            nxt = self._current_buffer.find(start1, self._current_offset + 1, self._current_size)
+            if nxt != -1:
+                self._diag.cnt_failed_bytes += nxt - self._current_offset
+                self._diag.cnt_sync_recoveries += 1
+                self._current_offset = nxt
+                # Caller should call next() again to parse from the new position
+                return self._with_diag(FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY))
+            # No further start byte — discard the rest as a partial tail below
+            remaining = b''
+            self._current_offset = self._current_size
+
+        # Parse failed - might be a partial message at the end of the buffer
         remaining_len = self._current_size - self._current_offset
         if remaining_len > 0 and remaining_len < self._buffer_size:
             self._internal_buffer[:remaining_len] = remaining
             self._internal_data_len = remaining_len
             self._current_offset = self._current_size
-        
+
         return self._with_diag(FrameMsgInfo())
     
     # =========================================================================
@@ -1247,8 +1229,14 @@ class AccumulatingReader:
                     else:
                         full_msg_id = self._internal_buffer[self._config.header_size - 1]
                     msg_info = self._get_message_info(full_msg_id)
-                    if msg_info is not None and msg_info.size != payload_len:
-                        self._diag.cnt_len_errors += 1
+                    if msg_info is not None:
+                        # A valid frame may carry anywhere from base_size (extensions
+                        # truncated) up to size (full extensions) bytes. Only count a
+                        # length error when payload_len falls outside that range —
+                        # matches the C++ parser semantics.
+                        base_size = getattr(msg_info, 'base_size', msg_info.size)
+                        if payload_len > msg_info.size or payload_len < base_size:
+                            self._diag.cnt_len_errors += 1
 
                 self._expected_frame_size = self._config.overhead + payload_len
                 
@@ -1411,97 +1399,13 @@ class AccumulatingReader:
     def reset(self):
         """Reset the reader, clearing any partial message data."""
         self._internal_data_len = 0
+        self._bytes_appended_to_internal = 0
         self._expected_frame_size = 0
         self._state = AccumulatingReaderState.IDLE
         self._current_buffer = None
         self._current_size = 0
         self._current_offset = 0
         self._last_seq = None
-
-
-# =============================================================================
-# Profile-Specific Classes (Direct Instantiation)
-# =============================================================================
-
-# Profile Standard: Basic + Default
-class ProfileStandardReader(BufferReader):
-    """BufferReader for Profile Standard"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
-        super().__init__(PROFILE_STANDARD_CONFIG, buffer, get_message_info)
-
-class ProfileStandardWriter(BufferWriter):
-    """BufferWriter for Profile Standard"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_STANDARD_CONFIG, capacity)
-
-class ProfileStandardAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile Standard"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
-        super().__init__(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
-
-# Profile Sensor: Tiny + Minimal
-class ProfileSensorReader(BufferReader):
-    """BufferReader for Profile Sensor"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]):
-        super().__init__(PROFILE_SENSOR_CONFIG, buffer, get_message_info)
-
-class ProfileSensorWriter(BufferWriter):
-    """BufferWriter for Profile Sensor"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_SENSOR_CONFIG, capacity)
-
-class ProfileSensorAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile Sensor"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]], buffer_size: int = 1024):
-        super().__init__(PROFILE_SENSOR_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
-
-# Profile IPC: None + Minimal
-class ProfileIPCReader(BufferReader):
-    """BufferReader for Profile IPC"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]]):
-        super().__init__(PROFILE_IPC_CONFIG, buffer, get_message_info)
-
-class ProfileIPCWriter(BufferWriter):
-    """BufferWriter for Profile IPC"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_IPC_CONFIG, capacity)
-
-class ProfileIPCAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile IPC"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]], buffer_size: int = 1024):
-        super().__init__(PROFILE_IPC_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
-
-# Profile Bulk: Basic + Extended
-class ProfileBulkReader(BufferReader):
-    """BufferReader for Profile Bulk"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
-        super().__init__(PROFILE_BULK_CONFIG, buffer, get_message_info)
-
-class ProfileBulkWriter(BufferWriter):
-    """BufferWriter for Profile Bulk"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_BULK_CONFIG, capacity)
-
-class ProfileBulkAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile Bulk"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
-        super().__init__(PROFILE_BULK_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
-
-# Profile Network: Basic + ExtendedMultiSystemStream
-class ProfileNetworkReader(BufferReader):
-    """BufferReader for Profile Network"""
-    def __init__(self, buffer: bytes, get_message_info: Callable[[int], Optional[MessageInfo]] = None):
-        super().__init__(PROFILE_NETWORK_CONFIG, buffer, get_message_info)
-
-class ProfileNetworkWriter(BufferWriter):
-    """BufferWriter for Profile Network"""
-    def __init__(self, capacity: int = 1024):
-        super().__init__(PROFILE_NETWORK_CONFIG, capacity)
-
-class ProfileNetworkAccumulatingReader(AccumulatingReader):
-    """AccumulatingReader for Profile Network"""
-    def __init__(self, get_message_info: Callable[[int], Optional[MessageInfo]] = None, buffer_size: int = 1024):
-        super().__init__(PROFILE_NETWORK_CONFIG, get_message_info=get_message_info, buffer_size=buffer_size)
 
 
 # =============================================================================

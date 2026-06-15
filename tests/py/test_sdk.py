@@ -25,9 +25,10 @@ from struct_frame_sdk.struct_frame_sdk import StructFrameSdk, StructFrameSdkConf
 from struct_frame_sdk.transport import ITransport
 
 from frame_profiles import (
-    ProfileStandardWriter,
+    BufferWriter,
     PROFILE_STANDARD_CONFIG,
     parse_frame_buffer,
+    encode_message,
 )
 from struct_frame.generated.serialization_test import (
     BasicTypesMessage,
@@ -77,41 +78,23 @@ class MockTransport(ITransport):
 
 
 # ---------------------------------------------------------------------------
-# Mock frame parser (wraps real ProfileStandard parsing)
-# ---------------------------------------------------------------------------
-
-class StandardFrameParser:
-    """
-    A FrameParser implementation that uses the real ProfileStandard encode/decode
-    functions so the SDK subscribe tests exercise actual framing logic.
-    """
-
-    def parse(self, data: bytes):
-        return parse_frame_buffer(PROFILE_STANDARD_CONFIG, data, get_message_info)
-
-    def frame(self, msg_id: int, data: bytes) -> bytes:
-        info = get_message_info(msg_id)
-        magic1 = info.magic1 if info is not None else 0
-        magic2 = info.magic2 if info is not None else 0
-
-        # Construct a minimal duck-typed message object for the writer
-        class _RawMsg:
-            MSG_ID = msg_id
-            MAGIC1 = magic1
-            MAGIC2 = magic2
-            def serialize(self_): return bytes(data)
-        writer = ProfileStandardWriter()
-        writer.write(_RawMsg())
-        return bytes(writer.data())
-
-
-# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+def make_unknown_frame(msg_id: int, data: bytes) -> bytes:
+    """Frame raw bytes under a ProfileStandard frame for an arbitrary msg_id."""
+    raw_cls = type('_RawMsg', (), {
+        'MSG_ID': msg_id,
+        'MAGIC1': 0,
+        'MAGIC2': 0,
+        'serialize': lambda self_: bytes(data),
+    })
+    return bytes(encode_message(PROFILE_STANDARD_CONFIG, raw_cls()))
+
+
 def encode_basic_types(msg: BasicTypesMessage) -> bytes:
     """Encode a BasicTypesMessage into a ProfileStandard frame."""
-    writer = ProfileStandardWriter()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG)
     writer.write(msg)
     return bytes(writer.data())
 
@@ -119,7 +102,8 @@ def encode_basic_types(msg: BasicTypesMessage) -> bytes:
 def make_sdk(transport: MockTransport) -> StructFrameSdk:
     config = StructFrameSdkConfig(
         transport=transport,
-        frame_parser=StandardFrameParser(),
+        profile=PROFILE_STANDARD_CONFIG,
+        get_message_info=get_message_info,
     )
     return StructFrameSdk(config)
 
@@ -239,9 +223,8 @@ def test_no_handler_for_unknown_id():
     # Test 2: unknown ID does not fire the handler
     fired[0] = False
     # Encode a frame with a message ID that has no subscriber
-    UNKNOWN_MSG_ID = 0xFFFE
-    parser = StandardFrameParser()
-    unknown_frame = parser.frame(UNKNOWN_MSG_ID, b'\x00' * 4)
+    UNKNOWN_MSG_ID = 0xFE
+    unknown_frame = make_unknown_frame(UNKNOWN_MSG_ID, b'\x00' * 4)
     transport.inject_data(unknown_frame)
     run_test("unknown id: handler does not fire", fired[0] is False)
 
@@ -305,16 +288,17 @@ def test_close_callback_clears_buffer_state():
     transport = MockTransport()
     sdk = make_sdk(transport)
 
-    # Inject a truncated frame so parse buffer retains unread bytes.
+    # Inject a truncated frame so the reader retains unread (partial) bytes.
     msg = BasicTypesMessage()
     msg.regular_int = 5
     encoded = encode_basic_types(msg)
     transport.inject_data(encoded[: max(1, len(encoded) // 2)])
-    run_test("close: buffer contains partial frame before close", len(sdk.buffer) > 0)
+    run_test("close: reader holds partial frame before close", sdk.reader.has_partial())
 
     if transport._close_cb:
         transport._close_cb()
-    run_test("close: buffer cleared after close callback", len(sdk.buffer) == 0)
+    run_test("close: reader partial state cleared after close callback",
+             not sdk.reader.has_partial())
 
 
 # ---------------------------------------------------------------------------

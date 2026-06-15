@@ -9,7 +9,7 @@
 'use strict';
 
 const { BasicTypesMessage, getMessageInfo } = require('../generated/js/serialization-test.structframe');
-const { ProfileStandardConfig, ProfileStandardWriter, parseFrameWithCrc, encodeMessage } = require('../generated/js/frame-profiles');
+const { ProfileStandardConfig, BufferWriter, parseFrameWithCrc } = require('../generated/js/frame-profiles');
 const { StructFrameSdk } = require('../generated/js/struct-frame-sdk/struct-frame-sdk');
 
 // =============================================================================
@@ -38,39 +38,18 @@ class MockTransport {
 }
 
 // =============================================================================
-// Frame parser backed by real ProfileStandard encode/decode
-// =============================================================================
-
-const standardFrameParser = {
-  parse(data) {
-    return parseFrameWithCrc(ProfileStandardConfig, data, getMessageInfo);
-  },
-  frame(msgId, data) {
-    const info = getMessageInfo(msgId);
-    const rawMsg = {
-      _buffer: data,
-      getMsgId: () => msgId,
-      getMagic1: () => (info?.magic1 ?? 0),
-      getMagic2: () => (info?.magic2 ?? 0),
-      isVariable: () => false,
-    };
-    return encodeMessage(ProfileStandardConfig, rawMsg);
-  },
-};
-
-// =============================================================================
 // Helpers
 // =============================================================================
 
 function encodeBasicTypes(regularInt, flag) {
   const msg = new BasicTypesMessage({ regularInt, flag });
-  const writer = new ProfileStandardWriter(512);
+  const writer = new BufferWriter(ProfileStandardConfig, 512);
   writer.write(msg);
   return writer.data();
 }
 
 function makeSdk(transport) {
-  return new StructFrameSdk({ transport, frameParser: standardFrameParser });
+  return new StructFrameSdk({ transport, profile: ProfileStandardConfig, getMessageInfo });
 }
 
 // =============================================================================

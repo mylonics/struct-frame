@@ -3,6 +3,13 @@
 
 import { ITransport, SendResult } from './transport';
 import { FrameMsgInfo } from '../frame-base';
+import { MessageBase } from '../struct-base';
+import {
+  FrameProfileConfig,
+  GetMessageInfo,
+  AccumulatingReader,
+  encodeMessage,
+} from '../frame-profiles';
 
 /**
  * Message handler callback type
@@ -10,32 +17,10 @@ import { FrameMsgInfo } from '../frame-base';
 export type MessageHandler<T = any> = (message: T, msgId: number) => void;
 
 /**
- * Frame parser interface - must be implemented by generated frame parsers
- */
-export interface FrameParser {
-  /**
-   * Parse incoming data and extract message
-   */
-  parse(data: Uint8Array): FrameMsgInfo;
-  
-  /**
-   * Frame a message for sending
-   */
-  frame(msgId: number, data: Uint8Array): Uint8Array;
-}
-
-/**
  * Message codec interface - deserializes raw bytes into message objects
  */
 export interface MessageCodec<T = any> {
-  /**
-   * Get message ID for this codec
-   */
   getMsgId(): number;
-  
-  /**
-   * Deserialize bytes into message object
-   */
   deserialize(data: Uint8Array): T;
 }
 
@@ -45,8 +30,10 @@ export interface MessageCodec<T = any> {
 export interface StructFrameSdkConfig {
   /** Transport layer */
   transport: ITransport;
-  /** Frame parser */
-  frameParser: FrameParser;
+  /** Frame profile configuration (e.g. ProfileStandardConfig) */
+  profile: FrameProfileConfig;
+  /** Callback for looking up message metadata by ID */
+  getMessageInfo?: GetMessageInfo;
   /** Enable debug logging */
   debug?: boolean;
 }
@@ -56,20 +43,20 @@ export interface StructFrameSdkConfig {
  */
 export class StructFrameSdk {
   private transport: ITransport;
-  private frameParser: FrameParser;
-  private minFrameSize: number;
+  private profile: FrameProfileConfig;
+  private getMessageInfo?: GetMessageInfo;
+  private reader: AccumulatingReader;
   private debug: boolean;
   private messageHandlers: Map<number, MessageHandler[]> = new Map();
   private messageCodecs: Map<number, MessageCodec> = new Map();
-  private buffer: Uint8Array = new Uint8Array(0);
 
   constructor(config: StructFrameSdkConfig) {
     this.transport = config.transport;
-    this.frameParser = config.frameParser;
-    this.minFrameSize = this.estimateMinFrameSize();
+    this.profile = config.profile;
+    this.getMessageInfo = config.getMessageInfo;
+    this.reader = new AccumulatingReader(config.profile, config.getMessageInfo);
     this.debug = config.debug ?? false;
 
-    // Set up transport callbacks
     this.transport.onData((data) => this.handleIncomingData(data));
     this.transport.onError((error) => this.handleError(error));
     this.transport.onClose(() => this.handleClose());
@@ -99,7 +86,8 @@ export class StructFrameSdk {
   }
 
   /**
-   * Subscribe to messages with a specific message ID
+   * Subscribe to messages with a specific message ID.
+   * Returns an unsubscribe function.
    */
   subscribe<T = any>(msgId: number, handler: MessageHandler<T>): () => void {
     if (!this.messageHandlers.has(msgId)) {
@@ -107,8 +95,6 @@ export class StructFrameSdk {
     }
     this.messageHandlers.get(msgId)!.push(handler);
     this.log(`Subscribed to message ID ${msgId}`);
-
-    // Return unsubscribe function
     return () => {
       const handlers = this.messageHandlers.get(msgId);
       if (handlers) {
@@ -121,19 +107,22 @@ export class StructFrameSdk {
   }
 
   /**
-   * Send a raw message (already serialized)
+   * Send a raw pre-serialized payload, framing it with the configured profile.
    */
   async sendRaw(msgId: number, data: Uint8Array): Promise<SendResult> {
-    const framedData = this.frameParser.frame(msgId, data);
+    const info = this.getMessageInfo?.(msgId);
+    const wrapper = {
+      _buffer: Buffer.from(data),
+      getMsgId: () => msgId,
+      getMagic1: () => info?.magic1 ?? 0,
+      getMagic2: () => info?.magic2 ?? 0,
+      isVariable: () => false,
+    } as unknown as MessageBase;
+    const framedData = encodeMessage(this.profile, wrapper);
     const attemptedBytes = framedData.length;
     const bytesWritten = await this.transport.send(framedData);
-    const result: SendResult = {
-      success: bytesWritten === attemptedBytes,
-      attemptedBytes,
-      bytesWritten,
-    };
     this.log(`Sent message ID ${msgId}, ${data.length} bytes`);
-    return result;
+    return { success: bytesWritten === attemptedBytes, attemptedBytes, bytesWritten };
   }
 
   /**
@@ -154,38 +143,12 @@ export class StructFrameSdk {
   }
 
   private handleIncomingData(data: Uint8Array): void {
-    // Append to buffer
-    const newBuffer = new Uint8Array(this.buffer.length + data.length);
-    newBuffer.set(this.buffer);
-    newBuffer.set(data, this.buffer.length);
-    this.buffer = newBuffer;
-
-    // Try to parse messages from buffer
-    this.parseBuffer();
-  }
-
-  private parseBuffer(): void {
-    while (this.buffer.length > 0) {
-      const result = this.frameParser.parse(this.buffer);
-      
-      if (!result.valid) {
-        // If we already have enough bytes for at least one frame attempt, drop one byte
-        // and continue scanning to recover from corrupted leading data.
-        if (this.buffer.length >= this.minFrameSize) {
-          this.log('Parser desync detected, discarding 1 byte for resync');
-          this.buffer = this.buffer.subarray(1);
-          continue;
-        }
-        break;
-      }
-
-      // Valid message found
+    this.reader.addData(data);
+    let result: FrameMsgInfo;
+    while ((result = this.reader.next()).valid) {
       this.log(`Received message ID ${result.msgId}, ${result.msgLen} bytes`);
-      
-      // Notify handlers
       const handlers = this.messageHandlers.get(result.msgId);
       if (handlers && handlers.length > 0) {
-        // Try to deserialize with registered codec
         let message: any = result.msgData;
         const codec = this.messageCodecs.get(result.msgId);
         if (codec) {
@@ -195,8 +158,6 @@ export class StructFrameSdk {
             this.log(`Failed to deserialize message ID ${result.msgId}: ${error}`);
           }
         }
-
-        // Call all handlers
         handlers.forEach(handler => {
           try {
             handler(message, result.msgId);
@@ -205,32 +166,7 @@ export class StructFrameSdk {
           }
         });
       }
-
-      // Remove parsed data from buffer
-      const totalFrameSize = this.calculateFrameSize(result);
-      this.buffer = this.buffer.subarray(totalFrameSize);
     }
-  }
-
-  private estimateMinFrameSize(): number {
-    try {
-      const probe = this.frameParser.frame(0, new Uint8Array(0));
-      return probe.length > 0 ? probe.length : 1;
-    } catch {
-      return 1;
-    }
-  }
-
-  private calculateFrameSize(result: FrameMsgInfo): number {
-    // Calculate total frame size including headers and footers.
-    // Uses frameSize from the parser result when available (set by
-    // profiles that track total frame size during parsing). Falls back
-    // to re-framing the parsed payload so older parsers still trim the
-    // exact frame length without relying on a guessed overhead.
-    if (typeof result.frameSize === 'number' && result.frameSize > 0) {
-      return result.frameSize;
-    }
-    return this.frameParser.frame(result.msgId, result.msgData).length;
   }
 
   private handleError(error: Error): void {
@@ -239,7 +175,7 @@ export class StructFrameSdk {
 
   private handleClose(): void {
     this.log('Transport closed');
-    this.buffer = new Uint8Array(0);
+    this.reader = new AccumulatingReader(this.profile, this.getMessageInfo);
   }
 
   private log(message: string): void {

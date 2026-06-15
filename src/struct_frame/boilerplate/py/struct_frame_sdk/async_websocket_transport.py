@@ -58,7 +58,12 @@ class AsyncWebSocketTransport(BaseAsyncTransport):
             self.receive_task = None
         
         if self.websocket:
-            await self.websocket.close()
+            try:
+                # Bound the close handshake so disconnect() cannot hang on a
+                # half-open connection.
+                await asyncio.wait_for(self.websocket.close(), timeout=2.0)
+            except (asyncio.TimeoutError, Exception):
+                pass
             self.websocket = None
 
     async def send(self, data: bytes) -> int:

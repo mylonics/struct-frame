@@ -78,7 +78,8 @@ pub struct FrameMsgInfo {
     pub system_id: u8,
     pub component_id: u8,
     /// The raw message payload bytes (excluding framing overhead).
-    pub payload: Vec<u8>,
+    /// Use `get_payload_span()` for a zero-copy slice or `extract_payload()` to move the data out.
+    pub msg_data: Vec<u8>,
     /// Status indicating the reason this result is not valid (only meaningful when valid is false).
     pub status: FrameMsgStatus,
 }
@@ -86,6 +87,18 @@ pub struct FrameMsgInfo {
 impl FrameMsgInfo {
     pub fn invalid() -> Self {
         Self::default()
+    }
+
+    /// Return a zero-copy slice of the payload bytes.
+    #[inline]
+    pub fn get_payload_span(&self) -> &[u8] {
+        &self.msg_data
+    }
+
+    /// Move the payload bytes out, consuming this field's allocation.
+    #[inline]
+    pub fn extract_payload(self) -> Vec<u8> {
+        self.msg_data
     }
 }
 
@@ -102,6 +115,10 @@ pub struct ParserDiagnostics {
     /// Number of times the parser discarded bytes and re-searched for a frame start.
     /// Indicates lost bytes or buffer overflows.
     pub cnt_sync_recoveries: u32,
+
+    /// Total number of bytes discarded during sync recovery.
+    /// Complements cnt_sync_recoveries with a byte-level view of data loss.
+    pub cnt_failed_bytes: u32,
 
     /// Number of frames where the header length field does not match the expected
     /// message-struct size from the message-info callback.
@@ -121,15 +138,21 @@ pub struct MessageInfo {
     pub magic1: u8,
     pub magic2: u8,
     pub base_size: usize,  // Non-extension portion size (== size when no extensions)
+    /// Minimum valid wire payload length (< size only for variable messages).
+    pub min_size: usize,
 }
 
 impl MessageInfo {
     pub fn new(size: usize, magic1: u8, magic2: u8) -> Self {
-        MessageInfo { size, magic1, magic2, base_size: size }
+        MessageInfo { size, magic1, magic2, base_size: size, min_size: size }
     }
 
     pub fn new_with_base_size(size: usize, magic1: u8, magic2: u8, base_size: usize) -> Self {
-        MessageInfo { size, magic1, magic2, base_size }
+        MessageInfo { size, magic1, magic2, base_size, min_size: size }
+    }
+
+    pub fn new_variable(size: usize, magic1: u8, magic2: u8, base_size: usize, min_size: usize) -> Self {
+        MessageInfo { size, magic1, magic2, base_size, min_size }
     }
 }
 

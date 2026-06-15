@@ -271,8 +271,8 @@ class MessagePyGen():
             result += '        """Serialize the message to MAX_SIZE (for minimal profiles without length field)"""\n'
         else:
             result += '        """Serialize the message into binary format"""\n'
-        result += '        data = b""\n'
-        
+        result += '        data = bytearray()\n'
+
         # Pack regular fields
         for key, f in msg.fields.items():
             if f.field_type in ("string", "bytes") and not f.is_array:
@@ -318,15 +318,15 @@ class MessagePyGen():
                     if f.size_option is not None:
                         # Fixed array
                         if fmt:
-                            # Fixed array of primitives/enums
+                            # Fixed array of primitives/enums - bulk pack in one struct call
+                            base_fmt = "B" if f.is_enum else py_struct_format[f.field_type]
                             result += f'        # Fixed array: {f.name}\n'
-                            result += f'        for i in range({f.size_option}):\n'
-                            result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
+                            result += f'        _vals = list(self.{f.name}[:{f.size_option}])\n'
+                            result += f'        _vals += [0] * ({f.size_option} - len(_vals))\n'
                             if f.is_enum:
-                                result += f'            data += struct.pack("<B", int(val))\n'
+                                result += f'        data += struct.pack("<{f.size_option}{base_fmt}", *(int(v) for v in _vals))\n'
                             else:
-                                base_fmt = py_struct_format[f.field_type]
-                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                                result += f'        data += struct.pack("<{f.size_option}{base_fmt}", *_vals)\n'
                         else:
                             # Fixed array of nested messages
                             type_name = f.field_type
@@ -340,16 +340,16 @@ class MessagePyGen():
                         # Bounded array
                         count_fmt = "H" if f.max_size > 255 else "B"
                         if f.is_default_type or f.is_enum:
-                            # Primitives/enums
+                            # Primitives/enums - count prefix then bulk pack of full max_size width
+                            base_fmt = "B" if f.is_enum else py_struct_format[f.field_type]
                             result += f'        # Bounded array: {f.name}\n'
                             result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
-                            result += f'        for i in range({f.max_size}):\n'
-                            result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
+                            result += f'        _vals = list(self.{f.name}[:{f.max_size}])\n'
+                            result += f'        _vals += [0] * ({f.max_size} - len(_vals))\n'
                             if f.is_enum:
-                                result += f'            data += struct.pack("<B", int(val))\n'
+                                result += f'        data += struct.pack("<{f.max_size}{base_fmt}", *(int(v) for v in _vals))\n'
                             else:
-                                base_fmt = py_struct_format[f.field_type]
-                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                                result += f'        data += struct.pack("<{f.max_size}{base_fmt}", *_vals)\n'
                         else:
                             # Nested messages
                             result += f'        # Bounded nested message array: {f.name}\n'
@@ -399,10 +399,10 @@ class MessagePyGen():
             result += f'        # Pad to union size\n'
             result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
             result += f'        data += union_data\n'
-        
-        result += '        return data\n'
+
+        result += '        return bytes(data)\n'
         return result
-    
+
     @staticmethod
     def generate_unpack_method(msg):
         """Generate the _deserialize_fixed() class method"""
@@ -463,49 +463,37 @@ class MessagePyGen():
                     if f.size_option is not None:
                         # Fixed array
                         if fmt:
-                            # Fixed array of primitives/enums
+                            # Fixed array of primitives/enums - bulk unpack in one struct call
+                            base_fmt = "B" if f.is_enum else py_struct_format[f.field_type]
+                            elem_size = 1 if f.is_enum else struct_format_sizes[base_fmt]
+                            total_bytes = f.size_option * elem_size
                             result += f'        # Fixed array: {f.name}\n'
-                            result += f'        fields["{f.name}"] = []\n'
-                            result += f'        for i in range({f.size_option}):\n'
-                            if f.is_enum:
-                                result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
-                                result += f'            offset += 1\n'
-                            else:
-                                base_fmt = py_struct_format[f.field_type]
-                                size = struct_format_sizes[base_fmt]
-                                result += f'            val = struct.unpack_from("<{base_fmt}", data, offset)[0]\n'
-                                result += f'            offset += {size}\n'
-                            result += f'            fields["{f.name}"].append(val)\n'
+                            result += f'        fields["{f.name}"] = list(struct.unpack_from("<{f.size_option}{base_fmt}", data, offset))\n'
+                            result += f'        offset += {total_bytes}\n'
                         else:
                             # Fixed array of nested messages
                             type_name = f.field_type
                             result += f'        # Fixed nested message array: {f.name}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.size_option}):\n'
-                            result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                             result += f'            fields["{f.name}"].append(msg)\n'
-                            result += f'            offset += {type_name}.msg_size\n'
+                            result += f'            offset += {type_name}.MAX_SIZE\n'
                     elif f.max_size is not None:
                         # Bounded array
                         count_fmt = "H" if f.max_size > 255 else "B"
                         count_size = 2 if f.max_size > 255 else 1
                         if f.is_default_type or f.is_enum:
-                            # Primitives/enums
+                            # Primitives/enums - read count, bulk-unpack full max_size width, keep count
+                            base_fmt = "B" if f.is_enum else py_struct_format[f.field_type]
+                            elem_size = 1 if f.is_enum else struct_format_sizes[base_fmt]
+                            total_bytes = f.max_size * elem_size
                             result += f'        # Bounded array: {f.name}\n'
                             result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
                             result += f'        offset += {count_size}\n'
-                            result += f'        fields["{f.name}"] = []\n'
-                            result += f'        for i in range({f.max_size}):\n'
-                            if f.is_enum:
-                                result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
-                                result += f'            offset += 1\n'
-                            else:
-                                base_fmt = py_struct_format[f.field_type]
-                                size = struct_format_sizes[base_fmt]
-                                result += f'            val = struct.unpack_from("<{base_fmt}", data, offset)[0]\n'
-                                result += f'            offset += {size}\n'
-                            result += f'            if i < count:\n'
-                            result += f'                fields["{f.name}"].append(val)\n'
+                            result += f'        _all = struct.unpack_from("<{f.max_size}{base_fmt}", data, offset)\n'
+                            result += f'        offset += {total_bytes}\n'
+                            result += f'        fields["{f.name}"] = list(_all[:min(count, {f.max_size})])\n'
                         else:
                             # Nested messages
                             result += f'        # Bounded nested message array: {f.name}\n'
@@ -513,10 +501,10 @@ class MessagePyGen():
                             result += f'        offset += {count_size}\n'
                             result += f'        fields["{f.name}"] = []\n'
                             result += f'        for i in range({f.max_size}):\n'
-                            result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                             result += f'            if i < count:\n'
                             result += f'                fields["{f.name}"].append(msg)\n'
-                            result += f'            offset += {type_name}.msg_size\n'
+                            result += f'            offset += {type_name}.MAX_SIZE\n'
             else:
                 # Regular field
                 fmt = MessagePyGen.get_struct_format(f)
@@ -532,8 +520,8 @@ class MessagePyGen():
                 else:
                     # Nested message
                     type_name = f.field_type
-                    result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
-                    result += f'        offset += {type_name}.msg_size\n'
+                    result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
+                    result += f'        offset += {type_name}.MAX_SIZE\n'
         
         # Unpack oneofs
         for oneof_name, oneof in msg.oneofs.items():
@@ -561,7 +549,7 @@ class MessagePyGen():
                     for field_name, field in oneof.fields.items():
                         type_name = field.field_type
                         result += f'        if discriminator == {type_name}.msg_id:\n'
-                        result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
+                        result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                         result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
                 else:  # field_order
                     result += f'        # Determine which field is active based on field order (1-based index)\n'
@@ -578,7 +566,7 @@ class MessagePyGen():
                             # Nested message
                             type_name = field.field_type
                             result += f'        if discriminator == {field_idx}:\n'
-                            result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.msg_size])\n'
+                            result += f'            fields["{oneof_name}"]["{field_name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                             result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
             
             result += f'        offset += {oneof.size}\n'
@@ -767,28 +755,7 @@ class MessagePyGen():
     def generate_unified_unpack(msg):
         """Generate unified deserialize() method that works for both variable and non-variable messages."""
         result = ''
-        
-        result += '\n    @classmethod\n'
-        result += '    def deserialize(cls, data: bytes):\n'
-        result += '        """Deserialize message from binary data.\n'
-        result += '        Works for both variable and non-variable messages.\n'
-        result += '        For variable messages with minimal profiles (len(data) == MAX_SIZE),\n'
-        result += '        uses fixed-size deserialization instead of variable-length deserialization.\n'
-        result += '        """\n'
-        
-        if msg.variable:
-            result += '        # Variable message - check encoding format\n'
-            result += '        if len(data) == cls.MAX_SIZE:\n'
-            result += '            # Minimal profile format (MAX_SIZE encoding)\n'
-            result += '            return cls._deserialize_fixed(data)\n'
-            result += '        else:\n'
-            result += '            # Variable-length format\n'
-            result += '            return cls._deserialize_variable(data)\n'
-        else:
-            result += '        # Fixed-size message - use standard deserialization\n'
-            result += '        return cls._deserialize_fixed(data)\n'
-        
-        # Add convenience overload for FrameMsgInfo
+
         result += '\n    @classmethod\n'
         result += '    def deserialize(cls, data):\n'
         result += '        """Deserialize message from binary data or FrameMsgInfo.\n'
@@ -839,10 +806,13 @@ class MessagePyGen():
                     element_size = f.element_size if f.element_size else 1
                 else:
                     element_size = type_sizes.get(f.field_type, (f.size - 1) // f.max_size)
-                result += f'        size += 1 + (min(len(self.{f.name}), {f.max_size}) * {element_size})  # {f.name}\n'
+                # Count prefix is 2 bytes when max_size > 255, else 1 (must match the writer)
+                count_size = 2 if f.max_size > 255 else 1
+                result += f'        size += {count_size} + (min(len(self.{f.name}), {f.max_size}) * {element_size})  # {f.name}\n'
             elif f.field_type in ("string", "bytes") and f.max_size is not None:
                 # Variable string
-                result += f'        size += 1 + min(len(self.{f.name}), {f.max_size})  # {f.name}\n'
+                count_size = 2 if f.max_size > 255 else 1
+                result += f'        size += {count_size} + min(len(self.{f.name}), {f.max_size})  # {f.name}\n'
             else:
                 result += f'        size += {f.size}  # {f.name}\n'
         
@@ -872,7 +842,7 @@ class MessagePyGen():
         # Generate _serialize_variable method (internal method)
         result += '\n    def _serialize_variable(self) -> bytes:\n'
         result += '        """Serialize message using variable-length encoding (only serializes used bytes)."""\n'
-        result += '        data = b""\n'
+        result += '        data = bytearray()\n'
 
         for key, f in msg.fields.items():
             if f.field_type in ("string", "bytes") and not f.is_array:
@@ -907,14 +877,15 @@ class MessagePyGen():
                     fmt = MessagePyGen.get_struct_format(f)
                     if f.size_option is not None:
                         if fmt:
+                            # Fixed array of primitives/enums - bulk pack in one struct call
+                            base_fmt = "B" if f.is_enum else py_struct_format[f.field_type]
                             result += f'        # Fixed array: {f.name}\n'
-                            result += f'        for i in range({f.size_option}):\n'
-                            result += f'            val = self.{f.name}[i] if i < len(self.{f.name}) else 0\n'
+                            result += f'        _vals = list(self.{f.name}[:{f.size_option}])\n'
+                            result += f'        _vals += [0] * ({f.size_option} - len(_vals))\n'
                             if f.is_enum:
-                                result += f'            data += struct.pack("<B", int(val))\n'
+                                result += f'        data += struct.pack("<{f.size_option}{base_fmt}", *(int(v) for v in _vals))\n'
                             else:
-                                base_fmt = py_struct_format[f.field_type]
-                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                                result += f'        data += struct.pack("<{f.size_option}{base_fmt}", *_vals)\n'
                         else:
                             type_name = f.field_type
                             result += f'        # Fixed nested message array: {f.name}\n'
@@ -926,15 +897,16 @@ class MessagePyGen():
                     elif f.max_size is not None:
                         count_fmt = "H" if f.max_size > 255 else "B"
                         if f.is_default_type or f.is_enum:
+                            # Primitives/enums - count prefix then bulk pack of only the used elements
+                            base_fmt = "B" if f.is_enum else py_struct_format[f.field_type]
                             result += f'        # Bounded array: {f.name}\n'
-                            result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
-                            result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
-                            result += f'            val = self.{f.name}[i]\n'
+                            result += f'        _n = min(len(self.{f.name}), {f.max_size})\n'
+                            result += f'        data += struct.pack("<{count_fmt}", _n)\n'
+                            result += f'        _vals = list(self.{f.name}[:_n])\n'
                             if f.is_enum:
-                                result += f'            data += struct.pack("<B", int(val))\n'
+                                result += f'        data += struct.pack("<%d{base_fmt}" % _n, *(int(v) for v in _vals))\n'
                             else:
-                                base_fmt = py_struct_format[f.field_type]
-                                result += f'            data += struct.pack("<{base_fmt}", val)\n'
+                                result += f'        data += struct.pack("<%d{base_fmt}" % _n, *_vals)\n'
                         else:
                             result += f'        # Bounded nested message array: {f.name}\n'
                             result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
@@ -991,8 +963,8 @@ class MessagePyGen():
                 result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
                 result += f'        data += union_data\n'
 
-        result += '        return data\n'
-        
+        result += '        return bytes(data)\n'
+
         # Generate _deserialize_variable class method (internal method)
         result += '\n    @classmethod\n'
         result += '    def _deserialize_variable(cls, data: bytes):\n'
@@ -1004,11 +976,14 @@ class MessagePyGen():
             if f.is_array and f.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                # Count prefix is 2 bytes when max_size > 255, else 1 (must match the writer)
+                count_fmt = "H" if f.max_size > 255 else "B"
+                count_size = 2 if f.max_size > 255 else 1
                 if f.field_type in ("string", "bytes"):
                     element_size = f.element_size if f.element_size else 1
                     result += f'        # {f.name}: variable string array\n'
-                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
+                    result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                    result += f'        offset += {count_size}\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range(min(count, {f.max_size})):\n'
                     result += f'            s = struct.unpack_from("<{element_size}s", data, offset)[0]\n'
@@ -1016,31 +991,27 @@ class MessagePyGen():
                     result += f'            offset += {element_size}\n'
                 elif f.is_enum:
                     result += f'        # {f.name}: variable enum array\n'
-                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'            offset += 1\n'
-                    result += f'            fields["{f.name}"].append(val)\n'
+                    result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                    result += f'        offset += {count_size}\n'
+                    result += f'        _n = min(count, {f.max_size})\n'
+                    result += f'        fields["{f.name}"] = list(struct.unpack_from("<%dB" % _n, data, offset))\n'
+                    result += f'        offset += _n\n'
                 elif f.field_type in type_sizes:
                     element_size = type_sizes[f.field_type]
                     fmt = py_struct_format.get(f.field_type, 'B')
                     result += f'        # {f.name}: variable {f.field_type} array\n'
-                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            val = struct.unpack_from("<{fmt}", data, offset)[0]\n'
-                    result += f'            offset += {element_size}\n'
-                    result += f'            fields["{f.name}"].append(val)\n'
+                    result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                    result += f'        offset += {count_size}\n'
+                    result += f'        _n = min(count, {f.max_size})\n'
+                    result += f'        fields["{f.name}"] = list(struct.unpack_from("<%d{fmt}" % _n, data, offset))\n'
+                    result += f'        offset += _n * {element_size}\n'
                 else:
                     # Nested message array
                     type_name = f.field_type
                     element_size = (f.size - 1) // f.max_size
                     result += f'        # {f.name}: variable nested message array\n'
-                    result += f'        count = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'        offset += 1\n'
+                    result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                    result += f'        offset += {count_size}\n'
                     result += f'        fields["{f.name}"] = []\n'
                     result += f'        for i in range(min(count, {f.max_size})):\n'
                     result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
@@ -1048,9 +1019,11 @@ class MessagePyGen():
                     result += f'            offset += {type_name}.MAX_SIZE\n'
             elif f.field_type in ("string", "bytes") and f.max_size is not None:
                 # Variable string
+                count_fmt = "H" if f.max_size > 255 else "B"
+                count_size = 2 if f.max_size > 255 else 1
                 result += f'        # {f.name}: variable string\n'
-                result += f'        str_len = struct.unpack_from("<B", data, offset)[0]\n'
-                result += f'        offset += 1\n'
+                result += f'        str_len = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
+                result += f'        offset += {count_size}\n'
                 result += f'        str_len = min(str_len, {f.max_size})\n'
                 result += f'        fields["{f.name}"] = data[offset:offset+str_len]\n'
                 result += f'        offset += str_len\n'
@@ -1597,11 +1570,9 @@ class TestPyGen():
             for imp in imported_packages:
                 yield f'from struct_frame.generated.{imp} import *\n'
         yield 'from frame_profiles import (\n'
-        yield '    ProfileStandardWriter, ProfileStandardAccumulatingReader,\n'
-        yield '    ProfileSensorWriter,   ProfileSensorAccumulatingReader,\n'
-        yield '    ProfileIPCWriter,      ProfileIPCAccumulatingReader,\n'
-        yield '    ProfileBulkWriter,     ProfileBulkAccumulatingReader,\n'
-        yield '    ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,\n'
+        yield '    BufferWriter, AccumulatingReader,\n'
+        yield '    PROFILE_STANDARD_CONFIG, PROFILE_SENSOR_CONFIG, PROFILE_IPC_CONFIG,\n'
+        yield '    PROFILE_BULK_CONFIG, PROFILE_NETWORK_CONFIG,\n'
         yield ')\n\n'
         
         # Collect testable messages (skip variant/oneof messages)
@@ -1626,22 +1597,22 @@ class TestPyGen():
             yield '    return msg\n\n'
         
         # Generate test function
-        yield 'def verify_roundtrip(msg, writer_cls, reader_cls, get_info_fn) -> Tuple[bool, str]:\n'
-        yield '    """Encode *msg* with ``writer_cls`` (a BufferWriter), decode it back\n'
-        yield '    using ``reader_cls`` (an AccumulatingReader) and compare field-by-field\n'
-        yield '    with the original. Returns (passed, reason)."""\n'
+        yield 'def verify_roundtrip(msg, config, get_info_fn) -> Tuple[bool, str]:\n'
+        yield '    """Encode *msg* with a BufferWriter configured by *config*, decode it\n'
+        yield '    back with an AccumulatingReader and compare field-by-field with the\n'
+        yield '    original. Returns (passed, reason)."""\n'
         yield '    try:\n'
         yield '        # Generously size the working buffers based on the message MAX_SIZE\n'
         yield '        # so that even the largest extended payloads fit with profile overhead.\n'
         yield '        buf_size = max(2048, getattr(msg, "MAX_SIZE", 0) + 128)\n'
-        yield '        writer = writer_cls(buf_size)\n'
+        yield '        writer = BufferWriter(config, buf_size)\n'
         yield '        if not writer.write(msg):\n'
         yield '            return (False, "encode failed")\n'
         yield '        encoded = writer.data()\n'
         yield '        if not encoded:\n'
         yield '            return (False, "empty encoded buffer")\n'
         yield '        \n'
-        yield '        reader = reader_cls(get_info_fn, max(4096, buf_size * 2))\n'
+        yield '        reader = AccumulatingReader(config, get_message_info=get_info_fn, buffer_size=max(4096, buf_size * 2))\n'
         yield '        reader.add_data(encoded)\n'
         yield '        result = reader.next()\n'
         yield '        if result is None or not result.valid:\n'
@@ -1675,26 +1646,26 @@ class TestPyGen():
             func_name = f'test_{camel_to_snake_case(msg.name)}'
             create_func = f'create_test_{camel_to_snake_case(msg.name)}'
             
-            yield f'def {func_name}(writer_cls, reader_cls, get_info_fn) -> TestResult:\n'
+            yield f'def {func_name}(config, get_info_fn) -> TestResult:\n'
             yield f'    """Test round-trip for {struct_name}."""\n'
             yield f'    msg = {create_func}()\n'
-            yield f'    passed, reason = verify_roundtrip(msg, writer_cls, reader_cls, get_info_fn)\n'
+            yield f'    passed, reason = verify_roundtrip(msg, config, get_info_fn)\n'
             yield f'    return TestResult(passed, "{struct_name}", None if passed else reason)\n\n'
         
         # Generate run_all_tests function
         yield 'TEST_MESSAGE_COUNT = %d\n\n' % len(testable_messages)
 
-        # Mapping of profile name -> (writer class, reader class, has_pkg_id, max_payload).
+        # Mapping of profile name -> (config, has_pkg_id, max_payload).
         # Used to determine if a (message, profile) pair is compatible. Profiles
         # without ``has_pkg_id`` cannot encode messages with ``MSG_ID > 255``.
         # Profiles with ``max_payload`` reject messages whose ``MAX_SIZE``
         # exceeds the limit.
         yield 'PROFILES = [\n'
-        yield '    ("ProfileStandard", ProfileStandardWriter, ProfileStandardAccumulatingReader, False, 255),\n'
-        yield '    ("ProfileSensor",   ProfileSensorWriter,   ProfileSensorAccumulatingReader,   False, None),\n'
-        yield '    ("ProfileIPC",      ProfileIPCWriter,      ProfileIPCAccumulatingReader,      False, None),\n'
-        yield '    ("ProfileBulk",     ProfileBulkWriter,     ProfileBulkAccumulatingReader,     True,  65535),\n'
-        yield '    ("ProfileNetwork",  ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,  True,  65535),\n'
+        yield '    ("ProfileStandard", PROFILE_STANDARD_CONFIG, False, 255),\n'
+        yield '    ("ProfileSensor",   PROFILE_SENSOR_CONFIG,   False, None),\n'
+        yield '    ("ProfileIPC",      PROFILE_IPC_CONFIG,      False, None),\n'
+        yield '    ("ProfileBulk",     PROFILE_BULK_CONFIG,     True,  65535),\n'
+        yield '    ("ProfileNetwork",  PROFILE_NETWORK_CONFIG,  True,  65535),\n'
         yield ']\n\n'
 
         yield 'def _is_compatible(msg, has_pkg_id: bool, max_payload: Optional[int], get_info_fn) -> Optional[str]:\n'
@@ -1710,7 +1681,7 @@ class TestPyGen():
         yield '        return "msg_id not registered for this profile (likely cross-package mismatch)"\n'
         yield '    return None\n\n'
 
-        yield 'def run_all_tests(writer_cls, reader_cls, get_info_fn, has_pkg_id: bool, max_payload: Optional[int], tested: list, verbose: bool = False) -> Tuple[int, int]:\n'
+        yield 'def run_all_tests(config, get_info_fn, has_pkg_id: bool, max_payload: Optional[int], tested: list, verbose: bool = False) -> Tuple[int, int]:\n'
         yield '    """Run all message tests for one profile.\n'
         yield '    Skipped (profile-incompatible) messages are tracked separately from\n'
         yield '    passes -- they are NOT counted as passes. ``tested[i]`` is set True\n'
@@ -1729,7 +1700,7 @@ class TestPyGen():
             yield f'        if verbose:\n'
             yield f'            print(f"[SKIP] {struct_name}: {{skip}}")\n'
             yield f'    else:\n'
-            yield f'        r = {func_name}(writer_cls, reader_cls, get_info_fn)\n'
+            yield f'        r = {func_name}(config, get_info_fn)\n'
             yield f'        if r.passed:\n'
             yield f'            passed += 1\n'
             yield f'            tested[{idx}] = True\n'
@@ -1751,10 +1722,10 @@ class TestPyGen():
         yield '    profiles (tested nowhere) is a hard failure."""\n'
         yield '    all_ok = True\n'
         yield '    tested = [False] * TEST_MESSAGE_COUNT\n'
-        yield '    for name, writer_cls, reader_cls, has_pkg_id, max_payload in PROFILES:\n'
+        yield '    for name, config, has_pkg_id, max_payload in PROFILES:\n'
         yield '        if verbose:\n'
         yield '            print(f"\\n--- {name} ---")\n'
-        yield '        passed, skipped = run_all_tests(writer_cls, reader_cls, get_message_info, has_pkg_id, max_payload, tested, verbose=verbose)\n'
+        yield '        passed, skipped = run_all_tests(config, get_message_info, has_pkg_id, max_payload, tested, verbose=verbose)\n'
         yield '        expected = TEST_MESSAGE_COUNT - skipped\n'
         yield '        if passed != expected:\n'
         yield '            all_ok = False\n'

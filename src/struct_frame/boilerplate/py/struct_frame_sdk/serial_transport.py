@@ -91,13 +91,21 @@ class SerialTransport(BaseTransport):
             raise
 
     def _receive_loop(self) -> None:
-        """Receive loop running in separate thread"""
+        """Receive loop running in separate thread.
+
+        Performs a blocking read of at least one byte (honouring the port's
+        configured timeout) and then drains whatever else is already buffered.
+        This sleeps in the serial driver between bytes instead of busy-polling
+        ``in_waiting``, which would otherwise spin a CPU core at 100%.
+        """
         while self.running and self.serial_port and self.serial_port.is_open:
             try:
-                if self.serial_port.in_waiting > 0:
-                    data = self.serial_port.read(self.serial_port.in_waiting)
-                    if data:
-                        self._handle_data(data)
+                data = self.serial_port.read(1)  # blocks up to the configured timeout
+                if data:
+                    extra = self.serial_port.in_waiting
+                    if extra:
+                        data += self.serial_port.read(extra)
+                    self._handle_data(data)
             except Exception as e:
                 if self.running:  # Only handle error if still running
                     self._handle_error(e)

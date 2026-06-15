@@ -16,16 +16,13 @@ from typing import Callable, Tuple
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
 
 from frame_profiles import (
-    ProfileStandardWriter,
-    ProfileSensorWriter,
-    ProfileIPCWriter,
-    ProfileBulkWriter,
-    ProfileNetworkWriter,
-    ProfileStandardAccumulatingReader,
-    ProfileSensorAccumulatingReader,
-    ProfileIPCAccumulatingReader,
-    ProfileBulkAccumulatingReader,
-    ProfileNetworkAccumulatingReader,
+    BufferWriter,
+    AccumulatingReader,
+    PROFILE_STANDARD_CONFIG,
+    PROFILE_SENSOR_CONFIG,
+    PROFILE_IPC_CONFIG,
+    PROFILE_BULK_CONFIG,
+    PROFILE_NETWORK_CONFIG,
 )
 
 
@@ -46,19 +43,19 @@ def encode(message_count: int, get_message: Callable, profile: str, buffer: byte
     Returns:
         Total bytes written
     """
-    writer_classes = {
-        'standard': ProfileStandardWriter,
-        'sensor': ProfileSensorWriter,
-        'ipc': ProfileIPCWriter,
-        'bulk': ProfileBulkWriter,
-        'network': ProfileNetworkWriter,
+    configs = {
+        'standard': PROFILE_STANDARD_CONFIG,
+        'sensor': PROFILE_SENSOR_CONFIG,
+        'ipc': PROFILE_IPC_CONFIG,
+        'bulk': PROFILE_BULK_CONFIG,
+        'network': PROFILE_NETWORK_CONFIG,
     }
-    
-    writer_class = writer_classes.get(profile)
-    if not writer_class:
+
+    config = configs.get(profile)
+    if not config:
         return 0
-    
-    writer = writer_class(len(buffer))
+
+    writer = BufferWriter(config, len(buffer))
     
     for i in range(message_count):
         msg = get_message(i)
@@ -84,19 +81,19 @@ def parse(message_count: int, check_message: Callable, get_message_info: Callabl
     Returns:
         Number of messages that matched (message_count if all pass)
     """
-    reader_classes = {
-        'standard': ProfileStandardAccumulatingReader,
-        'sensor': ProfileSensorAccumulatingReader,
-        'ipc': ProfileIPCAccumulatingReader,
-        'bulk': ProfileBulkAccumulatingReader,
-        'network': ProfileNetworkAccumulatingReader,
+    configs = {
+        'standard': PROFILE_STANDARD_CONFIG,
+        'sensor': PROFILE_SENSOR_CONFIG,
+        'ipc': PROFILE_IPC_CONFIG,
+        'bulk': PROFILE_BULK_CONFIG,
+        'network': PROFILE_NETWORK_CONFIG,
     }
-    
-    reader_class = reader_classes.get(profile)
-    if not reader_class:
+
+    config = configs.get(profile)
+    if not config:
         return 0
-    
-    reader = reader_class(get_message_info, BUFFER_SIZE)
+
+    reader = AccumulatingReader(config, get_message_info=get_message_info, buffer_size=BUFFER_SIZE)
     reader.add_data(buffer)
     
     count = 0

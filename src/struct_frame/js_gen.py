@@ -297,17 +297,17 @@ class MessageJsClassGen():
         result += f'   * @param {{"wire"|"fixed"|"auto"}} [mode="wire"] Decode mode for raw buffers\n'
         result += f'   * @returns {{{package_msg_name}}} New instance with deserialized data\n'
         result += f'   */\n'
-        result += f'  static deserialize(buffer, mode = "wire") {{\n'
+        result += f'  static deserialize(buffer, mode = "auto") {{\n'
         if msg.variable:
-            result += f'    // Check if buffer is FrameMsgInfo (has msgData property)\n'
             result += f'    if (buffer && typeof buffer === "object" && "msgData" in buffer) {{\n'
-            result += f'      // msgLen from the frame header is authoritative: minimal profiles always send _size bytes\n'
-            result += f'      const isFixedEncoding = buffer.msgLen === {package_msg_name}._size;\n'
-            result += f'      buffer = Buffer.from(buffer.msgData);\n'
-            result += f'      if (isFixedEncoding) {{\n'
-            result += f'        return {package_msg_name}.deserializeFixed(buffer);\n'
+            result += f'      const msgBuf = Buffer.from(buffer.msgData);\n'
+            result += f'      // mode="auto" (default): use msgLen heuristic — minimal profiles always send _size bytes.\n'
+            result += f'      // mode="wire": force wire decode for length-bearing profiles at max capacity.\n'
+            result += f'      // mode="fixed": force fixed-layout decode.\n'
+            result += f'      if (mode === "fixed" || (mode !== "wire" && buffer.msgLen === {package_msg_name}._size)) {{\n'
+            result += f'        return {package_msg_name}.deserializeFixed(msgBuf);\n'
             result += f'      }}\n'
-            result += f'      return {package_msg_name}._deserializeVariable(buffer);\n'
+            result += f'      return {package_msg_name}._deserializeVariable(msgBuf);\n'
             result += f'    }} else if (buffer instanceof Uint8Array && !(buffer instanceof Buffer)) {{\n'
             result += f'      buffer = Buffer.from(buffer);\n'
             result += f'    }}\n'
@@ -477,13 +477,15 @@ class MessageJsClassGen():
             name = to_camel_case(field.name)
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
-                result += f'    size += 1 + (this.{name}Count * {element_size}); // {name}\n'
+                    element_size = type_sizes.get(field.field_type, (field.size - count_bytes) // field.max_size)
+                result += f'    size += {count_bytes} + (this.{name}Count * {element_size}); // {name}\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
-                result += f'    size += 1 + this.{name}Length; // {name}\n'
+                length_bytes = 2 if field.max_size > 255 else 1
+                result += f'    size += {length_bytes} + this.{name}Length; // {name}\n'
             else:
                 result += f'    size += {field.size}; // {name}\n'
         
@@ -548,13 +550,17 @@ class MessageJsClassGen():
             field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field_type, (field.size - count_bytes) // field.max_size)
                 result += f'    // {name}: variable array\n'
                 result += f'    const {name}Count = this.{name}Count;\n'
-                result += f'    buffer.writeUInt8({name}Count, offset++);\n'
+                if count_bytes == 2:
+                    result += f'    buffer.writeUInt16LE({name}Count, offset); offset += 2;\n'
+                else:
+                    result += f'    buffer.writeUInt8({name}Count, offset++);\n'
                 
                 write_method = WRITE_METHODS.get(field_type if not field.is_enum else "uint8", "_writeUInt8")
                 write_method_name = write_method.replace("_write", "write")
@@ -565,10 +571,14 @@ class MessageJsClassGen():
                 result += f'      offset += {element_size};\n'
                 result += f'    }}\n'
             elif field_type in ("string", "bytes") and field.max_size is not None:
+                length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {name}: variable string\n'
                 result += f'    const {name}Len = this.{name}Length;\n'
-                result += f'    buffer.writeUInt8({name}Len, offset++);\n'
-                result += f'    this._buffer.copy(buffer, offset, {msg_offset + 1}, {msg_offset + 1} + {name}Len);\n'
+                if length_bytes == 2:
+                    result += f'    buffer.writeUInt16LE({name}Len, offset); offset += 2;\n'
+                else:
+                    result += f'    buffer.writeUInt8({name}Len, offset++);\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset + length_bytes}, {msg_offset + length_bytes} + {name}Len);\n'
                 result += f'    offset += {name}Len;\n'
             else:
                 result += f'    // {name}: fixed size ({field.size} bytes)\n'
@@ -640,22 +650,32 @@ class MessageJsClassGen():
             field_type = field.field_type
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
-                    element_size = type_sizes.get(field_type, (field.size - 1) // field.max_size)
+                    element_size = type_sizes.get(field_type, (field.size - count_bytes) // field.max_size)
                 result += f'    // {name}: variable array\n'
-                result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
-                result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
+                if count_bytes == 2:
+                    result += f'    const {name}Count = Math.min(buffer.readUInt16LE(offset), {field.max_size}); offset += 2;\n'
+                    result += f'    msg._buffer.writeUInt16LE({name}Count, {msg_offset});\n'
+                else:
+                    result += f'    const {name}Count = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
+                    result += f'    msg._buffer.writeUInt8({name}Count, {msg_offset});\n'
                 result += f'    for (let i = 0; i < {name}Count; i++) {{\n'
-                result += f'      buffer.copy(msg._buffer, {msg_offset + 1} + i * {element_size}, offset, offset + {element_size});\n'
+                result += f'      buffer.copy(msg._buffer, {msg_offset + count_bytes} + i * {element_size}, offset, offset + {element_size});\n'
                 result += f'      offset += {element_size};\n'
                 result += f'    }}\n'
             elif field_type in ("string", "bytes") and field.max_size is not None:
+                length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {name}: variable string\n'
-                result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
-                result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
-                result += f'    buffer.copy(msg._buffer, {msg_offset + 1}, offset, offset + {name}Len);\n'
+                if length_bytes == 2:
+                    result += f'    const {name}Len = Math.min(buffer.readUInt16LE(offset), {field.max_size}); offset += 2;\n'
+                    result += f'    msg._buffer.writeUInt16LE({name}Len, {msg_offset});\n'
+                else:
+                    result += f'    const {name}Len = Math.min(buffer.readUInt8(offset++), {field.max_size});\n'
+                    result += f'    msg._buffer.writeUInt8({name}Len, {msg_offset});\n'
+                result += f'    buffer.copy(msg._buffer, {msg_offset + length_bytes}, offset, offset + {name}Len);\n'
                 result += f'    offset += {name}Len;\n'
             else:
                 result += f'    // {name}: fixed size ({field.size} bytes)\n'
@@ -1139,11 +1159,9 @@ class TestJsGen():
         yield '"use strict";\n\n'
 
         yield "const {\n"
-        yield "    ProfileStandardWriter, ProfileStandardAccumulatingReader,\n"
-        yield "    ProfileSensorWriter,   ProfileSensorAccumulatingReader,\n"
-        yield "    ProfileIPCWriter,      ProfileIPCAccumulatingReader,\n"
-        yield "    ProfileBulkWriter,     ProfileBulkAccumulatingReader,\n"
-        yield "    ProfileNetworkWriter,  ProfileNetworkAccumulatingReader,\n"
+        yield "    BufferWriter, AccumulatingReader,\n"
+        yield "    ProfileStandardConfig, ProfileSensorConfig, ProfileIPCConfig,\n"
+        yield "    ProfileBulkConfig, ProfileNetworkConfig,\n"
         yield "} = require('./frame-profiles');\n"
         yield f"const Pkg = require('./{package_kebab}.structframe');\n"
         yield "const { getMessageInfo } = Pkg;\n"
@@ -1157,11 +1175,11 @@ class TestJsGen():
         # Profiles without ``hasPkgId`` cannot encode messages with msg_id > 255.
         # Profiles with a finite ``maxPayload`` reject messages whose ``_size`` exceeds it.
         yield "const PROFILES = [\n"
-        yield "    { name: 'ProfileStandard', WriterCls: ProfileStandardWriter, ReaderCls: ProfileStandardAccumulatingReader, hasPkgId: false, maxPayload: 255 },\n"
-        yield "    { name: 'ProfileSensor',   WriterCls: ProfileSensorWriter,   ReaderCls: ProfileSensorAccumulatingReader,   hasPkgId: false, maxPayload: null },\n"
-        yield "    { name: 'ProfileIPC',      WriterCls: ProfileIPCWriter,      ReaderCls: ProfileIPCAccumulatingReader,      hasPkgId: false, maxPayload: null },\n"
-        yield "    { name: 'ProfileBulk',     WriterCls: ProfileBulkWriter,     ReaderCls: ProfileBulkAccumulatingReader,     hasPkgId: true,  maxPayload: 65535 },\n"
-        yield "    { name: 'ProfileNetwork',  WriterCls: ProfileNetworkWriter,  ReaderCls: ProfileNetworkAccumulatingReader,  hasPkgId: true,  maxPayload: 65535 },\n"
+        yield "    { name: 'ProfileStandard', config: ProfileStandardConfig, hasPkgId: false, maxPayload: 255 },\n"
+        yield "    { name: 'ProfileSensor',   config: ProfileSensorConfig,   hasPkgId: false, maxPayload: null },\n"
+        yield "    { name: 'ProfileIPC',      config: ProfileIPCConfig,      hasPkgId: false, maxPayload: null },\n"
+        yield "    { name: 'ProfileBulk',     config: ProfileBulkConfig,     hasPkgId: true,  maxPayload: 65535 },\n"
+        yield "    { name: 'ProfileNetwork',  config: ProfileNetworkConfig,  hasPkgId: true,  maxPayload: 65535 },\n"
         yield "];\n\n"
 
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
@@ -1180,16 +1198,16 @@ class TestJsGen():
             yield '}\n'
             yield f'module.exports.{func_name} = {func_name};\n\n'
 
-        yield 'function verifyRoundtrip(msg, MsgCls, WriterCls, ReaderCls, getInfoFn) {\n'
+        yield 'function verifyRoundtrip(msg, MsgCls, config, getInfoFn) {\n'
         yield '    try {\n'
         yield '        const bufSize = Math.max(2048, (MsgCls._size || 0) + 128);\n'
-        yield '        const writer = new WriterCls(bufSize);\n'
+        yield '        const writer = new BufferWriter(config, bufSize);\n'
         yield '        const written = writer.write(msg);\n'
         yield '        if (!written) return [false, "encode failed"];\n'
         yield '        const encoded = writer.data();\n'
         yield '        if (!encoded || encoded.length === 0) return [false, "empty encoded buffer"];\n'
         yield '\n'
-        yield '        const reader = new ReaderCls(getInfoFn, Math.max(4096, bufSize * 2));\n'
+        yield '        const reader = new AccumulatingReader(config, getInfoFn, Math.max(4096, bufSize * 2));\n'
         yield '        reader.addData(Buffer.from(encoded));\n'
         yield '        const result = reader.next();\n'
         yield '        if (!result || !result.valid) return [false, "parse failed"];\n'
@@ -1228,9 +1246,9 @@ class TestJsGen():
             struct_name = msg.name
             create_func = f'createTest{struct_name}'
             test_func = f'test{struct_name}'
-            yield f'function {test_func}(WriterCls, ReaderCls, getInfoFn) {{\n'
+            yield f'function {test_func}(config, getInfoFn) {{\n'
             yield f'    const msg = {create_func}();\n'
-            yield f'    const [passed, reason] = verifyRoundtrip(msg, Pkg.{struct_name}, WriterCls, ReaderCls, getInfoFn);\n'
+            yield f'    const [passed, reason] = verifyRoundtrip(msg, Pkg.{struct_name}, config, getInfoFn);\n'
             yield f'    return {{ passed, name: "{struct_name}", error: passed ? "" : reason }};\n'
             yield '}\n\n'
 
@@ -1241,7 +1259,7 @@ class TestJsGen():
         yield '// messages are tracked separately from passes (NOT counted as passes);\n'
         yield '// tested[i] is set true when message i round-trips under this profile.\n'
         yield '// Returns [passed, skipped].\n'
-        yield 'function runAllTests(WriterCls, ReaderCls, getInfoFn, hasPkgId, maxPayload, tested, verbose) {\n'
+        yield 'function runAllTests(config, getInfoFn, hasPkgId, maxPayload, tested, verbose) {\n'
         yield '    let passed = 0;\n'
         yield '    let skipped = 0;\n'
         for idx, (key, msg) in enumerate(testable_messages):
@@ -1253,7 +1271,7 @@ class TestJsGen():
             yield f'            skipped += 1;\n'
             yield f'            if (verbose) console.log(`[SKIP] {struct_name}: ${{skip}}`);\n'
             yield f'        }} else {{\n'
-            yield f'            const r = {test_func}(WriterCls, ReaderCls, getInfoFn);\n'
+            yield f'            const r = {test_func}(config, getInfoFn);\n'
             yield f'            if (r.passed) {{\n'
             yield f'                passed += 1;\n'
             yield f'                tested[{idx}] = true;\n'
@@ -1273,7 +1291,7 @@ class TestJsGen():
         yield '    const tested = new Array(TEST_MESSAGE_COUNT).fill(false);\n'
         yield '    for (const p of PROFILES) {\n'
         yield '        if (verbose) console.log(`\\n--- ${p.name} ---`);\n'
-        yield '        const [passed, skipped] = runAllTests(p.WriterCls, p.ReaderCls, getMessageInfo, p.hasPkgId, p.maxPayload, tested, verbose);\n'
+        yield '        const [passed, skipped] = runAllTests(p.config, getMessageInfo, p.hasPkgId, p.maxPayload, tested, verbose);\n'
         yield '        const expected = TEST_MESSAGE_COUNT - skipped;\n'
         yield '        if (passed !== expected) {\n'
         yield '            allOk = false;\n'

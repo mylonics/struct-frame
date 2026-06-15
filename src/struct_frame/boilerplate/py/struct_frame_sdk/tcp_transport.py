@@ -37,7 +37,8 @@ class TcpTransport(BaseSocketTransport):
         if self.socket:
             try:
                 self.socket.shutdown(socket.SHUT_RDWR)
-            except:
+            except OSError:
+                # Socket may already be disconnected/unconnected; ignore.
                 pass
             self.socket.close()
             self.socket = None
@@ -76,4 +77,8 @@ class TcpTransport(BaseSocketTransport):
             except Exception as e:
                 if self.running:  # Only handle error if still running
                     self._handle_error(e)
+                    # A receive error means the connection is no longer usable;
+                    # notify close handlers so the SDK/app stops treating it as
+                    # connected (and can trigger reconnect logic).
+                    self._handle_close()
                 break

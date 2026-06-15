@@ -238,10 +238,13 @@ def _generate_field_decl(field):
 
 def _generate_pack_field(field, indent='        ', variable=False):
     """Generate pack code for a single field.
-    
+
     When variable=True, bounded arrays and variable strings are packed with
     only actual elements (variable-length encoding). When variable=False,
     always packs max_size elements (fixed-size encoding).
+
+    C3: u8 fixed/bounded arrays use copy_from_slice bulk copy.
+    A5: nested messages always use pack_max_size (fixed-size on wire).
     """
     var_name = _escape_rust_field_name(field.name)
     type_name = _normalize_bytes_type(field.field_type)
@@ -272,36 +275,47 @@ def _generate_pack_field(field, indent='        ', variable=False):
             if type_name in rust_type_sizes:
                 type_size = rust_type_sizes[type_name]
                 if field.size_option is not None:
-                    # Fixed array - same in both modes
-                    lines.append(f'{indent}// Fixed array: {var_name}')
-                    lines.append(f'{indent}for i in 0..{field.size_option} {{')
-                    if type_name == "bool":
-                        lines.append(f'{indent}    buf[_pos] = if self.{var_name}[i] {{ 1 }} else {{ 0 }};')
-                        lines.append(f'{indent}    _pos += 1;')
-                    elif type_size == 1:
-                        lines.append(f'{indent}    buf[_pos] = self.{var_name}[i] as u8;')
-                        lines.append(f'{indent}    _pos += 1;')
+                    # C3: u8 fixed arrays — bulk copy
+                    if type_name == "uint8":
+                        lines.append(f'{indent}// Fixed array: {var_name}')
+                        lines.append(f'{indent}buf[_pos.._pos+{field.size_option}].copy_from_slice(&self.{var_name});')
+                        lines.append(f'{indent}_pos += {field.size_option};')
                     else:
-                        lines.append(f'{indent}    buf[_pos.._pos+{type_size}].copy_from_slice(&self.{var_name}[i].to_le_bytes());')
-                        lines.append(f'{indent}    _pos += {type_size};')
-                    lines.append(f'{indent}}}')
+                        lines.append(f'{indent}// Fixed array: {var_name}')
+                        lines.append(f'{indent}for i in 0..{field.size_option} {{')
+                        if type_name == "bool":
+                            lines.append(f'{indent}    buf[_pos] = if self.{var_name}[i] {{ 1 }} else {{ 0 }};')
+                            lines.append(f'{indent}    _pos += 1;')
+                        elif type_size == 1:
+                            lines.append(f'{indent}    buf[_pos] = self.{var_name}[i] as u8;')
+                            lines.append(f'{indent}    _pos += 1;')
+                        else:
+                            lines.append(f'{indent}    buf[_pos.._pos+{type_size}].copy_from_slice(&self.{var_name}[i].to_le_bytes());')
+                            lines.append(f'{indent}    _pos += {type_size};')
+                        lines.append(f'{indent}}}')
                 elif field.max_size is not None:
                     count_size = 2 if field.max_size > 255 else 1
                     loop_limit = f'self.{var_name}_count as usize' if variable else str(field.max_size)
                     lines.append(f'{indent}// Bounded array: {var_name}')
                     lines.append(f'{indent}buf[_pos.._pos+{count_size}].copy_from_slice(&self.{var_name}_count.to_le_bytes());')
                     lines.append(f'{indent}_pos += {count_size};')
-                    lines.append(f'{indent}for i in 0..{loop_limit} {{')
-                    if type_name == "bool":
-                        lines.append(f'{indent}    buf[_pos] = if self.{var_name}[i] {{ 1 }} else {{ 0 }};')
-                        lines.append(f'{indent}    _pos += 1;')
-                    elif type_size == 1:
-                        lines.append(f'{indent}    buf[_pos] = self.{var_name}[i] as u8;')
-                        lines.append(f'{indent}    _pos += 1;')
+                    # C3: u8 bounded arrays — bulk copy
+                    if type_name == "uint8":
+                        lines.append(f'{indent}let _n = {loop_limit};')
+                        lines.append(f'{indent}buf[_pos.._pos+_n].copy_from_slice(&self.{var_name}[.._n]);')
+                        lines.append(f'{indent}_pos += _n;')
                     else:
-                        lines.append(f'{indent}    buf[_pos.._pos+{type_size}].copy_from_slice(&self.{var_name}[i].to_le_bytes());')
-                        lines.append(f'{indent}    _pos += {type_size};')
-                    lines.append(f'{indent}}}')
+                        lines.append(f'{indent}for i in 0..{loop_limit} {{')
+                        if type_name == "bool":
+                            lines.append(f'{indent}    buf[_pos] = if self.{var_name}[i] {{ 1 }} else {{ 0 }};')
+                            lines.append(f'{indent}    _pos += 1;')
+                        elif type_size == 1:
+                            lines.append(f'{indent}    buf[_pos] = self.{var_name}[i] as u8;')
+                            lines.append(f'{indent}    _pos += 1;')
+                        else:
+                            lines.append(f'{indent}    buf[_pos.._pos+{type_size}].copy_from_slice(&self.{var_name}[i].to_le_bytes());')
+                            lines.append(f'{indent}    _pos += {type_size};')
+                        lines.append(f'{indent}}}')
             elif field.is_enum:
                 # Enum array (u8)
                 if field.size_option is not None:
@@ -321,11 +335,11 @@ def _generate_pack_field(field, indent='        ', variable=False):
                     lines.append(f'{indent}    _pos += 1;')
                     lines.append(f'{indent}}}')
             else:
-                # Nested message array
+                # A5: nested message arrays — always pack_max_size (fixed-size on wire)
                 if field.size_option is not None:
                     lines.append(f'{indent}// Fixed nested message array: {var_name}')
                     lines.append(f'{indent}for i in 0..{field.size_option} {{')
-                    lines.append(f'{indent}    _pos += self.{var_name}[i].pack(&mut buf[_pos..]);')
+                    lines.append(f'{indent}    _pos += self.{var_name}[i].pack_max_size(&mut buf[_pos..]);')
                     lines.append(f'{indent}}}')
                 elif field.max_size is not None:
                     count_size = 2 if field.max_size > 255 else 1
@@ -334,7 +348,7 @@ def _generate_pack_field(field, indent='        ', variable=False):
                     lines.append(f'{indent}buf[_pos.._pos+{count_size}].copy_from_slice(&self.{var_name}_count.to_le_bytes());')
                     lines.append(f'{indent}_pos += {count_size};')
                     lines.append(f'{indent}for i in 0..{loop_limit} {{')
-                    lines.append(f'{indent}    _pos += self.{var_name}[i].pack(&mut buf[_pos..]);')
+                    lines.append(f'{indent}    _pos += self.{var_name}[i].pack_max_size(&mut buf[_pos..]);')
                     lines.append(f'{indent}}}')
     elif type_name == "string":
         if field.size_option is not None:
@@ -364,18 +378,21 @@ def _generate_pack_field(field, indent='        ', variable=False):
             lines.append(f'{indent}buf[_pos] = self.{var_name} as u8;')
             lines.append(f'{indent}_pos += 1;')
         else:
-            # Nested message
-            lines.append(f'{indent}_pos += self.{var_name}.pack(&mut buf[_pos..]);')
+            # A5: nested message — always pack_max_size (fixed-size on wire)
+            lines.append(f'{indent}_pos += self.{var_name}.pack_max_size(&mut buf[_pos..]);')
 
     return '\n'.join(lines)
 
 
 def _generate_unpack_field(field, indent='        ', variable=False):
     """Generate unpack code for a single field.
-    
+
     When variable=True, bounded arrays and variable strings are unpacked with
     only actual elements (variable-length). When variable=False (fixed),
     always reads max_size elements.
+
+    A1: all reads use buf.get(...)? / *buf.get(_pos)? to avoid panics on truncated input.
+    A5: nested messages are always read from a bounded SIZE-byte slice (fixed-size on wire).
     """
     var_name = _escape_rust_field_name(field.name)
     type_name = _normalize_bytes_type(field.field_type)
@@ -388,7 +405,8 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                 lines.append(f'{indent}// Fixed string array: {var_name}')
                 lines.append(f'{indent}let mut {var_name}: [[u8; {elem_size}]; {field.size_option}] = [[0u8; {elem_size}]; {field.size_option}];')
                 lines.append(f'{indent}for i in 0..{field.size_option} {{')
-                lines.append(f'{indent}    {var_name}[i].copy_from_slice(&buf[_pos.._pos+{elem_size}]);')
+                # A1: safe slice
+                lines.append(f'{indent}    {var_name}[i].copy_from_slice(buf.get(_pos.._pos+{elem_size})?);')
                 lines.append(f'{indent}    _pos += {elem_size};')
                 lines.append(f'{indent}}}')
             elif field.max_size is not None:
@@ -396,11 +414,12 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                 count_type = "u16" if field.max_size > 255 else "u8"
                 loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
                 lines.append(f'{indent}// Bounded string array: {var_name}')
-                lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+                lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf.get(_pos.._pos+{count_size})?.try_into().ok()?);')
                 lines.append(f'{indent}_pos += {count_size};')
                 lines.append(f'{indent}let mut {var_name}: [[u8; {elem_size}]; {field.max_size}] = [[0u8; {elem_size}]; {field.max_size}];')
                 lines.append(f'{indent}for i in 0..{loop_limit} {{')
-                lines.append(f'{indent}    {var_name}[i].copy_from_slice(&buf[_pos.._pos+{elem_size}]);')
+                # A1: safe slice
+                lines.append(f'{indent}    {var_name}[i].copy_from_slice(buf.get(_pos.._pos+{elem_size})?);')
                 lines.append(f'{indent}    _pos += {elem_size};')
                 lines.append(f'{indent}}}')
         else:
@@ -412,16 +431,16 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                     lines.append(f'{indent}let mut {var_name}: [{rust_t}; {field.size_option}] = [{rust_t}::default(); {field.size_option}];')
                     lines.append(f'{indent}for i in 0..{field.size_option} {{')
                     if type_name == "bool":
-                        lines.append(f'{indent}    {var_name}[i] = buf[_pos] != 0;')
+                        lines.append(f'{indent}    {var_name}[i] = *buf.get(_pos)? != 0;')
                         lines.append(f'{indent}    _pos += 1;')
                     elif type_size == 1:
                         if type_name == "int8":
-                            lines.append(f'{indent}    {var_name}[i] = buf[_pos] as i8;')
+                            lines.append(f'{indent}    {var_name}[i] = *buf.get(_pos)? as i8;')
                         else:
-                            lines.append(f'{indent}    {var_name}[i] = buf[_pos];')
+                            lines.append(f'{indent}    {var_name}[i] = *buf.get(_pos)?;')
                         lines.append(f'{indent}    _pos += 1;')
                     else:
-                        lines.append(f'{indent}    {var_name}[i] = {rust_t}::from_le_bytes(buf[_pos.._pos+{type_size}].try_into().ok()?);')
+                        lines.append(f'{indent}    {var_name}[i] = {rust_t}::from_le_bytes(buf.get(_pos.._pos+{type_size})?.try_into().ok()?);')
                         lines.append(f'{indent}    _pos += {type_size};')
                     lines.append(f'{indent}}}')
                 elif field.max_size is not None:
@@ -429,21 +448,21 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                     count_type = "u16" if field.max_size > 255 else "u8"
                     loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
                     lines.append(f'{indent}// Bounded array: {var_name}')
-                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf.get(_pos.._pos+{count_size})?.try_into().ok()?);')
                     lines.append(f'{indent}_pos += {count_size};')
                     lines.append(f'{indent}let mut {var_name}: [{rust_t}; {field.max_size}] = [{rust_t}::default(); {field.max_size}];')
                     lines.append(f'{indent}for i in 0..{loop_limit} {{')
                     if type_name == "bool":
-                        lines.append(f'{indent}    {var_name}[i] = buf[_pos] != 0;')
+                        lines.append(f'{indent}    {var_name}[i] = *buf.get(_pos)? != 0;')
                         lines.append(f'{indent}    _pos += 1;')
                     elif type_size == 1:
                         if type_name == "int8":
-                            lines.append(f'{indent}    {var_name}[i] = buf[_pos] as i8;')
+                            lines.append(f'{indent}    {var_name}[i] = *buf.get(_pos)? as i8;')
                         else:
-                            lines.append(f'{indent}    {var_name}[i] = buf[_pos];')
+                            lines.append(f'{indent}    {var_name}[i] = *buf.get(_pos)?;')
                         lines.append(f'{indent}    _pos += 1;')
                     else:
-                        lines.append(f'{indent}    {var_name}[i] = {rust_t}::from_le_bytes(buf[_pos.._pos+{type_size}].try_into().ok()?);')
+                        lines.append(f'{indent}    {var_name}[i] = {rust_t}::from_le_bytes(buf.get(_pos.._pos+{type_size})?.try_into().ok()?);')
                         lines.append(f'{indent}    _pos += {type_size};')
                     lines.append(f'{indent}}}')
             elif field.is_enum:
@@ -456,7 +475,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                     lines.append(f'{indent}// Fixed enum array: {var_name}')
                     lines.append(f'{indent}let mut {var_name}: [{enum_type}; {field.size_option}] = [{enum_type}::default(); {field.size_option}];')
                     lines.append(f'{indent}for i in 0..{field.size_option} {{')
-                    lines.append(f'{indent}    {var_name}[i] = {enum_type}::from_u8(buf[_pos]).unwrap_or_default();')
+                    lines.append(f'{indent}    {var_name}[i] = {enum_type}::from_u8(*buf.get(_pos)?).unwrap_or_default();')
                     lines.append(f'{indent}    _pos += 1;')
                     lines.append(f'{indent}}}')
                 elif field.max_size is not None:
@@ -464,21 +483,21 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                     count_type = "u16" if field.max_size > 255 else "u8"
                     loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
                     lines.append(f'{indent}// Bounded enum array: {var_name}')
-                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf.get(_pos.._pos+{count_size})?.try_into().ok()?);')
                     lines.append(f'{indent}_pos += {count_size};')
                     lines.append(f'{indent}let mut {var_name}: [{enum_type}; {field.max_size}] = [{enum_type}::default(); {field.max_size}];')
                     lines.append(f'{indent}for i in 0..{loop_limit} {{')
-                    lines.append(f'{indent}    {var_name}[i] = {enum_type}::from_u8(buf[_pos]).unwrap_or_default();')
+                    lines.append(f'{indent}    {var_name}[i] = {enum_type}::from_u8(*buf.get(_pos)?).unwrap_or_default();')
                     lines.append(f'{indent}    _pos += 1;')
                     lines.append(f'{indent}}}')
             else:
-                # Nested message array
+                # A5: nested message array — bounded slice, always fixed-size decode
                 nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
                 if field.size_option is not None:
                     lines.append(f'{indent}// Fixed nested message array: {var_name}')
                     lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.size_option}] = [{nested_type}::default(); {field.size_option}];')
                     lines.append(f'{indent}for i in 0..{field.size_option} {{')
-                    lines.append(f'{indent}    let msg = {nested_type}::unpack(&buf[_pos..])?;')
+                    lines.append(f'{indent}    let msg = {nested_type}::unpack(buf.get(_pos.._pos+{nested_type}::SIZE)?)?;')
                     lines.append(f'{indent}    _pos += {nested_type}::SIZE;')
                     lines.append(f'{indent}    {var_name}[i] = msg;')
                     lines.append(f'{indent}}}')
@@ -487,11 +506,11 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                     count_type = "u16" if field.max_size > 255 else "u8"
                     loop_limit = f'({var_name}_count as usize).min({field.max_size})' if variable else str(field.max_size)
                     lines.append(f'{indent}// Bounded nested message array: {var_name}')
-                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf[_pos.._pos+{count_size}].try_into().ok()?);')
+                    lines.append(f'{indent}let {var_name}_count = {count_type}::from_le_bytes(buf.get(_pos.._pos+{count_size})?.try_into().ok()?);')
                     lines.append(f'{indent}_pos += {count_size};')
                     lines.append(f'{indent}let mut {var_name}: [{nested_type}; {field.max_size}] = [{nested_type}::default(); {field.max_size}];')
                     lines.append(f'{indent}for i in 0..{loop_limit} {{')
-                    lines.append(f'{indent}    let msg = {nested_type}::unpack(&buf[_pos..])?;')
+                    lines.append(f'{indent}    let msg = {nested_type}::unpack(buf.get(_pos.._pos+{nested_type}::SIZE)?)?;')
                     lines.append(f'{indent}    _pos += {nested_type}::SIZE;')
                     lines.append(f'{indent}    {var_name}[i] = msg;')
                     lines.append(f'{indent}}}')
@@ -506,8 +525,7 @@ def _generate_unpack_field(field, indent='        ', variable=False):
             count_size = 2 if field.max_size > 255 else 1
             count_type = "u16" if field.max_size > 255 else "u8"
             lines.append(f'{indent}// Variable string: {var_name}')
-            lines.append(f'{indent}let _length_bytes = buf.get(_pos.._pos+{count_size})?;')
-            lines.append(f'{indent}let {var_name}_length = {count_type}::from_le_bytes(_length_bytes.try_into().ok()?);')
+            lines.append(f'{indent}let {var_name}_length = {count_type}::from_le_bytes(buf.get(_pos.._pos+{count_size})?.try_into().ok()?);')
             lines.append(f'{indent}_pos += {count_size};')
             lines.append(f'{indent}let mut {var_name} = [0u8; {field.max_size}];')
             if variable:
@@ -522,7 +540,16 @@ def _generate_unpack_field(field, indent='        ', variable=False):
     else:
         if type_name in rust_unpack_fns:
             unpack_expr, type_size = rust_unpack_fns[type_name]
-            lines.append(f'{indent}let {var_name} = {unpack_expr};')
+            # A1: replace bare buf[_pos] with safe *buf.get(_pos)?
+            safe_expr = unpack_expr.replace('buf[_pos]', '*buf.get(_pos)?')
+            # A1: replace multi-byte buf[_pos.._pos+N] with safe buf.get(...)?
+            import re as _re
+            safe_expr = _re.sub(
+                r'buf\[_pos\.\._pos\+(\d+)\]',
+                r'buf.get(_pos.._pos+\1)?',
+                safe_expr
+            )
+            lines.append(f'{indent}let {var_name} = {safe_expr};')
             lines.append(f'{indent}_pos += {type_size};')
         elif field.is_enum:
             type_msg = getattr(field, 'type_message', None)
@@ -530,12 +557,13 @@ def _generate_unpack_field(field, indent='        ', variable=False):
                 enum_type = type_msg + field.field_type
             else:
                 enum_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
-            lines.append(f'{indent}let {var_name} = {enum_type}::from_u8(buf[_pos]).unwrap_or_default();')
+            # A1: safe single-byte read
+            lines.append(f'{indent}let {var_name} = {enum_type}::from_u8(*buf.get(_pos)?).unwrap_or_default();')
             lines.append(f'{indent}_pos += 1;')
         else:
-            # Nested message
+            # A5: nested message — bounded slice for fixed-size decode
             nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
-            lines.append(f'{indent}let {var_name} = {nested_type}::unpack(&buf[_pos..])?;')
+            lines.append(f'{indent}let {var_name} = {nested_type}::unpack(buf.get(_pos.._pos+{nested_type}::SIZE)?)?;')
             lines.append(f'{indent}_pos += {nested_type}::SIZE;')
 
     return '\n'.join(lines)
@@ -755,7 +783,8 @@ class MessageRustGen():
                 nested_type = _rust_struct_name(getattr(field, "type_package", None) or field.package, field.field_type)
                 result += f'\n    /// Get {field_name} from the {oneof_name} oneof.\n'
                 result += f'    pub fn get_{field_name}(&self) -> Option<{nested_type}> {{\n'
-                result += f'        {nested_type}::unpack(&self.{oneof_name}_bytes)\n'
+                # A4: slice to exactly MAX_SIZE so unpack dispatches to the fixed path
+                result += f'        {nested_type}::unpack(&self.{oneof_name}_bytes[..{nested_type}::MAX_SIZE])\n'
                 result += f'    }}\n'
                 result += f'\n    /// Set {field_name} in the {oneof_name} oneof.\n'
                 result += f'    pub fn set_{field_name}(&mut self, msg: &{nested_type}) {{\n'
@@ -783,7 +812,7 @@ class MessageRustGen():
                         result += f'        // Oneof {oneof_name} discriminator (field_order)\n'
                         result += f'        buf[_pos] = self.{oneof_name}_discriminator;\n'
                         result += f'        _pos += 1;\n'
-                if oneof.variable:
+                if oneof.variable and variable_pack:
                     result += f'        // Oneof {oneof_name} variable-length union bytes\n'
                     result += f'        let _{oneof_name}_raw_len: u16 = match self.{oneof_name}_discriminator as u16 {{\n'
                     for disc_val, field_name, field_size in oneof.variant_info:
@@ -802,6 +831,11 @@ class MessageRustGen():
                         result += f'            buf[_pos+_{oneof_name}_raw_len as usize.._pos+_{oneof_name}_len as usize].fill(0);\n'
                         result += f'        }}\n'
                     result += f'        _pos += _{oneof_name}_len as usize;\n'
+                elif oneof.variable and not variable_pack:
+                    # A3: pack_max_size must write full fixed-size oneof bytes (no length prefix)
+                    result += f'        // Oneof {oneof_name} union bytes (fixed-size pad to {oneof.size})\n'
+                    result += f'        buf[_pos.._pos+{oneof.size}].copy_from_slice(&self.{oneof_name}_bytes);\n'
+                    result += f'        _pos += {oneof.size};\n'
                 elif variable_pack and oneof.auto_discriminator:
                     _min_sz = oneof.min_size_override or 0
                     _trim_label = f'trimmed union bytes (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union bytes'
@@ -884,20 +918,24 @@ class MessageRustGen():
                 for oneof_name, oneof in msg.oneofs.items():
                     if oneof.auto_discriminator:
                         if oneof.discriminator_type == "msgid":
-                            result += f'{indent}let {oneof_name}_discriminator = u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?);\n'
+                            # A1: safe read
+                            result += f'{indent}let {oneof_name}_discriminator = u16::from_le_bytes(buf.get(_pos.._pos+2)?.try_into().ok()?);\n'
                             result += f'{indent}_pos += 2;\n'
                             oneof_var_names.append(f'{oneof_name}_discriminator')
                         else:
-                            result += f'{indent}let {oneof_name}_discriminator = buf[_pos];\n'
+                            # A1: safe read
+                            result += f'{indent}let {oneof_name}_discriminator = *buf.get(_pos)?;\n'
                             result += f'{indent}_pos += 1;\n'
                             oneof_var_names.append(f'{oneof_name}_discriminator')
                     result += f'{indent}let mut {oneof_name}_bytes = [0u8; {oneof.size}];\n'
                     if oneof.variable:
-                        result += f'{indent}let _{oneof_name}_len = u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?) as usize;\n'
+                        # A1: safe read
+                        result += f'{indent}let _{oneof_name}_len = u16::from_le_bytes(buf.get(_pos.._pos+2)?.try_into().ok()?) as usize;\n'
                         result += f'{indent}_pos += 2;\n'
                         result += f'{indent}if _pos + _{oneof_name}_len > buf.len() {{ return None; }}\n'
                         result += f'{indent}let _copy = _{oneof_name}_len.min({oneof.size});\n'
-                        result += f'{indent}{oneof_name}_bytes[.._copy].copy_from_slice(&buf[_pos.._pos+_copy]);\n'
+                        # A1: safe slice
+                        result += f'{indent}{oneof_name}_bytes[.._copy].copy_from_slice(buf.get(_pos.._pos+_copy)?);\n'
                         result += f'{indent}_pos += _{oneof_name}_len;\n'
                     elif variable_mode and oneof.auto_discriminator:
                         _min_sz = oneof.min_size_override or 0
@@ -910,10 +948,12 @@ class MessageRustGen():
                         result += f'{indent}}};\n'
                         result += f'{indent}if _pos + _{oneof_name}_rlen > buf.len() {{ return None; }}\n'
                         result += f'{indent}let _copy = _{oneof_name}_rlen.min({oneof.size});\n'
-                        result += f'{indent}{oneof_name}_bytes[.._copy].copy_from_slice(&buf[_pos.._pos+_copy]);\n'
+                        # A1: safe slice
+                        result += f'{indent}{oneof_name}_bytes[.._copy].copy_from_slice(buf.get(_pos.._pos+_copy)?);\n'
                         result += f'{indent}_pos += _{oneof_name}_rlen;\n'
                     else:
-                        result += f'{indent}{oneof_name}_bytes.copy_from_slice(&buf[_pos.._pos+{oneof.size}]);\n'
+                        # A1: safe slice
+                        result += f'{indent}{oneof_name}_bytes.copy_from_slice(buf.get(_pos.._pos+{oneof.size})?);\n'
                         result += f'{indent}_pos += {oneof.size};\n'
                     oneof_var_names.append(f'{oneof_name}_bytes')
                 result += f'{indent}Some(Self {{\n'
@@ -986,23 +1026,28 @@ class MessageRustGen():
             for oneof_name, oneof in msg.oneofs.items():
                 if oneof.auto_discriminator:
                     if oneof.discriminator_type == "msgid":
-                        result += f'        let {oneof_name}_discriminator = u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?);\n'
+                        # A1: safe read
+                        result += f'        let {oneof_name}_discriminator = u16::from_le_bytes(buf.get(_pos.._pos+2)?.try_into().ok()?);\n'
                         result += f'        _pos += 2;\n'
                         oneof_var_names.append(f'{oneof_name}_discriminator')
                     else:
-                        result += f'        let {oneof_name}_discriminator = buf[_pos];\n'
+                        # A1: safe read
+                        result += f'        let {oneof_name}_discriminator = *buf.get(_pos)?;\n'
                         result += f'        _pos += 1;\n'
                         oneof_var_names.append(f'{oneof_name}_discriminator')
                 result += f'        let mut {oneof_name}_bytes = [0u8; {oneof.size}];\n'
                 if oneof.variable:
-                    result += f'        let _{oneof_name}_len = u16::from_le_bytes(buf[_pos.._pos+2].try_into().ok()?) as usize;\n'
+                    # A1: safe read
+                    result += f'        let _{oneof_name}_len = u16::from_le_bytes(buf.get(_pos.._pos+2)?.try_into().ok()?) as usize;\n'
                     result += f'        _pos += 2;\n'
                     result += f'        if _pos + _{oneof_name}_len > buf.len() {{ return None; }}\n'
                     result += f'        let _copy = _{oneof_name}_len.min({oneof.size});\n'
-                    result += f'        {oneof_name}_bytes[.._copy].copy_from_slice(&buf[_pos.._pos+_copy]);\n'
+                    # A1: safe slice
+                    result += f'        {oneof_name}_bytes[.._copy].copy_from_slice(buf.get(_pos.._pos+_copy)?);\n'
                     result += f'        _pos += _{oneof_name}_len;\n'
                 else:
-                    result += f'        {oneof_name}_bytes.copy_from_slice(&buf[_pos.._pos+{oneof.size}]);\n'
+                    # A1: safe slice
+                    result += f'        {oneof_name}_bytes.copy_from_slice(buf.get(_pos.._pos+{oneof.size})?);\n'
                     result += f'        _pos += {oneof.size};\n'
                 oneof_var_names.append(f'{oneof_name}_bytes')
             result += '        Some(Self {\n'
@@ -1017,7 +1062,11 @@ class MessageRustGen():
         if has_msg_id:
             result += '\n    /// Get message info (size + magic numbers) for frame parsing.\n'
             result += '    pub fn message_info() -> crate::frame_base::MessageInfo {\n'
-            result += f'        crate::frame_base::MessageInfo::new_with_base_size(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2, Self::BASE_SIZE)\n'
+            if is_variable:
+                # Variable messages: emit min_size so the reader can detect length errors
+                result += f'        crate::frame_base::MessageInfo::new_variable(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2, Self::BASE_SIZE, Self::MIN_SIZE)\n'
+            else:
+                result += f'        crate::frame_base::MessageInfo::new_with_base_size(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2, Self::BASE_SIZE)\n'
             result += '    }\n'
 
         result += '}\n\n'
@@ -1160,33 +1209,41 @@ path = "lib.rs"
         result += 'pub mod struct_frame_sdk;\n\n'
         result += '// Re-export main SDK items at the crate root for backward compatibility.\n'
         result += '// Prefer `use your_crate::prelude::*;` in new code.\n'
-        result += 'pub use frame_base::{fletcher_checksum, FrameChecksum, FrameMsgInfo, MessageInfo, StructFrameMessage};\n'
+        result += 'pub use frame_base::{\n'
+        result += '    fletcher_checksum, fletcher_checksum_ext, FrameChecksum, FrameMsgInfo,\n'
+        result += '    FrameMsgStatus, MessageInfo, ParserDiagnostics, StructFrameMessage,\n'
+        result += '};\n'
         result += 'pub use frame_profiles::{\n'
         result += '    AccumulatingReader, BufferReader, BufferWriter, ProfileConfig,\n'
         result += '    PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG,\n'
         result += '    PROFILE_SENSOR_CONFIG, PROFILE_STANDARD_CONFIG,\n'
-        result += '    encode_message_crc, encode_message_minimal, encode_with_crc, encode_minimal,\n'
+        result += '    encode_message_crc, encode_message_minimal, encode_minimal, encode_with_crc,\n'
+        result += '    encode_with_crc_ext, parse_minimal, parse_with_crc,\n'
         result += '    new_bulk_reader, new_bulk_writer, new_ipc_reader, new_ipc_writer,\n'
         result += '    new_network_reader, new_network_writer, new_sensor_reader, new_sensor_writer,\n'
         result += '    new_standard_reader, new_standard_writer,\n'
         result += '};\n'
-        result += 'pub use struct_frame_sdk::{MessageHandler, Subscription, StructFrameSdk};\n\n'
+        result += 'pub use struct_frame_sdk::{MessageHandler, SendResult, Subscription, StructFrameSdk};\n\n'
         result += '/// Convenience prelude — preferred import for new code.\n'
         result += '/// ```rust\n'
         result += '/// use your_crate::prelude::*;\n'
         result += '/// ```\n'
         result += 'pub mod prelude {\n'
-        result += '    pub use crate::frame_base::{fletcher_checksum, FrameChecksum, FrameMsgInfo, MessageInfo, StructFrameMessage};\n'
+        result += '    pub use crate::frame_base::{\n'
+        result += '        fletcher_checksum, fletcher_checksum_ext, FrameChecksum, FrameMsgInfo,\n'
+        result += '        FrameMsgStatus, MessageInfo, ParserDiagnostics, StructFrameMessage,\n'
+        result += '    };\n'
         result += '    pub use crate::frame_profiles::{\n'
         result += '        AccumulatingReader, BufferReader, BufferWriter, ProfileConfig,\n'
         result += '        PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG,\n'
         result += '        PROFILE_SENSOR_CONFIG, PROFILE_STANDARD_CONFIG,\n'
-        result += '        encode_message_crc, encode_message_minimal, encode_with_crc, encode_minimal,\n'
+        result += '        encode_message_crc, encode_message_minimal, encode_minimal, encode_with_crc,\n'
+        result += '        encode_with_crc_ext, parse_minimal, parse_with_crc,\n'
         result += '        new_bulk_reader, new_bulk_writer, new_ipc_reader, new_ipc_writer,\n'
         result += '        new_network_reader, new_network_writer, new_sensor_reader, new_sensor_writer,\n'
         result += '        new_standard_reader, new_standard_writer,\n'
         result += '    };\n'
-        result += '    pub use crate::struct_frame_sdk::{MessageHandler, Subscription, StructFrameSdk};\n'
+        result += '    pub use crate::struct_frame_sdk::{MessageHandler, SendResult, Subscription, StructFrameSdk};\n'
         result += '}\n\n'
         result += '// Generated message modules\n'
         for pkg_name in package_names:
@@ -1404,7 +1461,7 @@ class TestRustGen():
         yield '    if frame.msg_id != M::MSG_ID {\n'
         yield '        return Err(format!("msg_id mismatch: expected {}, got {}", M::MSG_ID, frame.msg_id));\n'
         yield '    }\n'
-        yield '    let decoded = match M::unpack(&frame.payload) {\n'
+        yield '    let decoded = match M::unpack(&frame.msg_data) {\n'
         yield '        Some(d) => d,\n'
         yield '        None => return Err("unpack returned None".to_string()),\n'
         yield '    };\n'

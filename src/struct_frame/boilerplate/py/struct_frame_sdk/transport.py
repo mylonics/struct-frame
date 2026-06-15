@@ -93,6 +93,16 @@ class BaseTransport(ITransport):
     def is_connected(self) -> bool:
         return self.connected
 
+    def __enter__(self):
+        """Context manager entry: connect and return self."""
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit: always disconnect."""
+        self.disconnect()
+        return False
+
     def _handle_data(self, data: bytes) -> None:
         """Internal method to handle received data"""
         if self.data_callback:

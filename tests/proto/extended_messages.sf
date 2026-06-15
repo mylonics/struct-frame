@@ -70,8 +70,22 @@ message LargePayloadMessage2 {
 message ExtendedVariableSingleArray {
   option msgid = 802;
   option variable = true;
-  
+
   uint64 timestamp = 1;
   repeated uint8 telemetry_data = 2 [max_size=250];  // Up to 250 bytes
   uint32 crc = 3;
+}
+
+// Variable message with bounded fields whose max_size > 255, forcing 2-byte
+// count/length prefixes in the variable encoding. Regression cover for the
+// encoder/decoder/serialized_size prefix-width agreement: a 1-byte read on a
+// 2-byte prefix corrupts every following field.
+message ExtendedVariableLargeArray {
+  option msgid = 803;
+  option variable = true;
+
+  uint32 id = 1;
+  repeated uint8 big_telemetry = 2 [max_size=300];   // >255 -> 2-byte count prefix
+  string big_label = 3 [max_size=300];               // >255 -> 2-byte length prefix
+  uint16 trailer = 4;
 }

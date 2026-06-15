@@ -215,7 +215,10 @@ class OneOfCGen():
         result = f'/* Discriminator enum for {msg_name}::{oneof.name} oneof */\n'
         result += f'typedef enum {enum_name} {{\n'
         result += '\n'.join(lines) + '\n'
-        result += f'}} {enum_name};\n\n'
+        result += f'}} {enum_name};\n'
+        # uint8_t typedef so #pragma pack(1) keeps the struct field at 1 byte
+        # (plain C enum is int-sized and cannot be shrunk by pack).
+        result += f'typedef uint8_t {enum_name}_t;\n\n'
         return result
 
     @staticmethod
@@ -239,9 +242,9 @@ class OneOfCGen():
                 # Use uint16_t since message IDs can be up to 65535
                 result += f'    uint16_t {oneof.name}_discriminator;  // Auto-generated message ID discriminator\n'
             else:  # field_order
-                # Use the generated enum type for better type safety
+                # Use the uint8_t typedef so #pragma pack(1) keeps the field at 1 byte
                 enum_name = OneOfCGen.get_discriminator_enum_name(oneof, msg_name) if msg_name else 'uint8_t'
-                result += f'    {enum_name} {oneof.name}_discriminator;  // Auto-generated field order discriminator\n'
+                result += f'    {enum_name}_t {oneof.name}_discriminator;  // Auto-generated field order discriminator\n'
         
         # Generate the union
         result += f'    union {{\n'
@@ -375,7 +378,7 @@ class MessageCGen():
             result += '#define %s_MIN_SIZE %d\n' % (defineName, msg.min_size)
             result += '#define %s_IS_VARIABLE 1\n' % defineName
 
-        if msg.id:
+        if msg.id is not None:
             # When package has a package ID, generate 16-bit message ID as (pkg_id << 8) | msg_id
             if package and package.package_id is not None:
                 # Compute combined 16-bit message ID
@@ -395,7 +398,7 @@ class MessageCGen():
             result += MessageCGen._generate_variable_functions(msg, structName, defineName)
         
         # Generate unified unpack() for messages with MSG_ID (both variable and non-variable)
-        if msg.id:
+        if msg.id is not None:
             result += MessageCGen._generate_unified_unpack(msg, structName, defineName)
 
         # Generate equality function if requested
@@ -440,26 +443,27 @@ class MessageCGen():
         result += f'static inline size_t {structName}_serialized_size(const {structName}* msg) {{\n'
         result += f'    size_t size = 0;\n'
         
+        type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4,
+                      "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
         for key, field in msg.fields.items():
             var_name = field.name
             if field.is_array and field.max_size is not None:
-                # Variable array: count byte + actual data
+                # Variable array: count field (1 or 2 bytes) + actual data
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
-                    result += f'    size += 1 + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
+                    result += f'    size += {count_bytes} + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
                 else:
-                    element_size = field.size // field.max_size if field.max_size else 1
-                    # Recalculate element size from the actual type
-                    type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                     if field.field_type in type_sizes:
                         element_size = type_sizes[field.field_type]
                     else:
-                        # For nested messages, we need the actual size
-                        element_size = (field.size - 1) // field.max_size
-                    result += f'    size += 1 + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
+                        # Nested message: derive element size from total field size minus count field
+                        element_size = (field.size - count_bytes) // field.max_size
+                    result += f'    size += {count_bytes} + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
-                # Variable string: length byte + actual data
-                result += f'    size += 1 + msg->{var_name}.length;  // {var_name}: length + data\n'
+                # Variable string: length field (1 or 2 bytes) + actual data
+                length_bytes = 2 if field.max_size > 255 else 1
+                result += f'    size += {length_bytes} + msg->{var_name}.length;  // {var_name}: length + data\n'
             else:
                 # Fixed-size field
                 result += f'    size += {field.size};  // {var_name}\n'
@@ -505,30 +509,42 @@ class MessageCGen():
         result += f'static inline size_t {structName}_serialize_variable(const {structName}* msg, uint8_t* buffer) {{\n'
         result += f'    size_t offset = 0;\n'
         
+        _type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4,
+                       "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
         for key, field in msg.fields.items():
             var_name = field.name
             if field.is_array and field.max_size is not None:
-                # Variable array
+                # Variable array: count is stored as uint8_t or uint16_t in the struct
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                     result += f'    // {var_name}: variable string array\n'
-                    result += f'    buffer[offset++] = msg->{var_name}.count;\n'
+                    if count_bytes == 2:
+                        result += f'    memcpy(buffer + offset, &msg->{var_name}.count, 2); offset += 2;\n'
+                    else:
+                        result += f'    buffer[offset++] = (uint8_t)msg->{var_name}.count;\n'
                     result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
                 else:
-                    type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                    if field.field_type in type_sizes:
-                        element_size = type_sizes[field.field_type]
+                    if field.field_type in _type_sizes:
+                        element_size = _type_sizes[field.field_type]
                     else:
-                        element_size = (field.size - 1) // field.max_size
+                        element_size = (field.size - count_bytes) // field.max_size
                     result += f'    // {var_name}: variable array\n'
-                    result += f'    buffer[offset++] = msg->{var_name}.count;\n'
+                    if count_bytes == 2:
+                        result += f'    memcpy(buffer + offset, &msg->{var_name}.count, 2); offset += 2;\n'
+                    else:
+                        result += f'    buffer[offset++] = (uint8_t)msg->{var_name}.count;\n'
                     result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
-                # Variable string
+                # Variable string: length stored as uint8_t or uint16_t in the struct
+                length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {var_name}: variable string\n'
-                result += f'    buffer[offset++] = msg->{var_name}.length;\n'
+                if length_bytes == 2:
+                    result += f'    memcpy(buffer + offset, &msg->{var_name}.length, 2); offset += 2;\n'
+                else:
+                    result += f'    buffer[offset++] = (uint8_t)msg->{var_name}.length;\n'
                 result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.length);\n'
                 result += f'    offset += msg->{var_name}.length;\n'
             else:
@@ -594,38 +610,56 @@ class MessageCGen():
         result += f'    size_t offset = 0;\n'
         result += f'    memset(msg, 0, sizeof({structName}));  // Zero-initialize\n'
         
+        _type_sizes2 = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4,
+                        "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
         for key, field in msg.fields.items():
             var_name = field.name
             if field.is_array and field.max_size is not None:
-                # Variable array
+                # Variable array: count stored as uint8_t or uint16_t on the wire
+                count_bytes = 2 if field.max_size > 255 else 1
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                     result += f'    // {var_name}: variable string array\n'
-                    result += f'    if (offset >= buffer_size) return 0;\n'
-                    result += f'    msg->{var_name}.count = buffer[offset++];\n'
-                    result += f'    if (msg->{var_name}.count > {field.max_size}) msg->{var_name}.count = {field.max_size};\n'
+                    if count_bytes == 2:
+                        result += f'    if (offset + 2 > buffer_size) return 0;\n'
+                        result += f'    memcpy(&msg->{var_name}.count, buffer + offset, 2); offset += 2;\n'
+                        result += f'    if (msg->{var_name}.count > {field.max_size}) return 0;\n'
+                    else:
+                        result += f'    if (offset >= buffer_size) return 0;\n'
+                        result += f'    msg->{var_name}.count = buffer[offset++];\n'
+                        result += f'    if (msg->{var_name}.count > {field.max_size}) return 0;\n'
                     result += f'    if (offset + msg->{var_name}.count * {element_size} > buffer_size) return 0;\n'
                     result += f'    memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
                 else:
-                    type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
-                    if field.field_type in type_sizes:
-                        element_size = type_sizes[field.field_type]
+                    if field.field_type in _type_sizes2:
+                        element_size = _type_sizes2[field.field_type]
                     else:
-                        element_size = (field.size - 1) // field.max_size
+                        element_size = (field.size - count_bytes) // field.max_size
                     result += f'    // {var_name}: variable array\n'
-                    result += f'    if (offset >= buffer_size) return 0;\n'
-                    result += f'    msg->{var_name}.count = buffer[offset++];\n'
-                    result += f'    if (msg->{var_name}.count > {field.max_size}) msg->{var_name}.count = {field.max_size};\n'
+                    if count_bytes == 2:
+                        result += f'    if (offset + 2 > buffer_size) return 0;\n'
+                        result += f'    memcpy(&msg->{var_name}.count, buffer + offset, 2); offset += 2;\n'
+                        result += f'    if (msg->{var_name}.count > {field.max_size}) return 0;\n'
+                    else:
+                        result += f'    if (offset >= buffer_size) return 0;\n'
+                        result += f'    msg->{var_name}.count = buffer[offset++];\n'
+                        result += f'    if (msg->{var_name}.count > {field.max_size}) return 0;\n'
                     result += f'    if (offset + msg->{var_name}.count * {element_size} > buffer_size) return 0;\n'
                     result += f'    memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.count * {element_size});\n'
                     result += f'    offset += msg->{var_name}.count * {element_size};\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
-                # Variable string
+                # Variable string: length stored as uint8_t or uint16_t on the wire
+                length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {var_name}: variable string\n'
-                result += f'    if (offset >= buffer_size) return 0;\n'
-                result += f'    msg->{var_name}.length = buffer[offset++];\n'
-                result += f'    if (msg->{var_name}.length > {field.max_size}) msg->{var_name}.length = {field.max_size};\n'
+                if length_bytes == 2:
+                    result += f'    if (offset + 2 > buffer_size) return 0;\n'
+                    result += f'    memcpy(&msg->{var_name}.length, buffer + offset, 2); offset += 2;\n'
+                    result += f'    if (msg->{var_name}.length > {field.max_size}) return 0;\n'
+                else:
+                    result += f'    if (offset >= buffer_size) return 0;\n'
+                    result += f'    msg->{var_name}.length = buffer[offset++];\n'
+                    result += f'    if (msg->{var_name}.length > {field.max_size}) return 0;\n'
                 result += f'    if (offset + msg->{var_name}.length > buffer_size) return 0;\n'
                 result += f'    memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.length);\n'
                 result += f'    offset += msg->{var_name}.length;\n'
@@ -644,11 +678,11 @@ class MessageCGen():
                     result += f'    if (offset + 2 > buffer_size) return 0;\n'
                     result += f'    memcpy(&msg->{oneof_name}_discriminator, buffer + offset, 2);\n'
                     result += f'    offset += 2;\n'
-                else:  # field_order (uint8)
+                else:  # field_order (uint8_t typedef)
                     result += f'    // {oneof_name} discriminator (uint8)\n'
                     result += f'    if (offset >= buffer_size) return 0;\n'
                     disc_enum = f'{structName}{pascal_case(oneof_name)}Field'
-                    result += f'    msg->{oneof_name}_discriminator = ({disc_enum})buffer[offset++];\n'
+                    result += f'    msg->{oneof_name}_discriminator = ({disc_enum}_t)buffer[offset++];\n'
             if oneof.variable:
                 result += f'    // {oneof_name} variable-length union: read uint16 length + variant bytes\n'
                 result += f'    {{\n'
@@ -724,31 +758,6 @@ class MessageCGen():
         result += f'static inline size_t {structName}_serialize(const {structName}* msg, uint8_t* buffer) {{\n'
         result += f'    return {structName}_serialize_variable(msg, buffer);\n'
         result += f'}}\n'
-        
-        return result
-
-    @staticmethod
-    def _generate_unified_unpack(msg, structName, defineName):
-        """Generate unified deserialize() function for non-variable messages with MSG_ID."""
-        result = ''
-        
-        # For variable messages, deserialize() was already generated inline in _generate_variable_functions
-        # This method handles non-variable messages
-        if not msg.variable:
-            result += f'\n/**\n'
-            result += f' * Unified unpack function for {structName}.\n'
-            result += f' * For fixed-size messages: uses memcpy with size validation\n'
-            result += f' * @param buffer Input buffer\n'
-            result += f' * @param buffer_size Size of the input buffer\n'
-            result += f' * @param msg Pointer to the message to unpack into\n'
-            result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
-            result += f' */\n'
-            result += f'static inline size_t {structName}_unpack(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
-            result += f'    /* Fixed-size message - use direct copy */\n'
-            result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
-            result += f'    memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
-            result += f'    return {defineName}_MAX_SIZE;\n'
-            result += f'}}\n'
         
         return result
 
@@ -917,23 +926,28 @@ class FileCGen():
             for key, msg in package.sortedMessages().items():
                 name = '%s_%s' % (camel_to_snake_case(
                     msg.package).upper(), camel_to_snake_case(msg.name).upper())
-                if msg.id:
+                if msg.id is not None:
                     if package.package_id is not None:
                         # When using package ID, compare against local message ID
                         yield '        case %d:\n' % msg.id
                     else:
                         # No package ID, compare against full message ID constant
                         yield '        case %s_MSG_ID:\n' % name
-                    
+
                     # Get magic bytes values
                     magic1 = '0'
                     magic2 = '0'
                     if msg.magic_bytes:
                         magic1 = f'{name}_MAGIC1'
                         magic2 = f'{name}_MAGIC2'
-                    
+
                     yield f'            info->size = {name}_MAX_SIZE;\n'
                     yield f'            info->base_size = {name}_BASE_SIZE;\n'
+                    # F6: min_size for range-check in cnt_len_errors (MIN_SIZE for variable, BASE_SIZE otherwise)
+                    if msg.variable:
+                        yield f'            info->min_size = {name}_MIN_SIZE;\n'
+                    else:
+                        yield f'            info->min_size = {name}_BASE_SIZE;\n'
                     yield f'            info->magic1 = {magic1};\n'
                     yield f'            info->magic2 = {magic2};\n'
                     yield '            return true;\n'
@@ -1151,10 +1165,6 @@ class TestCGen():
             yield f'    uint16_t full_id = (uint16_t){defineName}_MSG_ID;\n'
             yield f'    uint8_t msg_id_byte = (uint8_t)(full_id & 0xFF);\n'
             yield f'    uint8_t pkg_id_byte = (uint8_t)((full_id >> 8) & 0xFF);\n'
-            yield f'\n'
-            yield f'    /* Some encoder paths emit truncated bytes for variable messages\n'
-            yield f'       only when the profile carries a length field. */\n'
-            yield f'    has_length_field_for_variable_encoding = p->has_length;\n'
             yield f'\n'
             yield f'    size_t written = buffer_writer_write_ext(&writer, msg_id_byte,\n'
             yield f'                                         payload, payload_size,\n'

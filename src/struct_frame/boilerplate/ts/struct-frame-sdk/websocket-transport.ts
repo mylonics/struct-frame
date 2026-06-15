@@ -38,10 +38,10 @@ export class WebSocketTransport extends BaseTransport {
           if (event.data instanceof ArrayBuffer) {
             data = new Uint8Array(event.data);
           } else if (event.data instanceof Blob) {
-            // Handle blob asynchronously
-            event.data.arrayBuffer().then(buffer => {
-              this.handleData(new Uint8Array(buffer));
-            });
+            event.data.arrayBuffer().then(
+              buffer => this.handleData(new Uint8Array(buffer)),
+              err => this.handleError(err instanceof Error ? err : new Error(String(err)))
+            );
             return;
           } else {
             // String data - convert to bytes

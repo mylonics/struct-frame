@@ -11,7 +11,7 @@
  * Used for nested message types and StructArray fields.
  */
 export interface MessageConstructor<T extends MessageBase = MessageBase> {
-  new(bufferOrInit?: Buffer | Record<string, unknown>): T;
+  new(bufferOrInit?: Buffer | Uint8Array | Record<string, unknown>): T;
   readonly _size: number;
   readonly _msgid?: number;
   readonly _magic1?: number;
@@ -197,81 +197,73 @@ export abstract class MessageBase {
   }
 
   protected _readInt8Array(offset: number, length: number): number[] {
-    const result: number[] = [];
-    for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readInt8(offset + i));
-    }
-    return result;
+    return Array.from(new Int8Array(this._buffer.buffer, this._buffer.byteOffset + offset, length));
   }
 
   protected _readUInt8Array(offset: number, length: number): number[] {
-    const result: number[] = [];
-    for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readUInt8(offset + i));
-    }
-    return result;
+    return Array.from(this._buffer.subarray(offset, offset + length));
   }
 
   protected _readInt16Array(offset: number, length: number): number[] {
-    const result: number[] = [];
+    const result = new Array<number>(length);
     for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readInt16LE(offset + i * 2));
+      result[i] = this._buffer.readInt16LE(offset + i * 2);
     }
     return result;
   }
 
   protected _readUInt16Array(offset: number, length: number): number[] {
-    const result: number[] = [];
+    const result = new Array<number>(length);
     for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readUInt16LE(offset + i * 2));
+      result[i] = this._buffer.readUInt16LE(offset + i * 2);
     }
     return result;
   }
 
   protected _readInt32Array(offset: number, length: number): number[] {
-    const result: number[] = [];
+    const result = new Array<number>(length);
     for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readInt32LE(offset + i * 4));
+      result[i] = this._buffer.readInt32LE(offset + i * 4);
     }
     return result;
   }
 
   protected _readUInt32Array(offset: number, length: number): number[] {
-    const result: number[] = [];
+    const result = new Array<number>(length);
     for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readUInt32LE(offset + i * 4));
+      result[i] = this._buffer.readUInt32LE(offset + i * 4);
     }
     return result;
   }
 
   protected _readBigInt64Array(offset: number, length: number): bigint[] {
-    const result: bigint[] = [];
+    const result = new Array<bigint>(length);
     for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readBigInt64LE(offset + i * 8));
+      result[i] = this._buffer.readBigInt64LE(offset + i * 8);
     }
     return result;
   }
 
   protected _readBigUInt64Array(offset: number, length: number): bigint[] {
-    const result: bigint[] = [];
+    const result = new Array<bigint>(length);
     for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readBigUInt64LE(offset + i * 8));
+      result[i] = this._buffer.readBigUInt64LE(offset + i * 8);
     }
     return result;
   }
 
   protected _readFloat32Array(offset: number, length: number): number[] {
-    const result: number[] = [];
+    const result = new Array<number>(length);
     for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readFloatLE(offset + i * 4));
+      result[i] = this._buffer.readFloatLE(offset + i * 4);
     }
     return result;
   }
 
   protected _readFloat64Array(offset: number, length: number): number[] {
-    const result: number[] = [];
+    const result = new Array<number>(length);
     for (let i = 0; i < length; i++) {
-      result.push(this._buffer.readDoubleLE(offset + i * 8));
+      result[i] = this._buffer.readDoubleLE(offset + i * 8);
     }
     return result;
   }
@@ -349,16 +341,20 @@ export abstract class MessageBase {
 
   protected _writeInt8Array(offset: number, length: number, value: number[]): void {
     const arr = value || [];
-    for (let i = 0; i < length; i++) {
-      this._buffer.writeInt8(i < arr.length ? arr[i] : 0, offset + i);
+    const copyLen = Math.min(arr.length, length);
+    for (let i = 0; i < copyLen; i++) {
+      this._buffer.writeInt8(arr[i], offset + i);
     }
+    this._buffer.fill(0, offset + copyLen, offset + length);
   }
 
   protected _writeUInt8Array(offset: number, length: number, value: number[]): void {
     const arr = value || [];
-    for (let i = 0; i < length; i++) {
-      this._buffer.writeUInt8(i < arr.length ? arr[i] : 0, offset + i);
+    const copyLen = Math.min(arr.length, length);
+    for (let i = 0; i < copyLen; i++) {
+      this._buffer[offset + i] = arr[i];
     }
+    this._buffer.fill(0, offset + copyLen, offset + length);
   }
 
   protected _writeInt16Array(offset: number, length: number, value: number[]): void {

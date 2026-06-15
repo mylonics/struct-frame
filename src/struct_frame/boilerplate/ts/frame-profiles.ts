@@ -242,15 +242,16 @@ export function encodeMessage(
     const magic2 = msg.getMagic2();
     const { seq = 0, sysId = 0, compId = 0 } = options;
     
-    // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id
-    // unless pkgId is explicitly provided in options
-    let pkgIdValue = options.pkgId;
-    let msgIdValue = msgId;
-    if (config.payload.hasPkgId && pkgIdValue === undefined) {
-        pkgIdValue = (msgId >> 8) & 0xFF;  // high byte
-        msgIdValue = msgId & 0xFF;          // low byte
+    // For extended profiles with pkg_id, split the 16-bit msgId into pkg_id and msg_id.
+    // If pkgId is explicitly provided in options, use it; otherwise derive from high byte.
+    let pkgIdValue: number;
+    let msgIdValue: number;
+    if (config.payload.hasPkgId) {
+        pkgIdValue = options.pkgId ?? ((msgId >> 8) & 0xFF);
+        msgIdValue = msgId & 0xFF;
     } else {
-        pkgIdValue = pkgIdValue ?? 0;
+        pkgIdValue = options.pkgId ?? 0;
+        msgIdValue = msgId;
     }
     
     const payloadSize = payload.length;
@@ -419,7 +420,7 @@ export function parseFrameWithCrc(
     result.valid = true;
     result.msgId = msgId;
     result.msgLen = msgLen;
-    result.msgData = buffer.slice(headerSize, headerSize + msgLen);
+    result.msgData = buffer.subarray(headerSize, headerSize + msgLen);
     result.frameSize = totalSize;
 
     return result;
@@ -476,7 +477,7 @@ export function parseFrameMinimal(
     result.valid = true;
     result.msgId = msgId;
     result.msgLen = msgLen;
-    result.msgData = buffer.slice(headerSize, headerSize + msgLen);
+    result.msgData = buffer.subarray(headerSize, headerSize + msgLen);
     result.frameSize = totalSize;
 
     return result;
@@ -768,9 +769,16 @@ export class AccumulatingReader {
         // If we have partial data in internal buffer, try to complete it
         if (this.internalDataLen > 0) {
             const spaceAvailable = this.bufferSize - this.internalDataLen;
-            const bytesToCopy = Math.min(buffer.length, spaceAvailable);
-            this.internalBuffer.set(buffer.slice(0, bytesToCopy), this.internalDataLen);
-            this.internalDataLen += bytesToCopy;
+            if (buffer.length <= spaceAvailable) {
+                this.internalBuffer.set(buffer, this.internalDataLen);
+                this.internalDataLen += buffer.length;
+            } else {
+                // Partial data won't fit: discard it and start fresh from the new buffer
+                this._diagnostics.cntFailedBytes += this.internalDataLen;
+                this._diagnostics.cntSyncRecoveries++;
+                this.internalDataLen = 0;
+                this.expectedFrameSize = 0;
+            }
         }
     }
 
@@ -784,10 +792,11 @@ export class AccumulatingReader {
 
         // First, try to complete a partial message from the internal buffer
         if (this.internalDataLen > 0 && this.currentOffset === 0) {
-            const internalBytes = this.internalBuffer.slice(0, this.internalDataLen);
+            const internalBytes = this.internalBuffer.subarray(0, this.internalDataLen);
             const result = this.parseBuffer(internalBytes);
 
             if (result.valid) {
+                result.msgData = result.msgData.slice(); // own copy — internalBuffer is reused
                 const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
                 const partialLen = this.internalDataLen > this.currentSize ? this.internalDataLen - this.currentSize : 0;
                 const bytesFromCurrent = frameSize > partialLen ? frameSize - partialLen : 0;
@@ -820,7 +829,7 @@ export class AccumulatingReader {
             return this.withDiagnostics(createFrameMsgInfo());
         }
 
-        const remaining = this.currentBuffer.slice(this.currentOffset);
+        const remaining = this.currentBuffer.subarray(this.currentOffset);
         const result = this.parseBuffer(remaining);
 
         if (result.valid) {
@@ -1109,7 +1118,7 @@ export class AccumulatingReader {
     }
 
     private validateAndReturn(): FrameMsgInfo {
-        const internalBytes = this.internalBuffer.slice(0, this.internalDataLen);
+        const internalBytes = this.internalBuffer.subarray(0, this.internalDataLen);
         const result = this.parseBuffer(internalBytes);
 
         this._state = AccumulatingReaderState.LOOKING_FOR_START1;
@@ -1117,6 +1126,7 @@ export class AccumulatingReader {
         this.expectedFrameSize = 0;
 
         if (result.valid) {
+            result.msgData = result.msgData.slice(); // own copy — internalBuffer is reused
             // Check for sequence gap on profiles that carry a sequence number
             if (this.config.payload.hasSeq) {
                 const seq = this.internalBuffer[this.config.header.numStartBytes];
@@ -1205,116 +1215,3 @@ export class AccumulatingReader {
     }
 }
 
-// =============================================================================
-// Profile-specific subclasses for standard profiles
-// =============================================================================
-
-// -----------------------------------------------------------------------------
-// ProfileStandard subclasses
-// -----------------------------------------------------------------------------
-
-export class ProfileStandardReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
-        super(ProfileStandardConfig, buffer, getMessageInfo);
-    }
-}
-
-export class ProfileStandardWriter extends BufferWriter {
-    constructor(capacity: number = 1024) {
-        super(ProfileStandardConfig, capacity);
-    }
-}
-
-export class ProfileStandardAccumulatingReader extends AccumulatingReader {
-    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
-        super(ProfileStandardConfig, getMessageInfo, bufferSize);
-    }
-}
-
-// -----------------------------------------------------------------------------
-// ProfileSensor subclasses
-// -----------------------------------------------------------------------------
-
-export class ProfileSensorReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMessageInfo: GetMessageInfo) {
-        super(ProfileSensorConfig, buffer, getMessageInfo);
-    }
-}
-
-export class ProfileSensorWriter extends BufferWriter {
-    constructor(capacity: number = 1024) {
-        super(ProfileSensorConfig, capacity);
-    }
-}
-
-export class ProfileSensorAccumulatingReader extends AccumulatingReader {
-    constructor(getMessageInfo: GetMessageInfo, bufferSize: number = 1024) {
-        super(ProfileSensorConfig, getMessageInfo, bufferSize);
-    }
-}
-
-// -----------------------------------------------------------------------------
-// ProfileIPC subclasses
-// -----------------------------------------------------------------------------
-
-export class ProfileIPCReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMessageInfo: GetMessageInfo) {
-        super(ProfileIPCConfig, buffer, getMessageInfo);
-    }
-}
-
-export class ProfileIPCWriter extends BufferWriter {
-    constructor(capacity: number = 1024) {
-        super(ProfileIPCConfig, capacity);
-    }
-}
-
-export class ProfileIPCAccumulatingReader extends AccumulatingReader {
-    constructor(getMessageInfo: GetMessageInfo, bufferSize: number = 1024) {
-        super(ProfileIPCConfig, getMessageInfo, bufferSize);
-    }
-}
-
-// -----------------------------------------------------------------------------
-// ProfileBulk subclasses
-// -----------------------------------------------------------------------------
-
-export class ProfileBulkReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
-        super(ProfileBulkConfig, buffer, getMessageInfo);
-    }
-}
-
-export class ProfileBulkWriter extends BufferWriter {
-    constructor(capacity: number = 1024) {
-        super(ProfileBulkConfig, capacity);
-    }
-}
-
-export class ProfileBulkAccumulatingReader extends AccumulatingReader {
-    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
-        super(ProfileBulkConfig, getMessageInfo, bufferSize);
-    }
-}
-
-// -----------------------------------------------------------------------------
-// ProfileNetwork subclasses
-// -----------------------------------------------------------------------------
-
-export class ProfileNetworkReader extends BufferReader {
-    constructor(buffer: Uint8Array, getMessageInfo?: GetMessageInfo) {
-        super(ProfileNetworkConfig, buffer, getMessageInfo);
-    }
-}
-
-export class ProfileNetworkWriter extends BufferWriter {
-    constructor(capacity: number = 1024) {
-        super(ProfileNetworkConfig, capacity);
-    }
-}
-
-export class ProfileNetworkAccumulatingReader extends AccumulatingReader {
-    constructor(getMessageInfo?: GetMessageInfo, bufferSize: number = 1024) {
-        super(ProfileNetworkConfig, getMessageInfo, bufferSize);
-    }
-}

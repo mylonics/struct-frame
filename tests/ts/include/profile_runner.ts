@@ -8,16 +8,14 @@
  */
 
 import {
-  ProfileStandardWriter,
-  ProfileSensorWriter,
-  ProfileIPCWriter,
-  ProfileBulkWriter,
-  ProfileNetworkWriter,
-  ProfileStandardAccumulatingReader,
-  ProfileSensorAccumulatingReader,
-  ProfileIPCAccumulatingReader,
-  ProfileBulkAccumulatingReader,
-  ProfileNetworkAccumulatingReader,
+  BufferWriter,
+  AccumulatingReader,
+  ProfileStandardConfig,
+  ProfileSensorConfig,
+  ProfileIPCConfig,
+  ProfileBulkConfig,
+  ProfileNetworkConfig,
+  FrameProfileConfig,
   MessageInfo,
 } from '../../generated/ts/frame-profiles';
 
@@ -30,20 +28,12 @@ export type GetMsgInfoFn = (msgId: number) => MessageInfo | undefined;
 export type GetMsgFn = (index: number) => any;
 export type CheckMsgFn = (index: number, info: FrameMsgInfo) => boolean;
 
-const writerClasses: { [key: string]: new (size: number) => any } = {
-  'standard': ProfileStandardWriter,
-  'sensor': ProfileSensorWriter,
-  'ipc': ProfileIPCWriter,
-  'bulk': ProfileBulkWriter,
-  'network': ProfileNetworkWriter,
-};
-
-const readerClasses: { [key: string]: new (getMsgInfo: GetMsgInfoFn, bufSize: number) => any } = {
-  'standard': ProfileStandardAccumulatingReader,
-  'sensor': ProfileSensorAccumulatingReader,
-  'ipc': ProfileIPCAccumulatingReader,
-  'bulk': ProfileBulkAccumulatingReader,
-  'network': ProfileNetworkAccumulatingReader,
+const profileConfigs: { [key: string]: FrameProfileConfig } = {
+  'standard': ProfileStandardConfig,
+  'sensor': ProfileSensorConfig,
+  'ipc': ProfileIPCConfig,
+  'bulk': ProfileBulkConfig,
+  'network': ProfileNetworkConfig,
 };
 
 /**
@@ -51,10 +41,10 @@ const readerClasses: { [key: string]: new (getMsgInfo: GetMsgInfoFn, bufSize: nu
  * Returns total bytes written.
  */
 export function encode(messageCount: number, getMessage: GetMsgFn, profile: string, buffer: Buffer): number {
-  const WriterClass = writerClasses[profile];
-  if (!WriterClass) return 0;
+  const config = profileConfigs[profile];
+  if (!config) return 0;
 
-  const writer = new WriterClass(buffer.length);
+  const writer = new BufferWriter(config, buffer.length);
 
   for (let i = 0; i < messageCount; i++) {
     const msg = getMessage(i);
@@ -75,10 +65,10 @@ export function encode(messageCount: number, getMessage: GetMsgFn, profile: stri
  * Returns the number of messages that matched (messageCount if all pass).
  */
 export function parse(messageCount: number, checkMessage: CheckMsgFn, getMsgInfo: GetMsgInfoFn, profile: string, buffer: Buffer): number {
-  const ReaderClass = readerClasses[profile];
-  if (!ReaderClass) return 0;
+  const config = profileConfigs[profile];
+  if (!config) return 0;
 
-  const reader = new ReaderClass(getMsgInfo, BUFFER_SIZE);
+  const reader = new AccumulatingReader(config, getMsgInfo, BUFFER_SIZE);
   reader.addData(buffer);
 
   let count = 0;
