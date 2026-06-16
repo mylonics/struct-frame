@@ -304,8 +304,7 @@ class MessagePyGen():
                     count_fmt = "H" if f.max_size > 255 else "B"
                     result += f'        # Variable string: {f.name}\n'
                     result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
-                    result += f'        data += struct.pack("<{count_fmt}", len(str_data))\n'
-                    result += f'        data += struct.pack("<{f.max_size}s", str_data)\n'
+                    result += f'        data += struct.pack("<{count_fmt}{f.max_size}s", len(str_data), str_data)\n'
             elif f.is_array:
                 _flush_scalars()
                 # Array field
@@ -314,23 +313,18 @@ class MessagePyGen():
                     if f.size_option is not None:
                         # Fixed string array
                         element_size = f.element_size if f.element_size else 16
+                        bulk_fmt = ("%ds" % element_size) * f.size_option
                         result += f'        # Fixed string array: {f.name}\n'
-                        result += f'        for i in range({f.size_option}):\n'
-                        result += f'            if i < len(self.{f.name}):\n'
-                        result += f'                data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
-                        result += f'            else:\n'
-                        result += f'                data += struct.pack("<{element_size}s", b"")\n'
+                        result += f'        _elems = [self.{f.name}[i][:{element_size}] if i < len(self.{f.name}) else b"" for i in range({f.size_option})]\n'
+                        result += f'        data += struct.pack("<{bulk_fmt}", *_elems)\n'
                     elif f.max_size is not None:
                         # Bounded string array
                         count_fmt = "H" if f.max_size > 255 else "B"
                         element_size = f.element_size if f.element_size else 16
+                        bulk_fmt = ("%ds" % element_size) * f.max_size
                         result += f'        # Bounded string array: {f.name}\n'
-                        result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
-                        result += f'        for i in range({f.max_size}):\n'
-                        result += f'            if i < len(self.{f.name}):\n'
-                        result += f'                data += struct.pack("<{element_size}s", self.{f.name}[i][:{element_size}])\n'
-                        result += f'            else:\n'
-                        result += f'                data += struct.pack("<{element_size}s", b"")\n'
+                        result += f'        _elems = [self.{f.name}[i][:{element_size}] if i < len(self.{f.name}) else b"" for i in range({f.max_size})]\n'
+                        result += f'        data += struct.pack("<{count_fmt}{bulk_fmt}", min(len(self.{f.name}), {f.max_size}), *_elems)\n'
                 else:
                     # Numeric/enum/struct array
                     fmt = MessagePyGen.get_struct_format(f)
@@ -435,9 +429,36 @@ class MessagePyGen():
         result += '        """Deserialize binary data into a message instance (fixed-size format)"""\n'
         result += '        offset = 0\n'
         result += '        fields = {}\n'
-        
+
+        # Coalesce runs of consecutive fixed scalar fields into a single
+        # struct.unpack_from call, symmetric to the serialize() coalescing. "<" uses
+        # standard sizes with no alignment padding, so this is byte-identical to
+        # per-field unpacking while cutting per-field unpack_from overhead (significant
+        # in CPython).
+        _pending_fmt = []
+        _pending_names = []
+
+        def _flush_scalars():
+            nonlocal result, _pending_fmt, _pending_names
+            if not _pending_fmt:
+                return
+            if len(_pending_fmt) == 1:
+                size = struct_format_sizes[_pending_fmt[0]]
+                result += f'        fields["{_pending_names[0]}"] = struct.unpack_from("<{_pending_fmt[0]}", data, offset)[0]\n'
+                result += f'        offset += {size}\n'
+            else:
+                joined = "".join(_pending_fmt)
+                total = sum(struct_format_sizes[c] for c in _pending_fmt)
+                result += f'        _vals = struct.unpack_from("<{joined}", data, offset)\n'
+                result += f'        offset += {total}\n'
+                for _i, _nm in enumerate(_pending_names):
+                    result += f'        fields["{_nm}"] = _vals[{_i}]\n'
+            _pending_fmt = []
+            _pending_names = []
+
         for key, f in msg.fields.items():
             if f.field_type in ("string", "bytes") and not f.is_array:
+                _flush_scalars()
                 # String field
                 if f.size_option is not None:
                     # Fixed string
@@ -447,40 +468,37 @@ class MessagePyGen():
                 elif f.max_size is not None:
                     # Variable string with length prefix
                     count_fmt = "H" if f.max_size > 255 else "B"
-                    count_size = 2 if f.max_size > 255 else 1
+                    total_size = (2 if f.max_size > 255 else 1) + f.max_size
                     result += f'        # Variable string: {f.name}\n'
-                    result += f'        str_len = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
-                    result += f'        offset += {count_size}\n'
-                    result += f'        str_data = struct.unpack_from("<{f.max_size}s", data, offset)[0]\n'
-                    result += f'        fields["{f.name}"] = str_data[:str_len]\n'
-                    result += f'        offset += {f.max_size}\n'
+                    result += f'        _s = struct.unpack_from("<{count_fmt}{f.max_size}s", data, offset)\n'
+                    result += f'        fields["{f.name}"] = _s[1][:_s[0]]\n'
+                    result += f'        offset += {total_size}\n'
             elif f.is_array:
+                _flush_scalars()
                 # Array field
                 if f.field_type in ("string", "bytes"):
                     # String array
                     if f.size_option is not None:
                         # Fixed string array
                         element_size = f.element_size if f.element_size else 16
+                        bulk_fmt = ("%ds" % element_size) * f.size_option
+                        total_bytes = element_size * f.size_option
                         result += f'        # Fixed string array: {f.name}\n'
-                        result += f'        fields["{f.name}"] = []\n'
-                        result += f'        for i in range({f.size_option}):\n'
-                        result += f'            s = struct.unpack_from("<{element_size}s", data, offset)[0]\n'
-                        result += f'            fields["{f.name}"].append(s)\n'
-                        result += f'            offset += {element_size}\n'
+                        result += f'        fields["{f.name}"] = list(struct.unpack_from("<{bulk_fmt}", data, offset))\n'
+                        result += f'        offset += {total_bytes}\n'
                     elif f.max_size is not None:
                         # Bounded string array
                         count_fmt = "H" if f.max_size > 255 else "B"
                         count_size = 2 if f.max_size > 255 else 1
                         element_size = f.element_size if f.element_size else 16
+                        bulk_fmt = ("%ds" % element_size) * f.max_size
+                        data_bytes = element_size * f.max_size
                         result += f'        # Bounded string array: {f.name}\n'
                         result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
                         result += f'        offset += {count_size}\n'
-                        result += f'        fields["{f.name}"] = []\n'
-                        result += f'        for i in range({f.max_size}):\n'
-                        result += f'            s = struct.unpack_from("<{element_size}s", data, offset)[0]\n'
-                        result += f'            if i < count:\n'
-                        result += f'                fields["{f.name}"].append(s)\n'
-                        result += f'            offset += {element_size}\n'
+                        result += f'        _all = struct.unpack_from("<{bulk_fmt}", data, offset)\n'
+                        result += f'        offset += {data_bytes}\n'
+                        result += f'        fields["{f.name}"] = list(_all[:min(count, {f.max_size})])\n'
                 else:
                     # Numeric/enum/struct array
                     fmt = MessagePyGen.get_struct_format(f)
@@ -533,20 +551,19 @@ class MessagePyGen():
                 # Regular field
                 fmt = MessagePyGen.get_struct_format(f)
                 if fmt:
-                    # Simple type
-                    # Handle multi-character struct formats like '16s'
-                    if fmt.endswith('s') and len(fmt) > 1 and fmt[:-1].isdigit():
-                        size = int(fmt[:-1])
-                    else:
-                        size = struct_format_sizes.get(fmt, 0)
-                    result += f'        fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]\n'
-                    result += f'        offset += {size}\n'
+                    # Simple scalar - buffer it so consecutive scalars unpack in one call
+                    _pending_fmt.append(fmt)
+                    _pending_names.append(f.name)
                 else:
                     # Nested message
+                    _flush_scalars()
                     type_name = f.field_type
                     result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
                     result += f'        offset += {type_name}.MAX_SIZE\n'
-        
+
+        # Flush any trailing scalar run before oneofs / return
+        _flush_scalars()
+
         # Unpack oneofs
         for oneof_name, oneof in msg.oneofs.items():
             # Discriminator if enabled

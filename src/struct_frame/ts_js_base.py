@@ -264,8 +264,7 @@ TS_TYPE_ANNOTATIONS = {
     "bytes": "string",     # bytes treated identically to string
 }
 
-# TypeScript type annotations for array elements
-# Boolean arrays are stored as UInt8Array internally, so they return number[]
+# TypeScript type annotations for array elements (element type, used for init interfaces)
 TS_ARRAY_TYPE_ANNOTATIONS = {
     "int8": "number",
     "uint8": "number",
@@ -277,9 +276,26 @@ TS_ARRAY_TYPE_ANNOTATIONS = {
     "uint64": "bigint",
     "float": "number",
     "double": "number",
-    "bool": "number",  # Boolean arrays stored as UInt8Array return number[]
+    "bool": "number",  # Boolean arrays stored as UInt8Array
     "string": "string",
     "bytes": "string",     # bytes treated identically to string
+}
+
+# Typed-array class names returned by generated getters (and accepted by setters).
+# Using typed arrays avoids per-element boxing (GC pressure) and matches the
+# Rust/C# array representation.
+TS_TYPED_ARRAY_NAMES = {
+    "int8":   "Int8Array",
+    "uint8":  "Uint8Array",
+    "int16":  "Int16Array",
+    "uint16": "Uint16Array",
+    "int32":  "Int32Array",
+    "uint32": "Uint32Array",
+    "int64":  "BigInt64Array",
+    "uint64": "BigUint64Array",
+    "float":  "Float32Array",
+    "double": "Float64Array",
+    "bool":   "Uint8Array",   # Boolean arrays stored as Uint8Array
 }
 
 # Read method names for MessageBase helper methods

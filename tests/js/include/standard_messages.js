@@ -256,7 +256,7 @@ function checkDiscriminatorNone() {
   if (decoded.header !== 0xAB) return false;
   // dataData should be accessible (all zeros initially)
   const data = decoded.dataData;
-  if (!Array.isArray(data) || data.length !== 204) return false;
+  if (!(data instanceof Uint8Array) || data.length !== 204) return false;
   return true;
 }
 

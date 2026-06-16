@@ -19,6 +19,7 @@ from struct_frame.ts_js_base import (
     TYPE_SIZES,
     TS_TYPE_ANNOTATIONS,
     TS_ARRAY_TYPE_ANNOTATIONS,
+    TS_TYPED_ARRAY_NAMES,
     READ_METHODS,
     WRITE_METHODS,
     READ_ARRAY_METHODS,
@@ -834,9 +835,9 @@ class MessageTsClassGen():
         result = f'export interface {class_name}Init {{\n'
         
         for field_info in fields:
-            ts_type = MessageTsClassGen._get_ts_type_for_field(field_info)
+            ts_type = MessageTsClassGen._get_ts_type_for_field(field_info, for_init=True)
             result += f'  {field_info.name}?: {ts_type};\n'
-        
+
         result += '}\n\n'
         return result
 
@@ -890,10 +891,17 @@ class MessageTsClassGen():
         return result
     
     @staticmethod
-    def _get_ts_type_for_field(field_info):
-        """Get the TypeScript type annotation for a field."""
+    def _get_ts_type_for_field(field_info, for_init: bool = False):
+        """Get the TypeScript type annotation for a field.
+
+        When for_init=True the returned type is used in the Init interface, so
+        numeric array fields accept ArrayLike<number/bigint> (plain arrays and
+        typed arrays both satisfy it).  When for_init=False the returned type is
+        used in the Object interface / toObject() return type, matching the actual
+        getter return type (e.g. Int32Array).
+        """
         field_type = field_info.field_type
-        
+
         if field_info.is_array:
             if field_info.is_nested:
                 return f'({field_info.nested_type} | Record<string, unknown>)[]'
@@ -902,8 +910,15 @@ class MessageTsClassGen():
             else:
                 if field_info.is_enum:
                     field_type = "uint8"
-                ts_elem_type = TS_ARRAY_TYPE_ANNOTATIONS.get(field_type, "number")
-                return f'{ts_elem_type}[]'
+                typed_arr = TS_TYPED_ARRAY_NAMES.get(field_type)
+                if typed_arr:
+                    if for_init:
+                        # Init interface must accept plain number[] literals; use
+                        # ArrayLike so both number[] and typed arrays are valid.
+                        elem_type = "bigint" if field_type in ("int64", "uint64") else "number"
+                        return f'ArrayLike<{elem_type}>'
+                    return typed_arr
+                return f'{TS_ARRAY_TYPE_ANNOTATIONS.get(field_type, "number")}[]'
         elif field_type in ("string", "bytes"):
             return 'string'
         else:
@@ -1024,14 +1039,16 @@ class MessageTsClassGen():
             if field_info.is_enum:
                 field_type = "uint8"
             
-            ts_elem_type = TS_ARRAY_TYPE_ANNOTATIONS.get(field_type, "number")
             read_method = READ_ARRAY_METHODS.get(field_type, "_readUInt8Array")
             write_method = WRITE_ARRAY_METHODS.get(field_type, "_writeUInt8Array")
-            
-            result = f'  get {name}(): {ts_elem_type}[] {{\n'
+            typed_arr = TS_TYPED_ARRAY_NAMES.get(field_type, "Uint8Array")
+            # Setter accepts ArrayLike so callers can pass plain number[] or a typed array
+            elem_type = "bigint" if field_type in ("int64", "uint64") else "number"
+
+            result = f'  get {name}(): {typed_arr} {{\n'
             result += f'    return this.{read_method}({offset}, {length});\n'
             result += f'  }}\n'
-            result += f'  set {name}(value: {ts_elem_type}[]) {{\n'
+            result += f'  set {name}(value: ArrayLike<{elem_type}>) {{\n'
             result += f'    this.{write_method}({offset}, {length}, value);\n'
             result += f'  }}\n\n'
         

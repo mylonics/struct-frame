@@ -135,65 +135,62 @@ class MessageBase {
         return strBytes.toString('utf8');
     }
     _readInt8Array(offset, length) {
-        return Array.from(new Int8Array(this._buffer.buffer, this._buffer.byteOffset + offset, length));
+        const result = new Int8Array(length);
+        for (let i = 0; i < length; i++)
+            result[i] = this._buffer.readInt8(offset + i);
+        return result;
     }
     _readUInt8Array(offset, length) {
-        return Array.from(this._buffer.subarray(offset, offset + length));
+        // Uint8Array.from makes a copy so the returned array is independent of the
+        // internal buffer (callers may store or mutate the result freely).
+        return Uint8Array.from(this._buffer.subarray(offset, offset + length));
     }
     _readInt16Array(offset, length) {
-        const result = new Array(length);
-        for (let i = 0; i < length; i++) {
+        const result = new Int16Array(length);
+        for (let i = 0; i < length; i++)
             result[i] = this._buffer.readInt16LE(offset + i * 2);
-        }
         return result;
     }
     _readUInt16Array(offset, length) {
-        const result = new Array(length);
-        for (let i = 0; i < length; i++) {
+        const result = new Uint16Array(length);
+        for (let i = 0; i < length; i++)
             result[i] = this._buffer.readUInt16LE(offset + i * 2);
-        }
         return result;
     }
     _readInt32Array(offset, length) {
-        const result = new Array(length);
-        for (let i = 0; i < length; i++) {
+        const result = new Int32Array(length);
+        for (let i = 0; i < length; i++)
             result[i] = this._buffer.readInt32LE(offset + i * 4);
-        }
         return result;
     }
     _readUInt32Array(offset, length) {
-        const result = new Array(length);
-        for (let i = 0; i < length; i++) {
+        const result = new Uint32Array(length);
+        for (let i = 0; i < length; i++)
             result[i] = this._buffer.readUInt32LE(offset + i * 4);
-        }
         return result;
     }
     _readBigInt64Array(offset, length) {
-        const result = new Array(length);
-        for (let i = 0; i < length; i++) {
+        const result = new BigInt64Array(length);
+        for (let i = 0; i < length; i++)
             result[i] = this._buffer.readBigInt64LE(offset + i * 8);
-        }
         return result;
     }
     _readBigUInt64Array(offset, length) {
-        const result = new Array(length);
-        for (let i = 0; i < length; i++) {
+        const result = new BigUint64Array(length);
+        for (let i = 0; i < length; i++)
             result[i] = this._buffer.readBigUInt64LE(offset + i * 8);
-        }
         return result;
     }
     _readFloat32Array(offset, length) {
-        const result = new Array(length);
-        for (let i = 0; i < length; i++) {
+        const result = new Float32Array(length);
+        for (let i = 0; i < length; i++)
             result[i] = this._buffer.readFloatLE(offset + i * 4);
-        }
         return result;
     }
     _readFloat64Array(offset, length) {
-        const result = new Array(length);
-        for (let i = 0; i < length; i++) {
+        const result = new Float64Array(length);
+        for (let i = 0; i < length; i++)
             result[i] = this._buffer.readDoubleLE(offset + i * 8);
-        }
         return result;
     }
     _readStructArray(offset, length, ctor) {
@@ -245,72 +242,62 @@ class MessageBase {
     }
     _writeString(offset, size, value) {
         this._buffer.fill(0, offset, offset + size);
-        const strValue = String(value || '');
-        const strBuffer = Buffer.from(strValue, 'utf8');
-        strBuffer.copy(this._buffer, offset, 0, Math.min(strBuffer.length, size));
+        // Write directly into the destination buffer (capped at `size`) rather than
+        // allocating a temporary Buffer and copying — saves one allocation + one copy
+        // per string field on the encode path. Truncation is byte-level, identical to
+        // the previous Buffer.from(...).copy(...) behavior.
+        this._buffer.write(String(value || ''), offset, size, 'utf8');
     }
     _writeInt8Array(offset, length, value) {
-        const arr = value || [];
-        const copyLen = Math.min(arr.length, length);
-        for (let i = 0; i < copyLen; i++) {
-            this._buffer.writeInt8(arr[i], offset + i);
-        }
+        const copyLen = Math.min(value.length, length);
+        for (let i = 0; i < copyLen; i++)
+            this._buffer.writeInt8(value[i], offset + i);
         this._buffer.fill(0, offset + copyLen, offset + length);
     }
     _writeUInt8Array(offset, length, value) {
-        const arr = value || [];
-        const copyLen = Math.min(arr.length, length);
-        for (let i = 0; i < copyLen; i++) {
-            this._buffer[offset + i] = arr[i];
-        }
+        const copyLen = Math.min(value.length, length);
+        for (let i = 0; i < copyLen; i++)
+            this._buffer[offset + i] = value[i];
         this._buffer.fill(0, offset + copyLen, offset + length);
     }
     _writeInt16Array(offset, length, value) {
-        const arr = value || [];
         for (let i = 0; i < length; i++) {
-            this._buffer.writeInt16LE(i < arr.length ? arr[i] : 0, offset + i * 2);
+            this._buffer.writeInt16LE(i < value.length ? value[i] : 0, offset + i * 2);
         }
     }
     _writeUInt16Array(offset, length, value) {
-        const arr = value || [];
         for (let i = 0; i < length; i++) {
-            this._buffer.writeUInt16LE(i < arr.length ? arr[i] : 0, offset + i * 2);
+            this._buffer.writeUInt16LE(i < value.length ? value[i] : 0, offset + i * 2);
         }
     }
     _writeInt32Array(offset, length, value) {
-        const arr = value || [];
         for (let i = 0; i < length; i++) {
-            this._buffer.writeInt32LE(i < arr.length ? arr[i] : 0, offset + i * 4);
+            this._buffer.writeInt32LE(i < value.length ? value[i] : 0, offset + i * 4);
         }
     }
     _writeUInt32Array(offset, length, value) {
-        const arr = value || [];
         for (let i = 0; i < length; i++) {
-            this._buffer.writeUInt32LE(i < arr.length ? arr[i] : 0, offset + i * 4);
+            this._buffer.writeUInt32LE(i < value.length ? value[i] : 0, offset + i * 4);
         }
     }
     _writeBigInt64Array(offset, length, value) {
-        const arr = value || [];
         for (let i = 0; i < length; i++) {
-            this._buffer.writeBigInt64LE(i < arr.length ? BigInt(arr[i]) : 0n, offset + i * 8);
+            this._buffer.writeBigInt64LE(i < value.length ? BigInt(value[i]) : 0n, offset + i * 8);
         }
     }
     _writeBigUInt64Array(offset, length, value) {
-        const arr = value || [];
         for (let i = 0; i < length; i++) {
-            this._buffer.writeBigUInt64LE(i < arr.length ? BigInt(arr[i]) : 0n, offset + i * 8);
+            this._buffer.writeBigUInt64LE(i < value.length ? BigInt(value[i]) : 0n, offset + i * 8);
         }
     }
     _writeFloat32Array(offset, length, value) {
-        const arr = value || [];
         for (let i = 0; i < length; i++) {
-            this._buffer.writeFloatLE(i < arr.length ? arr[i] : 0, offset + i * 4);
+            this._buffer.writeFloatLE(i < value.length ? value[i] : 0, offset + i * 4);
         }
     }
     _writeFloat64Array(offset, length, value) {
-        const arr = value || [];
         for (let i = 0; i < length; i++) {
-            this._buffer.writeDoubleLE(i < arr.length ? arr[i] : 0, offset + i * 8);
+            this._buffer.writeDoubleLE(i < value.length ? value[i] : 0, offset + i * 8);
         }
     }
     _writeStructArray(offset, length, elemSize, value, ctor) {
