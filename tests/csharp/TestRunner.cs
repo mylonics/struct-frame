@@ -97,6 +97,10 @@ class TestRunner
         {
             return TestBaseTransport.Main(filteredArgs);
         }
+        else if (testSuite == "test_sdk_request_response")
+        {
+            return TestSdkRequestResponse.Main(filteredArgs);
+        }
         else if (testSuite == "test_wire_evolution")
         {
             return TestWireEvolution.Main(filteredArgs);
