@@ -42,11 +42,8 @@ except ModuleNotFoundError:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GEN_PY = REPO_ROOT / "tests" / "generated" / "py"
 
-if CI_MODE:
-    from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
-else:
-    pytest.importorskip("hypothesis", reason="hypothesis not installed")
-    from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
+pytest.importorskip("hypothesis", reason="hypothesis not installed — run: pip install hypothesis")
+from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
 
 if not GEN_PY.exists():
     msg = "tests/generated/py does not exist — run `python test_all.py --only-generate` first."

@@ -79,6 +79,110 @@ def discover_test_files():
     return files
 
 
+# ---------------------------------------------------------------------------
+# Negative-scenario name validation
+# ---------------------------------------------------------------------------
+
+# Maps each language's test_negative file to a regex that extracts the
+# registered scenario name strings from its test-matrix array.
+_NEGATIVE_TEST_FILES: dict[str, tuple[Path, str]] = {
+    "C":      (TESTS_DIR / "c"      / "test_negative.c",      r'"([^"]+)",\s*test_'),
+    "C++":    (TESTS_DIR / "cpp"    / "test_negative.cpp",    r'"([^"]+)",\s*test_'),
+    "Python": (TESTS_DIR / "py"     / "test_negative.py",     r'\("([^"]+)",\s*test_'),
+    "TS":     (TESTS_DIR / "ts"     / "test_negative.ts",     r"\['([^']+)',\s*test"),
+    "JS":     (TESTS_DIR / "js"     / "test_negative.js",     r"\['([^']+)',\s*test"),
+    "C#":     (TESTS_DIR / "csharp" / "TestNegative.cs",      r'\("([^"]+)",\s*Test'),
+    "Rust":   (TESTS_DIR / "rust"   / "src" / "test_negative.rs",
+               r'\("([^"]+)",\s*test_'),
+}
+
+
+def discover_negative_scenarios(lang: str) -> set[str]:
+    """Extract scenario names registered in ``test_negative.*`` for *lang*."""
+    path, pattern = _NEGATIVE_TEST_FILES[lang]
+    if not path.exists():
+        return set()
+    return set(re.findall(pattern, path.read_text(encoding="utf-8")))
+
+
+# ---------------------------------------------------------------------------
+# SDK assertion-count validation
+# ---------------------------------------------------------------------------
+
+# Each entry is a dict describing a count that the spec prose claims.
+# Keys:
+#   display:      human-readable label for error messages
+#   path:         relative path (str) to the file
+#   pattern:      regex counted in the file
+#   expected:     claimed count (0 = skip, e.g. file not yet present)
+#   fn_scope:     (optional) count only within this Rust/C fn/function name
+#                 (extracts text between the fn def and the next top-level fn)
+_SDK_COUNT_CLAIMS: list[dict] = [
+    {
+        "display": "C++ test_sdk_subscribe.cpp run_test registrations",
+        "path": "tests/cpp/test_sdk_subscribe.cpp",
+        "pattern": r"run_test\(",
+        "expected": 17,
+    },
+    {
+        "display": "Python test_sdk.py run_test assertions",
+        "path": "tests/py/test_sdk.py",
+        "pattern": r"run_test\(",
+        "expected": 29,
+    },
+    {
+        "display": "TypeScript test_sdk.ts assert assertions",
+        "path": "tests/ts/test_sdk.ts",
+        "pattern": r"assert\(",
+        "expected": 23,
+    },
+    {
+        "display": "JavaScript test_sdk.js assert assertions",
+        "path": "tests/js/test_sdk.js",
+        "pattern": r"assert\(",
+        "expected": 23,
+    },
+    {
+        "display": "C# TestSdkSubscribe.cs Assert assertions",
+        "path": "tests/csharp/TestSdkSubscribe.cs",
+        # Matches Assert("name", ...) but not the `private static bool Assert(` definition.
+        "pattern": r'Assert\("',
+        "expected": 26,
+    },
+    {
+        "display": "Rust test_sdk_subscribe expect! assertions",
+        "path": "tests/rust/src/main.rs",
+        "pattern": r"expect!\(",
+        "expected": 13,
+        # expect! is redefined in several functions; scope to the right one.
+        "fn_scope": "run_sdk_subscribe_tests",
+    },
+    {
+        "display": "Python test_async_sdk.py run_test assertions",
+        "path": "tests/py/test_async_sdk.py",
+        "pattern": r"run_test\(",
+        "expected": 40,
+    },
+]
+
+
+def _count_in_file(full_path: Path, pattern: str, fn_scope: str | None) -> int:
+    """Count regex *pattern* occurrences in *full_path*, optionally scoped to a function."""
+    text = full_path.read_text(encoding="utf-8")
+    if fn_scope:
+        fn_match = re.search(
+            rf'^(?:fn|function|static\s+\w+\s+\w+)\s+{re.escape(fn_scope)}\b',
+            text, re.MULTILINE,
+        )
+        if not fn_match:
+            return 0
+        start = fn_match.start()
+        next_fn = re.search(r'^\nfn ', text[start + 1:], re.MULTILINE)
+        end = start + 1 + (next_fn.start() if next_fn else len(text[start + 1:]))
+        text = text[start:end]
+    return len(re.findall(pattern, text))
+
+
 def spec_text():
     """Concatenate every piece of human-readable text in the spec."""
     chunks = [spec.INTRO]
@@ -155,6 +259,55 @@ def validate():
             continue
         if ref not in present:
             problems.append(f"spec references missing test file: {ref}")
+
+    # 4. Every scenario listed as ✅ in the §5 negative-test table must appear
+    #    in the corresponding language's test_negative.* registration array.
+    #    This catches both spec rows that no longer exist in the files and
+    #    file scenarios that were removed without updating the spec.
+    for section in spec.SECTIONS:
+        if section["number"] != "5":
+            continue
+        for table in section["tables"]:
+            lang_cols = table.get("lang_cols", [])
+            for row in table["rows"]:
+                scenario = row["label"]
+                for lang in lang_cols:
+                    if row["cells"].get(lang) != "✅":
+                        continue
+                    if lang not in _NEGATIVE_TEST_FILES:
+                        continue
+                    registered = discover_negative_scenarios(lang)
+                    if not registered:
+                        continue  # file missing; check #3 already reported it
+                    if scenario not in registered:
+                        problems.append(
+                            f"spec §5 scenario {scenario!r} marked ✅ for {lang} "
+                            f"but not found in {_NEGATIVE_TEST_FILES[lang][0].name} "
+                            f"registration array"
+                        )
+
+    # 5. SDK assertion counts: the documented counts in §6.3 captions must match
+    #    what is actually in each file so additions to the test suite update
+    #    the spec automatically under --check.
+    for claim in _SDK_COUNT_CLAIMS:
+        expected = claim["expected"]
+        if expected == 0:
+            continue  # sentinel: file not yet present or count not yet tracked
+        rel_path = claim["path"]
+        full_path = REPO_ROOT / rel_path
+        if not full_path.exists():
+            problems.append(
+                f"SDK count claim '{claim['display']}' references missing file: {rel_path}"
+            )
+            continue
+        actual = _count_in_file(full_path, claim["pattern"], claim.get("fn_scope"))
+        if actual != expected:
+            problems.append(
+                f"SDK count mismatch for '{claim['display']}': "
+                f"spec claims {expected} but file has {actual} "
+                f"(pattern: {claim['pattern']!r} in {rel_path}). "
+                f"Update _SDK_COUNT_CLAIMS and the §6 caption in coverage_spec.py."
+            )
 
     return problems
 

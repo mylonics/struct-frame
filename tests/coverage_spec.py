@@ -404,9 +404,13 @@ SECTIONS = [
         "intro": (
             "Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`\n\n"
             "See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.\n\n"
-            "Each language's `test_negative.*` file runs 13 uniform scenarios. "
-            "The test names printed at runtime are the canonical identifiers "
-            "used across all languages:"
+            "The 15 scenarios in the table below are registered in every language's "
+            "`test_negative.*` file. Individual languages carry additional "
+            "language-specific scenarios: C/C++/TS/JS (20 each) add bulk "
+            "`pkg_id`/`msg_id` corruption, cross-package rejection, network "
+            "`pkg_id` corruption, and stream-recovery tests; C# (19) shares all "
+            "but stream-recovery; Python (30) adds those plus diagnostic-counter "
+            "and status-machine tests; Rust (16) adds stream-recovery only."
         ),
         "tables": [
             {
@@ -414,6 +418,8 @@ SECTIONS = [
                 "columns": LANGS,
                 "lang_cols": LANGS,
                 "rows": [_full(s, "✅") for s in (
+                    "Buffer mode: recovers after CRC failure",
+                    "Buffer reader: skips CRC-failed frame",
                     "Bulk profile: Corrupted CRC",
                     "Corrupted CRC detection",
                     "Corrupted length field detection",
@@ -507,6 +513,9 @@ SECTIONS = [
                     _row("`StructFrameSdk` subscribe/dispatch",
                          {"C": "N/A", "C++": "✅", "Python": "✅", "TS": "✅",
                           "JS": "✅", "C#": "✅", "Rust": "✅"}),
+                    _row("`AsyncStructFrameSdk` subscribe/dispatch",
+                         {"C": "N/A", "C++": "N/A", "Python": "✅", "TS": "N/A",
+                          "JS": "N/A", "C#": "N/A", "Rust": "N/A"}),
                     _row("Serial transport",
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
                           "JS": "❌", "C#": "❌", "Rust": "N/A"}),
@@ -526,13 +535,13 @@ SECTIONS = [
                 "caption": (
                     "> **Closed.** `StructFrameSdk` subscribe/dispatch is now "
                     "tested with mock transports in six languages:\n"
-                    "> - **C++** -- `tests/cpp/test_sdk_subscribe.cpp` (7 tests)\n"
-                    "> - **Python** -- `tests/py/test_sdk.py` (11 tests)\n"
-                    "> - **TypeScript** -- `tests/ts/test_sdk.ts` (10 tests)\n"
-                    "> - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (14 tests)\n"
-                    "> - **JavaScript** -- `tests/js/test_sdk.js` (10 tests)\n"
+                    "> - **C++** -- `tests/cpp/test_sdk_subscribe.cpp` (17 `run_test` registrations)\n"
+                    "> - **Python** -- `tests/py/test_sdk.py` (7 test functions, 29 `run_test` assertions)\n"
+                    "> - **TypeScript** -- `tests/ts/test_sdk.ts` (6 test functions, 23 `assert` assertions)\n"
+                    "> - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (26 `Assert` assertions)\n"
+                    "> - **JavaScript** -- `tests/js/test_sdk.js` (6 test functions, 23 `assert` assertions)\n"
                     "> - **Rust** -- `tests/rust/src/main.rs` `test_sdk_subscribe` "
-                    "runner (9 tests)\n>\n"
+                    "runner (5 test blocks, 13 `expect!` assertions)\n>\n"
                     "> The C# suite additionally registers five dedicated SDK "
                     "runners (selected via `--runner <name>` in "
                     "`tests/csharp/TestRunner.cs`):\n"
@@ -552,10 +561,17 @@ SECTIONS = [
                     "the file explicitly omits `SerialTransport` because the "
                     "test project does not enable the optional `System.IO.Ports` "
                     "dependency)\n>\n"
+                    "> **Closed (Python async SDK).** `AsyncStructFrameSdk` "
+                    "subscribe/dispatch/send_raw/send/register_codec/"
+                    "__aenter__/__aexit__/close-callback are tested with a mock "
+                    "async transport in "
+                    "`tests/py/test_async_sdk.py` (40 `run_test` pattern hits, "
+                    "36 live assertions).\n>\n"
                     "> **Gap (Low):** Runtime serial, TCP, UDP, and WebSocket "
-                    "transport behavior remains uncovered. `StructFrameSdk` "
-                    "routing is tested with mock transports, but the concrete "
-                    "socket/serial/WebSocket classes are not exercised end to end."
+                    "transport behavior remains uncovered. `StructFrameSdk` and "
+                    "`AsyncStructFrameSdk` routing are tested with mock transports, "
+                    "but the concrete socket/serial/WebSocket classes are not "
+                    "exercised end to end."
                 ),
             },
         ],
@@ -593,7 +609,10 @@ SECTIONS = [
         "title": "Validation / Generator Error Paths",
         "intro": (
             "These are tests of the generator itself (Python, "
-            "language-agnostic), not the generated code."
+            "language-agnostic), not the generated code. Error-path rules "
+            "verify that invalid proto inputs are rejected; the two "
+            "`max_size > 255` rows verify that an over-255 bounded field is "
+            "accepted and emits a two-byte count prefix."
         ),
         "tables": [
             {
@@ -608,7 +627,8 @@ SECTIONS = [
                     _row("Missing `size`/`max_size` on array", {"Tested": "✅"}),
                     _row("Missing `size`/`max_size` on string", {"Tested": "✅"}),
                     _row("Missing `element_size` on string array", {"Tested": "✅"}),
-                    _row("`max_size` > 255 on array count", {"Tested": "✅"}),
+                    _row("`max_size` > 255 on array count: accepted (two-byte count)", {"Tested": "✅"}),
+                    _row("`max_size` > 255 on string: accepted (two-byte count)", {"Tested": "✅"}),
                     _row("Envelope with zero oneofs", {"Tested": "✅"}),
                     _row("Envelope with non-message oneof fields", {"Tested": "✅"}),
                     _row("Envelope with `msgid` discriminator and messages "
@@ -619,9 +639,13 @@ SECTIONS = [
                     _row("Multi-package without `pkgid`", {"Tested": "✅"}),
                 ],
                 "caption": (
-                    "All 14 validation rules are enforced by the generator in "
-                    "`src/struct_frame/` and every case is covered by a passing "
-                    "test in `tests/test_generator_validation.py`."
+                    "All 14 generator-side error rules plus 2 acceptance checks "
+                    "(max_size > 255 is legal for array and string fields) are "
+                    "covered by the 16 passing tests in "
+                    "`tests/test_generator_validation.py`. Note: "
+                    "`max_size` > 255 triggers a two-byte length-count prefix "
+                    "in the generated code; it is explicitly validated as "
+                    "*allowed* (not rejected)."
                 ),
             },
         ],
