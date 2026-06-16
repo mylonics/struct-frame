@@ -29,8 +29,31 @@ def run_generator(proto: Path, *flags: str) -> subprocess.CompletedProcess:
 
 
 def load_generated_module(pyfile: Path, name: str):
-    """Import a generated Python module by file path."""
-    spec = importlib.util.spec_from_file_location(name, pyfile)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    """Import a generated Python module by file path.
+
+    The file's parent directory is temporarily prepended to ``sys.path`` so
+    that the absolute-import fallback in generated files (e.g.
+    ``from frame_headers import ...``) resolves correctly even when the
+    directory is not otherwise on the path (e.g. under pytest's tmp_path).
+
+    The module is registered in ``sys.modules[name]`` so that deferred
+    imports inside the module (e.g. ``from frame_profiles import MessageInfo``
+    inside a function body) resolve from the cache rather than needing
+    ``pyfile.parent`` still on ``sys.path`` at call time.
+    """
+    parent = str(pyfile.parent)
+    inserted = parent not in sys.path
+    if inserted:
+        sys.path.insert(0, parent)
+    try:
+        spec = importlib.util.spec_from_file_location(name, pyfile)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+        return mod
+    except Exception:
+        sys.modules.pop(name, None)
+        raise
+    finally:
+        if inserted:
+            sys.path.remove(parent)
