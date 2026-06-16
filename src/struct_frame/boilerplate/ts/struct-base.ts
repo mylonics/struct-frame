@@ -334,9 +334,11 @@ export abstract class MessageBase {
 
   protected _writeString(offset: number, size: number, value: string): void {
     this._buffer.fill(0, offset, offset + size);
-    const strValue = String(value || '');
-    const strBuffer = Buffer.from(strValue, 'utf8');
-    strBuffer.copy(this._buffer, offset, 0, Math.min(strBuffer.length, size));
+    // Write directly into the destination buffer (capped at `size`) rather than
+    // allocating a temporary Buffer and copying — saves one allocation + one copy
+    // per string field on the encode path. Truncation is byte-level, identical to
+    // the previous Buffer.from(...).copy(...) behavior.
+    this._buffer.write(String(value || ''), offset, size, 'utf8');
   }
 
   protected _writeInt8Array(offset: number, length: number, value: number[]): void {
