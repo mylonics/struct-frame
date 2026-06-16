@@ -8,6 +8,7 @@ corrupt or partial frames on its own, so the SDK no longer needs an external
 limit on a noisy link.
 """
 
+import threading
 from typing import Callable, Dict, List, Optional, Any
 from dataclasses import dataclass
 
@@ -158,6 +159,107 @@ class StructFrameSdk:
         msg_id = getattr(message, 'MSG_ID', None) or getattr(message, 'msg_id', None)
         self._log(f'Sent message ID {msg_id}, {attempted} frame bytes')
         return SendResult(success=written == attempted, attempted_bytes=attempted, bytes_written=written)
+
+    def request(
+        self,
+        request_msg: Any,
+        response_msg_class: type,
+        *,
+        match: Optional[Callable[[Any], bool]] = None,
+        timeout: float = 5.0,
+        seq: int = 0,
+        sys_id: int = 0,
+        comp_id: int = 0,
+    ) -> Any:
+        """Send request_msg and block until a matching response arrives.
+
+        Subscribes a one-shot handler for response_msg_class.msg_id, sends the
+        request, then waits up to *timeout* seconds for a response that satisfies
+        the optional *match* predicate.  The subscription is always cleaned up.
+
+        Args:
+            request_msg:        Message to send (must expose MSG_ID/msg_id).
+            response_msg_class: Expected response type; its msg_id determines what
+                                to listen for.
+            match:              Optional predicate called on each deserialized
+                                response.  If None, the first response with the
+                                correct msg_id is returned.
+            timeout:            Seconds to wait before raising TimeoutError.
+
+        Returns:
+            Deserialized response object (or raw bytes if no codec is registered).
+
+        Raises:
+            TimeoutError: No matching response arrived within *timeout* seconds.
+        """
+        response_msg_id = (
+            getattr(response_msg_class, 'MSG_ID', None)
+            or getattr(response_msg_class, 'msg_id', None)
+        )
+        if response_msg_id is None:
+            raise ValueError(
+                f'{response_msg_class!r} has no MSG_ID or msg_id attribute; '
+                'cannot determine response message ID'
+            )
+        event = threading.Event()
+        result_holder: List[Any] = []
+
+        def _handler(message: Any, _msg_id: int) -> None:
+            if match is None or match(message):
+                result_holder.append(message)
+                event.set()
+
+        unsubscribe = self.subscribe(response_msg_id, _handler)
+        try:
+            self.send(request_msg, seq=seq, sys_id=sys_id, comp_id=comp_id)
+            if not event.wait(timeout=timeout):
+                raise TimeoutError(
+                    f'No response (msg_id={response_msg_id}) within {timeout}s'
+                )
+            return result_holder[0]
+        finally:
+            unsubscribe()
+
+    def request_raw(
+        self,
+        request_msg: Any,
+        response_msg_id: int,
+        *,
+        match: Optional[Callable[[bytes], bool]] = None,
+        timeout: float = 5.0,
+    ) -> bytes:
+        """Generic variant of request(): returns raw payload bytes.
+
+        No response class or codec needed — just the expected response msg_id.
+        Useful for proxies, bridges, and tests that don't import generated types.
+
+        Raises:
+            TimeoutError: No matching response arrived within *timeout* seconds.
+        """
+        event = threading.Event()
+        result_holder: List[bytes] = []
+
+        def _handler(payload: Any, _msg_id: int) -> None:
+            if hasattr(payload, 'serialize'):
+                raw: bytes = bytes(payload.serialize())
+            elif isinstance(payload, (bytes, bytearray)):
+                raw = bytes(payload)
+            else:
+                raw = bytes(payload)
+            if match is None or match(raw):
+                result_holder.append(raw)
+                event.set()
+
+        unsubscribe = self.subscribe(response_msg_id, _handler)
+        try:
+            self.send(request_msg)
+            if not event.wait(timeout=timeout):
+                raise TimeoutError(
+                    f'No response (msg_id={response_msg_id}) within {timeout}s'
+                )
+            return result_holder[0]
+        finally:
+            unsubscribe()
 
     def is_connected(self) -> bool:
         """Check if connected"""

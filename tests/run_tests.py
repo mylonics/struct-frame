@@ -1653,14 +1653,17 @@ class TestRunner:
         SDK_APPLICABILITY: Dict[str, List[str]] = {
             "test_streaming":           ["c", "rust"],
             "test_sdk_units":           ["cpp"],
-            "test_sdk_subscribe":       ["cpp", "csharp", "rust"],
-            "test_sdk":                 ["py", "ts", "js"],
-            "test_async_sdk":           ["py"],
-            "test_sdk_strict_ordering": ["csharp"],
-            "test_sdk_lifecycle":       ["csharp"],
-            "test_sdk_client_wrapper":  ["csharp"],
-            "test_sdk_profiles":        ["csharp"],
-            "test_base_transport":      ["csharp"],
+            "test_sdk_subscribe":           ["cpp", "csharp", "rust"],
+            "test_sdk":                     ["py", "ts", "js"],
+            "test_async_sdk":               ["py"],
+            "test_sdk_strict_ordering":     ["csharp"],
+            "test_sdk_lifecycle":           ["csharp"],
+            "test_sdk_client_wrapper":      ["csharp"],
+            "test_sdk_profiles":            ["csharp"],
+            "test_base_transport":          ["csharp"],
+            "test_request_response_sdk":    ["py", "ts"],
+            "test_request_response_async":  ["py"],
+            "test_sdk_request_response":    ["csharp"],
         }
 
         # Initialise table: None = N/A, "MISSING" = applicable but not yet run
@@ -1734,6 +1737,26 @@ class TestRunner:
                 if not success:
                     all_success = False
 
+        # ---- Python: test_request_response_sdk.py ----
+        if py_lang:
+            script = self.project_root / py_lang.test_dir / "test_request_response_sdk.py"
+            if script.exists():
+                success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
+                _record("test_request_response_sdk", "py", success, stdout, stderr,
+                        "py:request_response_sdk", "test_request_response_sdk.py failed")
+                if not success:
+                    all_success = False
+
+        # ---- Python: test_request_response_async_sdk.py ----
+        if py_lang:
+            script = self.project_root / py_lang.test_dir / "test_request_response_async_sdk.py"
+            if script.exists():
+                success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
+                _record("test_request_response_async", "py", success, stdout, stderr,
+                        "py:request_response_async", "test_request_response_async_sdk.py failed")
+                if not success:
+                    all_success = False
+
         # ---- TypeScript: test_sdk.ts (section 6.3) ----
         ts_lang = self.languages.get("ts")
         if ts_lang and self.results["compilation"].get("ts", False):
@@ -1745,6 +1768,19 @@ class TestRunner:
                 )
                 _record("test_sdk", "ts", success, stdout, stderr,
                         "ts:sdk", "test_sdk.ts failed")
+                if not success:
+                    all_success = False
+
+        # ---- TypeScript: test_request_response_sdk.ts ----
+        if ts_lang and self.results["compilation"].get("ts", False):
+            ts_dir = self.project_root / ts_lang.test_dir
+            script = ts_dir / "test_request_response_sdk.ts"
+            if script.exists():
+                success, stdout, stderr = self.run_cmd(
+                    f'npx ts-node "{script}"', cwd=ts_dir, timeout=60
+                )
+                _record("test_request_response_sdk", "ts", success, stdout, stderr,
+                        "ts:request_response_sdk", "test_request_response_sdk.ts failed")
                 if not success:
                     all_success = False
 
@@ -1781,6 +1817,7 @@ class TestRunner:
                     "test_sdk_client_wrapper",
                     "test_sdk_profiles",
                     "test_base_transport",
+                    "test_sdk_request_response",
                 ]:
                     cmd = f'{cmd_prefix} --runner {runner_arg}'
                     success, stdout, stderr = self.run_cmd(cmd, timeout=60)

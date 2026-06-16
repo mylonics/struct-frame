@@ -286,6 +286,63 @@ namespace StructFrame.Sdk
         }
 
         /// <summary>
+        /// Send a request message and await a matching response.
+        /// <para>
+        /// Subscribes a one-shot handler for <typeparamref name="TResp"/> before sending
+        /// <paramref name="request"/>, then waits up to <paramref name="timeoutSeconds"/>
+        /// for a response that satisfies the optional <paramref name="match"/> predicate.
+        /// The subscription is always removed in a finally block.
+        /// </para>
+        /// </summary>
+        /// <typeparam name="TReq">Request message type.</typeparam>
+        /// <typeparam name="TResp">Expected response message type.</typeparam>
+        /// <param name="request">Message to send.</param>
+        /// <param name="match">
+        ///   Optional predicate applied to each received <typeparamref name="TResp"/>.
+        ///   When null, the first response with the correct message ID is returned.
+        /// </param>
+        /// <param name="timeoutSeconds">Seconds before a <see cref="TimeoutException"/> is thrown.</param>
+        /// <param name="ct">Cancellation token.</param>
+        /// <returns>The first matching response.</returns>
+        /// <exception cref="TimeoutException">
+        ///   Thrown when no matching response arrives within <paramref name="timeoutSeconds"/> seconds.
+        /// </exception>
+        public async Task<TResp> RequestAsync<TReq, TResp>(
+            TReq request,
+            Func<TResp, bool>? match = null,
+            float timeoutSeconds = 5f,
+            CancellationToken ct = default)
+            where TReq : IStructFrameMessage<TReq>
+            where TResp : IStructFrameMessage<TResp>, new()
+        {
+            var tcs = new TaskCompletionSource<TResp>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            Action? unsubscribe = Subscribe<TResp>(msg =>
+            {
+                if (!tcs.Task.IsCompleted && (match == null || match(msg)))
+                    tcs.TrySetResult(msg);
+            });
+
+            try
+            {
+                await SendAsync(request).ConfigureAwait(false);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
+                return await tcs.Task.WaitAsync(cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                var respId = new TResp().GetMsgId();
+                throw new TimeoutException(
+                    $"No response (msg_id={respId}) within {timeoutSeconds}s");
+            }
+            finally
+            {
+                unsubscribe?.Invoke();
+            }
+        }
+
+        /// <summary>
         /// Send a framed message through the transport.
         /// <para>
         /// When <c>StrictOrdering</c> is enabled the message is placed into an internal

@@ -516,6 +516,12 @@ SECTIONS = [
                     _row("`AsyncStructFrameSdk` subscribe/dispatch",
                          {"C": "N/A", "C++": "N/A", "Python": "✅", "TS": "N/A",
                           "JS": "N/A", "C#": "N/A", "Rust": "N/A"}),
+                    _row("`request()` / `RequestAsync()` (send + await response)",
+                         {"C": "N/A", "C++": "N/A", "Python": "✅", "TS": "✅",
+                          "JS": "N/A", "C#": "✅", "Rust": "N/A"}),
+                    _row("`AsyncStructFrameSdk.request()` (async request/response)",
+                         {"C": "N/A", "C++": "N/A", "Python": "✅", "TS": "N/A",
+                          "JS": "N/A", "C#": "N/A", "Rust": "N/A"}),
                     _row("Serial transport",
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
                           "JS": "❌", "C#": "❌", "Rust": "N/A"}),
@@ -567,6 +573,20 @@ SECTIONS = [
                     "async transport in "
                     "`tests/py/test_async_sdk.py` (40 `run_test` pattern hits, "
                     "36 live assertions).\n>\n"
+                    "> **Closed (request/response).** `request()` / `request_raw()` "
+                    "(Python sync), `async request()` (Python async), "
+                    "`request<TResp>()` (TypeScript), and `RequestAsync<TReq,TResp>()` "
+                    "(C#) are tested with mock transports:\n"
+                    "> - **Python sync** -- `tests/py/test_request_response_sdk.py` "
+                    "(20 assertions: basic, timeout, match predicate, concurrent "
+                    "in-flight, `request_raw`, cleanup, codec integration)\n"
+                    "> - **Python async** -- `tests/py/test_request_response_async_sdk.py` "
+                    "(13 assertions: basic, timeout, match, concurrent, cleanup)\n"
+                    "> - **TypeScript** -- `tests/ts/test_request_response_sdk.ts` "
+                    "(basic, timeout, match, concurrent, cleanup)\n"
+                    "> - **C#** -- `tests/csharp/TestSdkRequestResponse.cs` "
+                    "(`test_sdk_request_response` runner: basic, timeout, match, "
+                    "concurrent, cleanup, CancellationToken)\n>\n"
                     "> **Gap (Low):** Runtime serial, TCP, UDP, and WebSocket "
                     "transport behavior remains uncovered. `StructFrameSdk` and "
                     "`AsyncStructFrameSdk` routing are tested with mock transports, "
