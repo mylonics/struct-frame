@@ -196,6 +196,11 @@ class StructFrameSdk:
             getattr(response_msg_class, 'MSG_ID', None)
             or getattr(response_msg_class, 'msg_id', None)
         )
+        if response_msg_id is None:
+            raise ValueError(
+                f'{response_msg_class!r} has no MSG_ID or msg_id attribute; '
+                'cannot determine response message ID'
+            )
         event = threading.Event()
         result_holder: List[Any] = []
 
@@ -235,7 +240,12 @@ class StructFrameSdk:
         result_holder: List[bytes] = []
 
         def _handler(payload: Any, _msg_id: int) -> None:
-            raw = payload if isinstance(payload, (bytes, bytearray)) else bytes(payload)
+            if hasattr(payload, 'serialize'):
+                raw: bytes = bytes(payload.serialize())
+            elif isinstance(payload, (bytes, bytearray)):
+                raw = bytes(payload)
+            else:
+                raw = bytes(payload)
             if match is None or match(raw):
                 result_holder.append(raw)
                 event.set()

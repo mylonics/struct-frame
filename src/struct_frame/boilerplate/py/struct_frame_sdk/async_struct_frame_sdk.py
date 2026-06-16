@@ -181,7 +181,12 @@ class AsyncStructFrameSdk:
             getattr(response_msg_class, 'MSG_ID', None)
             or getattr(response_msg_class, 'msg_id', None)
         )
-        loop = asyncio.get_event_loop()
+        if response_msg_id is None:
+            raise ValueError(
+                f'{response_msg_class!r} has no MSG_ID or msg_id attribute; '
+                'cannot determine response message ID'
+            )
+        loop = asyncio.get_running_loop()
         future: asyncio.Future = loop.create_future()
 
         def _handler(message: Any, _msg_id: int) -> None:
