@@ -4,6 +4,7 @@
 #pragma once
 
 #include "transport.hpp"
+#include <array>
 #include <cstring>
 
 namespace structframe {
@@ -70,7 +71,8 @@ class SerialTransport : public BaseTransport {
 private:
     ISerialPort* serialPort_;
     SerialTransportConfig serialConfig_;
-    std::vector<uint8_t> receiveBuffer_;
+    std::array<uint8_t, 4096> receiveBuffer_;
+    size_t receiveBufferSize_ = 4096;
     bool running_ = false;
 
 public:
@@ -81,7 +83,7 @@ public:
      */
     SerialTransport(ISerialPort* serialPort, const SerialTransportConfig& config = SerialTransportConfig())
         : BaseTransport(config), serialPort_(serialPort), serialConfig_(config) {
-        receiveBuffer_.resize(config.bufferSize);
+        receiveBufferSize_ = (config.bufferSize < receiveBuffer_.size()) ? config.bufferSize : receiveBuffer_.size();
     }
 
     void Connect() {
@@ -128,7 +130,7 @@ public:
 
         size_t available = serialPort_->available();
         if (available > 0) {
-            size_t toRead = (available < receiveBuffer_.size()) ? available : receiveBuffer_.size();
+            size_t toRead = (available < receiveBufferSize_) ? available : receiveBufferSize_;
             size_t bytesRead = serialPort_->read(receiveBuffer_.data(), toRead);
             
             if (bytesRead > 0) {

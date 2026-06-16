@@ -7,6 +7,7 @@ only the transport I/O (connect/disconnect/send) is awaited. The reader owns a
 bounded internal buffer and resyncs past corrupt or partial frames on its own.
 """
 
+import asyncio
 from typing import Callable, Dict, List, Optional, Any
 from dataclasses import dataclass
 
@@ -143,6 +144,61 @@ class AsyncStructFrameSdk:
         msg_id = getattr(message, 'MSG_ID', None) or getattr(message, 'msg_id', None)
         self._log(f'Sent message ID {msg_id}, {attempted} frame bytes')
         return SendResult(success=written == attempted, attempted_bytes=attempted, bytes_written=written)
+
+    async def request(
+        self,
+        request_msg: Any,
+        response_msg_class: type,
+        *,
+        match: Optional[Callable[[Any], bool]] = None,
+        timeout: float = 5.0,
+        seq: int = 0,
+        sys_id: int = 0,
+        comp_id: int = 0,
+    ) -> Any:
+        """Send request_msg and await a matching response.
+
+        Subscribes a one-shot handler for response_msg_class.msg_id, sends the
+        request, then waits up to *timeout* seconds for a response that satisfies
+        the optional *match* predicate.  The subscription is always cleaned up.
+
+        Args:
+            request_msg:        Message to send (must expose MSG_ID/msg_id).
+            response_msg_class: Expected response type; its msg_id determines what
+                                to listen for.
+            match:              Optional predicate called on each deserialized
+                                response.  If None, the first response with the
+                                correct msg_id is returned.
+            timeout:            Seconds to wait before raising TimeoutError.
+
+        Returns:
+            Deserialized response object (or raw bytes if no codec is registered).
+
+        Raises:
+            TimeoutError: No matching response arrived within *timeout* seconds.
+        """
+        response_msg_id = (
+            getattr(response_msg_class, 'MSG_ID', None)
+            or getattr(response_msg_class, 'msg_id', None)
+        )
+        loop = asyncio.get_event_loop()
+        future: asyncio.Future = loop.create_future()
+
+        def _handler(message: Any, _msg_id: int) -> None:
+            if not future.done() and (match is None or match(message)):
+                loop.call_soon_threadsafe(future.set_result, message)
+
+        unsubscribe = self.subscribe(response_msg_id, _handler)
+        try:
+            await self.send(request_msg, seq=seq, sys_id=sys_id, comp_id=comp_id)
+            try:
+                return await asyncio.wait_for(asyncio.shield(future), timeout=timeout)
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f'No response (msg_id={response_msg_id}) within {timeout}s'
+                )
+        finally:
+            unsubscribe()
 
     def is_connected(self) -> bool:
         """Check if connected"""

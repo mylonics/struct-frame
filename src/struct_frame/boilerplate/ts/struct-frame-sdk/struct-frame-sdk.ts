@@ -138,6 +138,62 @@ export class StructFrameSdk {
   }
 
   /**
+   * Send a request message and await a matching response.
+   *
+   * Subscribes a one-shot handler for `responseMsgId`, sends the request, then
+   * waits up to `options.timeout` seconds (default 5) for a response that
+   * satisfies the optional `match` predicate.  The subscription is always
+   * cleaned up regardless of outcome.
+   *
+   * @param requestMsg    Message to send (must have serialize() and a static _msgid).
+   * @param responseMsgId msg_id of the expected response type.
+   * @param options.match Optional predicate; if omitted the first response wins.
+   * @param options.timeout Seconds before the returned Promise rejects (default 5).
+   * @param options.requestMsgId Override the msg_id used when sending (defaults to
+   *                             requestMsg.constructor._msgid).
+   */
+  request<TResp>(
+    requestMsg: { serialize(): Uint8Array },
+    responseMsgId: number,
+    options?: {
+      match?: (resp: TResp) => boolean;
+      timeout?: number;
+      requestMsgId?: number;
+    },
+  ): Promise<TResp> {
+    const timeoutMs = (options?.timeout ?? 5) * 1000;
+
+    return new Promise<TResp>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout>;
+
+      const unsubscribe = this.subscribe<TResp>(responseMsgId, (message) => {
+        if (!options?.match || options.match(message)) {
+          clearTimeout(timer);
+          unsubscribe();
+          resolve(message);
+        }
+      });
+
+      timer = setTimeout(() => {
+        unsubscribe();
+        reject(new Error(
+          `No response (msgId=${responseMsgId}) within ${options?.timeout ?? 5}s`,
+        ));
+      }, timeoutMs);
+
+      const msgId =
+        options?.requestMsgId ??
+        (requestMsg.constructor as { _msgid?: number })._msgid ??
+        0;
+      this.sendRaw(msgId, requestMsg.serialize()).catch((err: unknown) => {
+        clearTimeout(timer);
+        unsubscribe();
+        reject(err);
+      });
+    });
+  }
+
+  /**
    * Check if connected
    */
   isConnected(): boolean {
