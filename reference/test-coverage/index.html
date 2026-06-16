@@ -1095,7 +1095,7 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 <h2 id="5-error-handling--negative-tests">5. Error Handling / Negative Tests</h2>
 <p>Test files: <code dir="auto">tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*</code></p>
 <p>See <code dir="auto">tests/NEGATIVE_TESTS.md</code> for full scenario descriptions.</p>
-<p>Each language’s <code dir="auto">test_negative.*</code> file runs 13 uniform scenarios. The test names printed at runtime are the canonical identifiers used across all languages:</p>
+<p>The 15 scenarios in the table below are registered in every language’s <code dir="auto">test_negative.*</code> file. Individual languages carry additional language-specific scenarios: C/C++/TS/JS (20 each) add bulk <code dir="auto">pkg_id</code>/<code dir="auto">msg_id</code> corruption, cross-package rejection, network <code dir="auto">pkg_id</code> corruption, and stream-recovery tests; C# (19) shares all but stream-recovery; Python (30) adds those plus diagnostic-counter and status-machine tests; Rust (16) adds stream-recovery only.</p>
 
 
 
@@ -1241,7 +1241,27 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 
 
 
-<table><thead><tr><th>Error Scenario (test name)</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td>Bulk profile: Corrupted CRC</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted length field detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid message ID rejection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid start bytes detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Minimal profile: Truncated frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: Corrupted middle frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Network profile: SysId/CompId corruption</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Partial frame across buffer boundary</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Garbage data handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Truncated frame detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Zero-length buffer handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Error Scenario (test name)</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td>Buffer mode: recovers after CRC failure</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer reader: skips CRC-failed frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Bulk profile: Corrupted CRC</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted length field detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid message ID rejection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid start bytes detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Minimal profile: Truncated frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: Corrupted middle frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Network profile: SysId/CompId corruption</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Partial frame across buffer boundary</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Garbage data handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Truncated frame detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Zero-length buffer handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
 <hr>
 <h2 id="6-sdk-classes">6. SDK Classes</h2>
 <h3 id="61-encoders--writers">6.1 Encoders / Writers</h3>
@@ -1502,16 +1522,26 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 
 
 
-<table><thead><tr><th>Feature</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td><code dir="auto">StructFrameSdk</code> subscribe/dispatch</td><td>N/A</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Serial transport</td><td>N/A</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>N/A</td></tr><tr><td>TCP transport</td><td>N/A</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>N/A</td></tr><tr><td>UDP transport</td><td>N/A</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>N/A</td></tr><tr><td>WebSocket transport</td><td>N/A</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>N/A</td></tr><tr><td>Async transport (Python)</td><td>N/A</td><td>N/A</td><td>❌</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr></tbody></table>
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Feature</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td><code dir="auto">StructFrameSdk</code> subscribe/dispatch</td><td>N/A</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">AsyncStructFrameSdk</code> subscribe/dispatch</td><td>N/A</td><td>N/A</td><td>✅</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr><tr><td>Serial transport</td><td>N/A</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>N/A</td></tr><tr><td>TCP transport</td><td>N/A</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>N/A</td></tr><tr><td>UDP transport</td><td>N/A</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>N/A</td></tr><tr><td>WebSocket transport</td><td>N/A</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>N/A</td></tr><tr><td>Async transport (Python)</td><td>N/A</td><td>N/A</td><td>❌</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr></tbody></table>
 <blockquote>
 <p><strong>Closed.</strong> <code dir="auto">StructFrameSdk</code> subscribe/dispatch is now tested with mock transports in six languages:</p>
 <ul>
-<li><strong>C++</strong> — <code dir="auto">tests/cpp/test_sdk_subscribe.cpp</code> (7 tests)</li>
-<li><strong>Python</strong> — <code dir="auto">tests/py/test_sdk.py</code> (11 tests)</li>
-<li><strong>TypeScript</strong> — <code dir="auto">tests/ts/test_sdk.ts</code> (10 tests)</li>
-<li><strong>C#</strong> — <code dir="auto">tests/csharp/TestSdkSubscribe.cs</code> (14 tests)</li>
-<li><strong>JavaScript</strong> — <code dir="auto">tests/js/test_sdk.js</code> (10 tests)</li>
-<li><strong>Rust</strong> — <code dir="auto">tests/rust/src/main.rs</code> <code dir="auto">test_sdk_subscribe</code> runner (9 tests)</li>
+<li><strong>C++</strong> — <code dir="auto">tests/cpp/test_sdk_subscribe.cpp</code> (17 <code dir="auto">run_test</code> registrations)</li>
+<li><strong>Python</strong> — <code dir="auto">tests/py/test_sdk.py</code> (7 test functions, 29 <code dir="auto">run_test</code> assertions)</li>
+<li><strong>TypeScript</strong> — <code dir="auto">tests/ts/test_sdk.ts</code> (6 test functions, 23 <code dir="auto">assert</code> assertions)</li>
+<li><strong>C#</strong> — <code dir="auto">tests/csharp/TestSdkSubscribe.cs</code> (26 <code dir="auto">Assert</code> assertions)</li>
+<li><strong>JavaScript</strong> — <code dir="auto">tests/js/test_sdk.js</code> (6 test functions, 23 <code dir="auto">assert</code> assertions)</li>
+<li><strong>Rust</strong> — <code dir="auto">tests/rust/src/main.rs</code> <code dir="auto">test_sdk_subscribe</code> runner (5 test blocks, 13 <code dir="auto">expect!</code> assertions)</li>
 </ul>
 <p>The C# suite additionally registers five dedicated SDK runners (selected via <code dir="auto">--runner &#x3C;name></code> in <code dir="auto">tests/csharp/TestRunner.cs</code>):</p>
 <ul>
@@ -1521,7 +1551,8 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 <li><code dir="auto">test_sdk_profiles</code> — <code dir="auto">tests/csharp/TestSdkProfiles.cs</code> (SDK round-trip under Bulk and Sensor profiles)</li>
 <li><code dir="auto">test_base_transport</code> — <code dir="auto">tests/csharp/TestBaseTransport.cs</code> (<code dir="auto">BaseTransport</code> semaphore/ROM overload/AutoReconnect; the file explicitly omits <code dir="auto">SerialTransport</code> because the test project does not enable the optional <code dir="auto">System.IO.Ports</code> dependency)</li>
 </ul>
-<p><strong>Gap (Low):</strong> Runtime serial, TCP, UDP, and WebSocket transport behavior remains uncovered. <code dir="auto">StructFrameSdk</code> routing is tested with mock transports, but the concrete socket/serial/WebSocket classes are not exercised end to end.</p>
+<p><strong>Closed (Python async SDK).</strong> <code dir="auto">AsyncStructFrameSdk</code> subscribe/dispatch/send_raw/send/register_codec/<strong>aenter</strong>/<strong>aexit</strong>/close-callback are tested with a mock async transport in <code dir="auto">tests/py/test_async_sdk.py</code> (40 <code dir="auto">run_test</code> pattern hits, 36 live assertions).</p>
+<p><strong>Gap (Low):</strong> Runtime serial, TCP, UDP, and WebSocket transport behavior remains uncovered. <code dir="auto">StructFrameSdk</code> and <code dir="auto">AsyncStructFrameSdk</code> routing are tested with mock transports, but the concrete socket/serial/WebSocket classes are not exercised end to end.</p>
 </blockquote>
 <hr>
 <h2 id="7-import--multi-package-tests">7. Import / Multi-Package Tests</h2>
@@ -1597,7 +1628,7 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 </blockquote>
 <hr>
 <h2 id="8-validation--generator-error-paths">8. Validation / Generator Error Paths</h2>
-<p>These are tests of the generator itself (Python, language-agnostic), not the generated code.</p>
+<p>These are tests of the generator itself (Python, language-agnostic), not the generated code. Error-path rules verify that invalid proto inputs are rejected; the two <code dir="auto">max_size > 255</code> rows verify that an over-255 bounded field is accepted and emits a two-byte count prefix.</p>
 
 
 
@@ -1663,8 +1694,12 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 
 
 
-<table><thead><tr><th>Validation Rule</th><th>Tested</th></tr></thead><tbody><tr><td>Duplicate <code dir="auto">msgid</code> within package</td><td>✅</td></tr><tr><td>Duplicate <code dir="auto">pkgid</code> across packages</td><td>✅</td></tr><tr><td>Duplicate field numbers within message</td><td>✅</td></tr><tr><td>Missing <code dir="auto">size</code>/<code dir="auto">max_size</code> on array</td><td>✅</td></tr><tr><td>Missing <code dir="auto">size</code>/<code dir="auto">max_size</code> on string</td><td>✅</td></tr><tr><td>Missing <code dir="auto">element_size</code> on string array</td><td>✅</td></tr><tr><td><code dir="auto">max_size</code> > 255 on array count</td><td>✅</td></tr><tr><td>Envelope with zero oneofs</td><td>✅</td></tr><tr><td>Envelope with non-message oneof fields</td><td>✅</td></tr><tr><td>Envelope with <code dir="auto">msgid</code> discriminator and messages missing <code dir="auto">msgid</code></td><td>✅</td></tr><tr><td>Invalid <code dir="auto">discriminator</code> option value</td><td>✅</td></tr><tr><td>Field number zero</td><td>✅</td></tr><tr><td>Circular import detection</td><td>✅</td></tr><tr><td>Multi-package without <code dir="auto">pkgid</code></td><td>✅</td></tr></tbody></table>
-<p>All 14 validation rules are enforced by the generator in <code dir="auto">src/struct_frame/</code> and every case is covered by a passing test in <code dir="auto">tests/test_generator_validation.py</code>.</p>
+
+
+
+
+<table><thead><tr><th>Validation Rule</th><th>Tested</th></tr></thead><tbody><tr><td>Duplicate <code dir="auto">msgid</code> within package</td><td>✅</td></tr><tr><td>Duplicate <code dir="auto">pkgid</code> across packages</td><td>✅</td></tr><tr><td>Duplicate field numbers within message</td><td>✅</td></tr><tr><td>Missing <code dir="auto">size</code>/<code dir="auto">max_size</code> on array</td><td>✅</td></tr><tr><td>Missing <code dir="auto">size</code>/<code dir="auto">max_size</code> on string</td><td>✅</td></tr><tr><td>Missing <code dir="auto">element_size</code> on string array</td><td>✅</td></tr><tr><td><code dir="auto">max_size</code> > 255 on array count: accepted (two-byte count)</td><td>✅</td></tr><tr><td><code dir="auto">max_size</code> > 255 on string: accepted (two-byte count)</td><td>✅</td></tr><tr><td>Envelope with zero oneofs</td><td>✅</td></tr><tr><td>Envelope with non-message oneof fields</td><td>✅</td></tr><tr><td>Envelope with <code dir="auto">msgid</code> discriminator and messages missing <code dir="auto">msgid</code></td><td>✅</td></tr><tr><td>Invalid <code dir="auto">discriminator</code> option value</td><td>✅</td></tr><tr><td>Field number zero</td><td>✅</td></tr><tr><td>Circular import detection</td><td>✅</td></tr><tr><td>Multi-package without <code dir="auto">pkgid</code></td><td>✅</td></tr></tbody></table>
+<p>All 14 generator-side error rules plus 2 acceptance checks (max_size > 255 is legal for array and string fields) are covered by the 16 passing tests in <code dir="auto">tests/test_generator_validation.py</code>. Note: <code dir="auto">max_size</code> > 255 triggers a two-byte length-count prefix in the generated code; it is explicitly validated as <em>allowed</em> (not rejected).</p>
 <hr>
 <h2 id="9-wire-evolution-tests">9. Wire-Evolution Tests</h2>
 <p>Tests that verify backward-compatible message handling: unknown fields are ignored, fields with new defaults are decoded correctly from older binaries, and field reordering does not break decoding.</p>
