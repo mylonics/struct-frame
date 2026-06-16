@@ -288,6 +288,8 @@ The 15 scenarios in the table below are registered in every language's `test_neg
 |--------|--------|--------|--------|--------|--------|--------|--------|
 | `StructFrameSdk` subscribe/dispatch | N/A | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `AsyncStructFrameSdk` subscribe/dispatch | N/A | N/A | ✅ | N/A | N/A | N/A | N/A |
+| `request()` / `RequestAsync()` (send + await response) | N/A | N/A | ✅ | ✅ | N/A | ✅ | N/A |
+| `AsyncStructFrameSdk.request()` (async request/response) | N/A | N/A | ✅ | N/A | N/A | N/A | N/A |
 | Serial transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | TCP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
 | UDP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
@@ -310,6 +312,12 @@ The 15 scenarios in the table below are registered in every language's `test_neg
 > - `test_base_transport` -- `tests/csharp/TestBaseTransport.cs` (`BaseTransport` semaphore/ROM overload/AutoReconnect; the file explicitly omits `SerialTransport` because the test project does not enable the optional `System.IO.Ports` dependency)
 >
 > **Closed (Python async SDK).** `AsyncStructFrameSdk` subscribe/dispatch/send_raw/send/register_codec/__aenter__/__aexit__/close-callback are tested with a mock async transport in `tests/py/test_async_sdk.py` (40 `run_test` pattern hits, 36 live assertions).
+>
+> **Closed (request/response).** `request()` / `request_raw()` (Python sync), `async request()` (Python async), `request<TResp>()` (TypeScript), and `RequestAsync<TReq,TResp>()` (C#) are tested with mock transports:
+> - **Python sync** -- `tests/py/test_request_response_sdk.py` (20 assertions: basic, timeout, match predicate, concurrent in-flight, `request_raw`, cleanup, codec integration)
+> - **Python async** -- `tests/py/test_request_response_async_sdk.py` (13 assertions: basic, timeout, match, concurrent, cleanup)
+> - **TypeScript** -- `tests/ts/test_request_response_sdk.ts` (basic, timeout, match, concurrent, cleanup)
+> - **C#** -- `tests/csharp/TestSdkRequestResponse.cs` (`test_sdk_request_response` runner: basic, timeout, match, concurrent, cleanup, CancellationToken)
 >
 > **Gap (Low):** Runtime serial, TCP, UDP, and WebSocket transport behavior remains uncovered. `StructFrameSdk` and `AsyncStructFrameSdk` routing are tested with mock transports, but the concrete socket/serial/WebSocket classes are not exercised end to end.
 
