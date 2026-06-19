@@ -6,6 +6,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -143,7 +144,9 @@ namespace StructFrame.Sdk
         private readonly bool _strictOrdering;
 
         // Transport event delegates kept as fields so they can be unsubscribed in Dispose.
-        private readonly EventHandler<byte[]> _onDataReceived;
+    private readonly EventHandler<byte[]>? _onDataReceived;
+    private readonly EventHandler<ReadOnlyMemory<byte>>? _onDataReceivedMemory;
+    private readonly IBufferReceiveTransport? _bufferReceiveTransport;
         private readonly EventHandler<Exception> _onErrorOccurred;
         private readonly EventHandler _onConnectionClosed;
 
@@ -201,11 +204,20 @@ namespace StructFrame.Sdk
             _bufferSize = config.BufferSize;
             _strictOrdering = config.StrictOrdering;
 
-            _onDataReceived = (_, data) => HandleIncomingData(data);
+            if (_transport is IBufferReceiveTransport bufferReceiveTransport)
+            {
+                _bufferReceiveTransport = bufferReceiveTransport;
+                _onDataReceivedMemory = (_, data) => HandleIncomingData(data);
+                _bufferReceiveTransport.DataReceivedMemory += _onDataReceivedMemory;
+            }
+            else
+            {
+                _onDataReceived = (_, data) => HandleIncomingData(data);
+                _transport.DataReceived += _onDataReceived;
+            }
             _onErrorOccurred = (_, error) => HandleError(error);
             _onConnectionClosed = (_, _) => HandleClose();
 
-            _transport.DataReceived += _onDataReceived;
             _transport.ErrorOccurred += _onErrorOccurred;
             _transport.ConnectionClosed += _onConnectionClosed;
         }
@@ -456,9 +468,19 @@ namespace StructFrame.Sdk
         public bool IsConnected => _transport.IsConnected;
 
         private void HandleIncomingData(byte[] data)
+            => HandleIncomingData(new ReadOnlyMemory<byte>(data));
+
+        private void HandleIncomingData(ReadOnlyMemory<byte> data)
         {
             if (_disposed) return;
-            _reader.AddData(data);
+            if (MemoryMarshal.TryGetArray(data, out ArraySegment<byte> segment) && segment.Array != null)
+            {
+                _reader.AddData(segment.Array, segment.Offset, segment.Count);
+            }
+            else
+            {
+                _reader.AddData(data.ToArray());
+            }
             while (true)
             {
                 var frame = _reader.Next();
@@ -474,10 +496,14 @@ namespace StructFrame.Sdk
         {
             Log($"Received message ID {frame.MsgId}, {frame.MsgLen} bytes payload, valid={frame.Valid}");
 
-            // FrameReceived fires for all frames (raw tap) — valid and CRC-failed alike.
-            FrameReceived?.Invoke(frame);
+            // Clone frame bytes before dispatch so callback consumers never observe
+            // transport buffer reuse from subsequent reads.
+            FrameMsgInfo dispatchFrame = CloneFrameForDispatch(frame);
 
-            if (!frame.Valid)
+            // FrameReceived fires for all frames (raw tap) — valid and CRC-failed alike.
+            FrameReceived?.Invoke(dispatchFrame);
+
+            if (!dispatchFrame.Valid)
             {
                 // Do not dispatch invalid (e.g. CRC-failed) frames to typed subscribers.
                 return;
@@ -488,7 +514,7 @@ namespace StructFrame.Sdk
             {
                 // COW array: safe to read the reference under the lock and iterate outside it
                 // without copying — Subscribe/Unsubscribe never mutate an array in place.
-                if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers) && handlers.Length > 0)
+                if (_messageHandlers.TryGetValue(dispatchFrame.MsgId, out var handlers) && handlers.Length > 0)
                     handlersCopy = handlers;
             }
 
@@ -498,18 +524,46 @@ namespace StructFrame.Sdk
                 {
                     try
                     {
-                        handler.Invoke(frame);
+                        handler.Invoke(dispatchFrame);
                     }
                     catch (Exception ex)
                     {
-                        Log($"Handler error for message ID {frame.MsgId}: {ex.Message}");
+                        Log($"Handler error for message ID {dispatchFrame.MsgId}: {ex.Message}");
                     }
                 }
             }
             else
             {
-                UnhandledMessage?.Invoke(frame);
+                UnhandledMessage?.Invoke(dispatchFrame);
             }
+        }
+
+        private static FrameMsgInfo CloneFrameForDispatch(FrameMsgInfo frame)
+        {
+            if (frame.FrameData.IsEmpty)
+            {
+                return frame;
+            }
+
+            byte[] ownedFrame = frame.FrameData.ToArray();
+            var cloned = frame;
+            cloned.FrameData = ownedFrame;
+            cloned.MsgData = ownedFrame;
+
+            int payloadOffset = frame.MsgDataOffset;
+            if (MemoryMarshal.TryGetArray(frame.FrameData, out ArraySegment<byte> frameSegment) &&
+                frameSegment.Array != null)
+            {
+                payloadOffset = frame.MsgDataOffset - frameSegment.Offset;
+            }
+
+            if (payloadOffset < 0 || payloadOffset + frame.MsgLen > ownedFrame.Length)
+            {
+                payloadOffset = 0;
+            }
+
+            cloned.MsgDataOffset = payloadOffset;
+            return cloned;
         }
 
         private async Task<SendResult> SendFramedBytesAsync(ReadOnlyMemory<byte> framedData)
@@ -664,7 +718,14 @@ namespace StructFrame.Sdk
                 if (disposing)
                 {
                     // Unsubscribe transport events first to prevent callbacks into a disposed SDK.
-                    _transport.DataReceived -= _onDataReceived;
+                    if (_bufferReceiveTransport != null && _onDataReceivedMemory != null)
+                    {
+                        _bufferReceiveTransport.DataReceivedMemory -= _onDataReceivedMemory;
+                    }
+                    if (_onDataReceived != null)
+                    {
+                        _transport.DataReceived -= _onDataReceived;
+                    }
                     _transport.ErrorOccurred -= _onErrorOccurred;
                     _transport.ConnectionClosed -= _onConnectionClosed;
 

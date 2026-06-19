@@ -76,6 +76,54 @@ static class TestBaseTransport
     }
 
     // -------------------------------------------------------------------------
+    // F2b. Receive memory event reports the exact incoming slice.
+    // -------------------------------------------------------------------------
+    static void TestReceiveMemorySliceEvent()
+    {
+        var transport = new InstrumentedTransport();
+        ReadOnlyMemory<byte> received = default;
+        int calls = 0;
+
+        transport.DataReceivedMemory += (_, data) =>
+        {
+            received = data;
+            calls++;
+        };
+
+        byte[] backing = new byte[] { 0, 10, 11, 12, 0 };
+        transport.ForceReceiveMemory(backing, 1, 3);
+
+        Assert("base-receive-memory: event fired once", calls == 1);
+        Assert("base-receive-memory: slice length preserved", received.Length == 3);
+        Assert("base-receive-memory: slice bytes preserved",
+               received.Span[0] == 10 && received.Span[2] == 12);
+    }
+
+    // -------------------------------------------------------------------------
+    // F2c. Legacy DataReceived subscribers still receive right-sized byte arrays.
+    // -------------------------------------------------------------------------
+    static void TestReceiveMemorySliceLegacyEvent()
+    {
+        var transport = new InstrumentedTransport();
+        byte[]? received = null;
+        int calls = 0;
+
+        transport.DataReceived += (_, data) =>
+        {
+            received = data;
+            calls++;
+        };
+
+        byte[] backing = new byte[] { 0, 20, 21, 22, 0 };
+        transport.ForceReceiveMemory(backing, 1, 3);
+
+        Assert("base-receive-legacy: event fired once", calls == 1);
+        Assert("base-receive-legacy: copied slice is right-sized", received?.Length == 3);
+        Assert("base-receive-legacy: copied slice bytes preserved",
+               received != null && received[0] == 20 && received[2] == 22);
+    }
+
+    // -------------------------------------------------------------------------
     // F3. AutoReconnect: ConnectionClosed triggers reconnect only when enabled.
     // -------------------------------------------------------------------------
     static async Task TestAutoReconnectHonored()
@@ -143,6 +191,8 @@ static class TestBaseTransport
 
         TestSemaphoreSerializesConcurrentWrites().GetAwaiter().GetResult();
         TestRomOverloadReachesSendCore().GetAwaiter().GetResult();
+    TestReceiveMemorySliceEvent();
+    TestReceiveMemorySliceLegacyEvent();
         TestAutoReconnectHonored().GetAwaiter().GetResult();
         TestDisposeIdempotent().GetAwaiter().GetResult();
 
@@ -196,6 +246,10 @@ class InstrumentedTransport : BaseTransport
 
     /// <summary>Force a ConnectionClosed event without changing internal flag-flip ordering.</summary>
     public void ForceClose() => OnConnectionClosed();
+
+    /// <summary>Force a memory-slice receive event for BaseTransport contract tests.</summary>
+    public void ForceReceiveMemory(byte[] data, int offset, int count)
+        => OnDataReceived(new ReadOnlyMemory<byte>(data, offset, count));
 
     protected override async Task<int> SendCoreAsync(byte[] data)
     {

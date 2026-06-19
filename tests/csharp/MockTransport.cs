@@ -84,6 +84,10 @@ class MockTransport : BaseTransport
   /// <summary>Simulates arriving data (e.g., received over the network).</summary>
   public void InjectData(byte[] data) => OnDataReceived(data);
 
+  /// <summary>Simulates arriving data as a slice of a larger receive buffer.</summary>
+  public void InjectDataMemory(byte[] data, int offset, int count)
+    => OnDataReceived(new ReadOnlyMemory<byte>(data, offset, count));
+
   /// <summary>Raises the ErrorOccurred event with the given exception.</summary>
   public void InjectError(Exception ex) => OnErrorOccurred(ex);
 
