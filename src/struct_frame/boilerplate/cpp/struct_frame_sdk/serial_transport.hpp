@@ -84,6 +84,7 @@ public:
     SerialTransport(ISerialPort* serialPort, const SerialTransportConfig& config = SerialTransportConfig())
         : BaseTransport(config), serialPort_(serialPort), serialConfig_(config) {
         receiveBufferSize_ = (config.bufferSize < receiveBuffer_.size()) ? config.bufferSize : receiveBuffer_.size();
+        serialConfig_.bufferSize = receiveBufferSize_;
     }
 
     void Connect() {

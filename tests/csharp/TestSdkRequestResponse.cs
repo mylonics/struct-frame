@@ -176,12 +176,11 @@ static class TestSdkRequestResponse
         var handlersField = typeof(StructFrameSdk).GetField(
             "_messageHandlers",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var handlers = handlersField?.GetValue(sdk) as System.Collections.IDictionary;
         var msgId = (ushort)BasicTypesMessage.MsgId;
-        bool empty = true;
-        if (handlersField?.GetValue(sdk) is System.Collections.IDictionary handlers && handlers.Contains(msgId))
-        {
-            empty = handlers[msgId] is not Array arr || arr.Length == 0;
-        }
+        bool empty = handlers == null
+            || !handlers.Contains(msgId)
+            || ((System.Array)handlers[msgId]!).Length == 0;
         Assert("cleanup: subscription removed after success", empty);
     }
 
@@ -204,12 +203,11 @@ static class TestSdkRequestResponse
         var handlersField = typeof(StructFrameSdk).GetField(
             "_messageHandlers",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var handlers = handlersField?.GetValue(sdk) as System.Collections.IDictionary;
         var msgId = (ushort)BasicTypesMessage.MsgId;
-        bool empty = true;
-        if (handlersField?.GetValue(sdk) is System.Collections.IDictionary handlers && handlers.Contains(msgId))
-        {
-            empty = handlers[msgId] is not Array arr || arr.Length == 0;
-        }
+        bool empty = handlers == null
+            || !handlers.Contains(msgId)
+            || ((System.Array)handlers[msgId]!).Length == 0;
         Assert("cleanup: subscription removed after timeout", empty);
     }
 

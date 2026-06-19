@@ -183,8 +183,15 @@ export class StructFrameSdk {
 
       const msgId =
         options?.requestMsgId ??
-        (requestMsg.constructor as { _msgid?: number })._msgid ??
-        0;
+        (requestMsg.constructor as { _msgid?: number })._msgid;
+      if (msgId == null) {
+        clearTimeout(timer);
+        unsubscribe();
+        reject(new Error(
+          'request() requires options.requestMsgId or a static _msgid on the message class',
+        ));
+        return;
+      }
       this.sendRaw(msgId, requestMsg.serialize()).catch((err: unknown) => {
         clearTimeout(timer);
         unsubscribe();
