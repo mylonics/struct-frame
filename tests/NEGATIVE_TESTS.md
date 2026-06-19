@@ -46,7 +46,7 @@ totals differ (see counts below):
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### C# Tests (`tests/csharp/TestNegative.cs`)
-- **19 test cases**: the 15 uniform scenarios + 4 C#-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption; no stream-recovery test)
+- **20 test cases**: the 15 uniform scenarios + 5 C#-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption, stream recovery)
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 

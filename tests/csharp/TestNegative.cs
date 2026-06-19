@@ -228,6 +228,43 @@ public class TestNegative
         }
 
         /**
+         * Test: Stream mode recovers after a garbage prefix.
+         * Mirrors the C/C++/TS/JS/Rust "Stream mode: recovers after garbage prefix"
+         * scenario. Junk bytes are fed into the byte-at-a-time accumulating reader,
+         * then a real frame; the reader must resync and surface the valid frame.
+         */
+        private static bool TestStreamRecoversAfterGarbage()
+        {
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+
+            // Junk prefix that does not begin a valid frame.
+            byte[] garbage = { 0xAB, 0xCD, 0xEF, 0x12, 0x34, 0x56 };
+            foreach (var b in garbage)
+            {
+                reader.PushByte(b);
+            }
+
+            // Encode a real frame.
+            var msg = CreateTestMessage();
+            byte[] buffer = new byte[1024];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            var frameSize = writer.Size;
+
+            // Feed the frame byte by byte; the reader should resync and yield a valid frame.
+            for (int i = 0; i < frameSize; i++)
+            {
+                var r = reader.PushByte(buffer[i]);
+                if (r.Valid)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        /**
          * Test: Bulk profile with corrupted CRC
          */
         private static bool TestBulkProfileCorruptedCrc()
@@ -632,6 +669,7 @@ public class TestNegative
                 ("Network profile: Corrupted pkg_id byte", TestNetworkCorruptedPkgId),
                 ("Network profile: SysId/CompId corruption", TestNetworkSysIdCompId),
                 ("Partial frame across buffer boundary", TestPartialFrameBoundary),
+                ("Stream mode: recovers after garbage prefix", TestStreamRecoversAfterGarbage),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
                 ("Streaming: Garbage data handling", TestStreamingGarbage),
                 ("Truncated frame detection", TestTruncatedFrame),

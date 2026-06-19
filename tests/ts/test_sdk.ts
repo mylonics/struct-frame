@@ -206,6 +206,30 @@ async function testSendRawFramesThroughTransport(): Promise<void> {
     Buffer.from(parsed.msgData).equals(Buffer.from(payload)));
 }
 
+/**
+ * Lifecycle parity with the C# `TestThrowingHandlerDoesNotStopSiblings` test:
+ * a handler that throws must not prevent sibling handlers from running, nor
+ * escape into the transport callback.
+ */
+function testThrowingHandlerDoesNotStopSiblings(): void {
+  const transport = new MockTransport();
+  const sdk = makeSdk(transport);
+
+  let siblingFired = false;
+  sdk.subscribe(BasicTypesMessage._msgid, () => { throw new Error('boom'); });
+  sdk.subscribe(BasicTypesMessage._msgid, () => { siblingFired = true; });
+
+  let errorThrown = false;
+  try {
+    transport.injectData(encodeBasicTypes(1, false));
+  } catch {
+    errorThrown = true;
+  }
+
+  assert('handler isolation: throwing handler does not propagate', !errorThrown);
+  assert('handler isolation: sibling handler still fires', siblingFired);
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -223,6 +247,7 @@ async function main(): Promise<void> {
   testNoHandlerForUnregisteredId();
   testWithCodecDeserializesMessage();
   await testSendRawFramesThroughTransport();
+  testThrowingHandlerDoesNotStopSiblings();
 
   console.log();
   console.log('========================================');

@@ -301,6 +301,35 @@ def test_close_callback_clears_buffer_state():
              not sdk.reader.has_partial())
 
 
+def test_throwing_handler_does_not_stop_siblings():
+    """A handler that raises must not prevent sibling handlers from running.
+
+    Lifecycle parity with the C# `TestThrowingHandlerDoesNotStopSiblings`
+    test: the SDK isolates each handler in try/except so one bad subscriber
+    cannot starve the others or escape into the transport callback.
+    """
+    transport = MockTransport()
+    sdk = make_sdk(transport)
+
+    sibling_fired = [False]
+
+    def _throwing(*_):
+        raise RuntimeError("boom")
+
+    sdk.subscribe(BasicTypesMessage.MSG_ID, _throwing)
+    sdk.subscribe(BasicTypesMessage.MSG_ID,
+                  lambda *_: sibling_fired.__setitem__(0, True))
+
+    raised = False
+    try:
+        transport.inject_data(encode_basic_types(BasicTypesMessage()))
+    except Exception:
+        raised = True
+
+    run_test("handler isolation: throwing handler does not propagate", not raised)
+    run_test("handler isolation: sibling handler still fires", sibling_fired[0] is True)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -319,6 +348,7 @@ def main():
     test_send_raw_frames_through_transport()
     test_codec_registration_and_message_decoding()
     test_close_callback_clears_buffer_state()
+    test_throwing_handler_does_not_stop_siblings()
 
     print()
     print("========================================")

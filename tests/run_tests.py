@@ -1664,6 +1664,7 @@ class TestRunner:
             "test_request_response_sdk":    ["py", "ts"],
             "test_request_response_async":  ["py"],
             "test_sdk_request_response":    ["csharp"],
+            "test_tcp_transport":           ["py"],
         }
 
         # Initialise table: None = N/A, "MISSING" = applicable but not yet run
@@ -1754,6 +1755,16 @@ class TestRunner:
                 success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
                 _record("test_request_response_async", "py", success, stdout, stderr,
                         "py:request_response_async", "test_request_response_async_sdk.py failed")
+                if not success:
+                    all_success = False
+
+        # ---- Python: test_tcp_transport.py (concrete TcpTransport over loopback) ----
+        if py_lang:
+            script = self.project_root / py_lang.test_dir / "test_tcp_transport.py"
+            if script.exists():
+                success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
+                _record("test_tcp_transport", "py", success, stdout, stderr,
+                        "py:tcp_transport", "test_tcp_transport.py failed")
                 if not success:
                     all_success = False
 
