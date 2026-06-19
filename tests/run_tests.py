@@ -1854,7 +1854,9 @@ class TestRunner:
         all_lang_ids = [l.id for l in testable]
 
         WIRE_APPLICABILITY: Dict[str, List[str]] = {
-            "test_wire_evolution":        ["c", "cpp", "ts", "js", "csharp"],
+            # Base wire-evolution has no C runner by design (C is covered by the
+            # interop suite + the top-level Python orchestrator); see tests/README.md.
+            "test_wire_evolution":        ["cpp", "ts", "js", "csharp"],
             "test_wire_evolution_interop": ["c", "cpp", "ts", "js", "csharp", "rust"],
         }
 
@@ -1883,7 +1885,8 @@ class TestRunner:
         c_lang = self.languages.get("c")
         if c_lang and "c" not in self.skipped_languages and self.results["compilation"].get("c", False):
             build_dir = self.project_root / c_lang.build_dir
-            for test_name in ("test_wire_evolution", "test_wire_evolution_interop"):
+            # C ships only the interop wire-evolution runner (no base test_wire_evolution.c).
+            for test_name in ("test_wire_evolution_interop",):
                 exe = build_dir / f"{test_name}{c_lang.exe_ext}"
                 if exe.exists():
                     success, stdout, stderr = self.run_cmd(str(exe), timeout=30)

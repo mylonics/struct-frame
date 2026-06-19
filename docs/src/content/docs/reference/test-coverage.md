@@ -300,7 +300,7 @@ The 15 scenarios in the table below are registered in every language's `test_neg
 > - **C++** -- `tests/cpp/test_sdk_subscribe.cpp` (17 `run_test` registrations)
 > - **Python** -- `tests/py/test_sdk.py` (7 test functions, 29 `run_test` assertions)
 > - **TypeScript** -- `tests/ts/test_sdk.ts` (6 test functions, 23 `assert` assertions)
-> - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (26 `Assert` assertions)
+> - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (32 `Assert` assertions)
 > - **JavaScript** -- `tests/js/test_sdk.js` (6 test functions, 23 `assert` assertions)
 > - **Rust** -- `tests/rust/src/main.rs` `test_sdk_subscribe` runner (5 test blocks, 13 `expect!` assertions)
 >
@@ -318,6 +318,8 @@ The 15 scenarios in the table below are registered in every language's `test_neg
 > - **Python async** -- `tests/py/test_request_response_async_sdk.py` (13 assertions: basic, timeout, match, concurrent, cleanup)
 > - **TypeScript** -- `tests/ts/test_request_response_sdk.ts` (basic, timeout, match, concurrent, cleanup)
 > - **C#** -- `tests/csharp/TestSdkRequestResponse.cs` (`test_sdk_request_response` runner: basic, timeout, match, concurrent, cleanup, CancellationToken)
+>
+> **Scope (by design).** Request/response is intentionally a C#/Python/TypeScript SDK feature. The C++, JavaScript, and Rust SDKs do not expose a `request()` / `RequestAsync()` API, so the `N/A` cells in the two request/response rows above mark an intentional scope decision -- not an untested gap.
 >
 > **Gap (Low):** Runtime serial, TCP, UDP, and WebSocket transport behavior remains uncovered. `StructFrameSdk` and `AsyncStructFrameSdk` routing are tested with mock transports, but the concrete socket/serial/WebSocket classes are not exercised end to end.
 

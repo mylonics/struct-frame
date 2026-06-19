@@ -147,7 +147,7 @@ _SDK_COUNT_CLAIMS: list[dict] = [
         "path": "tests/csharp/TestSdkSubscribe.cs",
         # Matches Assert("name", ...) but not the `private static bool Assert(` definition.
         "pattern": r'Assert\("',
-        "expected": 26,
+        "expected": 32,
     },
     {
         "display": "Rust test_sdk_subscribe expect! assertions",
