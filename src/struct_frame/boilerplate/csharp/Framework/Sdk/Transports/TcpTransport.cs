@@ -148,10 +148,9 @@ namespace StructFrame.Sdk
                     break;
                 }
 
-                // Copy only the received bytes (maintains byte[] callback API).
-                byte[] data = new byte[bytesRead];
-                Array.Copy(_receiveBuffer, data, bytesRead);
-                OnDataReceived(data);
+                // Pass only the valid receive slice; BaseTransport handles legacy
+                // byte[] subscribers by materializing a right-sized copy only when needed.
+                OnDataReceived(new ReadOnlyMemory<byte>(_receiveBuffer, 0, bytesRead));
             }
         }
     }

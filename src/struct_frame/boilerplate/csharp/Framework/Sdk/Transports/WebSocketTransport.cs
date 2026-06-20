@@ -23,12 +23,13 @@ namespace StructFrame.Sdk
     // To use: Install NetCoreServer NuGet package and define NETCORESERVER_AVAILABLE
     using NetCoreServer;
 
-    public class WebSocketTransport : WsClient, ITransport
+    public class WebSocketTransport : WsClient, ITransport, IBufferReceiveTransport
     {
         private readonly WebSocketTransportConfig _wsConfig;
         private bool _connected;
 
         public event EventHandler<byte[]> DataReceived;
+        public event EventHandler<ReadOnlyMemory<byte>> DataReceivedMemory;
         public event EventHandler<Exception> ErrorOccurred;
         public event EventHandler ConnectionClosed;
 
@@ -60,6 +61,14 @@ namespace StructFrame.Sdk
             return data.Length;
         }
 
+        public async Task<int> SendAsync(ReadOnlyMemory<byte> data)
+        {
+            byte[] bytes = data.ToArray();
+            SendBinary(bytes);
+            await Task.CompletedTask;
+            return bytes.Length;
+        }
+
         protected override void OnWsConnected(HttpResponse response)
         {
             _connected = true;
@@ -73,9 +82,12 @@ namespace StructFrame.Sdk
 
         protected override void OnWsReceived(byte[] buffer, long offset, long size)
         {
-            byte[] data = new byte[size];
-            Array.Copy(buffer, offset, data, 0, size);
-            DataReceived?.Invoke(this, data);
+            var memory = new ReadOnlyMemory<byte>(buffer, checked((int)offset), checked((int)size));
+            DataReceivedMemory?.Invoke(this, memory);
+            if (DataReceived != null)
+            {
+                DataReceived.Invoke(this, memory.ToArray());
+            }
         }
 
         protected override void OnWsError(string error)

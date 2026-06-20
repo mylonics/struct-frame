@@ -88,10 +88,23 @@ namespace StructFrame.Sdk
     }
 
     /// <summary>
+    /// Optional receive-side extension for transports that can report a valid
+    /// buffer slice without first allocating a right-sized byte array.
+    /// The memory is only guaranteed to remain valid for the duration of the callback.
+    /// </summary>
+    public interface IBufferReceiveTransport
+    {
+        /// <summary>
+        /// Event fired when data is received as a length-aware memory slice.
+        /// </summary>
+        event EventHandler<ReadOnlyMemory<byte>> DataReceivedMemory;
+    }
+
+    /// <summary>
     /// Base transport with common functionality.
     /// Implements IDisposable to clean up the internal send semaphore.
     /// </summary>
-    public abstract class BaseTransport : ITransport, IDisposable
+    public abstract class BaseTransport : ITransport, IBufferReceiveTransport, IDisposable
     {
         protected bool _connected;
         protected TransportConfig _config;
@@ -100,6 +113,7 @@ namespace StructFrame.Sdk
         private bool _disposed;
 
         public event EventHandler<byte[]>? DataReceived;
+        public event EventHandler<ReadOnlyMemory<byte>>? DataReceivedMemory;
         public event EventHandler<Exception>? ErrorOccurred;
         public event EventHandler? ConnectionClosed;
 
@@ -176,8 +190,21 @@ namespace StructFrame.Sdk
 
         protected void OnDataReceived(byte[] data)
         {
+            DataReceivedMemory?.Invoke(this, data);
             DataReceived?.Invoke(this, data);
         }
+
+        protected void OnDataReceived(ReadOnlyMemory<byte> data)
+        {
+            DataReceivedMemory?.Invoke(this, data);
+            if (DataReceived != null)
+            {
+                DataReceived.Invoke(this, ToByteArrayForLegacyEvent(data));
+            }
+        }
+
+        private static byte[] ToByteArrayForLegacyEvent(ReadOnlyMemory<byte> data)
+            => data.ToArray();
 
         protected void OnErrorOccurred(Exception error)
         {

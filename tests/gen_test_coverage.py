@@ -128,26 +128,26 @@ _SDK_COUNT_CLAIMS: list[dict] = [
         "display": "Python test_sdk.py run_test assertions",
         "path": "tests/py/test_sdk.py",
         "pattern": r"run_test\(",
-        "expected": 29,
+        "expected": 31,
     },
     {
         "display": "TypeScript test_sdk.ts assert assertions",
         "path": "tests/ts/test_sdk.ts",
         "pattern": r"assert\(",
-        "expected": 23,
+        "expected": 25,
     },
     {
         "display": "JavaScript test_sdk.js assert assertions",
         "path": "tests/js/test_sdk.js",
         "pattern": r"assert\(",
-        "expected": 23,
+        "expected": 25,
     },
     {
         "display": "C# TestSdkSubscribe.cs Assert assertions",
         "path": "tests/csharp/TestSdkSubscribe.cs",
         # Matches Assert("name", ...) but not the `private static bool Assert(` definition.
         "pattern": r'Assert\("',
-        "expected": 26,
+        "expected": 32,
     },
     {
         "display": "Rust test_sdk_subscribe expect! assertions",

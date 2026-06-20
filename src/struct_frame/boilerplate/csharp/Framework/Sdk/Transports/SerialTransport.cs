@@ -166,9 +166,9 @@ namespace StructFrame.Sdk
 
                         if (bytesRead > 0)
                         {
-                            byte[] data = new byte[bytesRead];
-                            Array.Copy(buffer, data, bytesRead);
-                            OnDataReceived(data);
+                            // Pass only the valid receive slice; BaseTransport handles legacy
+                            // byte[] subscribers by materializing a right-sized copy only when needed.
+                            OnDataReceived(new ReadOnlyMemory<byte>(buffer, 0, bytesRead));
                         }
                     }
                     catch (TimeoutException)

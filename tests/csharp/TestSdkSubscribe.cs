@@ -91,6 +91,68 @@ static class TestSdkSubscribe
     }
 
     // -------------------------------------------------------------------------
+    // Test 1b: Basic subscribe + dispatch through length-aware receive slice
+    // -------------------------------------------------------------------------
+    static void TestSubscribeAndDispatchMemorySlice()
+    {
+        var transport = new MockTransport();
+        using var sdk = new StructFrameSdk(SdkTestHelpers.MakeConfig(transport));
+
+        BasicTypesMessage? received = null;
+        sdk.Subscribe<BasicTypesMessage>(msg => received = msg);
+
+        var outgoing = new BasicTypesMessage { RegularInt = 99, Flag = true };
+        byte[] frame = SdkTestHelpers.EncodeStandard(outgoing);
+        byte[] padded = new byte[frame.Length + 4];
+        Buffer.BlockCopy(frame, 0, padded, 2, frame.Length);
+
+        transport.InjectDataMemory(padded, 2, frame.Length);
+
+        Assert("subscribe-memory: handler invoked from sliced receive buffer", received != null);
+        Assert("subscribe-memory: RegularInt value correct", received?.RegularInt == 99);
+        Assert("subscribe-memory: Flag value correct", received?.Flag == true);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 1c: FrameReceived gets stable frame memory across buffer reuse
+    // -------------------------------------------------------------------------
+    static void TestFrameReceivedMemoryIsStableAcrossBufferReuse()
+    {
+        var transport = new MockTransport();
+        using var sdk = new StructFrameSdk(SdkTestHelpers.MakeConfig(transport));
+
+        FrameMsgInfo? firstFrame = null;
+        int seen = 0;
+        sdk.FrameReceived += frame =>
+        {
+            seen++;
+            if (seen == 1)
+            {
+                firstFrame = frame;
+            }
+        };
+
+        byte[] first = SdkTestHelpers.EncodeStandard(new BasicTypesMessage { RegularInt = 1234, Flag = true });
+        byte[] second = SdkTestHelpers.EncodeStandard(new BasicTypesMessage { RegularInt = 5678, Flag = false });
+        int n = Math.Max(first.Length, second.Length);
+        byte[] shared = new byte[n + 4];
+
+        Buffer.BlockCopy(first, 0, shared, 2, first.Length);
+        transport.InjectDataMemory(shared, 2, first.Length);
+
+        Buffer.BlockCopy(second, 0, shared, 2, second.Length);
+        transport.InjectDataMemory(shared, 2, second.Length);
+
+        byte[] expectedFirst = new byte[first.Length];
+        Buffer.BlockCopy(first, 0, expectedFirst, 0, first.Length);
+
+        Assert("frame-memory-stable: received two frames", seen == 2);
+        Assert("frame-memory-stable: first frame captured", firstFrame.HasValue);
+        Assert("frame-memory-stable: first frame bytes preserved after buffer reuse",
+               firstFrame.HasValue && firstFrame.Value.FrameData.ToArray().SequenceEqual(expectedFirst));
+    }
+
+    // -------------------------------------------------------------------------
     // Test 2: Multiple handlers for the same message type
     // -------------------------------------------------------------------------
     static void TestMultipleHandlers()
@@ -300,6 +362,8 @@ static class TestSdkSubscribe
         Console.WriteLine();
 
         TestSubscribeAndDispatch();
+        TestSubscribeAndDispatchMemorySlice();
+        TestFrameReceivedMemoryIsStableAcrossBufferReuse();
         TestMultipleHandlers();
         TestUnsubscribe();
         TestUnhandledMessage();

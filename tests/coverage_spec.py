@@ -406,11 +406,11 @@ SECTIONS = [
             "See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.\n\n"
             "The 15 scenarios in the table below are registered in every language's "
             "`test_negative.*` file. Individual languages carry additional "
-            "language-specific scenarios: C/C++/TS/JS (20 each) add bulk "
+            "language-specific scenarios: C/C++/TS/JS/C# (20 each) add bulk "
             "`pkg_id`/`msg_id` corruption, cross-package rejection, network "
-            "`pkg_id` corruption, and stream-recovery tests; C# (19) shares all "
-            "but stream-recovery; Python (30) adds those plus diagnostic-counter "
-            "and status-machine tests; Rust (16) adds stream-recovery only."
+            "`pkg_id` corruption, and stream-recovery tests; Python (30) adds "
+            "those plus diagnostic-counter and status-machine tests; Rust (16) "
+            "adds stream-recovery only."
         ),
         "tables": [
             {
@@ -501,7 +501,16 @@ SECTIONS = [
                     "sensor/minimal profile, two consecutive frames, "
                     "garbage-prefix skip). The Rust `bytes_to_drain_for_resync` "
                     "logic was also fixed to correctly await payload bytes for "
-                    "minimal (no-length) profiles in streaming mode."
+                    "minimal (no-length) profiles in streaming mode.\n>\n"
+                    "> **Python / TypeScript / JavaScript / C# byte mode.** These "
+                    "targets have no standalone `test_streaming` suite; their "
+                    "byte-at-a-time `AccumulatingReader` recovery is exercised by "
+                    "the streaming scenarios in each `test_negative.*` "
+                    "(`Streaming: Corrupted CRC detection`, `Streaming: Garbage "
+                    "data handling`, `Stream mode: recovers after garbage prefix`, "
+                    "and `Partial frame across buffer boundary`). This is the "
+                    "accepted substitute for a dedicated streaming suite on those "
+                    "targets."
                 ),
             },
             {
@@ -526,7 +535,7 @@ SECTIONS = [
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
                           "JS": "❌", "C#": "❌", "Rust": "N/A"}),
                     _row("TCP transport",
-                         {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
+                         {"C": "N/A", "C++": "❌", "Python": "✅", "TS": "❌",
                           "JS": "❌", "C#": "❌", "Rust": "N/A"}),
                     _row("UDP transport",
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
@@ -542,12 +551,20 @@ SECTIONS = [
                     "> **Closed.** `StructFrameSdk` subscribe/dispatch is now "
                     "tested with mock transports in six languages:\n"
                     "> - **C++** -- `tests/cpp/test_sdk_subscribe.cpp` (17 `run_test` registrations)\n"
-                    "> - **Python** -- `tests/py/test_sdk.py` (7 test functions, 29 `run_test` assertions)\n"
-                    "> - **TypeScript** -- `tests/ts/test_sdk.ts` (6 test functions, 23 `assert` assertions)\n"
-                    "> - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (26 `Assert` assertions)\n"
-                    "> - **JavaScript** -- `tests/js/test_sdk.js` (6 test functions, 23 `assert` assertions)\n"
+                    "> - **Python** -- `tests/py/test_sdk.py` (8 test functions, 31 `run_test` assertions)\n"
+                    "> - **TypeScript** -- `tests/ts/test_sdk.ts` (7 test functions, 25 `assert` assertions)\n"
+                    "> - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (32 `Assert` assertions)\n"
+                    "> - **JavaScript** -- `tests/js/test_sdk.js` (7 test functions, 25 `assert` assertions)\n"
                     "> - **Rust** -- `tests/rust/src/main.rs` `test_sdk_subscribe` "
                     "runner (5 test blocks, 13 `expect!` assertions)\n>\n"
+                    "> **Lifecycle parity (handler isolation).** Python, TypeScript, "
+                    "and JavaScript `test_sdk.*` each add a `throwing handler does "
+                    "not stop siblings` regression (the SDK isolates every handler "
+                    "in try/catch), matching the C# "
+                    "`TestThrowingHandlerDoesNotStopSiblings` lifecycle test. "
+                    "`StrictOrdering` (FIFO send-queue) and persistent/transient "
+                    "subscriber coexistence remain C#-only SDK features, so they "
+                    "have no cross-language port.\n>\n"
                     "> The C# suite additionally registers five dedicated SDK "
                     "runners (selected via `--runner <name>` in "
                     "`tests/csharp/TestRunner.cs`):\n"
@@ -587,11 +604,22 @@ SECTIONS = [
                     "> - **C#** -- `tests/csharp/TestSdkRequestResponse.cs` "
                     "(`test_sdk_request_response` runner: basic, timeout, match, "
                     "concurrent, cleanup, CancellationToken)\n>\n"
-                    "> **Gap (Low):** Runtime serial, TCP, UDP, and WebSocket "
-                    "transport behavior remains uncovered. `StructFrameSdk` and "
-                    "`AsyncStructFrameSdk` routing are tested with mock transports, "
-                    "but the concrete socket/serial/WebSocket classes are not "
-                    "exercised end to end."
+                    "> **Scope (by design).** Request/response is intentionally a "
+                    "C#/Python/TypeScript SDK feature. The C++, JavaScript, and Rust "
+                    "SDKs do not expose a `request()` / `RequestAsync()` API, so the "
+                    "`N/A` cells in the two request/response rows above mark an "
+                    "intentional scope decision -- not an untested gap.\n>\n"
+                    "> **Closed (Python TCP).** The concrete `TcpTransport` is now "
+                    "exercised end to end over a localhost socket in "
+                    "`tests/py/test_tcp_transport.py` (9 assertions: connect/"
+                    "is_connected lifecycle, peer->client receive, client->peer "
+                    "send, a full `StructFrameSdk` frame dispatch over the live "
+                    "socket, and peer-disconnect close-callback).\n>\n"
+                    "> **Gap (Low):** Serial, UDP, and WebSocket transports -- and "
+                    "TCP in C++/TS/JS/C# -- remain uncovered end to end. "
+                    "`StructFrameSdk` and `AsyncStructFrameSdk` routing are tested "
+                    "with mock transports, but those concrete socket/serial/"
+                    "WebSocket classes are not yet exercised against a live endpoint."
                 ),
             },
         ],
@@ -857,6 +885,11 @@ TRAILING_SECTIONS = [
             "| Rust `AccumulatingReader` | "
             "`tests/rust/fuzz/fuzz_targets/parser.rs` (+ `Cargo.toml`) | "
             "cargo-fuzz |\n\n"
+            "The C++, TypeScript, JavaScript, and C# parsers have no dedicated "
+            "fuzz harness yet; they rely on the cross-language decode matrix and "
+            "their `test_negative.*` malformed-input suites for adversarial "
+            "coverage. Adding native fuzzers (libFuzzer for C++, jsfuzz / "
+            "fast-check for TS/JS, SharpFuzz for C#) is a tracked follow-up.\n\n"
             "### Property-based tests\n\n"
             "`tests/test_property_roundtrip.py` uses Hypothesis to generate "
             "random instances of selected message classes and assert that Python "

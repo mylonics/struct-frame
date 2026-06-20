@@ -195,6 +195,30 @@ function testSendRaw() {
   });
 }
 
+/**
+ * Lifecycle parity with the C# `TestThrowingHandlerDoesNotStopSiblings` test:
+ * a handler that throws must not prevent sibling handlers from running, nor
+ * escape into the transport callback.
+ */
+function testThrowingHandlerDoesNotStopSiblings() {
+  const transport = new MockTransport();
+  const sdk = makeSdk(transport);
+
+  let siblingFired = false;
+  sdk.subscribe(BasicTypesMessage._msgid, () => { throw new Error('boom'); });
+  sdk.subscribe(BasicTypesMessage._msgid, () => { siblingFired = true; });
+
+  let errorThrown = false;
+  try {
+    transport.injectData(encodeBasicTypes(1, false));
+  } catch {
+    errorThrown = true;
+  }
+
+  assert('handler isolation: throwing handler does not propagate', !errorThrown);
+  assert('handler isolation: sibling handler still fires', siblingFired);
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -210,6 +234,7 @@ testMultipleHandlers();
 testUnsubscribe();
 testNoHandlerForUnregisteredId();
 testWithCodecDeserializesMessage();
+testThrowingHandlerDoesNotStopSiblings();
 
 // testSendRaw is async — run it last and exit when it resolves
 testSendRaw().then(() => {

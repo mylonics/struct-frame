@@ -93,7 +93,7 @@ Higher-level test infrastructure (includes `profile_runner.h`):
 
 ### 4. Negative Tests (`test_negative.*`)
 **Purpose**: Validates parsers reject corrupted, truncated, or malformed frames.
-13 uniform scenarios implemented identically in all 7 languages — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
+15 uniform scenarios implemented identically in all 7 languages (plus language-specific extras) — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
 
 ### 5. Streaming Tests (`test_streaming.*`)
 **Purpose**: Validates byte-at-a-time accumulating-reader behaviour (C, Rust).
