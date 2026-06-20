@@ -4,7 +4,6 @@
 #nullable enable
 
 using System;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -114,7 +113,7 @@ namespace StructFrame.Sdk
         private bool _disposed;
 
         public event EventHandler<byte[]>? DataReceived;
-    public event EventHandler<ReadOnlyMemory<byte>>? DataReceivedMemory;
+        public event EventHandler<ReadOnlyMemory<byte>>? DataReceivedMemory;
         public event EventHandler<Exception>? ErrorOccurred;
         public event EventHandler? ConnectionClosed;
 
@@ -205,17 +204,7 @@ namespace StructFrame.Sdk
         }
 
         private static byte[] ToByteArrayForLegacyEvent(ReadOnlyMemory<byte> data)
-        {
-            if (MemoryMarshal.TryGetArray(data, out ArraySegment<byte> segment) &&
-                segment.Array != null &&
-                segment.Offset == 0 &&
-                segment.Count == segment.Array.Length)
-            {
-                return segment.Array;
-            }
-
-            return data.ToArray();
-        }
+            => data.ToArray();
 
         protected void OnErrorOccurred(Exception error)
         {

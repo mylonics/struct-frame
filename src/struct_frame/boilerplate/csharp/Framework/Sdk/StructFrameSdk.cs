@@ -144,9 +144,9 @@ namespace StructFrame.Sdk
         private readonly bool _strictOrdering;
 
         // Transport event delegates kept as fields so they can be unsubscribed in Dispose.
-    private readonly EventHandler<byte[]>? _onDataReceived;
-    private readonly EventHandler<ReadOnlyMemory<byte>>? _onDataReceivedMemory;
-    private readonly IBufferReceiveTransport? _bufferReceiveTransport;
+        private readonly EventHandler<byte[]>? _onDataReceived;
+        private readonly EventHandler<ReadOnlyMemory<byte>>? _onDataReceivedMemory;
+        private readonly IBufferReceiveTransport? _bufferReceiveTransport;
         private readonly EventHandler<Exception> _onErrorOccurred;
         private readonly EventHandler _onConnectionClosed;
 

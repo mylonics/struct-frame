@@ -124,6 +124,32 @@ static class TestBaseTransport
     }
 
     // -------------------------------------------------------------------------
+    // F2d. Legacy DataReceived subscribers must not alias a reusable full buffer.
+    // -------------------------------------------------------------------------
+    static void TestReceiveMemoryFullBufferLegacyEvent()
+    {
+        var transport = new InstrumentedTransport();
+        byte[]? received = null;
+        int calls = 0;
+
+        transport.DataReceived += (_, data) =>
+        {
+            received = data;
+            calls++;
+        };
+
+        byte[] backing = new byte[] { 30, 31, 32 };
+        transport.ForceReceiveMemory(backing, 0, backing.Length);
+        backing[0] = 99;
+
+        Assert("base-receive-legacy-full: event fired once", calls == 1);
+        Assert("base-receive-legacy-full: legacy event returns a copy",
+               received != null && !ReferenceEquals(received, backing));
+        Assert("base-receive-legacy-full: legacy event stays stable after buffer reuse",
+               received != null && received[0] == 30 && received[2] == 32);
+    }
+
+    // -------------------------------------------------------------------------
     // F3. AutoReconnect: ConnectionClosed triggers reconnect only when enabled.
     // -------------------------------------------------------------------------
     static async Task TestAutoReconnectHonored()
@@ -191,8 +217,9 @@ static class TestBaseTransport
 
         TestSemaphoreSerializesConcurrentWrites().GetAwaiter().GetResult();
         TestRomOverloadReachesSendCore().GetAwaiter().GetResult();
-    TestReceiveMemorySliceEvent();
-    TestReceiveMemorySliceLegacyEvent();
+        TestReceiveMemorySliceEvent();
+        TestReceiveMemorySliceLegacyEvent();
+        TestReceiveMemoryFullBufferLegacyEvent();
         TestAutoReconnectHonored().GetAwaiter().GetResult();
         TestDisposeIdempotent().GetAwaiter().GetResult();
 
