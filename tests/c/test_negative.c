@@ -489,14 +489,27 @@ bool test_partial_frame_boundary(void) {
   
   // Feed first half via add_data, then call next() to save partial data
   accumulating_reader_add_data(&reader, buffer, mid);
-  accumulating_reader_next(&reader);  // Should return invalid but save partial data
+  frame_msg_info_t partial = accumulating_reader_next(&reader);
+  if (partial.valid) return false;
   
   // Feed second half - adds to internal_buffer completing the frame
   accumulating_reader_add_data(&reader, buffer + mid, frame_size - mid);
   
   // Call next() once all data is present - should successfully decode the frame
   frame_msg_info_t result = accumulating_reader_next(&reader);
-  return result.valid;  // Expect success after accumulating both halves
+  if (!result.valid) return false;
+  if (result.msg_id != SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID) return false;
+
+  SerializationTestBasicTypesMessage decoded;
+  SerializationTestBasicTypesMessage_deserialize(result.msg_data, result.msg_len, &decoded);
+  if (decoded.small_int != msg.small_int) return false;
+  if (decoded.flag != msg.flag) return false;
+
+  // No extra complete frame should remain.
+  frame_msg_info_t trailing = accumulating_reader_next(&reader);
+  if (trailing.valid) return false;
+
+  return true;
 }
 
 /**
@@ -796,6 +809,149 @@ bool test_stream_recovers_after_garbage(void) {
   return false;
 }
 
+/**
+ * Test: After a CRC failure the reader continues and decodes the next valid frame,
+ * and the buffer-exhausted signal is only raised after ALL frames are consumed.
+ */
+bool test_crc_error_then_valid_frame(void) {
+  uint8_t buffer[4096];
+  SerializationTestBasicTypesMessage msg;
+
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
+
+  create_test_message(&msg);
+
+  /* Frame 1: valid */
+  msg.small_int = 1;
+  uint8_t payload1[256];
+  size_t ps1 = SerializationTestBasicTypesMessage_serialize(&msg, payload1);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      payload1, ps1, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+
+  /* Frame 2: CRC-corrupted */
+  msg.small_int = 2;
+  uint8_t payload2[256];
+  size_t ps2 = SerializationTestBasicTypesMessage_serialize(&msg, payload2);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      payload2, ps2, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  size_t frame2_end = buffer_writer_size(&writer);
+
+  /* Frame 3: valid */
+  msg.small_int = 3;
+  uint8_t payload3[256];
+  size_t ps3 = SerializationTestBasicTypesMessage_serialize(&msg, payload3);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      payload3, ps3, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  size_t total = buffer_writer_size(&writer);
+
+  buffer[frame2_end - 1] ^= 0xFF;
+  buffer[frame2_end - 2] ^= 0xFF;
+
+  buffer_reader_t reader;
+  buffer_reader_init(&reader, &PROFILE_STANDARD_CONFIG, buffer, total, get_message_info);
+
+  /* Frame 1 must decode successfully */
+  frame_msg_info_t result1 = buffer_reader_next(&reader);
+  if (!result1.valid) return false;
+
+  /* Frame 2 must report a CRC failure — status MUST be CRC_FAILURE, not NONE */
+  frame_msg_info_t result2 = buffer_reader_next(&reader);
+  if (result2.valid) return false;
+  if (result2.status != FRAME_MSG_STATUS_CRC_FAILURE) return false;
+
+  /* Reader must continue past the CRC error and decode frame 3 */
+  frame_msg_info_t result3 = buffer_reader_next(&reader);
+  if (!result3.valid) return false;
+
+  /* Buffer must now be fully consumed */
+  if (buffer_reader_has_more(&reader)) return false;
+
+  return true;
+}
+
+/**
+ * Test: AccumulatingReader preserves CRC error status when the failed frame spans
+ * two add_data() calls (the internal-buffer reassembly path).
+ */
+bool test_split_buffer_crc_error_status(void) {
+  uint8_t buf[4096];
+  SerializationTestBasicTypesMessage msg;
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buf, sizeof(buf));
+
+  create_test_message(&msg);
+
+  /* Frame 1: valid */
+  msg.small_int = 1;
+  uint8_t p1[256]; size_t ps1 = SerializationTestBasicTypesMessage_serialize(&msg, p1);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      p1, ps1, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+
+  /* Frame 2: CRC-corrupted */
+  msg.small_int = 2;
+  uint8_t p2[256]; size_t ps2 = SerializationTestBasicTypesMessage_serialize(&msg, p2);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      p2, ps2, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  size_t frame2_end = buffer_writer_size(&writer);
+
+  /* Frame 3: valid */
+  msg.small_int = 3;
+  uint8_t p3[256]; size_t ps3 = SerializationTestBasicTypesMessage_serialize(&msg, p3);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      p3, ps3, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  size_t total = buffer_writer_size(&writer);
+
+  buf[frame2_end - 1] ^= 0xFF;
+  buf[frame2_end - 2] ^= 0xFF;
+
+  /* Split: frame 2's two CRC bytes go in the second add_data() call */
+  size_t split_point = frame2_end - 2;
+  const uint8_t* chunk1 = buf;
+  const uint8_t* chunk2 = buf + split_point;
+  size_t chunk2_len = total - split_point;
+
+  uint8_t internal_buffer[1024];
+  accumulating_reader_t reader;
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), get_message_info);
+
+  accumulating_reader_add_data(&reader, chunk1, split_point);
+
+  /* Frame 1 must decode from the first chunk */
+  frame_msg_info_t result1 = accumulating_reader_next(&reader);
+  if (!result1.valid) return false;
+
+  /* Frame 2 is incomplete — partial data saved to internal buffer */
+  frame_msg_info_t partial = accumulating_reader_next(&reader);
+  if (partial.valid) return false;
+
+  accumulating_reader_add_data(&reader, chunk2, chunk2_len);
+
+  /* CRC bytes of frame 2 arrive — frame 2 is complete but CRC-corrupted.
+   * Status MUST be CRC_FAILURE, not NONE. */
+  frame_msg_info_t result2 = accumulating_reader_next(&reader);
+  if (result2.valid) return false;
+  if (result2.status != FRAME_MSG_STATUS_CRC_FAILURE) return false;
+
+  /* Frame 3 must still decode from the remainder of chunk2 */
+  frame_msg_info_t result3 = accumulating_reader_next(&reader);
+  if (!result3.valid) return false;
+
+  return true;
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)(void);
 
@@ -823,10 +979,12 @@ int main(void) {
     {"Invalid message ID rejection", test_invalid_msg_id},
     {"Invalid start bytes detection", test_invalid_start_bytes},
     {"Minimal profile: Truncated frame", test_minimal_profile_truncated_frame},
+    {"Multiple frames: CRC error then valid frame", test_crc_error_then_valid_frame},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
     {"Network profile: Corrupted pkg_id", test_network_corrupted_pkg_id},
     {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
+    {"Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status},
     {"Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage},

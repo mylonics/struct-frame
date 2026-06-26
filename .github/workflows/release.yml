@@ -106,7 +106,7 @@ jobs:
           echo "Updated pyproject.toml to version $NEW_VERSION"
 
           # Generate changelog using git-changelog
-          git-changelog --in-place --output CHANGELOG.md --provider github --bump "$NEW_VERSION"
+          git-changelog --output CHANGELOG.md --provider github --bump "$NEW_VERSION"
           echo "Updated CHANGELOG.md with version $NEW_VERSION using git-changelog"
 
           # Commit and push to bump branch

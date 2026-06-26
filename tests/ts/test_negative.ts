@@ -18,6 +18,8 @@ import {
   ProfileNetworkConfig,
 } from '../generated/ts/frame-profiles';
 
+import { FrameMsgStatus } from '../generated/ts/frame-base';
+
 import {
   BasicTypesMessage,
   getMessageInfo
@@ -289,14 +291,24 @@ function testPartialFrameBoundary(): boolean {
   
   // Feed first half via addData, then call next() to save partial data to internal buffer
   reader.addData(buffer.subarray(0, mid));
-  reader.next();  // Should return invalid but save partial data internally
+  const partial = reader.next();
+  if (partial.valid) return false;
   
   // Feed second half - adds to internal buffer completing the frame
   reader.addData(buffer.subarray(mid, frameSize));
   
   // Call next() once all data is present - should successfully decode the frame
   const result = reader.next();
-  return result.valid;  // Expect success after accumulating both halves
+  if (!result.valid) return false;
+  if (result.msgId !== BasicTypesMessage._msgid) return false;
+
+  const decoded = BasicTypesMessage.deserialize(result);
+  if (decoded.smallInt !== msg.smallInt) return false;
+  if (decoded.flag !== msg.flag) return false;
+
+  if (reader.hasMore()) return false;
+
+  return true;
 }
 
 /**
@@ -551,6 +563,115 @@ function testStreamRecoversAfterGarbage(): boolean {
   return false;
 }
 
+/**
+ * Test: After a CRC failure the reader continues and decodes the next valid frame,
+ * and the buffer-exhausted signal (hasMore() === false) is only set after ALL frames
+ * are consumed — not immediately after the CRC error.
+ */
+function testCrcErrorThenValidFrame(): boolean {
+  const writer = new BufferWriter(ProfileStandardConfig, 4096);
+  const msg = createTestMessage();
+
+  // Frame 1: valid
+  msg.smallInt = 1;
+  writer.write(msg);
+
+  // Frame 2: CRC-corrupted
+  msg.smallInt = 2;
+  writer.write(msg);
+  const frame2End = writer.size;
+
+  // Frame 3: valid
+  msg.smallInt = 3;
+  writer.write(msg);
+  const total = writer.size;
+
+  const buffer = Buffer.from(writer.data());
+  buffer[frame2End - 1] ^= 0xFF;
+  buffer[frame2End - 2] ^= 0xFF;
+
+  const reader = new BufferReader(ProfileStandardConfig, buffer.subarray(0, total), getMessageInfo);
+
+  // Frame 1 must decode successfully
+  const result1 = reader.next();
+  if (!result1.valid) return false;
+
+  // Frame 2 must report a CRC failure — status MUST be CrcFailure, not None
+  const result2 = reader.next();
+  if (result2.valid) return false;
+  if (result2.status !== FrameMsgStatus.CrcFailure) return false;
+
+  // Reader must continue past the CRC error and decode frame 3
+  const result3 = reader.next();
+  if (!result3.valid) return false;
+
+  // Buffer must now be fully consumed
+  if (reader.hasMore()) return false;
+
+  return true;
+}
+
+/**
+ * Test: AccumulatingReader preserves CRC error status when the failed frame spans
+ * two addData() calls (the internal-buffer reassembly path).
+ * Bug: the internal-buffer CRC path returned status=None instead of status=CrcFailure,
+ * hiding the error from callers.
+ */
+function testSplitBufferCrcErrorStatus(): boolean {
+  const writer = new BufferWriter(ProfileStandardConfig, 4096);
+  const msg = createTestMessage();
+
+  // Frame 1: valid
+  msg.smallInt = 1;
+  writer.write(msg);
+
+  // Frame 2: CRC-corrupted
+  msg.smallInt = 2;
+  writer.write(msg);
+  const frame2End = writer.size;
+
+  // Frame 3: valid
+  msg.smallInt = 3;
+  writer.write(msg);
+  const total = writer.size;
+
+  const buffer = Buffer.from(writer.data());
+  buffer[frame2End - 1] ^= 0xFF;
+  buffer[frame2End - 2] ^= 0xFF;
+
+  // Split so that frame 2's two CRC bytes land in the second addData() call,
+  // forcing frame 2 to be assembled across the internal accumulation buffer.
+  const splitPoint = frame2End - 2;
+  const chunk1 = buffer.subarray(0, splitPoint);
+  const chunk2 = buffer.subarray(splitPoint, total);
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+
+  reader.addData(chunk1);
+
+  // Frame 1 must decode from the first chunk
+  const result1 = reader.next();
+  if (!result1.valid) return false;
+
+  // Frame 2 is still incomplete (no CRC bytes yet) — partial data saved internally
+  const partial = reader.next();
+  if (partial.valid) return false;
+
+  reader.addData(chunk2);
+
+  // CRC bytes of frame 2 arrive — frame 2 is now complete but CRC-corrupted.
+  // Status MUST be CrcFailure (not None) so the caller knows to keep draining.
+  const result2 = reader.next();
+  if (result2.valid) return false;
+  if (result2.status !== FrameMsgStatus.CrcFailure) return false;
+
+  // Frame 3 must still be decodable from the remainder of chunk2
+  const result3 = reader.next();
+  if (!result3.valid) return false;
+
+  return true;
+}
+
 function main(): number {
   console.log('\n========================================');
   console.log('NEGATIVE TESTS - TypeScript Parser');
@@ -569,7 +690,9 @@ function main(): number {
     ['Invalid message ID rejection', testInvalidMsgId],
     ['Invalid start bytes detection', testInvalidStartBytes],
     ['Minimal profile: Truncated frame', testMinimalProfileTruncatedFrame],
+    ['Multiple frames: CRC error then valid frame', testCrcErrorThenValidFrame],
     ['Multiple frames: Corrupted middle frame', testMultipleCorruptedFrames],
+    ['Split-buffer: CRC error status preserved', testSplitBufferCrcErrorStatus],
     ['Network profile: Corrupted pkg_id', testNetworkCorruptedPkgId],
     ['Network profile: SysId/CompId corruption', testNetworkSysIdCompId],
     ['Partial frame across buffer boundary', testPartialFrameBoundary],

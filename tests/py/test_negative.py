@@ -397,14 +397,31 @@ def test_partial_frame_boundary():
     
     # Feed first half via add_data, then call next() to save partial data to internal buffer
     reader.add_data(buffer[:mid])
-    reader.next()  # Should return invalid but save partial data internally
+    partial = reader.next()
+    if partial.valid:
+        return False
     
     # Feed second half - adds to internal buffer completing the frame
     reader.add_data(buffer[mid:frame_size])
     
     # Call next() once all data is present - should successfully decode the frame
     result = reader.next()
-    return result.valid  # Expect success after accumulating both halves
+    if not result.valid:
+        return False
+    if result.msg_id != BasicTypesMessage.MSG_ID:
+        return False
+
+    decoded = BasicTypesMessage.deserialize(result)
+    if decoded.small_int != msg.small_int:
+        return False
+    if decoded.flag != msg.flag:
+        return False
+
+    # Reader should be drained after the single reassembled frame.
+    if reader.has_more():
+        return False
+
+    return True
 
 
 def test_buffer_mode_invalid_result_has_diagnostics():
@@ -852,6 +869,117 @@ def test_stream_recovers_after_garbage():
     return False
 
 
+def test_crc_error_then_valid_frame():
+    """After a CRC failure the reader continues and decodes the next valid frame,
+    and the buffer-exhausted signal is only raised after ALL frames are consumed."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=4096)
+
+    # Frame 1: valid
+    msg.small_int = 1
+    writer.write(msg)
+
+    # Frame 2: CRC-corrupted
+    msg.small_int = 2
+    writer.write(msg)
+    frame2_end = writer.size()
+
+    # Frame 3: valid
+    msg.small_int = 3
+    writer.write(msg)
+    total = writer.size()
+
+    buffer = bytearray(writer.data())
+    buffer[frame2_end - 1] ^= 0xFF
+    buffer[frame2_end - 2] ^= 0xFF
+
+    reader = BufferReader(PROFILE_STANDARD_CONFIG, buffer=bytes(buffer[:total]), get_message_info=get_message_info)
+
+    # Frame 1 must decode successfully
+    result1 = reader.next()
+    if not result1.valid:
+        return False
+
+    # Frame 2 must report a CRC failure — status MUST be CRC_FAILURE, not NONE
+    result2 = reader.next()
+    if result2.valid:
+        return False
+    if result2.status != FrameMsgStatus.CRC_FAILURE:
+        return False
+
+    # Reader must continue past the CRC error and decode frame 3
+    result3 = reader.next()
+    if not result3.valid:
+        return False
+
+    # Buffer must now be fully consumed
+    if reader.has_more():
+        return False
+
+    return True
+
+
+def test_split_buffer_crc_error_status():
+    """AccumulatingReader preserves CRC error status when the failed frame spans
+    two add_data() calls (the internal-buffer reassembly path)."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=4096)
+
+    # Frame 1: valid
+    msg.small_int = 1
+    writer.write(msg)
+
+    # Frame 2: CRC-corrupted
+    msg.small_int = 2
+    writer.write(msg)
+    frame2_end = writer.size()
+
+    # Frame 3: valid
+    msg.small_int = 3
+    writer.write(msg)
+    total = writer.size()
+
+    buffer = bytearray(writer.data())
+    buffer[frame2_end - 1] ^= 0xFF
+    buffer[frame2_end - 2] ^= 0xFF
+
+    # Split: frame 2's two CRC bytes go in the second add_data() call
+    split_point = frame2_end - 2
+    chunk1 = bytes(buffer[:split_point])
+    chunk2 = bytes(buffer[split_point:total])
+
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
+
+    reader.add_data(chunk1)
+
+    # Frame 1 must decode from the first chunk
+    result1 = reader.next()
+    if not result1.valid:
+        return False
+
+    # Frame 2 is incomplete — partial data saved to internal buffer
+    partial = reader.next()
+    if partial.valid:
+        return False
+
+    reader.add_data(chunk2)
+
+    # CRC bytes of frame 2 arrive — frame 2 is complete but CRC-corrupted.
+    # Status MUST be CRC_FAILURE, not NONE.
+    result2 = reader.next()
+    if result2.valid:
+        return False
+    if result2.status != FrameMsgStatus.CRC_FAILURE:
+        return False
+
+    # Frame 3 must still decode from the remainder of chunk2
+    result3 = reader.next()
+    if not result3.valid:
+        return False
+
+    return True
+
+
 def main():
     print("\n========================================")
     print("NEGATIVE TESTS - Python Parser")
@@ -876,10 +1004,12 @@ def main():
         ("Invalid message ID rejection", test_invalid_msg_id),
         ("Invalid start bytes detection", test_invalid_start_bytes),
         ("Minimal profile: Truncated frame", test_minimal_profile_truncated_frame),
+        ("Multiple frames: CRC error then valid frame", test_crc_error_then_valid_frame),
         ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
         ("Network profile: Corrupted pkg_id byte", test_network_corrupted_pkg_id),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary", test_partial_frame_boundary),
+        ("Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status),
         ("Status: COLLECTING during frame reception", test_status_collecting),
         ("Status: CRC_FAILURE on bad checksum", test_status_crc_failure),
         ("Status: SYNC_RECOVERY on forced resync", test_status_sync_recovery),

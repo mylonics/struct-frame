@@ -361,14 +361,29 @@ bool test_partial_frame_boundary() {
   
   // Feed first half, then call next() to save partial data to internal buffer
   reader.add_data(buffer.data(), mid);
-  reader.next();  // Should return invalid but save partial data internally
+  auto partial = reader.next();
+  if (partial.valid) return false;
   
   // Feed second half - adds to internal buffer completing the frame
   reader.add_data(buffer.data() + mid, frame_size - mid);
   
   // Call next() once all data is present - should successfully decode the frame
   auto result = reader.next();
-  return result.valid;  // Expect success after accumulating both halves
+  if (!result.valid) return false;
+  if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
+  if (result.msg_data == nullptr) return false;
+
+  BasicTypesMessage decoded;
+  decoded.deserialize(result.msg_data, result.msg_len);
+  auto expected = std::get<BasicTypesMessage>(msg);
+  if (decoded.small_int != expected.small_int) return false;
+  if (decoded.flag != expected.flag) return false;
+
+  // No extra complete frame should remain.
+  auto trailing = reader.next();
+  if (trailing.valid) return false;
+
+  return true;
 }
 
 /**
@@ -576,6 +591,106 @@ bool test_stream_recovers_after_garbage() {
   return false;
 }
 
+/**
+ * Test: After a CRC failure the reader continues and decodes the next valid frame,
+ * and the buffer-exhausted signal is only raised after ALL frames are consumed.
+ */
+bool test_crc_error_then_valid_frame() {
+  std::vector<uint8_t> buffer(4096);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+
+  auto msg0 = StandardMessages::get_message(0);
+  auto msg1 = StandardMessages::get_message(1);
+  auto msg2 = StandardMessages::get_message(2);
+
+  // Frame 1: valid
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg0);
+
+  // Frame 2: CRC-corrupted
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg1);
+  size_t frame2_end = writer.size();
+
+  // Frame 3: valid
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg2);
+  size_t total = writer.size();
+
+  buffer[frame2_end - 1] ^= 0xFF;
+  buffer[frame2_end - 2] ^= 0xFF;
+
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+      buffer.data(), total, get_message_info);
+
+  // Frame 1 must decode successfully
+  auto result1 = reader.next();
+  if (!result1.valid) return false;
+
+  // Frame 2 must report a CRC failure — status MUST be CrcFailure, not None
+  auto result2 = reader.next();
+  if (result2.valid) return false;
+  if (result2.status != FrameMsgStatus::CrcFailure) return false;
+
+  // Reader must continue past the CRC error and decode frame 3
+  auto result3 = reader.next();
+  if (!result3.valid) return false;
+
+  // Buffer must now be fully consumed
+  if (reader.has_more()) return false;
+
+  return true;
+}
+
+bool test_split_buffer_crc_error_status() {
+  std::vector<uint8_t> buffer(4096);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+
+  auto msg0 = StandardMessages::get_message(0);
+  auto msg1 = StandardMessages::get_message(1);
+  auto msg2 = StandardMessages::get_message(2);
+
+  // Frame 1: valid
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg0);
+
+  // Frame 2: CRC-corrupted
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg1);
+  size_t frame2_end = writer.size();
+
+  // Frame 3: valid
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg2);
+  size_t total = writer.size();
+
+  buffer[frame2_end - 1] ^= 0xFF;
+  buffer[frame2_end - 2] ^= 0xFF;
+
+  /* Split: frame 2's two CRC bytes go in the second add_data() call */
+  size_t split_point = frame2_end - 2;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+
+  reader.add_data(buffer.data(), split_point);
+
+  /* Frame 1 must decode from the first chunk */
+  auto result1 = reader.next();
+  if (!result1.valid) return false;
+
+  /* Frame 2 is incomplete — partial data saved to internal buffer */
+  auto partial = reader.next();
+  if (partial.valid) return false;
+
+  reader.add_data(buffer.data() + split_point, total - split_point);
+
+  /* CRC bytes of frame 2 arrive — frame 2 is complete but CRC-corrupted.
+   * Status MUST be CrcFailure, not None. */
+  auto result2 = reader.next();
+  if (result2.valid) return false;
+  if (result2.status != FrameMsgStatus::CrcFailure) return false;
+
+  /* Frame 3 must still decode from the remainder of the second chunk */
+  auto result3 = reader.next();
+  if (!result3.valid) return false;
+
+  return true;
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)();
 
@@ -603,10 +718,12 @@ int main() {
     {"Invalid message ID rejection", test_invalid_msg_id},
     {"Invalid start bytes detection", test_invalid_start_bytes},
     {"Minimal profile: Truncated frame", test_minimal_profile_truncated_frame},
+    {"Multiple frames: CRC error then valid frame", test_crc_error_then_valid_frame},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
     {"Network profile: Corrupted pkg_id", test_network_corrupted_pkg_id},
     {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
+    {"Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status},
     {"Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage_data},
