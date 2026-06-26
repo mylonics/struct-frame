@@ -515,7 +515,9 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
         /* Advance past complete frames — valid or CRC-failed */
         reader->offset += result.frame_size;
     } else if (result.status == FRAME_MSG_STATUS_WAITING_FOR_START) {
-        /* Head byte is not a valid start — scan forward to next start byte */
+        /* Head byte is not a valid start — scan forward to next start byte,
+         * reporting a SyncRecovery event so try_next() keeps advancing. */
+        size_t old_offset = reader->offset;
         if (reader->config->header.num_start_bytes >= 1) {
             /* Compute the expected start byte for this profile */
             uint8_t sb1 = reader->config->header.start_byte1;
@@ -535,6 +537,8 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
         } else {
             reader->offset = reader->size;
         }
+        result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+        result.frame_size = reader->offset - old_offset;
     }
     /* COLLECTING: leave offset unchanged — frame is incomplete (normal end-of-buffer) */
 
@@ -548,6 +552,19 @@ static inline size_t buffer_reader_remaining(const buffer_reader_t* reader) {
 }
 static inline bool buffer_reader_has_more(const buffer_reader_t* reader) {
     return reader->offset < reader->size;
+}
+
+/* Try to parse the next frame, returning true while forward progress is made
+ * (valid frame, CRC-failed frame, or resync bytes skipped).  Returns false only
+ * when the buffer is drained or only a trailing partial frame remains.
+ * Canonical drain loop:
+ *   frame_msg_info_t f;
+ *   while (buffer_reader_try_next(&reader, &f)) {
+ *       if (f.valid) handle(f); // else CrcFailure or SyncRecovery
+ *   } */
+static inline bool buffer_reader_try_next(buffer_reader_t* reader, frame_msg_info_t* out) {
+    *out = buffer_reader_next(reader);
+    return out->valid || out->frame_size > 0;
 }
 
 /*===========================================================================
@@ -793,20 +810,28 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
     }
 
     if (result.status == FRAME_MSG_STATUS_WAITING_FOR_START) {
-        /* Head byte is not a start byte — scan forward */
+        /* Head byte is not a start byte — scan forward, reporting a SyncRecovery event
+         * so accumulating_reader_try_next() keeps draining past garbage bytes. */
+        size_t old_current_offset = reader->current_offset;
         if (reader->config->header.num_start_bytes >= 1) {
             size_t scan_start = reader->current_offset + 1;
             if (scan_start < reader->current_size) {
                 const void* p = memchr(reader->current_buffer + scan_start,
                                        (int)sb1,
                                        reader->current_size - scan_start);
-                if (p) {
-                    reader->current_offset = (size_t)((const uint8_t*)p - reader->current_buffer);
-                    return result; /* caller calls next() again from new position */
-                }
+                reader->current_offset = p
+                    ? (size_t)((const uint8_t*)p - reader->current_buffer)
+                    : reader->current_size;
+            } else {
+                reader->current_offset = reader->current_size;
             }
+        } else {
+            reader->current_offset = reader->current_size;
         }
-        reader->current_offset = reader->current_size;
+        result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+        result.frame_size = reader->current_offset - old_current_offset;
+        reader->diagnostics.cnt_sync_recoveries++;
+        reader->diagnostics.cnt_failed_bytes += (uint32_t)result.frame_size;
         return result;
     }
 
@@ -1147,6 +1172,20 @@ static inline bool accumulating_reader_has_partial(const accumulating_reader_t* 
 
 static inline size_t accumulating_reader_partial_size(const accumulating_reader_t* reader) {
     return reader->internal_data_len;
+}
+
+/* Try to parse the next frame, returning true while forward progress is made
+ * (valid frame, CRC-failed frame, or resync bytes skipped).  Returns false only
+ * when the current buffer is exhausted or only a trailing partial is pending.
+ * Canonical drain loop:
+ *   frame_msg_info_t f;
+ *   while (accumulating_reader_try_next(&reader, &f)) {
+ *       if (f.valid) handle(f); // else CrcFailure or SyncRecovery
+ *   }
+ *   if (accumulating_reader_has_partial(&reader)) { // feed more data } */
+static inline bool accumulating_reader_try_next(accumulating_reader_t* reader, frame_msg_info_t* out) {
+    *out = accumulating_reader_next(reader);
+    return out->valid || out->frame_size > 0;
 }
 
 static inline accumulating_reader_state_t accumulating_reader_state(const accumulating_reader_t* reader) {

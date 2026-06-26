@@ -95,16 +95,6 @@ namespace StructFrame.Framing
         /// </summary>
         public State CurrentState => _state;
 
-        /// <summary>
-        /// Check if there's a partial message waiting for more data.
-        /// </summary>
-        public bool HasPartial => _internalDataLen > 0;
-
-        /// <summary>
-        /// Get the size of the partial message data.
-        /// </summary>
-        public int PartialSize => _internalDataLen;
-
         // =========================================================================
         // Buffer Mode API
         // =========================================================================
