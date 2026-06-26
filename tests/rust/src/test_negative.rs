@@ -8,6 +8,7 @@
 
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::get_message_info;
+use struct_frame_sdk::FrameMsgStatus;
 use struct_frame_sdk::{
     encode_message_crc, encode_message_minimal, encode_with_crc,
     AccumulatingReader, BufferWriter, BufferReader,
@@ -156,8 +157,10 @@ fn test_streaming_corrupted_crc() -> bool {
         reader.add_data(std::slice::from_ref(byte));
     }
 
-    let result = reader.next(&get_message_info);
-    result.is_none() // Expect parsing to fail
+    match reader.next(&get_message_info) {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure && f.frame_size > 0,
+        None => false,
+    }
 }
 
 /// Test: AccumulatingReader handles garbage data
@@ -169,7 +172,10 @@ fn test_streaming_garbage() -> bool {
     reader.add_data(garbage);
 
     let result = reader.next(&get_message_info);
-    result.is_none() // Expect no valid frame
+    match result {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::SyncRecovery && f.frame_size > 0,
+        None => false,
+    }
 }
 
 /// Test: Multiple frames with corrupted middle frame
@@ -397,8 +403,12 @@ fn test_buffer_mode_recovers_after_crc_failure() -> bool {
     let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
     reader.add_data(&bad_data[..frame_size]);
     let result1 = reader.next(&get_message_info);
-    if result1.is_some() {
-        return false; // Must fail
+    let bad = match result1 {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure && f.frame_size > 0,
+        None => false,
+    };
+    if !bad {
+        return false;
     }
 
     // Feed a valid frame — reader must not be stuck on the bad one
@@ -521,10 +531,23 @@ fn test_split_buffer_crc_error_status() -> bool {
 
     reader.add_data(chunk2);
 
-    // The AccumulatingReader loops internally on CRC failure, so next() directly
-    // returns frame3 (valid). cnt_crc_failures confirms frame2's CRC was rejected.
+    // next() should surface the CRC-failed frame first.
     let result2 = reader.next(&get_message_info);
-    if result2.is_none() {
+    let crc_failed = match result2 {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure && f.frame_size > 0,
+        None => false,
+    };
+    if !crc_failed {
+        return false;
+    }
+
+    // Then the following valid frame should parse.
+    let result3 = reader.next(&get_message_info);
+    let frame3_valid = match result3 {
+        Some(f) => f.valid,
+        None => false,
+    };
+    if !frame3_valid {
         return false;
     }
 

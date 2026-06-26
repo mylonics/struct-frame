@@ -439,7 +439,18 @@ pub fn parse_with_crc(
             fletcher_checksum(&buffer[crc_start..crc_start + crc_len], magic1, magic2)
         };
         if ck.byte1 != buffer[total_size - 2] || ck.byte2 != buffer[total_size - 1] {
-            return FrameMsgInfo { status: FrameMsgStatus::CrcFailure, ..FrameMsgInfo::invalid() };
+            return FrameMsgInfo {
+                valid: false,
+                msg_id,
+                msg_len,
+                frame_size: total_size,
+                package_id: pkg_id,
+                sequence: seq,
+                system_id: sys_id,
+                component_id: comp_id,
+                status: FrameMsgStatus::CrcFailure,
+                ..FrameMsgInfo::invalid()
+            };
         }
     }
 
@@ -837,6 +848,8 @@ pub struct AccumulatingReader {
     diagnostics: ParserDiagnostics,
     /// Last seen sequence number for gap detection
     last_seq: Option<u8>,
+    /// True when the buffered bytes represent an incomplete frame awaiting more data.
+    partial_pending: bool,
 }
 
 impl AccumulatingReader {
@@ -848,6 +861,7 @@ impl AccumulatingReader {
             capacity,
             diagnostics: ParserDiagnostics::default(),
             last_seq: None,
+            partial_pending: false,
         }
     }
 
@@ -883,6 +897,30 @@ impl AccumulatingReader {
 
     fn buf(&self) -> &[u8] {
         &self.buffer[self.head..]
+    }
+
+    /// Number of unread bytes currently buffered.
+    pub fn remaining(&self) -> usize {
+        self.buf().len()
+    }
+
+    /// True when there are unread bytes buffered.
+    pub fn has_more(&self) -> bool {
+        self.remaining() > 0
+    }
+
+    /// True when parsing reached a trailing incomplete frame and is waiting for more data.
+    pub fn has_partial(&self) -> bool {
+        self.partial_pending && self.has_more()
+    }
+
+    /// Number of bytes currently buffered for a trailing incomplete frame.
+    pub fn partial_size(&self) -> usize {
+        if self.has_partial() {
+            self.remaining()
+        } else {
+            0
+        }
     }
 
     /// Compact the buffer if head is past half capacity, to avoid growing indefinitely.
@@ -1112,83 +1150,106 @@ impl AccumulatingReader {
     /// Get the next complete frame, or None if not enough data yet.
     /// Automatically re-synchronizes past noise or partial frames.
     pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
-        loop {
-            if self.buf().is_empty() {
-                return None;
-            }
-
-            let result = if self.config.payload.has_crc {
-                parse_with_crc(&self.config, self.buf(), get_message_info)
-            } else {
-                parse_minimal(&self.config, self.buf(), get_message_info)
-            };
-
-            if result.valid {
-                let frame_size = result.frame_size;
-
-                // Check for sequence gap on profiles that carry a sequence number
-                if self.config.payload.has_seq {
-                    let seq = self.buf()[self.config.header.num_start_bytes as usize];
-                    if let Some(last) = self.last_seq {
-                        if seq != last.wrapping_add(1) {
-                            self.diagnostics.cnt_seq_gaps += 1;
-                        }
-                    }
-                    self.last_seq = Some(seq);
-                }
-
-                self.drain_head(frame_size);
-                return Some(result);
-            }
-
-            let bytes_to_drain = self.bytes_to_drain_for_resync(get_message_info);
-            if bytes_to_drain == 0 {
-                return None;
-            }
-
-            // Record diagnostics before draining
-            if self.starts_with_possible_frame() {
-                // A8: only fire cnt_len_errors when the length is genuinely wrong
-                if self.config.payload.has_length {
-                    let buf = self.buf();
-                    let header_size = self.config.header_size();
-                    if buf.len() >= header_size {
-                        let mut len_offset = self.config.header.num_start_bytes as usize;
-                        if self.config.payload.has_seq { len_offset += 1; }
-                        if self.config.payload.has_sys_id { len_offset += 1; }
-                        if self.config.payload.has_comp_id { len_offset += 1; }
-                        let msg_len = if self.config.payload.length_bytes == 1 {
-                            buf[len_offset] as usize
-                        } else {
-                            (buf[len_offset] as usize) | ((buf[len_offset + 1] as usize) << 8)
-                        };
-                        let mut id_offset = len_offset + self.config.payload.length_bytes as usize;
-                        let mut full_msg_id: u16 = 0;
-                        if self.config.payload.has_pkg_id && buf.len() > id_offset {
-                            full_msg_id = (buf[id_offset] as u16) << 8;
-                            id_offset += 1;
-                        }
-                        if buf.len() > id_offset {
-                            full_msg_id |= buf[id_offset] as u16;
-                            if let Some(info) = get_message_info(full_msg_id) {
-                                // A8: mirrors C++ / TS fix — only error on out-of-range
-                                if msg_len > info.size || msg_len < info.min_size {
-                                    self.diagnostics.cnt_len_errors += 1;
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if result.status == FrameMsgStatus::CrcFailure {
-                    self.diagnostics.cnt_crc_failures += 1;
-                }
-            }
-
-            self.diagnostics.cnt_failed_bytes += bytes_to_drain as u32;
-            self.diagnostics.cnt_sync_recoveries += 1;
-            self.drain_head(bytes_to_drain);
+        if self.buf().is_empty() {
+            self.partial_pending = false;
+            return None;
         }
+
+        let result = if self.config.payload.has_crc {
+            parse_with_crc(&self.config, self.buf(), get_message_info)
+        } else {
+            parse_minimal(&self.config, self.buf(), get_message_info)
+        };
+
+        if result.valid {
+            let frame_size = result.frame_size;
+
+            // Check for sequence gap on profiles that carry a sequence number
+            if self.config.payload.has_seq {
+                let seq = self.buf()[self.config.header.num_start_bytes as usize];
+                if let Some(last) = self.last_seq {
+                    if seq != last.wrapping_add(1) {
+                        self.diagnostics.cnt_seq_gaps += 1;
+                    }
+                }
+                self.last_seq = Some(seq);
+            }
+
+            self.partial_pending = false;
+            self.drain_head(frame_size);
+            return Some(result);
+        }
+
+        // Complete-but-invalid frame (e.g. CRC failure): surface it and advance.
+        if result.frame_size > 0 {
+            if result.status == FrameMsgStatus::CrcFailure {
+                self.diagnostics.cnt_crc_failures += 1;
+            }
+            self.diagnostics.cnt_failed_bytes += result.frame_size as u32;
+            self.diagnostics.cnt_sync_recoveries += 1;
+            self.partial_pending = false;
+            self.drain_head(result.frame_size);
+            return Some(result);
+        }
+
+        if result.status == FrameMsgStatus::Collecting {
+            self.partial_pending = true;
+            return None;
+        }
+
+        let bytes_to_drain = self.bytes_to_drain_for_resync(get_message_info);
+        if bytes_to_drain == 0 {
+            self.partial_pending = true;
+            return None;
+        }
+
+        // Record diagnostics before draining
+        if self.starts_with_possible_frame() && self.config.payload.has_length {
+            let buf = self.buf();
+            let header_size = self.config.header_size();
+            if buf.len() >= header_size {
+                let mut len_offset = self.config.header.num_start_bytes as usize;
+                if self.config.payload.has_seq {
+                    len_offset += 1;
+                }
+                if self.config.payload.has_sys_id {
+                    len_offset += 1;
+                }
+                if self.config.payload.has_comp_id {
+                    len_offset += 1;
+                }
+                let msg_len = if self.config.payload.length_bytes == 1 {
+                    buf[len_offset] as usize
+                } else {
+                    (buf[len_offset] as usize) | ((buf[len_offset + 1] as usize) << 8)
+                };
+                let mut id_offset = len_offset + self.config.payload.length_bytes as usize;
+                let mut full_msg_id: u16 = 0;
+                if self.config.payload.has_pkg_id && buf.len() > id_offset {
+                    full_msg_id = (buf[id_offset] as u16) << 8;
+                    id_offset += 1;
+                }
+                if buf.len() > id_offset {
+                    full_msg_id |= buf[id_offset] as u16;
+                    if let Some(info) = get_message_info(full_msg_id) {
+                        // A8: mirrors C++ / TS fix — only error on out-of-range
+                        if msg_len > info.size || msg_len < info.min_size {
+                            self.diagnostics.cnt_len_errors += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        self.diagnostics.cnt_failed_bytes += bytes_to_drain as u32;
+        self.diagnostics.cnt_sync_recoveries += 1;
+        self.partial_pending = false;
+        self.drain_head(bytes_to_drain);
+
+        let mut sync = FrameMsgInfo::invalid();
+        sync.status = FrameMsgStatus::SyncRecovery;
+        sync.frame_size = bytes_to_drain;
+        Some(sync)
     }
 }
 
