@@ -1095,7 +1095,7 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 <h2 id="5-error-handling--negative-tests">5. Error Handling / Negative Tests</h2>
 <p>Test files: <code dir="auto">tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*</code></p>
 <p>See <code dir="auto">tests/NEGATIVE_TESTS.md</code> for full scenario descriptions.</p>
-<p>The 15 scenarios in the table below are registered in every language’s <code dir="auto">test_negative.*</code> file. Individual languages carry additional language-specific scenarios: C/C++/TS/JS/C# (20 each) add bulk <code dir="auto">pkg_id</code>/<code dir="auto">msg_id</code> corruption, cross-package rejection, network <code dir="auto">pkg_id</code> corruption, and stream-recovery tests; Python (30) adds those plus diagnostic-counter and status-machine tests; Rust (16) adds stream-recovery only.</p>
+<p>The 20 scenarios in the table below are registered in every language’s <code dir="auto">test_negative.*</code> file. Individual languages carry additional language-specific scenarios: C/C++/TS/JS/C# (24 each) add bulk <code dir="auto">pkg_id</code>/<code dir="auto">msg_id</code> corruption, cross-package rejection, and network <code dir="auto">pkg_id</code> corruption; Python (34) adds those plus diagnostic-counter and status-machine tests; Rust (20) currently matches the uniform set.</p>
 
 
 
@@ -1261,7 +1261,57 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 
 
 
-<table><thead><tr><th>Error Scenario (test name)</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td>Buffer mode: recovers after CRC failure</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer reader: skips CRC-failed frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Bulk profile: Corrupted CRC</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted length field detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid message ID rejection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid start bytes detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Minimal profile: Truncated frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: Corrupted middle frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Network profile: SysId/CompId corruption</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Partial frame across buffer boundary</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Garbage data handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Truncated frame detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Zero-length buffer handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Error Scenario (test name)</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td>Buffer mode: recovers after CRC failure</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer reader: skips CRC-failed frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Bulk profile: Corrupted CRC</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted length field detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid message ID rejection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid start bytes detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Minimal profile: Truncated frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: CRC error then valid frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: Corrupted middle frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Network profile: SysId/CompId corruption</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Partial frame across buffer boundary</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Split-buffer: CRC error status preserved</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Stream mode: recovers after garbage prefix</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Garbage data handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>TryNext drain: CRC/resync + valid</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>TryNext partial pending contract</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Truncated frame detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Zero-length buffer handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
 <hr>
 <h2 id="6-sdk-classes">6. SDK Classes</h2>
 <h3 id="61-encoders--writers">6.1 Encoders / Writers</h3>
