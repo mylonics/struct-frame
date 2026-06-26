@@ -481,14 +481,15 @@ namespace StructFrame.Sdk
             {
                 _reader.AddData(data.ToArray());
             }
-            while (true)
+            // TryNext keeps draining past CRC-failed and resync events and stops only when no
+            // further progress is possible. Dispatch only actual frames (valid or CRC-failed)
+            // to ProcessFrame, mirroring the raw-tap semantics; pure resync events are skipped.
+            while (_reader.TryNext(out var frame))
             {
-                var frame = _reader.Next();
-                if (!frame.Valid && frame.FrameData.Length == 0)
+                if (frame.Valid || frame.Status == FrameMsgStatus.CrcFailure)
                 {
-                    break;
+                    ProcessFrame(frame);
                 }
-                ProcessFrame(frame);
             }
         }
 

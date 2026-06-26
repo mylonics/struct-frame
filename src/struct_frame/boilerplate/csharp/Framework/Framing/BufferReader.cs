@@ -63,6 +63,7 @@ namespace StructFrame.Framing
             {
                 // Start byte mismatch at current offset: scan forward for the next candidate.
                 // Skip the bad byte and look for start byte 1 in the remaining data.
+                int oldOffset = _offset;
                 int searchFrom = _offset + 1;
                 int searchLen = _size - searchFrom;
                 if (searchLen > 0 && _config.NumStartBytes > 0)
@@ -74,10 +75,26 @@ namespace StructFrame.Framing
                 {
                     _offset = _size; // nothing useful left
                 }
+                // Report the resync as a SyncRecovery event carrying the bytes skipped, so a
+                // TryNext() drain loop keeps advancing instead of stopping on stray bytes.
+                result.Status = FrameMsgStatus.SyncRecovery;
+                result.FrameSize = _offset - oldOffset;   // >= 1
             }
             // Status == Collecting: genuinely incomplete data — do not advance; let caller stop.
 
             return result;
+        }
+
+        /// <summary>
+        /// Try to parse the next frame. Returns true while there is forward progress
+        /// (a valid frame, a CRC-failed frame, or skipped resync bytes); false when the
+        /// buffer is drained or only a trailing partial frame remains. Pairs with a
+        /// <c>while (reader.TryNext(out var r)) { ... }</c> drain loop.
+        /// </summary>
+        public bool TryNext(out FrameMsgInfo result)
+        {
+            result = Next();
+            return result.Valid || result.FrameSize > 0;
         }
 
         /// <summary>

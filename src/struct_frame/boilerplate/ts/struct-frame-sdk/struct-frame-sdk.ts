@@ -209,8 +209,14 @@ export class StructFrameSdk {
 
   private handleIncomingData(data: Uint8Array): void {
     this.reader.addData(data);
-    let result: FrameMsgInfo;
-    while ((result = this.reader.next()).valid) {
+    let result: FrameMsgInfo | null;
+    while ((result = this.reader.tryNext()) !== null) {
+      if (!result.valid) {
+        // Surfaced CRC failure / resync — the reader has already skipped it; keep draining
+        // so frames that arrive after a corrupt one are still delivered.
+        this.log(`Skipping invalid frame (status ${result.status})`);
+        continue;
+      }
       this.log(`Received message ID ${result.msgId}, ${result.msgLen} bytes`);
       const handlers = this.messageHandlers.get(result.msgId);
       if (handlers && handlers.length > 0) {

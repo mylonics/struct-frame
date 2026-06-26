@@ -342,12 +342,13 @@ function parseFrameMinimal(config, buffer, getMessageInfo) {
 /**
  * BufferReader - Iterate through a buffer parsing multiple frames.
  *
- * Usage:
+ * Usage (tryNext continues past CRC-failed frames and stops only when the buffer is drained):
  *   const reader = new BufferReader(ProfileStandardConfig, buffer, getMessageInfo);
- *   let result = reader.next();
- *   while (result.valid) {
- *       // Process result.msgId, result.msgData, result.msgLen
- *       result = reader.next();
+ *   let result: FrameMsgInfo | null;
+ *   while ((result = reader.tryNext()) !== null) {
+ *       if (result.valid) {
+ *           // Process result.msgId, result.msgData, result.msgLen
+ *       } // else result.status === FrameMsgStatus.CrcFailure — corrupt frame, already skipped
  *   }
  */
 class BufferReader {
@@ -410,6 +411,19 @@ class BufferReader {
     /** Check if there are more bytes to parse. */
     hasMore() {
         return this._offset < this.size;
+    }
+    /**
+     * Drain-loop primitive. Returns the next event (a valid frame, or a surfaced CRC failure
+     * with status===CrcFailure) while the reader can advance, or null once the buffer is drained:
+     *
+     *   let r: FrameMsgInfo | null;
+     *   while ((r = reader.tryNext()) !== null) {
+     *       if (r.valid) handle(r);  // else r.status === FrameMsgStatus.CrcFailure
+     *   }
+     */
+    tryNext() {
+        const result = this.next();
+        return (result.valid || (result.frameSize ?? 0) > 0) ? result : null;
     }
 }
 exports.BufferReader = BufferReader;
@@ -492,14 +506,17 @@ var AccumulatingReaderState;
  * - Buffer mode: addData() for processing chunks of data
  * - Stream mode: pushByte() for byte-by-byte processing (e.g., UART)
  *
- * Buffer mode usage:
+ * Buffer mode usage (tryNext drains past CRC errors and stops only when no more data can be
+ * produced; hasPartial() then distinguishes "drained" from "waiting for more data"):
  *   const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
  *   reader.addData(chunk1);
- *   let result = reader.next();
- *   while (result.valid) {
- *       // Process complete messages
- *       result = reader.next();
+ *   let result: FrameMsgInfo | null;
+ *   while ((result = reader.tryNext()) !== null) {
+ *       if (result.valid) {
+ *           // Process complete message
+ *       } // else result.status === FrameMsgStatus.CrcFailure — corrupt frame, already skipped
  *   }
+ *   if (reader.hasPartial()) { /* incomplete frame buffered; feed more via addData() *\/ }
  *
  * Stream mode usage:
  *   const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
@@ -576,17 +593,18 @@ class AccumulatingReader {
             }
             else {
                 if (result.status === frame_base_1.FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
-                    // Consume failed frame bytes from internal accumulation to avoid permanent retries.
+                    // A complete-but-CRC-failed frame was assembled across chunks. Surface it
+                    // (status=CrcFailure, frameSize set) and advance past it, mirroring the
+                    // valid-frame path so subsequent frames are read from the current buffer.
                     this._diagnostics.cntCrcFailures++;
                     this._diagnostics.cntFailedBytes += result.frameSize;
                     this._diagnostics.cntSyncRecoveries++;
-                    const consumed = Math.min(result.frameSize, this.internalDataLen);
-                    const remainingBytes = this.internalDataLen - consumed;
-                    if (remainingBytes > 0) {
-                        this.internalBuffer.copyWithin(0, consumed, this.internalDataLen);
-                    }
-                    this.internalDataLen = remainingBytes;
+                    const partialLen = this.internalDataLen > this.currentSize ? this.internalDataLen - this.currentSize : 0;
+                    const bytesFromCurrent = result.frameSize > partialLen ? result.frameSize - partialLen : 0;
+                    this.currentOffset = bytesFromCurrent;
+                    this.internalDataLen = 0;
                     this.expectedFrameSize = 0;
+                    return this.withDiagnostics(result);
                 }
                 return this.withDiagnostics((0, frame_base_1.createFrameMsgInfo)());
             }
@@ -618,6 +636,23 @@ class AccumulatingReader {
             this.currentOffset = this.currentSize;
         }
         return this.withDiagnostics((0, frame_base_1.createFrameMsgInfo)());
+    }
+    /**
+     * Drain-loop primitive (buffer mode). Returns the next event while the reader can make
+     * forward progress, or null when it is drained or waiting for more data. Use hasPartial()
+     * to tell those apart. A non-null result is either a valid frame (valid===true) or a
+     * surfaced CRC failure (status===CrcFailure); either way the reader has advanced.
+     *
+     *   let r: FrameMsgInfo | null;
+     *   while ((r = reader.tryNext()) !== null) {
+     *       if (r.valid) handle(r);
+     *       // else r.status === FrameMsgStatus.CrcFailure — optional logging
+     *   }
+     *   if (reader.hasPartial()) { /* waiting for more data *\/ }
+     */
+    tryNext() {
+        const result = this.next();
+        return (result.valid || (result.frameSize ?? 0) > 0) ? result : null;
     }
     // =========================================================================
     // Stream Mode API
