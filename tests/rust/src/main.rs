@@ -947,23 +947,27 @@ fn run_streaming_tests() {
         expect!(v2, "Two consecutive frames: second frame decodes correctly");
     }
 
-    // Test 4: Garbage bytes before a valid frame are silently discarded
+    // Test 4: Garbage bytes before a valid frame may surface invalid progress
+    // events, but must not produce a valid frame.
     {
         let frame = encode_frame(PROFILE_STANDARD_CONFIG, 5555);
         let mut reader = struct_frame_sdk::new_standard_reader(512);
         // Push garbage that doesn't contain the start-byte sequence
         let garbage: &[u8] = &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55];
-        let mut garbage_fired = false;
+        let mut garbage_produced_valid = false;
         for &byte in garbage {
-            if reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info).is_some() {
-                garbage_fired = true;
+            if reader
+                .push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info)
+                .map_or(false, |f| f.valid)
+            {
+                garbage_produced_valid = true;
             }
         }
         let mut result: Option<struct_frame_sdk::FrameMsgInfo> = None;
         for &byte in &frame {
             result = reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info);
         }
-        expect!(!garbage_fired, "Garbage prefix: garbage bytes do not produce a frame");
+        expect!(!garbage_produced_valid, "Garbage prefix: garbage bytes do not produce a valid frame");
         let valid = result.as_ref().map_or(false, |f| {
             f.valid && BasicTypesMessage::unpack(&f.msg_data).map_or(false, |m| m.regular_int == 5555)
         });

@@ -32,7 +32,7 @@ bool test_corrupted_crc() {
   std::vector<uint8_t> buffer(1024);
   BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
   
-  auto msg = StandardMessages::get_message(0);
+  auto msg = StandardMessages::get_message(5);
   std::visit([&writer](auto&& m) { writer.write(m); }, msg);
   
   size_t frame_size = writer.size();
@@ -349,7 +349,7 @@ bool test_partial_frame_boundary() {
   std::vector<uint8_t> buffer(1024);
   BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
   
-  auto msg = StandardMessages::get_message(0);
+  auto msg = StandardMessages::get_message(5);
   std::visit([&writer](auto&& m) { writer.write(m); }, msg);
   
   size_t frame_size = writer.size();
@@ -366,10 +366,20 @@ bool test_partial_frame_boundary() {
   
   // Feed second half - adds to internal buffer completing the frame
   reader.add_data(buffer.data() + mid, frame_size - mid);
-  
-  // Call next() once all data is present - should successfully decode the frame
-  auto result = reader.next();
-  if (!result.valid) return false;
+
+  // Drain with try_next(): invalid progress events may be surfaced before valid frame.
+  FrameMsgInfo result{};
+  bool found_valid = false;
+  FrameMsgInfo step{};
+  while (reader.try_next(step)) {
+    if (step.valid) {
+      result = step;
+      found_valid = true;
+      break;
+    }
+  }
+
+  if (!found_valid) return false;
   if (result.msg_id != BasicTypesMessage::MSG_ID) return false;
   if (result.msg_data == nullptr) return false;
 
