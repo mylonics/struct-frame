@@ -354,7 +354,8 @@ public class TestNegative
             byte[] firstHalf = new byte[mid];
             Array.Copy(buffer, 0, firstHalf, 0, mid);
             reader.AddData(firstHalf);
-            reader.Next();  // Should return invalid but save partial data internally
+            var partial = reader.Next();
+            if (partial.Valid) return false;
             
             // Feed second half - adds to internal buffer completing the frame
             byte[] secondHalf = new byte[frameSize - mid];
@@ -363,7 +364,17 @@ public class TestNegative
             
             // Call Next() once all data is present - should successfully decode the frame
             var result = reader.Next();
-            return result.Valid;  // Expect success after accumulating both halves
+            if (!result.Valid) return false;
+
+            var decoded = BasicTypesMessage.Deserialize(result);
+            if (decoded.SmallInt != msg.SmallInt) return false;
+            if (decoded.Flag != msg.Flag) return false;
+
+            // No extra complete frame should remain.
+            var trailing = reader.Next();
+            if (trailing.Valid) return false;
+
+            return true;
         }
 
         /**
@@ -645,6 +656,196 @@ public class TestNegative
             return !result.Valid;
         }
 
+        /**
+         * Test: After a CRC failure the reader continues and decodes the next valid frame,
+         * and the buffer-exhausted signal is only raised after ALL frames are consumed.
+         */
+        private static bool TestCrcErrorThenValidFrame()
+        {
+            byte[] buffer = new byte[4096];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+
+            // Frame 1: valid
+            var msg1 = CreateTestMessage();
+            msg1.SmallInt = 1;
+            writer.Write(msg1);
+
+            // Frame 2: CRC-corrupted
+            var msg2 = CreateTestMessage();
+            msg2.SmallInt = 2;
+            writer.Write(msg2);
+            var frame2End = writer.Size;
+
+            // Frame 3: valid
+            var msg3 = CreateTestMessage();
+            msg3.SmallInt = 3;
+            writer.Write(msg3);
+            var totalBytes = writer.Size;
+
+            buffer[frame2End - 1] ^= 0xFF;
+            buffer[frame2End - 2] ^= 0xFF;
+
+            var reader = new BufferReader<StandardProfile>(SerializationTestMD.GetMessageInfo);
+            reader.SetBuffer(buffer, 0, totalBytes);
+
+            // Frame 1 must decode successfully
+            var result1 = reader.Next();
+            if (!result1.Valid) return false;
+
+            // Frame 2 must report a CRC failure — status MUST be CrcFailure, not None
+            var result2 = reader.Next();
+            if (result2.Valid) return false;
+            if (result2.Status != FrameMsgStatus.CrcFailure) return false;
+
+            // Reader must continue past the CRC error and decode frame 3
+            var result3 = reader.Next();
+            if (!result3.Valid) return false;
+
+            // Buffer must now be fully consumed
+            if (reader.HasMore) return false;
+
+            return true;
+        }
+
+        private static bool TestSplitBufferCrcErrorStatus()
+        {
+            byte[] buffer = new byte[4096];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+
+            // Frame 1: valid
+            var msg1 = CreateTestMessage();
+            msg1.SmallInt = 1;
+            writer.Write(msg1);
+
+            // Frame 2: CRC-corrupted
+            var msg2 = CreateTestMessage();
+            msg2.SmallInt = 2;
+            writer.Write(msg2);
+            var frame2End = writer.Size;
+
+            // Frame 3: valid
+            var msg3 = CreateTestMessage();
+            msg3.SmallInt = 3;
+            writer.Write(msg3);
+            var totalBytes = writer.Size;
+
+            buffer[frame2End - 1] ^= 0xFF;
+            buffer[frame2End - 2] ^= 0xFF;
+
+            // Split: frame 2's two CRC bytes go in the second AddData() call
+            int splitPoint = frame2End - 2;
+            byte[] chunk1 = new byte[splitPoint];
+            Array.Copy(buffer, 0, chunk1, 0, splitPoint);
+            byte[] chunk2 = new byte[totalBytes - splitPoint];
+            Array.Copy(buffer, splitPoint, chunk2, 0, totalBytes - splitPoint);
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            reader.AddData(chunk1);
+
+            // Frame 1 must decode from the first chunk
+            var result1 = reader.Next();
+            if (!result1.Valid) return false;
+
+            // Frame 2 is incomplete — partial data saved to internal buffer
+            var partial = reader.Next();
+            if (partial.Valid) return false;
+
+            reader.AddData(chunk2);
+
+            // CRC bytes of frame 2 arrive — frame 2 is complete but CRC-corrupted.
+            // Status MUST be CrcFailure, not None.
+            var result2 = reader.Next();
+            if (result2.Valid) return false;
+            if (result2.Status != FrameMsgStatus.CrcFailure) return false;
+
+            // Frame 3 must still decode from the remainder of chunk2
+            var result3 = reader.Next();
+            if (!result3.Valid) return false;
+
+            return true;
+        }
+
+        /// <summary>
+        /// Test: TryNext drain loop surfaces CRC/resync progress and still delivers
+        /// the following valid frame.
+        /// </summary>
+        private static bool TestTryNextDrainContract()
+        {
+            byte[] buffer = new byte[4096];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+
+            var msg1 = CreateTestMessage();
+            msg1.SmallInt = 1;
+            writer.Write(msg1);
+            int firstEnd = writer.Size;
+
+            var msg2 = CreateTestMessage();
+            msg2.SmallInt = 2;
+            writer.Write(msg2);
+            int totalBytes = writer.Size;
+
+            buffer[firstEnd - 1] ^= 0xFF;
+            buffer[firstEnd - 2] ^= 0xFF;
+
+            var reader = new AccumulatingReader<StandardProfile>(4096, SerializationTestMD.GetMessageInfo);
+            reader.AddData(buffer, 0, totalBytes);
+
+            int validCount = 0;
+            bool sawCrcFailure = false;
+            while (reader.TryNext(out var frame))
+            {
+                if (frame.Valid)
+                    validCount++;
+                else if (frame.Status == FrameMsgStatus.CrcFailure)
+                    sawCrcFailure = true;
+            }
+
+            if (!sawCrcFailure) return false;
+            if (validCount != 1) return false;
+            if (reader.HasMore) return false;
+            if (reader.HasPartial) return false;
+            if (reader.PartialSize != 0) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Test: TryNext partial-pending contract.
+        /// </summary>
+        private static bool TestTryNextPartialPendingContract()
+        {
+            var msg = CreateTestMessage();
+            byte[] buffer = new byte[1024];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            int frameSize = writer.Size;
+
+            if (frameSize < 10) return false;
+            int mid = frameSize / 2;
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+
+            reader.AddData(buffer, 0, mid);
+            if (reader.TryNext(out var _)) return false;
+            if (!reader.HasPartial) return false;
+            if (reader.PartialSize <= 0) return false;
+
+            reader.AddData(buffer, mid, frameSize - mid);
+            int validCount = 0;
+            while (reader.TryNext(out var frame))
+            {
+                if (frame.Valid) validCount++;
+            }
+
+            if (validCount != 1) return false;
+            if (reader.HasPartial) return false;
+            if (reader.PartialSize != 0) return false;
+            return !reader.HasMore;
+        }
+
         public static int Main(string[] args)
         {
             Console.WriteLine("\n========================================");
@@ -665,10 +866,14 @@ public class TestNegative
                 ("Invalid message ID rejection", TestInvalidMsgId),
                 ("Invalid start bytes detection", TestInvalidStartBytes),
                 ("Minimal profile: Truncated frame", TestMinimalProfileTruncatedFrame),
+                ("Multiple frames: CRC error then valid frame", TestCrcErrorThenValidFrame),
                 ("Multiple frames: Corrupted middle frame", TestMultipleCorruptedFrames),
                 ("Network profile: Corrupted pkg_id byte", TestNetworkCorruptedPkgId),
                 ("Network profile: SysId/CompId corruption", TestNetworkSysIdCompId),
                 ("Partial frame across buffer boundary", TestPartialFrameBoundary),
+                ("Split-buffer: CRC error status preserved", TestSplitBufferCrcErrorStatus),
+                ("TryNext drain: CRC/resync + valid", TestTryNextDrainContract),
+                ("TryNext partial pending contract", TestTryNextPartialPendingContract),
                 ("Stream mode: recovers after garbage prefix", TestStreamRecoversAfterGarbage),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
                 ("Streaming: Garbage data handling", TestStreamingGarbage),

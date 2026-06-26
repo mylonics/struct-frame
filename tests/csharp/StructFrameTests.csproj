@@ -8,6 +8,7 @@
     <StartupObject>TestRunner</StartupObject>
   </PropertyGroup>
 
+  <!-- The following include is important and should not be removed as a way of fixing a c# compilation error. Look elsewhere to fix a c# compilation error. -->
   <ItemGroup>
     <ProjectReference Include="..\generated\csharp\StructFrame.csproj" />
   </ItemGroup>

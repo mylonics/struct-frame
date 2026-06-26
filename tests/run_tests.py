@@ -348,6 +348,10 @@ class TestRunner:
         
         # Timing tracking for phases
         self.phase_times: Dict[str, float] = {}
+
+        # Cached output DLLs for precompiled C# round-trip package runners.
+        self._csharp_roundtrip_bins: Dict[str, Path] = {}
+        self._csharp_roundtrip_compile_failures: set[str] = set()
         
         # Failure details for summary
         self.failures: List[Dict[str, Any]] = []
@@ -860,6 +864,94 @@ class TestRunner:
             return False
         
         return True
+
+    def precompile_csharp_roundtrip_tests(self) -> bool:
+        """Precompile generated C# round-trip package launchers.
+
+        This surfaces package-specific C# compile failures during the main
+        compilation phase instead of waiting until round-trip execution.
+        """
+        cache_key = "csharp_roundtrip"
+        self._csharp_roundtrip_bins = {}
+        self._csharp_roundtrip_compile_failures = set()
+
+        cs = self.languages.get("csharp")
+        if not cs or "csharp" in self.skipped_languages:
+            self.results["compilation"][cache_key] = True
+            return True
+
+        gen_dir = self.project_root / cs.gen_output_dir
+        csproj = gen_dir / "StructFrame.csproj"
+        sources = sorted(gen_dir.rglob("test_roundtrip_*.cs"))
+
+        legacy_nested_build = gen_dir / "tests" / "build"
+        if legacy_nested_build.exists():
+            shutil.rmtree(legacy_nested_build, ignore_errors=True)
+
+        if not csproj.exists() or not sources:
+            self.results["compilation"][cache_key] = True
+            return True
+
+        print(f"  Precompiling C# round-trip ({len(sources)} packages)...")
+        all_ok = True
+
+        for src in sources:
+            namespace = None
+            class_name = None
+            try:
+                for line in src.read_text().splitlines():
+                    ls = line.strip()
+                    if ls.startswith("namespace ") and namespace is None:
+                        namespace = ls[len("namespace "):].split("{")[0].strip()
+                    elif ls.startswith("public static class ") and class_name is None:
+                        class_name = ls[len("public static class "):].split()[0].split("{")[0].strip()
+                    if namespace and class_name:
+                        break
+            except (OSError, UnicodeDecodeError):
+                pass
+
+            if not (namespace and class_name):
+                print(f"    {Colors.fail_tag()} compile failed: {src.name} (could not parse namespace/class)")
+                self.add_failure("compilation", "C#", None, f"compile {src.name}")
+                self._csharp_roundtrip_compile_failures.add(src.stem)
+                all_ok = False
+                continue
+
+            startup = f"{namespace}.{class_name}"
+            out_dir = (self.project_root / "tests" / "build" / "csharp_roundtrip" / src.stem).resolve()
+            if out_dir.exists():
+                shutil.rmtree(out_dir, ignore_errors=True)
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            default_obj = gen_dir / "obj"
+            if default_obj.exists():
+                shutil.rmtree(default_obj, ignore_errors=True)
+
+            build_cmd = (
+                f'dotnet build "{csproj}" -c Release --framework {self.dotnet_framework} '
+                f'-p:OutputType=Exe -p:StartupObject={startup} '
+                f'-p:GenerateDocumentationFile=false '
+                f'-o "{out_dir}" --verbosity quiet'
+            )
+            ok, _, stderr = self.run_cmd(build_cmd, timeout=180)
+            if not ok:
+                print(f"    {Colors.fail_tag()} compile failed: {src.name}")
+                if stderr:
+                    for line in stderr.splitlines():
+                        print(f"      {line}")
+                self.add_failure("compilation", "C#", None, f"compile {src.name}", stderr)
+                self._csharp_roundtrip_compile_failures.add(src.stem)
+                all_ok = False
+                continue
+
+            dll = out_dir / "StructFrame.dll"
+            if not dll.exists():
+                dlls = list(out_dir.glob("*.dll"))
+                dll = dlls[0] if dlls else dll
+            self._csharp_roundtrip_bins[src.stem] = dll
+
+        self.results["compilation"][cache_key] = all_ok
+        return all_ok
     
     # =========================================================================
     # Phase 5 & 6: Test Execution
@@ -2171,11 +2263,27 @@ class TestRunner:
             gen_dir = self.project_root / cs.gen_output_dir
             sources = sorted(gen_dir.rglob("test_roundtrip_*.cs"))
             csproj = gen_dir / "StructFrame.csproj"
+            legacy_nested_build = gen_dir / "tests" / "build"
+            if legacy_nested_build.exists():
+                shutil.rmtree(legacy_nested_build, ignore_errors=True)
             if not sources or not csproj.exists():
                 print("  [C#] No test_roundtrip_*.cs files found - skipping")
             else:
                 print(f"  Running C# ({len(sources)} packages)...")
                 for src in sources:
+                    if src.stem in self._csharp_roundtrip_compile_failures:
+                        _rt_set(src.stem, "csharp", False)
+                        all_success = False
+                        continue
+
+                    prebuilt_dll = self._csharp_roundtrip_bins.get(src.stem)
+                    if prebuilt_dll and prebuilt_dll.exists():
+                        _rt_run("C#", "csharp", src.stem,
+                                lambda d=prebuilt_dll: self.run_cmd(f'dotnet "{d}"', timeout=60))
+                        if not results.get(f"csharp:{src.stem}"):
+                            self.add_failure("roundtrip", "C#", None, f"run {src.name}")
+                        continue
+
                     namespace = None
                     class_name = None
                     try:
@@ -2195,7 +2303,7 @@ class TestRunner:
                         all_success = False
                         continue
                     startup = f"{namespace}.{class_name}"
-                    out_dir = self.project_root / "tests" / "build" / "csharp_roundtrip" / src.stem
+                    out_dir = (self.project_root / "tests" / "build" / "csharp_roundtrip" / src.stem).resolve()
                     if out_dir.exists():
                         shutil.rmtree(out_dir, ignore_errors=True)
                     out_dir.mkdir(parents=True, exist_ok=True)
@@ -2206,7 +2314,6 @@ class TestRunner:
                         f'dotnet build "{csproj}" -c Release --framework {self.dotnet_framework} '
                         f'-p:OutputType=Exe -p:StartupObject={startup} '
                         f'-p:GenerateDocumentationFile=false '
-                        f'-p:BaseIntermediateOutputPath="{out_dir}/obj/" '
                         f'-o "{out_dir}" --verbosity quiet'
                     )
                     ok, _, stderr = self.run_cmd(build_cmd, timeout=180)
@@ -2544,6 +2651,8 @@ class TestRunner:
             # Phase 4: Compile
             with self.timed_phase("Compilation"):
                 self.compile_all(parallel=parallel_compile)
+                if not profiling_only:
+                    self.precompile_csharp_roundtrip_tests()
             
             if compile_only:
                 success = all(self.results["compilation"].values())

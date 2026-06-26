@@ -95,16 +95,6 @@ namespace StructFrame.Framing
         /// </summary>
         public State CurrentState => _state;
 
-        /// <summary>
-        /// Check if there's a partial message waiting for more data.
-        /// </summary>
-        public bool HasPartial => _internalDataLen > 0;
-
-        /// <summary>
-        /// Get the size of the partial message data.
-        /// </summary>
-        public int PartialSize => _internalDataLen;
-
         // =========================================================================
         // Buffer Mode API
         // =========================================================================
@@ -150,7 +140,7 @@ namespace StructFrame.Framing
         public bool TryNext(out FrameMsgInfo result)
         {
             result = Next();
-            return result.Valid || result.FrameData.Length > 0;
+            return result.Valid || result.FrameSize > 0;
         }
 
         /// <summary>
@@ -176,24 +166,22 @@ namespace StructFrame.Framing
 
                     if (result.Status == FrameMsgStatus.WaitingForStart)
                     {
-                        // Garbage at the start of the internal buffer. Scan forward for the
-                        // next start-byte candidate and discard the skipped bytes.
-                        int skip = FindStartByteOffset(_internalBuffer, 1, _internalDataLen - 1);
+                        // Garbage at the start of the internal buffer. Byte 0 is not a valid
+                        // start, so scan forward for the next start-byte candidate and discard
+                        // everything before it — at least one byte, guaranteeing forward progress.
+                        int searchLen = _internalDataLen - 1;
+                        int found = (searchLen > 0 && _config.NumStartBytes > 0)
+                            ? Array.IndexOf(_internalBuffer, _config.ComputedStartByte1, 1, searchLen)
+                            : -1;
+                        int discard = found > 0 ? found : _internalDataLen;
                         _diagnostics.CntSyncRecoveries++;
-                        _diagnostics.CntFailedBytes += skip;
-                        if (skip >= _internalDataLen)
-                        {
-                            _internalDataLen = 0;
-                            _bytesAppendedToInternal = 0;
-                        }
-                        else
-                        {
-                            int keep = _internalDataLen - skip;
-                            Array.Copy(_internalBuffer, skip, _internalBuffer, 0, keep);
-                            _internalDataLen = keep;
-                            _bytesAppendedToInternal = Math.Max(0, _bytesAppendedToInternal - skip);
-                        }
-                        return StatusResult(FrameMsgStatus.SyncRecovery);
+                        _diagnostics.CntFailedBytes += discard;
+                        int keep = _internalDataLen - discard;
+                        if (keep > 0)
+                            Array.Copy(_internalBuffer, discard, _internalBuffer, 0, keep);
+                        _internalDataLen = keep;
+                        _bytesAppendedToInternal = Math.Max(0, _bytesAppendedToInternal - discard);
+                        return StatusResult(FrameMsgStatus.SyncRecovery, discard);
                     }
 
                     if (result.FrameSize > 0)
@@ -229,15 +217,18 @@ namespace StructFrame.Framing
             if (parseResult.Status == FrameMsgStatus.WaitingForStart)
             {
                 // Garbage at current offset. Scan forward for the next start-byte candidate.
+                int oldOffset = _currentOffset;
                 int searchFrom = _currentOffset + 1;
                 int searchLen = _currentSize - searchFrom;
                 int skip = searchLen > 0
                     ? FindStartByteOffset(_currentBuffer, searchFrom, searchLen)
                     : searchLen;
+                int delta = skip < searchLen ? skip : searchLen;
+                _currentOffset = searchFrom + delta;
+                int advanced = _currentOffset - oldOffset;   // >= 1
                 _diagnostics.CntSyncRecoveries++;
-                _diagnostics.CntFailedBytes += 1 + (skip < searchLen ? skip : searchLen);
-                _currentOffset = searchFrom + (skip < searchLen ? skip : searchLen);
-                return StatusResult(FrameMsgStatus.SyncRecovery);
+                _diagnostics.CntFailedBytes += advanced;
+                return StatusResult(FrameMsgStatus.SyncRecovery, advanced);
             }
 
             if (parseResult.FrameSize > 0)
@@ -280,6 +271,17 @@ namespace StructFrame.Framing
                 return (_internalDataLen > 0) || (_currentBuffer != null && _currentOffset < _currentSize);
             }
         }
+
+        /// <summary>
+        /// True if an incomplete (partial) frame is buffered awaiting more data via AddData().
+        /// Distinguishes "drained" (HasPartial == false) from "waiting for more data".
+        /// </summary>
+        public bool HasPartial => _internalDataLen > 0;
+
+        /// <summary>
+        /// Number of bytes held for a partial frame awaiting completion (0 if none).
+        /// </summary>
+        public int PartialSize => _internalDataLen;
 
         // =========================================================================
         // Stream Mode API
@@ -611,10 +613,11 @@ namespace StructFrame.Framing
             return found >= 0 ? found - start : length;
         }
 
-        private FrameMsgInfo StatusResult(FrameMsgStatus status)
+        private FrameMsgInfo StatusResult(FrameMsgStatus status, int frameSize = 0)
         {
             var r = FrameMsgInfo.Invalid;
             r.Status = status;
+            r.FrameSize = frameSize;
             return AttachDiagnostics(r);
         }
 

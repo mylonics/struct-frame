@@ -8,6 +8,7 @@
 
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::get_message_info;
+use struct_frame_sdk::FrameMsgStatus;
 use struct_frame_sdk::{
     encode_message_crc, encode_message_minimal, encode_with_crc,
     AccumulatingReader, BufferWriter, BufferReader,
@@ -156,8 +157,10 @@ fn test_streaming_corrupted_crc() -> bool {
         reader.add_data(std::slice::from_ref(byte));
     }
 
-    let result = reader.next(&get_message_info);
-    result.is_none() // Expect parsing to fail
+    match reader.next(&get_message_info) {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure && f.frame_size > 0,
+        None => false,
+    }
 }
 
 /// Test: AccumulatingReader handles garbage data
@@ -169,7 +172,10 @@ fn test_streaming_garbage() -> bool {
     reader.add_data(garbage);
 
     let result = reader.next(&get_message_info);
-    result.is_none() // Expect no valid frame
+    match result {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::SyncRecovery && f.frame_size > 0,
+        None => false,
+    }
 }
 
 /// Test: Multiple frames with corrupted middle frame
@@ -246,14 +252,37 @@ fn test_partial_frame_boundary() -> bool {
 
     // Feed first half via add_data, then call next() to save partial data to internal buffer
     reader.add_data(&buf[..mid]);
-    let _ = reader.next(&get_message_info);  // Should return None but save partial data
+    let partial = reader.next(&get_message_info);
+    if partial.is_some() {
+        return false;
+    }
 
     // Feed second half - adds to internal buffer completing the frame
     reader.add_data(&buf[mid..frame_size]);
 
     // Call next() once all data is present - should successfully decode the frame
     let result = reader.next(&get_message_info);
-    result.is_some() // Expect success after accumulating both halves
+    let frame = match result {
+        Some(f) => f,
+        None => return false,
+    };
+    if !frame.valid || frame.msg_id != BasicTypesMessage::MSG_ID {
+        return false;
+    }
+
+    let decoded = match BasicTypesMessage::unpack(&frame.msg_data) {
+        Some(m) => m,
+        None => return false,
+    };
+    if decoded.small_int != msg.small_int {
+        return false;
+    }
+    if decoded.flag != msg.flag {
+        return false;
+    }
+
+    // No extra complete frame should remain.
+    reader.next(&get_message_info).is_none()
 }
 
 /// Test: Parser rejects frame with unknown message ID (CRC fails with wrong magic values).
@@ -374,8 +403,12 @@ fn test_buffer_mode_recovers_after_crc_failure() -> bool {
     let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
     reader.add_data(&bad_data[..frame_size]);
     let result1 = reader.next(&get_message_info);
-    if result1.is_some() {
-        return false; // Must fail
+    let bad = match result1 {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure && f.frame_size > 0,
+        None => false,
+    };
+    if !bad {
+        return false;
     }
 
     // Feed a valid frame — reader must not be stuck on the bad one
@@ -401,6 +434,203 @@ fn test_stream_recovers_after_garbage() -> bool {
 
     reader.add_data(&buf[..frame_size]);
     reader.next(&get_message_info).is_some()
+}
+
+/// Test: After a CRC failure the reader continues and decodes the next valid frame.
+/// Verifies that a None result for a CRC-corrupted frame does not prevent subsequent
+/// frames from being decoded — the reader must advance past the bad frame.
+fn test_crc_error_then_valid_frame() -> bool {
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 4096);
+
+    let mut msg = create_test_message();
+
+    // Frame 1: valid
+    msg.small_int = 1;
+    writer.write_crc(&msg, 0);
+
+    // Frame 2: CRC-corrupted
+    msg.small_int = 2;
+    writer.write_crc(&msg, 0);
+    let frame2_end = writer.size();
+
+    // Frame 3: valid
+    msg.small_int = 3;
+    writer.write_crc(&msg, 0);
+    let total = writer.size();
+
+    let mut data = writer.data().to_vec();
+    data[frame2_end - 1] ^= 0xFF;
+    data[frame2_end - 2] ^= 0xFF;
+
+    let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data[..total].to_vec());
+
+    // Frame 1 must decode successfully
+    let result1 = reader.next(&get_message_info);
+    if result1.is_none() {
+        return false;
+    }
+
+    // Frame 2 must fail (CRC error) — reader must advance to frame 3
+    let result2 = reader.next(&get_message_info);
+    if result2.is_some() {
+        return false;
+    }
+
+    // Reader must decode frame 3 after advancing past the CRC error
+    let result3 = reader.next(&get_message_info);
+    result3.is_some()
+}
+
+/// Test: AccumulatingReader correctly recovers after a CRC-failed frame that was
+/// assembled across two add_data() calls (the internal-buffer reassembly path).
+/// Rust's AccumulatingReader loops internally on CRC failure, so the caller sees
+/// frame3 returned directly; cnt_crc_failures in diagnostics confirms the failure
+/// was detected.
+fn test_split_buffer_crc_error_status() -> bool {
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 4096);
+    let mut msg = create_test_message();
+
+    // Frame 1: valid
+    msg.small_int = 1;
+    writer.write_crc(&msg, 0);
+
+    // Frame 2: CRC-corrupted
+    msg.small_int = 2;
+    writer.write_crc(&msg, 0);
+    let frame2_end = writer.size();
+
+    // Frame 3: valid
+    msg.small_int = 3;
+    writer.write_crc(&msg, 0);
+    let total = writer.size();
+
+    let mut data = writer.data().to_vec();
+    data[frame2_end - 1] ^= 0xFF;
+    data[frame2_end - 2] ^= 0xFF;
+
+    // Split: frame 2's two CRC bytes go in the second add_data() call
+    let split_point = frame2_end - 2;
+    let chunk1 = &data[..split_point];
+    let chunk2 = &data[split_point..total];
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+
+    reader.add_data(chunk1);
+
+    // Frame 1 must decode from the first chunk
+    let result1 = reader.next(&get_message_info);
+    if result1.is_none() {
+        return false;
+    }
+
+    // Frame 2 is incomplete — partial data buffered, waiting for more data
+    let partial = reader.next(&get_message_info);
+    if partial.is_some() {
+        return false;
+    }
+
+    reader.add_data(chunk2);
+
+    // next() should surface the CRC-failed frame first.
+    let result2 = reader.next(&get_message_info);
+    let crc_failed = match result2 {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure && f.frame_size > 0,
+        None => false,
+    };
+    if !crc_failed {
+        return false;
+    }
+
+    // Then the following valid frame should parse.
+    let result3 = reader.next(&get_message_info);
+    let frame3_valid = match result3 {
+        Some(f) => f.valid,
+        None => false,
+    };
+    if !frame3_valid {
+        return false;
+    }
+
+    if reader.diagnostics().cnt_crc_failures != 1 {
+        return false;
+    }
+
+    true
+}
+
+/// Test: try_next drain loop surfaces CRC/resync progress and still delivers
+/// the following valid frame.
+fn test_try_next_drain_contract() -> bool {
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 4096);
+    let mut msg = create_test_message();
+
+    msg.small_int = 1;
+    writer.write_crc(&msg, 0);
+    let first_end = writer.size();
+
+    msg.small_int = 2;
+    writer.write_crc(&msg, 0);
+    let total = writer.size();
+
+    let mut data = writer.data().to_vec();
+    data[first_end - 1] ^= 0xFF;
+    data[first_end - 2] ^= 0xFF;
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
+    reader.add_data(&data[..total]);
+
+    let mut valid_count = 0;
+    let mut saw_crc_failure = false;
+    while let Some(f) = reader.try_next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        } else if f.status == FrameMsgStatus::CrcFailure {
+            saw_crc_failure = true;
+        }
+    }
+
+    saw_crc_failure
+        && valid_count == 1
+        && !reader.has_more()
+        && !reader.has_partial()
+        && reader.partial_size() == 0
+}
+
+/// Test: try_next partial-pending contract.
+fn test_try_next_partial_pending_contract() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer.write_crc(&msg, 0);
+    let data = writer.data().to_vec();
+    let frame_size = writer.size();
+
+    if frame_size < 10 {
+        return false;
+    }
+
+    let mid = frame_size / 2;
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    reader.add_data(&data[..mid]);
+
+    if reader.try_next(&get_message_info).is_some() {
+        return false;
+    }
+    if !reader.has_partial() || reader.partial_size() == 0 {
+        return false;
+    }
+
+    reader.add_data(&data[mid..frame_size]);
+    let mut valid_count = 0;
+    while let Some(f) = reader.try_next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        }
+    }
+
+    valid_count == 1
+        && !reader.has_partial()
+        && reader.partial_size() == 0
+        && !reader.has_more()
 }
 
 // ============================================================================
@@ -431,9 +661,13 @@ fn main() {
         ("Invalid message ID rejection",             test_invalid_msg_id),
         ("Invalid start bytes detection",            test_invalid_start_bytes),
         ("Minimal profile: Truncated frame",         test_minimal_profile_truncated_frame),
+        ("Multiple frames: CRC error then valid frame", test_crc_error_then_valid_frame),
         ("Multiple frames: Corrupted middle frame",  test_multiple_corrupted_frames),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary",     test_partial_frame_boundary),
+        ("Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status),
+        ("TryNext drain: CRC/resync + valid", test_try_next_drain_contract),
+        ("TryNext partial pending contract", test_try_next_partial_pending_contract),
         ("Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage),
         ("Streaming: Corrupted CRC detection",       test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling",         test_streaming_garbage),

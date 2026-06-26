@@ -758,10 +758,14 @@ class BufferReader:
             # Advance past complete frames (valid, or CRC-failed but structurally known)
             self._offset += result.frame_size
         elif result.status == FrameMsgStatus.WAITING_FOR_START and self._config.num_start_bytes >= 1:
-            # Head byte is not a frame start — scan forward to the next start byte
+            # Head byte is not a frame start — scan forward to the next start byte,
+            # reporting SyncRecovery so try_next() keeps advancing.
+            old_offset = self._offset
             start1 = bytes([self._config.computed_start_byte1()])
             nxt = self._buffer.find(start1, self._offset + 1, self._size)
             self._offset = nxt if nxt != -1 else self._size
+            result.status = FrameMsgStatus.SYNC_RECOVERY
+            result.frame_size = self._offset - old_offset
         else:
             # Incomplete/garbage with no recoverable start — consume the rest
             self._offset = self._size
@@ -785,6 +789,19 @@ class BufferReader:
     def has_more(self) -> bool:
         """Check if there are more bytes to parse."""
         return self._offset < self._size
+
+    def try_next(self) -> Optional['FrameMsgInfo']:
+        """Try to parse the next frame. Returns the result if forward progress was made
+        (valid frame, CRC-failed frame, or resync bytes skipped), or None when the buffer
+        is drained or only a trailing partial frame remains.
+
+        Canonical drain loop::
+
+            while (result := reader.try_next()) is not None:
+                if result.valid: handle(result)  # else CrcFailure or SyncRecovery
+        """
+        result = self.next()
+        return result if (result.valid or result.frame_size > 0) else None
 
 
 # =============================================================================
@@ -1038,18 +1055,18 @@ class AccumulatingReader:
             return self._with_diag(result)
 
         if result.status == FrameMsgStatus.WAITING_FOR_START and self._config.num_start_bytes >= 1:
-            # Head byte is not a frame start — scan forward to the next start byte
+            # Head byte is not a frame start — scan forward to the next start byte,
+            # reporting SyncRecovery with frame_size=bytes_skipped so try_next() keeps draining.
+            old_offset = self._current_offset
             start1 = bytes([self._config.computed_start_byte1()])
             nxt = self._current_buffer.find(start1, self._current_offset + 1, self._current_size)
-            if nxt != -1:
-                self._diag.cnt_failed_bytes += nxt - self._current_offset
-                self._diag.cnt_sync_recoveries += 1
-                self._current_offset = nxt
-                # Caller should call next() again to parse from the new position
-                return self._with_diag(FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY))
-            # No further start byte — discard the rest as a partial tail below
-            remaining = b''
-            self._current_offset = self._current_size
+            self._current_offset = nxt if nxt != -1 else self._current_size
+            skipped = self._current_offset - old_offset
+            self._diag.cnt_failed_bytes += skipped
+            self._diag.cnt_sync_recoveries += 1
+            r = FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
+            r.frame_size = skipped
+            return self._with_diag(r)
 
         # Parse failed - might be a partial message at the end of the buffer
         remaining_len = self._current_size - self._current_offset
@@ -1371,6 +1388,20 @@ class AccumulatingReader:
     def partial_size(self) -> int:
         """Get the size of the partial message data (0 if none)."""
         return self._internal_data_len
+
+    def try_next(self) -> Optional['FrameMsgInfo']:
+        """Try to parse the next frame. Returns the result if forward progress was made
+        (valid frame, CRC-failed frame, or resync bytes skipped), or None when the
+        current buffer is exhausted or only a trailing partial is pending.
+
+        Canonical drain loop::
+
+            while (result := reader.try_next()) is not None:
+                if result.valid: handle(result)  # else CrcFailure or SyncRecovery
+            if reader.has_partial(): pass  # incomplete frame; feed more data
+        """
+        result = self.next()
+        return result if (result.valid or result.frame_size > 0) else None
     
     @property
     def state(self) -> AccumulatingReaderState:

@@ -248,7 +248,7 @@ static class TestSdkSubscribe
         sdk.FrameReceived += frame =>
         {
             frameCount++;
-            sdk.SendDirect(frame).GetAwaiter().GetResult();
+            sdk.ForwardAsync(frame).GetAwaiter().GetResult();
         };
 
         var outgoing = new BasicTypesMessage { RegularInt = 123, Flag = true };
@@ -276,7 +276,7 @@ static class TestSdkSubscribe
         var parsed = parser.Parse(rawFrame, 0, rawFrame.Length);
         parsed.FrameData = default;
 
-        await sdk.Send(parsed);
+        await sdk.ReencodeAsync(parsed);
 
         Assert("send-frameinfo: transport received one frame", transport.SentData.Count == 1);
         Assert("send-frameinfo: re-encoded frame parses valid",

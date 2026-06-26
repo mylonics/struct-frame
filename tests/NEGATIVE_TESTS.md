@@ -16,64 +16,79 @@ Negative tests are critical for ensuring robust error handling. They verify that
 
 ## Test Files
 
-All seven language implementations share **15 identical test scenarios** (same names, same
-behaviour). Individual languages then add language-specific scenarios on top, so per-language
-totals differ (see counts below):
+All seven language implementations now share **20 identical test scenarios** (same names,
+same behaviour), including a common `tryNext` drain contract and partial-pending checks.
+Individual languages then add language-specific scenarios on top, so per-language totals
+differ (see counts below):
 
 ### C Tests (`tests/c/test_negative.c`)
-- **20 test cases**: the 15 uniform scenarios + 5 C-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption, stream recovery)
+- **24 test cases**: the 20 uniform scenarios + 4 C-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption)
 - Tests buffer reader and accumulating reader (buffer mode) APIs
 - Uses ProfileStandard, ProfileSensor, ProfileBulk, and ProfileNetwork configurations
 
 ### C++ Tests (`tests/cpp/test_negative.cpp`)
-- **20 test cases**: the 15 uniform scenarios + 5 C++-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption, stream recovery)
+- **24 test cases**: the 20 uniform scenarios + 4 C++-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption)
 - Tests both BufferReader and AccumulatingReader APIs
 - Tests multiple frame profiles (Standard, Sensor, Bulk, Network)
 
 ### Python Tests (`tests/py/test_negative.py`)
-- **30 test cases**: the 15 uniform scenarios + Python-specific extras (bulk/cross-package/network corruption, stream recovery, diagnostic-counter, and status-machine tests)
+- **34 test cases**: the 20 uniform scenarios + Python-specific extras (bulk/cross-package/network corruption, diagnostic-counter, and status-machine tests)
 - Tests both buffer and streaming modes
 - Uses ProfileStandardReader, ProfileSensorReader, and ProfileNetworkReader
 
 ### TypeScript Tests (`tests/ts/test_negative.ts`)
-- **20 test cases**: the 15 uniform scenarios + 5 TS-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption, stream recovery)
+- **24 test cases**: the 20 uniform scenarios + 4 TS-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption)
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### JavaScript Tests (`tests/js/test_negative.js`)
-- **20 test cases** identical to TypeScript
+- **24 test cases** identical to TypeScript
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### C# Tests (`tests/csharp/TestNegative.cs`)
-- **20 test cases**: the 15 uniform scenarios + 5 C#-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption, stream recovery)
+- **24 test cases**: the 20 uniform scenarios + 4 C#-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption)
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### Rust Tests (`tests/rust/src/test_negative.rs`)
-- **16 test cases**: the 15 uniform scenarios + 1 Rust-specific (stream recovery)
+- **20 test cases**: the full uniform scenario set
 - Tests BufferReader and AccumulatingReader APIs
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ## Uniform Test Scenarios
 
-All seven languages implement the following 15 scenarios with identical names:
+All seven languages implement the following 20 scenarios with identical names:
 
-1. **Buffer mode: recovers after CRC failure** – the buffer-mode accumulating reader resyncs and returns the next valid frame after a CRC-failed frame
+1. **Buffer mode: recovers after CRC failure** – buffer-mode accumulating reader resyncs and returns the next valid frame after a CRC-failed frame
 2. **Buffer reader: skips CRC-failed frame** – `BufferReader` advances past a CRC-failed frame instead of stalling on it
 3. **Bulk profile: Corrupted CRC** – validates error detection on the Bulk (extended-header) profile
 4. **Corrupted CRC detection** – verifies parser rejects frames with flipped CRC bytes
 5. **Corrupted length field detection** – ensures length validation catches oversized claims
-6. **Invalid message ID rejection** – verifies that a frame with an unknown msg_id byte (0xFF) is rejected; since get_message_info returns no magic values for unknown IDs, the CRC check fails
-7. **Invalid start bytes detection** – ensures parser rejects frames with wrong start markers
-8. **Minimal profile: Truncated frame** – verifies ProfileSensor (no CRC, no length) correctly rejects a buffer shorter than the expected payload size determined via get_message_info
-9. **Multiple frames: Corrupted middle frame** – validates that the second of three consecutive frames is rejected when its CRC is flipped
-10. **Network profile: SysId/CompId corruption** – verifies that sys_id (byte 3) is part of the CRC-protected region; corrupting it causes CRC failure, proving routing fields are integrity-checked
-11. **Partial frame across buffer boundary** – verifies `AccumulatingReader` reassembles a frame that was fed in two `add_data` chunks
-12. **Streaming: Corrupted CRC detection** – tests CRC validation in byte-by-byte / accumulating mode
-13. **Streaming: Garbage data handling** – verifies parser handles random invalid bytes without crashing
-14. **Truncated frame detection** – tests handling of incomplete frames
-15. **Zero-length buffer handling** – tests edge case of empty input
+6. **Invalid message ID rejection** – frame with unknown msg_id byte (0xFF) is rejected because CRC validation no longer has valid magic values
+7. **Invalid start bytes detection** – parser rejects frames with wrong start markers
+8. **Minimal profile: Truncated frame** – ProfileSensor (no CRC/no length) rejects a buffer shorter than expected payload size
+9. **Multiple frames: CRC error then valid frame** – CRC-failed middle frame is surfaced and parsing continues to the following valid frame
+10. **Multiple frames: Corrupted middle frame** – second of three consecutive frames is rejected when its CRC is flipped
+11. **Network profile: SysId/CompId corruption** – routing fields are CRC-protected; corruption causes CRC failure
+12. **Partial frame across buffer boundary** – `AccumulatingReader` reassembles a frame split across two `add_data` chunks
+13. **Split-buffer: CRC error status preserved** – CRC-failed frame assembled across chunks still reports explicit CRC-failure status
+14. **Stream mode: recovers after garbage prefix** – byte-at-a-time mode resyncs after noise and still decodes the next valid frame
+15. **Streaming: Corrupted CRC detection** – CRC validation in byte-by-byte/accumulating mode
+16. **Streaming: Garbage data handling** – random invalid bytes are handled safely without crashes
+17. **Truncated frame detection** – incomplete frames are rejected
+18. **TryNext drain: CRC/resync + valid** – `tryNext` loop keeps making forward progress through CRC/resync events and still delivers valid frames
+19. **TryNext partial pending contract** – when data is partial, `tryNext` reports no progress while exposing partial state; after completion it drains and clears partial state
+20. **Zero-length buffer handling** – empty input edge case
+
+### `tryNext` Contract (Unified)
+
+- `tryNext` returns progress items while forward progress is possible:
+  - valid frame
+  - CRC-failed frame event
+  - sync-recovery skip event
+- `tryNext` returns no item only when the buffer is drained or only a trailing partial frame remains.
+- Partial pending is observable through `hasPartial`/`partialSize` (or language-equivalent API).
 
 ## Running the Tests
 
@@ -137,7 +152,7 @@ cd tests/rust && cargo build
 
 All negative tests should **PASS**, which means:
 - Invalid input is correctly detected and rejected
-- Parser returns `valid=false` (or `None` in Rust/Python) for corrupted/malformed data
+- Parser returns `valid=false` for corrupted/malformed frames, and `tryNext` loops continue draining through CRC/resync events
 - No crashes or undefined behavior occurs
 - Error handling is consistent across implementations
 
@@ -162,7 +177,7 @@ Summary: 20/20 tests passed
 ========================================
 ```
 
-(The example above shows a 20-scenario language; the exact total varies per language —
+(The example above shows a 24-scenario language; the exact total varies per language —
 see the per-file counts under [Test Files](#test-files).)
 
 ## Integration with Test Suite

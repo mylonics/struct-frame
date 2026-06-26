@@ -94,11 +94,13 @@ impl StructFrameSdk {
     pub fn inject_data(&mut self, data: &[u8]) {
         self.reader.add_data(data);
         loop {
-            let frame = self.reader.next(self.get_message_info.as_ref());
+            let frame = self.reader.try_next(self.get_message_info.as_ref());
             match frame {
                 None => break,
                 Some(f) => {
-                    self.dispatch(f);
+                    if f.valid {
+                        self.dispatch(f);
+                    }
                 }
             }
         }
@@ -112,8 +114,12 @@ impl StructFrameSdk {
         match self.reader.push_byte(byte, self.get_message_info.as_ref()) {
             None => false,
             Some(f) => {
-                self.dispatch(f);
-                true
+                if f.valid {
+                    self.dispatch(f);
+                    true
+                } else {
+                    false
+                }
             }
         }
     }

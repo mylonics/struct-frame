@@ -505,7 +505,9 @@ class BufferReader {
       // Advance past complete frames (valid or CRC-failed)
       offset_ += result.frame_size;
     } else if (result.status == FrameMsgStatus::WaitingForStart) {
-      // Head byte is not a frame start — scan forward to next start byte
+      // Head byte is not a frame start — scan forward to next start byte,
+      // reporting SyncRecovery so try_next() keeps advancing.
+      size_t old_offset = offset_;
       if constexpr (Config::num_start_bytes >= 1) {
         size_t scan_start = offset_ + 1;
         if (scan_start < size_) {
@@ -519,6 +521,8 @@ class BufferReader {
       } else {
         offset_ = size_;
       }
+      result.status = FrameMsgStatus::SyncRecovery;
+      result.frame_size = offset_ - old_offset;
     }
     // Collecting: leave offset unchanged — frame is incomplete (normal end-of-buffer)
 
@@ -544,6 +548,22 @@ class BufferReader {
    * Check if there are more bytes to parse.
    */
   bool has_more() const { return offset_ < size_; }
+
+  /**
+   * Try to parse the next frame. Returns true while forward progress is made
+   * (valid frame, CRC-failed frame, or skipped resync bytes). Returns false
+   * when the buffer is drained or only a trailing partial frame remains.
+   *
+   * Canonical drain loop:
+   *   FrameMsgInfo f;
+   *   while (reader.try_next(f)) {
+   *       if (f.valid) handle(f);  // else CrcFailure or SyncRecovery
+   *   }
+   */
+  bool try_next(FrameMsgInfo& out) {
+    out = next();
+    return out.valid || out.frame_size > 0;
+  }
 
  private:
   FrameMsgInfo parse_frame(const uint8_t* buffer, size_t size) const {
@@ -844,24 +864,30 @@ class AccumulatingReader {
     }
 
     if (result.status == FrameMsgStatus::WaitingForStart) {
-      // Head byte is not a start byte — scan forward for the next one
+      // Head byte is not a start byte — scan forward for the next one,
+      // reporting SyncRecovery so try_next() keeps draining.
+      size_t old_offset = current_offset_;
       if constexpr (Config::num_start_bytes >= 1) {
         size_t scan_start = current_offset_ + 1;
         if (scan_start < current_size_) {
           const void* p = std::memchr(current_buffer_ + scan_start,
                                       static_cast<int>(Config::computed_start_byte1()),
                                       current_size_ - scan_start);
-          if (p) {
-            current_offset_ = static_cast<size_t>(
-                static_cast<const uint8_t*>(p) - current_buffer_);
-            // Return empty — caller should call next() again to parse from new position
-            return with_diagnostics(FrameMsgInfo());
-          }
+          current_offset_ = p
+              ? static_cast<size_t>(static_cast<const uint8_t*>(p) - current_buffer_)
+              : current_size_;
+        } else {
+          current_offset_ = current_size_;
         }
+      } else {
+        current_offset_ = current_size_;
       }
-      // No start byte found in remainder — consume everything
-      current_offset_ = current_size_;
-      return with_diagnostics(FrameMsgInfo());
+      FrameMsgInfo r;
+      r.status = FrameMsgStatus::SyncRecovery;
+      r.frame_size = current_offset_ - old_offset;
+      diagnostics_.cnt_sync_recoveries++;
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(r.frame_size);
+      return with_diagnostics(r);
     }
 
     // Collecting — save remaining bytes to internal buffer for next add_data() call
@@ -937,6 +963,23 @@ class AccumulatingReader {
    * Get the size of the partial message data (0 if none).
    */
   size_t partial_size() const { return internal_data_len_; }
+
+  /**
+   * Try to parse the next frame. Returns true while forward progress is made
+   * (valid frame, CRC-failed frame, or skipped resync bytes). Returns false
+   * when the current buffer is exhausted or only a trailing partial is pending.
+   *
+   * Canonical drain loop:
+   *   FrameMsgInfo f;
+   *   while (reader.try_next(f)) {
+   *       if (f.valid) handle(f);  // else CrcFailure or SyncRecovery
+   *   }
+   *   if (reader.has_partial()) { // incomplete frame; feed more data }
+   */
+  bool try_next(FrameMsgInfo& out) {
+    out = next();
+    return out.valid || out.frame_size > 0;
+  }
 
   /**
    * Get current parser state (for debugging).
