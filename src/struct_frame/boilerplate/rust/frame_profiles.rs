@@ -923,6 +923,15 @@ impl AccumulatingReader {
         }
     }
 
+    /// Try to parse one progress-making item.
+    ///
+    /// Returns Some(...) while forward progress is made (valid frame, CRC-failed
+    /// frame, or SyncRecovery skip), and None when only trailing partial data
+    /// remains or the buffer is drained.
+    pub fn try_next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
+        self.next(get_message_info)
+    }
+
     /// Compact the buffer if head is past half capacity, to avoid growing indefinitely.
     fn maybe_compact(&mut self) {
         if self.head >= self.capacity / 2 {
@@ -1144,7 +1153,7 @@ impl AccumulatingReader {
     /// Returns `Some(FrameMsgInfo)` as soon as a frame is available.
     pub fn push_byte(&mut self, byte: u8, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
         self.add_data(&[byte]);
-        self.next(get_message_info)
+        self.try_next(get_message_info)
     }
 
     /// Get the next complete frame, or None if not enough data yet.

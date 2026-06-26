@@ -269,11 +269,13 @@ class StructFrameSdk:
         """Feed incoming bytes to the reader and dispatch every complete frame."""
         self.reader.add_data(data)
         while True:
-            result = self.reader.next()
-            if not result.valid:
-                # No more complete frames; the reader keeps any partial/garbage
-                # bytes internally and resyncs on its own.
+            result = self.reader.try_next()
+            if result is None:
+                # No more progress possible; trailing partial (if any) remains buffered.
                 break
+            if not result.valid:
+                # Surfaced CRC failure / resync skip — keep draining.
+                continue
             self._dispatch(result)
 
     def _dispatch(self, result) -> None:

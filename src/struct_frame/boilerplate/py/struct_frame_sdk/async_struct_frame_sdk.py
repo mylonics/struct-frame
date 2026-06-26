@@ -213,9 +213,11 @@ class AsyncStructFrameSdk:
         """Feed incoming bytes to the reader and dispatch every complete frame."""
         self.reader.add_data(data)
         while True:
-            result = self.reader.next()
-            if not result.valid:
+            result = self.reader.try_next()
+            if result is None:
                 break
+            if not result.valid:
+                continue
             self._dispatch(result)
 
     def _dispatch(self, result) -> None:
