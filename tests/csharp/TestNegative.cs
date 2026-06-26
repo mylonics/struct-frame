@@ -767,6 +767,85 @@ public class TestNegative
             return true;
         }
 
+        /// <summary>
+        /// Test: TryNext drain loop surfaces CRC/resync progress and still delivers
+        /// the following valid frame.
+        /// </summary>
+        private static bool TestTryNextDrainContract()
+        {
+            byte[] buffer = new byte[4096];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+
+            var msg1 = CreateTestMessage();
+            msg1.SmallInt = 1;
+            writer.Write(msg1);
+            int firstEnd = writer.Size;
+
+            var msg2 = CreateTestMessage();
+            msg2.SmallInt = 2;
+            writer.Write(msg2);
+            int totalBytes = writer.Size;
+
+            buffer[firstEnd - 1] ^= 0xFF;
+            buffer[firstEnd - 2] ^= 0xFF;
+
+            var reader = new AccumulatingReader<StandardProfile>(4096, SerializationTestMD.GetMessageInfo);
+            reader.AddData(buffer, 0, totalBytes);
+
+            int validCount = 0;
+            bool sawCrcFailure = false;
+            while (reader.TryNext(out var frame))
+            {
+                if (frame.Valid)
+                    validCount++;
+                else if (frame.Status == FrameMsgStatus.CrcFailure)
+                    sawCrcFailure = true;
+            }
+
+            if (!sawCrcFailure) return false;
+            if (validCount != 1) return false;
+            if (reader.HasMore) return false;
+            if (reader.HasPartial) return false;
+            if (reader.PartialSize != 0) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Test: TryNext partial-pending contract.
+        /// </summary>
+        private static bool TestTryNextPartialPendingContract()
+        {
+            var msg = CreateTestMessage();
+            byte[] buffer = new byte[1024];
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+            writer.Write(msg);
+            int frameSize = writer.Size;
+
+            if (frameSize < 10) return false;
+            int mid = frameSize / 2;
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+
+            reader.AddData(buffer, 0, mid);
+            if (reader.TryNext(out var _)) return false;
+            if (!reader.HasPartial) return false;
+            if (reader.PartialSize <= 0) return false;
+
+            reader.AddData(buffer, mid, frameSize - mid);
+            int validCount = 0;
+            while (reader.TryNext(out var frame))
+            {
+                if (frame.Valid) validCount++;
+            }
+
+            if (validCount != 1) return false;
+            if (reader.HasPartial) return false;
+            if (reader.PartialSize != 0) return false;
+            return !reader.HasMore;
+        }
+
         public static int Main(string[] args)
         {
             Console.WriteLine("\n========================================");
@@ -793,6 +872,8 @@ public class TestNegative
                 ("Network profile: SysId/CompId corruption", TestNetworkSysIdCompId),
                 ("Partial frame across buffer boundary", TestPartialFrameBoundary),
                 ("Split-buffer: CRC error status preserved", TestSplitBufferCrcErrorStatus),
+                ("TryNext drain: CRC/resync + valid", TestTryNextDrainContract),
+                ("TryNext partial pending contract", TestTryNextPartialPendingContract),
                 ("Stream mode: recovers after garbage prefix", TestStreamRecoversAfterGarbage),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
                 ("Streaming: Garbage data handling", TestStreamingGarbage),

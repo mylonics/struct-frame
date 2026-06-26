@@ -558,6 +558,81 @@ fn test_split_buffer_crc_error_status() -> bool {
     true
 }
 
+/// Test: try_next drain loop surfaces CRC/resync progress and still delivers
+/// the following valid frame.
+fn test_try_next_drain_contract() -> bool {
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 4096);
+    let mut msg = create_test_message();
+
+    msg.small_int = 1;
+    writer.write_crc(&msg, 0);
+    let first_end = writer.size();
+
+    msg.small_int = 2;
+    writer.write_crc(&msg, 0);
+    let total = writer.size();
+
+    let mut data = writer.data().to_vec();
+    data[first_end - 1] ^= 0xFF;
+    data[first_end - 2] ^= 0xFF;
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
+    reader.add_data(&data[..total]);
+
+    let mut valid_count = 0;
+    let mut saw_crc_failure = false;
+    while let Some(f) = reader.try_next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        } else if f.status == FrameMsgStatus::CrcFailure {
+            saw_crc_failure = true;
+        }
+    }
+
+    saw_crc_failure
+        && valid_count == 1
+        && !reader.has_more()
+        && !reader.has_partial()
+        && reader.partial_size() == 0
+}
+
+/// Test: try_next partial-pending contract.
+fn test_try_next_partial_pending_contract() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer.write_crc(&msg, 0);
+    let data = writer.data().to_vec();
+    let frame_size = writer.size();
+
+    if frame_size < 10 {
+        return false;
+    }
+
+    let mid = frame_size / 2;
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    reader.add_data(&data[..mid]);
+
+    if reader.try_next(&get_message_info).is_some() {
+        return false;
+    }
+    if !reader.has_partial() || reader.partial_size() == 0 {
+        return false;
+    }
+
+    reader.add_data(&data[mid..frame_size]);
+    let mut valid_count = 0;
+    while let Some(f) = reader.try_next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        }
+    }
+
+    valid_count == 1
+        && !reader.has_partial()
+        && reader.partial_size() == 0
+        && !reader.has_more()
+}
+
 // ============================================================================
 // Test runner
 // ============================================================================
@@ -591,6 +666,8 @@ fn main() {
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary",     test_partial_frame_boundary),
         ("Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status),
+        ("TryNext drain: CRC/resync + valid", test_try_next_drain_contract),
+        ("TryNext partial pending contract", test_try_next_partial_pending_contract),
         ("Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage),
         ("Streaming: Corrupted CRC detection",       test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling",         test_streaming_garbage),

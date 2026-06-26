@@ -60,6 +60,14 @@ function createTestMessage(): BasicTypesMessage {
   return msg;
 }
 
+function tryNextCompat(reader: any): any | null {
+  if (typeof reader.tryNext === 'function') {
+    return reader.tryNext();
+  }
+  const result = reader.next();
+  return (result.valid || (result.frameSize ?? 0) > 0) ? result : null;
+}
+
 /**
  * Test: Parser rejects frame with corrupted CRC
  */
@@ -672,6 +680,82 @@ function testSplitBufferCrcErrorStatus(): boolean {
   return true;
 }
 
+/**
+ * Test: tryNext drain loop surfaces CRC/resync progress and still delivers
+ * the following valid frame.
+ */
+function testTryNextDrainContract(): boolean {
+  const writer = new BufferWriter(ProfileStandardConfig, 4096);
+  const msg = createTestMessage();
+
+  msg.smallInt = 1;
+  writer.write(msg);
+  const firstEnd = writer.size;
+
+  msg.smallInt = 2;
+  writer.write(msg);
+  const total = writer.size;
+
+  const buffer = Buffer.from(writer.data());
+  buffer[firstEnd - 1] ^= 0xFF;
+  buffer[firstEnd - 2] ^= 0xFF;
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 4096);
+  reader.addData(buffer.subarray(0, total));
+
+  let validCount = 0;
+  let sawCrcFailure = false;
+  let frame;
+  while ((frame = tryNextCompat(reader)) !== null) {
+    if (frame.valid) {
+      validCount++;
+    } else if (frame.status === FrameMsgStatus.CrcFailure) {
+      sawCrcFailure = true;
+    }
+  }
+
+  if (!sawCrcFailure) return false;
+  if (validCount !== 1) return false;
+  if (reader.hasMore()) return false;
+  if (reader.hasPartial()) return false;
+  if (reader.partialSize() !== 0) return false;
+  return true;
+}
+
+/**
+ * Test: tryNext partial-pending contract.
+ */
+function testTryNextPartialPendingContract(): boolean {
+  const writer = new BufferWriter(ProfileStandardConfig, 1024);
+  const msg = createTestMessage();
+  writer.write(msg);
+  const buffer = writer.data();
+  const frameSize = writer.size;
+
+  if (frameSize < 10) return false;
+  const mid = Math.floor(frameSize / 2);
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  reader.addData(buffer.subarray(0, mid));
+
+  if (tryNextCompat(reader) !== null) return false;
+  if (!reader.hasPartial()) return false;
+  if (reader.partialSize() <= 0) return false;
+
+  reader.addData(buffer.subarray(mid, frameSize));
+
+  let validCount = 0;
+  let frame;
+  while ((frame = tryNextCompat(reader)) !== null) {
+    if (frame.valid) validCount++;
+  }
+
+  if (validCount !== 1) return false;
+  if (reader.hasPartial()) return false;
+  if (reader.partialSize() !== 0) return false;
+  return !reader.hasMore();
+}
+
 function main(): number {
   console.log('\n========================================');
   console.log('NEGATIVE TESTS - TypeScript Parser');
@@ -693,6 +777,8 @@ function main(): number {
     ['Multiple frames: CRC error then valid frame', testCrcErrorThenValidFrame],
     ['Multiple frames: Corrupted middle frame', testMultipleCorruptedFrames],
     ['Split-buffer: CRC error status preserved', testSplitBufferCrcErrorStatus],
+    ['TryNext drain: CRC/resync + valid', testTryNextDrainContract],
+    ['TryNext partial pending contract', testTryNextPartialPendingContract],
     ['Network profile: Corrupted pkg_id', testNetworkCorruptedPkgId],
     ['Network profile: SysId/CompId corruption', testNetworkSysIdCompId],
     ['Partial frame across buffer boundary', testPartialFrameBoundary],

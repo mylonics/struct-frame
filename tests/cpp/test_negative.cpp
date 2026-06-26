@@ -481,6 +481,81 @@ bool test_cross_package_rejection() {
 }
 
 /**
+ * Test: TryNext drain loop surfaces CRC/resync progress and still delivers
+ * the following valid frame.
+ */
+bool test_try_next_drain_contract() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+
+  auto msg = StandardMessages::get_message(0);
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg);
+  size_t first_end = writer.size();
+
+  auto msg2 = StandardMessages::get_message(1 % StandardMessages::MESSAGE_COUNT);
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg2);
+  size_t total = writer.size();
+
+  buffer[first_end - 1] ^= 0xFF;
+  buffer[first_end - 2] ^= 0xFF;
+
+  AccumulatingReader<ProfileStandardConfig, 2048, decltype(&get_message_info)> reader(get_message_info);
+  reader.add_data(buffer.data(), total);
+
+  int valid_count = 0;
+  bool saw_crc_failure = false;
+  FrameMsgInfo f;
+  while (reader.try_next(f)) {
+    if (f.valid) {
+      valid_count++;
+    } else if (f.status == FrameMsgStatus::CrcFailure) {
+      saw_crc_failure = true;
+    }
+  }
+
+  if (!saw_crc_failure) return false;
+  if (valid_count != 1) return false;
+  if (reader.has_more()) return false;
+  if (reader.has_partial()) return false;
+  if (reader.partial_size() != 0) return false;
+  return true;
+}
+
+/**
+ * Test: TryNext partial-pending contract.
+ */
+bool test_try_next_partial_pending_contract() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+
+  auto msg = StandardMessages::get_message(0);
+  std::visit([&writer](auto&& m) { writer.write(m); }, msg);
+  size_t frame_size = writer.size();
+  if (frame_size < 10) return false;
+  size_t mid = frame_size / 2;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+
+  reader.add_data(buffer.data(), mid);
+  FrameMsgInfo first;
+  if (reader.try_next(first)) return false;
+  if (!reader.has_partial()) return false;
+  if (reader.partial_size() == 0) return false;
+
+  reader.add_data(buffer.data() + mid, frame_size - mid);
+  int valid_count = 0;
+  FrameMsgInfo f;
+  while (reader.try_next(f)) {
+    if (f.valid) valid_count++;
+  }
+
+  if (valid_count != 1) return false;
+  if (reader.has_partial()) return false;
+  if (reader.partial_size() != 0) return false;
+  return !reader.has_more();
+}
+
+/**
  * Test: Bulk profile rejects corrupted msg_id low byte
  * ProfileBulk layout: [0x90][0x71][LEN][PKG_ID][MSG_ID][PAYLOAD...][CRC1][CRC2]
  * Corrupting msg_id low byte (byte 4) changes the message type → wrong magic → CRC fails.
@@ -724,6 +799,8 @@ int main() {
     {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
     {"Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status},
+    {"TryNext drain: CRC/resync + valid", test_try_next_drain_contract},
+    {"TryNext partial pending contract", test_try_next_partial_pending_contract},
     {"Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage_data},

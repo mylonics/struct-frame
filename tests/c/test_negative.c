@@ -952,6 +952,114 @@ bool test_split_buffer_crc_error_status(void) {
   return true;
 }
 
+/* Local shim: emulate try_next() contract using next() + frame_size progress. */
+static bool test_try_next_progress(accumulating_reader_t* reader, frame_msg_info_t* out) {
+  *out = accumulating_reader_next(reader);
+  return out->valid || out->frame_size > 0;
+}
+
+/**
+ * Test: TryNext drain loop surfaces CRC/resync progress and still delivers
+ * the following valid frame.
+ */
+bool test_try_next_drain_contract(void) {
+  uint8_t buf[2048];
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buf, sizeof(buf));
+
+  uint8_t payload[256];
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      payload, payload_size, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  size_t first_end = buffer_writer_size(&writer);
+
+  msg.small_int = 77;
+  payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+  buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                      payload, payload_size, 0, 0, 0, 0,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                      SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  size_t total = buffer_writer_size(&writer);
+
+  /* Corrupt first frame CRC */
+  buf[first_end - 1] ^= 0xFF;
+  buf[first_end - 2] ^= 0xFF;
+
+  uint8_t internal_buffer[2048];
+  accumulating_reader_t reader;
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), get_message_info);
+  accumulating_reader_add_data(&reader, buf, total);
+
+  int valid_count = 0;
+  bool saw_crc_failure = false;
+  frame_msg_info_t f;
+  while (test_try_next_progress(&reader, &f)) {
+    if (f.valid) {
+      valid_count++;
+    } else if (f.status == FRAME_MSG_STATUS_CRC_FAILURE) {
+      saw_crc_failure = true;
+    }
+  }
+
+  if (!saw_crc_failure) return false;
+  if (valid_count != 1) return false;
+  if (accumulating_reader_has_more(&reader)) return false;
+  if (accumulating_reader_has_partial(&reader)) return false;
+  if (accumulating_reader_partial_size(&reader) != 0) return false;
+  return true;
+}
+
+/**
+ * Test: TryNext partial-pending contract.
+ * After a short chunk, no progress is reported and partial bytes are exposed;
+ * after the tail arrives, one valid frame drains and partial clears.
+ */
+bool test_try_next_partial_pending_contract(void) {
+  uint8_t frame_buf[1024];
+  SerializationTestBasicTypesMessage msg;
+  create_test_message(&msg);
+
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, frame_buf, sizeof(frame_buf));
+
+  uint8_t payload[256];
+  size_t payload_size = SerializationTestBasicTypesMessage_serialize(&msg, payload);
+  size_t frame_size = buffer_writer_write(&writer, SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID,
+                                          payload, payload_size, 0, 0, 0, 0,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC1,
+                                          SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MAGIC2);
+  if (frame_size < 10) return false;
+
+  size_t mid = frame_size / 2;
+
+  uint8_t internal_buffer[1024];
+  accumulating_reader_t reader;
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), get_message_info);
+
+  accumulating_reader_add_data(&reader, frame_buf, mid);
+  frame_msg_info_t first;
+  if (test_try_next_progress(&reader, &first)) return false;
+  if (!accumulating_reader_has_partial(&reader)) return false;
+  if (accumulating_reader_partial_size(&reader) == 0) return false;
+
+  accumulating_reader_add_data(&reader, frame_buf + mid, frame_size - mid);
+  int valid_count = 0;
+  frame_msg_info_t f;
+  while (test_try_next_progress(&reader, &f)) {
+    if (f.valid) valid_count++;
+  }
+
+  if (valid_count != 1) return false;
+  if (accumulating_reader_has_partial(&reader)) return false;
+  if (accumulating_reader_partial_size(&reader) != 0) return false;
+  return !accumulating_reader_has_more(&reader);
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)(void);
 
@@ -985,6 +1093,8 @@ int main(void) {
     {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
     {"Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status},
+    {"TryNext drain: CRC/resync + valid", test_try_next_drain_contract},
+    {"TryNext partial pending contract", test_try_next_partial_pending_contract},
     {"Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage},

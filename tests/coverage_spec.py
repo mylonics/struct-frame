@@ -404,13 +404,13 @@ SECTIONS = [
         "intro": (
             "Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`\n\n"
             "See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.\n\n"
-            "The 15 scenarios in the table below are registered in every language's "
-            "`test_negative.*` file. Individual languages carry additional "
-            "language-specific scenarios: C/C++/TS/JS/C# (20 each) add bulk "
-            "`pkg_id`/`msg_id` corruption, cross-package rejection, network "
-            "`pkg_id` corruption, and stream-recovery tests; Python (30) adds "
-            "those plus diagnostic-counter and status-machine tests; Rust (16) "
-            "adds stream-recovery only."
+            "The 20 scenarios in the table below are registered in every "
+            "language's `test_negative.*` file. Individual languages carry "
+            "additional language-specific scenarios: C/C++/TS/JS/C# (24 each) "
+            "add bulk `pkg_id`/`msg_id` corruption, cross-package rejection, and "
+            "network `pkg_id` corruption; Python (34) adds those plus "
+            "diagnostic-counter and status-machine tests; Rust (20) currently "
+            "matches the uniform set."
         ),
         "tables": [
             {
@@ -426,11 +426,16 @@ SECTIONS = [
                     "Invalid message ID rejection",
                     "Invalid start bytes detection",
                     "Minimal profile: Truncated frame",
+                    "Multiple frames: CRC error then valid frame",
                     "Multiple frames: Corrupted middle frame",
                     "Network profile: SysId/CompId corruption",
                     "Partial frame across buffer boundary",
+                    "Split-buffer: CRC error status preserved",
+                    "Stream mode: recovers after garbage prefix",
                     "Streaming: Corrupted CRC detection",
                     "Streaming: Garbage data handling",
+                    "TryNext drain: CRC/resync + valid",
+                    "TryNext partial pending contract",
                     "Truncated frame detection",
                     "Zero-length buffer handling")],
             },
