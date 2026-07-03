@@ -16,49 +16,51 @@ Negative tests are critical for ensuring robust error handling. They verify that
 
 ## Test Files
 
-All seven language implementations now share **20 identical test scenarios** (same names,
-same behaviour), including a common `tryNext` drain contract and partial-pending checks.
-Individual languages then add language-specific scenarios on top, so per-language totals
-differ (see counts below):
+All seven language implementations now share **31 identical test scenarios** (same names,
+same behaviour), including a common `tryNext` drain contract, partial-pending checks,
+diagnostic-counter assertions, minimal-profile resync scenarios, and a chunk-boundary
+split sweep. All languages also carry the four package-corruption scenarios (bulk
+`pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption), so
+every language runs **35 scenarios**; Python adds 5 status-machine/diagnostic extras (40).
 
 ### C Tests (`tests/c/test_negative.c`)
-- **24 test cases**: the 20 uniform scenarios + 4 C-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption)
+- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
 - Tests buffer reader and accumulating reader (buffer mode) APIs
 - Uses ProfileStandard, ProfileSensor, ProfileBulk, and ProfileNetwork configurations
 
 ### C++ Tests (`tests/cpp/test_negative.cpp`)
-- **24 test cases**: the 20 uniform scenarios + 4 C++-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption)
+- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
 - Tests both BufferReader and AccumulatingReader APIs
 - Tests multiple frame profiles (Standard, Sensor, Bulk, Network)
 
 ### Python Tests (`tests/py/test_negative.py`)
-- **34 test cases**: the 20 uniform scenarios + Python-specific extras (bulk/cross-package/network corruption, diagnostic-counter, and status-machine tests)
+- **40 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios + 5 Python-specific status-machine/diagnostic extras
 - Tests both buffer and streaming modes
 - Uses ProfileStandardReader, ProfileSensorReader, and ProfileNetworkReader
 
 ### TypeScript Tests (`tests/ts/test_negative.ts`)
-- **24 test cases**: the 20 uniform scenarios + 4 TS-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption)
+- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### JavaScript Tests (`tests/js/test_negative.js`)
-- **24 test cases** identical to TypeScript
+- **35 test cases** identical to TypeScript
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### C# Tests (`tests/csharp/TestNegative.cs`)
-- **24 test cases**: the 20 uniform scenarios + 4 C#-specific (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption)
+- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### Rust Tests (`tests/rust/src/test_negative.rs`)
-- **20 test cases**: the full uniform scenario set
+- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
 - Tests BufferReader and AccumulatingReader APIs
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ## Uniform Test Scenarios
 
-All seven languages implement the following 20 scenarios with identical names:
+All seven languages implement the following 31 scenarios with identical names:
 
 1. **Buffer mode: recovers after CRC failure** – buffer-mode accumulating reader resyncs and returns the next valid frame after a CRC-failed frame
 2. **Buffer reader: skips CRC-failed frame** – `BufferReader` advances past a CRC-failed frame instead of stalling on it
@@ -80,6 +82,17 @@ All seven languages implement the following 20 scenarios with identical names:
 18. **TryNext drain: CRC/resync + valid** – `tryNext` loop keeps making forward progress through CRC/resync events and still delivers valid frames
 19. **TryNext partial pending contract** – when data is partial, `tryNext` reports no progress while exposing partial state; after completion it drains and clears partial state
 20. **Zero-length buffer handling** – empty input edge case
+21. **Buffer mode: CRC failure counters** – a CRC-failed frame consumed via `add_data` increments `cnt_crc_failures`, `cnt_failed_bytes` and `cnt_sync_recoveries` (same counter semantics as stream mode)
+22. **Buffer mode: Sequence gap counted** – sequence gaps are detected on frames consumed via `add_data`, matching stream-mode behaviour
+23. **Diagnostics: CRC failure counter** – `cnt_crc_failures` increments on a stream-mode CRC failure
+24. **Diagnostics: Length error counter** – `cnt_len_errors` increments when the header length is outside the `[min_size, size]` range for the message
+25. **Diagnostics: Reset diagnostics** – `reset_diagnostics()` clears all counters
+26. **Diagnostics: Sequence gap counter** – `cnt_seq_gaps` increments when a sequence number is skipped (Network profile)
+27. **Diagnostics: Sync recovery counter** – `cnt_sync_recoveries` increments when garbage bytes force a resync
+28. **IPC buffer: unknown msg_id advances one byte** – on the None-header (IPC) profile an unknown msg_id advances exactly one byte (SyncRecovery) and the following valid frame is still delivered
+29. **Sensor buffer: unknown msg_id resync** – on the Tiny-header (Sensor) profile an unknown msg_id triggers a scan to the next start byte instead of discarding the rest of the buffer
+30. **Split sweep: two frames at every boundary** – two back-to-back frames are delivered intact when the stream is split into two `add_data` chunks at *every* possible offset
+31. **Streaming: two frames byte-by-byte** – two back-to-back frames are both decoded in byte-at-a-time mode
 
 ### `tryNext` Contract (Unified)
 

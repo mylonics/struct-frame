@@ -535,7 +535,9 @@ static inline frame_msg_info_t buffer_reader_next(buffer_reader_t* reader)
                 reader->offset = reader->size;
             }
         } else {
-            reader->offset = reader->size;
+            /* No start bytes (e.g. IPC profile): advance one byte and retry so a
+             * single unknown msg_id doesn't discard the rest of the buffer. */
+            reader->offset += 1;
         }
         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
         result.frame_size = reader->offset - old_offset;
@@ -739,6 +741,49 @@ static inline frame_msg_info_t _acc_parse_buffer(
     const uint8_t* buffer,
     size_t size);
 
+/* Record per-frame diagnostics for a complete frame consumed in buffer mode,
+ * matching the stream-mode (push_byte) counter semantics:
+ *  - cnt_len_errors when the header length is outside [min_size, size]
+ *  - cnt_seq_gaps on valid frames for profiles that carry a sequence number
+ * frame_start points at the first byte of the frame (start bytes included). */
+static inline void _acc_record_frame_diagnostics(
+    accumulating_reader_t* reader, const uint8_t* frame_start, bool valid)
+{
+    const profile_config_t* config = reader->config;
+    if (config->payload.has_length && reader->get_message_info) {
+        size_t len_offset = config->header.num_start_bytes;
+        if (config->payload.has_seq) len_offset++;
+        if (config->payload.has_sys_id) len_offset++;
+        if (config->payload.has_comp_id) len_offset++;
+        size_t payload_len;
+        if (config->payload.length_bytes == 1) {
+            payload_len = frame_start[len_offset];
+        } else {
+            payload_len = frame_start[len_offset] | ((size_t)frame_start[len_offset + 1] << 8);
+        }
+        uint8_t header_size = profile_header_size(config);
+        uint16_t full_msg_id = 0;
+        if (config->payload.has_pkg_id) {
+            full_msg_id = (uint16_t)frame_start[header_size - 2] << 8;
+        }
+        full_msg_id |= frame_start[header_size - 1];
+        message_info_t info;
+        if (reader->get_message_info(full_msg_id, &info) &&
+            (payload_len > info.size || payload_len < info.min_size)) {
+            reader->diagnostics.cnt_len_errors++;
+        }
+    }
+    if (valid && config->payload.has_seq) {
+        uint8_t seq = frame_start[config->header.num_start_bytes];
+        if (reader->last_seq_valid) {
+            uint8_t expected_seq = (uint8_t)(reader->last_seq + 1);
+            if (seq != expected_seq) reader->diagnostics.cnt_seq_gaps++;
+        }
+        reader->last_seq = seq;
+        reader->last_seq_valid = true;
+    }
+}
+
 static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
 {
     frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
@@ -763,6 +808,7 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
         result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
 
         if (result.valid) {
+            _acc_record_frame_diagnostics(reader, reader->internal_buffer, true);
             size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
             reader->current_offset = bytes_from_current;
             reader->internal_data_len = 0;
@@ -775,6 +821,8 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
             /* Complete frame but CRC failed — count it and skip */
             reader->diagnostics.cnt_crc_failures++;
             reader->diagnostics.cnt_failed_bytes += (uint32_t)result.frame_size;
+            reader->diagnostics.cnt_sync_recoveries++;
+            _acc_record_frame_diagnostics(reader, reader->internal_buffer, false);
             size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
             reader->current_offset = bytes_from_current;
             reader->internal_data_len = 0;
@@ -797,6 +845,7 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
     result = _acc_parse_buffer(reader, cur, cur_remaining);
 
     if (result.valid && result.frame_size > 0) {
+        _acc_record_frame_diagnostics(reader, cur, true);
         reader->current_offset += result.frame_size;
         return result;
     }
@@ -805,6 +854,8 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
         /* Complete frame with bad CRC — count it, skip it */
         reader->diagnostics.cnt_crc_failures++;
         reader->diagnostics.cnt_failed_bytes += (uint32_t)result.frame_size;
+        reader->diagnostics.cnt_sync_recoveries++;
+        _acc_record_frame_diagnostics(reader, cur, false);
         reader->current_offset += result.frame_size;
         return result;
     }
@@ -826,7 +877,9 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
                 reader->current_offset = reader->current_size;
             }
         } else {
-            reader->current_offset = reader->current_size;
+            /* No start bytes (e.g. IPC profile): advance one byte and retry so a
+             * single unknown msg_id doesn't discard the rest of the buffer. */
+            reader->current_offset += 1;
         }
         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
         result.frame_size = reader->current_offset - old_current_offset;

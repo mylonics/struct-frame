@@ -29,6 +29,7 @@ from frame_profiles import (
     AccumulatingReader,
     PROFILE_STANDARD_CONFIG,
     PROFILE_SENSOR_CONFIG,
+    PROFILE_IPC_CONFIG,
     PROFILE_BULK_CONFIG,
     PROFILE_NETWORK_CONFIG,
     FrameMsgStatus,
@@ -649,6 +650,146 @@ def test_diagnostic_reset():
     )
 
 
+def test_buffer_mode_crc_counters():
+    """Buffer mode: a CRC-failed frame increments cnt_crc_failures, cnt_failed_bytes
+    and cnt_sync_recoveries — same counter semantics as stream mode."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
+    writer.write(msg)
+    frame_size = writer.size()
+    writer.write(msg)
+    total = writer.size()
+
+    buffer = bytearray(writer.data()[:total])
+    buffer[frame_size - 1] ^= 0xFF  # corrupt frame 1's CRC
+
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
+    reader.add_data(bytes(buffer))
+    valid_count = 0
+    while (result := _try_next(reader)) is not None:
+        if result.valid:
+            valid_count += 1
+
+    diag = reader.diagnostics
+    return (
+        valid_count == 1
+        and diag.cnt_crc_failures == 1
+        and diag.cnt_sync_recoveries == 1
+        and diag.cnt_failed_bytes == frame_size
+    )
+
+
+def test_buffer_mode_seq_gap():
+    """Buffer mode: sequence gaps are detected on frames consumed via add_data,
+    matching stream-mode behaviour."""
+    msg = _make_test_msg()
+
+    def encode(seq):
+        w = BufferWriter(PROFILE_NETWORK_CONFIG, capacity=1024)
+        w.write(msg, seq=seq, sys_id=1, comp_id=1)
+        return bytes(w.data()[:w.size()])
+
+    data = encode(0) + encode(5)  # skips seq 1-4 → one gap
+
+    reader = AccumulatingReader(PROFILE_NETWORK_CONFIG, get_message_info=get_message_info, buffer_size=1024)
+    reader.add_data(data)
+    valid_count = 0
+    while (result := _try_next(reader)) is not None:
+        if result.valid:
+            valid_count += 1
+
+    diag = reader.diagnostics
+    return valid_count == 2 and diag.cnt_seq_gaps == 1 and diag.cnt_crc_failures == 0
+
+
+def test_sensor_buffer_unknown_msg_id_resync():
+    """Sensor (minimal) profile buffer: an unknown msg_id after a valid start byte
+    triggers a resync scan to the next start byte instead of discarding the buffer."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_SENSOR_CONFIG, capacity=1024)
+    writer.write(msg)
+    frame = bytes(writer.data()[:writer.size()])
+
+    start1 = PROFILE_SENSOR_CONFIG.computed_start_byte1()
+    data = bytes([start1, 0xFF]) + frame  # 0xFF is not a known msg_id
+
+    reader = BufferReader(PROFILE_SENSOR_CONFIG, buffer=data, get_message_info=get_message_info)
+    saw_sync = False
+    valid_count = 0
+    while (result := _try_next(reader)) is not None:
+        if result.valid:
+            valid_count += 1
+        elif result.status == FrameMsgStatus.SYNC_RECOVERY:
+            saw_sync = True
+
+    return saw_sync and valid_count == 1
+
+
+def test_ipc_buffer_unknown_msg_id():
+    """IPC (no start bytes) buffer: an unknown msg_id advances one byte and the
+    following valid frame is still delivered."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_IPC_CONFIG, capacity=1024)
+    writer.write(msg)
+    frame = bytes(writer.data()[:writer.size()])
+
+    data = bytes([0xFF]) + frame  # 0xFF is not a known msg_id
+
+    reader = BufferReader(PROFILE_IPC_CONFIG, buffer=data, get_message_info=get_message_info)
+    saw_sync = False
+    valid_count = 0
+    while (result := _try_next(reader)) is not None:
+        if result.valid:
+            valid_count += 1
+        elif result.status == FrameMsgStatus.SYNC_RECOVERY:
+            saw_sync = True
+
+    return saw_sync and valid_count == 1
+
+
+def test_split_sweep_all_boundaries():
+    """Split sweep: two back-to-back frames delivered intact when the byte stream
+    is split into two add_data chunks at every possible offset."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
+    writer.write(msg)
+    writer.write(msg)
+    data = bytes(writer.data()[:writer.size()])
+    total = len(data)
+
+    for split in range(1, total):
+        reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
+        valid_count = 0
+        for chunk in (data[:split], data[split:]):
+            reader.add_data(chunk)
+            while (result := _try_next(reader)) is not None:
+                if result.valid:
+                    valid_count += 1
+        if valid_count != 2:
+            return False
+        if reader.has_partial():
+            return False
+    return True
+
+
+def test_streaming_two_frames():
+    """Streaming: two back-to-back frames are both decoded byte-by-byte."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=1024)
+    writer.write(msg)
+    writer.write(msg)
+    data = bytes(writer.data()[:writer.size()])
+
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
+    valid_count = 0
+    for b in data:
+        result = reader.push_byte(b)
+        if result.valid:
+            valid_count += 1
+
+    return valid_count == 2
+
+
 def test_status_waiting_for_start():
     """FrameMsgStatus: push_byte returns WAITING_FOR_START when no start byte seen yet."""
     reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
@@ -1078,6 +1219,8 @@ def main():
 
     # Define test matrix
     tests = [
+        ("Buffer mode: CRC failure counters", test_buffer_mode_crc_counters),
+        ("Buffer mode: Sequence gap counted", test_buffer_mode_seq_gap),
         ("Buffer mode: invalid result carries diagnostics", test_buffer_mode_invalid_result_has_diagnostics),
         ("Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure),
         ("Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure),
@@ -1094,12 +1237,15 @@ def main():
         ("Diagnostics: Sync recovery counter", test_diagnostic_sync_recovery),
         ("Invalid message ID rejection", test_invalid_msg_id),
         ("Invalid start bytes detection", test_invalid_start_bytes),
+        ("IPC buffer: unknown msg_id advances one byte", test_ipc_buffer_unknown_msg_id),
         ("Minimal profile: Truncated frame", test_minimal_profile_truncated_frame),
         ("Multiple frames: CRC error then valid frame", test_crc_error_then_valid_frame),
         ("Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames),
         ("Network profile: Corrupted pkg_id byte", test_network_corrupted_pkg_id),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary", test_partial_frame_boundary),
+        ("Sensor buffer: unknown msg_id resync", test_sensor_buffer_unknown_msg_id_resync),
+        ("Split sweep: two frames at every boundary", test_split_sweep_all_boundaries),
         ("Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status),
         ("TryNext drain: CRC/resync + valid", test_try_next_drain_contract),
         ("TryNext partial pending contract", test_try_next_partial_pending_contract),
@@ -1110,6 +1256,7 @@ def main():
         ("Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage),
         ("Streaming: Corrupted CRC detection", test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling", test_streaming_garbage),
+        ("Streaming: two frames byte-by-byte", test_streaming_two_frames),
         ("Truncated frame detection", test_truncated_frame),
         ("Zero-length buffer handling", test_zero_length_buffer),
     ]

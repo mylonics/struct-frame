@@ -1175,7 +1175,9 @@ fn run_wire_evolution_interop_tests() -> ! {
         gmi: &dyn Fn(u16) -> Option<MessageInfo>,
     ) -> Option<FrameMsgInfo> {
         let mut r = BufferReader::new(config, buf);
-        r.next(gmi)
+        // next() surfaces invalid events (CrcFailure/SyncRecovery) for drain loops;
+        // these interop scenarios only care whether a VALID frame was produced.
+        r.next(gmi).filter(|f| f.valid)
     }
 
     let profiles: [(ProfileConfig, &str); 3] = [

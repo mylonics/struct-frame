@@ -776,6 +776,275 @@ bool test_split_buffer_crc_error_status() {
   return true;
 }
 
+// Helper: encode one Standard-profile frame (message index 0); returns bytes written.
+static size_t encode_standard_frame(BufferWriter<ProfileStandardConfig>& writer) {
+  auto msg = StandardMessages::get_message(0);
+  size_t written = 0;
+  std::visit([&writer, &written](auto&& m) { written = writer.write(m); }, msg);
+  return written;
+}
+
+// Helper: encode one Network-profile frame with the given sequence number.
+static size_t encode_network_frame(BufferWriter<ProfileNetworkConfig>& writer, uint8_t seq) {
+  auto msg = StandardMessages::get_message(0);
+  size_t written = 0;
+  std::visit([&writer, &written, seq](auto&& m) { written = writer.write(m, seq, 1, 1); }, msg);
+  return written;
+}
+
+// Helper: MSG_ID of the message used by the minimal-profile tests.
+static uint16_t standard_message0_id() {
+  auto msg = StandardMessages::get_message(0);
+  uint16_t id = 0;
+  std::visit([&id](auto&& m) { id = static_cast<uint16_t>(std::decay_t<decltype(m)>::MSG_ID); }, msg);
+  return id;
+}
+
+/**
+ * Diagnostics: cnt_crc_failures increments on a stream-mode CRC failure.
+ */
+bool test_diagnostic_crc_failure() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  size_t frame_size = encode_standard_frame(writer);
+  if (frame_size < 4) return false;
+
+  buffer[frame_size - 1] ^= 0xFF;
+  buffer[frame_size - 2] ^= 0xFF;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  for (size_t i = 0; i < frame_size; i++) {
+    reader.push_byte(buffer[i]);
+  }
+
+  auto diag = reader.diagnostics();
+  return diag.cnt_crc_failures == 1 && diag.cnt_sync_recoveries >= 1;
+}
+
+/**
+ * Diagnostics: cnt_sync_recoveries increments when garbage bytes are fed.
+ */
+bool test_diagnostic_sync_recovery() {
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+
+  reader.push_byte(0x90);  // valid start1
+  reader.push_byte(0xAB);  // invalid start2 -> sync recovery
+
+  return reader.diagnostics().cnt_sync_recoveries >= 1;
+}
+
+/**
+ * Diagnostics: cnt_len_errors increments when the header length field is out of
+ * the [min_size, size] range for the message. Feeding just the header is enough —
+ * the check fires at header completion.
+ */
+bool test_diagnostic_len_error() {
+  uint16_t msg_id = standard_message0_id();
+  auto info = get_message_info(msg_id);
+  if (!info || info.size + 1 > 255) return false;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  reader.push_byte(0x90);
+  reader.push_byte(0x71);
+  reader.push_byte(static_cast<uint8_t>(info.size + 1));  // out of range
+  reader.push_byte(static_cast<uint8_t>(msg_id & 0xFF));
+
+  return reader.diagnostics().cnt_len_errors == 1;
+}
+
+/**
+ * Diagnostics: cnt_seq_gaps increments when a sequence number is skipped.
+ */
+bool test_diagnostic_seq_gap() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileNetworkConfig> writer(buffer.data(), buffer.size());
+  size_t frame0_size = encode_network_frame(writer, 0);
+  size_t total = frame0_size + encode_network_frame(writer, 5);  // skips seq 1-4
+  if (total <= frame0_size) return false;
+
+  AccumulatingReader<ProfileNetworkConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  for (size_t i = 0; i < total; i++) {
+    reader.push_byte(buffer[i]);
+  }
+
+  auto diag = reader.diagnostics();
+  return diag.cnt_seq_gaps == 1 && diag.cnt_crc_failures == 0;
+}
+
+/**
+ * Diagnostics: reset_diagnostics() clears all counters.
+ */
+bool test_diagnostic_reset() {
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+
+  reader.push_byte(0x90);
+  reader.push_byte(0xAB);
+  if (reader.diagnostics().cnt_sync_recoveries < 1) return false;
+
+  reader.reset_diagnostics();
+  auto diag = reader.diagnostics();
+  return diag.cnt_crc_failures == 0 && diag.cnt_sync_recoveries == 0 &&
+         diag.cnt_failed_bytes == 0 && diag.cnt_len_errors == 0 && diag.cnt_seq_gaps == 0;
+}
+
+/**
+ * Buffer mode: a CRC-failed frame increments cnt_crc_failures, cnt_failed_bytes
+ * and cnt_sync_recoveries — same counter semantics as stream mode.
+ */
+bool test_buffer_mode_crc_counters() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  size_t frame_size = encode_standard_frame(writer);
+  size_t total = frame_size + encode_standard_frame(writer);
+  if (total <= frame_size) return false;
+
+  buffer[frame_size - 1] ^= 0xFF;  // corrupt frame 1's CRC
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  reader.add_data(buffer.data(), total);
+
+  int valid_count = 0;
+  FrameMsgInfo f;
+  while (reader.try_next(f)) {
+    if (f.valid) valid_count++;
+  }
+
+  auto diag = reader.diagnostics();
+  return valid_count == 1 && diag.cnt_crc_failures == 1 &&
+         diag.cnt_sync_recoveries == 1 && diag.cnt_failed_bytes == static_cast<uint32_t>(frame_size);
+}
+
+/**
+ * Buffer mode: sequence gaps are detected on frames consumed via add_data.
+ */
+bool test_buffer_mode_seq_gap() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileNetworkConfig> writer(buffer.data(), buffer.size());
+  size_t frame0_size = encode_network_frame(writer, 0);
+  size_t total = frame0_size + encode_network_frame(writer, 5);  // skips seq 1-4
+  if (total <= frame0_size) return false;
+
+  AccumulatingReader<ProfileNetworkConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  reader.add_data(buffer.data(), total);
+
+  int valid_count = 0;
+  FrameMsgInfo f;
+  while (reader.try_next(f)) {
+    if (f.valid) valid_count++;
+  }
+
+  auto diag = reader.diagnostics();
+  return valid_count == 2 && diag.cnt_seq_gaps == 1 && diag.cnt_crc_failures == 0;
+}
+
+/**
+ * Sensor (minimal) profile buffer: an unknown msg_id after a valid start byte
+ * triggers a resync scan to the next start byte instead of stalling or
+ * discarding the rest of the buffer.
+ */
+bool test_sensor_buffer_unknown_msg_id_resync() {
+  uint16_t msg_id = standard_message0_id();
+  auto info = get_message_info(msg_id);
+  if (!info) return false;
+
+  std::vector<uint8_t> data(4 + info.size, 0);
+  data[0] = 0x70;
+  data[1] = 0xFF;  // unknown msg_id
+  data[2] = 0x70;
+  data[3] = static_cast<uint8_t>(msg_id & 0xFF);
+  // zeroed payload is fine for framing validity
+
+  BufferReader<ProfileSensorConfig, decltype(&get_message_info)> reader(
+      data.data(), data.size(), get_message_info);
+
+  bool saw_sync = false;
+  int valid_count = 0;
+  FrameMsgInfo f;
+  while (reader.try_next(f)) {
+    if (f.valid) valid_count++;
+    else if (f.status == FrameMsgStatus::SyncRecovery) saw_sync = true;
+  }
+  return saw_sync && valid_count == 1;
+}
+
+/**
+ * IPC (no start bytes) buffer: an unknown msg_id advances one byte and the
+ * following valid frame is still delivered.
+ */
+bool test_ipc_buffer_unknown_msg_id() {
+  uint16_t msg_id = standard_message0_id();
+  auto info = get_message_info(msg_id);
+  if (!info) return false;
+
+  std::vector<uint8_t> data(2 + info.size, 0);
+  data[0] = 0xFF;  // unknown msg_id
+  data[1] = static_cast<uint8_t>(msg_id & 0xFF);
+
+  BufferReader<ProfileIPCConfig, decltype(&get_message_info)> reader(
+      data.data(), data.size(), get_message_info);
+
+  bool saw_sync = false;
+  int valid_count = 0;
+  FrameMsgInfo f;
+  while (reader.try_next(f)) {
+    if (f.valid) valid_count++;
+    else if (f.status == FrameMsgStatus::SyncRecovery) saw_sync = true;
+  }
+  return saw_sync && valid_count == 1;
+}
+
+/**
+ * Split sweep: two back-to-back frames delivered intact when the byte stream is
+ * split into two add_data chunks at every possible offset.
+ */
+bool test_split_sweep_all_boundaries() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  size_t frame_size = encode_standard_frame(writer);
+  size_t total = frame_size + encode_standard_frame(writer);
+  if (total <= frame_size) return false;
+
+  for (size_t split = 1; split < total; split++) {
+    AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+
+    int valid_count = 0;
+    FrameMsgInfo f;
+
+    reader.add_data(buffer.data(), split);
+    while (reader.try_next(f)) {
+      if (f.valid) valid_count++;
+    }
+    reader.add_data(buffer.data() + split, total - split);
+    while (reader.try_next(f)) {
+      if (f.valid) valid_count++;
+    }
+
+    if (valid_count != 2) return false;
+    if (reader.has_partial()) return false;
+  }
+  return true;
+}
+
+/**
+ * Streaming: two back-to-back frames are both decoded byte-by-byte.
+ */
+bool test_streaming_two_frames() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  size_t frame_size = encode_standard_frame(writer);
+  size_t total = frame_size + encode_standard_frame(writer);
+  if (total <= frame_size) return false;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+
+  int valid_count = 0;
+  for (size_t i = 0; i < total; i++) {
+    auto r = reader.push_byte(buffer[i]);
+    if (r.valid) valid_count++;
+  }
+  return valid_count == 2;
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)();
 
@@ -792,6 +1061,8 @@ int main() {
   
   // Define test matrix
   TestCase tests[] = {
+    {"Buffer mode: CRC failure counters", test_buffer_mode_crc_counters},
+    {"Buffer mode: Sequence gap counted", test_buffer_mode_seq_gap},
     {"Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure},
     {"Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure},
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},
@@ -800,20 +1071,29 @@ int main() {
     {"Corrupted CRC detection", test_corrupted_crc},
     {"Corrupted length field detection", test_corrupted_length},
     {"Cross-package message rejection", test_cross_package_rejection},
+    {"Diagnostics: CRC failure counter", test_diagnostic_crc_failure},
+    {"Diagnostics: Length error counter", test_diagnostic_len_error},
+    {"Diagnostics: Reset diagnostics", test_diagnostic_reset},
+    {"Diagnostics: Sequence gap counter", test_diagnostic_seq_gap},
+    {"Diagnostics: Sync recovery counter", test_diagnostic_sync_recovery},
     {"Invalid message ID rejection", test_invalid_msg_id},
     {"Invalid start bytes detection", test_invalid_start_bytes},
+    {"IPC buffer: unknown msg_id advances one byte", test_ipc_buffer_unknown_msg_id},
     {"Minimal profile: Truncated frame", test_minimal_profile_truncated_frame},
     {"Multiple frames: CRC error then valid frame", test_crc_error_then_valid_frame},
     {"Multiple frames: Corrupted middle frame", test_multiple_corrupted_frames},
     {"Network profile: Corrupted pkg_id", test_network_corrupted_pkg_id},
     {"Network profile: SysId/CompId corruption", test_network_sysid_compid},
     {"Partial frame across buffer boundary", test_partial_frame_boundary},
+    {"Sensor buffer: unknown msg_id resync", test_sensor_buffer_unknown_msg_id_resync},
+    {"Split sweep: two frames at every boundary", test_split_sweep_all_boundaries},
     {"Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status},
     {"TryNext drain: CRC/resync + valid", test_try_next_drain_contract},
     {"TryNext partial pending contract", test_try_next_partial_pending_contract},
     {"Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage_data},
+    {"Streaming: two frames byte-by-byte", test_streaming_two_frames},
     {"Truncated frame detection", test_truncated_frame},
     {"Zero-length buffer handling", test_zero_length_buffer}
   };

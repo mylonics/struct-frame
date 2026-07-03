@@ -211,17 +211,22 @@ function parseFrameWithCrc(config, buffer, getMessageInfo) {
     const headerSize = profileHeaderSize(config);
     const footerSize = profileFooterSize(config);
     if (length < headerSize + footerSize) {
+        // Not enough bytes yet to even hold the header+footer
+        result.status = frame_base_1.FrameMsgStatus.Collecting;
         return result;
     }
     let idx = 0;
-    // Verify start bytes
+    // Verify start bytes. A mismatch means this position is not a frame start,
+    // so report WaitingForStart to let buffer readers scan forward for a start byte.
     if (header.numStartBytes >= 1) {
         if (buffer[idx++] !== config.startByte1) {
+            result.status = frame_base_1.FrameMsgStatus.WaitingForStart;
             return result;
         }
     }
     if (header.numStartBytes >= 2) {
         if (buffer[idx++] !== config.startByte2) {
+            result.status = frame_base_1.FrameMsgStatus.WaitingForStart;
             return result;
         }
     }
@@ -253,6 +258,8 @@ function parseFrameWithCrc(config, buffer, getMessageInfo) {
     // Verify total size
     const totalSize = headerSize + msgLen + footerSize;
     if (length < totalSize) {
+        // Header parsed but payload/footer not fully received yet
+        result.status = frame_base_1.FrameMsgStatus.Collecting;
         return result;
     }
     // Verify CRC (extension-aware)
@@ -302,30 +309,39 @@ function parseFrameMinimal(config, buffer, getMessageInfo) {
     const header = config.header;
     const headerSize = profileHeaderSize(config);
     if (buffer.length < headerSize) {
+        // Not enough bytes yet to even hold the header
+        result.status = frame_base_1.FrameMsgStatus.Collecting;
         return result;
     }
     let idx = 0;
-    // Verify start bytes
+    // Verify start bytes. A mismatch means this position is not a frame start,
+    // so report WaitingForStart to let buffer readers scan forward for a start byte.
     if (header.numStartBytes >= 1) {
         if (buffer[idx++] !== config.startByte1) {
+            result.status = frame_base_1.FrameMsgStatus.WaitingForStart;
             return result;
         }
     }
     if (header.numStartBytes >= 2) {
         if (buffer[idx++] !== config.startByte2) {
+            result.status = frame_base_1.FrameMsgStatus.WaitingForStart;
             return result;
         }
     }
     // Read message ID
     const msgId = buffer[idx];
-    // Get message length from callback
+    // Get message length from callback. An unknown msg_id means this position
+    // is not a frame start — report WaitingForStart so readers resync.
     const info = getMessageInfo(msgId);
     if (!info) {
+        result.status = frame_base_1.FrameMsgStatus.WaitingForStart;
         return result;
     }
     const msgLen = info.size;
     const totalSize = headerSize + msgLen;
     if (buffer.length < totalSize) {
+        // Header parsed but payload not fully received yet
+        result.status = frame_base_1.FrameMsgStatus.Collecting;
         return result;
     }
     // Extract message data
@@ -384,16 +400,27 @@ class BufferReader {
             const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
             this._offset += frameSize;
         }
-        else {
-            // If a complete frame failed CRC, skip it and continue on next call.
-            if (result.status === frame_base_1.FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
-                this._offset += result.frameSize;
+        else if (result.status === frame_base_1.FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
+            // A complete frame failed CRC — skip it and continue on next call.
+            this._offset += result.frameSize;
+        }
+        else if (result.status === frame_base_1.FrameMsgStatus.WaitingForStart) {
+            // Head byte is not a frame start — scan forward to the next start byte,
+            // reporting SyncRecovery so tryNext() keeps advancing.
+            const oldOffset = this._offset;
+            if (this.config.header.numStartBytes >= 1) {
+                const nxt = this.buffer.indexOf(this.config.startByte1, this._offset + 1);
+                this._offset = (nxt !== -1 && nxt < this.size) ? nxt : this.size;
             }
             else {
-                // No more valid frames - stop parsing
-                this._offset = this.size;
+                // No start bytes (e.g. IPC profile): advance one byte and retry so a
+                // single unknown msg_id doesn't discard the rest of the buffer.
+                this._offset += 1;
             }
+            result.status = frame_base_1.FrameMsgStatus.SyncRecovery;
+            result.frameSize = this._offset - oldOffset;
         }
+        // Collecting: leave offset unchanged — trailing partial frame (normal end-of-buffer)
         return result;
     }
     /** Reset the reader to the beginning of the buffer. */
@@ -583,6 +610,7 @@ class AccumulatingReader {
             const result = this.parseBuffer(internalBytes);
             if (result.valid) {
                 result.msgData = result.msgData.slice(); // own copy — internalBuffer is reused
+                this.recordFrameDiagnostics(this.internalBuffer, true);
                 const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
                 const partialLen = this.internalDataLen > this.currentSize ? this.internalDataLen - this.currentSize : 0;
                 const bytesFromCurrent = frameSize > partialLen ? frameSize - partialLen : 0;
@@ -599,6 +627,7 @@ class AccumulatingReader {
                     this._diagnostics.cntCrcFailures++;
                     this._diagnostics.cntFailedBytes += result.frameSize;
                     this._diagnostics.cntSyncRecoveries++;
+                    this.recordFrameDiagnostics(this.internalBuffer, false);
                     const partialLen = this.internalDataLen > this.currentSize ? this.internalDataLen - this.currentSize : 0;
                     const bytesFromCurrent = result.frameSize > partialLen ? result.frameSize - partialLen : 0;
                     this.currentOffset = bytesFromCurrent;
@@ -616,6 +645,7 @@ class AccumulatingReader {
         const remaining = this.currentBuffer.subarray(this.currentOffset);
         const result = this.parseBuffer(remaining);
         if (result.valid) {
+            this.recordFrameDiagnostics(remaining, true);
             const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
             this.currentOffset += frameSize;
             return this.withDiagnostics(result);
@@ -625,12 +655,34 @@ class AccumulatingReader {
             this._diagnostics.cntCrcFailures++;
             this._diagnostics.cntFailedBytes += result.frameSize;
             this._diagnostics.cntSyncRecoveries++;
+            this.recordFrameDiagnostics(remaining, false);
             this.currentOffset += result.frameSize;
             return this.withDiagnostics(result);
         }
-        // Parse failed - might be partial message at end of buffer
+        if (result.status === frame_base_1.FrameMsgStatus.WaitingForStart) {
+            // Head byte is not a frame start — scan forward to the next start byte,
+            // reporting SyncRecovery with frameSize=bytes skipped so tryNext() keeps draining.
+            const oldOffset = this.currentOffset;
+            if (this.config.header.numStartBytes >= 1) {
+                const nxt = this.currentBuffer.indexOf(this.config.startByte1, this.currentOffset + 1);
+                this.currentOffset = (nxt !== -1 && nxt < this.currentSize) ? nxt : this.currentSize;
+            }
+            else {
+                // No start bytes (e.g. IPC profile): advance one byte and retry so a
+                // single unknown msg_id doesn't discard the rest of the buffer.
+                this.currentOffset += 1;
+            }
+            const skipped = this.currentOffset - oldOffset;
+            this._diagnostics.cntFailedBytes += skipped;
+            this._diagnostics.cntSyncRecoveries++;
+            const r = (0, frame_base_1.createFrameMsgInfo)();
+            r.status = frame_base_1.FrameMsgStatus.SyncRecovery;
+            r.frameSize = skipped;
+            return this.withDiagnostics(r);
+        }
+        // Collecting — save the trailing partial frame for the next addData() call
         const remainingLen = this.currentSize - this.currentOffset;
-        if (remainingLen > 0 && remainingLen < this.bufferSize) {
+        if (remainingLen > 0 && remainingLen < this.bufferSize && result.status === frame_base_1.FrameMsgStatus.Collecting) {
             this.internalBuffer.set(remaining, 0);
             this.internalDataLen = remainingLen;
             this.currentOffset = this.currentSize;
@@ -1003,6 +1055,55 @@ class AccumulatingReader {
     withDiagnostics(result) {
         result.diagnostics = { ...this._diagnostics };
         return result;
+    }
+    /**
+     * Record per-frame diagnostics for a complete frame consumed in buffer mode,
+     * matching the stream-mode (pushByte) counter semantics:
+     *  - cntLenErrors when the header length is outside [minSize, size]
+     *  - cntSeqGaps on valid frames for profiles that carry a sequence number
+     * `frame` is the raw frame bytes (start bytes included).
+     */
+    recordFrameDiagnostics(frame, valid) {
+        const config = this.config;
+        if (config.payload.hasLength && this.getMessageInfo) {
+            let lenOffset = config.header.numStartBytes;
+            if (config.payload.hasSeq)
+                lenOffset++;
+            if (config.payload.hasSysId)
+                lenOffset++;
+            if (config.payload.hasCompId)
+                lenOffset++;
+            let payloadLen;
+            if (config.payload.lengthBytes === 1) {
+                payloadLen = frame[lenOffset];
+            }
+            else {
+                payloadLen = frame[lenOffset] | (frame[lenOffset + 1] << 8);
+            }
+            const headerSize = profileHeaderSize(config);
+            let fullMsgId = 0;
+            if (config.payload.hasPkgId) {
+                fullMsgId = frame[headerSize - 2] << 8;
+            }
+            fullMsgId |= frame[headerSize - 1];
+            const info = this.getMessageInfo(fullMsgId);
+            if (info !== undefined) {
+                const minSize = info.minSize ?? (info.isVariable ? 0 : info.size);
+                if (payloadLen > info.size || payloadLen < minSize) {
+                    this._diagnostics.cntLenErrors++;
+                }
+            }
+        }
+        if (valid && config.payload.hasSeq) {
+            const seq = frame[config.header.numStartBytes];
+            if (this._lastSeq !== null) {
+                const expectedSeq = (this._lastSeq + 1) & 0xFF;
+                if (seq !== expectedSeq) {
+                    this._diagnostics.cntSeqGaps++;
+                }
+            }
+            this._lastSeq = seq;
+        }
     }
 }
 exports.AccumulatingReader = AccumulatingReader;

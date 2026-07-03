@@ -88,6 +88,7 @@ public:
     }
 
     void Connect() {
+        if (!serialPort_) {
             HandleError("Serial port not initialized");
             return;
         }
@@ -109,6 +110,7 @@ public:
     }
 
     size_t Send(const uint8_t* data, size_t length) {
+        if (!serialPort_ || !connected_ || !serialPort_->isOpen()) {
             HandleError("Serial port not connected");
             return 0;
         }

@@ -846,6 +846,266 @@ public class TestNegative
             return !reader.HasMore;
         }
 
+
+        /** Helper: encode `count` Standard-profile frames into buffer; returns per-frame sizes. */
+        private static int[] EncodeStandardFrames(byte[] buffer, int count)
+        {
+            var writer = new BufferWriter<StandardProfile>();
+            writer.SetBuffer(buffer);
+            var sizes = new int[count + 1];  // last entry = total
+            int prev = 0;
+            for (int i = 0; i < count; i++)
+            {
+                writer.Write(CreateTestMessage());
+                sizes[i] = writer.Size - prev;
+                prev = writer.Size;
+            }
+            sizes[count] = writer.Size;
+            return sizes;
+        }
+
+        /** Helper: encode one Network-profile frame with the given sequence number. */
+        private static byte[] EncodeNetworkFrame(byte seq)
+        {
+            byte[] buffer = new byte[1024];
+            var writer = new BufferWriter<NetworkProfile>();
+            writer.SetBuffer(buffer);
+            writer.Write(CreateTestMessage(), seq: seq, sysId: 1, compId: 1);
+            var frame = new byte[writer.Size];
+            Array.Copy(buffer, frame, writer.Size);
+            return frame;
+        }
+
+        /** Diagnostics: CntCrcFailures increments on a stream-mode CRC failure. */
+        private static bool TestDiagnosticCrcFailure()
+        {
+            byte[] buffer = new byte[1024];
+            var sizes = EncodeStandardFrames(buffer, 1);
+            int frameSize = sizes[0];
+            if (frameSize < 4) return false;
+
+            buffer[frameSize - 1] ^= 0xFF;
+            buffer[frameSize - 2] ^= 0xFF;
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            for (int i = 0; i < frameSize; i++)
+            {
+                reader.PushByte(buffer[i]);
+            }
+
+            var diag = reader.Diagnostics;
+            return diag.CntCrcFailures == 1 && diag.CntSyncRecoveries >= 1;
+        }
+
+        /** Diagnostics: CntSyncRecoveries increments when garbage bytes are fed. */
+        private static bool TestDiagnosticSyncRecovery()
+        {
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            reader.PushByte(0x90);  // valid start1
+            reader.PushByte(0xAB);  // invalid start2 -> sync recovery
+            return reader.Diagnostics.CntSyncRecoveries >= 1;
+        }
+
+        /**
+         * Diagnostics: CntLenErrors increments when the header length field is out of
+         * the [MinSize, Size] range. Feeding just the header is enough — the check
+         * fires at header completion.
+         */
+        private static bool TestDiagnosticLenError()
+        {
+            var info = SerializationTestMD.GetMessageInfo(BasicTypesMessage.MsgId);
+            if (!info.HasValue || info.Value.Size + 1 > 255) return false;
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            reader.PushByte(0x90);
+            reader.PushByte(0x71);
+            reader.PushByte((byte)(info.Value.Size + 1));  // out of range
+            reader.PushByte((byte)(BasicTypesMessage.MsgId & 0xFF));
+
+            return reader.Diagnostics.CntLenErrors == 1;
+        }
+
+        /** Diagnostics: CntSeqGaps increments when a sequence number is skipped. */
+        private static bool TestDiagnosticSeqGap()
+        {
+            var frame0 = EncodeNetworkFrame(0);
+            var frame5 = EncodeNetworkFrame(5);  // skips seq 1-4
+
+            var reader = new AccumulatingReader<NetworkProfile>(1024, SerializationTestMD.GetMessageInfo);
+            foreach (var b in frame0) reader.PushByte(b);
+            foreach (var b in frame5) reader.PushByte(b);
+
+            var diag = reader.Diagnostics;
+            return diag.CntSeqGaps == 1 && diag.CntCrcFailures == 0;
+        }
+
+        /** Diagnostics: ResetDiagnostics() clears all counters. */
+        private static bool TestDiagnosticReset()
+        {
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            reader.PushByte(0x90);
+            reader.PushByte(0xAB);
+            if (reader.Diagnostics.CntSyncRecoveries < 1) return false;
+
+            reader.ResetDiagnostics();
+            var diag = reader.Diagnostics;
+            return diag.CntCrcFailures == 0 && diag.CntSyncRecoveries == 0 &&
+                   diag.CntFailedBytes == 0 && diag.CntLenErrors == 0 && diag.CntSeqGaps == 0;
+        }
+
+        /**
+         * Buffer mode: a CRC-failed frame increments CntCrcFailures, CntFailedBytes
+         * and CntSyncRecoveries — same counter semantics as stream mode.
+         */
+        private static bool TestBufferModeCrcCounters()
+        {
+            byte[] buffer = new byte[2048];
+            var sizes = EncodeStandardFrames(buffer, 2);
+            int frameSize = sizes[0];
+            int total = sizes[2];
+
+            buffer[frameSize - 1] ^= 0xFF;  // corrupt frame 1's CRC
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            reader.AddData(buffer, 0, total);
+
+            int validCount = 0;
+            while (reader.TryNext(out var f))
+            {
+                if (f.Valid) validCount++;
+            }
+
+            var diag = reader.Diagnostics;
+            return validCount == 1 && diag.CntCrcFailures == 1 &&
+                   diag.CntSyncRecoveries == 1 && diag.CntFailedBytes == frameSize;
+        }
+
+        /** Buffer mode: sequence gaps are detected on frames consumed via AddData. */
+        private static bool TestBufferModeSeqGap()
+        {
+            var frame0 = EncodeNetworkFrame(0);
+            var frame5 = EncodeNetworkFrame(5);  // skips seq 1-4
+            var data = new byte[frame0.Length + frame5.Length];
+            Array.Copy(frame0, 0, data, 0, frame0.Length);
+            Array.Copy(frame5, 0, data, frame0.Length, frame5.Length);
+
+            var reader = new AccumulatingReader<NetworkProfile>(1024, SerializationTestMD.GetMessageInfo);
+            reader.AddData(data);
+
+            int validCount = 0;
+            while (reader.TryNext(out var f))
+            {
+                if (f.Valid) validCount++;
+            }
+
+            var diag = reader.Diagnostics;
+            return validCount == 2 && diag.CntSeqGaps == 1 && diag.CntCrcFailures == 0;
+        }
+
+        /**
+         * Sensor (minimal) profile buffer: an unknown msg_id after a valid start byte
+         * triggers a resync scan to the next start byte instead of discarding the buffer.
+         */
+        private static bool TestSensorBufferUnknownMsgIdResync()
+        {
+            var info = SerializationTestMD.GetMessageInfo(BasicTypesMessage.MsgId);
+            if (!info.HasValue) return false;
+
+            var data = new byte[4 + info.Value.Size];  // zeroed payload is fine for framing
+            data[0] = 0x70;
+            data[1] = 0xFF;  // unknown msg_id
+            data[2] = 0x70;
+            data[3] = (byte)(BasicTypesMessage.MsgId & 0xFF);
+
+            var reader = new BufferReader<SensorProfile>(SerializationTestMD.GetMessageInfo);
+            reader.SetBuffer(data, 0, data.Length);
+
+            bool sawSync = false;
+            int validCount = 0;
+            while (reader.TryNext(out var f))
+            {
+                if (f.Valid) validCount++;
+                else if (f.Status == FrameMsgStatus.SyncRecovery) sawSync = true;
+            }
+            return sawSync && validCount == 1;
+        }
+
+        /**
+         * IPC (no start bytes) buffer: an unknown msg_id advances one byte and the
+         * following valid frame is still delivered.
+         */
+        private static bool TestIpcBufferUnknownMsgId()
+        {
+            var info = SerializationTestMD.GetMessageInfo(BasicTypesMessage.MsgId);
+            if (!info.HasValue) return false;
+
+            var data = new byte[2 + info.Value.Size];
+            data[0] = 0xFF;  // unknown msg_id
+            data[1] = (byte)(BasicTypesMessage.MsgId & 0xFF);
+
+            var reader = new BufferReader<IPCProfile>(SerializationTestMD.GetMessageInfo);
+            reader.SetBuffer(data, 0, data.Length);
+
+            bool sawSync = false;
+            int validCount = 0;
+            while (reader.TryNext(out var f))
+            {
+                if (f.Valid) validCount++;
+                else if (f.Status == FrameMsgStatus.SyncRecovery) sawSync = true;
+            }
+            return sawSync && validCount == 1;
+        }
+
+        /**
+         * Split sweep: two back-to-back frames delivered intact when the byte stream
+         * is split into two AddData chunks at every possible offset.
+         */
+        private static bool TestSplitSweepAllBoundaries()
+        {
+            byte[] buffer = new byte[2048];
+            var sizes = EncodeStandardFrames(buffer, 2);
+            int total = sizes[2];
+
+            for (int split = 1; split < total; split++)
+            {
+                var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+                int validCount = 0;
+
+                reader.AddData(buffer, 0, split);
+                while (reader.TryNext(out var f))
+                {
+                    if (f.Valid) validCount++;
+                }
+                reader.AddData(buffer, split, total - split);
+                while (reader.TryNext(out var f))
+                {
+                    if (f.Valid) validCount++;
+                }
+
+                if (validCount != 2) return false;
+                if (reader.HasPartial) return false;
+            }
+            return true;
+        }
+
+        /** Streaming: two back-to-back frames are both decoded byte-by-byte. */
+        private static bool TestStreamingTwoFrames()
+        {
+            byte[] buffer = new byte[2048];
+            var sizes = EncodeStandardFrames(buffer, 2);
+            int total = sizes[2];
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            int validCount = 0;
+            for (int i = 0; i < total; i++)
+            {
+                var r = reader.PushByte(buffer[i]);
+                if (r.Valid) validCount++;
+            }
+            return validCount == 2;
+        }
+
+
         public static int Main(string[] args)
         {
             Console.WriteLine("\n========================================");
@@ -855,6 +1115,8 @@ public class TestNegative
             // Define test matrix
             var tests = new (string name, Func<bool> func)[]
             {
+                ("Buffer mode: CRC failure counters", TestBufferModeCrcCounters),
+                ("Buffer mode: Sequence gap counted", TestBufferModeSeqGap),
                 ("Buffer mode: recovers after CRC failure", TestBufferModeRecoverAfterCrcFailure),
                 ("Buffer reader: skips CRC-failed frame", TestBufferReaderSkipsCrcFailed),
                 ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
@@ -863,20 +1125,29 @@ public class TestNegative
                 ("Corrupted CRC detection", TestCorruptedCrc),
                 ("Corrupted length field detection", TestCorruptedLength),
                 ("Cross-package rejection (pkgid mismatch)", TestCrossPackageRejection),
+                ("Diagnostics: CRC failure counter", TestDiagnosticCrcFailure),
+                ("Diagnostics: Length error counter", TestDiagnosticLenError),
+                ("Diagnostics: Reset diagnostics", TestDiagnosticReset),
+                ("Diagnostics: Sequence gap counter", TestDiagnosticSeqGap),
+                ("Diagnostics: Sync recovery counter", TestDiagnosticSyncRecovery),
                 ("Invalid message ID rejection", TestInvalidMsgId),
                 ("Invalid start bytes detection", TestInvalidStartBytes),
+                ("IPC buffer: unknown msg_id advances one byte", TestIpcBufferUnknownMsgId),
                 ("Minimal profile: Truncated frame", TestMinimalProfileTruncatedFrame),
                 ("Multiple frames: CRC error then valid frame", TestCrcErrorThenValidFrame),
                 ("Multiple frames: Corrupted middle frame", TestMultipleCorruptedFrames),
                 ("Network profile: Corrupted pkg_id byte", TestNetworkCorruptedPkgId),
                 ("Network profile: SysId/CompId corruption", TestNetworkSysIdCompId),
                 ("Partial frame across buffer boundary", TestPartialFrameBoundary),
+                ("Sensor buffer: unknown msg_id resync", TestSensorBufferUnknownMsgIdResync),
+                ("Split sweep: two frames at every boundary", TestSplitSweepAllBoundaries),
                 ("Split-buffer: CRC error status preserved", TestSplitBufferCrcErrorStatus),
                 ("TryNext drain: CRC/resync + valid", TestTryNextDrainContract),
                 ("TryNext partial pending contract", TestTryNextPartialPendingContract),
                 ("Stream mode: recovers after garbage prefix", TestStreamRecoversAfterGarbage),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
                 ("Streaming: Garbage data handling", TestStreamingGarbage),
+                ("Streaming: two frames byte-by-byte", TestStreamingTwoFrames),
                 ("Truncated frame detection", TestTruncatedFrame),
                 ("Zero-length buffer handling", TestZeroLengthBuffer),
             };

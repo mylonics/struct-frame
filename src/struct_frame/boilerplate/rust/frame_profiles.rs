@@ -774,12 +774,18 @@ impl BufferReader {
         BufferReader { config, data, offset: 0 }
     }
 
-    /// Get the next frame from the buffer.
+    /// Get the next frame event from the buffer.
     ///
-    /// B1: on CRC failure or bad start bytes, advances the internal offset to the next
-    /// candidate start-byte position and returns None, so the *next* call can attempt
-    /// the following frame.  Only stalls (returns None without advancing) when the
-    /// buffer has too little data to make a decision (Collecting status).
+    /// Matches the cross-language BufferReader drain contract: returns Some(...)
+    /// while forward progress is made — a valid frame, a complete-but-CRC-failed
+    /// frame (status CrcFailure, skipped in full), or a SyncRecovery event for
+    /// skipped garbage bytes. Returns None only when the buffer is drained or a
+    /// trailing partial frame remains (Collecting).
+    ///
+    /// Canonical drain loop:
+    ///   while let Some(f) = reader.next(&get_message_info) {
+    ///       if f.valid { handle(f); } // else CrcFailure or SyncRecovery
+    ///   }
     pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
         if self.offset >= self.data.len() {
             return None;
@@ -796,12 +802,31 @@ impl BufferReader {
             return Some(result);
         }
 
-        // B1: advance past the bad position so the next call starts from the next candidate.
-        if result.status != FrameMsgStatus::Collecting {
-            let advance = self.find_next_start_byte_offset(remaining).max(1);
-            self.offset += advance;
+        // Complete-but-invalid frame (CRC failure): surface it and skip past it,
+        // so frames after a corrupt one are still delivered.
+        if result.frame_size > 0 {
+            self.offset += result.frame_size;
+            return Some(result);
         }
-        None
+
+        if result.status == FrameMsgStatus::Collecting {
+            // Trailing partial frame — leave offset unchanged.
+            return None;
+        }
+
+        // Bad start byte / unknown msg_id: skip to the next candidate start position
+        // and surface a SyncRecovery event so drain loops keep advancing.
+        let advance = self.find_next_start_byte_offset(remaining).max(1);
+        self.offset += advance;
+        let mut sync = FrameMsgInfo::invalid();
+        sync.status = FrameMsgStatus::SyncRecovery;
+        sync.frame_size = advance;
+        Some(sync)
+    }
+
+    /// Drain-loop alias matching the AccumulatingReader / cross-language naming.
+    pub fn try_next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
+        self.next(get_message_info)
     }
 
     /// Find the offset of the next possible start-byte sequence within `buf` starting at index 1.
@@ -944,6 +969,50 @@ impl AccumulatingReader {
     fn drain_head(&mut self, n: usize) {
         self.head = (self.head + n).min(self.buffer.len());
         self.maybe_compact();
+    }
+
+    /// Increment cnt_len_errors when the frame at the buffer head carries a length
+    /// field outside the [min_size, size] range for its message — matching the
+    /// stream-mode counter semantics of the other language parsers.
+    /// A8: mirrors the C++ / TS check — only errors on out-of-range lengths.
+    fn record_len_error_if_any(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) {
+        if !self.starts_with_possible_frame() || !self.config.payload.has_length {
+            return;
+        }
+        let buf = self.buf();
+        let header_size = self.config.header_size();
+        if buf.len() < header_size {
+            return;
+        }
+        let mut len_offset = self.config.header.num_start_bytes as usize;
+        if self.config.payload.has_seq {
+            len_offset += 1;
+        }
+        if self.config.payload.has_sys_id {
+            len_offset += 1;
+        }
+        if self.config.payload.has_comp_id {
+            len_offset += 1;
+        }
+        let msg_len = if self.config.payload.length_bytes == 1 {
+            buf[len_offset] as usize
+        } else {
+            (buf[len_offset] as usize) | ((buf[len_offset + 1] as usize) << 8)
+        };
+        let mut id_offset = len_offset + self.config.payload.length_bytes as usize;
+        let mut full_msg_id: u16 = 0;
+        if self.config.payload.has_pkg_id && buf.len() > id_offset {
+            full_msg_id = (buf[id_offset] as u16) << 8;
+            id_offset += 1;
+        }
+        if buf.len() > id_offset {
+            full_msg_id |= buf[id_offset] as u16;
+            if let Some(info) = get_message_info(full_msg_id) {
+                if msg_len > info.size || msg_len < info.min_size {
+                    self.diagnostics.cnt_len_errors += 1;
+                }
+            }
+        }
     }
 
     /// Returns true if the buffer front starts with the expected start-byte sequence
@@ -1184,6 +1253,7 @@ impl AccumulatingReader {
                 self.last_seq = Some(seq);
             }
 
+            self.record_len_error_if_any(get_message_info);
             self.partial_pending = false;
             self.drain_head(frame_size);
             return Some(result);
@@ -1196,6 +1266,7 @@ impl AccumulatingReader {
             }
             self.diagnostics.cnt_failed_bytes += result.frame_size as u32;
             self.diagnostics.cnt_sync_recoveries += 1;
+            self.record_len_error_if_any(get_message_info);
             self.partial_pending = false;
             self.drain_head(result.frame_size);
             return Some(result);
@@ -1213,42 +1284,7 @@ impl AccumulatingReader {
         }
 
         // Record diagnostics before draining
-        if self.starts_with_possible_frame() && self.config.payload.has_length {
-            let buf = self.buf();
-            let header_size = self.config.header_size();
-            if buf.len() >= header_size {
-                let mut len_offset = self.config.header.num_start_bytes as usize;
-                if self.config.payload.has_seq {
-                    len_offset += 1;
-                }
-                if self.config.payload.has_sys_id {
-                    len_offset += 1;
-                }
-                if self.config.payload.has_comp_id {
-                    len_offset += 1;
-                }
-                let msg_len = if self.config.payload.length_bytes == 1 {
-                    buf[len_offset] as usize
-                } else {
-                    (buf[len_offset] as usize) | ((buf[len_offset + 1] as usize) << 8)
-                };
-                let mut id_offset = len_offset + self.config.payload.length_bytes as usize;
-                let mut full_msg_id: u16 = 0;
-                if self.config.payload.has_pkg_id && buf.len() > id_offset {
-                    full_msg_id = (buf[id_offset] as u16) << 8;
-                    id_offset += 1;
-                }
-                if buf.len() > id_offset {
-                    full_msg_id |= buf[id_offset] as u16;
-                    if let Some(info) = get_message_info(full_msg_id) {
-                        // A8: mirrors C++ / TS fix — only error on out-of-range
-                        if msg_len > info.size || msg_len < info.min_size {
-                            self.diagnostics.cnt_len_errors += 1;
-                        }
-                    }
-                }
-            }
-        }
+        self.record_len_error_if_any(get_message_info);
 
         self.diagnostics.cnt_failed_bytes += bytes_to_drain as u32;
         self.diagnostics.cnt_sync_recoveries += 1;

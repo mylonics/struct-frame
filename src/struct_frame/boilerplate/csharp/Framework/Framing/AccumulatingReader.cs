@@ -173,7 +173,9 @@ namespace StructFrame.Framing
                         int found = (searchLen > 0 && _config.NumStartBytes > 0)
                             ? Array.IndexOf(_internalBuffer, _config.ComputedStartByte1, 1, searchLen)
                             : -1;
-                        int discard = found > 0 ? found : _internalDataLen;
+                        // No start bytes (e.g. IPC profile): discard one byte at a time so a
+                        // single unknown msg_id doesn't drop the rest of the buffered data.
+                        int discard = found > 0 ? found : (_config.NumStartBytes == 0 ? 1 : _internalDataLen);
                         _diagnostics.CntSyncRecoveries++;
                         _diagnostics.CntFailedBytes += discard;
                         int keep = _internalDataLen - discard;
@@ -188,12 +190,19 @@ namespace StructFrame.Framing
                     {
                         // Frame completed (valid or CRC-failed). Advance _currentOffset past the
                         // bytes in the current buffer that formed the tail of this cross-chunk frame.
+                        if (!result.Valid && _config.HasCrc)
+                        {
+                            _diagnostics.CntCrcFailures++;
+                            _diagnostics.CntFailedBytes += result.FrameSize;
+                            _diagnostics.CntSyncRecoveries++;
+                        }
+                        RecordFrameDiagnostics(_internalBuffer, 0, result.Valid);
                         int internalPrior = _internalDataLen - _bytesAppendedToInternal;
                         int bytesFromCurrent = Math.Max(0, result.FrameSize - internalPrior);
                         _currentOffset += bytesFromCurrent;
                         _internalDataLen = 0;
                         _bytesAppendedToInternal = 0;
-                        return result;
+                        return AttachDiagnostics(result);
                     }
 
                     if (result.Status == FrameMsgStatus.Collecting)
@@ -233,8 +242,15 @@ namespace StructFrame.Framing
 
             if (parseResult.FrameSize > 0)
             {
+                if (!parseResult.Valid && _config.HasCrc)
+                {
+                    _diagnostics.CntCrcFailures++;
+                    _diagnostics.CntFailedBytes += parseResult.FrameSize;
+                    _diagnostics.CntSyncRecoveries++;
+                }
+                RecordFrameDiagnostics(_currentBuffer, _currentOffset, parseResult.Valid);
                 _currentOffset += parseResult.FrameSize;
-                return parseResult;
+                return AttachDiagnostics(parseResult);
             }
 
             // Parse returned no frame — tail of buffer is a partial frame.
@@ -464,8 +480,10 @@ namespace StructFrame.Framing
                         }
                         fullMsgId |= _internalBuffer[_config.HeaderSize - 1];
                         var info = _getMessageInfo(fullMsgId);
+                        // Valid frames may carry anywhere from MinSize (variable messages /
+                        // truncated extensions) up to Size bytes — only count outside that range.
                         if (info.HasValue &&
-                            (payloadLen > info.Value.Size || payloadLen < info.Value.BaseSize))
+                            (payloadLen > info.Value.Size || payloadLen < info.Value.MinSize))
                         {
                             _diagnostics.CntLenErrors++;
                         }
@@ -608,9 +626,60 @@ namespace StructFrame.Framing
         // or `length` if none is found.
         private int FindStartByteOffset(byte[] buf, int start, int length)
         {
-            if (length <= 0 || _config.NumStartBytes == 0) return length;
+            if (length <= 0) return length;
+            // No start bytes (e.g. IPC profile): resync one byte at a time so a
+            // single unknown msg_id doesn't discard the rest of the buffer.
+            if (_config.NumStartBytes == 0) return 0;
             int found = Array.IndexOf(buf, _config.ComputedStartByte1, start, length);
             return found >= 0 ? found - start : length;
+        }
+
+        // Record per-frame diagnostics for a complete frame consumed in buffer mode,
+        // matching the stream-mode (PushByte) counter semantics:
+        //  - CntLenErrors when the header length is outside [MinSize, Size]
+        //  - CntSeqGaps on valid frames for profiles that carry a sequence number
+        // `frame`/`frameOffset` locate the first byte of the frame (start bytes included).
+        private void RecordFrameDiagnostics(byte[]? frame, int frameOffset, bool valid)
+        {
+            if (frame == null) return;
+            if (_config.HasLength && _getMessageInfo != null)
+            {
+                int lenOffset = frameOffset + _config.NumStartBytes;
+                if (_config.HasSeq) lenOffset++;
+                if (_config.HasSysId) lenOffset++;
+                if (_config.HasCompId) lenOffset++;
+
+                int payloadLen = _config.LengthBytes == 1
+                    ? frame[lenOffset]
+                    : frame[lenOffset] | (frame[lenOffset + 1] << 8);
+
+                int fullMsgId = 0;
+                if (_config.HasPkgId)
+                {
+                    fullMsgId = frame[frameOffset + _config.HeaderSize - 2] << 8;
+                }
+                fullMsgId |= frame[frameOffset + _config.HeaderSize - 1];
+                var info = _getMessageInfo(fullMsgId);
+                if (info.HasValue &&
+                    (payloadLen > info.Value.Size || payloadLen < info.Value.MinSize))
+                {
+                    _diagnostics.CntLenErrors++;
+                }
+            }
+            if (valid && _config.HasSeq)
+            {
+                byte seq = frame[frameOffset + _config.NumStartBytes];
+                if (_lastSeqValid)
+                {
+                    byte expectedSeq = (byte)((_lastSeq + 1) & 0xFF);
+                    if (seq != expectedSeq)
+                    {
+                        _diagnostics.CntSeqGaps++;
+                    }
+                }
+                _lastSeq = seq;
+                _lastSeqValid = true;
+            }
         }
 
         private FrameMsgInfo StatusResult(FrameMsgStatus status, int frameSize = 0)

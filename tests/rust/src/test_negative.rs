@@ -7,12 +7,17 @@
 // - Malformed data
 
 use struct_frame_sdk::serialization_test::*;
+use struct_frame_sdk::pkg_test_messages::{
+    PackageTestMessage, get_message_info as pkg_get_message_info,
+};
+use struct_frame_sdk::pkg_test_a::get_message_info as pkg_a_get_message_info;
 use struct_frame_sdk::get_message_info;
 use struct_frame_sdk::FrameMsgStatus;
 use struct_frame_sdk::{
     encode_message_crc, encode_message_minimal, encode_with_crc,
     AccumulatingReader, BufferWriter, BufferReader,
     PROFILE_STANDARD_CONFIG, PROFILE_BULK_CONFIG, PROFILE_SENSOR_CONFIG, PROFILE_NETWORK_CONFIG,
+    PROFILE_IPC_CONFIG,
 };
 
 // ============================================================================
@@ -60,10 +65,12 @@ fn test_corrupted_crc() -> bool {
     data[frame_size - 1] ^= 0xFF;
     data[frame_size - 2] ^= 0xFF;
 
-    // Try to parse - should fail
+    // Parse - the CRC-failed frame is surfaced as an invalid CrcFailure event
     let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data);
-    let result = reader.next(&get_message_info);
-    result.is_none() // Expect parsing to fail
+    match reader.next(&get_message_info) {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure && f.frame_size > 0,
+        None => false,
+    }
 }
 
 /// Test: Parser rejects truncated frame
@@ -102,10 +109,12 @@ fn test_invalid_start_bytes() -> bool {
     data[0] = 0xDE;
     data[1] = 0xAD;
 
-    // Try to parse - should fail
+    // Parse - garbage start bytes are surfaced as a SyncRecovery skip event
     let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data);
-    let result = reader.next(&get_message_info);
-    result.is_none() // Expect parsing to fail
+    match reader.next(&get_message_info) {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::SyncRecovery && f.frame_size > 0,
+        None => false,
+    }
 }
 
 /// Test: Parser handles zero-length buffer
@@ -206,13 +215,22 @@ fn test_multiple_corrupted_frames() -> bool {
 
     // First should be valid
     let result1 = reader.next(&get_message_info);
-    if result1.is_none() {
-        return false;
+    match result1 {
+        Some(ref f) if f.valid => {}
+        _ => return false,
     }
 
-    // Second should be invalid
-    let result2 = reader.next(&get_message_info);
-    result2.is_none() // Expect failure on second frame
+    // Second is surfaced as an invalid CrcFailure event
+    match reader.next(&get_message_info) {
+        Some(f) if !f.valid && f.status == FrameMsgStatus::CrcFailure => {}
+        _ => return false,
+    }
+
+    // Third frame after the corrupt one is still delivered
+    match reader.next(&get_message_info) {
+        Some(f) => f.valid,
+        None => false,
+    }
 }
 
 /// Test: Bulk profile with corrupted CRC
@@ -231,10 +249,12 @@ fn test_bulk_profile_corrupted_crc() -> bool {
     data[frame_size - 1] ^= 0xFF;
     data[frame_size - 2] ^= 0xFF;
 
-    // Try to parse - should fail
+    // Parse - the CRC-failed frame is surfaced as an invalid CrcFailure event
     let mut reader = BufferReader::new(PROFILE_BULK_CONFIG, data);
-    let result = reader.next(&get_message_info);
-    result.is_none() // Expect parsing to fail
+    match reader.next(&get_message_info) {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure && f.frame_size > 0,
+        None => false,
+    }
 }
 
 /// Test: AccumulatingReader handles a frame fed in two separate add_data chunks
@@ -302,8 +322,10 @@ fn test_invalid_msg_id() -> bool {
     buf[3] = 0xFF;
 
     let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, buf[..frame_size].to_vec());
-    let result = reader.next(&get_message_info);
-    result.is_none() // Expect failure: CRC mismatch due to wrong magic values
+    match reader.next(&get_message_info) {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure,
+        None => false,
+    }
 }
 
 /// Test: Minimal profile (no CRC) rejects a truncated frame.
@@ -359,8 +381,10 @@ fn test_network_sysid_compid() -> bool {
     buf[3] ^= 0xFF;
 
     let mut reader = BufferReader::new(PROFILE_NETWORK_CONFIG, buf[..frame_size].to_vec());
-    let result = reader.next(&get_message_info);
-    result.is_none() // Expect failure: corrupted sys_id invalidates CRC
+    match reader.next(&get_message_info) {
+        Some(f) => !f.valid && f.status == FrameMsgStatus::CrcFailure,
+        None => false,
+    }
 }
 
 /// Test: BufferReader advances past a CRC-failed frame and decodes the next valid frame.
@@ -379,13 +403,17 @@ fn test_buffer_reader_skips_crc_failure() -> bool {
 
     let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data[..total].to_vec());
 
-    let result1 = reader.next(&get_message_info);
-    if result1.is_some() {
-        return false; // First frame must fail (CRC corrupted)
+    // First frame is surfaced as an invalid CrcFailure event
+    match reader.next(&get_message_info) {
+        Some(f) if !f.valid && f.status == FrameMsgStatus::CrcFailure => {}
+        _ => return false,
     }
 
-    let result2 = reader.next(&get_message_info);
-    result2.is_some() // Second frame must succeed after skipping the bad one
+    // Second frame must succeed after skipping the bad one
+    match reader.next(&get_message_info) {
+        Some(f) => f.valid,
+        None => false,
+    }
 }
 
 /// Test: AccumulatingReader buffer mode recovers after a CRC failure in add_data path.
@@ -465,20 +493,22 @@ fn test_crc_error_then_valid_frame() -> bool {
     let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data[..total].to_vec());
 
     // Frame 1 must decode successfully
-    let result1 = reader.next(&get_message_info);
-    if result1.is_none() {
-        return false;
+    match reader.next(&get_message_info) {
+        Some(f) if f.valid => {}
+        _ => return false,
     }
 
-    // Frame 2 must fail (CRC error) — reader must advance to frame 3
-    let result2 = reader.next(&get_message_info);
-    if result2.is_some() {
-        return false;
+    // Frame 2 is surfaced as an invalid CrcFailure event — status must be preserved
+    match reader.next(&get_message_info) {
+        Some(f) if !f.valid && f.status == FrameMsgStatus::CrcFailure => {}
+        _ => return false,
     }
 
     // Reader must decode frame 3 after advancing past the CRC error
-    let result3 = reader.next(&get_message_info);
-    result3.is_some()
+    match reader.next(&get_message_info) {
+        Some(f) => f.valid,
+        None => false,
+    }
 }
 
 /// Test: AccumulatingReader correctly recovers after a CRC-failed frame that was
@@ -643,6 +673,361 @@ fn run_test(name: &str, func: fn() -> bool) -> bool {
     passed
 }
 
+
+// ============================================================================
+// Helpers for the diagnostics / buffer-mode scenarios
+// ============================================================================
+
+/// Encode one Network-profile frame with the given sequence number.
+fn encode_network_frame(seq: u8) -> Vec<u8> {
+    let msg = create_test_message();
+    let mut payload = vec![0u8; BasicTypesMessage::MAX_SIZE];
+    let payload_len = msg.pack(&mut payload);
+    let mut buf = vec![0u8; 1024];
+    let frame_size = encode_with_crc(
+        &PROFILE_NETWORK_CONFIG,
+        &mut buf,
+        seq,
+        1,
+        1,
+        (BasicTypesMessage::MSG_ID >> 8) as u8,
+        (BasicTypesMessage::MSG_ID & 0xFF) as u8,
+        &payload[..payload_len],
+        BasicTypesMessage::MAGIC1,
+        BasicTypesMessage::MAGIC2,
+    );
+    buf.truncate(frame_size);
+    buf
+}
+
+/// Encode two back-to-back Standard-profile frames; returns (data, first frame size).
+fn encode_two_standard_frames() -> (Vec<u8>, usize) {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 2048);
+    let first = writer.write_crc(&msg, 0);
+    writer.write_crc(&msg, 0);
+    (writer.data().to_vec(), first)
+}
+
+/// Diagnostics: cnt_crc_failures increments on a CRC failure.
+fn test_diagnostic_crc_failure() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer.write_crc(&msg, 0);
+    let mut data = writer.data().to_vec();
+    let frame_size = data.len();
+    if frame_size < 4 {
+        return false;
+    }
+    data[frame_size - 1] ^= 0xFF;
+    data[frame_size - 2] ^= 0xFF;
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    for b in &data {
+        reader.push_byte(*b, &get_message_info);
+    }
+
+    let diag = reader.diagnostics();
+    diag.cnt_crc_failures == 1 && diag.cnt_sync_recoveries >= 1
+}
+
+/// Diagnostics: cnt_sync_recoveries increments when garbage bytes are fed.
+/// (The unified Rust reader classifies data only once a full header's worth of
+/// bytes is buffered, so feed a whole overhead-sized garbage chunk.)
+fn test_diagnostic_sync_recovery() -> bool {
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    reader.add_data(&[0x90, 0xAB, 0x00, 0x00, 0x00, 0x00]); // bad start2 -> resync
+    while reader.try_next(&get_message_info).is_some() {}
+    reader.diagnostics().cnt_sync_recoveries >= 1
+}
+
+/// Diagnostics: cnt_len_errors increments when the header length field is out of
+/// the [min_size, size] range. A zero length completes a (short, CRC-failing)
+/// frame immediately, so the reader records the out-of-range length.
+fn test_diagnostic_len_error() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer.write_crc(&msg, 0);
+    let mut data = writer.data().to_vec();
+    if data.len() < 5 {
+        return false;
+    }
+
+    // ProfileStandard header: [0x90][0x71][LEN][MSG_ID]... Zero out the length —
+    // out of range as long as the message's min_size is non-zero.
+    let info = match get_message_info(BasicTypesMessage::MSG_ID) {
+        Some(i) => i,
+        None => return false,
+    };
+    if info.min_size == 0 {
+        return false;
+    }
+    data[2] = 0;
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    reader.add_data(&data);
+    while reader.try_next(&get_message_info).is_some() {}
+
+    reader.diagnostics().cnt_len_errors >= 1
+}
+
+/// Diagnostics: cnt_seq_gaps increments when a sequence number is skipped.
+fn test_diagnostic_seq_gap() -> bool {
+    let frame0 = encode_network_frame(0);
+    let frame5 = encode_network_frame(5); // skips seq 1-4
+
+    let mut reader = AccumulatingReader::new(PROFILE_NETWORK_CONFIG, 1024);
+    let mut valid_count = 0;
+    for b in frame0.iter().chain(frame5.iter()) {
+        if let Some(f) = reader.push_byte(*b, &get_message_info) {
+            if f.valid {
+                valid_count += 1;
+            }
+        }
+    }
+
+    let diag = reader.diagnostics();
+    valid_count == 2 && diag.cnt_seq_gaps == 1 && diag.cnt_crc_failures == 0
+}
+
+/// Diagnostics: reset_diagnostics() clears all counters.
+fn test_diagnostic_reset() -> bool {
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    reader.add_data(&[0x90, 0xAB, 0x00, 0x00, 0x00, 0x00]); // bad start2 -> resync
+    while reader.try_next(&get_message_info).is_some() {}
+    if reader.diagnostics().cnt_sync_recoveries < 1 {
+        return false;
+    }
+
+    reader.reset_diagnostics();
+    let diag = reader.diagnostics();
+    diag.cnt_crc_failures == 0
+        && diag.cnt_sync_recoveries == 0
+        && diag.cnt_failed_bytes == 0
+        && diag.cnt_len_errors == 0
+        && diag.cnt_seq_gaps == 0
+}
+
+/// Buffer mode: a CRC-failed frame increments cnt_crc_failures, cnt_failed_bytes
+/// and cnt_sync_recoveries — same counter semantics as stream mode.
+fn test_buffer_mode_crc_counters() -> bool {
+    let (mut data, frame_size) = encode_two_standard_frames();
+    data[frame_size - 1] ^= 0xFF; // corrupt frame 1's CRC
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    reader.add_data(&data);
+
+    let mut valid_count = 0;
+    while let Some(f) = reader.try_next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        }
+    }
+
+    let diag = reader.diagnostics();
+    valid_count == 1
+        && diag.cnt_crc_failures == 1
+        && diag.cnt_sync_recoveries == 1
+        && diag.cnt_failed_bytes == frame_size as u32
+}
+
+/// Buffer mode: sequence gaps are detected on frames consumed via add_data.
+fn test_buffer_mode_seq_gap() -> bool {
+    let mut data = encode_network_frame(0);
+    data.extend_from_slice(&encode_network_frame(5)); // skips seq 1-4
+
+    let mut reader = AccumulatingReader::new(PROFILE_NETWORK_CONFIG, 1024);
+    reader.add_data(&data);
+
+    let mut valid_count = 0;
+    while let Some(f) = reader.try_next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        }
+    }
+
+    let diag = reader.diagnostics();
+    valid_count == 2 && diag.cnt_seq_gaps == 1 && diag.cnt_crc_failures == 0
+}
+
+/// Sensor (minimal) profile buffer: an unknown msg_id after a valid start byte
+/// triggers a resync scan to the next start byte instead of discarding the buffer.
+fn test_sensor_buffer_unknown_msg_id_resync() -> bool {
+    let info = match get_message_info(BasicTypesMessage::MSG_ID) {
+        Some(i) => i,
+        None => return false,
+    };
+
+    // [0x70][0xFF (unknown)] then a valid sensor frame [0x70][msg_id][payload@size]
+    let mut data = vec![0u8; 4 + info.size]; // zeroed payload is fine for framing
+    data[0] = 0x70;
+    data[1] = 0xFF;
+    data[2] = 0x70;
+    data[3] = (BasicTypesMessage::MSG_ID & 0xFF) as u8;
+
+    let mut reader = BufferReader::new(PROFILE_SENSOR_CONFIG, data);
+    let mut saw_sync = false;
+    let mut valid_count = 0;
+    while let Some(f) = reader.next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        } else if f.status == FrameMsgStatus::SyncRecovery {
+            saw_sync = true;
+        }
+    }
+    saw_sync && valid_count == 1
+}
+
+/// IPC (no start bytes) buffer: an unknown msg_id advances one byte and the
+/// following valid frame is still delivered.
+fn test_ipc_buffer_unknown_msg_id() -> bool {
+    let info = match get_message_info(BasicTypesMessage::MSG_ID) {
+        Some(i) => i,
+        None => return false,
+    };
+
+    let mut data = vec![0u8; 2 + info.size];
+    data[0] = 0xFF; // unknown msg_id
+    data[1] = (BasicTypesMessage::MSG_ID & 0xFF) as u8;
+
+    let mut reader = BufferReader::new(PROFILE_IPC_CONFIG, data);
+    let mut saw_sync = false;
+    let mut valid_count = 0;
+    while let Some(f) = reader.next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        } else if f.status == FrameMsgStatus::SyncRecovery {
+            saw_sync = true;
+        }
+    }
+    saw_sync && valid_count == 1
+}
+
+/// Split sweep: two back-to-back frames delivered intact when the byte stream is
+/// split into two add_data chunks at every possible offset.
+fn test_split_sweep_all_boundaries() -> bool {
+    let (data, _) = encode_two_standard_frames();
+    let total = data.len();
+
+    for split in 1..total {
+        let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+        let mut valid_count = 0;
+
+        reader.add_data(&data[..split]);
+        while let Some(f) = reader.try_next(&get_message_info) {
+            if f.valid {
+                valid_count += 1;
+            }
+        }
+        reader.add_data(&data[split..]);
+        while let Some(f) = reader.try_next(&get_message_info) {
+            if f.valid {
+                valid_count += 1;
+            }
+        }
+
+        if valid_count != 2 {
+            return false;
+        }
+        if reader.has_partial() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Streaming: two back-to-back frames are both decoded byte-by-byte.
+fn test_streaming_two_frames() -> bool {
+    let (data, _) = encode_two_standard_frames();
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    let mut valid_count = 0;
+    for b in &data {
+        if let Some(f) = reader.push_byte(*b, &get_message_info) {
+            if f.valid {
+                valid_count += 1;
+            }
+        }
+    }
+    valid_count == 2
+}
+
+// ============================================================================
+// Package / cross-package corruption scenarios (parity with C/C++/TS/JS/C#)
+// ============================================================================
+
+/// Encode one Bulk-profile PackageTestMessage frame.
+fn encode_bulk_pkg_frame() -> Vec<u8> {
+    let msg = PackageTestMessage::default();
+    let mut buf = vec![0u8; 1024];
+    let frame_size = encode_message_crc(&PROFILE_BULK_CONFIG, &mut buf, &msg, 0);
+    buf.truncate(frame_size);
+    buf
+}
+
+/// Bulk profile: corrupting the pkg_id byte invalidates the CRC.
+fn test_bulk_corrupted_pkg_id() -> bool {
+    let mut data = encode_bulk_pkg_frame();
+    if data.len() < 7 {
+        return false;
+    }
+    // Bulk layout: [0x90][0x74][LEN_LO][LEN_HI][PKG_ID][MSG_ID]...
+    data[4] ^= 0xFF;
+
+    let mut reader = BufferReader::new(PROFILE_BULK_CONFIG, data);
+    match reader.next(&pkg_get_message_info) {
+        Some(f) => !f.valid,
+        None => false,
+    }
+}
+
+/// Bulk profile: corrupting the msg_id low byte invalidates the CRC.
+fn test_bulk_corrupted_msg_id_low_byte() -> bool {
+    let mut data = encode_bulk_pkg_frame();
+    if data.len() < 7 {
+        return false;
+    }
+    data[5] ^= 0xFF;
+
+    let mut reader = BufferReader::new(PROFILE_BULK_CONFIG, data);
+    match reader.next(&pkg_get_message_info) {
+        Some(f) => !f.valid,
+        None => false,
+    }
+}
+
+/// Cross-package rejection: a frame from one package fails CRC validation when
+/// decoded with another package's message info (different pkg_id / magic bytes).
+fn test_cross_package_rejection() -> bool {
+    let data = encode_bulk_pkg_frame();
+
+    let mut reader = BufferReader::new(PROFILE_BULK_CONFIG, data);
+    match reader.next(&pkg_a_get_message_info) {
+        Some(f) => !f.valid,
+        None => false,
+    }
+}
+
+/// Network profile: corrupting the pkg_id byte invalidates the CRC.
+fn test_network_corrupted_pkg_id() -> bool {
+    let msg = PackageTestMessage::default();
+    let mut buf = vec![0u8; 1024];
+    let frame_size = encode_message_crc(&PROFILE_NETWORK_CONFIG, &mut buf, &msg, 0);
+    if frame_size < 10 {
+        return false;
+    }
+    buf.truncate(frame_size);
+    // Network layout: [0x90][0x78][SEQ][SYS][COMP][LEN_LO][LEN_HI][PKG_ID][MSG_ID]...
+    buf[7] ^= 0xFF;
+
+    let mut reader = BufferReader::new(PROFILE_NETWORK_CONFIG, buf);
+    match reader.next(&pkg_get_message_info) {
+        Some(f) => !f.valid,
+        None => false,
+    }
+}
+
+
 fn main() {
     println!("\n========================================");
     println!("NEGATIVE TESTS - Rust Parser");
@@ -653,24 +1038,39 @@ fn main() {
     println!("{:<50} {:>6}", "==================================================", "======");
 
     let tests: &[(&str, fn() -> bool)] = &[
+        ("Buffer mode: CRC failure counters",        test_buffer_mode_crc_counters),
+        ("Buffer mode: Sequence gap counted",        test_buffer_mode_seq_gap),
         ("Buffer mode: recovers after CRC failure",  test_buffer_mode_recovers_after_crc_failure),
         ("Buffer reader: skips CRC-failed frame",    test_buffer_reader_skips_crc_failure),
         ("Bulk profile: Corrupted CRC",              test_bulk_profile_corrupted_crc),
+        ("Bulk profile: Corrupted pkg_id byte",      test_bulk_corrupted_pkg_id),
+        ("Bulk profile: Corrupted msg_id low byte",  test_bulk_corrupted_msg_id_low_byte),
         ("Corrupted CRC detection",                  test_corrupted_crc),
         ("Corrupted length field detection",         test_corrupted_length),
+        ("Cross-package rejection (pkgid mismatch)", test_cross_package_rejection),
+        ("Diagnostics: CRC failure counter",         test_diagnostic_crc_failure),
+        ("Diagnostics: Length error counter",        test_diagnostic_len_error),
+        ("Diagnostics: Reset diagnostics",           test_diagnostic_reset),
+        ("Diagnostics: Sequence gap counter",        test_diagnostic_seq_gap),
+        ("Diagnostics: Sync recovery counter",       test_diagnostic_sync_recovery),
         ("Invalid message ID rejection",             test_invalid_msg_id),
         ("Invalid start bytes detection",            test_invalid_start_bytes),
+        ("IPC buffer: unknown msg_id advances one byte", test_ipc_buffer_unknown_msg_id),
         ("Minimal profile: Truncated frame",         test_minimal_profile_truncated_frame),
         ("Multiple frames: CRC error then valid frame", test_crc_error_then_valid_frame),
         ("Multiple frames: Corrupted middle frame",  test_multiple_corrupted_frames),
+        ("Network profile: Corrupted pkg_id byte",   test_network_corrupted_pkg_id),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary",     test_partial_frame_boundary),
+        ("Sensor buffer: unknown msg_id resync",     test_sensor_buffer_unknown_msg_id_resync),
+        ("Split sweep: two frames at every boundary", test_split_sweep_all_boundaries),
         ("Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status),
         ("TryNext drain: CRC/resync + valid", test_try_next_drain_contract),
         ("TryNext partial pending contract", test_try_next_partial_pending_contract),
         ("Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage),
         ("Streaming: Corrupted CRC detection",       test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling",         test_streaming_garbage),
+        ("Streaming: two frames byte-by-byte",       test_streaming_two_frames),
         ("Truncated frame detection",                test_truncated_frame),
         ("Zero-length buffer handling",              test_zero_length_buffer),
     ];

@@ -785,7 +785,7 @@ class TestRunner:
             base_runners = ["test_standard", "test_extended", "test_variable_flag", 
                            "test_profiling", "test_profiling_generated", "test_negative",
                            "test_wire_evolution", "test_wire_evolution_interop"]
-            sdk_runners = ["test_streaming"] if lang.id == "c" else ["test_sdk_units", "test_sdk_subscribe"]
+            sdk_runners = ["test_streaming"] if lang.id == "c" else ["test_sdk_units", "test_sdk_subscribe", "test_sdk_headers_compile"]
             
             for runner in base_runners + sdk_runners:
                 source = test_dir / f"{runner}{lang.source_ext}"
@@ -797,8 +797,8 @@ class TestRunner:
                     cmd = f'{_cc()} {_cflags()} -I"{gen_dir}" -o "{output}" "{source}" {_ldflags()} -lm'
                 else:
                     include_dir = test_dir / "include"
-                    if runner == "test_sdk_subscribe":
-                        # SDK subscribe test needs the C++ SDK boilerplate headers
+                    if runner in ("test_sdk_subscribe", "test_sdk_headers_compile"):
+                        # These tests need the C++ SDK boilerplate headers
                         sdk_dir = self.project_root / "src" / "struct_frame" / "boilerplate" / "cpp"
                         cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -I"{sdk_dir}" -o "{output}" "{source}" {_ldflags()}'
                     else:
@@ -1800,6 +1800,7 @@ class TestRunner:
             for runner, test_row in [
                 ("test_sdk_units",     "test_sdk_units"),
                 ("test_sdk_subscribe", "test_sdk_subscribe"),
+                ("test_sdk_headers_compile", "test_sdk_subscribe"),
             ]:
                 exe = build_dir / f"{runner}{cpp_lang.exe_ext}"
                 if exe.exists():

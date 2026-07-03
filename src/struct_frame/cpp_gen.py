@@ -1012,14 +1012,17 @@ class FileCppGen():
             for key, msg in package.sortedMessages().items():
                 qualName = '%s::%s' % (namespace_name, msg.name)
                 if msg.id is not None:
+                    # min_size for the cnt_len_errors range check: MIN_SIZE for variable
+                    # messages, BASE_SIZE otherwise (extensions may be truncated) — matches c_gen
+                    effective_min = msg.min_size if msg.variable else msg.base_size
                     if package.package_id is not None:
                         # When using package ID, compare against local message ID
-                        yield '        case %d: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2, %s::BASE_SIZE};\n' % (
-                            msg.id, qualName, qualName, qualName, qualName)
+                        yield '        case %d: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2, %s::BASE_SIZE, %d};\n' % (
+                            msg.id, qualName, qualName, qualName, qualName, effective_min)
                     else:
                         # No package ID, compare against MSG_ID from MessageBase
-                        yield '        case %s::MSG_ID: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2, %s::BASE_SIZE};\n' % (
-                            qualName, qualName, qualName, qualName, qualName)
+                        yield '        case %s::MSG_ID: return MessageInfo{%s::MAX_SIZE, %s::MAGIC1, %s::MAGIC2, %s::BASE_SIZE, %d};\n' % (
+                            qualName, qualName, qualName, qualName, qualName, effective_min)
 
             yield '        default: break;\n'
             yield '    }\n'
