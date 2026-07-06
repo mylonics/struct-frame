@@ -906,7 +906,10 @@ class FileCppGen():
         
         # Always include frame_base.hpp for FrameMsgInfo and MessageBase
         # (needed for deserialize(FrameMsgInfo) overload and message base class)
-        yield '#include "frame_base.hpp"\n'
+        # Use angle-bracket form so the -I search path is used rather than the
+        # current file's directory; this allows the SDK's canonical copy to satisfy
+        # the include when generated headers are compiled alongside the SDK.
+        yield '#include <frame_base.hpp>\n'
 
         # Include generated headers for imported packages (enables language server navigation)
         if imported_packages:

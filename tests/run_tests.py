@@ -798,9 +798,14 @@ class TestRunner:
                 else:
                     include_dir = test_dir / "include"
                     if runner in ("test_sdk_subscribe", "test_sdk_headers_compile"):
-                        # These tests need the C++ SDK boilerplate headers
+                        # These tests need the C++ SDK boilerplate headers.
+                        # sdk_dir must come before gen_dir so that angle-bracket
+                        # includes of frame_base.hpp (from generated .structframe.hpp
+                        # files) resolve to the SDK's canonical copy rather than the
+                        # generated copy, avoiding ODR violations when the SDK and
+                        # generated headers are included in the same translation unit.
                         sdk_dir = self.project_root / "src" / "struct_frame" / "boilerplate" / "cpp"
-                        cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -I"{sdk_dir}" -o "{output}" "{source}" {_ldflags()}'
+                        cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{sdk_dir}" -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
                     else:
                         cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
                 
