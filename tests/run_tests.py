@@ -1800,7 +1800,7 @@ class TestRunner:
             for runner, test_row in [
                 ("test_sdk_units",     "test_sdk_units"),
                 ("test_sdk_subscribe", "test_sdk_subscribe"),
-                ("test_sdk_headers_compile", "test_sdk_subscribe"),
+                ("test_sdk_headers_compile", "test_sdk_headers_compile"),
             ]:
                 exe = build_dir / f"{runner}{cpp_lang.exe_ext}"
                 if exe.exists():
