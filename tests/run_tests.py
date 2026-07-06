@@ -1750,6 +1750,7 @@ class TestRunner:
         SDK_APPLICABILITY: Dict[str, List[str]] = {
             "test_streaming":           ["c", "rust"],
             "test_sdk_units":           ["cpp"],
+            "test_sdk_headers_compile": ["cpp"],
             "test_sdk_subscribe":           ["cpp", "csharp", "rust"],
             "test_sdk":                     ["py", "ts", "js"],
             "test_async_sdk":               ["py"],
