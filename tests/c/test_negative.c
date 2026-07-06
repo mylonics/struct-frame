@@ -1361,6 +1361,95 @@ bool test_streaming_two_frames(void) {
   return valid_count == 2;
 }
 
+/**
+ * Buffer mode: a garbage tail that looks like a truncated frame start is saved
+ * as a partial; the reader must resync inside the internal buffer and keep
+ * delivering the frames that follow (livelock regression test).
+ */
+bool test_buffer_mode_garbage_prefix_recovers(void) {
+  uint8_t buffer[2048];
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
+  size_t frame_size = encode_standard_frame(&writer);
+  if (frame_size < 6) return false;
+
+  uint8_t chunk1[2064];
+  memcpy(chunk1, buffer, frame_size);
+  chunk1[frame_size] = 0x90;      /* looks like a truncated frame start */
+  chunk1[frame_size + 1] = 0xFF;
+  size_t chunk1_len = frame_size + 2;
+
+  uint8_t internal_buffer[1024];
+  accumulating_reader_t reader;
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), get_message_info);
+
+  int valid_count = 0;
+  bool saw_sync = false;
+  frame_msg_info_t f;
+
+  accumulating_reader_add_data(&reader, chunk1, chunk1_len);
+  while (accumulating_reader_try_next(&reader, &f)) {
+    if (f.valid) valid_count++;
+    else if (f.status == FRAME_MSG_STATUS_SYNC_RECOVERY) saw_sync = true;
+  }
+
+  for (int i = 0; i < 3; i++) {
+    accumulating_reader_add_data(&reader, buffer, frame_size);
+    while (accumulating_reader_try_next(&reader, &f)) {
+      if (f.valid) valid_count++;
+      else if (f.status == FRAME_MSG_STATUS_SYNC_RECOVERY) saw_sync = true;
+    }
+  }
+
+  return valid_count == 4 && saw_sync;
+}
+
+/**
+ * Buffer mode: a corrupted length field claiming more bytes than the reader's
+ * internal buffer can hold must not wedge the reader permanently
+ * (livelock regression test).
+ */
+bool test_buffer_mode_oversized_length_recovers(void) {
+  uint8_t buffer[2048];
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
+  size_t frame_size = encode_standard_frame(&writer);
+  if (frame_size < 6) return false;
+
+  /* Bogus header claiming a 255-byte payload — the total (261) exceeds the
+   * 256-byte reader buffer, so this frame can never complete. */
+  uint8_t bogus[4] = {0x90, 0x71, 0xFF,
+                      (uint8_t)(SERIALIZATION_TEST_BASIC_TYPES_MESSAGE_MSG_ID & 0xFF)};
+
+  uint8_t internal_buffer[256];
+  accumulating_reader_t reader;
+  accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal_buffer, sizeof(internal_buffer), get_message_info);
+
+  frame_msg_info_t f;
+  accumulating_reader_add_data(&reader, bogus, sizeof(bogus));
+  while (accumulating_reader_try_next(&reader, &f)) {}
+
+  int valid_count = 0;
+  size_t rounds = 256 / frame_size + 3;
+  for (size_t i = 0; i < rounds; i++) {
+    accumulating_reader_add_data(&reader, buffer, frame_size);
+    while (accumulating_reader_try_next(&reader, &f)) {
+      if (f.valid) valid_count++;
+    }
+  }
+  if (valid_count < 1) return false;
+
+  /* The reader must keep delivering fresh frames after recovery. */
+  int probe_valid = 0;
+  for (int i = 0; i < 3; i++) {
+    accumulating_reader_add_data(&reader, buffer, frame_size);
+    while (accumulating_reader_try_next(&reader, &f)) {
+      if (f.valid) probe_valid++;
+    }
+  }
+  return probe_valid >= 1;
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)(void);
 
@@ -1379,6 +1468,8 @@ int main(void) {
   TestCase tests[] = {
     {"Buffer mode: CRC failure counters", test_buffer_mode_crc_counters},
     {"Buffer mode: Sequence gap counted", test_buffer_mode_seq_gap},
+    {"Buffer mode: garbage prefix partial recovers", test_buffer_mode_garbage_prefix_recovers},
+    {"Buffer mode: oversized length recovers", test_buffer_mode_oversized_length_recovers},
     {"Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure},
     {"Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure},
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},

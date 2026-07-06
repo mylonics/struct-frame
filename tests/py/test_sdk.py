@@ -330,6 +330,53 @@ def test_throwing_handler_does_not_stop_siblings():
     run_test("handler isolation: sibling handler still fires", sibling_fired[0] is True)
 
 
+def test_base_transport_serializes_concurrent_sends():
+    """BaseTransport.send serializes concurrent callers so frame bytes from
+    different threads never interleave on the wire.
+
+    Regression test for F12: the sync SDK/transport previously wrote directly
+    to the socket with no lock, so two threads sending concurrently could
+    interleave bytes mid-frame and corrupt the stream. Mirrors the C#
+    BaseTransport SemaphoreSlim guarantee.
+    """
+    import threading
+    import time
+    from struct_frame_sdk.transport import BaseTransport
+
+    class SlowTransport(BaseTransport):
+        def __init__(self):
+            super().__init__()
+            self.connected = True
+            self.events = []
+
+        def connect(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+        def _send_impl(self, data):
+            self.events.append(("start", data[0]))
+            time.sleep(0.005)  # window in which an unlocked send would interleave
+            self.events.append(("end", data[0]))
+            return len(data)
+
+    transport = SlowTransport()
+    threads = [threading.Thread(target=transport.send, args=(bytes([i] * 4),))
+               for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # Serialized => each 'start' is immediately followed by its own 'end'.
+    ev = transport.events
+    serialized = (len(ev) == 16 and all(
+        ev[i][0] == "start" and ev[i + 1] == ("end", ev[i][1])
+        for i in range(0, len(ev), 2)))
+    run_test("transport: concurrent sends are serialized (no interleave)", serialized)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -349,6 +396,7 @@ def main():
     test_codec_registration_and_message_decoding()
     test_close_callback_clears_buffer_state()
     test_throwing_handler_does_not_stop_siblings()
+    test_base_transport_serializes_concurrent_sends()
 
     print()
     print("========================================")

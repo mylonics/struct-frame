@@ -971,6 +971,46 @@ impl AccumulatingReader {
         self.maybe_compact();
     }
 
+    /// When the buffer is full but parsing still cannot make a decision (e.g. a
+    /// corrupted length field claims more bytes than the reader's capacity), the
+    /// pending frame can never complete. Force a resync past the stuck prefix so
+    /// the reader does not wedge permanently: drain to the next start-byte
+    /// candidate after the head (at least one byte).
+    fn forced_resync_if_full(&mut self) -> Option<FrameMsgInfo> {
+        if self.buf().len() < self.capacity {
+            return None;
+        }
+        let buf = self.buf();
+        let drain = match self.config.header.header_type {
+            HeaderType::None => 1,
+            HeaderType::Tiny => {
+                let sb = self.config.computed_start_byte1();
+                buf[1..]
+                    .iter()
+                    .position(|&b| b == sb)
+                    .map(|p| p + 1)
+                    .unwrap_or(buf.len())
+            }
+            HeaderType::Basic => {
+                let sb2 = get_basic_second_start_byte(self.config.payload.payload_type as u8);
+                Self::scan_for_basic_start(&buf[1..], sb2)
+                    .map(|p| p + 1)
+                    .unwrap_or(buf.len())
+            }
+        }
+        .max(1);
+
+        self.diagnostics.cnt_sync_recoveries += 1;
+        self.diagnostics.cnt_failed_bytes += drain as u32;
+        self.partial_pending = false;
+        self.drain_head(drain);
+
+        let mut sync = FrameMsgInfo::invalid();
+        sync.status = FrameMsgStatus::SyncRecovery;
+        sync.frame_size = drain;
+        Some(sync)
+    }
+
     /// Increment cnt_len_errors when the frame at the buffer head carries a length
     /// field outside the [min_size, size] range for its message — matching the
     /// stream-mode counter semantics of the other language parsers.
@@ -1273,12 +1313,20 @@ impl AccumulatingReader {
         }
 
         if result.status == FrameMsgStatus::Collecting {
+            // A frame whose claimed size exceeds the reader capacity can never
+            // complete — resync past the stuck prefix instead of wedging.
+            if let Some(sync) = self.forced_resync_if_full() {
+                return Some(sync);
+            }
             self.partial_pending = true;
             return None;
         }
 
         let bytes_to_drain = self.bytes_to_drain_for_resync(get_message_info);
         if bytes_to_drain == 0 {
+            if let Some(sync) = self.forced_resync_if_full() {
+                return Some(sync);
+            }
             self.partial_pending = true;
             return None;
         }

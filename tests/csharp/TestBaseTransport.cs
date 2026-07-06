@@ -184,6 +184,39 @@ static class TestBaseTransport
     }
 
     // -------------------------------------------------------------------------
+    // F3b. AutoReconnect keeps retrying after failed attempts until it succeeds.
+    // Regression test: the old implementation relied on OnErrorOccurred to
+    // re-trigger the next attempt, whose gate requires _connected -- so after a
+    // close, "infinite" reconnects actually stopped after a single attempt.
+    // -------------------------------------------------------------------------
+    static async Task TestAutoReconnectRetriesUntilSuccess()
+    {
+        var transport = new InstrumentedTransport(new TransportConfig
+        {
+            AutoReconnect = true,
+            ReconnectDelayMs = 10,
+            MaxReconnectAttempts = 0,   // infinite
+        });
+
+        await transport.ConnectAsync();      // initial connect succeeds
+        transport.FailNextConnect = 2;       // next two reconnect attempts fail
+        int baseline = transport.ConnectCalls;
+
+        transport.ForceClose();              // link drops -> reconnect loop starts
+
+        // Wait for the loop to work through 2 failures + 1 success.
+        for (int i = 0; i < 100 && !transport.IsConnected; i++)
+        {
+            await Task.Delay(10);
+        }
+
+        int attempts = transport.ConnectCalls - baseline;
+        Assert("base-reconnect: retries past failed attempts (got " + attempts + ")",
+               attempts == 3);
+        Assert("base-reconnect: eventually reconnects", transport.IsConnected);
+    }
+
+    // -------------------------------------------------------------------------
     // F4. Dispose is idempotent and releases the semaphore.
     // -------------------------------------------------------------------------
     static async Task TestDisposeIdempotent()
@@ -221,6 +254,7 @@ static class TestBaseTransport
         TestReceiveMemorySliceLegacyEvent();
         TestReceiveMemoryFullBufferLegacyEvent();
         TestAutoReconnectHonored().GetAwaiter().GetResult();
+        TestAutoReconnectRetriesUntilSuccess().GetAwaiter().GetResult();
         TestDisposeIdempotent().GetAwaiter().GetResult();
 
         Console.WriteLine();

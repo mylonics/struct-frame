@@ -985,6 +985,88 @@ function testStreamingTwoFrames(): boolean {
 }
 
 
+
+/**
+ * Buffer mode: a garbage tail that looks like a truncated frame start is saved
+ * as a partial; the reader must resync inside the internal buffer and keep
+ * delivering the frames that follow (livelock regression test).
+ */
+function testBufferModeGarbagePrefixRecovers(): boolean {
+  const [frames, sizes] = encodeStandardFrames(1);
+  const frameSize = sizes[0];
+  if (frameSize < 6) return false;
+  const frame = frames.slice(0, frameSize);
+
+  const chunk1 = new Uint8Array(frameSize + 2);
+  chunk1.set(frame, 0);
+  chunk1[frameSize] = 0x90;      // looks like a truncated frame start
+  chunk1[frameSize + 1] = 0xFF;
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  let validCount = 0;
+  let sawSync = false;
+  let r: any;
+
+  reader.addData(chunk1);
+  while ((r = tryNextCompat(reader)) !== null) {
+    if (r.valid) validCount++;
+    else if (r.status === FrameMsgStatus.SyncRecovery) sawSync = true;
+  }
+
+  for (let i = 0; i < 3; i++) {
+    reader.addData(frame);
+    while ((r = tryNextCompat(reader)) !== null) {
+      if (r.valid) validCount++;
+      else if (r.status === FrameMsgStatus.SyncRecovery) sawSync = true;
+    }
+  }
+
+  return validCount === 4 && sawSync;
+}
+
+/**
+ * Buffer mode: a corrupted length field claiming more bytes than the reader's
+ * internal buffer can hold must not wedge the reader permanently
+ * (livelock regression test).
+ */
+function testBufferModeOversizedLengthRecovers(): boolean {
+  const [frames, sizes] = encodeStandardFrames(1);
+  const frameSize = sizes[0];
+  if (frameSize < 6) return false;
+  const frame = frames.slice(0, frameSize);
+
+  // Bogus header claiming a 255-byte payload — the total (261) exceeds the
+  // 256-byte reader buffer, so this frame can never complete.
+  const bogus = new Uint8Array([0x90, 0x71, 0xFF, BasicTypesMessage._msgid & 0xFF]);
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 256);
+  let r: any;
+
+  reader.addData(bogus);
+  while (tryNextCompat(reader) !== null) { /* drain */ }
+
+  let validCount = 0;
+  const rounds = Math.floor(256 / frameSize) + 3;
+  for (let i = 0; i < rounds; i++) {
+    reader.addData(frame);
+    while ((r = tryNextCompat(reader)) !== null) {
+      if (r.valid) validCount++;
+    }
+  }
+  if (validCount < 1) return false;
+
+  // The reader must keep delivering fresh frames after recovery.
+  let probeValid = 0;
+  for (let i = 0; i < 3; i++) {
+    reader.addData(frame);
+    while ((r = tryNextCompat(reader)) !== null) {
+      if (r.valid) probeValid++;
+    }
+  }
+  return probeValid >= 1;
+}
+
+
 function main(): number {
   console.log('\n========================================');
   console.log('NEGATIVE TESTS - TypeScript Parser');
@@ -994,6 +1076,8 @@ function main(): number {
   const tests: Array<[string, () => boolean]> = [
     ['Buffer mode: CRC failure counters', testBufferModeCrcCounters],
     ['Buffer mode: Sequence gap counted', testBufferModeSeqGap],
+    ['Buffer mode: garbage prefix partial recovers', testBufferModeGarbagePrefixRecovers],
+    ['Buffer mode: oversized length recovers', testBufferModeOversizedLengthRecovers],
     ['Buffer mode: recovers after CRC failure', testBufferModeRecoversAfterCrcFailure],
     ['Buffer reader: skips CRC-failed frame', testBufferReaderSkipsCrcFailure],
     ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],

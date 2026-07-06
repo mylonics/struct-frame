@@ -1045,6 +1045,86 @@ bool test_streaming_two_frames() {
   return valid_count == 2;
 }
 
+/**
+ * Buffer mode: a garbage tail that looks like a truncated frame start is saved
+ * as a partial; the reader must resync inside the internal buffer and keep
+ * delivering the frames that follow (livelock regression test).
+ */
+bool test_buffer_mode_garbage_prefix_recovers() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  size_t frame_size = encode_standard_frame(writer);
+  if (frame_size < 6) return false;
+
+  std::vector<uint8_t> chunk1(buffer.begin(), buffer.begin() + frame_size);
+  chunk1.push_back(0x90);  // looks like a truncated frame start
+  chunk1.push_back(0xFF);
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+
+  int valid_count = 0;
+  bool saw_sync = false;
+  FrameMsgInfo f;
+
+  reader.add_data(chunk1.data(), chunk1.size());
+  while (reader.try_next(f)) {
+    if (f.valid) valid_count++;
+    else if (f.status == FrameMsgStatus::SyncRecovery) saw_sync = true;
+  }
+
+  for (int i = 0; i < 3; i++) {
+    reader.add_data(buffer.data(), frame_size);
+    while (reader.try_next(f)) {
+      if (f.valid) valid_count++;
+      else if (f.status == FrameMsgStatus::SyncRecovery) saw_sync = true;
+    }
+  }
+
+  return valid_count == 4 && saw_sync;
+}
+
+/**
+ * Buffer mode: a corrupted length field claiming more bytes than the reader's
+ * internal buffer can hold must not wedge the reader permanently
+ * (livelock regression test).
+ */
+bool test_buffer_mode_oversized_length_recovers() {
+  std::vector<uint8_t> buffer(2048);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  size_t frame_size = encode_standard_frame(writer);
+  if (frame_size < 6) return false;
+
+  // Bogus header claiming a 255-byte payload — the total (261) exceeds the
+  // 256-byte reader buffer, so this frame can never complete.
+  uint8_t bogus[4] = {0x90, 0x71, 0xFF, static_cast<uint8_t>(standard_message0_id() & 0xFF)};
+
+  AccumulatingReader<ProfileStandardConfig, 256, decltype(&get_message_info)> reader(get_message_info);
+
+  FrameMsgInfo f;
+  reader.add_data(bogus, sizeof(bogus));
+  while (reader.try_next(f)) {}
+
+  int valid_count = 0;
+  size_t rounds = 256 / frame_size + 3;
+  for (size_t i = 0; i < rounds; i++) {
+    reader.add_data(buffer.data(), frame_size);
+    while (reader.try_next(f)) {
+      if (f.valid) valid_count++;
+    }
+  }
+  if (valid_count < 1) return false;
+
+  // The reader must keep delivering fresh frames after recovery.
+  int probe_valid = 0;
+  for (int i = 0; i < 3; i++) {
+    reader.add_data(buffer.data(), frame_size);
+    while (reader.try_next(f)) {
+      if (f.valid) probe_valid++;
+    }
+  }
+  return probe_valid >= 1;
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)();
 
@@ -1063,6 +1143,8 @@ int main() {
   TestCase tests[] = {
     {"Buffer mode: CRC failure counters", test_buffer_mode_crc_counters},
     {"Buffer mode: Sequence gap counted", test_buffer_mode_seq_gap},
+    {"Buffer mode: garbage prefix partial recovers", test_buffer_mode_garbage_prefix_recovers},
+    {"Buffer mode: oversized length recovers", test_buffer_mode_oversized_length_recovers},
     {"Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure},
     {"Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure},
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},

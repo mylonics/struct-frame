@@ -815,6 +815,19 @@ class AccumulatingReader {
       return with_diagnostics(FrameMsgInfo());
     }
 
+    // Full-wedge escape: new data arrived but nothing could be appended because
+    // the internal buffer is full. The buffered bytes can never complete —
+    // discard them so parsing continues from the current buffer instead of
+    // stalling forever.
+    if (internal_data_len_ > 0 && current_offset_ == 0 &&
+        bytes_appended_to_internal_ == 0 && current_size_ > current_offset_) {
+      diagnostics_.cnt_sync_recoveries++;
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
+      internal_data_len_ = 0;
+      expected_frame_size_ = 0;
+      // fall through to current-buffer parsing below
+    }
+
     // First, try to complete a partial message from the internal buffer.
     // partial_len = bytes in internal buffer that came from a PREVIOUS add_data call
     // (i.e., before bytes_appended_to_internal_ were added this call).
@@ -845,6 +858,42 @@ class AccumulatingReader {
         bytes_appended_to_internal_ = 0;
         expected_frame_size_ = 0;
         return with_diagnostics(result);
+      }
+
+      // Garbage prefix saved as a partial (WaitingForStart), or a frame that
+      // can never complete because its claimed size exceeds the internal
+      // buffer (still collecting with the buffer full): resync inside the
+      // internal buffer instead of waiting forever.
+      if (result.status == FrameMsgStatus::WaitingForStart ||
+          internal_data_len_ >= BufferSize) {
+        size_t discard = internal_data_len_;
+        if constexpr (Config::num_start_bytes >= 1) {
+          if (internal_data_len_ > 1) {
+            const void* p = std::memchr(internal_buffer_ + 1,
+                                        static_cast<int>(Config::computed_start_byte1()),
+                                        internal_data_len_ - 1);
+            if (p) discard = static_cast<size_t>(static_cast<const uint8_t*>(p) - internal_buffer_);
+          }
+        } else {
+          // No start bytes (e.g. IPC): advance one byte and retry.
+          discard = 1;
+        }
+        diagnostics_.cnt_sync_recoveries++;
+        diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(discard);
+        size_t keep = internal_data_len_ - discard;
+        if (keep > 0) {
+          std::memmove(internal_buffer_, internal_buffer_ + discard, keep);
+        }
+        // Only the portion of the discard that reached into this cycle's
+        // appended bytes reduces the appended count.
+        if (discard > partial_len) {
+          bytes_appended_to_internal_ -= (discard - partial_len);
+        }
+        internal_data_len_ = keep;
+        FrameMsgInfo r;
+        r.status = FrameMsgStatus::SyncRecovery;
+        r.frame_size = discard;
+        return with_diagnostics(r);
       }
 
       // Still not enough data for a complete message — wait for next add_data()
@@ -909,6 +958,11 @@ class AccumulatingReader {
       std::memcpy(internal_buffer_, current_buffer_ + current_offset_, remaining);
       internal_data_len_ = remaining;
       bytes_appended_to_internal_ = 0;
+      current_offset_ = current_size_;
+    } else if (remaining >= BufferSize) {
+      // Partial too large to buffer — discard with diagnostics.
+      diagnostics_.cnt_sync_recoveries++;
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(remaining);
       current_offset_ = current_size_;
     }
 

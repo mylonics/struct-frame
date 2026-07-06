@@ -790,6 +790,82 @@ def test_streaming_two_frames():
     return valid_count == 2
 
 
+def test_buffer_mode_garbage_prefix_recovers():
+    """Buffer mode: a garbage tail that looks like a truncated frame start is saved
+    as a partial; the reader must resync inside the internal buffer and keep
+    delivering the frames that follow (livelock regression test)."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=2048)
+    writer.write(msg)
+    frame = bytes(writer.data()[:writer.size()])
+    if len(frame) < 6:
+        return False
+
+    chunk1 = frame + bytes([0x90, 0xFF])  # looks like a truncated frame start
+
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
+    valid_count = 0
+    saw_sync = False
+
+    reader.add_data(chunk1)
+    while (result := _try_next(reader)) is not None:
+        if result.valid:
+            valid_count += 1
+        elif result.status == FrameMsgStatus.SYNC_RECOVERY:
+            saw_sync = True
+
+    for _ in range(3):
+        reader.add_data(frame)
+        while (result := _try_next(reader)) is not None:
+            if result.valid:
+                valid_count += 1
+            elif result.status == FrameMsgStatus.SYNC_RECOVERY:
+                saw_sync = True
+
+    return valid_count == 4 and saw_sync
+
+
+def test_buffer_mode_oversized_length_recovers():
+    """Buffer mode: a corrupted length field claiming more bytes than the reader's
+    internal buffer can hold must not wedge the reader permanently
+    (livelock regression test)."""
+    msg = _make_test_msg()
+    writer = BufferWriter(PROFILE_STANDARD_CONFIG, capacity=2048)
+    writer.write(msg)
+    frame = bytes(writer.data()[:writer.size()])
+    if len(frame) < 6:
+        return False
+
+    # Bogus header claiming a 255-byte payload — the total (261) exceeds the
+    # 256-byte reader buffer, so this frame can never complete.
+    bogus = bytes([0x90, 0x71, 0xFF, BasicTypesMessage.MSG_ID & 0xFF])
+
+    reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=256)
+
+    reader.add_data(bogus)
+    while _try_next(reader) is not None:
+        pass
+
+    valid_count = 0
+    rounds = 256 // len(frame) + 3
+    for _ in range(rounds):
+        reader.add_data(frame)
+        while (result := _try_next(reader)) is not None:
+            if result.valid:
+                valid_count += 1
+    if valid_count < 1:
+        return False
+
+    # The reader must keep delivering fresh frames after recovery.
+    probe_valid = 0
+    for _ in range(3):
+        reader.add_data(frame)
+        while (result := _try_next(reader)) is not None:
+            if result.valid:
+                probe_valid += 1
+    return probe_valid >= 1
+
+
 def test_status_waiting_for_start():
     """FrameMsgStatus: push_byte returns WAITING_FOR_START when no start byte seen yet."""
     reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info, buffer_size=1024)
@@ -1221,6 +1297,8 @@ def main():
     tests = [
         ("Buffer mode: CRC failure counters", test_buffer_mode_crc_counters),
         ("Buffer mode: Sequence gap counted", test_buffer_mode_seq_gap),
+        ("Buffer mode: garbage prefix partial recovers", test_buffer_mode_garbage_prefix_recovers),
+        ("Buffer mode: oversized length recovers", test_buffer_mode_oversized_length_recovers),
         ("Buffer mode: invalid result carries diagnostics", test_buffer_mode_invalid_result_has_diagnostics),
         ("Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure),
         ("Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure),

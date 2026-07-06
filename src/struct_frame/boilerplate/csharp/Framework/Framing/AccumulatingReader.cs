@@ -154,21 +154,35 @@ namespace StructFrame.Framing
             // --- Try to complete a partial message from the internal buffer ---
             if (_internalDataLen > 0)
             {
-                if (_bytesAppendedToInternal == 0)
+                if (_bytesAppendedToInternal == 0 && _currentSize > _currentOffset)
                 {
-                    // Leftover from a previous call where the internal buffer was already full
-                    // and nothing new could be appended. Discard to avoid an infinite wedge.
+                    // Full-wedge escape: new data arrived but nothing could be appended
+                    // because the internal buffer is full. The buffered bytes can never
+                    // complete — discard them so parsing continues from the current
+                    // buffer instead of stalling forever.
+                    _diagnostics.CntSyncRecoveries++;
+                    _diagnostics.CntFailedBytes += _internalDataLen;
                     _internalDataLen = 0;
+                }
+                else if (_bytesAppendedToInternal == 0)
+                {
+                    // Partial was saved from the current buffer this cycle (or no new
+                    // data arrived) — wait for more data before deciding anything.
+                    return StatusResult(FrameMsgStatus.Collecting);
                 }
                 else
                 {
                     var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
 
-                    if (result.Status == FrameMsgStatus.WaitingForStart)
+                    if (result.Status == FrameMsgStatus.WaitingForStart ||
+                        (result.Status == FrameMsgStatus.Collecting && _internalDataLen >= _bufferSize))
                     {
-                        // Garbage at the start of the internal buffer. Byte 0 is not a valid
-                        // start, so scan forward for the next start-byte candidate and discard
-                        // everything before it — at least one byte, guaranteeing forward progress.
+                        // Garbage at the start of the internal buffer (byte 0 is not a
+                        // valid start), or a frame that can never complete because its
+                        // claimed size exceeds the internal buffer (still collecting with
+                        // the buffer full). Scan forward for the next start-byte candidate
+                        // and discard everything before it — at least one byte,
+                        // guaranteeing forward progress.
                         int searchLen = _internalDataLen - 1;
                         int found = (searchLen > 0 && _config.NumStartBytes > 0)
                             ? Array.IndexOf(_internalBuffer, _config.ComputedStartByte1, 1, searchLen)
@@ -176,13 +190,17 @@ namespace StructFrame.Framing
                         // No start bytes (e.g. IPC profile): discard one byte at a time so a
                         // single unknown msg_id doesn't drop the rest of the buffered data.
                         int discard = found > 0 ? found : (_config.NumStartBytes == 0 ? 1 : _internalDataLen);
+                        int internalPrior = _internalDataLen - _bytesAppendedToInternal;
                         _diagnostics.CntSyncRecoveries++;
                         _diagnostics.CntFailedBytes += discard;
                         int keep = _internalDataLen - discard;
                         if (keep > 0)
                             Array.Copy(_internalBuffer, discard, _internalBuffer, 0, keep);
                         _internalDataLen = keep;
-                        _bytesAppendedToInternal = Math.Max(0, _bytesAppendedToInternal - discard);
+                        // Only the portion of the discard that reached into this cycle's
+                        // appended bytes reduces the appended count.
+                        if (discard > internalPrior)
+                            _bytesAppendedToInternal -= (discard - internalPrior);
                         return StatusResult(FrameMsgStatus.SyncRecovery, discard);
                     }
 

@@ -1106,6 +1106,95 @@ public class TestNegative
         }
 
 
+
+        /**
+         * Buffer mode: a garbage tail that looks like a truncated frame start is
+         * saved as a partial; the reader must resync inside the internal buffer and
+         * keep delivering the frames that follow (livelock regression test).
+         */
+        private static bool TestBufferModeGarbagePrefixRecovers()
+        {
+            byte[] buffer = new byte[2048];
+            var sizes = EncodeStandardFrames(buffer, 1);
+            int frameSize = sizes[0];
+            if (frameSize < 6) return false;
+
+            var chunk1 = new byte[frameSize + 2];
+            Array.Copy(buffer, chunk1, frameSize);
+            chunk1[frameSize] = 0x90;      // looks like a truncated frame start
+            chunk1[frameSize + 1] = 0xFF;
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            int validCount = 0;
+            bool sawSync = false;
+
+            reader.AddData(chunk1);
+            while (reader.TryNext(out var f))
+            {
+                if (f.Valid) validCount++;
+                else if (f.Status == FrameMsgStatus.SyncRecovery) sawSync = true;
+            }
+
+            for (int i = 0; i < 3; i++)
+            {
+                reader.AddData(buffer, 0, frameSize);
+                while (reader.TryNext(out var f))
+                {
+                    if (f.Valid) validCount++;
+                    else if (f.Status == FrameMsgStatus.SyncRecovery) sawSync = true;
+                }
+            }
+
+            return validCount == 4 && sawSync;
+        }
+
+        /**
+         * Buffer mode: a corrupted length field claiming more bytes than the
+         * reader's internal buffer can hold must not wedge the reader permanently
+         * (livelock regression test).
+         */
+        private static bool TestBufferModeOversizedLengthRecovers()
+        {
+            byte[] buffer = new byte[2048];
+            var sizes = EncodeStandardFrames(buffer, 1);
+            int frameSize = sizes[0];
+            if (frameSize < 6) return false;
+
+            // Bogus header claiming a 255-byte payload — the total (261) exceeds
+            // the 256-byte reader buffer, so this frame can never complete.
+            var bogus = new byte[] { 0x90, 0x71, 0xFF, (byte)(BasicTypesMessage.MsgId & 0xFF) };
+
+            var reader = new AccumulatingReader<StandardProfile>(256, SerializationTestMD.GetMessageInfo);
+
+            reader.AddData(bogus);
+            while (reader.TryNext(out _)) { /* drain */ }
+
+            int validCount = 0;
+            int rounds = 256 / frameSize + 3;
+            for (int i = 0; i < rounds; i++)
+            {
+                reader.AddData(buffer, 0, frameSize);
+                while (reader.TryNext(out var f))
+                {
+                    if (f.Valid) validCount++;
+                }
+            }
+            if (validCount < 1) return false;
+
+            // The reader must keep delivering fresh frames after recovery.
+            int probeValid = 0;
+            for (int i = 0; i < 3; i++)
+            {
+                reader.AddData(buffer, 0, frameSize);
+                while (reader.TryNext(out var f))
+                {
+                    if (f.Valid) probeValid++;
+                }
+            }
+            return probeValid >= 1;
+        }
+
+
         public static int Main(string[] args)
         {
             Console.WriteLine("\n========================================");
@@ -1117,6 +1206,8 @@ public class TestNegative
             {
                 ("Buffer mode: CRC failure counters", TestBufferModeCrcCounters),
                 ("Buffer mode: Sequence gap counted", TestBufferModeSeqGap),
+                ("Buffer mode: garbage prefix partial recovers", TestBufferModeGarbagePrefixRecovers),
+                ("Buffer mode: oversized length recovers", TestBufferModeOversizedLengthRecovers),
                 ("Buffer mode: recovers after CRC failure", TestBufferModeRecoverAfterCrcFailure),
                 ("Buffer reader: skips CRC-failed frame", TestBufferReaderSkipsCrcFailed),
                 ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),

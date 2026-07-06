@@ -43,8 +43,8 @@ class TcpTransport(BaseSocketTransport):
             self.socket.close()
             self.socket = None
 
-    def send(self, data: bytes) -> int:
-        """Send data via TCP"""
+    def _send_impl(self, data: bytes) -> int:
+        """Send data via TCP (serialized by BaseTransport.send)."""
         if not self.socket or not self.connected:
             raise RuntimeError('TCP socket not connected')
         

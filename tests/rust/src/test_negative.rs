@@ -952,6 +952,98 @@ fn test_streaming_two_frames() -> bool {
     valid_count == 2
 }
 
+
+/// Buffer mode: a garbage tail that looks like a truncated frame start is
+/// buffered; the reader must resync past it and keep delivering the frames
+/// that follow (livelock regression test).
+fn test_buffer_mode_garbage_prefix_recovers() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 2048);
+    writer.write_crc(&msg, 0);
+    let frame = writer.data().to_vec();
+    if frame.len() < 6 {
+        return false;
+    }
+
+    let mut chunk1 = frame.clone();
+    chunk1.push(0x90); // looks like a truncated frame start
+    chunk1.push(0xFF);
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    let mut valid_count = 0;
+    let mut saw_sync = false;
+
+    reader.add_data(&chunk1);
+    while let Some(f) = reader.try_next(&get_message_info) {
+        if f.valid {
+            valid_count += 1;
+        } else if f.status == FrameMsgStatus::SyncRecovery {
+            saw_sync = true;
+        }
+    }
+
+    for _ in 0..3 {
+        reader.add_data(&frame);
+        while let Some(f) = reader.try_next(&get_message_info) {
+            if f.valid {
+                valid_count += 1;
+            } else if f.status == FrameMsgStatus::SyncRecovery {
+                saw_sync = true;
+            }
+        }
+    }
+
+    valid_count == 4 && saw_sync
+}
+
+/// Buffer mode: a corrupted length field claiming more bytes than the reader's
+/// capacity must not wedge the reader permanently (livelock regression test).
+fn test_buffer_mode_oversized_length_recovers() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 2048);
+    writer.write_crc(&msg, 0);
+    let frame = writer.data().to_vec();
+    if frame.len() < 6 {
+        return false;
+    }
+
+    // Bogus header claiming a 255-byte payload — the total (261) exceeds the
+    // 256-byte reader capacity, so this frame can never complete.
+    let bogus = [0x90u8, 0x71, 0xFF, (BasicTypesMessage::MSG_ID & 0xFF) as u8];
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 256);
+
+    reader.add_data(&bogus);
+    while reader.try_next(&get_message_info).is_some() {}
+
+    let mut valid_count = 0;
+    let rounds = 256 / frame.len() + 3;
+    for _ in 0..rounds {
+        reader.add_data(&frame);
+        while let Some(f) = reader.try_next(&get_message_info) {
+            if f.valid {
+                valid_count += 1;
+            }
+        }
+    }
+    if valid_count < 1 {
+        return false;
+    }
+
+    // The reader must keep delivering fresh frames after recovery.
+    let mut probe_valid = 0;
+    for _ in 0..3 {
+        reader.add_data(&frame);
+        while let Some(f) = reader.try_next(&get_message_info) {
+            if f.valid {
+                probe_valid += 1;
+            }
+        }
+    }
+    probe_valid >= 1
+}
+
+
 // ============================================================================
 // Package / cross-package corruption scenarios (parity with C/C++/TS/JS/C#)
 // ============================================================================
@@ -1040,6 +1132,8 @@ fn main() {
     let tests: &[(&str, fn() -> bool)] = &[
         ("Buffer mode: CRC failure counters",        test_buffer_mode_crc_counters),
         ("Buffer mode: Sequence gap counted",        test_buffer_mode_seq_gap),
+        ("Buffer mode: garbage prefix partial recovers", test_buffer_mode_garbage_prefix_recovers),
+        ("Buffer mode: oversized length recovers",   test_buffer_mode_oversized_length_recovers),
         ("Buffer mode: recovers after CRC failure",  test_buffer_mode_recovers_after_crc_failure),
         ("Buffer reader: skips CRC-failed frame",    test_buffer_reader_skips_crc_failure),
         ("Bulk profile: Corrupted CRC",              test_bulk_profile_corrupted_crc),

@@ -226,12 +226,14 @@ Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`
 
 See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.
 
-The 31 scenarios in the table below are registered in every language's `test_negative.*` file, covering corruption handling, the `tryNext` drain contract, diagnostic counters (unified semantics in buffer and stream mode), minimal-profile resync, and a chunk-boundary split sweep. All seven languages additionally carry the four package-corruption scenarios (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption) for 35 scenarios each; Python (40) adds status-machine and buffer-mode diagnostic extras.
+The 33 scenarios in the table below are registered in every language's `test_negative.*` file, covering corruption handling, the `tryNext` drain contract, diagnostic counters (unified semantics in buffer and stream mode), minimal-profile resync, and a chunk-boundary split sweep. All seven languages additionally carry the four package-corruption scenarios (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption) for 37 scenarios each; Python (42) adds status-machine and buffer-mode diagnostic extras.
 
 | Error Scenario (test name) | C | C++ | Python | TS | JS | C# | Rust |
 |--------|--------|--------|--------|--------|--------|--------|--------|
 | Buffer mode: CRC failure counters | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Buffer mode: Sequence gap counted | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Buffer mode: garbage prefix partial recovers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Buffer mode: oversized length recovers | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Buffer mode: recovers after CRC failure | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Buffer reader: skips CRC-failed frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bulk profile: Corrupted CRC | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |

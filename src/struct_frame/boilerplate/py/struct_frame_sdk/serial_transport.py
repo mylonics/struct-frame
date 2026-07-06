@@ -77,8 +77,8 @@ class SerialTransport(BaseTransport):
             self.receive_thread = None
         self.connected = False
 
-    def send(self, data: bytes) -> int:
-        """Send data via serial port"""
+    def _send_impl(self, data: bytes) -> int:
+        """Send data via serial port (serialized by BaseTransport.send)."""
         if not self.serial_port or not self.connected or not self.serial_port.is_open:
             raise RuntimeError('Serial port not connected')
         

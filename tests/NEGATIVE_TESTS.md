@@ -16,51 +16,51 @@ Negative tests are critical for ensuring robust error handling. They verify that
 
 ## Test Files
 
-All seven language implementations now share **31 identical test scenarios** (same names,
+All seven language implementations now share **33 identical test scenarios** (same names,
 same behaviour), including a common `tryNext` drain contract, partial-pending checks,
 diagnostic-counter assertions, minimal-profile resync scenarios, and a chunk-boundary
 split sweep. All languages also carry the four package-corruption scenarios (bulk
 `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption), so
-every language runs **35 scenarios**; Python adds 5 status-machine/diagnostic extras (40).
+every language runs **37 scenarios**; Python adds 5 status-machine/diagnostic extras (42).
 
 ### C Tests (`tests/c/test_negative.c`)
-- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
+- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
 - Tests buffer reader and accumulating reader (buffer mode) APIs
 - Uses ProfileStandard, ProfileSensor, ProfileBulk, and ProfileNetwork configurations
 
 ### C++ Tests (`tests/cpp/test_negative.cpp`)
-- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
+- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
 - Tests both BufferReader and AccumulatingReader APIs
 - Tests multiple frame profiles (Standard, Sensor, Bulk, Network)
 
 ### Python Tests (`tests/py/test_negative.py`)
-- **40 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios + 5 Python-specific status-machine/diagnostic extras
+- **42 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios + 5 Python-specific status-machine/diagnostic extras
 - Tests both buffer and streaming modes
 - Uses ProfileStandardReader, ProfileSensorReader, and ProfileNetworkReader
 
 ### TypeScript Tests (`tests/ts/test_negative.ts`)
-- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
+- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### JavaScript Tests (`tests/js/test_negative.js`)
-- **35 test cases** identical to TypeScript
+- **37 test cases** identical to TypeScript
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### C# Tests (`tests/csharp/TestNegative.cs`)
-- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
+- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### Rust Tests (`tests/rust/src/test_negative.rs`)
-- **35 test cases**: the 31 uniform scenarios + 4 package-corruption scenarios
+- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
 - Tests BufferReader and AccumulatingReader APIs
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ## Uniform Test Scenarios
 
-All seven languages implement the following 31 scenarios with identical names:
+All seven languages implement the following 33 scenarios with identical names:
 
 1. **Buffer mode: recovers after CRC failure** – buffer-mode accumulating reader resyncs and returns the next valid frame after a CRC-failed frame
 2. **Buffer reader: skips CRC-failed frame** – `BufferReader` advances past a CRC-failed frame instead of stalling on it
@@ -93,6 +93,8 @@ All seven languages implement the following 31 scenarios with identical names:
 29. **Sensor buffer: unknown msg_id resync** – on the Tiny-header (Sensor) profile an unknown msg_id triggers a scan to the next start byte instead of discarding the rest of the buffer
 30. **Split sweep: two frames at every boundary** – two back-to-back frames are delivered intact when the stream is split into two `add_data` chunks at *every* possible offset
 31. **Streaming: two frames byte-by-byte** – two back-to-back frames are both decoded in byte-at-a-time mode
+32. **Buffer mode: garbage prefix partial recovers** – a garbage tail that looks like a truncated frame start is saved as a partial; the reader resyncs inside its internal buffer and keeps delivering subsequent frames (livelock regression)
+33. **Buffer mode: oversized length recovers** – a corrupted length field claiming more bytes than the reader’s internal buffer can hold does not wedge the reader permanently (livelock regression)
 
 ### `tryNext` Contract (Unified)
 

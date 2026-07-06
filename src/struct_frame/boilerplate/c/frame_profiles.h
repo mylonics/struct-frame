@@ -681,6 +681,12 @@ typedef struct accumulating_reader {
     size_t bytes_appended_to_internal; /* bytes copied from current buffer into internal buffer this add_data() call */
     accumulating_reader_state_t state;
 
+    /* Cached per-profile constants so the per-byte push path doesn't recompute
+     * them on every call. */
+    uint8_t cached_start_byte1;
+    uint8_t cached_start_byte2;
+    uint8_t cached_header_size;
+
     const uint8_t* current_buffer;
     size_t current_size;
     size_t current_offset;
@@ -706,6 +712,17 @@ static inline void accumulating_reader_init(
     reader->expected_frame_size = 0;
     reader->bytes_appended_to_internal = 0;
     reader->state = ACC_STATE_IDLE;
+
+    /* Precompute the per-profile constants used on every push_byte() call. */
+    reader->cached_start_byte1 = config->header.start_byte1;
+    reader->cached_start_byte2 = config->header.start_byte2;
+    if (config->header.header_type == HEADER_TINY && config->header.encodes_payload_type) {
+        reader->cached_start_byte1 = get_tiny_start_byte(config->payload.payload_type);
+    }
+    if (config->header.header_type == HEADER_BASIC && config->header.encodes_payload_type) {
+        reader->cached_start_byte2 = get_basic_second_start_byte(config->payload.payload_type);
+    }
+    reader->cached_header_size = profile_header_size(config);
     reader->current_buffer = NULL;
     reader->current_size = 0;
     reader->current_offset = 0;
@@ -803,6 +820,20 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
     /* First, try to complete a partial message from the internal buffer.
      * partial_len = bytes that came from a PREVIOUS add_data call (before
      * bytes_appended_to_internal were added this call). */
+    if (reader->internal_data_len > 0 && reader->current_offset == 0 &&
+        reader->bytes_appended_to_internal == 0 &&
+        reader->current_size > reader->current_offset) {
+        /* Full-wedge escape: new data arrived but nothing could be appended
+         * because the internal buffer is full. The buffered bytes can never
+         * complete — discard them so parsing continues from the current
+         * buffer instead of stalling forever. */
+        reader->diagnostics.cnt_sync_recoveries++;
+        reader->diagnostics.cnt_failed_bytes += (uint32_t)reader->internal_data_len;
+        reader->internal_data_len = 0;
+        reader->expected_frame_size = 0;
+        /* fall through to current-buffer parsing below */
+    }
+
     if (reader->internal_data_len > 0 && reader->current_offset == 0) {
         size_t partial_len = reader->internal_data_len - reader->bytes_appended_to_internal;
         result = _acc_parse_buffer(reader, reader->internal_buffer, reader->internal_data_len);
@@ -828,6 +859,41 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
             reader->internal_data_len = 0;
             reader->bytes_appended_to_internal = 0;
             reader->expected_frame_size = 0;
+            return result;
+        }
+
+        /* Garbage prefix saved as a partial (WAITING_FOR_START), or a frame
+         * that can never complete because its claimed size exceeds the
+         * internal buffer (still collecting with the buffer full): resync
+         * inside the internal buffer instead of waiting forever. */
+        if (result.status == FRAME_MSG_STATUS_WAITING_FOR_START ||
+            reader->internal_data_len >= reader->buffer_size) {
+            size_t discard = reader->internal_data_len;
+            if (reader->config->header.num_start_bytes >= 1) {
+                if (reader->internal_data_len > 1) {
+                    const void* p = memchr(reader->internal_buffer + 1, (int)sb1,
+                                           reader->internal_data_len - 1);
+                    if (p) discard = (size_t)((const uint8_t*)p - reader->internal_buffer);
+                }
+            } else {
+                /* No start bytes (e.g. IPC): advance one byte and retry. */
+                discard = 1;
+            }
+            reader->diagnostics.cnt_sync_recoveries++;
+            reader->diagnostics.cnt_failed_bytes += (uint32_t)discard;
+            size_t keep = reader->internal_data_len - discard;
+            if (keep > 0) {
+                memmove(reader->internal_buffer, reader->internal_buffer + discard, keep);
+            }
+            /* Only the portion of the discard that reached into this cycle's
+             * appended bytes reduces the appended count. */
+            if (discard > partial_len) {
+                reader->bytes_appended_to_internal -= (discard - partial_len);
+            }
+            reader->internal_data_len = keep;
+            result.valid = false;
+            result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+            result.frame_size = discard;
             return result;
         }
 
@@ -895,6 +961,11 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
         reader->internal_data_len = remaining;
         reader->bytes_appended_to_internal = 0;
         reader->current_offset = reader->current_size;
+    } else if (remaining >= reader->buffer_size) {
+        /* Partial too large to buffer — discard with diagnostics. */
+        reader->diagnostics.cnt_sync_recoveries++;
+        reader->diagnostics.cnt_failed_bytes += (uint32_t)remaining;
+        reader->current_offset = reader->current_size;
     }
 
     return result;
@@ -904,20 +975,13 @@ static inline frame_msg_info_t accumulating_reader_push_byte(accumulating_reader
 {
     frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
     result.diagnostics = &reader->diagnostics;
-    
-    uint8_t header_size = profile_header_size(reader->config);
-    uint8_t start_byte1 = reader->config->header.start_byte1;
-    uint8_t start_byte2 = reader->config->header.start_byte2;
-    
-    /* For tiny headers, start byte encodes payload type */
-    if (reader->config->header.header_type == HEADER_TINY && reader->config->header.encodes_payload_type) {
-        start_byte1 = get_tiny_start_byte(reader->config->payload.payload_type);
-    }
-    /* For basic headers, second start byte encodes payload type */
-    if (reader->config->header.header_type == HEADER_BASIC && reader->config->header.encodes_payload_type) {
-        start_byte2 = get_basic_second_start_byte(reader->config->payload.payload_type);
-    }
-    
+
+    /* Use the constants precomputed at init instead of re-deriving them on
+     * every pushed byte. */
+    uint8_t header_size = reader->cached_header_size;
+    uint8_t start_byte1 = reader->cached_start_byte1;
+    uint8_t start_byte2 = reader->cached_start_byte2;
+
     if (reader->state == ACC_STATE_IDLE || reader->state == ACC_STATE_BUFFER_MODE) {
         reader->state = ACC_STATE_LOOKING_FOR_START1;
         reader->internal_data_len = 0;

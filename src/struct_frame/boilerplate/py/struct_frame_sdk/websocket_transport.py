@@ -72,8 +72,8 @@ class WebSocketTransport(BaseTransport):
             self.ws_thread = None
         self.connected = False
 
-    def send(self, data: bytes) -> int:
-        """Send data via WebSocket"""
+    def _send_impl(self, data: bytes) -> int:
+        """Send data via WebSocket (serialized by BaseTransport.send)."""
         if not self.ws or not self.connected:
             raise RuntimeError('WebSocket not connected')
         

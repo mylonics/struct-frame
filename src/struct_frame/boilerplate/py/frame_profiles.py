@@ -742,21 +742,24 @@ class BufferReader:
         """
         self._config = config
         self._buffer = buffer
+        # memoryview: O(1) zero-copy slicing in next() — a plain bytes slice
+        # would copy the whole remaining buffer per frame (O(n^2) overall).
+        self._view = memoryview(buffer)
         self._size = len(buffer)
         self._offset = 0
         self._get_message_info = get_message_info
-    
+
     def next(self) -> FrameMsgInfo:
         """
         Parse the next frame in the buffer.
-        
+
         Returns:
             FrameMsgInfo with valid=True if successful, valid=False if no more frames.
         """
         if self._offset >= self._size:
             return FrameMsgInfo()
-        
-        remaining = self._buffer[self._offset:]
+
+        remaining = self._view[self._offset:]
         
         if self._config.has_crc or self._config.has_length:
             result = _frame_format_parse_with_crc(self._config, remaining, self._get_message_info)
@@ -958,6 +961,11 @@ class AccumulatingReader:
         self._get_message_info = get_message_info
         self._buffer_size = buffer_size
         
+        # Cached per-profile constants so the per-byte push path doesn't
+        # recompute them on every call.
+        self._start_byte1 = config.computed_start_byte1()
+        self._start_byte2 = config.computed_start_byte2()
+
         # Internal buffer for partial messages
         self._internal_buffer = bytearray(buffer_size)
         self._internal_data_len = 0
@@ -970,6 +978,7 @@ class AccumulatingReader:
         
         # Buffer mode state
         self._current_buffer: Optional[bytes] = None
+        self._current_view: Optional[memoryview] = None
         self._current_size = 0
         self._current_offset = 0
         
@@ -994,10 +1003,13 @@ class AccumulatingReader:
             buffer: New data to process
         """
         self._current_buffer = buffer
+        # memoryview: O(1) zero-copy slicing in next() — a plain bytes slice
+        # would copy the whole remaining buffer per frame (O(n^2) overall).
+        self._current_view = memoryview(buffer)
         self._current_size = len(buffer)
         self._current_offset = 0
         self._state = AccumulatingReaderState.BUFFER_MODE
-        
+
         # If we have partial data in internal buffer, try to complete it
         self._bytes_appended_to_internal = 0
         if self._internal_data_len > 0:
@@ -1017,6 +1029,19 @@ class AccumulatingReader:
         if self._state != AccumulatingReaderState.BUFFER_MODE:
             return self._with_diag(FrameMsgInfo())
         
+        # Full-wedge escape: new data arrived but nothing could be appended
+        # because the internal buffer is full. The buffered bytes can never
+        # complete — discard them so parsing continues from the current buffer
+        # instead of stalling forever.
+        if (self._internal_data_len > 0 and self._current_offset == 0
+                and self._bytes_appended_to_internal == 0
+                and self._current_size > self._current_offset):
+            self._diag.cnt_sync_recoveries += 1
+            self._diag.cnt_failed_bytes += self._internal_data_len
+            self._internal_data_len = 0
+            self._expected_frame_size = 0
+            # fall through to current-buffer parsing below
+
         # First, try to complete a partial message from the internal buffer
         if self._internal_data_len > 0 and self._current_offset == 0:
             internal_bytes = bytes(self._internal_buffer[:self._internal_data_len])
@@ -1048,6 +1073,35 @@ class AccumulatingReader:
                 self._expected_frame_size = 0
                 return self._with_diag(result)
 
+            # Garbage prefix saved as a partial (WAITING_FOR_START), or a frame
+            # that can never complete because its claimed size exceeds the
+            # internal buffer (still collecting with the buffer full): resync
+            # inside the internal buffer instead of waiting forever.
+            if (result.status == FrameMsgStatus.WAITING_FOR_START
+                    or self._internal_data_len >= self._buffer_size):
+                discard = self._internal_data_len
+                if self._config.num_start_bytes >= 1:
+                    start1 = bytes([self._config.computed_start_byte1()])
+                    nxt = internal_bytes.find(start1, 1)
+                    if nxt != -1:
+                        discard = nxt
+                else:
+                    # No start bytes (e.g. IPC): advance one byte and retry.
+                    discard = 1
+                self._diag.cnt_sync_recoveries += 1
+                self._diag.cnt_failed_bytes += discard
+                keep = self._internal_data_len - discard
+                if keep > 0:
+                    self._internal_buffer[:keep] = self._internal_buffer[discard:self._internal_data_len]
+                # Only the portion of the discard that reached into this cycle's
+                # appended bytes reduces the appended count.
+                if discard > partial_len:
+                    self._bytes_appended_to_internal -= (discard - partial_len)
+                self._internal_data_len = keep
+                r = FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
+                r.frame_size = discard
+                return self._with_diag(r)
+
             # Still not enough data for a complete message — wait for next add_data()
             return self._with_diag(FrameMsgInfo())
 
@@ -1055,7 +1109,7 @@ class AccumulatingReader:
         if self._current_buffer is None or self._current_offset >= self._current_size:
             return self._with_diag(FrameMsgInfo())
 
-        remaining = self._current_buffer[self._current_offset:]
+        remaining = self._current_view[self._current_offset:]
         result = self._parse_buffer(remaining)
 
         if result.valid:
@@ -1097,6 +1151,11 @@ class AccumulatingReader:
         if remaining_len > 0 and remaining_len < self._buffer_size:
             self._internal_buffer[:remaining_len] = remaining
             self._internal_data_len = remaining_len
+            self._current_offset = self._current_size
+        elif remaining_len >= self._buffer_size:
+            # Partial too large to buffer — discard with diagnostics.
+            self._diag.cnt_sync_recoveries += 1
+            self._diag.cnt_failed_bytes += remaining_len
             self._current_offset = self._current_size
 
         return self._with_diag(FrameMsgInfo())
@@ -1187,7 +1246,7 @@ class AccumulatingReader:
             else:
                 self._state = AccumulatingReaderState.COLLECTING_HEADER
         else:
-            if byte == self._config.computed_start_byte1():
+            if byte == self._start_byte1:
                 self._internal_buffer[0] = byte
                 self._internal_data_len = 1
                 
@@ -1202,11 +1261,11 @@ class AccumulatingReader:
     
     def _handle_looking_for_start2(self, byte: int) -> FrameMsgInfo:
         """Handle LOOKING_FOR_START2 state"""
-        if byte == self._config.computed_start_byte2():
+        if byte == self._start_byte2:
             self._internal_buffer[self._internal_data_len] = byte
             self._internal_data_len += 1
             self._state = AccumulatingReaderState.COLLECTING_HEADER
-        elif byte == self._config.computed_start_byte1():
+        elif byte == self._start_byte1:
             # Might be start of new frame - restart
             self._internal_buffer[0] = byte
             self._internal_data_len = 1
@@ -1494,6 +1553,7 @@ class AccumulatingReader:
         self._expected_frame_size = 0
         self._state = AccumulatingReaderState.IDLE
         self._current_buffer = None
+        self._current_view = None
         self._current_size = 0
         self._current_offset = 0
         self._last_seq = None

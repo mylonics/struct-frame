@@ -46,7 +46,13 @@ class ITransport(ABC):
 
     @abstractmethod
     def send(self, data: bytes) -> int:
-        """Send data through the transport and return bytes written"""
+        """Send data through the transport and return bytes written.
+
+        Thread-safe: concurrent calls are serialized so bytes from different
+        frames never interleave on the wire. Message *ordering* across
+        concurrent callers is not guaranteed; callers that need ordering must
+        await/return from each send before issuing the next.
+        """
         pass
 
     @abstractmethod
@@ -80,6 +86,28 @@ class BaseTransport(ITransport):
         self.error_callback: Optional[Callable[[Exception], None]] = None
         self.close_callback: Optional[Callable[[], None]] = None
         self.reconnect_attempts = 0
+        # Serializes sends so concurrent callers cannot interleave the bytes of
+        # different frames on the wire (mirrors the C# BaseTransport semaphore).
+        self._send_lock = threading.Lock()
+
+    def send(self, data: bytes) -> int:
+        """Send data through the transport, serialized with the send lock.
+
+        Concrete transports implement the actual write in ``_send_impl``; this
+        template method holds ``_send_lock`` for the duration so two threads
+        cannot interleave frame bytes on the underlying stream.
+        """
+        with self._send_lock:
+            return self._send_impl(data)
+
+    @abstractmethod
+    def _send_impl(self, data: bytes) -> int:
+        """Perform the actual write. Called while holding ``_send_lock``.
+
+        Concrete transports override this instead of ``send`` so every send is
+        serialized by the base class.
+        """
+        raise NotImplementedError
 
     def set_data_callback(self, callback: Callable[[bytes], None]) -> None:
         self.data_callback = callback

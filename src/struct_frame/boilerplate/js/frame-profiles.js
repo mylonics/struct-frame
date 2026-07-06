@@ -560,8 +560,11 @@ class AccumulatingReader {
         this.config = config;
         this.getMessageInfo = getMessageInfo;
         this.bufferSize = bufferSize;
+        this.headerSize = profileHeaderSize(config);
+        this.footerSize = profileFooterSize(config);
         this.internalBuffer = new Uint8Array(bufferSize);
         this.internalDataLen = 0;
+        this.bytesAppendedToInternal = 0;
         this.expectedFrameSize = 0;
         this._state = AccumulatingReaderState.IDLE;
         this.currentBuffer = null;
@@ -581,20 +584,17 @@ class AccumulatingReader {
         this.currentSize = buffer.length;
         this.currentOffset = 0;
         this._state = AccumulatingReaderState.BUFFER_MODE;
-        // If we have partial data in internal buffer, try to complete it
+        this.bytesAppendedToInternal = 0;
+        // If we have partial data in internal buffer, append as much as fits to
+        // try to complete it (the remainder stays in the current buffer).
         if (this.internalDataLen > 0) {
             const spaceAvailable = this.bufferSize - this.internalDataLen;
-            if (buffer.length <= spaceAvailable) {
-                this.internalBuffer.set(buffer, this.internalDataLen);
-                this.internalDataLen += buffer.length;
+            const bytesToCopy = Math.min(buffer.length, spaceAvailable);
+            if (bytesToCopy > 0) {
+                this.internalBuffer.set(buffer.subarray(0, bytesToCopy), this.internalDataLen);
+                this.internalDataLen += bytesToCopy;
             }
-            else {
-                // Partial data won't fit: discard it and start fresh from the new buffer
-                this._diagnostics.cntFailedBytes += this.internalDataLen;
-                this._diagnostics.cntSyncRecoveries++;
-                this.internalDataLen = 0;
-                this.expectedFrameSize = 0;
-            }
+            this.bytesAppendedToInternal = bytesToCopy;
         }
     }
     /**
@@ -604,39 +604,86 @@ class AccumulatingReader {
         if (this._state !== AccumulatingReaderState.BUFFER_MODE) {
             return this.withDiagnostics((0, frame_base_1.createFrameMsgInfo)());
         }
+        // Full-wedge escape: new data arrived but nothing could be appended
+        // because the internal buffer is full. The buffered bytes can never
+        // complete — discard them so parsing continues from the current buffer
+        // instead of stalling forever.
+        if (this.internalDataLen > 0 && this.currentOffset === 0 &&
+            this.bytesAppendedToInternal === 0 && this.currentSize > this.currentOffset) {
+            this._diagnostics.cntSyncRecoveries++;
+            this._diagnostics.cntFailedBytes += this.internalDataLen;
+            this.internalDataLen = 0;
+            this.expectedFrameSize = 0;
+            // fall through to current-buffer parsing below
+        }
         // First, try to complete a partial message from the internal buffer
         if (this.internalDataLen > 0 && this.currentOffset === 0) {
             const internalBytes = this.internalBuffer.subarray(0, this.internalDataLen);
             const result = this.parseBuffer(internalBytes);
+            // Bytes already in the internal buffer before this addData() appended to it
+            const partialLen = this.internalDataLen - this.bytesAppendedToInternal;
             if (result.valid) {
                 result.msgData = result.msgData.slice(); // own copy — internalBuffer is reused
                 this.recordFrameDiagnostics(this.internalBuffer, true);
-                const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
-                const partialLen = this.internalDataLen > this.currentSize ? this.internalDataLen - this.currentSize : 0;
+                const frameSize = this.headerSize + result.msgLen + this.footerSize;
                 const bytesFromCurrent = frameSize > partialLen ? frameSize - partialLen : 0;
                 this.currentOffset = bytesFromCurrent;
                 this.internalDataLen = 0;
+                this.bytesAppendedToInternal = 0;
                 this.expectedFrameSize = 0;
                 return this.withDiagnostics(result);
             }
-            else {
-                if (result.status === frame_base_1.FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
-                    // A complete-but-CRC-failed frame was assembled across chunks. Surface it
-                    // (status=CrcFailure, frameSize set) and advance past it, mirroring the
-                    // valid-frame path so subsequent frames are read from the current buffer.
-                    this._diagnostics.cntCrcFailures++;
-                    this._diagnostics.cntFailedBytes += result.frameSize;
-                    this._diagnostics.cntSyncRecoveries++;
-                    this.recordFrameDiagnostics(this.internalBuffer, false);
-                    const partialLen = this.internalDataLen > this.currentSize ? this.internalDataLen - this.currentSize : 0;
-                    const bytesFromCurrent = result.frameSize > partialLen ? result.frameSize - partialLen : 0;
-                    this.currentOffset = bytesFromCurrent;
-                    this.internalDataLen = 0;
-                    this.expectedFrameSize = 0;
-                    return this.withDiagnostics(result);
-                }
-                return this.withDiagnostics((0, frame_base_1.createFrameMsgInfo)());
+            if (result.status === frame_base_1.FrameMsgStatus.CrcFailure && (result.frameSize ?? 0) > 0) {
+                // A complete-but-CRC-failed frame was assembled across chunks. Surface it
+                // (status=CrcFailure, frameSize set) and advance past it, mirroring the
+                // valid-frame path so subsequent frames are read from the current buffer.
+                this._diagnostics.cntCrcFailures++;
+                this._diagnostics.cntFailedBytes += result.frameSize;
+                this._diagnostics.cntSyncRecoveries++;
+                this.recordFrameDiagnostics(this.internalBuffer, false);
+                const bytesFromCurrent = result.frameSize > partialLen ? result.frameSize - partialLen : 0;
+                this.currentOffset = bytesFromCurrent;
+                this.internalDataLen = 0;
+                this.bytesAppendedToInternal = 0;
+                this.expectedFrameSize = 0;
+                return this.withDiagnostics(result);
             }
+            // Garbage prefix saved as a partial (WaitingForStart), or a frame
+            // that can never complete because its claimed size exceeds the
+            // internal buffer (still collecting with the buffer full): resync
+            // inside the internal buffer instead of waiting forever.
+            if (result.status === frame_base_1.FrameMsgStatus.WaitingForStart ||
+                this.internalDataLen >= this.bufferSize) {
+                let discard = this.internalDataLen;
+                if (this.config.header.numStartBytes >= 1) {
+                    const nxt = internalBytes.indexOf(this.config.startByte1, 1);
+                    if (nxt !== -1) {
+                        discard = nxt;
+                    }
+                }
+                else {
+                    // No start bytes (e.g. IPC): advance one byte and retry.
+                    discard = 1;
+                }
+                this._diagnostics.cntSyncRecoveries++;
+                this._diagnostics.cntFailedBytes += discard;
+                const keep = this.internalDataLen - discard;
+                if (keep > 0) {
+                    this.internalBuffer.copyWithin(0, discard, this.internalDataLen);
+                }
+                // Only the portion of the discard that reached into this cycle's
+                // appended bytes reduces the appended count.
+                if (discard > partialLen) {
+                    this.bytesAppendedToInternal -= (discard - partialLen);
+                }
+                this.internalDataLen = keep;
+                const r = (0, frame_base_1.createFrameMsgInfo)();
+                r.status = frame_base_1.FrameMsgStatus.SyncRecovery;
+                r.frameSize = discard;
+                return this.withDiagnostics(r);
+            }
+            // Still not enough data for a complete message — wait for next addData()
+            return this.withDiagnostics((0, frame_base_1.createFrameMsgInfo)());
         }
         // Parse from current buffer
         if (this.currentBuffer === null || this.currentOffset >= this.currentSize) {
@@ -646,7 +693,7 @@ class AccumulatingReader {
         const result = this.parseBuffer(remaining);
         if (result.valid) {
             this.recordFrameDiagnostics(remaining, true);
-            const frameSize = profileHeaderSize(this.config) + result.msgLen + profileFooterSize(this.config);
+            const frameSize = this.headerSize + result.msgLen + this.footerSize;
             this.currentOffset += frameSize;
             return this.withDiagnostics(result);
         }
@@ -795,8 +842,8 @@ class AccumulatingReader {
             return this.withDiagnostics(r);
         }
         this.internalBuffer[this.internalDataLen++] = byte;
-        const headerSize = profileHeaderSize(this.config);
-        const footerSize = profileFooterSize(this.config);
+        const headerSize = this.headerSize;
+        const footerSize = this.footerSize;
         if (this.internalDataLen >= headerSize) {
             if (!this.config.payload.hasLength && !this.config.payload.hasCrc) {
                 const msgId = this.internalBuffer[headerSize - 1];
@@ -1037,6 +1084,7 @@ class AccumulatingReader {
     /** Reset the reader, clearing any partial message data. */
     reset() {
         this.internalDataLen = 0;
+        this.bytesAppendedToInternal = 0;
         this.expectedFrameSize = 0;
         this._state = AccumulatingReaderState.IDLE;
         this.currentBuffer = null;
@@ -1080,7 +1128,7 @@ class AccumulatingReader {
             else {
                 payloadLen = frame[lenOffset] | (frame[lenOffset + 1] << 8);
             }
-            const headerSize = profileHeaderSize(config);
+            const headerSize = this.headerSize;
             let fullMsgId = 0;
             if (config.payload.hasPkgId) {
                 fullMsgId = frame[headerSize - 2] << 8;
