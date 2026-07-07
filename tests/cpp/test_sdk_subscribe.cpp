@@ -13,11 +13,11 @@
 #include <cstring>
 #include <vector>
 
-// Generated frame profiles and message types
+// Generated message types
 #include "include/standard_messages.hpp"
-#include "../../generated/cpp/frame_profiles.hpp"
 
-// StructFrameSdk (header-only)
+// StructFrameSdk (header-only) – also provides the frame profile types
+// (ProfileStandardConfig, FrameEncoderWithCrc, BufferParserWithCrc, etc.)
 #include "../../src/struct_frame/boilerplate/cpp/struct_frame_sdk/struct_frame_sdk.hpp"
 
 using namespace structframe;

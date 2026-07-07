@@ -66,7 +66,13 @@ namespace StructFrame.Framing
                 int oldOffset = _offset;
                 int searchFrom = _offset + 1;
                 int searchLen = _size - searchFrom;
-                if (searchLen > 0 && _config.NumStartBytes > 0)
+                if (_config.NumStartBytes == 0)
+                {
+                    // No start bytes (e.g. IPC profile): advance one byte and retry so a
+                    // single unknown msg_id doesn't discard the rest of the buffer.
+                    _offset += 1;
+                }
+                else if (searchLen > 0)
                 {
                     int found = Array.IndexOf(_buffer, _config.ComputedStartByte1, searchFrom, searchLen);
                     _offset = found >= 0 ? found : _size;

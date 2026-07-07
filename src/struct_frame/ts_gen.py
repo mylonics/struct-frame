@@ -1166,7 +1166,9 @@ class FileTsGen():
                     package_msg_name = msg.name
                     magic1 = msg.magic_bytes[0] if msg.magic_bytes else 0
                     magic2 = msg.magic_bytes[1] if msg.magic_bytes else 0
-                    min_size = msg.min_size if msg.variable else msg.size
+                    # minSize for the cntLenErrors range check: MIN_SIZE for variable
+                    # messages, BASE_SIZE otherwise (extensions may be truncated) — matches c_gen
+                    min_size = msg.min_size if msg.variable else msg.base_size
                     is_variable = 'true' if msg.variable else 'false'
                     if use_class_based:
                         yield '        case %s._msgid: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (

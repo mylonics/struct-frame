@@ -37,8 +37,8 @@ class UdpTransport(BaseSocketTransport):
             self._handle_error(e)
             raise
 
-    def send(self, data: bytes) -> int:
-        """Send data via UDP"""
+    def _send_impl(self, data: bytes) -> int:
+        """Send data via UDP (serialized by BaseTransport.send)."""
         if not self.socket or not self.connected:
             raise RuntimeError('UDP socket not connected')
         

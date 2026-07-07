@@ -409,8 +409,11 @@ class BufferParserMinimal {
       if (!is_null_callback(get_message_info)) {
         auto info = get_message_info(msg_id);
         if (!info) {
+          // Unknown message ID — this position is not a frame start. Report
+          // WaitingForStart (matching the C parser) so readers resync by
+          // scanning forward instead of stalling.
           FrameMsgInfo r;
-          r.status = FrameMsgStatus::SyncRecovery;
+          r.status = FrameMsgStatus::WaitingForStart;
           return r;
         }
         size_t msg_len = info.size;
@@ -425,9 +428,9 @@ class BufferParserMinimal {
       }
     }
 
-    // No callback — cannot determine message length; report sync recovery
+    // No callback — cannot determine message length; report WaitingForStart
     FrameMsgInfo r;
-    r.status = FrameMsgStatus::SyncRecovery;
+    r.status = FrameMsgStatus::WaitingForStart;
     return r;
   }
 };
@@ -519,7 +522,9 @@ class BufferReader {
           offset_ = size_;
         }
       } else {
-        offset_ = size_;
+        // No start bytes (e.g. IPC profile): advance one byte and retry so a
+        // single unknown msg_id doesn't discard the rest of the buffer.
+        offset_ += 1;
       }
       result.status = FrameMsgStatus::SyncRecovery;
       result.frame_size = offset_ - old_offset;
@@ -810,6 +815,19 @@ class AccumulatingReader {
       return with_diagnostics(FrameMsgInfo());
     }
 
+    // Full-wedge escape: new data arrived but nothing could be appended because
+    // the internal buffer is full. The buffered bytes can never complete —
+    // discard them so parsing continues from the current buffer instead of
+    // stalling forever.
+    if (internal_data_len_ > 0 && current_offset_ == 0 &&
+        bytes_appended_to_internal_ == 0 && current_size_ > current_offset_) {
+      diagnostics_.cnt_sync_recoveries++;
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(internal_data_len_);
+      internal_data_len_ = 0;
+      expected_frame_size_ = 0;
+      // fall through to current-buffer parsing below
+    }
+
     // First, try to complete a partial message from the internal buffer.
     // partial_len = bytes in internal buffer that came from a PREVIOUS add_data call
     // (i.e., before bytes_appended_to_internal_ were added this call).
@@ -818,6 +836,7 @@ class AccumulatingReader {
       FrameMsgInfo result = parse_frame(internal_buffer_, internal_data_len_);
 
       if (result.valid) {
+        record_frame_diagnostics(internal_buffer_, true);
         // How many bytes from the *current* buffer were consumed to complete this frame
         size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
         current_offset_ = bytes_from_current;
@@ -831,12 +850,50 @@ class AccumulatingReader {
         // Complete but invalid frame (CRC failure) — count it and skip
         diagnostics_.cnt_crc_failures++;
         diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(result.frame_size);
+        diagnostics_.cnt_sync_recoveries++;
+        record_frame_diagnostics(internal_buffer_, false);
         size_t bytes_from_current = result.frame_size > partial_len ? result.frame_size - partial_len : 0;
         current_offset_ = bytes_from_current;
         internal_data_len_ = 0;
         bytes_appended_to_internal_ = 0;
         expected_frame_size_ = 0;
         return with_diagnostics(result);
+      }
+
+      // Garbage prefix saved as a partial (WaitingForStart), or a frame that
+      // can never complete because its claimed size exceeds the internal
+      // buffer (still collecting with the buffer full): resync inside the
+      // internal buffer instead of waiting forever.
+      if (result.status == FrameMsgStatus::WaitingForStart ||
+          internal_data_len_ >= BufferSize) {
+        size_t discard = internal_data_len_;
+        if constexpr (Config::num_start_bytes >= 1) {
+          if (internal_data_len_ > 1) {
+            const void* p = std::memchr(internal_buffer_ + 1,
+                                        static_cast<int>(Config::computed_start_byte1()),
+                                        internal_data_len_ - 1);
+            if (p) discard = static_cast<size_t>(static_cast<const uint8_t*>(p) - internal_buffer_);
+          }
+        } else {
+          // No start bytes (e.g. IPC): advance one byte and retry.
+          discard = 1;
+        }
+        diagnostics_.cnt_sync_recoveries++;
+        diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(discard);
+        size_t keep = internal_data_len_ - discard;
+        if (keep > 0) {
+          std::memmove(internal_buffer_, internal_buffer_ + discard, keep);
+        }
+        // Only the portion of the discard that reached into this cycle's
+        // appended bytes reduces the appended count.
+        if (discard > partial_len) {
+          bytes_appended_to_internal_ -= (discard - partial_len);
+        }
+        internal_data_len_ = keep;
+        FrameMsgInfo r;
+        r.status = FrameMsgStatus::SyncRecovery;
+        r.frame_size = discard;
+        return with_diagnostics(r);
       }
 
       // Still not enough data for a complete message — wait for next add_data()
@@ -851,6 +908,7 @@ class AccumulatingReader {
     FrameMsgInfo result = parse_frame(current_buffer_ + current_offset_, current_size_ - current_offset_);
 
     if (result.valid && result.frame_size > 0) {
+      record_frame_diagnostics(current_buffer_ + current_offset_, true);
       current_offset_ += result.frame_size;
       return with_diagnostics(result);
     }
@@ -859,6 +917,8 @@ class AccumulatingReader {
       // Complete frame with bad CRC — count it, skip it, let caller call next() again
       diagnostics_.cnt_crc_failures++;
       diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(result.frame_size);
+      diagnostics_.cnt_sync_recoveries++;
+      record_frame_diagnostics(current_buffer_ + current_offset_, false);
       current_offset_ += result.frame_size;
       return with_diagnostics(result);
     }
@@ -880,7 +940,9 @@ class AccumulatingReader {
           current_offset_ = current_size_;
         }
       } else {
-        current_offset_ = current_size_;
+        // No start bytes (e.g. IPC profile): advance one byte and retry so a
+        // single unknown msg_id doesn't discard the rest of the buffer.
+        current_offset_ += 1;
       }
       FrameMsgInfo r;
       r.status = FrameMsgStatus::SyncRecovery;
@@ -896,6 +958,11 @@ class AccumulatingReader {
       std::memcpy(internal_buffer_, current_buffer_ + current_offset_, remaining);
       internal_data_len_ = remaining;
       bytes_appended_to_internal_ = 0;
+      current_offset_ = current_size_;
+    } else if (remaining >= BufferSize) {
+      // Partial too large to buffer — discard with diagnostics.
+      diagnostics_.cnt_sync_recoveries++;
+      diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(remaining);
       current_offset_ = current_size_;
     }
 
@@ -1173,7 +1240,9 @@ class AccumulatingReader {
           }
           full_msg_id |= internal_buffer_[Config::header_size - 1];
           auto info = get_message_info_(full_msg_id);
-          if (info && (payload_len > info.size || payload_len < info.base_size)) {
+          // Valid frames may carry anywhere from min_size (variable messages /
+          // truncated extensions) up to size bytes — only count outside that range.
+          if (info && (payload_len > info.size || payload_len < info.min_size)) {
             diagnostics_.cnt_len_errors++;
           }
         }
@@ -1318,6 +1387,51 @@ class AccumulatingReader {
   FrameMsgInfo with_diagnostics(FrameMsgInfo result) {
     result.diagnostics = &diagnostics_;
     return result;
+  }
+
+  /**
+   * Record per-frame diagnostics for a complete frame consumed in buffer mode,
+   * matching the stream-mode (push_byte) counter semantics:
+   *  - cnt_len_errors when the header length is outside [min_size, size]
+   *  - cnt_seq_gaps on valid frames for profiles that carry a sequence number
+   * frame_start points at the first byte of the frame (start bytes included).
+   */
+  void record_frame_diagnostics(const uint8_t* frame_start, bool valid) {
+    if constexpr (Config::has_length) {
+      if (get_message_info_) {
+        size_t len_offset = Config::num_start_bytes;
+        if constexpr (Config::has_seq) len_offset++;
+        if constexpr (Config::has_sys_id) len_offset++;
+        if constexpr (Config::has_comp_id) len_offset++;
+        size_t payload_len;
+        if constexpr (Config::length_bytes == 1) {
+          payload_len = frame_start[len_offset];
+        } else {
+          payload_len = frame_start[len_offset] | (static_cast<size_t>(frame_start[len_offset + 1]) << 8);
+        }
+        uint16_t full_msg_id = 0;
+        if constexpr (Config::has_pkg_id) {
+          full_msg_id = static_cast<uint16_t>(frame_start[Config::header_size - 2]) << 8;
+        }
+        full_msg_id |= frame_start[Config::header_size - 1];
+        auto info = get_message_info_(full_msg_id);
+        if (info && (payload_len > info.size || payload_len < info.min_size)) {
+          diagnostics_.cnt_len_errors++;
+        }
+      }
+    }
+    if (valid) {
+      if constexpr (Config::has_seq) {
+        uint8_t seq = frame_start[Config::num_start_bytes];
+        if (last_seq_valid_) {
+          if (seq != static_cast<uint8_t>(last_seq_ + 1)) {
+            diagnostics_.cnt_seq_gaps++;
+          }
+        }
+        last_seq_ = seq;
+        last_seq_valid_ = true;
+      }
+    }
   }
 
   /*=========================================================================

@@ -227,6 +227,42 @@ async function testSubscriptionRemovedAfterTimeout(): Promise<void> {
   assert('cleanup: subscription removed after timeout', handlers.length === 0);
 }
 
+
+/**
+ * Two concurrent predicate-less requests on the same response msg_id must BOTH
+ * resolve from a single response. Regression test for the dispatch-skip bug:
+ * request()'s one-shot handler unsubscribes during dispatch, which used to
+ * splice the live handler array and skip the next handler for the same message.
+ */
+async function testConcurrentRequestsSameResponse(): Promise<void> {
+  const transport = new MockTransport();
+  const sdk = makeSdk(transport);
+
+  sdk.registerCodec({
+    getMsgId: () => BasicTypesMessage._msgid,
+    deserialize: (data) => BasicTypesMessage.deserialize(Buffer.from(data)),
+  });
+
+  // A single response arrives after both requests are parked.
+  injectAfter(transport, encodeMsg(7, true), 40);
+
+  const [resultA, resultB] = await Promise.all([
+    sdk.request<BasicTypesMessage>(
+      new BasicTypesMessage({ regularInt: 1 }),
+      BasicTypesMessage._msgid,
+      { timeout: 2 },
+    ),
+    sdk.request<BasicTypesMessage>(
+      new BasicTypesMessage({ regularInt: 2 }),
+      BasicTypesMessage._msgid,
+      { timeout: 2 },
+    ),
+  ]);
+
+  assert('same-response: request A resolved', (resultA as any).regularInt === 7);
+  assert('same-response: request B resolved (no dispatch skip)', (resultB as any).regularInt === 7);
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -242,6 +278,7 @@ async function main(): Promise<void> {
   await testTimeout();
   await testMatchPredicateFiltersResponses();
   await testConcurrentRequestsWithMatch();
+  await testConcurrentRequestsSameResponse();
   await testSubscriptionRemovedAfterSuccess();
   await testSubscriptionRemovedAfterTimeout();
 

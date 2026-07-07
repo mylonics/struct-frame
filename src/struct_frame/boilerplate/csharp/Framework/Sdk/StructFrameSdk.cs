@@ -5,6 +5,7 @@
 #nullable enable
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -373,19 +374,29 @@ namespace StructFrame.Sdk
         /// </summary>
         public async Task<SendResult> SendRawAsync(IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
-            byte[] buffer = new byte[_profile.MaxPayload + _profile.Overhead];
-            int bytesWritten = _encoder.Encode(buffer, 0, message, seq, sysId, compId);
-            if (bytesWritten == 0)
+            // Pooled: MaxPayload + Overhead is ~64KB for Bulk/Network profiles, which
+            // would otherwise be a fresh large allocation on every send.
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(_profile.MaxPayload + _profile.Overhead);
+            try
             {
-                throw new InvalidOperationException("Failed to encode message - buffer too small or payload exceeds max size");
+                int bytesWritten = _encoder.Encode(buffer, 0, message, seq, sysId, compId);
+                if (bytesWritten == 0)
+                {
+                    throw new InvalidOperationException("Failed to encode message - buffer too small or payload exceeds max size");
+                }
+
+                // The non-queued path awaits the transport's SendAsync to completion before
+                // the buffer is returned to the pool; the strict-ordering queue makes its
+                // own owned copy synchronously before enqueueing.
+                var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
+
+                Log($"Sent message ID {message.GetMsgId()}, {bytesWritten} bytes total");
+                return result;
             }
-
-            // buffer is a fresh, non-reused allocation; hand a view of the written bytes to
-            // the transport directly. The strict-ordering queue makes its own owned copy.
-            var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
-
-            Log($"Sent message ID {message.GetMsgId()}, {bytesWritten} bytes total");
-            return result;
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         /// <summary>
@@ -395,16 +406,23 @@ namespace StructFrame.Sdk
         /// </summary>
         public async Task<SendResult> SendRawAsync(ushort msgId, ReadOnlyMemory<byte> payload, byte seq = 0, byte sysId = 0, byte compId = 0, byte pkgId = 0)
         {
-            byte[] buffer = new byte[_profile.MaxPayload + _profile.Overhead];
-            var info = _getMessageInfo(msgId);
-            int bytesWritten = _encoder.EncodeRaw(buffer, 0, msgId, payload.Span, seq, sysId, compId, pkgId, info);
-            if (bytesWritten == 0)
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(_profile.MaxPayload + _profile.Overhead);
+            try
             {
-                throw new InvalidOperationException("Failed to encode raw payload — buffer too small or payload exceeds max size");
+                var info = _getMessageInfo(msgId);
+                int bytesWritten = _encoder.EncodeRaw(buffer, 0, msgId, payload.Span, seq, sysId, compId, pkgId, info);
+                if (bytesWritten == 0)
+                {
+                    throw new InvalidOperationException("Failed to encode raw payload — buffer too small or payload exceeds max size");
+                }
+                var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
+                Log($"Sent raw message ID {msgId}, {bytesWritten} bytes total");
+                return result;
             }
-            var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
-            Log($"Sent raw message ID {msgId}, {bytesWritten} bytes total");
-            return result;
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         /// <summary>
@@ -417,27 +435,34 @@ namespace StructFrame.Sdk
                 throw new InvalidOperationException("Cannot re-encode an empty frame");
             }
 
-            byte[] buffer = new byte[_profile.MaxPayload + _profile.Overhead];
-            var info = _getMessageInfo(frame.MsgId);
-            int bytesWritten = _encoder.EncodeRaw(
-                buffer,
-                0,
-                frame.MsgId,
-                frame.GetPayloadSpan(),
-                frame.Seq,
-                frame.SysId,
-                frame.CompId,
-                frame.PkgId,
-                info);
-
-            if (bytesWritten == 0)
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(_profile.MaxPayload + _profile.Overhead);
+            try
             {
-                throw new InvalidOperationException("Failed to re-encode frame - buffer too small or payload exceeds max size");
-            }
+                var info = _getMessageInfo(frame.MsgId);
+                int bytesWritten = _encoder.EncodeRaw(
+                    buffer,
+                    0,
+                    frame.MsgId,
+                    frame.GetPayloadSpan(),
+                    frame.Seq,
+                    frame.SysId,
+                    frame.CompId,
+                    frame.PkgId,
+                    info);
 
-            var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
-            Log($"Re-encoded and sent frame ID {frame.MsgId}, {bytesWritten} bytes total");
-            return result;
+                if (bytesWritten == 0)
+                {
+                    throw new InvalidOperationException("Failed to re-encode frame - buffer too small or payload exceeds max size");
+                }
+
+                var result = await SendFramedBytesAsync(buffer.AsMemory(0, bytesWritten)).ConfigureAwait(false);
+                Log($"Re-encoded and sent frame ID {frame.MsgId}, {bytesWritten} bytes total");
+                return result;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         /// <summary>
@@ -497,6 +522,24 @@ namespace StructFrame.Sdk
         {
             Log($"Received message ID {frame.MsgId}, {frame.MsgLen} bytes payload, valid={frame.Valid}");
 
+            IMessageHandler[]? handlersCopy = null;
+            lock (_handlersLock)
+            {
+                // COW array: safe to read the reference under the lock and iterate outside it
+                // without copying — Subscribe/Unsubscribe never mutate an array in place.
+                if (_messageHandlers.TryGetValue(frame.MsgId, out var handlers) && handlers.Length > 0)
+                    handlersCopy = handlers;
+            }
+
+            // Nobody is listening for this frame: skip the per-frame clone entirely.
+            bool hasTap = FrameReceived != null;
+            bool hasTyped = frame.Valid && handlersCopy != null;
+            bool hasUnhandled = frame.Valid && handlersCopy == null && UnhandledMessage != null;
+            if (!hasTap && !hasTyped && !hasUnhandled)
+            {
+                return;
+            }
+
             // Clone frame bytes before dispatch so callback consumers never observe
             // transport buffer reuse from subsequent reads.
             FrameMsgInfo dispatchFrame = CloneFrameForDispatch(frame);
@@ -508,15 +551,6 @@ namespace StructFrame.Sdk
             {
                 // Do not dispatch invalid (e.g. CRC-failed) frames to typed subscribers.
                 return;
-            }
-
-            IMessageHandler[]? handlersCopy = null;
-            lock (_handlersLock)
-            {
-                // COW array: safe to read the reference under the lock and iterate outside it
-                // without copying — Subscribe/Unsubscribe never mutate an array in place.
-                if (_messageHandlers.TryGetValue(dispatchFrame.MsgId, out var handlers) && handlers.Length > 0)
-                    handlersCopy = handlers;
             }
 
             if (handlersCopy != null)

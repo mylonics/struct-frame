@@ -1709,10 +1709,13 @@ class FileCSharpGen():
                 if msg.magic_bytes:
                     magic1 = f'{structName}.Magic1'
                     magic2 = f'{structName}.Magic2'
+                # MinSize for the CntLenErrors range check: MIN_SIZE for variable
+                # messages, BASE_SIZE otherwise (extensions may be truncated) — matches c_gen
+                effective_min = msg.min_size if msg.variable else msg.base_size
                 if package.package_id is not None:
-                    result += '                case %d: return new MessageInfo(%s.MaxSize, %s, %s, %s.BaseSize);\n' % (msg.id, structName, magic1, magic2, structName)
+                    result += '                case %d: return new MessageInfo(%s.MaxSize, %s, %s, %s.BaseSize, %d);\n' % (msg.id, structName, magic1, magic2, structName, effective_min)
                 else:
-                    result += '                case %s.MsgId: return new MessageInfo(%s.MaxSize, %s, %s, %s.BaseSize);\n' % (structName, structName, magic1, magic2, structName)
+                    result += '                case %s.MsgId: return new MessageInfo(%s.MaxSize, %s, %s, %s.BaseSize, %d);\n' % (structName, structName, magic1, magic2, structName, effective_min)
         result += '                default: return null;\n'
         result += '            }\n'
         result += '        }\n\n'

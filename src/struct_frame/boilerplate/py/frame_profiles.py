@@ -65,11 +65,15 @@ class MessageInfo(NamedTuple):
         magic1: First magic number for CRC calculation
         magic2: Second magic number for CRC calculation
         base_size: Non-extension portion size (== size when no extensions)
+        min_size: Minimum valid payload size (base_size for fixed messages,
+            MIN_SIZE for variable messages; 0 means "unset" — parsers fall
+            back to base_size)
     """
     size: int
     magic1: int = 0
     magic2: int = 0
     base_size: int = 0
+    min_size: int = 0
 
 
 # =============================================================================
@@ -576,33 +580,41 @@ def _frame_format_parse_minimal(
         FrameMsgInfo with valid=True if frame is valid
     """
     result = FrameMsgInfo()
-    
+
     if len(buffer) < config.header_size:
+        # Not enough bytes yet to even hold the header
+        result.status = FrameMsgStatus.COLLECTING
         return result
-    
+
     idx = 0
-    
-    # Verify start bytes
+
+    # Verify start bytes. A mismatch means this position is not a frame start,
+    # so report WAITING_FOR_START to let buffer readers scan forward for a start byte.
     if config.num_start_bytes >= 1:
         if buffer[idx] != config.computed_start_byte1():
+            result.status = FrameMsgStatus.WAITING_FOR_START
             return result
         idx += 1
     if config.num_start_bytes >= 2:
         if buffer[idx] != config.computed_start_byte2():
+            result.status = FrameMsgStatus.WAITING_FOR_START
             return result
         idx += 1
-    
+
     # Read message ID
     msg_id = buffer[idx]
-    
-    # Get message info from callback
+
+    # Get message info from callback. An unknown msg_id means this position is
+    # not a frame start — report WAITING_FOR_START so readers resync.
     msg_info = get_message_info(msg_id)
     if msg_info is None:
+        result.status = FrameMsgStatus.WAITING_FOR_START
         return result
     msg_len = msg_info.size
-    
+
     total_size = config.header_size + msg_len
     if len(buffer) < total_size:
+        result.status = FrameMsgStatus.COLLECTING
         return result
     
     # Extract message data
@@ -730,21 +742,24 @@ class BufferReader:
         """
         self._config = config
         self._buffer = buffer
+        # memoryview: O(1) zero-copy slicing in next() — a plain bytes slice
+        # would copy the whole remaining buffer per frame (O(n^2) overall).
+        self._view = memoryview(buffer)
         self._size = len(buffer)
         self._offset = 0
         self._get_message_info = get_message_info
-    
+
     def next(self) -> FrameMsgInfo:
         """
         Parse the next frame in the buffer.
-        
+
         Returns:
             FrameMsgInfo with valid=True if successful, valid=False if no more frames.
         """
         if self._offset >= self._size:
             return FrameMsgInfo()
-        
-        remaining = self._buffer[self._offset:]
+
+        remaining = self._view[self._offset:]
         
         if self._config.has_crc or self._config.has_length:
             result = _frame_format_parse_with_crc(self._config, remaining, self._get_message_info)
@@ -757,18 +772,21 @@ class BufferReader:
         if result.frame_size > 0:
             # Advance past complete frames (valid, or CRC-failed but structurally known)
             self._offset += result.frame_size
-        elif result.status == FrameMsgStatus.WAITING_FOR_START and self._config.num_start_bytes >= 1:
+        elif result.status == FrameMsgStatus.WAITING_FOR_START:
             # Head byte is not a frame start — scan forward to the next start byte,
             # reporting SyncRecovery so try_next() keeps advancing.
             old_offset = self._offset
-            start1 = bytes([self._config.computed_start_byte1()])
-            nxt = self._buffer.find(start1, self._offset + 1, self._size)
-            self._offset = nxt if nxt != -1 else self._size
+            if self._config.num_start_bytes >= 1:
+                start1 = bytes([self._config.computed_start_byte1()])
+                nxt = self._buffer.find(start1, self._offset + 1, self._size)
+                self._offset = nxt if nxt != -1 else self._size
+            else:
+                # No start bytes (e.g. IPC profile): advance one byte and retry so a
+                # single unknown msg_id doesn't discard the rest of the buffer.
+                self._offset += 1
             result.status = FrameMsgStatus.SYNC_RECOVERY
             result.frame_size = self._offset - old_offset
-        else:
-            # Incomplete/garbage with no recoverable start — consume the rest
-            self._offset = self._size
+        # COLLECTING: leave offset unchanged — trailing partial frame (normal end-of-buffer)
 
         return result
 
@@ -943,6 +961,11 @@ class AccumulatingReader:
         self._get_message_info = get_message_info
         self._buffer_size = buffer_size
         
+        # Cached per-profile constants so the per-byte push path doesn't
+        # recompute them on every call.
+        self._start_byte1 = config.computed_start_byte1()
+        self._start_byte2 = config.computed_start_byte2()
+
         # Internal buffer for partial messages
         self._internal_buffer = bytearray(buffer_size)
         self._internal_data_len = 0
@@ -955,6 +978,7 @@ class AccumulatingReader:
         
         # Buffer mode state
         self._current_buffer: Optional[bytes] = None
+        self._current_view: Optional[memoryview] = None
         self._current_size = 0
         self._current_offset = 0
         
@@ -979,10 +1003,13 @@ class AccumulatingReader:
             buffer: New data to process
         """
         self._current_buffer = buffer
+        # memoryview: O(1) zero-copy slicing in next() — a plain bytes slice
+        # would copy the whole remaining buffer per frame (O(n^2) overall).
+        self._current_view = memoryview(buffer)
         self._current_size = len(buffer)
         self._current_offset = 0
         self._state = AccumulatingReaderState.BUFFER_MODE
-        
+
         # If we have partial data in internal buffer, try to complete it
         self._bytes_appended_to_internal = 0
         if self._internal_data_len > 0:
@@ -1002,6 +1029,19 @@ class AccumulatingReader:
         if self._state != AccumulatingReaderState.BUFFER_MODE:
             return self._with_diag(FrameMsgInfo())
         
+        # Full-wedge escape: new data arrived but nothing could be appended
+        # because the internal buffer is full. The buffered bytes can never
+        # complete — discard them so parsing continues from the current buffer
+        # instead of stalling forever.
+        if (self._internal_data_len > 0 and self._current_offset == 0
+                and self._bytes_appended_to_internal == 0
+                and self._current_size > self._current_offset):
+            self._diag.cnt_sync_recoveries += 1
+            self._diag.cnt_failed_bytes += self._internal_data_len
+            self._internal_data_len = 0
+            self._expected_frame_size = 0
+            # fall through to current-buffer parsing below
+
         # First, try to complete a partial message from the internal buffer
         if self._internal_data_len > 0 and self._current_offset == 0:
             internal_bytes = bytes(self._internal_buffer[:self._internal_data_len])
@@ -1010,6 +1050,7 @@ class AccumulatingReader:
             partial_len = self._internal_data_len - self._bytes_appended_to_internal
 
             if result.valid:
+                self._record_frame_diagnostics(internal_bytes, True)
                 # How many bytes from the current buffer were consumed to complete the frame
                 bytes_from_current = result.frame_size - partial_len if result.frame_size > partial_len else 0
                 self._current_offset = bytes_from_current
@@ -1024,12 +1065,42 @@ class AccumulatingReader:
                     self._diag.cnt_crc_failures += 1
                 self._diag.cnt_failed_bytes += result.frame_size
                 self._diag.cnt_sync_recoveries += 1
+                self._record_frame_diagnostics(internal_bytes, False)
                 bytes_from_current = result.frame_size - partial_len if result.frame_size > partial_len else 0
                 self._current_offset = bytes_from_current
                 self._internal_data_len = 0
                 self._bytes_appended_to_internal = 0
                 self._expected_frame_size = 0
                 return self._with_diag(result)
+
+            # Garbage prefix saved as a partial (WAITING_FOR_START), or a frame
+            # that can never complete because its claimed size exceeds the
+            # internal buffer (still collecting with the buffer full): resync
+            # inside the internal buffer instead of waiting forever.
+            if (result.status == FrameMsgStatus.WAITING_FOR_START
+                    or self._internal_data_len >= self._buffer_size):
+                discard = self._internal_data_len
+                if self._config.num_start_bytes >= 1:
+                    start1 = bytes([self._config.computed_start_byte1()])
+                    nxt = internal_bytes.find(start1, 1)
+                    if nxt != -1:
+                        discard = nxt
+                else:
+                    # No start bytes (e.g. IPC): advance one byte and retry.
+                    discard = 1
+                self._diag.cnt_sync_recoveries += 1
+                self._diag.cnt_failed_bytes += discard
+                keep = self._internal_data_len - discard
+                if keep > 0:
+                    self._internal_buffer[:keep] = self._internal_buffer[discard:self._internal_data_len]
+                # Only the portion of the discard that reached into this cycle's
+                # appended bytes reduces the appended count.
+                if discard > partial_len:
+                    self._bytes_appended_to_internal -= (discard - partial_len)
+                self._internal_data_len = keep
+                r = FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
+                r.frame_size = discard
+                return self._with_diag(r)
 
             # Still not enough data for a complete message — wait for next add_data()
             return self._with_diag(FrameMsgInfo())
@@ -1038,10 +1109,11 @@ class AccumulatingReader:
         if self._current_buffer is None or self._current_offset >= self._current_size:
             return self._with_diag(FrameMsgInfo())
 
-        remaining = self._current_buffer[self._current_offset:]
+        remaining = self._current_view[self._current_offset:]
         result = self._parse_buffer(remaining)
 
         if result.valid:
+            self._record_frame_diagnostics(remaining, True)
             self._current_offset += result.frame_size
             return result
 
@@ -1051,16 +1123,22 @@ class AccumulatingReader:
                 self._diag.cnt_crc_failures += 1
             self._diag.cnt_failed_bytes += result.frame_size
             self._diag.cnt_sync_recoveries += 1
+            self._record_frame_diagnostics(remaining, False)
             self._current_offset += result.frame_size
             return self._with_diag(result)
 
-        if result.status == FrameMsgStatus.WAITING_FOR_START and self._config.num_start_bytes >= 1:
+        if result.status == FrameMsgStatus.WAITING_FOR_START:
             # Head byte is not a frame start — scan forward to the next start byte,
             # reporting SyncRecovery with frame_size=bytes_skipped so try_next() keeps draining.
             old_offset = self._current_offset
-            start1 = bytes([self._config.computed_start_byte1()])
-            nxt = self._current_buffer.find(start1, self._current_offset + 1, self._current_size)
-            self._current_offset = nxt if nxt != -1 else self._current_size
+            if self._config.num_start_bytes >= 1:
+                start1 = bytes([self._config.computed_start_byte1()])
+                nxt = self._current_buffer.find(start1, self._current_offset + 1, self._current_size)
+                self._current_offset = nxt if nxt != -1 else self._current_size
+            else:
+                # No start bytes (e.g. IPC profile): advance one byte and retry so a
+                # single unknown msg_id doesn't discard the rest of the buffer.
+                self._current_offset += 1
             skipped = self._current_offset - old_offset
             self._diag.cnt_failed_bytes += skipped
             self._diag.cnt_sync_recoveries += 1
@@ -1073,6 +1151,11 @@ class AccumulatingReader:
         if remaining_len > 0 and remaining_len < self._buffer_size:
             self._internal_buffer[:remaining_len] = remaining
             self._internal_data_len = remaining_len
+            self._current_offset = self._current_size
+        elif remaining_len >= self._buffer_size:
+            # Partial too large to buffer — discard with diagnostics.
+            self._diag.cnt_sync_recoveries += 1
+            self._diag.cnt_failed_bytes += remaining_len
             self._current_offset = self._current_size
 
         return self._with_diag(FrameMsgInfo())
@@ -1114,6 +1197,42 @@ class AccumulatingReader:
 
     def _status_result(self, status: FrameMsgStatus) -> FrameMsgInfo:
         return self._with_diag(FrameMsgInfo(status=status))
+
+    def _record_frame_diagnostics(self, frame, valid: bool) -> None:
+        """Record per-frame diagnostics for a complete frame consumed in buffer
+        mode, matching the stream-mode (push_byte) counter semantics:
+        cnt_len_errors when the header length is outside [min_size, size], and
+        cnt_seq_gaps on valid frames for profiles that carry a sequence number.
+        `frame` is the raw frame bytes (start bytes included)."""
+        config = self._config
+        if config.has_length and self._get_message_info is not None:
+            len_offset = config.num_start_bytes
+            if config.has_sequence:
+                len_offset += 1
+            if config.has_system_id:
+                len_offset += 1
+            if config.has_component_id:
+                len_offset += 1
+            if config.length_bytes == 1:
+                payload_len = frame[len_offset]
+            else:
+                payload_len = frame[len_offset] | (frame[len_offset + 1] << 8)
+            if config.has_package_id:
+                full_msg_id = (frame[config.header_size - 2] << 8) | frame[config.header_size - 1]
+            else:
+                full_msg_id = frame[config.header_size - 1]
+            msg_info = self._get_message_info(full_msg_id)
+            if msg_info is not None:
+                min_size = getattr(msg_info, 'min_size', 0) or getattr(msg_info, 'base_size', msg_info.size)
+                if payload_len > msg_info.size or payload_len < min_size:
+                    self._diag.cnt_len_errors += 1
+        if valid and config.has_sequence:
+            seq = frame[config.num_start_bytes]
+            if self._last_seq is not None:
+                expected_seq = (self._last_seq + 1) & 0xFF
+                if seq != expected_seq:
+                    self._diag.cnt_seq_gaps += 1
+            self._last_seq = seq
     
     def _handle_looking_for_start1(self, byte: int) -> FrameMsgInfo:
         """Handle LOOKING_FOR_START1 state"""
@@ -1127,7 +1246,7 @@ class AccumulatingReader:
             else:
                 self._state = AccumulatingReaderState.COLLECTING_HEADER
         else:
-            if byte == self._config.computed_start_byte1():
+            if byte == self._start_byte1:
                 self._internal_buffer[0] = byte
                 self._internal_data_len = 1
                 
@@ -1142,11 +1261,11 @@ class AccumulatingReader:
     
     def _handle_looking_for_start2(self, byte: int) -> FrameMsgInfo:
         """Handle LOOKING_FOR_START2 state"""
-        if byte == self._config.computed_start_byte2():
+        if byte == self._start_byte2:
             self._internal_buffer[self._internal_data_len] = byte
             self._internal_data_len += 1
             self._state = AccumulatingReaderState.COLLECTING_HEADER
-        elif byte == self._config.computed_start_byte1():
+        elif byte == self._start_byte1:
             # Might be start of new frame - restart
             self._internal_buffer[0] = byte
             self._internal_data_len = 1
@@ -1247,12 +1366,12 @@ class AccumulatingReader:
                         full_msg_id = self._internal_buffer[self._config.header_size - 1]
                     msg_info = self._get_message_info(full_msg_id)
                     if msg_info is not None:
-                        # A valid frame may carry anywhere from base_size (extensions
-                        # truncated) up to size (full extensions) bytes. Only count a
-                        # length error when payload_len falls outside that range —
-                        # matches the C++ parser semantics.
-                        base_size = getattr(msg_info, 'base_size', msg_info.size)
-                        if payload_len > msg_info.size or payload_len < base_size:
+                        # A valid frame may carry anywhere from min_size (variable
+                        # messages / truncated extensions) up to size (full
+                        # extensions) bytes. Only count a length error when
+                        # payload_len falls outside that range.
+                        min_size = getattr(msg_info, 'min_size', 0) or getattr(msg_info, 'base_size', msg_info.size)
+                        if payload_len > msg_info.size or payload_len < min_size:
                             self._diag.cnt_len_errors += 1
 
                 self._expected_frame_size = self._config.overhead + payload_len
@@ -1434,6 +1553,7 @@ class AccumulatingReader:
         self._expected_frame_size = 0
         self._state = AccumulatingReaderState.IDLE
         self._current_buffer = None
+        self._current_view = None
         self._current_size = 0
         self._current_offset = 0
         self._last_seq = None

@@ -15,6 +15,9 @@
 #include <type_traits>
 #include <utility>
 
+// Parser/encoder infrastructure (FrameMsgInfo, MessageInfo, FrameEncoder*).
+// Included here so the SDK umbrella headers are self-contained.
+#include "../frame_profiles.hpp"
 #include "transport.hpp"
 
 namespace structframe {
@@ -595,9 +598,9 @@ class StructFrameSdkT : public IStructFrameSdk {
             offset = buffer_len_;
           }
         } else {
-          // No start bytes in this profile — cannot resync; discard all
-          offset = buffer_len_;
-          break;
+          // No start bytes in this profile (e.g. IPC): advance one byte and
+          // retry so a single unknown msg_id doesn't discard the rest.
+          offset += 1;
         }
       } else {
         // Collecting — frame is incomplete; need more data from next Feed()

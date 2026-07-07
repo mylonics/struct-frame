@@ -14,6 +14,7 @@ const {
   AccumulatingReader,
   ProfileStandardConfig,
   ProfileSensorConfig,
+  ProfileIPCConfig,
   ProfileBulkConfig,
   ProfileNetworkConfig,
 } = require('../generated/js/frame-profiles');
@@ -756,6 +757,316 @@ function testTryNextPartialPendingContract() {
   return !reader.hasMore();
 }
 
+
+/** Helper: encode `count` Standard-profile frames; returns [buffer, per-frame sizes]. */
+function encodeStandardFrames(count) {
+  const writer = new BufferWriter(ProfileStandardConfig, 2048);
+  const sizes = [];
+  let prev = 0;
+  for (let i = 0; i < count; i++) {
+    writer.write(createTestMessage());
+    sizes.push(writer.size - prev);
+    prev = writer.size;
+  }
+  return [writer.data().slice(0, writer.size), sizes];
+}
+
+/** Helper: encode one Network-profile frame with the given sequence number. */
+function encodeNetworkFrame(seq) {
+  const writer = new BufferWriter(ProfileNetworkConfig, 1024);
+  writer.write(createTestMessage(), { seq, sysId: 1, compId: 1 });
+  return writer.data().slice(0, writer.size);
+}
+
+/** Diagnostics: cntCrcFailures increments on a stream-mode CRC failure. */
+function testDiagnosticCrcFailure() {
+  const [buffer, sizes] = encodeStandardFrames(1);
+  const frameSize = sizes[0];
+  if (frameSize < 4) return false;
+
+  buffer[frameSize - 1] ^= 0xFF;
+  buffer[frameSize - 2] ^= 0xFF;
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  for (let i = 0; i < frameSize; i++) {
+    reader.pushByte(buffer[i]);
+  }
+
+  const diag = reader.diagnostics;
+  return diag.cntCrcFailures === 1 && diag.cntSyncRecoveries >= 1;
+}
+
+/** Diagnostics: cntSyncRecoveries increments when garbage bytes are fed. */
+function testDiagnosticSyncRecovery() {
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  reader.pushByte(0x90);  // valid start1
+  reader.pushByte(0xAB);  // invalid start2 -> sync recovery
+  return reader.diagnostics.cntSyncRecoveries >= 1;
+}
+
+/**
+ * Diagnostics: cntLenErrors increments when the header length field is out of the
+ * [minSize, size] range. Feeding just the header is enough — the check fires at
+ * header completion.
+ */
+function testDiagnosticLenError() {
+  const msgId = BasicTypesMessage._msgid;
+  const info = getMessageInfo(msgId);
+  if (!info || info.size + 1 > 255) return false;
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  reader.pushByte(0x90);
+  reader.pushByte(0x71);
+  reader.pushByte((info.size + 1) & 0xFF);  // out of range
+  reader.pushByte(msgId & 0xFF);
+
+  return reader.diagnostics.cntLenErrors === 1;
+}
+
+/** Diagnostics: cntSeqGaps increments when a sequence number is skipped. */
+function testDiagnosticSeqGap() {
+  const frame0 = encodeNetworkFrame(0);
+  const frame5 = encodeNetworkFrame(5);  // skips seq 1-4
+
+  const reader = new AccumulatingReader(ProfileNetworkConfig, getMessageInfo, 1024);
+  for (const b of frame0) reader.pushByte(b);
+  for (const b of frame5) reader.pushByte(b);
+
+  const diag = reader.diagnostics;
+  return diag.cntSeqGaps === 1 && diag.cntCrcFailures === 0;
+}
+
+/** Diagnostics: resetDiagnostics() clears all counters. */
+function testDiagnosticReset() {
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  reader.pushByte(0x90);
+  reader.pushByte(0xAB);
+  if (reader.diagnostics.cntSyncRecoveries < 1) return false;
+
+  reader.resetDiagnostics();
+  const diag = reader.diagnostics;
+  return diag.cntCrcFailures === 0 && diag.cntSyncRecoveries === 0 &&
+    diag.cntFailedBytes === 0 && diag.cntLenErrors === 0 && diag.cntSeqGaps === 0;
+}
+
+/**
+ * Buffer mode: a CRC-failed frame increments cntCrcFailures, cntFailedBytes and
+ * cntSyncRecoveries — same counter semantics as stream mode.
+ */
+function testBufferModeCrcCounters() {
+  const [buffer, sizes] = encodeStandardFrames(2);
+  const frameSize = sizes[0];
+  buffer[frameSize - 1] ^= 0xFF;  // corrupt frame 1's CRC
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  reader.addData(buffer);
+
+  let validCount = 0;
+  let r;
+  while ((r = tryNextCompat(reader)) !== null) {
+    if (r.valid) validCount++;
+  }
+
+  const diag = reader.diagnostics;
+  return validCount === 1 && diag.cntCrcFailures === 1 &&
+    diag.cntSyncRecoveries === 1 && diag.cntFailedBytes === frameSize;
+}
+
+/** Buffer mode: sequence gaps are detected on frames consumed via addData. */
+function testBufferModeSeqGap() {
+  const frame0 = encodeNetworkFrame(0);
+  const frame5 = encodeNetworkFrame(5);  // skips seq 1-4
+  const data = new Uint8Array(frame0.length + frame5.length);
+  data.set(frame0, 0);
+  data.set(frame5, frame0.length);
+
+  const reader = new AccumulatingReader(ProfileNetworkConfig, getMessageInfo, 1024);
+  reader.addData(data);
+
+  let validCount = 0;
+  let r;
+  while ((r = tryNextCompat(reader)) !== null) {
+    if (r.valid) validCount++;
+  }
+
+  const diag = reader.diagnostics;
+  return validCount === 2 && diag.cntSeqGaps === 1 && diag.cntCrcFailures === 0;
+}
+
+/**
+ * Sensor (minimal) profile buffer: an unknown msg_id after a valid start byte
+ * triggers a resync scan to the next start byte instead of discarding the buffer.
+ */
+function testSensorBufferUnknownMsgIdResync() {
+  const msgId = BasicTypesMessage._msgid;
+  const info = getMessageInfo(msgId);
+  if (!info) return false;
+
+  const data = new Uint8Array(4 + info.size);  // zeroed payload is fine for framing
+  data[0] = 0x70;
+  data[1] = 0xFF;  // unknown msg_id
+  data[2] = 0x70;
+  data[3] = msgId & 0xFF;
+
+  const reader = new BufferReader(ProfileSensorConfig, data, getMessageInfo);
+  let sawSync = false;
+  let validCount = 0;
+  let r;
+  while ((r = tryNextCompat(reader)) !== null) {
+    if (r.valid) validCount++;
+    else if (r.status === FrameMsgStatus.SyncRecovery) sawSync = true;
+  }
+  return sawSync && validCount === 1;
+}
+
+/**
+ * IPC (no start bytes) buffer: an unknown msg_id advances one byte and the
+ * following valid frame is still delivered.
+ */
+function testIpcBufferUnknownMsgId() {
+  const msgId = BasicTypesMessage._msgid;
+  const info = getMessageInfo(msgId);
+  if (!info) return false;
+
+  const data = new Uint8Array(2 + info.size);
+  data[0] = 0xFF;  // unknown msg_id
+  data[1] = msgId & 0xFF;
+
+  const reader = new BufferReader(ProfileIPCConfig, data, getMessageInfo);
+  let sawSync = false;
+  let validCount = 0;
+  let r;
+  while ((r = tryNextCompat(reader)) !== null) {
+    if (r.valid) validCount++;
+    else if (r.status === FrameMsgStatus.SyncRecovery) sawSync = true;
+  }
+  return sawSync && validCount === 1;
+}
+
+/**
+ * Split sweep: two back-to-back frames delivered intact when the byte stream is
+ * split into two addData chunks at every possible offset.
+ */
+function testSplitSweepAllBoundaries() {
+  const [buffer] = encodeStandardFrames(2);
+  const total = buffer.length;
+
+  for (let split = 1; split < total; split++) {
+    const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+    let validCount = 0;
+    let r;
+
+    reader.addData(buffer.slice(0, split));
+    while ((r = tryNextCompat(reader)) !== null) {
+      if (r.valid) validCount++;
+    }
+    reader.addData(buffer.slice(split));
+    while ((r = tryNextCompat(reader)) !== null) {
+      if (r.valid) validCount++;
+    }
+
+    if (validCount !== 2) return false;
+    if (reader.hasPartial()) return false;
+  }
+  return true;
+}
+
+/** Streaming: two back-to-back frames are both decoded byte-by-byte. */
+function testStreamingTwoFrames() {
+  const [buffer] = encodeStandardFrames(2);
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  let validCount = 0;
+  for (const b of buffer) {
+    const r = reader.pushByte(b);
+    if (r.valid) validCount++;
+  }
+  return validCount === 2;
+}
+
+
+
+/**
+ * Buffer mode: a garbage tail that looks like a truncated frame start is saved
+ * as a partial; the reader must resync inside the internal buffer and keep
+ * delivering the frames that follow (livelock regression test).
+ */
+function testBufferModeGarbagePrefixRecovers() {
+  const [frames, sizes] = encodeStandardFrames(1);
+  const frameSize = sizes[0];
+  if (frameSize < 6) return false;
+  const frame = frames.slice(0, frameSize);
+
+  const chunk1 = new Uint8Array(frameSize + 2);
+  chunk1.set(frame, 0);
+  chunk1[frameSize] = 0x90;      // looks like a truncated frame start
+  chunk1[frameSize + 1] = 0xFF;
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  let validCount = 0;
+  let sawSync = false;
+  let r;
+
+  reader.addData(chunk1);
+  while ((r = tryNextCompat(reader)) !== null) {
+    if (r.valid) validCount++;
+    else if (r.status === FrameMsgStatus.SyncRecovery) sawSync = true;
+  }
+
+  for (let i = 0; i < 3; i++) {
+    reader.addData(frame);
+    while ((r = tryNextCompat(reader)) !== null) {
+      if (r.valid) validCount++;
+      else if (r.status === FrameMsgStatus.SyncRecovery) sawSync = true;
+    }
+  }
+
+  return validCount === 4 && sawSync;
+}
+
+/**
+ * Buffer mode: a corrupted length field claiming more bytes than the reader's
+ * internal buffer can hold must not wedge the reader permanently
+ * (livelock regression test).
+ */
+function testBufferModeOversizedLengthRecovers() {
+  const [frames, sizes] = encodeStandardFrames(1);
+  const frameSize = sizes[0];
+  if (frameSize < 6) return false;
+  const frame = frames.slice(0, frameSize);
+
+  // Bogus header claiming a 255-byte payload — the total (261) exceeds the
+  // 256-byte reader buffer, so this frame can never complete.
+  const bogus = new Uint8Array([0x90, 0x71, 0xFF, BasicTypesMessage._msgid & 0xFF]);
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 256);
+  let r;
+
+  reader.addData(bogus);
+  while (tryNextCompat(reader) !== null) { /* drain */ }
+
+  let validCount = 0;
+  const rounds = Math.floor(256 / frameSize) + 3;
+  for (let i = 0; i < rounds; i++) {
+    reader.addData(frame);
+    while ((r = tryNextCompat(reader)) !== null) {
+      if (r.valid) validCount++;
+    }
+  }
+  if (validCount < 1) return false;
+
+  // The reader must keep delivering fresh frames after recovery.
+  let probeValid = 0;
+  for (let i = 0; i < 3; i++) {
+    reader.addData(frame);
+    while ((r = tryNextCompat(reader)) !== null) {
+      if (r.valid) probeValid++;
+    }
+  }
+  return probeValid >= 1;
+}
+
+
 function main() {
   console.log('\n========================================');
   console.log('NEGATIVE TESTS - JavaScript Parser');
@@ -763,6 +1074,10 @@ function main() {
   
   // Define test matrix
   const tests = [
+    ['Buffer mode: CRC failure counters', testBufferModeCrcCounters],
+    ['Buffer mode: Sequence gap counted', testBufferModeSeqGap],
+    ['Buffer mode: garbage prefix partial recovers', testBufferModeGarbagePrefixRecovers],
+    ['Buffer mode: oversized length recovers', testBufferModeOversizedLengthRecovers],
     ['Buffer mode: recovers after CRC failure', testBufferModeRecoversAfterCrcFailure],
     ['Buffer reader: skips CRC-failed frame', testBufferReaderSkipsCrcFailure],
     ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],
@@ -771,8 +1086,14 @@ function main() {
     ['Corrupted CRC detection', testCorruptedCrc],
     ['Corrupted length field detection', testCorruptedLength],
     ['Cross-package message rejection', testCrossPackageRejection],
+    ['Diagnostics: CRC failure counter', testDiagnosticCrcFailure],
+    ['Diagnostics: Length error counter', testDiagnosticLenError],
+    ['Diagnostics: Reset diagnostics', testDiagnosticReset],
+    ['Diagnostics: Sequence gap counter', testDiagnosticSeqGap],
+    ['Diagnostics: Sync recovery counter', testDiagnosticSyncRecovery],
     ['Invalid message ID rejection', testInvalidMsgId],
     ['Invalid start bytes detection', testInvalidStartBytes],
+    ['IPC buffer: unknown msg_id advances one byte', testIpcBufferUnknownMsgId],
     ['Minimal profile: Truncated frame', testMinimalProfileTruncatedFrame],
     ['Multiple frames: CRC error then valid frame', testCrcErrorThenValidFrame],
     ['Multiple frames: Corrupted middle frame', testMultipleCorruptedFrames],
@@ -782,9 +1103,12 @@ function main() {
     ['Network profile: Corrupted pkg_id', testNetworkCorruptedPkgId],
     ['Network profile: SysId/CompId corruption', testNetworkSysIdCompId],
     ['Partial frame across buffer boundary', testPartialFrameBoundary],
+    ['Sensor buffer: unknown msg_id resync', testSensorBufferUnknownMsgIdResync],
+    ['Split sweep: two frames at every boundary', testSplitSweepAllBoundaries],
     ['Stream mode: recovers after garbage prefix', testStreamRecoversAfterGarbage],
     ['Streaming: Corrupted CRC detection', testStreamingCorruptedCrc],
     ['Streaming: Garbage data handling', testStreamingGarbage],
+    ['Streaming: two frames byte-by-byte', testStreamingTwoFrames],
     ['Truncated frame detection', testTruncatedFrame],
     ['Zero-length buffer handling', testZeroLengthBuffer],
   ];

@@ -229,9 +229,13 @@ export class StructFrameSdk {
             this.log(`Failed to deserialize message ID ${result.msgId}: ${error}`);
           }
         }
-        for (let i = 0; i < handlers.length; i++) {
+        // Iterate a snapshot: a handler that unsubscribes during dispatch (e.g. the
+        // one-shot handler registered by request()) splices the live array, which
+        // would otherwise skip the next handler for this same message.
+        const snapshot = handlers.slice();
+        for (let i = 0; i < snapshot.length; i++) {
           try {
-            handlers[i](message, result.msgId);
+            snapshot[i](message, result.msgId);
           } catch (error) {
             this.log(`Handler error for message ID ${result.msgId}: ${error}`);
           }

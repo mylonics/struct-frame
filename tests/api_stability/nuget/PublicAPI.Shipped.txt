@@ -430,6 +430,7 @@ Framework/Framing/BufferReader.cs:Remaining
 Framework/Framing/BufferReader.cs:Reset
 Framework/Framing/BufferReader.cs:SetBuffer
 Framework/Framing/BufferReader.cs:SetBuffer
+Framework/Framing/BufferReader.cs:TryNext
 Framework/Framing/BufferWriter.cs:BufferWriter
 Framework/Framing/BufferWriter.cs:BufferWriter
 Framework/Framing/BufferWriter.cs:Remaining
@@ -601,6 +602,7 @@ Framework/Types/IStructFrameMessage.cs:IStructFrameMessage
 Framework/Types/MessageInfo.cs:BaseSize
 Framework/Types/MessageInfo.cs:Magic1
 Framework/Types/MessageInfo.cs:Magic2
+Framework/Types/MessageInfo.cs:MinSize
 Framework/Types/MessageInfo.cs:Size
 Framework/Types/MessageInfo.cs:struct
 Framework/Types/ParserDiagnostics.cs:CntCrcFailures

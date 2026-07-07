@@ -404,13 +404,15 @@ SECTIONS = [
         "intro": (
             "Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`\n\n"
             "See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.\n\n"
-            "The 20 scenarios in the table below are registered in every "
-            "language's `test_negative.*` file. Individual languages carry "
-            "additional language-specific scenarios: C/C++/TS/JS/C# (24 each) "
-            "add bulk `pkg_id`/`msg_id` corruption, cross-package rejection, and "
-            "network `pkg_id` corruption; Python (34) adds those plus "
-            "diagnostic-counter and status-machine tests; Rust (20) currently "
-            "matches the uniform set."
+            "The 33 scenarios in the table below are registered in every "
+            "language's `test_negative.*` file, covering corruption handling, "
+            "the `tryNext` drain contract, diagnostic counters (unified "
+            "semantics in buffer and stream mode), minimal-profile resync, and "
+            "a chunk-boundary split sweep. All seven languages additionally "
+            "carry the four package-corruption scenarios (bulk "
+            "`pkg_id`/`msg_id` corruption, cross-package rejection, network "
+            "`pkg_id` corruption) for 37 scenarios each; Python (42) adds "
+            "status-machine and buffer-mode diagnostic extras."
         ),
         "tables": [
             {
@@ -418,22 +420,35 @@ SECTIONS = [
                 "columns": LANGS,
                 "lang_cols": LANGS,
                 "rows": [_full(s, "✅") for s in (
+                    "Buffer mode: CRC failure counters",
+                    "Buffer mode: Sequence gap counted",
+                    "Buffer mode: garbage prefix partial recovers",
+                    "Buffer mode: oversized length recovers",
                     "Buffer mode: recovers after CRC failure",
                     "Buffer reader: skips CRC-failed frame",
                     "Bulk profile: Corrupted CRC",
                     "Corrupted CRC detection",
                     "Corrupted length field detection",
+                    "Diagnostics: CRC failure counter",
+                    "Diagnostics: Length error counter",
+                    "Diagnostics: Reset diagnostics",
+                    "Diagnostics: Sequence gap counter",
+                    "Diagnostics: Sync recovery counter",
                     "Invalid message ID rejection",
                     "Invalid start bytes detection",
+                    "IPC buffer: unknown msg_id advances one byte",
                     "Minimal profile: Truncated frame",
                     "Multiple frames: CRC error then valid frame",
                     "Multiple frames: Corrupted middle frame",
                     "Network profile: SysId/CompId corruption",
                     "Partial frame across buffer boundary",
+                    "Sensor buffer: unknown msg_id resync",
+                    "Split sweep: two frames at every boundary",
                     "Split-buffer: CRC error status preserved",
                     "Stream mode: recovers after garbage prefix",
                     "Streaming: Corrupted CRC detection",
                     "Streaming: Garbage data handling",
+                    "Streaming: two frames byte-by-byte",
                     "TryNext drain: CRC/resync + valid",
                     "TryNext partial pending contract",
                     "Truncated frame detection",

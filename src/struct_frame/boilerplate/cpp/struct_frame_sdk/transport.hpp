@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
@@ -36,7 +37,9 @@ using CloseCallbackFn = void (*)(void*);
  */
 class BaseTransport {
 protected:
-    bool connected_ = false;
+    // Atomic: written by Connect()/Disconnect() on the user thread and read by
+    // receive handlers on the transport's I/O thread.
+    std::atomic<bool> connected_{false};
     DataCallbackFn data_callback_ = nullptr;
     void* data_user_data_ = nullptr;
     ErrorCallbackFn error_callback_ = nullptr;
@@ -73,16 +76,20 @@ protected:
 
     /**
      * Attempt to reconnect after an error or close event.
-     * BaseTransport provides no implementation — concrete transports must
+     *
+     * Virtual so that HandleError()/HandleClose() (which live in this base
+     * class) actually reach a concrete transport's implementation — with a
+     * non-virtual method the auto_reconnect config was a silent no-op.
+     * The default implementation does nothing; concrete transports must
      * override this method to support auto-reconnect.
      */
-    void AttemptReconnect() {}
+    virtual void AttemptReconnect() {}
 
 public:
     BaseTransport(const TransportConfig& config = TransportConfig())
         : config_(config) {}
 
-    ~BaseTransport() = default;
+    virtual ~BaseTransport() = default;
 
     void OnData(DataCallbackFn callback, void* user_data) {
         data_callback_ = callback;

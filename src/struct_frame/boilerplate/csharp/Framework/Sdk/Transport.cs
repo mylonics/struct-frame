@@ -106,10 +106,12 @@ namespace StructFrame.Sdk
     /// </summary>
     public abstract class BaseTransport : ITransport, IBufferReceiveTransport, IDisposable
     {
-        protected bool _connected;
+        // Volatile: written on connect/disconnect paths and read from receive threads.
+        protected volatile bool _connected;
         protected TransportConfig _config;
         protected int _reconnectAttempts;
         private readonly SemaphoreSlim _sendSemaphore = new SemaphoreSlim(1, 1);
+        private int _reconnectInProgress;
         private bool _disposed;
 
         public event EventHandler<byte[]>? DataReceived;
@@ -225,25 +227,48 @@ namespace StructFrame.Sdk
             }
         }
 
+        /// <summary>
+        /// Reconnect loop: keeps retrying (honouring ReconnectDelayMs and
+        /// MaxReconnectAttempts, 0 = infinite) until the transport reconnects.
+        /// Retries are driven by this loop directly — the previous implementation
+        /// relied on OnErrorOccurred to re-trigger the next attempt, which never
+        /// fired after a close because its gate requires <c>_connected</c>, so
+        /// "infinite" reconnects actually stopped after a single attempt.
+        /// Guarded so concurrent error/close events start at most one loop.
+        /// </summary>
         protected async Task AttemptReconnectAsync()
         {
-            if (_config.MaxReconnectAttempts > 0 &&
-                _reconnectAttempts >= _config.MaxReconnectAttempts)
+            if (Interlocked.Exchange(ref _reconnectInProgress, 1) == 1)
             {
                 return;
             }
 
-            _reconnectAttempts++;
-            await Task.Delay(_config.ReconnectDelayMs);
-
             try
             {
-                await ConnectAsync();
-                _reconnectAttempts = 0;
+                while (!_connected && !_disposed &&
+                       (_config.MaxReconnectAttempts == 0 ||
+                        _reconnectAttempts < _config.MaxReconnectAttempts))
+                {
+                    _reconnectAttempts++;
+                    await Task.Delay(_config.ReconnectDelayMs).ConfigureAwait(false);
+
+                    try
+                    {
+                        await ConnectAsync().ConfigureAwait(false);
+                        _reconnectAttempts = 0;
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Report the failed attempt without re-triggering another
+                        // reconnect loop through OnErrorOccurred.
+                        ErrorOccurred?.Invoke(this, ex);
+                    }
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                OnErrorOccurred(ex);
+                Interlocked.Exchange(ref _reconnectInProgress, 0);
             }
         }
 

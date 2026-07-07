@@ -16,11 +16,15 @@ struct MessageInfo {
   uint8_t magic2;
   bool valid;        // True if message info is valid
   size_t base_size;  // Non-extension portion size (== size when no extensions)
-  
-  MessageInfo() : size(0), magic1(0), magic2(0), valid(false), base_size(0) {}
-  MessageInfo(size_t s, uint8_t m1, uint8_t m2) : size(s), magic1(m1), magic2(m2), valid(true), base_size(s) {}
-  MessageInfo(size_t s, uint8_t m1, uint8_t m2, size_t bs) : size(s), magic1(m1), magic2(m2), valid(true), base_size(bs) {}
-  
+  size_t min_size;   // Minimum valid payload size: base_size for fixed messages,
+                     // MIN_SIZE for variable messages
+
+  MessageInfo() : size(0), magic1(0), magic2(0), valid(false), base_size(0), min_size(0) {}
+  MessageInfo(size_t s, uint8_t m1, uint8_t m2) : size(s), magic1(m1), magic2(m2), valid(true), base_size(s), min_size(s) {}
+  MessageInfo(size_t s, uint8_t m1, uint8_t m2, size_t bs) : size(s), magic1(m1), magic2(m2), valid(true), base_size(bs), min_size(bs) {}
+  MessageInfo(size_t s, uint8_t m1, uint8_t m2, size_t bs, size_t ms)
+      : size(s), magic1(m1), magic2(m2), valid(true), base_size(bs), min_size(ms) {}
+
   explicit operator bool() const { return valid; }
 };
 

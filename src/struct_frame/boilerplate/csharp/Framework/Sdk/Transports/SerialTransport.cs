@@ -129,23 +129,6 @@ namespace StructFrame.Sdk
             }
         }
 
-        private async Task RunReceiveLoopAsync()
-        {
-            try
-            {
-                if (_readCts != null)
-                    await ReadLoopAsync(_readCts.Token);
-            }
-            catch (Exception ex)
-            {
-                if (_connected)
-                {
-                    OnErrorOccurred(ex);
-                    OnConnectionClosed();
-                }
-            }
-        }
-
         private async Task ReadLoopAsync(System.Threading.CancellationToken cancellationToken)
         {
             byte[] buffer = new byte[4096];
@@ -194,6 +177,15 @@ namespace StructFrame.Sdk
                         }
                         break;
                     }
+                }
+
+                // The read loop ended without an explicit disconnect (e.g. the
+                // cable was unplugged and Read threw IOException). Surface the
+                // dead link — firing ConnectionClosed and auto-reconnect —
+                // instead of leaving IsConnected stuck at true.
+                if (!cancellationToken.IsCancellationRequested && _connected)
+                {
+                    OnConnectionClosed();
                 }
             }, cancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default).ConfigureAwait(false);
         }

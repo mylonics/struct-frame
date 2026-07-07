@@ -11,6 +11,33 @@
 
 namespace structframe {
 namespace sdk {
+namespace detail {
+
+/**
+ * Stop the io_context and reap its thread safely.
+ *
+ * When called from within an ASIO handler (i.e. on the io thread itself —
+ * e.g. a subscriber callback that decides to disconnect), joining would
+ * deadlock/throw, so the thread is detached instead; the stopped context
+ * makes run() return promptly on its own.
+ */
+inline void stop_and_reap_io_thread(asio::io_context& ctx, std::thread& io_thread) {
+    ctx.stop();
+    if (io_thread.joinable()) {
+        if (io_thread.get_id() == std::this_thread::get_id()) {
+            io_thread.detach();
+        } else {
+            io_thread.join();
+        }
+    }
+}
+
+} // namespace detail
+} // namespace sdk
+} // namespace structframe
+
+namespace structframe {
+namespace sdk {
 
 /**
  * UDP Transport configuration
@@ -98,12 +125,9 @@ public:
 
     void Disconnect() {
         connected_ = false;
-        io_context_.stop();
+        detail::stop_and_reap_io_thread(io_context_, io_thread_);
         if (socket_.is_open()) {
             socket_.close();
-        }
-        if (io_thread_.joinable()) {
-            io_thread_.join();
         }
         io_context_.restart();
     }
@@ -159,6 +183,11 @@ private:
                     } else {
                         const std::string err = "TCP receive error: " + error.message();
                         HandleError(err.c_str());
+                        // A fatal receive error ends the receive loop — report the
+                        // link as closed instead of dying silently.
+                        if (connected_ && error != asio::error::operation_aborted) {
+                            HandleClose();
+                        }
                     }
                 }
             }
@@ -204,14 +233,11 @@ public:
 
     void Disconnect() {
         connected_ = false;
-        io_context_.stop();
+        detail::stop_and_reap_io_thread(io_context_, io_thread_);
         if (socket_.is_open()) {
             asio::error_code ec;
             socket_.shutdown(asio::ip::tcp::socket::shutdown_both, ec);
             socket_.close();
-        }
-        if (io_thread_.joinable()) {
-            io_thread_.join();
         }
         io_context_.restart();
     }
@@ -233,9 +259,12 @@ public:
 };
 
 /**
- * Serial Transport using ASIO serial port
+ * Serial Transport using ASIO serial port.
+ * (Named AsioSerialTransportConfig to avoid clashing with the embedded
+ * SerialTransportConfig in serial_transport.hpp when both are included
+ * via the sdk.hpp umbrella header.)
  */
-struct SerialTransportConfig : public TransportConfig {
+struct AsioSerialTransportConfig : public TransportConfig {
     std::string port;
     uint32_t baudRate = 115200;
     size_t bufferSize = 4096;
@@ -250,7 +279,7 @@ private:
     asio::serial_port serial_port_;
     std::thread io_thread_;
     std::vector<uint8_t> receive_buffer_;
-    SerialTransportConfig serial_config_;
+    AsioSerialTransportConfig serial_config_;
 
     void startReceive() {
         serial_port_.async_read_some(
@@ -264,13 +293,18 @@ private:
                 } else if (error) {
                     const std::string err = "Serial receive error: " + error.message();
                     HandleError(err.c_str());
+                    // A fatal receive error ends the receive loop — report the
+                    // link as closed instead of dying silently.
+                    if (connected_ && error != asio::error::operation_aborted) {
+                        HandleClose();
+                    }
                 }
             }
         );
     }
 
 public:
-    AsioSerialTransport(const SerialTransportConfig& config)
+    AsioSerialTransport(const AsioSerialTransportConfig& config)
         : BaseTransport(config),
           serial_port_(io_context_),
           receive_buffer_(config.bufferSize),
@@ -312,12 +346,9 @@ public:
 
     void Disconnect() {
         connected_ = false;
-        io_context_.stop();
+        detail::stop_and_reap_io_thread(io_context_, io_thread_);
         if (serial_port_.is_open()) {
             serial_port_.close();
-        }
-        if (io_thread_.joinable()) {
-            io_thread_.join();
         }
         io_context_.restart();
     }

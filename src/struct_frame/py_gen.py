@@ -1467,7 +1467,8 @@ class FilePyGen():
                 yield f'    magic1 = getattr(msg_class, "MAGIC1", 0)\n'
                 yield f'    magic2 = getattr(msg_class, "MAGIC2", 0)\n'
                 yield f'    base_size = getattr(msg_class, "BASE_SIZE", msg_class.msg_size)\n'
-                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2, base_size=base_size)\n'
+                yield f'    min_size = getattr(msg_class, "MIN_SIZE", base_size)\n'
+                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2, base_size=base_size, min_size=min_size)\n'
             else:
                 # Flat namespace mode: 8-bit message ID
                 yield '%s_definitions = {\n' % package.name
@@ -1508,7 +1509,8 @@ class FilePyGen():
                 yield f'    magic1 = getattr(msg_class, "MAGIC1", 0)\n'
                 yield f'    magic2 = getattr(msg_class, "MAGIC2", 0)\n'
                 yield f'    base_size = getattr(msg_class, "BASE_SIZE", msg_class.msg_size)\n'
-                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2, base_size=base_size)\n'
+                yield f'    min_size = getattr(msg_class, "MIN_SIZE", base_size)\n'
+                yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2, base_size=base_size, min_size=min_size)\n'
 
 
 class TestPyGen():
