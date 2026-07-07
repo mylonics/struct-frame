@@ -909,7 +909,25 @@ class MessageRustGen():
                 result += f'{indent}let mut _pos = 0usize;\n'
                 result += f'{indent}#[allow(unused_variables)]\n'
                 result += f'{indent}let _ = _pos;\n'
+                # Wire evolution: extension fields form a contiguous trailing block
+                # (guaranteed by the extensions_start numbering rule). The moment we
+                # reach the first one, rebind buf/_pos to a zero-padded, fixed-width
+                # slice sized to the extension region's max width so every read below
+                # succeeds whether an older sender omitted the extensions (short buf,
+                # zero-filled) or a newer sender appended more than we know about
+                # (long buf, extras ignored). Only meaningful for the true
+                # variable-length wire format (variable_mode) - the fixed/minimal-
+                # profile encoding already requires an exact-length buffer.
+                ext_width = msg.size - msg.base_size
+                emitted_ext_pad = False
                 for key, field in msg.fields.items():
+                    if variable_mode and ext_width > 0 and getattr(field, 'is_extension', False) and not emitted_ext_pad:
+                        result += f'{indent}let mut _ext_padded = [0u8; {ext_width}];\n'
+                        result += f'{indent}let _ext_n = buf.len().saturating_sub(_pos).min({ext_width});\n'
+                        result += f'{indent}_ext_padded[.._ext_n].copy_from_slice(&buf[_pos.._pos + _ext_n]);\n'
+                        result += f'{indent}let buf = &_ext_padded[..];\n'
+                        result += f'{indent}let mut _pos = 0usize;\n'
+                        emitted_ext_pad = True
                     unpack_code = _generate_unpack_field(field, variable=variable_mode)
                     if unpack_code:
                         result += unpack_code + '\n'
@@ -1011,8 +1029,16 @@ class MessageRustGen():
             result = _build_unpack_body(result, variable_mode=True, indent='        ')
             result += '    }\n'
         else:
-            # Fixed message: simple unpack
-            result += f'        if buf.len() < Self::SIZE {{ return None; }}\n'
+            # Fixed message: simple unpack.
+            # Wire evolution: zero-fill any bytes an older sender omitted (a shorter
+            # buffer); ignore any trailing bytes a newer sender appended (a longer
+            # buffer). Padding into a fixed Self::SIZE-length array up front means
+            # every field read below always has the bytes it expects, so callers
+            # never need to pad or truncate the buffer themselves.
+            result += '        let mut _padded = [0u8; Self::SIZE];\n'
+            result += '        let _n = buf.len().min(Self::SIZE);\n'
+            result += '        _padded[.._n].copy_from_slice(&buf[.._n]);\n'
+            result += '        let buf = &_padded[..];\n'
             result += '        let mut _pos = 0usize;\n'
             result += '        #[allow(unused_variables)]\n'
             result += '        let _ = _pos;\n'

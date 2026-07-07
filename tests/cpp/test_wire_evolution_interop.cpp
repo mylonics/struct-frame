@@ -51,17 +51,6 @@ static void check(bool cond, const char* msg) {
     else      { printf("  [FAIL] %s\n", msg); ++g_fail; }
 }
 
-// Copy a (possibly shorter, base-only) payload into a MAX_SIZE zero buffer so a
-// newer receiver can zero-fill the missing extension bytes before decoding.
-template <typename Msg>
-static void decode_zerofill(Msg& out, const uint8_t* data, size_t len) {
-    uint8_t padded[Msg::MAX_SIZE];
-    std::memset(padded, 0, sizeof(padded));
-    if (len > Msg::MAX_SIZE) len = Msg::MAX_SIZE;
-    std::memcpy(padded, data, len);
-    out.deserialize(padded, sizeof(padded));
-}
-
 // ---------------------------------------------------------------------------
 // Scenario 1: newer sender -> older receiver over length-bearing profiles
 // ---------------------------------------------------------------------------
@@ -108,7 +97,7 @@ static void scenario_2() {
 
     if (result.valid && result.msg_data) {
         v2::BaseExtensionMessage d{};
-        decode_zerofill(d, result.msg_data, result.msg_len);
+        d.deserialize(result.msg_data, result.msg_len);
         check(d.header == 0x1234 && d.seq == 7, "[S2] v2 decodes base fields correctly");
         check(d.crc_seed == 0, "[S2] v2 extension field zero-filled to default");
     }
@@ -186,7 +175,7 @@ static void scenario_5() {
 
     if (result.valid && result.msg_data) {
         v2::OneOfExtensionMessage d{};
-        decode_zerofill(d, result.msg_data, result.msg_len);
+        d.deserialize(result.msg_data, result.msg_len);
         check(d.command_discriminator == v2::OneOfExtensionMessage::CommandField::CMD_B
               && d.command.cmd_b.value_b == -1234,
               "[S5] v2 decodes the older base oneof variant correctly");
@@ -332,7 +321,7 @@ static void scenario_10() {
     check(result2.valid, "[S10] v1 variable (base-only) -> v2 validates CRC");
     if (result2.valid && result2.msg_data) {
         v2::VariableExtensionMessage d2{};
-        decode_zerofill(d2, result2.msg_data, result2.msg_len);
+        d2.deserialize(result2.msg_data, result2.msg_len);
         check(d2.node_id == 9
               && d2.readings.count == 2
               && d2.readings.data[0] == 1

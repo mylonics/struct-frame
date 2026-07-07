@@ -100,14 +100,6 @@ class Framing:
         return self._configs[profile].header_size
 
 
-def _decode_zerofill(cls, info):
-    """Decode a frame payload, zero-filling any extension bytes the sender omitted."""
-    data = info.msg_data
-    if len(data) < cls.MAX_SIZE:
-        data = data + b"\x00" * (cls.MAX_SIZE - len(data))
-    return cls.deserialize(data)
-
-
 # ---------------------------------------------------------------------------
 # Scenarios
 # ---------------------------------------------------------------------------
@@ -134,7 +126,7 @@ def scenario_2_older_to_newer(v1, v2, fr: Framing) -> None:
     _check(info.valid, "[S2] v1->v2 base-only frame validates CRC")
     _check(info.msg_len == v1.BaseExtensionMessage.MAX_SIZE,
            "[S2] frame length carries shorter base-only payload")
-    decoded = _decode_zerofill(v2.BaseExtensionMessage, info)
+    decoded = v2.BaseExtensionMessage.deserialize(info)
     _check(decoded.header == 0x1234 and decoded.seq == 7,
            "[S2] v2 decodes base fields correctly")
     _check(decoded.crc_seed == 0, "[S2] v2 extension field zero-filled to default")
@@ -178,7 +170,7 @@ def scenario_5_older_base_variant_to_newer(v1, v2, fr: Framing) -> None:
     buf = fr.encode("standard", orig)
     info = fr.parse("standard", buf, v2.get_message_info)
     _check(info.valid, "[S5] v1 base-variant -> v2 frame validates CRC")
-    decoded = _decode_zerofill(v2.OneOfExtensionMessage, info)
+    decoded = v2.OneOfExtensionMessage.deserialize(info)
     _check(decoded.command_which == "cmd_b" and decoded.command["cmd_b"].value_b == -1234,
            "[S5] v2 decodes the base oneof variant correctly")
 
@@ -215,7 +207,7 @@ def scenario_6_multi_oneof(v1, v2, fr: Framing) -> None:
     buf2 = fr.encode("standard", orig2)
     info2 = fr.parse("standard", buf2, v2.get_message_info)
     _check(info2.valid, "[S6] v1 multi-oneof (base in 2nd union) -> v2 validates CRC")
-    decoded2 = _decode_zerofill(v2.MultiOneOfExtensionMessage, info2)
+    decoded2 = v2.MultiOneOfExtensionMessage.deserialize(info2)
     _check(decoded2.ext_union_which == "second_a"
            and decoded2.ext_union["second_a"].value_a == 77,
            "[S6] v2 decodes the older base variant in the ext oneof correctly")
@@ -272,7 +264,7 @@ def scenario_10_variable(v1, v2, fr: Framing) -> None:
     buf2 = fr.encode("standard", orig2)
     info2 = fr.parse("standard", buf2, v2.get_message_info)
     _check(info2.valid, "[S10] v1 variable (base-only) -> v2 validates CRC")
-    decoded2 = _decode_zerofill(v2.VariableExtensionMessage, info2)
+    decoded2 = v2.VariableExtensionMessage.deserialize(info2)
     _check(decoded2.node_id == 9 and list(decoded2.readings) == [1, 2],
            "[S10] v2 locates variable base after cross-version decode")
     _check(decoded2.ext_timestamp == 0,

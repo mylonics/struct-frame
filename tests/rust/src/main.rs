@@ -1221,10 +1221,8 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S2] v1->v2 base-only frame validates CRC"
         );
         if let Some(f) = frame {
-            // Newer receiver zero-fills the missing extension bytes before decoding.
-            let mut padded = vec![0u8; v2::BaseExtensionMessage::MAX_SIZE];
-            padded[..f.msg_data.len()].copy_from_slice(&f.msg_data);
-            let d = v2::BaseExtensionMessage::unpack(&padded);
+            // unpack() zero-fills the missing extension bytes internally.
+            let d = v2::BaseExtensionMessage::unpack(&f.msg_data);
             check!(
                 d.as_ref().map_or(false, |x| x.header == 0x1234 && x.seq == 7),
                 "[S2] v2 decodes base fields correctly"
@@ -1306,9 +1304,7 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S5] v1 base-variant -> v2 frame validates CRC"
         );
         if let Some(f) = frame {
-            let mut padded = vec![0u8; v2::OneOfExtensionMessage::MAX_SIZE];
-            padded[..f.msg_data.len()].copy_from_slice(&f.msg_data);
-            let d = v2::OneOfExtensionMessage::unpack(&padded);
+            let d = v2::OneOfExtensionMessage::unpack(&f.msg_data);
             check!(
                 d.map_or(false, |x| x.command_discriminator == 2
                     && x.get_cmd_b().map_or(false, |cb| cb.value_b == -1234)),
@@ -1458,11 +1454,8 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S10] v1 variable (base-only) -> v2 validates CRC"
         );
         if let Some(f2) = frame2 {
-            // Pad payload to MAX_SIZE so unpack() uses fixed-size read (zero-fills ext).
-            let mut padded = vec![0u8; v2::VariableExtensionMessage::MAX_SIZE];
-            let copy_len = f2.msg_data.len().min(padded.len());
-            padded[..copy_len].copy_from_slice(&f2.msg_data[..copy_len]);
-            let d2 = v2::VariableExtensionMessage::unpack(&padded);
+            // unpack() zero-fills the missing trailing extension field internally.
+            let d2 = v2::VariableExtensionMessage::unpack(&f2.msg_data);
             check!(
                 d2.as_ref().map_or(false, |x|
                     x.node_id == 9
