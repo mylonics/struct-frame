@@ -128,7 +128,7 @@ _SDK_COUNT_CLAIMS: list[dict] = [
         "display": "Python test_sdk.py run_test assertions",
         "path": "tests/py/test_sdk.py",
         "pattern": r"run_test\(",
-        "expected": 31,
+        "expected": 32,
     },
     {
         "display": "TypeScript test_sdk.ts assert assertions",
