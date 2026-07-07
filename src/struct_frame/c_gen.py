@@ -642,61 +642,79 @@ class MessageCGen():
                         "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
         for key, field in msg.fields.items():
             var_name = field.name
+            field_lines = []
+            min_prefix = 0
             if field.is_array and field.max_size is not None:
                 # Variable array: count stored as uint8_t or uint16_t on the wire
                 count_bytes = 2 if field.max_size > 255 else 1
+                min_prefix = count_bytes
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
-                    result += f'    // {var_name}: variable string array\n'
+                    field_lines.append(f'// {var_name}: variable string array')
                     if count_bytes == 2:
-                        result += f'    if (offset + 2 > buffer_size) return 0;\n'
-                        result += f'    memcpy(&msg->{var_name}.count, buffer + offset, 2); offset += 2;\n'
-                        result += f'    if (msg->{var_name}.count > {field.max_size}) return 0;\n'
+                        field_lines.append(f'if (offset + 2 > buffer_size) return 0;')
+                        field_lines.append(f'memcpy(&msg->{var_name}.count, buffer + offset, 2); offset += 2;')
+                        field_lines.append(f'if (msg->{var_name}.count > {field.max_size}) return 0;')
                     else:
-                        result += f'    if (offset >= buffer_size) return 0;\n'
-                        result += f'    msg->{var_name}.count = buffer[offset++];\n'
-                        result += f'    if (msg->{var_name}.count > {field.max_size}) return 0;\n'
-                    result += f'    if (offset + msg->{var_name}.count * {element_size} > buffer_size) return 0;\n'
-                    result += f'    memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.count * {element_size});\n'
-                    result += f'    offset += msg->{var_name}.count * {element_size};\n'
+                        field_lines.append(f'if (offset >= buffer_size) return 0;')
+                        field_lines.append(f'msg->{var_name}.count = buffer[offset++];')
+                        field_lines.append(f'if (msg->{var_name}.count > {field.max_size}) return 0;')
+                    field_lines.append(f'if (offset + msg->{var_name}.count * {element_size} > buffer_size) return 0;')
+                    field_lines.append(f'memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.count * {element_size});')
+                    field_lines.append(f'offset += msg->{var_name}.count * {element_size};')
                 else:
                     if field.field_type in _type_sizes2:
                         element_size = _type_sizes2[field.field_type]
                     else:
                         element_size = (field.size - count_bytes) // field.max_size
-                    result += f'    // {var_name}: variable array\n'
+                    field_lines.append(f'// {var_name}: variable array')
                     if count_bytes == 2:
-                        result += f'    if (offset + 2 > buffer_size) return 0;\n'
-                        result += f'    memcpy(&msg->{var_name}.count, buffer + offset, 2); offset += 2;\n'
-                        result += f'    if (msg->{var_name}.count > {field.max_size}) return 0;\n'
+                        field_lines.append(f'if (offset + 2 > buffer_size) return 0;')
+                        field_lines.append(f'memcpy(&msg->{var_name}.count, buffer + offset, 2); offset += 2;')
+                        field_lines.append(f'if (msg->{var_name}.count > {field.max_size}) return 0;')
                     else:
-                        result += f'    if (offset >= buffer_size) return 0;\n'
-                        result += f'    msg->{var_name}.count = buffer[offset++];\n'
-                        result += f'    if (msg->{var_name}.count > {field.max_size}) return 0;\n'
-                    result += f'    if (offset + msg->{var_name}.count * {element_size} > buffer_size) return 0;\n'
-                    result += f'    memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.count * {element_size});\n'
-                    result += f'    offset += msg->{var_name}.count * {element_size};\n'
+                        field_lines.append(f'if (offset >= buffer_size) return 0;')
+                        field_lines.append(f'msg->{var_name}.count = buffer[offset++];')
+                        field_lines.append(f'if (msg->{var_name}.count > {field.max_size}) return 0;')
+                    field_lines.append(f'if (offset + msg->{var_name}.count * {element_size} > buffer_size) return 0;')
+                    field_lines.append(f'memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.count * {element_size});')
+                    field_lines.append(f'offset += msg->{var_name}.count * {element_size};')
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string: length stored as uint8_t or uint16_t on the wire
                 length_bytes = 2 if field.max_size > 255 else 1
-                result += f'    // {var_name}: variable string\n'
+                min_prefix = length_bytes
+                field_lines.append(f'// {var_name}: variable string')
                 if length_bytes == 2:
-                    result += f'    if (offset + 2 > buffer_size) return 0;\n'
-                    result += f'    memcpy(&msg->{var_name}.length, buffer + offset, 2); offset += 2;\n'
-                    result += f'    if (msg->{var_name}.length > {field.max_size}) return 0;\n'
+                    field_lines.append(f'if (offset + 2 > buffer_size) return 0;')
+                    field_lines.append(f'memcpy(&msg->{var_name}.length, buffer + offset, 2); offset += 2;')
+                    field_lines.append(f'if (msg->{var_name}.length > {field.max_size}) return 0;')
                 else:
-                    result += f'    if (offset >= buffer_size) return 0;\n'
-                    result += f'    msg->{var_name}.length = buffer[offset++];\n'
-                    result += f'    if (msg->{var_name}.length > {field.max_size}) return 0;\n'
-                result += f'    if (offset + msg->{var_name}.length > buffer_size) return 0;\n'
-                result += f'    memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.length);\n'
-                result += f'    offset += msg->{var_name}.length;\n'
+                    field_lines.append(f'if (offset >= buffer_size) return 0;')
+                    field_lines.append(f'msg->{var_name}.length = buffer[offset++];')
+                    field_lines.append(f'if (msg->{var_name}.length > {field.max_size}) return 0;')
+                field_lines.append(f'if (offset + msg->{var_name}.length > buffer_size) return 0;')
+                field_lines.append(f'memcpy(msg->{var_name}.data, buffer + offset, msg->{var_name}.length);')
+                field_lines.append(f'offset += msg->{var_name}.length;')
             else:
                 # Fixed-size field
-                result += f'    // {var_name}: fixed size ({field.size} bytes)\n'
-                result += f'    if (offset + {field.size} > buffer_size) return 0;\n'
-                result += f'    memcpy(&msg->{var_name}, buffer + offset, {field.size});\n'
-                result += f'    offset += {field.size};\n'
+                min_prefix = field.size
+                field_lines.append(f'// {var_name}: fixed size ({field.size} bytes)')
+                field_lines.append(f'if (offset + {field.size} > buffer_size) return 0;')
+                field_lines.append(f'memcpy(&msg->{var_name}, buffer + offset, {field.size});')
+                field_lines.append(f'offset += {field.size};')
+
+            if getattr(field, 'is_extension', False):
+                # Extension field: older senders may omit it entirely. Only attempt
+                # the read if enough bytes remain; otherwise leave the field at its
+                # zero-initialized default (wire evolution, no caller padding needed).
+                result += f'    // {var_name}: extension field, tolerate a short buffer\n'
+                result += f'    if (offset + {min_prefix} <= buffer_size) {{\n'
+                for line in field_lines:
+                    result += f'    {line}\n'
+                result += f'    }}\n'
+            else:
+                for line in field_lines:
+                    result += f'    {line}\n'
         
         # Oneofs: read discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
@@ -799,17 +817,22 @@ class MessageCGen():
         if not msg.variable:
             result += f'\n/**\n'
             result += f' * Deserialize function for {structName}.\n'
-            result += f' * For fixed-size messages: uses memcpy with size validation\n'
+            result += f' * For fixed-size messages: uses memcpy with size validation.\n'
+            result += f' * Wire evolution: a buffer shorter than MAX_SIZE (older sender, base fields\n'
+            result += f' * only) is zero-filled for the missing extension fields; a buffer longer\n'
+            result += f' * than MAX_SIZE (newer sender) has its trailing extension bytes ignored.\n'
+            result += f' * Callers never need to pad or truncate the buffer themselves.\n'
             result += f' * @param buffer Input buffer\n'
             result += f' * @param buffer_size Size of the input buffer\n'
             result += f' * @param msg Pointer to the message to deserialize into\n'
-            result += f' * @return The number of bytes read, or 0 if buffer is invalid\n'
+            result += f' * @return The number of bytes copied from the buffer\n'
             result += f' */\n'
             result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
-            result += f'    /* Fixed-size message - use direct copy */\n'
-            result += f'    if (buffer_size < {defineName}_MAX_SIZE) return 0;\n'
-            result += f'    memcpy(msg, buffer, {defineName}_MAX_SIZE);\n'
-            result += f'    return {defineName}_MAX_SIZE;\n'
+            result += f'    /* Fixed-size message - zero-fill any bytes the sender omitted (wire evolution) */\n'
+            result += f'    size_t copy_len = buffer_size < {defineName}_MAX_SIZE ? buffer_size : {defineName}_MAX_SIZE;\n'
+            result += f'    memset(msg, 0, sizeof({structName}));\n'
+            result += f'    if (copy_len > 0) memcpy(msg, buffer, copy_len);\n'
+            result += f'    return copy_len;\n'
             result += f'}}\n'
             
             # Also add serialize() for non-variable messages
@@ -1079,9 +1102,11 @@ class TestCGen():
             if field.size_option is not None:
                 out += f'    strncpy({prefix}.{var_name}, "test_string", sizeof({prefix}.{var_name}) - 1);\n'
             elif field.max_size is not None:
-                test_str = "test_string"
+                # Clamp the test string to the field's max_size so length stays
+                # within capacity (a length > max_size is rejected by decoders).
+                test_str = "test_string"[:field.max_size]
                 out += f'    {prefix}.{var_name}.length = {len(test_str)};\n'
-                out += f'    strncpy({prefix}.{var_name}.data, "{test_str}", sizeof({prefix}.{var_name}.data) - 1);\n'
+                out += f'    memcpy({prefix}.{var_name}.data, "{test_str}", {len(test_str)});\n'
         else:
             dummy = TestCGen._dummy_value(field, index)
             if dummy is not None:

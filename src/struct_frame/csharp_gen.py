@@ -657,7 +657,20 @@ class MessageCSharpGen():
             result += '        /// </summary>\n'
             result += f'        private static {structName} _DeserializeMaxSize(ReadOnlySpan<byte> data)\n'
             result += '        {\n'
-        
+        else:
+            # Non-variable message: zero-fill any bytes the sender omitted (wire
+            # evolution). A buffer shorter than MaxSize (older sender, base fields
+            # only) leaves the missing extension fields at their default; a buffer
+            # longer than MaxSize (newer sender) has its trailing extension bytes
+            # ignored. Callers never need to pad or truncate the buffer themselves.
+            result += '            if (data.Length != MaxSize)\n'
+            result += '            {\n'
+            result += '                byte[] _padded = new byte[MaxSize];\n'
+            result += '                int _n = Math.Min(data.Length, MaxSize);\n'
+            result += '                data.Slice(0, _n).CopyTo(_padded);\n'
+            result += '                data = _padded;\n'
+            result += '            }\n'
+
         result += f'            var msg = new {structName}();\n'
 
         offset = 0
@@ -1025,6 +1038,8 @@ class MessageCSharpGen():
         for key, f in msg.fields.items():
             var_name = pascal_case(f.name)
             type_name = f.field_type
+            field_lines = []
+            min_prefix = 0
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if normalize_bytes_type(type_name) == "string":
@@ -1032,81 +1047,101 @@ class MessageCSharpGen():
                 else:
                     count_size = 2 if f.max_size > 255 else 1
                     element_size = type_sizes.get(type_name, (f.size - count_size) // f.max_size)
-                result += f'            // {f.name}: variable array\n'
+                min_prefix = 2 if f.max_size > 255 else 1
+                field_lines.append(f'// {f.name}: variable array')
                 if f.max_size > 255:
-                    result += f'            if (offset + 2 > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} count");\n'
-                    result += f'            msg.{var_name}Count = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)), (ushort){f.max_size});\n'
-                    result += f'            offset += 2;\n'
+                    field_lines.append(f'if (offset + 2 > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} count");')
+                    field_lines.append(f'msg.{var_name}Count = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)), (ushort){f.max_size});')
+                    field_lines.append(f'offset += 2;')
                 else:
-                    result += f'            if (offset >= data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} count");\n'
-                    result += f'            msg.{var_name}Count = Math.Min(data[offset++], (byte){f.max_size});\n'
+                    field_lines.append(f'if (offset >= data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} count");')
+                    field_lines.append(f'msg.{var_name}Count = Math.Min(data[offset++], (byte){f.max_size});')
                 if type_name in type_sizes:
                     base_type = csharp_types.get(type_name, type_name)
-                    result += f'            msg.{var_name}Data = new {base_type}[{f.max_size}];\n'
-                    result += f'            if (offset + msg.{var_name}Count * {element_size} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");\n'
-                    result += f'            MemoryMarshal.Cast<byte, {base_type}>(data.Slice(offset, msg.{var_name}Count * {element_size})).CopyTo(msg.{var_name}Data.AsSpan());\n'
-                    result += f'            offset += msg.{var_name}Count * {element_size};\n'
+                    field_lines.append(f'msg.{var_name}Data = new {base_type}[{f.max_size}];')
+                    field_lines.append(f'if (offset + msg.{var_name}Count * {element_size} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");')
+                    field_lines.append(f'MemoryMarshal.Cast<byte, {base_type}>(data.Slice(offset, msg.{var_name}Count * {element_size})).CopyTo(msg.{var_name}Data.AsSpan());')
+                    field_lines.append(f'offset += msg.{var_name}Count * {element_size};')
                 elif f.is_enum:
-                    result += f'            msg.{var_name}Data = new byte[{f.max_size}];\n'
-                    result += f'            if (offset + msg.{var_name}Count > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");\n'
-                    result += f'            data.Slice(offset, msg.{var_name}Count).CopyTo(msg.{var_name}Data.AsSpan());\n'
-                    result += f'            offset += msg.{var_name}Count;\n'
+                    field_lines.append(f'msg.{var_name}Data = new byte[{f.max_size}];')
+                    field_lines.append(f'if (offset + msg.{var_name}Count > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");')
+                    field_lines.append(f'data.Slice(offset, msg.{var_name}Count).CopyTo(msg.{var_name}Data.AsSpan());')
+                    field_lines.append(f'offset += msg.{var_name}Count;')
                 else:
                     type_pkg = f.type_package if f.type_package else f.package
                     nested_type = type_name
-                    result += f'            msg.{var_name}Data = new {nested_type}[{f.max_size}];\n'
-                    result += f'            if (offset + msg.{var_name}Count * {element_size} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");\n'
-                    result += f'            for (int i = 0; i < msg.{var_name}Count; i++)\n'
-                    result += f'                msg.{var_name}Data[i] = {nested_type}.Deserialize(data[(offset + i * {element_size})..(offset + (i + 1) * {element_size})]);\n'
-                    result += f'            offset += msg.{var_name}Count * {element_size};\n'
+                    field_lines.append(f'msg.{var_name}Data = new {nested_type}[{f.max_size}];')
+                    field_lines.append(f'if (offset + msg.{var_name}Count * {element_size} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");')
+                    field_lines.append(f'for (int i = 0; i < msg.{var_name}Count; i++)')
+                    field_lines.append(f'    msg.{var_name}Data[i] = {nested_type}.Deserialize(data[(offset + i * {element_size})..(offset + (i + 1) * {element_size})]);')
+                    field_lines.append(f'offset += msg.{var_name}Count * {element_size};')
             elif normalize_bytes_type(type_name) == "string" and f.max_size is not None:
-                result += f'            // {f.name}: variable string\n'
+                min_prefix = 2 if f.max_size > 255 else 1
+                field_lines.append(f'// {f.name}: variable string')
                 if f.max_size > 255:
-                    result += f'            msg.{var_name}Length = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)), (ushort){f.max_size});\n'
-                    result += f'            offset += 2;\n'
+                    field_lines.append(f'msg.{var_name}Length = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)), (ushort){f.max_size});')
+                    field_lines.append(f'offset += 2;')
                 else:
-                    result += f'            msg.{var_name}Length = Math.Min(data[offset++], (byte){f.max_size});\n'
-                result += f'            msg.{var_name}Data = new byte[{f.max_size}];\n'
-                result += f'            data.Slice(offset, msg.{var_name}Length).CopyTo(msg.{var_name}Data.AsSpan());\n'
-                result += f'            offset += msg.{var_name}Length;\n'
+                    field_lines.append(f'msg.{var_name}Length = Math.Min(data[offset++], (byte){f.max_size});')
+                field_lines.append(f'msg.{var_name}Data = new byte[{f.max_size}];')
+                field_lines.append(f'data.Slice(offset, msg.{var_name}Length).CopyTo(msg.{var_name}Data.AsSpan());')
+                field_lines.append(f'offset += msg.{var_name}Length;')
             else:
                 # Fixed field
                 if type_name in csharp_type_sizes:
+                    min_prefix = csharp_type_sizes[type_name]
                     if type_name == "uint8":
-                        result += f'            msg.{var_name} = data[offset++];\n'
+                        field_lines.append(f'msg.{var_name} = data[offset++];')
                     elif type_name == "int8":
-                        result += f'            msg.{var_name} = (sbyte)data[offset++];\n'
+                        field_lines.append(f'msg.{var_name} = (sbyte)data[offset++];')
                     elif type_name == "uint16":
-                        result += f'            msg.{var_name} = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)); offset += 2;\n'
+                        field_lines.append(f'msg.{var_name} = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)); offset += 2;')
                     elif type_name == "int16":
-                        result += f'            msg.{var_name} = BinaryPrimitives.ReadInt16LittleEndian(data.Slice(offset, 2)); offset += 2;\n'
+                        field_lines.append(f'msg.{var_name} = BinaryPrimitives.ReadInt16LittleEndian(data.Slice(offset, 2)); offset += 2;')
                     elif type_name == "uint32":
-                        result += f'            msg.{var_name} = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(offset, 4)); offset += 4;\n'
+                        field_lines.append(f'msg.{var_name} = BinaryPrimitives.ReadUInt32LittleEndian(data.Slice(offset, 4)); offset += 4;')
                     elif type_name == "int32":
-                        result += f'            msg.{var_name} = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(offset, 4)); offset += 4;\n'
+                        field_lines.append(f'msg.{var_name} = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(offset, 4)); offset += 4;')
                     elif type_name == "uint64":
-                        result += f'            msg.{var_name} = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(offset, 8)); offset += 8;\n'
+                        field_lines.append(f'msg.{var_name} = BinaryPrimitives.ReadUInt64LittleEndian(data.Slice(offset, 8)); offset += 8;')
                     elif type_name == "int64":
-                        result += f'            msg.{var_name} = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(offset, 8)); offset += 8;\n'
+                        field_lines.append(f'msg.{var_name} = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(offset, 8)); offset += 8;')
                     elif type_name == "float":
-                        result += f'            msg.{var_name} = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(offset, 4)); offset += 4;\n'
+                        field_lines.append(f'msg.{var_name} = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(offset, 4)); offset += 4;')
                     elif type_name == "double":
-                        result += f'            msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(data.Slice(offset, 8)); offset += 8;\n'
+                        field_lines.append(f'msg.{var_name} = BinaryPrimitives.ReadDoubleLittleEndian(data.Slice(offset, 8)); offset += 8;')
                     elif type_name == "bool":
-                        result += f'            msg.{var_name} = data[offset++] != 0;\n'
+                        field_lines.append(f'msg.{var_name} = data[offset++] != 0;')
                 elif normalize_bytes_type(type_name) == "string" and f.size_option is not None:
                     # Fixed string - copy into byte array
-                    result += f'            msg.{var_name} = new byte[{f.size}];\n'
-                    result += f'            data.Slice(offset, {f.size}).CopyTo(msg.{var_name}.AsSpan());\n'
-                    result += f'            offset += {f.size};\n'
+                    min_prefix = f.size
+                    field_lines.append(f'msg.{var_name} = new byte[{f.size}];')
+                    field_lines.append(f'data.Slice(offset, {f.size}).CopyTo(msg.{var_name}.AsSpan());')
+                    field_lines.append(f'offset += {f.size};')
                 elif f.is_enum:
+                    min_prefix = 1
                     type_pkg = f.type_package if f.type_package else f.package
                     enum_type = renamed_enums.get(type_name, type_name) if renamed_enums else type_name
-                    result += f'            msg.{var_name} = ({enum_type})data[offset++];\n'
+                    field_lines.append(f'msg.{var_name} = ({enum_type})data[offset++];')
                 else:
                     type_pkg = f.type_package if f.type_package else f.package
                     nested_type = type_name
-                    result += f'            msg.{var_name} = {nested_type}.Deserialize(data[offset..(offset + {nested_type}.MaxSize)]); offset += {nested_type}.MaxSize;\n'
+                    min_prefix = f.size
+                    field_lines.append(f'msg.{var_name} = {nested_type}.Deserialize(data[offset..(offset + {nested_type}.MaxSize)]); offset += {nested_type}.MaxSize;')
+
+            if getattr(f, 'is_extension', False):
+                # Extension field: older senders may omit it entirely. Only attempt
+                # the read if enough bytes remain; otherwise leave it at its default
+                # (wire evolution, no caller padding needed).
+                result += f'            // {f.name}: extension field, tolerate a short buffer\n'
+                result += f'            if (offset + {min_prefix} <= data.Length)\n'
+                result += '            {\n'
+                for line in field_lines:
+                    result += f'                {line}\n'
+                result += '            }\n'
+            else:
+                for line in field_lines:
+                    result += f'            {line}\n'
         
         # Oneofs: read discriminator then union payload (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
@@ -1988,7 +2023,9 @@ class TestCSharpGen():
             if field.size_option is not None:
                 out += f'        {prefix}.{var_name} = {TestCSharpGen._bytes_literal("test_string", field.size_option)};\n'
             elif field.max_size is not None:
-                test_str = "test_string"
+                # Clamp the test string to the field's max_size so length stays
+                # within capacity (length > max_size is rejected by decoders).
+                test_str = "test_string"[:field.max_size]
                 out += f'        {prefix}.{var_name}Length = {len(test_str)};\n'
                 out += f'        {prefix}.{var_name}Data = {TestCSharpGen._bytes_literal(test_str)};\n'
         else:

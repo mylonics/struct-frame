@@ -426,7 +426,15 @@ class MessagePyGen():
         """Generate the _deserialize_fixed() class method"""
         result = '\n    @classmethod\n'
         result += '    def _deserialize_fixed(cls, data: bytes):\n'
-        result += '        """Deserialize binary data into a message instance (fixed-size format)"""\n'
+        result += '        """Deserialize binary data into a message instance (fixed-size format).\n'
+        result += '\n'
+        result += '        Wire evolution: a buffer shorter than MAX_SIZE (older sender, base fields\n'
+        result += '        only) is zero-filled for the missing extension fields; a buffer longer\n'
+        result += '        than MAX_SIZE (newer sender) has its trailing extension bytes ignored.\n'
+        result += '        Callers never need to pad or truncate the buffer themselves.\n'
+        result += '        """\n'
+        result += '        if len(data) < cls.MAX_SIZE:\n'
+        result += '            data = data + b"\\x00" * (cls.MAX_SIZE - len(data))\n'
         result += '        offset = 0\n'
         result += '        fields = {}\n'
 
@@ -1014,108 +1022,131 @@ class MessagePyGen():
         result += '        fields = {}\n'
         
         for key, f in msg.fields.items():
+            field_lines = []
+            min_prefix = 0
             if f.is_array and f.max_size is not None:
                 # Variable array
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 # Count prefix is 2 bytes when max_size > 255, else 1 (must match the writer)
                 count_fmt = "H" if f.max_size > 255 else "B"
                 count_size = 2 if f.max_size > 255 else 1
+                min_prefix = count_size
                 if f.field_type in ("string", "bytes"):
                     element_size = f.element_size if f.element_size else 1
-                    result += f'        # {f.name}: variable string array\n'
-                    result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
-                    result += f'        offset += {count_size}\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            s = struct.unpack_from("<{element_size}s", data, offset)[0]\n'
-                    result += f'            fields["{f.name}"].append(s)\n'
-                    result += f'            offset += {element_size}\n'
+                    field_lines.append(f'# {f.name}: variable string array')
+                    field_lines.append(f'count = struct.unpack_from("<{count_fmt}", data, offset)[0]')
+                    field_lines.append(f'offset += {count_size}')
+                    field_lines.append(f'fields["{f.name}"] = []')
+                    field_lines.append(f'for i in range(min(count, {f.max_size})):')
+                    field_lines.append(f'    s = struct.unpack_from("<{element_size}s", data, offset)[0]')
+                    field_lines.append(f'    fields["{f.name}"].append(s)')
+                    field_lines.append(f'    offset += {element_size}')
                 elif f.is_enum:
-                    result += f'        # {f.name}: variable enum array\n'
-                    result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
-                    result += f'        offset += {count_size}\n'
-                    result += f'        _n = min(count, {f.max_size})\n'
-                    result += f'        fields["{f.name}"] = list(struct.unpack_from("<%dB" % _n, data, offset))\n'
-                    result += f'        offset += _n\n'
+                    field_lines.append(f'# {f.name}: variable enum array')
+                    field_lines.append(f'count = struct.unpack_from("<{count_fmt}", data, offset)[0]')
+                    field_lines.append(f'offset += {count_size}')
+                    field_lines.append(f'_n = min(count, {f.max_size})')
+                    field_lines.append(f'fields["{f.name}"] = list(struct.unpack_from("<%dB" % _n, data, offset))')
+                    field_lines.append(f'offset += _n')
                 elif f.field_type in type_sizes:
                     element_size = type_sizes[f.field_type]
                     fmt = py_struct_format.get(f.field_type, 'B')
-                    result += f'        # {f.name}: variable {f.field_type} array\n'
-                    result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
-                    result += f'        offset += {count_size}\n'
-                    result += f'        _n = min(count, {f.max_size})\n'
-                    result += f'        fields["{f.name}"] = list(struct.unpack_from("<%d{fmt}" % _n, data, offset))\n'
-                    result += f'        offset += _n * {element_size}\n'
+                    field_lines.append(f'# {f.name}: variable {f.field_type} array')
+                    field_lines.append(f'count = struct.unpack_from("<{count_fmt}", data, offset)[0]')
+                    field_lines.append(f'offset += {count_size}')
+                    field_lines.append(f'_n = min(count, {f.max_size})')
+                    field_lines.append(f'fields["{f.name}"] = list(struct.unpack_from("<%d{fmt}" % _n, data, offset))')
+                    field_lines.append(f'offset += _n * {element_size}')
                 else:
                     # Nested message array
                     type_name = f.field_type
                     element_size = (f.size - 1) // f.max_size
-                    result += f'        # {f.name}: variable nested message array\n'
-                    result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
-                    result += f'        offset += {count_size}\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range(min(count, {f.max_size})):\n'
-                    result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
-                    result += f'            fields["{f.name}"].append(msg)\n'
-                    result += f'            offset += {type_name}.MAX_SIZE\n'
+                    field_lines.append(f'# {f.name}: variable nested message array')
+                    field_lines.append(f'count = struct.unpack_from("<{count_fmt}", data, offset)[0]')
+                    field_lines.append(f'offset += {count_size}')
+                    field_lines.append(f'fields["{f.name}"] = []')
+                    field_lines.append(f'for i in range(min(count, {f.max_size})):')
+                    field_lines.append(f'    msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])')
+                    field_lines.append(f'    fields["{f.name}"].append(msg)')
+                    field_lines.append(f'    offset += {type_name}.MAX_SIZE')
             elif f.field_type in ("string", "bytes") and f.max_size is not None:
                 # Variable string
                 count_fmt = "H" if f.max_size > 255 else "B"
                 count_size = 2 if f.max_size > 255 else 1
-                result += f'        # {f.name}: variable string\n'
-                result += f'        str_len = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
-                result += f'        offset += {count_size}\n'
-                result += f'        str_len = min(str_len, {f.max_size})\n'
-                result += f'        fields["{f.name}"] = data[offset:offset+str_len]\n'
-                result += f'        offset += str_len\n'
+                min_prefix = count_size
+                field_lines.append(f'# {f.name}: variable string')
+                field_lines.append(f'str_len = struct.unpack_from("<{count_fmt}", data, offset)[0]')
+                field_lines.append(f'offset += {count_size}')
+                field_lines.append(f'str_len = min(str_len, {f.max_size})')
+                field_lines.append(f'fields["{f.name}"] = data[offset:offset+str_len]')
+                field_lines.append(f'offset += str_len')
             elif f.field_type in ("string", "bytes") and f.size_option is not None:
                 # Fixed string
-                result += f'        # {f.name}: fixed string\n'
-                result += f'        fields["{f.name}"] = struct.unpack_from("<{f.size_option}s", data, offset)[0]\n'
-                result += f'        offset += {f.size_option}\n'
+                min_prefix = f.size_option
+                field_lines.append(f'# {f.name}: fixed string')
+                field_lines.append(f'fields["{f.name}"] = struct.unpack_from("<{f.size_option}s", data, offset)[0]')
+                field_lines.append(f'offset += {f.size_option}')
             elif f.is_array and f.size_option is not None:
                 # Fixed array
                 if f.is_enum:
-                    result += f'        # {f.name}: fixed enum array\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            val = struct.unpack_from("<B", data, offset)[0]\n'
-                    result += f'            offset += 1\n'
-                    result += f'            fields["{f.name}"].append(val)\n'
+                    min_prefix = f.size_option
+                    field_lines.append(f'# {f.name}: fixed enum array')
+                    field_lines.append(f'fields["{f.name}"] = []')
+                    field_lines.append(f'for i in range({f.size_option}):')
+                    field_lines.append(f'    val = struct.unpack_from("<B", data, offset)[0]')
+                    field_lines.append(f'    offset += 1')
+                    field_lines.append(f'    fields["{f.name}"].append(val)')
                 elif f.field_type in py_struct_format:
                     fmt = py_struct_format[f.field_type]
                     size = struct_format_sizes[fmt]
-                    result += f'        # {f.name}: fixed {f.field_type} array\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            val = struct.unpack_from("<{fmt}", data, offset)[0]\n'
-                    result += f'            offset += {size}\n'
-                    result += f'            fields["{f.name}"].append(val)\n'
+                    min_prefix = f.size_option * size
+                    field_lines.append(f'# {f.name}: fixed {f.field_type} array')
+                    field_lines.append(f'fields["{f.name}"] = []')
+                    field_lines.append(f'for i in range({f.size_option}):')
+                    field_lines.append(f'    val = struct.unpack_from("<{fmt}", data, offset)[0]')
+                    field_lines.append(f'    offset += {size}')
+                    field_lines.append(f'    fields["{f.name}"].append(val)')
                 else:
                     # Nested message fixed array
                     type_name = f.field_type
-                    result += f'        # {f.name}: fixed nested message array\n'
-                    result += f'        fields["{f.name}"] = []\n'
-                    result += f'        for i in range({f.size_option}):\n'
-                    result += f'            msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
-                    result += f'            fields["{f.name}"].append(msg)\n'
-                    result += f'            offset += {type_name}.MAX_SIZE\n'
+                    min_prefix = f.size
+                    field_lines.append(f'# {f.name}: fixed nested message array')
+                    field_lines.append(f'fields["{f.name}"] = []')
+                    field_lines.append(f'for i in range({f.size_option}):')
+                    field_lines.append(f'    msg = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])')
+                    field_lines.append(f'    fields["{f.name}"].append(msg)')
+                    field_lines.append(f'    offset += {type_name}.MAX_SIZE')
             elif f.field_type in py_struct_format:
                 fmt = py_struct_format[f.field_type]
                 size = struct_format_sizes[fmt]
-                result += f'        # {f.name}: {f.field_type}\n'
-                result += f'        fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]\n'
-                result += f'        offset += {size}\n'
+                min_prefix = size
+                field_lines.append(f'# {f.name}: {f.field_type}')
+                field_lines.append(f'fields["{f.name}"] = struct.unpack_from("<{fmt}", data, offset)[0]')
+                field_lines.append(f'offset += {size}')
             elif f.is_enum:
-                result += f'        # {f.name}: enum\n'
-                result += f'        fields["{f.name}"] = struct.unpack_from("<B", data, offset)[0]\n'
-                result += f'        offset += 1\n'
+                min_prefix = 1
+                field_lines.append(f'# {f.name}: enum')
+                field_lines.append(f'fields["{f.name}"] = struct.unpack_from("<B", data, offset)[0]')
+                field_lines.append(f'offset += 1')
             else:
                 # Nested message
                 type_name = f.field_type
-                result += f'        # {f.name}: nested message\n'
-                result += f'        fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])\n'
-                result += f'        offset += {type_name}.MAX_SIZE\n'
+                min_prefix = f.size
+                field_lines.append(f'# {f.name}: nested message')
+                field_lines.append(f'fields["{f.name}"] = {type_name}._deserialize_fixed(data[offset:offset+{type_name}.MAX_SIZE])')
+                field_lines.append(f'offset += {type_name}.MAX_SIZE')
+
+            if getattr(f, 'is_extension', False):
+                # Extension field: older senders may omit it entirely. Only attempt
+                # the read if enough bytes remain; otherwise leave it unset so the
+                # constructor's default applies (wire evolution, no caller padding needed).
+                result += f'        # {f.name}: extension field, tolerate a short buffer\n'
+                result += f'        if offset + {min_prefix} <= len(data):\n'
+                for line in field_lines:
+                    result += f'            {line}\n'
+            else:
+                for line in field_lines:
+                    result += f'        {line}\n'
         
         # Oneofs: read discriminator + union payload (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():

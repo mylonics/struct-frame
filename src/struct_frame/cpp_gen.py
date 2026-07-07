@@ -601,29 +601,46 @@ class MessageCppGen():
         
         for key, field in msg.fields.items():
             var_name = field.name
+            field_lines = []
+            min_prefix = 0
             if field.is_array and field.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
                 else:
                     element_size = type_sizes.get(field.field_type, (field.size - 1) // field.max_size)
-                result += f'        if (offset >= buffer_size) return 0;\n'
-                result += f'        {var_name}.count = buffer[offset++];\n'
-                result += f'        if ({var_name}.count > {field.max_size}) {var_name}.count = {field.max_size};\n'
-                result += f'        if (offset + {var_name}.count * {element_size} > buffer_size) return 0;\n'
-                result += f'        std::memcpy({var_name}.data, buffer + offset, {var_name}.count * {element_size});\n'
-                result += f'        offset += {var_name}.count * {element_size};\n'
+                min_prefix = 1
+                field_lines.append(f'if (offset >= buffer_size) return 0;')
+                field_lines.append(f'{var_name}.count = buffer[offset++];')
+                field_lines.append(f'if ({var_name}.count > {field.max_size}) {var_name}.count = {field.max_size};')
+                field_lines.append(f'if (offset + {var_name}.count * {element_size} > buffer_size) return 0;')
+                field_lines.append(f'std::memcpy({var_name}.data, buffer + offset, {var_name}.count * {element_size});')
+                field_lines.append(f'offset += {var_name}.count * {element_size};')
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
-                result += f'        if (offset >= buffer_size) return 0;\n'
-                result += f'        {var_name}.length = buffer[offset++];\n'
-                result += f'        if ({var_name}.length > {field.max_size}) {var_name}.length = {field.max_size};\n'
-                result += f'        if (offset + {var_name}.length > buffer_size) return 0;\n'
-                result += f'        std::memcpy({var_name}.data, buffer + offset, {var_name}.length);\n'
-                result += f'        offset += {var_name}.length;\n'
+                min_prefix = 1
+                field_lines.append(f'if (offset >= buffer_size) return 0;')
+                field_lines.append(f'{var_name}.length = buffer[offset++];')
+                field_lines.append(f'if ({var_name}.length > {field.max_size}) {var_name}.length = {field.max_size};')
+                field_lines.append(f'if (offset + {var_name}.length > buffer_size) return 0;')
+                field_lines.append(f'std::memcpy({var_name}.data, buffer + offset, {var_name}.length);')
+                field_lines.append(f'offset += {var_name}.length;')
             else:
-                result += f'        if (offset + {field.size} > buffer_size) return 0;\n'
-                result += f'        std::memcpy(&{var_name}, buffer + offset, {field.size});\n'
-                result += f'        offset += {field.size};\n'
+                min_prefix = field.size
+                field_lines.append(f'if (offset + {field.size} > buffer_size) return 0;')
+                field_lines.append(f'std::memcpy(&{var_name}, buffer + offset, {field.size});')
+                field_lines.append(f'offset += {field.size};')
+
+            if getattr(field, 'is_extension', False):
+                # Extension field: older senders may omit it entirely. Only attempt
+                # the read if enough bytes remain; otherwise leave the field at its
+                # zero-initialized default (wire evolution, no caller padding needed).
+                result += f'        if (offset + {min_prefix} <= buffer_size) {{\n'
+                for line in field_lines:
+                    result += f'        {line}\n'
+                result += f'        }}\n'
+            else:
+                for line in field_lines:
+                    result += f'        {line}\n'
         
         # Oneofs: read discriminator then union bytes (or length-prefix + variant bytes for variable oneof)
         for oneof_name, oneof in msg.oneofs.items():
@@ -711,11 +728,15 @@ class MessageCppGen():
                 result += f'            return _deserialize_variable(buffer, buffer_size);\n'
                 result += f'        }}\n'
         else:
-            # Non-variable message: simple memcpy with size check
-            result += f'        // Fixed-size message - use direct copy\n'
-            result += f'        if (buffer_size < MAX_SIZE) return 0;\n'
-            result += f'        std::memcpy(this, buffer, MAX_SIZE);\n'
-            result += f'        return MAX_SIZE;\n'
+            # Non-variable message: zero-fill any bytes the sender omitted (wire
+            # evolution). A buffer shorter than MAX_SIZE (older sender, base
+            # fields only) leaves the missing extension fields at their default;
+            # a buffer longer than MAX_SIZE (newer sender) has its trailing
+            # extension bytes ignored. Callers never need to pad or truncate.
+            result += f'        size_t copy_len = buffer_size < MAX_SIZE ? buffer_size : MAX_SIZE;\n'
+            result += f'        std::memset(this, 0, sizeof(*this));\n'
+            result += f'        if (copy_len > 0) std::memcpy(this, buffer, copy_len);\n'
+            result += f'        return copy_len;\n'
         
         result += f'    }}\n'
         
@@ -1117,10 +1138,12 @@ class TestCppGen():
                 # Fixed string
                 result += f'    std::strncpy({prefix}.{var_name}, "test_string", sizeof({prefix}.{var_name}) - 1);\n'
             elif field.max_size is not None:
-                # Variable string
-                test_str = "test_string"
+                # Variable string. Clamp the test string to the field's max_size
+                # so length stays within capacity (length > max_size is rejected
+                # by decoders).
+                test_str = "test_string"[:field.max_size]
                 result += f'    {prefix}.{var_name}.length = {len(test_str)};\n'
-                result += f'    std::strncpy({prefix}.{var_name}.data, "{test_str}", sizeof({prefix}.{var_name}.data) - 1);\n'
+                result += f'    std::memcpy({prefix}.{var_name}.data, "{test_str}", {len(test_str)});\n'
         else:
             # Regular field
             result += f"    {prefix}.{var_name} = {TestCppGen._get_dummy_value(field, use_namespace, index)};\n"

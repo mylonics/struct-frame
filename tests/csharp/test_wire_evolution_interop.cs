@@ -51,17 +51,6 @@ public class TestWireEvolutionInterop
         }
     }
 
-    // Copy a (possibly shorter, base-only) payload into a MaxSize zero buffer so
-    // a newer receiver can zero-fill the missing extension bytes before decoding.
-    private static byte[] PadPayload(FrameMsgInfo info, int maxSize)
-    {
-        var padded = new byte[maxSize];
-        var span = info.GetPayloadSpan();
-        int n = Math.Min(span.Length, maxSize);
-        span.Slice(0, n).CopyTo(padded.AsSpan());
-        return padded;
-    }
-
     // -------------------------------------------------------------------------
     // Scenario 1: newer sender -> older receiver over length-bearing profiles
     // -------------------------------------------------------------------------
@@ -112,7 +101,7 @@ public class TestWireEvolutionInterop
         Check(info.Valid, "[S2] v1->v2 base-only frame validates CRC");
         if (info.Valid && info.MsgData != null)
         {
-            var d = V2.BaseExtensionMessage.Deserialize(PadPayload(info, V2.BaseExtensionMessage.MaxSize));
+            var d = V2.BaseExtensionMessage.Deserialize(info);
             Check(d.Header == 0x1234 && d.Seq == 7, "[S2] v2 decodes base fields correctly");
             Check(d.CrcSeed == 0, "[S2] v2 extension field zero-filled to default");
         }
@@ -194,7 +183,7 @@ public class TestWireEvolutionInterop
         Check(info.Valid, "[S5] v1 base-variant -> v2 frame validates CRC");
         if (info.Valid && info.MsgData != null)
         {
-            var d = V2.OneOfExtensionMessage.Deserialize(PadPayload(info, V2.OneOfExtensionMessage.MaxSize));
+            var d = V2.OneOfExtensionMessage.Deserialize(info);
             Check(d.CommandDiscriminator == V2.OneOfExtensionMessageCommandField.CmdB
                   && d.CmdB != null && d.CmdB.ValueB == -1234,
                   "[S5] v2 decodes the older base oneof variant correctly");
@@ -344,8 +333,7 @@ public class TestWireEvolutionInterop
         Check(info2.Valid, "[S10] v1 variable (base-only) -> v2 validates CRC");
         if (info2.Valid && info2.MsgData != null)
         {
-            var d2 = V2.VariableExtensionMessage.Deserialize(
-                PadPayload(info2, V2.VariableExtensionMessage.MaxSize));
+            var d2 = V2.VariableExtensionMessage.Deserialize(info2);
             Check(d2.NodeId == 9
                   && d2.ReadingsCount == 2
                   && d2.ReadingsData != null
@@ -353,6 +341,8 @@ public class TestWireEvolutionInterop
                   && d2.ReadingsData[1] == 2,
                   "[S10] v2 locates variable base after cross-version decode");
             Check(d2.ExtTimestamp == 0, "[S10] v2 zero-fills the trailing extension field");
+            Check(d2.ExtNoteLength == 0,
+                  "[S10] v2 zero-fills the count-prefixed (string) extension field");
         }
     }
 

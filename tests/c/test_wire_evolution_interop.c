@@ -120,12 +120,9 @@ static void scenario_2(void) {
     check(r.valid, "[S2] v1->v2 base-only frame validates CRC");
 
     if (r.valid && r.msg_data) {
-        /* Newer receiver zero-fills the missing extension bytes before decoding. */
-        uint8_t padded[WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_MAX_SIZE] = {0};
-        size_t copy_len = r.msg_len < sizeof(padded) ? r.msg_len : sizeof(padded);
-        memcpy(padded, r.msg_data, copy_len);
+        /* deserialize() zero-fills the missing extension bytes internally. */
         WireEvolutionV2BaseExtensionMessage d = {0};
-        WireEvolutionV2BaseExtensionMessage_deserialize(padded, sizeof(padded), &d);
+        WireEvolutionV2BaseExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
         check(d.header == 0x1234 && d.seq == 7, "[S2] v2 decodes base fields correctly");
         check(d.crc_seed == 0, "[S2] v2 extension field zero-filled to default");
     }
@@ -217,11 +214,8 @@ static void scenario_5(void) {
     frame_msg_info_t r = parse_with(&PROFILE_STANDARD_CONFIG, buffer, fs, wire_evolution_v2_get_message_info);
     check(r.valid, "[S5] v1 base-variant -> v2 frame validates CRC");
     if (r.valid && r.msg_data) {
-        uint8_t padded[WIRE_EVOLUTION_V2_ONE_OF_EXTENSION_MESSAGE_MAX_SIZE] = {0};
-        size_t copy_len = r.msg_len < sizeof(padded) ? r.msg_len : sizeof(padded);
-        memcpy(padded, r.msg_data, copy_len);
         WireEvolutionV2OneOfExtensionMessage d = {0};
-        WireEvolutionV2OneOfExtensionMessage_deserialize(padded, sizeof(padded), &d);
+        WireEvolutionV2OneOfExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
         check(d.command_discriminator == WIRE_EVOLUTION_V2_ONE_OF_EXTENSION_MESSAGE_COMMAND_FIELD_CMD_B
               && d.command.cmd_b.value_b == -1234,
               "[S5] v2 decodes the older base oneof variant correctly");
@@ -418,17 +412,16 @@ static void scenario_10(void) {
                                      wire_evolution_v2_get_message_info);
     check(r2.valid, "[S10] v1 variable (base-only) -> v2 validates CRC");
     if (r2.valid && r2.msg_data) {
-        uint8_t padded[WIRE_EVOLUTION_V2_VARIABLE_EXTENSION_MESSAGE_MAX_SIZE] = {0};
-        size_t copy_len = r2.msg_len < sizeof(padded) ? r2.msg_len : sizeof(padded);
-        memcpy(padded, r2.msg_data, copy_len);
         WireEvolutionV2VariableExtensionMessage d2 = {0};
-        WireEvolutionV2VariableExtensionMessage_deserialize(padded, sizeof(padded), &d2);
+        WireEvolutionV2VariableExtensionMessage_deserialize(r2.msg_data, r2.msg_len, &d2);
         check(d2.node_id == 9
               && d2.readings.count == 2
               && d2.readings.data[0] == 1
               && d2.readings.data[1] == 2,
               "[S10] v2 locates variable base after cross-version decode");
         check(d2.ext_timestamp == 0, "[S10] v2 zero-fills the trailing extension field");
+        check(d2.ext_note.length == 0,
+              "[S10] v2 zero-fills the count-prefixed (string) extension field");
     }
 }
 
