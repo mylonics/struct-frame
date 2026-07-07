@@ -6,9 +6,17 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
-## [0.10.1](https://github.com/mylonics/struct-frame/releases/tag/0.10.1) - 2026-06-26
+## [0.10.2](https://github.com/mylonics/struct-frame/releases/tag/0.10.2) - 2026-07-07
 
-<small>[Compare with v0.10.0](https://github.com/mylonics/struct-frame/compare/v0.10.0...0.10.1)</small>
+<small>[Compare with v0.10.1](https://github.com/mylonics/struct-frame/compare/v0.10.1...0.10.2)</small>
+
+### Fixed
+
+- Fixing wire evolution (#357) ([f4cfe51](https://github.com/mylonics/struct-frame/commit/f4cfe513fbbd207fa44b58d7e90de075738de680) by Rijesh Augustine).
+
+## [v0.10.1](https://github.com/mylonics/struct-frame/releases/tag/v0.10.1) - 2026-06-26
+
+<small>[Compare with v0.10.0](https://github.com/mylonics/struct-frame/compare/v0.10.0...v0.10.1)</small>
 
 ## [v0.10.0](https://github.com/mylonics/struct-frame/releases/tag/v0.10.0) - 2026-06-20
 
