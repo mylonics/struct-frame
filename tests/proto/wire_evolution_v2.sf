@@ -54,7 +54,10 @@ message BaseExtensionMessage {
 }
 
 // ============================================================================
-// Scenario 2 — variable-length message with top-level extension field
+// Scenario 2 — variable-length message with top-level extension fields.
+// ext_note is deliberately a count-prefixed (variable string) extension AFTER
+// a fixed extension: a base-only v1 frame forces receivers to skip multiple
+// extension fields, including one whose length prefix is entirely absent.
 // ============================================================================
 message VariableExtensionMessage {
   option msgid = 2;
@@ -65,6 +68,7 @@ message VariableExtensionMessage {
 
   option extensions_start = 3;
   uint32 ext_timestamp = 3;
+  string ext_note      = 4 [max_size=8];
 }
 
 // ============================================================================

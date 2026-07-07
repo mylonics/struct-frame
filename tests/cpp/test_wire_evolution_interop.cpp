@@ -322,6 +322,8 @@ static void scenario_10() {
     if (result2.valid && result2.msg_data) {
         v2::VariableExtensionMessage d2{};
         d2.deserialize(result2.msg_data, result2.msg_len);
+        check(d2.ext_note.length == 0,
+              "[S10] v2 zero-fills the count-prefixed (string) extension field");
         check(d2.node_id == 9
               && d2.readings.count == 2
               && d2.readings.data[0] == 1

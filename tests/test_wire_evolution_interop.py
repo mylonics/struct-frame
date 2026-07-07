@@ -269,6 +269,8 @@ def scenario_10_variable(v1, v2, fr: Framing) -> None:
            "[S10] v2 locates variable base after cross-version decode")
     _check(decoded2.ext_timestamp == 0,
            "[S10] v2 zero-fills the trailing extension field")
+    _check(decoded2.ext_note == b"",
+           "[S10] v2 zero-fills the count-prefixed (string) extension field")
 
 
 # ---------------------------------------------------------------------------

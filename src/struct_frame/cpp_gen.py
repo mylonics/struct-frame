@@ -1138,10 +1138,12 @@ class TestCppGen():
                 # Fixed string
                 result += f'    std::strncpy({prefix}.{var_name}, "test_string", sizeof({prefix}.{var_name}) - 1);\n'
             elif field.max_size is not None:
-                # Variable string
-                test_str = "test_string"
+                # Variable string. Clamp the test string to the field's max_size
+                # so length stays within capacity (length > max_size is rejected
+                # by decoders).
+                test_str = "test_string"[:field.max_size]
                 result += f'    {prefix}.{var_name}.length = {len(test_str)};\n'
-                result += f'    std::strncpy({prefix}.{var_name}.data, "{test_str}", sizeof({prefix}.{var_name}.data) - 1);\n'
+                result += f'    std::memcpy({prefix}.{var_name}.data, "{test_str}", {len(test_str)});\n'
         else:
             # Regular field
             result += f"    {prefix}.{var_name} = {TestCppGen._get_dummy_value(field, use_namespace, index)};\n"

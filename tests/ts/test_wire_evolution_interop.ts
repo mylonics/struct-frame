@@ -313,6 +313,8 @@ function scenario10(): void {
       && d2.readingsData[1] === 2,
       '[S10] v2 locates variable base after cross-version decode');
     check(d2.extTimestamp === 0, '[S10] v2 zero-fills the trailing extension field');
+    check(d2.extNoteLength === 0,
+      '[S10] v2 zero-fills the count-prefixed (string) extension field');
   }
 }
 

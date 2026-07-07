@@ -1148,6 +1148,19 @@ class Message:
         # Extension semantics apply only to top-level message fields; oneof
         # fields are always treated as base.
         if self.extensions_start is not None:
+            # Extension fields must form the trailing bytes of the wire payload,
+            # but the wire order is all plain fields followed by all oneofs. A
+            # message-level extensions_start combined with a oneof would place
+            # extension bytes BEFORE the oneof, breaking the base-prefix CRC
+            # split and cross-version interop. Use `option extensions_start`
+            # inside the oneof instead to add extension variants.
+            if self.oneofs:
+                print(
+                    f"Message {self.name}: message-level `option extensions_start` "
+                    f"cannot be combined with oneof fields (extension fields would "
+                    f"not be trailing on the wire). Declare `option extensions_start` "
+                    f"inside the oneof to add extension variants instead.")
+                return False
             field_numbers = [f.number for f in self.fields.values()]
             if self.extensions_start not in field_numbers:
                 print(
@@ -1284,10 +1297,14 @@ class Message:
             self.magic_bytes = calculate_magic_numbers(self)
 
         # Calculate minimum size for variable messages
-        # min_size is the size when all variable-length fields are at their minimum
+        # min_size is the size when all variable-length fields are at their minimum.
+        # Extension fields contribute nothing: an older (extension-unaware) sender
+        # omits them entirely, so the smallest valid payload is base fields only.
         if self.variable:
             self.min_size = 0
             for key, value in self.fields.items():
+                if value.is_extension:
+                    continue
                 if value.is_array and value.max_size is not None:
                     # Bounded array: only the count bytes (1 or 2, no data when empty)
                     count_bytes = 2 if value.max_size > 255 else 1

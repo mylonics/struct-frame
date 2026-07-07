@@ -1465,8 +1465,12 @@ fn run_wire_evolution_interop_tests() -> ! {
                 "[S10] v2 locates variable base after cross-version decode"
             );
             check!(
-                d2.map_or(false, |x| x.ext_timestamp == 0),
+                d2.as_ref().map_or(false, |x| x.ext_timestamp == 0),
                 "[S10] v2 zero-fills the trailing extension field"
+            );
+            check!(
+                d2.map_or(false, |x| x.ext_note_length == 0),
+                "[S10] v2 zero-fills the count-prefixed (string) extension field"
             );
         }
     }

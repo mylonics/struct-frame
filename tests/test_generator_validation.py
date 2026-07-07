@@ -388,3 +388,71 @@ message Foo {
         result = _run(str(sf))
     _report("field_number_zero", result, expected_reject=True,
             expected_msg="must be numbered 1..N")
+
+
+# ---------------------------------------------------------------------------
+# Message-level extensions_start combined with a oneof must be rejected:
+# wire order is fields-then-oneofs, so extension field bytes would sit BEFORE
+# the oneof and not form the trailing region the base-prefix CRC split needs.
+# ---------------------------------------------------------------------------
+
+def test_message_extensions_with_oneof_rejected() -> None:
+    """Message-level extensions_start + oneof breaks the trailing-extension wire model."""
+    proto = """\
+package ext_oneof_test;
+
+message SubA {
+  uint8 a = 1;
+}
+
+message Foo {
+  option msgid = 1;
+  uint8 head = 1;
+
+  option extensions_start = 2;
+  uint32 ext_field = 2;
+
+  oneof payload {
+    option discriminator = "field_order";
+    SubA sub_a = 1;
+  }
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "ext_oneof.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("message_extensions_with_oneof", result, expected_reject=True,
+            expected_msg="cannot be combined with oneof")
+
+
+def test_oneof_level_extensions_still_allowed() -> None:
+    """extensions_start INSIDE a oneof (extension variants) must remain valid."""
+    proto = """\
+package ext_oneof_ok_test;
+
+message SubA {
+  uint8 a = 1;
+}
+
+message SubB {
+  uint16 b = 1;
+}
+
+message Foo {
+  option msgid = 1;
+  uint8 head = 1;
+
+  oneof payload {
+    option discriminator = "field_order";
+    SubA sub_a = 1;
+    option extensions_start = 2;
+    SubB sub_b = 2;
+  }
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "ext_oneof_ok.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("oneof_level_extensions_allowed", result, expected_reject=False)

@@ -341,6 +341,8 @@ public class TestWireEvolutionInterop
                   && d2.ReadingsData[1] == 2,
                   "[S10] v2 locates variable base after cross-version decode");
             Check(d2.ExtTimestamp == 0, "[S10] v2 zero-fills the trailing extension field");
+            Check(d2.ExtNoteLength == 0,
+                  "[S10] v2 zero-fills the count-prefixed (string) extension field");
         }
     }
 

@@ -2023,7 +2023,9 @@ class TestCSharpGen():
             if field.size_option is not None:
                 out += f'        {prefix}.{var_name} = {TestCSharpGen._bytes_literal("test_string", field.size_option)};\n'
             elif field.max_size is not None:
-                test_str = "test_string"
+                # Clamp the test string to the field's max_size so length stays
+                # within capacity (length > max_size is rejected by decoders).
+                test_str = "test_string"[:field.max_size]
                 out += f'        {prefix}.{var_name}Length = {len(test_str)};\n'
                 out += f'        {prefix}.{var_name}Data = {TestCSharpGen._bytes_literal(test_str)};\n'
         else:

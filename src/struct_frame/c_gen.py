@@ -1102,9 +1102,11 @@ class TestCGen():
             if field.size_option is not None:
                 out += f'    strncpy({prefix}.{var_name}, "test_string", sizeof({prefix}.{var_name}) - 1);\n'
             elif field.max_size is not None:
-                test_str = "test_string"
+                # Clamp the test string to the field's max_size so length stays
+                # within capacity (a length > max_size is rejected by decoders).
+                test_str = "test_string"[:field.max_size]
                 out += f'    {prefix}.{var_name}.length = {len(test_str)};\n'
-                out += f'    strncpy({prefix}.{var_name}.data, "{test_str}", sizeof({prefix}.{var_name}.data) - 1);\n'
+                out += f'    memcpy({prefix}.{var_name}.data, "{test_str}", {len(test_str)});\n'
         else:
             dummy = TestCGen._dummy_value(field, index)
             if dummy is not None:

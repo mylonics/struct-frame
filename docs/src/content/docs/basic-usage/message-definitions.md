@@ -818,6 +818,7 @@ The generator enforces:
 - Envelope oneof using `msgid` discriminator must have messages with msgid
 - `extensions_start` must be ≥ 2 (at least one non-extension base field required)
 - `extensions_start` must equal an existing field number in the same scope
+- Message-level `extensions_start` cannot be combined with `oneof` fields — the wire serializes fields before oneofs, so extension fields would not be trailing. Use `option extensions_start` *inside* the `oneof` to add extension variants instead
 
 ## Wire Evolution (Extension Fields)
 
@@ -834,7 +835,7 @@ The generator enforces:
 
 ### Message-level extensions
 
-Declare `option extensions_start = N;` anywhere in the message body, then list extension fields with numbers `>= N`:
+Declare `option extensions_start = N;` anywhere in the message body, then list extension fields with numbers `>= N`. Messages containing a `oneof` cannot use message-level extension fields (the wire serializes fields before oneofs, so the extension bytes would not be trailing) — use [oneof-level extensions](#oneof-level-extensions-extension-variants) instead:
 
 ```proto
 message StatusReport {

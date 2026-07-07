@@ -982,10 +982,14 @@ class MessageRustGen():
                 result += f'{indent}}})\n'
                 return result
 
-            # MIN_SIZE constant for variable messages
+            # MIN_SIZE constant for variable messages. Extension fields
+            # contribute nothing: an older sender omits them entirely, so the
+            # smallest valid payload is base fields only (matches msg.min_size).
             result += '\n    /// Calculate minimum serialized size (all variable fields empty).\n'
             min_size = 0
             for field in msg.fields.values():
+                if getattr(field, 'is_extension', False):
+                    continue
                 if field.is_array:
                     if field.max_size is not None:
                         min_size += 2 if field.max_size > 255 else 1  # just the count

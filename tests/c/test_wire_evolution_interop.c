@@ -420,6 +420,8 @@ static void scenario_10(void) {
               && d2.readings.data[1] == 2,
               "[S10] v2 locates variable base after cross-version decode");
         check(d2.ext_timestamp == 0, "[S10] v2 zero-fills the trailing extension field");
+        check(d2.ext_note.length == 0,
+              "[S10] v2 zero-fills the count-prefixed (string) extension field");
     }
 }
 
