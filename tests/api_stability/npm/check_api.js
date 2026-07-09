@@ -4,11 +4,6 @@ const path = require('path');
 const baseline = path.join(__dirname, 'baseline.d.ts');
 const generatedDir = path.join(__dirname, '..', '..', 'generated', 'ts');
 
-if (!fs.existsSync(baseline)) {
-  console.log('npm API stability: no baseline.d.ts yet; skipping.');
-  process.exit(0);
-}
-
 // Collect all .ts files from the generated directory, excluding test files
 function collectGeneratedDeclarations(dir) {
   const lines = [];
@@ -31,7 +26,30 @@ function collectGeneratedDeclarations(dir) {
   return lines.sort();
 }
 
+const args = process.argv.slice(2);
+const update = args.includes('--update');
+const allowMissingBaseline = args.includes('--allow-missing-baseline');
+
 const current = collectGeneratedDeclarations(generatedDir);
+
+if (update) {
+  const header = '# npm API stability baseline — regenerate with `node check_api.js --update`\n';
+  fs.writeFileSync(baseline, header + current.join('\n') + '\n');
+  console.log(`npm API stability: updated baseline ${baseline} (${current.length} exports).`);
+  process.exit(0);
+}
+
+if (!fs.existsSync(baseline)) {
+  const msg = 'npm API stability: missing baseline.d.ts.';
+  if (allowMissingBaseline) {
+    console.log(msg + ' (allowed; skipping)');
+    process.exit(0);
+  }
+  console.error(msg);
+  console.error('Create tests/api_stability/npm/baseline.d.ts or run with --allow-missing-baseline.');
+  process.exit(1);
+}
+
 const expected = fs.readFileSync(baseline, 'utf8')
   .split('\n')
   .filter(l => l.trim() && !l.startsWith('#'));

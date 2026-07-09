@@ -45,7 +45,6 @@ export const MESSAGE_COUNT = 21;
 function createSerializationTest(magic: number, str: string, flt: number, bl: boolean, arr: number[]): SerializationTestMessage {
   return new SerializationTestMessage({
     magicNumber: magic,
-    testStringLength: str.length,
     testStringData: str,
     testFloat: flt,
     testBool: bl,
@@ -69,7 +68,6 @@ function createBasicTypes(si: number, mi: number, ri: number, li: bigint, su: nu
     doublePrecision: dp,
     flag: fl,
     deviceId: dev,
-    descriptionLength: desc.length,
     descriptionData: desc,
   });
 }
@@ -197,7 +195,7 @@ export function getMessage(index: number): MessageType {
     case 7: return createBasicTypes(-128, -32768, -2147483648, -9223372036854775807n, 255, 65535, 4294967295, 9223372036854775807n, -273.15, -9999.999999, false, 'NEG-TEST', 'Negative and max values');
     case 8: return createUnionWithArray();
     case 9: return createUnionWithTest();
-    case 10: return createBasicTypes(-128, -32768, -2147483648, -9223372036854775807n, 255, 65535, 4294967295, 9223372036854775807n, -273.15, -9999.999999, false, 'NEG-TEST', 'Negative and max values');
+    case 10: return createBasicTypes(-128, -32768, -2147483648, -9223372036854775808n, 255, 65535, 4294967295, 18446744073709551615n, Infinity, -Infinity, false, 'NEG-TEST', 'UTF-8 edge: café 日本語 🚀!');
     case 11: return createVariableSingleArrayEmpty();
     case 12: return createVariableSingleArraySingle();
     case 13: return createVariableSingleArrayThird();

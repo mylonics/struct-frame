@@ -11,6 +11,17 @@ byte-for-byte.  Any difference is a wire-format change and must be either
 reverted or, if intentional, explicitly committed by re-running this script
 with ``--update``.
 
+Finally, runs a **cross-language decode** pass: every already-built
+non-Python runner (C, C++, TypeScript, JavaScript, C#, Rust) decodes the
+same committed golden files. Without this, the goldens are only ever
+verified against the Python encoder/decoder pair that produced them --
+nothing ties them to what the other six languages actually do with the
+same bytes. If no other-language runners are built (fresh checkout with
+no prior ``test_all.py``/``run_tests.py`` run), this pass is skipped with
+a note rather than failing, since ``check_golden.py`` is also used
+standalone; in CI, ``test_all.py`` always compiles every language first,
+so the pass is fully enforced there.
+
 See: docs/src/content/docs/reference/conformance.md
 
 Usage:
@@ -125,6 +136,80 @@ def _decode(script: str, profile: str, golden_path: Path, verbose: bool) -> bool
     return True
 
 
+# (script, profile, golden filename) -> (runner_name, expected message count).
+# Mirrors SUITES above; kept separate so SUITES stays a pure golden-file table.
+_CROSS_LANG_RUNNER: dict = {}
+
+
+def _cross_lang_runner_info(script: str):
+    """Map a golden's encoder script to (runner_name, expected_count) for
+    decoding it with every other language's runner. Lazily imports
+    run_tests.py's message-count constants to stay in sync with the
+    canonical values instead of duplicating them here."""
+    if not _CROSS_LANG_RUNNER:
+        from run_tests import STANDARD_MESSAGE_COUNT, EXTENDED_MESSAGE_COUNT
+        _CROSS_LANG_RUNNER.update({
+            "py/test_standard.py": ("test_standard", STANDARD_MESSAGE_COUNT),
+            "py/test_extended.py": ("test_extended", EXTENDED_MESSAGE_COUNT),
+            "py/test_variable_flag.py": ("test_variable_flag", 7),
+        })
+    return _CROSS_LANG_RUNNER[script]
+
+
+def _decode_cross_language(verbose: bool) -> List[str]:
+    """Decode every committed golden with every already-built non-Python
+    runner. Returns a list of failure messages (empty means all good, or
+    nothing was built to check -- see the module docstring)."""
+    from run_tests import TestRunner
+
+    runner = TestRunner(verbose=verbose, quiet=not verbose)
+    other_langs = [lang for lid, lang in runner.languages.items() if lid not in ("py", "gql")]
+
+    failures: List[str] = []
+    not_built: List[str] = []
+    decoded_any = False
+
+    for script, profile, golden_name in SUITES:
+        golden_path = GOLDEN_DIR / golden_name
+        if not golden_path.exists():
+            continue
+        runner_name, expected_count = _cross_lang_runner_info(script)
+        for lang in other_langs:
+            success, stdout, stderr = runner._run_test_runner(lang, "decode", profile, golden_path, runner_name)
+            if not success and "not found" in stderr.lower():
+                # Runner/script/DLL doesn't exist yet -- not built, not a
+                # decode failure. _run_test_runner returns this distinct
+                # reason string (vs. an actual decode error) in that case.
+                if lang.id not in not_built:
+                    not_built.append(lang.id)
+                continue
+            decoded_any = True
+            count = runner._extract_message_count(stdout, stderr)
+            if success and count == expected_count:
+                if verbose:
+                    print(f"[ ok ] {lang.id}: {golden_name} decoded ({count} messages)")
+                continue
+            failures.append(
+                f"{lang.id}: FAILED to decode {golden_name} via {runner_name} "
+                f"(expected {expected_count} messages, got {count}, success={success})"
+            )
+
+    if not decoded_any:
+        print("[skip] no other-language runners are built; skipping cross-language "
+              "golden decode (run test_all.py / run_tests.py first to enable it)")
+        return []
+
+    if not_built:
+        print(f"[note] cross-language golden decode: {', '.join(sorted(not_built))} "
+              f"not built, skipped (others still checked)")
+
+    if not failures:
+        checked = sorted(l.id for l in other_langs if l.id not in not_built)
+        print(f"[PASS] cross-language golden decode: {', '.join(checked)} all decoded successfully.")
+
+    return failures
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -214,6 +299,18 @@ def main() -> int:
         return 1
 
     print(f"[PASS] all {len(SUITES)} golden(s) decoded successfully.")
+
+    # -----------------------------------------------------------------
+    # CROSS-LANGUAGE DECODE: every other language's already-built runner
+    # decodes the same committed golden files (conformance §6/§7 rows 2-7).
+    # -----------------------------------------------------------------
+    cross_lang_failures = _decode_cross_language(args.verbose)
+    if cross_lang_failures:
+        print(f"\n[FAIL] {len(cross_lang_failures)} cross-language decode failure(s):\n")
+        for msg in cross_lang_failures:
+            print(f"  {msg}")
+        return 1
+
     return 0
 
 

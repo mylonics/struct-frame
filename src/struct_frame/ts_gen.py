@@ -989,10 +989,27 @@ class MessageTsClassGen():
         result = f'  get {name}(): string {{\n'
         result += f'    return this._readString({offset}, {size});\n'
         result += f'  }}\n'
-        result += f'  set {name}(value: string) {{\n'
-        result += f'    this._writeString({offset}, {size}, value);\n'
-        result += f'  }}\n\n'
-        
+        if field_info.is_variable:
+            # Variable (length-prefixed) string: the paired `*Length` field
+            # is always laid out immediately before this Data field (see
+            # calculate_field_layout in ts_js_base.py). Recompute it from the
+            # actual UTF-8 bytes _writeString() wrote rather than trusting
+            # the caller to pass a matching length separately -- the natural
+            # `str.length` idiom is UTF-16 code units and silently
+            # undercounts any multibyte character, corrupting the wire
+            # length prefix for non-ASCII content.
+            length_size = 2 if size > 255 else 1
+            length_offset = offset - length_size
+            length_write = 'writeUInt16LE' if length_size == 2 else 'writeUInt8'
+            result += f'  set {name}(value: string) {{\n'
+            result += f'    const written = this._writeString({offset}, {size}, value);\n'
+            result += f'    this._buffer.{length_write}(written, {length_offset});\n'
+            result += f'  }}\n\n'
+        else:
+            result += f'  set {name}(value: string) {{\n'
+            result += f'    this._writeString({offset}, {size}, value);\n'
+            result += f'  }}\n\n'
+
         return result
     
     @staticmethod

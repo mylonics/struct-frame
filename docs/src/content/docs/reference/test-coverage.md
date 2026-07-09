@@ -204,7 +204,7 @@ Generated files: `tests/generated/<lang>/test_roundtrip_<pkg>.{c,cpp,py,ts,js,cs
 
 ## 4. Cross-Language Compatibility Matrix
 
-The test runner builds a compatibility matrix by having each language encode a frame and every other language decode it.
+The test runner establishes cross-language wire compatibility via a C++-anchored hub, not by literally running every encoder against every decoder: each language (1) encodes a frame to its own file, (2) that file is byte-compared against the C++ reference encoding and decoded by the C++ decoder, and (3) every language decodes the C++ reference bytes. Because step (2) proves each language's bytes are byte-identical to the C++ reference, and step (3) proves every language can decode those reference bytes, any two languages are transitively guaranteed to interoperate without ever being executed back-to-back. See `_validate_encoded_file`/`_run_decode` in `tests/run_tests.py`.
 
 | Encoder \ Decoder | C | C++ | Python | TS | JS | C# | Rust |
 |--------|--------|--------|--------|--------|--------|--------|--------|
@@ -318,7 +318,7 @@ The 33 scenarios in the table below are registered in every language's `test_neg
 
 > **Closed.** `StructFrameSdk` subscribe/dispatch is now tested with mock transports in six languages:
 > - **C++** -- `tests/cpp/test_sdk_subscribe.cpp` (17 `run_test` registrations)
-> - **Python** -- `tests/py/test_sdk.py` (8 test functions, 31 `run_test` assertions)
+> - **Python** -- `tests/py/test_sdk.py` (8 test functions, 32 `run_test` assertions)
 > - **TypeScript** -- `tests/ts/test_sdk.ts` (7 test functions, 25 `assert` assertions)
 > - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (32 `Assert` assertions)
 > - **JavaScript** -- `tests/js/test_sdk.js` (7 test functions, 25 `assert` assertions)

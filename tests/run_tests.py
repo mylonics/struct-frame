@@ -785,9 +785,10 @@ class TestRunner:
         # C/C++: compile test_standard and test_extended executables
         if lang.id in ("c", "cpp"):
             success = True
-            base_runners = ["test_standard", "test_extended", "test_variable_flag", 
+            base_runners = ["test_standard", "test_extended", "test_variable_flag",
                            "test_profiling", "test_profiling_generated", "test_negative",
-                           "test_wire_evolution", "test_wire_evolution_interop"]
+                           "test_wire_evolution", "test_wire_evolution_interop",
+                           "test_wire_evolution_file_io"]
             sdk_runners = ["test_streaming"] if lang.id == "c" else ["test_sdk_units", "test_sdk_subscribe", "test_sdk_headers_compile"]
             
             for runner in base_runners + sdk_runners:
@@ -1216,8 +1217,8 @@ class TestRunner:
         
         if runner.exists():
             cmd = f'"{runner}" decode {profile_name} "{lang_file}"'
-            success, stdout, _ = self.run_cmd(cmd, cwd=work_dir)
-            count = self._extract_message_count(stdout)
+            success, stdout, stderr = self.run_cmd(cmd, cwd=work_dir)
+            count = self._extract_message_count(stdout, stderr)
             result["cpp_decode"] = success and count == expected_count
             result["cpp_decode_count"] = count
         else:
@@ -1243,16 +1244,16 @@ class TestRunner:
         
         # If same file (same language), just use it directly
         if base_file.resolve() == target_file.resolve():
-            success, stdout, _ = self._run_test_runner(lang, "decode", profile_name, base_file, runner_name)
-            count = self._extract_message_count(stdout)
+            success, stdout, stderr = self._run_test_runner(lang, "decode", profile_name, base_file, runner_name)
+            count = self._extract_message_count(stdout, stderr)
             full_success = success and count == expected_count
             return {"success": full_success, "count": count}
-        
+
         # Otherwise copy and clean up
         try:
             shutil.copy2(base_file, target_file)
-            success, stdout, _ = self._run_test_runner(lang, "decode", profile_name, target_file, runner_name)
-            count = self._extract_message_count(stdout)
+            success, stdout, stderr = self._run_test_runner(lang, "decode", profile_name, target_file, runner_name)
+            count = self._extract_message_count(stdout, stderr)
 
             # Success requires both runner success AND an exact message count.
             full_success = success and count == expected_count
@@ -1337,16 +1338,27 @@ class TestRunner:
         
         return False, "", "Unknown language type"
     
-    def _extract_message_count(self, stdout: str) -> int:
-        """Extract message count from decoder output."""
-        if not stdout:
+    def _extract_message_count(self, stdout: str, stderr: str = "") -> int:
+        """Extract message count from decoder output.
+
+        Failure lines vary by language: C prints "N messages validated before
+        error"; C++/C#/TS/JS/Python print "N of M messages validated"; Rust
+        prints "N/M messages validated" on stderr. In every shape the count
+        we want is the first number, so match it generically rather than
+        requiring "messages" to immediately follow (which only C's shape
+        satisfies) -- the old pattern silently returned 0 for every other
+        language's failure line instead of the actual partial count.
+        """
+        combined = stdout if not stderr else f"{stdout}\n{stderr}"
+        if not combined:
             return 0
         # First try SUCCESS pattern (full success)
-        match = re.search(r'SUCCESS:\s+(\d+)\s+messages?\s+validated', stdout)
+        match = re.search(r'SUCCESS:\s+(\d+)\s+messages?\s+validated', combined)
         if match:
             return int(match.group(1))
-        # Then try FAILED pattern (partial success)
-        match = re.search(r'FAILED:\s+(\d+)\s+messages?\s+validated', stdout)
+        # Then try FAILED pattern (partial success): "N messages validated...",
+        # "N of M messages validated", or "N/M messages validated".
+        match = re.search(r'FAILED:\s+(\d+)(?:\s+of\s+\d+|/\d+)?\s+messages?\s+validated', combined)
         if match:
             return int(match.group(1))
         return 0

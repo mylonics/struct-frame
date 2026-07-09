@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <variant>
 
@@ -218,11 +220,13 @@ struct StandardMessages {
       case 9:
         return create_union_with_test();
 
-      // BasicTypes message (10)
+      // BasicTypes message (10): true int64/uint64 extremes + IEEE-754
+      // infinities + multibyte UTF-8, distinct from case 7 above (was a
+      // byte-for-byte duplicate of the same create_basic_types() call).
       case 10:
-        return create_basic_types(-128, -32768, -2147483648, -9223372036854775807LL, 255, 65535, 4294967295U,
-                                  9223372036854775807ULL, -273.15f, -9999.999999, false, "NEG-TEST",
-                                  "Negative and max values");
+        return create_basic_types(-128, -32768, -2147483648, INT64_MIN, 255, 65535, 4294967295U,
+                                  UINT64_MAX, INFINITY, -INFINITY, false, "NEG-TEST",
+                                  "UTF-8 edge: café 日本語 🚀!");
 
       // VariableSingleArray messages (11-15)
       case 11:

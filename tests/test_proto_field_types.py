@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+
+import pytest
+
 from test_utils import _check, run_generator, load_generated_module, PROTO_FILE
 
 
@@ -93,8 +96,7 @@ def _c_enum_to_string(c_dir: Path) -> None:
             stderr=subprocess.PIPE,
         )
     except FileNotFoundError:
-        print("SKIP: gcc not available - skipping C enum-to-string test")
-        return
+        pytest.skip("gcc not available - skipping C enum-to-string test")
     result = subprocess.run([str(out)], capture_output=True, text=True)
     _check(result.returncode == 0,
            f"C enum-to-string binary failed:\n{result.stdout}{result.stderr}")
@@ -141,8 +143,7 @@ def _cpp_enum_to_string(cpp_dir: Path) -> None:
             stderr=subprocess.PIPE,
         )
     except FileNotFoundError:
-        print("SKIP: g++ not available - skipping C++ enum-to-string test")
-        return
+        pytest.skip("g++ not available - skipping C++ enum-to-string test")
     result = subprocess.run([str(out)], capture_output=True, text=True)
     _check(result.returncode == 0,
            f"C++ enum-to-string binary failed:\n{result.stdout}{result.stderr}")
@@ -344,8 +345,7 @@ def _c_oneof(c_dir: Path) -> None:
             capture_output=True, text=True,
         )
     except FileNotFoundError:
-        print("SKIP: gcc not available - skipping C oneof tests")
-        return
+        pytest.skip("gcc not available - skipping C oneof tests")
     _check(result.returncode == 0,
            f"C oneof test failed to compile:\n{result.stdout}{result.stderr}")
     run = subprocess.run([str(out)], capture_output=True, text=True)
@@ -419,8 +419,7 @@ def _cpp_oneof(cpp_dir: Path) -> None:
             capture_output=True, text=True,
         )
     except FileNotFoundError:
-        print("SKIP: g++ not available - skipping C++ oneof tests")
-        return
+        pytest.skip("g++ not available - skipping C++ oneof tests")
     _check(result.returncode == 0,
            f"C++ oneof test failed to compile:\n{result.stdout}{result.stderr}")
     run = subprocess.run([str(out)], capture_output=True, text=True)

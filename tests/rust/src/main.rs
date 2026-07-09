@@ -337,9 +337,15 @@ fn get_expected_payload_standard(index: usize, buf: &mut [u8], use_fixed: bool) 
                 200, 50000, 4000000000u32, 9223372036854775807u64,
                 3.14159, 2.718281828459045, true, b"DEVICE-001", b"Basic test values"), buf, use_fixed),
         6 => pack_msg(&create_basic_types(0, 0, 0, 0, 0, 0, 0, 0, 0.0, 0.0, false, b"", b""), buf, use_fixed),
-        7 | 10 => pack_msg(&create_basic_types(-128, -32768, -2147483648i32, -9223372036854775807i64,
+        7 => pack_msg(&create_basic_types(-128, -32768, -2147483648i32, -9223372036854775807i64,
                 255, 65535, 4294967295u32, 9223372036854775807u64,
                 -273.15, -9999.999999, false, b"NEG-TEST", b"Negative and max values"), buf, use_fixed),
+        // True int64/uint64 extremes + IEEE-754 infinities + multibyte UTF-8,
+        // distinct from index 7 above (was a byte-for-byte duplicate call).
+        10 => pack_msg(&create_basic_types(-128, -32768, -2147483648i32, i64::MIN,
+                255, 65535, 4294967295u32, u64::MAX,
+                f32::INFINITY, f64::NEG_INFINITY, false, b"NEG-TEST",
+                "UTF-8 edge: café 日本語 🚀!".as_bytes()), buf, use_fixed),
         8 => pack_msg(&create_union_with_array(), buf, use_fixed),
         9 => pack_msg(&create_union_with_test(), buf, use_fixed),
         11 => {
@@ -481,9 +487,12 @@ fn encode_standard(config: &ProfileConfig, output: &mut [u8]) -> usize {
     enc!(create_union_with_array());
     enc!(create_union_with_test());
 
-    enc!(create_basic_types(-128, -32768, -2147483648i32, -9223372036854775807i64,
-        255, 65535, 4294967295u32, 9223372036854775807u64,
-        -273.15, -9999.999999, false, b"NEG-TEST", b"Negative and max values"));
+    // True int64/uint64 extremes + IEEE-754 infinities + multibyte UTF-8,
+    // distinct from the index-7 call above (was a byte-for-byte duplicate).
+    enc!(create_basic_types(-128, -32768, -2147483648i32, i64::MIN,
+        255, 65535, 4294967295u32, u64::MAX,
+        f32::INFINITY, f64::NEG_INFINITY, false, b"NEG-TEST",
+        "UTF-8 edge: café 日本語 🚀!".as_bytes()));
 
     {
         let mut m = VariableSingleArray::default();

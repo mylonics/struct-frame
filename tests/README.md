@@ -93,7 +93,7 @@ Higher-level test infrastructure (includes `profile_runner.h`):
 
 ### 4. Negative Tests (`test_negative.*`)
 **Purpose**: Validates parsers reject corrupted, truncated, or malformed frames.
-15 uniform scenarios implemented identically in all 7 languages (plus language-specific extras) — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
+33 uniform + 4 package scenarios (37 total) implemented identically in all 7 languages, Python has 5 additional scenarios (42 total) — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
 
 ### 5. Streaming Tests (`test_streaming.*`)
 **Purpose**: Validates byte-at-a-time accumulating-reader behaviour (C, Rust).
