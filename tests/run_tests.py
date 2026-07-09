@@ -262,8 +262,11 @@ EXTENDED_PROFILES = [
     ("network", "ProfileNetwork"),
 ]
 
-# Expected message counts
-STANDARD_MESSAGE_COUNT = 17
+# Expected message counts. These MUST match the per-language suite constants
+# (STD_MESSAGE_COUNT / MESSAGE_COUNT in tests/*/include/*standard*/*extended*).
+# The decode/validate phases assert an *exact* match, so a stale value here
+# will fail the run rather than being silently absorbed.
+STANDARD_MESSAGE_COUNT = 21
 EXTENDED_MESSAGE_COUNT = 10
 
 
@@ -1215,7 +1218,7 @@ class TestRunner:
             cmd = f'"{runner}" decode {profile_name} "{lang_file}"'
             success, stdout, _ = self.run_cmd(cmd, cwd=work_dir)
             count = self._extract_message_count(stdout)
-            result["cpp_decode"] = success and count >= expected_count
+            result["cpp_decode"] = success and count == expected_count
             result["cpp_decode_count"] = count
         else:
             result["cpp_decode"] = False
@@ -1242,7 +1245,7 @@ class TestRunner:
         if base_file.resolve() == target_file.resolve():
             success, stdout, _ = self._run_test_runner(lang, "decode", profile_name, base_file, runner_name)
             count = self._extract_message_count(stdout)
-            full_success = success and count >= expected_count
+            full_success = success and count == expected_count
             return {"success": full_success, "count": count}
         
         # Otherwise copy and clean up
@@ -1250,9 +1253,9 @@ class TestRunner:
             shutil.copy2(base_file, target_file)
             success, stdout, _ = self._run_test_runner(lang, "decode", profile_name, target_file, runner_name)
             count = self._extract_message_count(stdout)
-            
-            # Success requires both runner success AND correct message count
-            full_success = success and count >= expected_count
+
+            # Success requires both runner success AND an exact message count.
+            full_success = success and count == expected_count
             return {"success": full_success, "count": count}
         finally:
             if target_file.exists() and base_file.resolve() != target_file.resolve():
@@ -1474,6 +1477,16 @@ class TestRunner:
             "python -m pytest --version", cwd=self.project_root, timeout=10
         )
         if not probe_ok:
+            # In CI a missing pytest means the standalone suite silently did not
+            # run — that must fail rather than report a phantom pass. Locally it
+            # remains a soft skip so the compiled matrix is still usable without
+            # pytest installed. (GitHub Actions and most CIs set CI=true.)
+            if os.environ.get("CI"):
+                print("  FAIL: pytest not installed but CI is set — refusing to "
+                      "skip the standalone suite silently (pip install pytest)")
+                if probe_err:
+                    print(f"  ({probe_err.strip()})")
+                return False
             print("  SKIP: pytest not installed — run: pip install pytest")
             if probe_err:
                 print(f"  ({probe_err.strip()})")
@@ -1498,75 +1511,101 @@ class TestRunner:
         all_test_names = set()  # All unique test names across languages
         
         all_success = True
+
+        def _record_missing(lang: Language) -> None:
+            """Record a hard failure when a testable language's negative runner
+            is absent. A deleted test source is skipped (not failed) by the
+            compile phase, so without this a removed negative suite would drop
+            out silently and the run would still report success."""
+            self.results["negative"][lang.id] = False
+            self.failures.append({
+                "phase": "Negative Tests",
+                "language": lang.name,
+                "profile": "",
+                "reason": "negative-test runner missing (deleted source or not built)",
+            })
+
         for lang in self.get_testable_languages():
             test_name = f"{lang.name} negative tests"
             success = False
             stdout = ""
             stderr = ""
-            
+
             if lang.id in ("c", "cpp"):
                 # C/C++: run compiled executable
                 build_dir = self.project_root / lang.build_dir
                 test_exe = build_dir / f"test_negative{lang.exe_ext}"
-                
+
                 if not test_exe.exists():
+                    _record_missing(lang)
+                    all_success = False
                     continue
-                
+
                 success, stdout, stderr = self.run_cmd(str(test_exe), timeout=30)
-                
+
             elif lang.id == "py":
                 # Python: run test script directly
                 test_script = self.project_root / lang.test_dir / "test_negative.py"
-                
+
                 if not test_script.exists():
+                    _record_missing(lang)
+                    all_success = False
                     continue
-                
+
                 success, stdout, stderr = self.run_cmd(f'python "{test_script}"', timeout=30)
-                
+
             elif lang.id == "ts":
                 # TypeScript: run compiled test
                 test_script = self.project_root / lang.test_dir / "test_negative.ts"
-                
+
                 if not test_script.exists():
+                    _record_missing(lang)
+                    all_success = False
                     continue
-                
+
                 # TypeScript uses npx ts-node or node with compiled JS
-                success, stdout, stderr = self.run_cmd(f'npx ts-node "{test_script}"', 
+                success, stdout, stderr = self.run_cmd(f'npx ts-node "{test_script}"',
                                                        cwd=self.project_root / lang.test_dir, timeout=30)
-                
+
             elif lang.id == "js":
                 # JavaScript: run test script directly
                 test_script = self.project_root / lang.test_dir / "test_negative.js"
-                
+
                 if not test_script.exists():
+                    _record_missing(lang)
+                    all_success = False
                     continue
-                
+
                 success, stdout, stderr = self.run_cmd(f'node "{test_script}"', timeout=30)
-                
+
             elif lang.id == "csharp":
                 # C#: compile and run (handled by test runner executable)
                 build_dir = self.project_root / lang.build_dir
                 # C# test runner handles routing to test_negative
                 test_exe = build_dir / "StructFrameTests.exe"
-                
+
                 if not test_exe.exists():
                     test_exe = build_dir / "StructFrameTests.dll"
                     if not test_exe.exists():
+                        _record_missing(lang)
+                        all_success = False
                         continue
                     success, stdout, stderr = self.run_cmd(f'dotnet "{test_exe}" --runner test_negative', timeout=30)
                 else:
                     success, stdout, stderr = self.run_cmd(f'"{test_exe}" --runner test_negative', timeout=30)
-            
+
             elif lang.id == "rust":
                 # Rust: run compiled test_negative binary
                 build_dir = self.project_root / lang.build_dir
                 test_exe = build_dir / f"test_negative{lang.exe_ext}"
-                
+
                 if not test_exe.exists():
+                    _record_missing(lang)
+                    all_success = False
                     continue
-                
+
                 success, stdout, stderr = self.run_cmd(str(test_exe), timeout=30)
-            
+
             else:
                 continue
             
@@ -1664,6 +1703,34 @@ class TestRunner:
         
         return all_success
 
+    def _gate_missing_applicable(self, table_data: Dict[str, Dict[str, Any]],
+                                 results: Dict[str, Any], phase: str) -> bool:
+        """Turn any still-"MISSING" (applicable-but-not-run) cell into a recorded
+        failure, unless the language's compile step already failed (that is a
+        separate, already-recorded failure).
+
+        Without this, an applicable test whose runner binary/script is absent
+        (e.g. a deleted or unbuilt runner) shows "??" in the matrix but is never
+        counted — so it could vanish while the run still reports success.
+        Returns True if any cell was gated to a failure.
+        """
+        gated = False
+        for test_name, cells in table_data.items():
+            for lid, status in cells.items():
+                if status != "MISSING":
+                    continue
+                # Languages with no compile step aren't in the compilation map;
+                # default True so py/js still gate. A failed compile is skipped
+                # here because it is already a recorded failure.
+                if not self.results.get("compilation", {}).get(lid, True):
+                    continue
+                cells[lid] = False
+                results[f"{lid}:{test_name}:missing"] = False
+                self.add_failure(phase, lid, None,
+                                 f"{test_name} did not run (runner missing/unbuilt)")
+                gated = True
+        return gated
+
     def run_envelope_sdk_test(self) -> bool:
         """Run the envelope SDK interface test (field_order discriminator naming)."""
         self.print_section("ENVELOPE SDK TESTS")
@@ -1734,6 +1801,8 @@ class TestRunner:
                 if not success2:
                     all_success = False
 
+        if self._gate_missing_applicable(table_data, env_results, "envelope_sdk"):
+            all_success = False
         render_results_table(table_data, testable, row_label="Envelope Test")
         return all_success
 
@@ -1951,6 +2020,8 @@ class TestRunner:
                     if not success:
                         all_success = False
 
+        if self._gate_missing_applicable(table_data, results, "sdk"):
+            all_success = False
         render_results_table(table_data, testable, row_label="SDK Test")
         return all_success
 
@@ -2071,6 +2142,8 @@ class TestRunner:
                 if not success:
                     all_success = False
 
+        if self._gate_missing_applicable(table_data, results, "wire_evolution"):
+            all_success = False
         render_results_table(table_data, testable, row_label="Wire Evolution Test")
         return all_success
 
@@ -2500,6 +2573,22 @@ class TestRunner:
         rt_total = len(self.results.get("roundtrip", {}))
         rt_passed = sum(1 for v in self.results.get("roundtrip", {}).values() if v)
 
+        # SDK unit/subscribe, envelope-SDK, and wire-evolution phases. These
+        # were previously executed but excluded from the pass/total tally, so a
+        # failure here printed FAIL yet the run still reported overall SUCCESS.
+        sdk_total = len(self.results.get("sdk", {}))
+        sdk_passed = sum(1 for v in self.results.get("sdk", {}).values() if v)
+        env_total = len(self.results.get("envelope_sdk", {}))
+        env_passed = sum(1 for v in self.results.get("envelope_sdk", {}).values() if v)
+        wire_total = len(self.results.get("wire_evolution", {}))
+        wire_passed = sum(1 for v in self.results.get("wire_evolution", {}).values() if v)
+
+        # Profiling + variable-truncation phases (recorded in run()).
+        prof_total = len(self.results.get("profiling", {}))
+        prof_passed = sum(1 for v in self.results.get("profiling", {}).values() if v)
+        trunc_total = len(self.results.get("variable_truncation", {}))
+        trunc_passed = sum(1 for v in self.results.get("variable_truncation", {}).values() if v)
+
         # Standalone pytest suite
         st_total = len(self.results.get("standalone", {}))
         st_passed = sum(1 for v in self.results.get("standalone", {}).values() if v)
@@ -2529,6 +2618,11 @@ class TestRunner:
         print(fmt('Variable Flag Validate', var_validate_passed, var_validate_total))
         print(fmt('Variable Flag Decode',   var_decode_passed,   var_decode_total))
         print(fmt('Negative Tests',         neg_passed,          neg_total))
+        print(fmt('SDK Tests',              sdk_passed,          sdk_total))
+        print(fmt('Envelope SDK Tests',     env_passed,          env_total))
+        print(fmt('Wire Evolution Tests',   wire_passed,         wire_total))
+        print(fmt('Profiling Tests',        prof_passed,         prof_total))
+        print(fmt('Variable Truncation',    trunc_passed,        trunc_total))
         print(fmt('Round-trip Tests',       rt_passed,           rt_total))
         print(fmt('Standalone Tests',       st_passed,           st_total))
 
@@ -2536,12 +2630,14 @@ class TestRunner:
                  std_encode_total + std_validate_total + std_decode_total +
                  ext_encode_total + ext_validate_total + ext_decode_total +
                  var_encode_total + var_validate_total + var_decode_total +
-                 neg_total + rt_total + st_total)
+                 neg_total + sdk_total + env_total + wire_total +
+                 prof_total + trunc_total + rt_total + st_total)
         passed = (gen_passed + comp_passed +
                   std_encode_passed + std_validate_passed + std_decode_passed +
                   ext_encode_passed + ext_validate_passed + ext_decode_passed +
                   var_encode_passed + var_validate_passed + var_decode_passed +
-                  neg_passed + rt_passed + st_passed)
+                  neg_passed + sdk_passed + env_passed + wire_passed +
+                  prof_passed + trunc_passed + rt_passed + st_passed)
         
         print(f"\n  Total: {colorize_count(passed, total)} tests passed")
         
@@ -2561,11 +2657,15 @@ class TestRunner:
                 profile_str = f" [{failure['profile']}]" if failure['profile'] else ""
                 print(f"    - {failure['phase']}: {failure['language']}{profile_str} - {failure['reason']}")
         
-        if passed == total and total > 0:
+        # A recorded failure in any phase (including phases that add_failure but
+        # aren't part of the counted tally, e.g. profiling) must gate the run.
+        if passed == total and total > 0 and not self.failures:
             print(f"\n  {Colors.green(Colors.bold('SUCCESS: All tests passed'))}")
             return True
         else:
-            print(f"\n  {Colors.red(Colors.bold(f'FAILURE: {total - passed} test(s) failed'))}")
+            failed_n = (total - passed) if total >= passed else 0
+            extra = "" if failed_n else f" ({len(self.failures)} recorded failure(s))"
+            print(f"\n  {Colors.red(Colors.bold(f'FAILURE: {failed_n} test(s) failed{extra}'))}")
             return False
     
     # =========================================================================
@@ -2687,14 +2787,20 @@ class TestRunner:
             if not profiling_only:
                 with self.timed_phase("Variable Tests"):
                     self.run_tests("variable", [("bulk", "ProfileBulk")], 7, "test_variable_flag")
-                    # Verify truncation by checking binary file sizes
-                    self.verify_variable_truncation()
+                    # Verify truncation by checking binary file sizes. Record the
+                    # result so it counts toward the overall verdict (the method
+                    # already records per-language failures via add_failure).
+                    trunc_ok = self.verify_variable_truncation()
+                    self.results.setdefault("variable_truncation", {})["all"] = trunc_ok
             else:
                 print(f"\n{Colors.yellow('[SKIP]')} Variable tests (--profiling)")
-            
+
             # Phase 8: Profiling tests (packed vs unpacked performance)
             with self.timed_phase("Profiling Tests"):
-                self.run_profiling_tests()
+                prof_ok = self.run_profiling_tests()
+                self.results.setdefault("profiling", {})["cpp"] = prof_ok
+                if not prof_ok:
+                    self.add_failure("profiling", "C++", None, "profiling tests failed")
             
             # Phase 9: Negative tests (error handling)
             if not profiling_only:

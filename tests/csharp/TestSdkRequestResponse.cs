@@ -176,11 +176,15 @@ static class TestSdkRequestResponse
         var handlersField = typeof(StructFrameSdk).GetField(
             "_messageHandlers",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        // Fail loudly if the field was renamed/removed: otherwise a null
+        // dictionary would make the emptiness check pass vacuously.
+        Assert("cleanup(success): _messageHandlers field located via reflection", handlersField != null);
         var handlers = handlersField?.GetValue(sdk) as System.Collections.IDictionary;
+        Assert("cleanup(success): _messageHandlers is a dictionary", handlers != null);
         var msgId = (ushort)BasicTypesMessage.MsgId;
-        bool empty = handlers == null
-            || !handlers.Contains(msgId)
-            || ((System.Array)handlers[msgId]!).Length == 0;
+        bool empty = handlers != null
+            && (!handlers.Contains(msgId)
+                || ((System.Array)handlers[msgId]!).Length == 0);
         Assert("cleanup: subscription removed after success", empty);
     }
 
@@ -203,11 +207,15 @@ static class TestSdkRequestResponse
         var handlersField = typeof(StructFrameSdk).GetField(
             "_messageHandlers",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        // Fail loudly if the field was renamed/removed: otherwise a null
+        // dictionary would make the emptiness check pass vacuously.
+        Assert("cleanup(timeout): _messageHandlers field located via reflection", handlersField != null);
         var handlers = handlersField?.GetValue(sdk) as System.Collections.IDictionary;
+        Assert("cleanup(timeout): _messageHandlers is a dictionary", handlers != null);
         var msgId = (ushort)BasicTypesMessage.MsgId;
-        bool empty = handlers == null
-            || !handlers.Contains(msgId)
-            || ((System.Array)handlers[msgId]!).Length == 0;
+        bool empty = handlers != null
+            && (!handlers.Contains(msgId)
+                || ((System.Array)handlers[msgId]!).Length == 0);
         Assert("cleanup: subscription removed after timeout", empty);
     }
 

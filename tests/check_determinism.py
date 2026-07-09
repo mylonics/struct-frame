@@ -3,9 +3,11 @@
 Generated-file determinism check.
 
 Regenerates all test outputs to a temporary directory and diffs them against
-the committed tests/generated/ tree. Exits with code 1 if any file differs,
-was added, or was removed — which would mean a committed artefact is stale or
-the generator is non-deterministic.
+the on-disk tests/generated/ tree produced by the most recent generator run
+(that tree is git-ignored, not committed). Exits with code 1 if any file
+differs, was added, or was removed — which would mean the on-disk artefacts
+are stale relative to a fresh generation, i.e. the generator is
+non-deterministic (or was run with different inputs/version).
 
 Usage:
     python tests/check_determinism.py

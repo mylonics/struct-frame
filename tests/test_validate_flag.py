@@ -21,18 +21,17 @@ def _run_validate(proto_path: Path, extra_args=()) -> tuple[int, str, str]:
 
 
 def _validation_rejected(code: int, stdout: str, stderr: str) -> bool:
-    """Return True if the generator produced a visible rejection (exit non-zero
-    OR an explicit 'Validation failed' / error message in the output).
-    The generator currently exits 0 even on validation failure, so we accept
-    either signal.
+    """Return True only if the generator *properly* rejected the input.
+
+    A correct rejection both exits non-zero AND prints an explicit
+    "Validation failed" message. This is the generator's actual behaviour
+    (see ``validate_packages`` / the ``if not valid: return 1`` path in
+    ``src/struct_frame/generate.py``), so requiring both signals means a
+    regression to a silent exit-0 rejection would now fail this test instead
+    of being masked by an over-permissive OR of weak signals.
     """
     combined = (stdout + stderr).lower()
-    return (
-        code != 0
-        or "validation failed" in combined
-        or "failed to validate" in combined
-        or "error" in combined
-    )
+    return code != 0 and "validation failed" in combined
 
 
 def test_validate_success():

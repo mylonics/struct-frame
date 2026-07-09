@@ -164,8 +164,12 @@ def check_message(index: int, info) -> bool:
     # Deserialize using the expected message's class
     msg_class = type(expected)
     decoded = msg_class.deserialize(info)
-    
-    # Normalize expected for comparison (round-trip through serialize/deserialize)
-    expected_normalized = msg_class.deserialize(expected.serialize())
-    
-    return decoded.to_dict() == expected_normalized.to_dict()
+    if decoded is None:
+        return False
+
+    # Strong check against the *pristine* expected message (which never passes
+    # through the Python decoder), so a deterministic decode-side bug in a
+    # variable/truncated field is caught rather than masked by comparing two
+    # identically-decoded operands. serialize() applies identical
+    # padding/truncation to both sides.
+    return decoded.serialize() == expected.serialize()

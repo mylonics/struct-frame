@@ -10,9 +10,10 @@
  *   ./fuzz_parser -max_len=4096 -runs=100000
  *
  * The fuzzer feeds arbitrary bytes to the streaming parser for every
- * supported profile and asserts that the parser never crashes, never reads
- * out of bounds (caught by ASan), and always converges back to IDLE after
- * the input is exhausted.
+ * supported profile. It does not assert semantic properties itself; it relies
+ * on the sanitizers (ASan/UBSan) to catch crashes and out-of-bounds reads, and
+ * on libFuzzer's per-input timeout to catch a parser that livelocks instead of
+ * eventually reporting no valid frame.
  *
  * This file does not depend on any generated .sf code — it exercises only
  * the hand-written parser runtime, which is the most security-sensitive

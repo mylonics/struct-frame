@@ -626,6 +626,26 @@ where
         count += 1;
         if count >= expected_count { break; }
     }
+
+    // Once the expected messages have been read, the stream must be exhausted:
+    // any further valid frame is a "too many messages" error and any leftover
+    // partial bytes are trailing garbage. Both cases force the caller's
+    // `count != expected` check to fail (mirrors the C runner, which already
+    // rejects extra frames and leftover partials; C++/Rust previously did not).
+    if count == expected_count {
+        if let Some(extra) = reader.next(&msg_info_fn) {
+            if extra.valid {
+                eprintln!("[DECODE] unexpected extra frame after {} messages (msg_id=0x{:04x})",
+                    count, extra.msg_id);
+                return expected_count + 1;
+            }
+        }
+        if reader.has_partial() {
+            eprintln!("[DECODE] {} leftover partial byte(s) after {} messages",
+                reader.partial_size(), count);
+            return expected_count + 1;
+        }
+    }
     count
 }
 

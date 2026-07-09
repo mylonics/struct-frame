@@ -7,8 +7,9 @@ Install + run locally:
     python tests/py/fuzz_parser.py -max_len=4096 -runs=100000
 
 The harness feeds arbitrary bytes to the streaming parser for every shipped
-profile and asserts the parser never raises an unexpected exception, never
-returns inconsistent results, and always terminates.
+profile. It does not assert semantic properties itself; it relies on atheris
+(and the Python runtime) to surface any uncaught exception or crash, and it
+bounds the drain loop so a malformed input cannot livelock the fuzzer.
 
 This module imports the runtime boilerplate directly from src/ so it works
 without first running the code generator.

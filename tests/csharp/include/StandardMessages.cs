@@ -270,8 +270,6 @@ namespace StructFrameTests
                 decoded = UnionTestMessage.Deserialize(info);
             else if (info.MsgId == VariableSingleArray.MsgId)
                 decoded = VariableSingleArray.Deserialize(info);
-            else if (info.MsgId == SerializationTestMessage.MsgId)
-                decoded = SerializationTestMessage.Deserialize(info);
             else if (info.MsgId == Message.MsgId)
                 decoded = Message.Deserialize(info);
 
