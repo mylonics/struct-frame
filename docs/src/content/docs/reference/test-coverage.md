@@ -116,7 +116,7 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 | Multiple `oneof` fields in one message | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Envelope messages (`is_envelope`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-> **All gaps closed.** `discriminator = none` and multi-oneof encode/decode tested in all 7 languages: Python via `tests/test_proto_field_types.py`; C and C++ via compiled binaries in the same file; TS/JS via `checkDiscriminatorNone()`/`checkMultiOneof()` in their standard test helpers; C# via `CheckDiscriminatorNone()`/`CheckMultiOneof()` in `tests/csharp/include/StandardMessages.cs`; Rust via the `test_oneof_special` runner in `tests/rust/src/main.rs`.
+> **All gaps closed.** `discriminator = none` and multi-oneof encode/decode tested in all 7 languages: Python via `tests/test_proto_field_types.py`; C and C++ via compiled binaries in the same file; TS/JS via `checkDiscriminatorNone()`/`checkMultiOneof()` in their standard test helpers; C# via `CheckDiscriminatorNone()`/`CheckMultiOneof()` in `tests/csharp/include/StandardMessages.cs`; Rust via the `test_oneof_special` runner in `tests/rust/src/main.rs`. A standalone `test_oneof_special.*` runner (same scenarios: `NoneDiscriminatorMessage`, `MultiOneofMessage`) now also exists for C++, Python, TS, JS, and C# alongside Rust's; C is N/A (no generated oneof accessors).
 
 ### 2.7 Message Options
 
@@ -128,7 +128,7 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 | `is_envelope` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `flatten` | ✅ | N/A | ✅ | N/A | N/A | N/A | N/A |
 
-> **C/Python `flatten`:** Verified by `tests/test_proto_field_types.py` -- Python `to_dict()` inlines inner fields; C generates the struct inline (compile test). **Rust envelope:** `tests/rust/src/main.rs` `test_envelope_sdk` runner tests `CommandEnvelope` (msgid discriminator) and `RawDataEnvelope` (field_order discriminator) round-trips.
+> **C/Python `flatten`:** Verified by `tests/test_proto_field_types.py` -- Python `to_dict()` inlines inner fields; C generates the struct inline (compile test). **Envelope round-trips:** a `test_envelope_sdk.*` runner tests `CommandEnvelope` (msgid discriminator) and `RawDataEnvelope` (field_order discriminator) round-trips in C++, Python, TS, JS, C#, and Rust (`tests/rust/src/main.rs`); C is N/A (no SDK).
 
 ---
 
@@ -226,7 +226,7 @@ Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`
 
 See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.
 
-The 33 scenarios in the table below are registered in every language's `test_negative.*` file, covering corruption handling, the `tryNext` drain contract, diagnostic counters (unified semantics in buffer and stream mode), minimal-profile resync, and a chunk-boundary split sweep. All seven languages additionally carry the four package-corruption scenarios (bulk `pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption) for 37 scenarios each; Python (42) adds status-machine and buffer-mode diagnostic extras.
+All 42 scenarios below (the 33 uniform scenarios, 4 package-corruption scenarios, and 5 status/diagnostics scenarios) are registered identically in every language's `test_negative.*` file, covering corruption handling, the `tryNext` drain contract, diagnostic counters (unified semantics in buffer and stream mode), minimal-profile resync, and a chunk-boundary split sweep. Rust implements 39 of the 42: its `push_byte`/`next` return `Option<FrameMsgInfo>` and fold "waiting for start"/"collecting" into `None` rather than surfacing a status value, and its `FrameMsgInfo` carries no diagnostics field -- a documented API asymmetry, not a gap in test coverage (see `tests/rust/src/test_negative.rs`).
 
 | Error Scenario (test name) | C | C++ | Python | TS | JS | C# | Rust |
 |--------|--------|--------|--------|--------|--------|--------|--------|
@@ -237,8 +237,11 @@ The 33 scenarios in the table below are registered in every language's `test_neg
 | Buffer mode: recovers after CRC failure | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Buffer reader: skips CRC-failed frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Bulk profile: Corrupted CRC | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Bulk profile: Corrupted msg_id low byte | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Bulk profile: Corrupted pkg_id | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Corrupted CRC detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Corrupted length field detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Cross-package message rejection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Diagnostics: CRC failure counter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Diagnostics: Length error counter | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Diagnostics: Reset diagnostics | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -250,11 +253,14 @@ The 33 scenarios in the table below are registered in every language's `test_neg
 | Minimal profile: Truncated frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Multiple frames: CRC error then valid frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Multiple frames: Corrupted middle frame | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Network profile: Corrupted pkg_id | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Network profile: SysId/CompId corruption | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Partial frame across buffer boundary | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Sensor buffer: unknown msg_id resync | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Split sweep: two frames at every boundary | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Split-buffer: CRC error status preserved | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Status: CRC_FAILURE on bad checksum | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Status: SYNC_RECOVERY on forced resync | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Stream mode: recovers after garbage prefix | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Streaming: Corrupted CRC detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Streaming: Garbage data handling | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
@@ -263,6 +269,11 @@ The 33 scenarios in the table below are registered in every language's `test_neg
 | TryNext partial pending contract | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Truncated frame detection | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Zero-length buffer handling | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Buffer mode: invalid result carries diagnostics | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ |
+| Status: COLLECTING during frame reception | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ |
+| Status: WAITING_FOR_START before first byte | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ |
+
+> **Rust ⚠️:** its `push_byte`/`next` return `Option<FrameMsgInfo>` and fold "waiting for start"/"collecting" into `None` instead of a status value, and its `FrameMsgInfo` carries no diagnostics field -- a documented API asymmetry, see `tests/rust/src/test_negative.rs`.
 
 ---
 
@@ -463,10 +474,13 @@ Tests that verify the per-message start-byte constants (`magic1`/`magic2`) are c
 
 Every `❌` and `⚠️` cell in the tables above is converted here into a tracked, linkable GitHub issue so coverage gaps are *owned* rather than merely listed. Triage ownership, retry budgets, and quarantine rules live in the [Test Stability Policy](test-stability).
 
-Open gaps: **5**. Each **track ↗** link opens a pre-filled issue (labels `test-gap,coverage`); replace it with the real issue URL once filed. To see issues already filed, browse [`label:test-gap`](https://github.com/mylonics/struct-frame/issues?q=is%3Aissue+label%3Atest-gap).
+Open gaps: **8**. Each **track ↗** link opens a pre-filled issue (labels `test-gap,coverage`); replace it with the real issue URL once filed. To see issues already filed, browse [`label:test-gap`](https://github.com/mylonics/struct-frame/issues?q=is%3Aissue+label%3Atest-gap).
 
 | ID | Priority | Area | Section | Gap | Languages | Issue |
 |----|----------|------|---------|-----|-----------|-------|
+| `TC-5-1077FE68` | Medium | Status: WAITING_FOR_START before first byte | §5 | ⚠️ | Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-5-1077FE68%5D+Status%3A+WAITING_FOR_START+before+first+byte+%28Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-5-1077FE68%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Status%3A+WAITING_FOR_START+before+first+byte%0A-+%2A%2ASection%3A%2A%2A+Error+Handling+%2F+Negative+Tests%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-5-452A2885` | Medium | Buffer mode: invalid result carries diagnostics | §5 | ⚠️ | Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-5-452A2885%5D+Buffer+mode%3A+invalid+result+carries+diagnostics+%28Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-5-452A2885%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Buffer+mode%3A+invalid+result+carries+diagnostics%0A-+%2A%2ASection%3A%2A%2A+Error+Handling+%2F+Negative+Tests%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-5-84B003E4` | Medium | Status: COLLECTING during frame reception | §5 | ⚠️ | Rust | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-5-84B003E4%5D+Status%3A+COLLECTING+during+frame+reception+%28Rust%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-5-84B003E4%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Status%3A+COLLECTING+during+frame+reception%0A-+%2A%2ASection%3A%2A%2A+Error+Handling+%2F+Negative+Tests%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Rust%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9A%A0%EF%B8%8F%0A-+%2A%2APriority%3A%2A%2A+Medium%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-1AA40181` | Low | WebSocket transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-1AA40181%5D+WebSocket+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-1AA40181%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+WebSocket+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-2D690115` | Low | UDP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-2D690115%5D+UDP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-2D690115%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+UDP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-785BEC06` | Low | Async transport (Python) | §6 · 6.3 | ❌ | Python | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-785BEC06%5D+Async+transport+%28Python%29+%28Python%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-785BEC06%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Async+transport+%28Python%29%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Python%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |

@@ -230,7 +230,11 @@ SECTIONS = [
                     "standard test helpers; C# via "
                     "`CheckDiscriminatorNone()`/`CheckMultiOneof()` in "
                     "`tests/csharp/include/StandardMessages.cs`; Rust via the "
-                    "`test_oneof_special` runner in `tests/rust/src/main.rs`."
+                    "`test_oneof_special` runner in `tests/rust/src/main.rs`. "
+                    "A standalone `test_oneof_special.*` runner (same scenarios: "
+                    "`NoneDiscriminatorMessage`, `MultiOneofMessage`) now also "
+                    "exists for C++, Python, TS, JS, and C# alongside Rust's; C "
+                    "is N/A (no generated oneof accessors)."
                 ),
             },
             {
@@ -251,10 +255,11 @@ SECTIONS = [
                     "> **C/Python `flatten`:** Verified by "
                     "`tests/test_proto_field_types.py` -- Python `to_dict()` "
                     "inlines inner fields; C generates the struct inline (compile "
-                    "test). **Rust envelope:** `tests/rust/src/main.rs` "
-                    "`test_envelope_sdk` runner tests `CommandEnvelope` (msgid "
-                    "discriminator) and `RawDataEnvelope` (field_order "
-                    "discriminator) round-trips."
+                    "test). **Envelope round-trips:** a `test_envelope_sdk.*` "
+                    "runner tests `CommandEnvelope` (msgid discriminator) and "
+                    "`RawDataEnvelope` (field_order discriminator) round-trips "
+                    "in C++, Python, TS, JS, C#, and Rust (`tests/rust/src/main.rs`); "
+                    "C is N/A (no SDK)."
                 ),
             },
         ],
@@ -412,15 +417,18 @@ SECTIONS = [
         "intro": (
             "Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`\n\n"
             "See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.\n\n"
-            "The 33 scenarios in the table below are registered in every "
-            "language's `test_negative.*` file, covering corruption handling, "
-            "the `tryNext` drain contract, diagnostic counters (unified "
-            "semantics in buffer and stream mode), minimal-profile resync, and "
-            "a chunk-boundary split sweep. All seven languages additionally "
-            "carry the four package-corruption scenarios (bulk "
-            "`pkg_id`/`msg_id` corruption, cross-package rejection, network "
-            "`pkg_id` corruption) for 37 scenarios each; Python (42) adds "
-            "status-machine and buffer-mode diagnostic extras."
+            "All 42 scenarios below (the 33 uniform scenarios, 4 "
+            "package-corruption scenarios, and 5 status/diagnostics "
+            "scenarios) are registered identically in every language's "
+            "`test_negative.*` file, covering corruption handling, the "
+            "`tryNext` drain contract, diagnostic counters (unified semantics "
+            "in buffer and stream mode), minimal-profile resync, and a "
+            "chunk-boundary split sweep. Rust implements 39 of the 42: its "
+            "`push_byte`/`next` return `Option<FrameMsgInfo>` and fold "
+            "\"waiting for start\"/\"collecting\" into `None` rather than "
+            "surfacing a status value, and its `FrameMsgInfo` carries no "
+            "diagnostics field -- a documented API asymmetry, not a gap in "
+            "test coverage (see `tests/rust/src/test_negative.rs`)."
         ),
         "tables": [
             {
@@ -435,8 +443,11 @@ SECTIONS = [
                     "Buffer mode: recovers after CRC failure",
                     "Buffer reader: skips CRC-failed frame",
                     "Bulk profile: Corrupted CRC",
+                    "Bulk profile: Corrupted msg_id low byte",
+                    "Bulk profile: Corrupted pkg_id",
                     "Corrupted CRC detection",
                     "Corrupted length field detection",
+                    "Cross-package message rejection",
                     "Diagnostics: CRC failure counter",
                     "Diagnostics: Length error counter",
                     "Diagnostics: Reset diagnostics",
@@ -448,11 +459,14 @@ SECTIONS = [
                     "Minimal profile: Truncated frame",
                     "Multiple frames: CRC error then valid frame",
                     "Multiple frames: Corrupted middle frame",
+                    "Network profile: Corrupted pkg_id",
                     "Network profile: SysId/CompId corruption",
                     "Partial frame across buffer boundary",
                     "Sensor buffer: unknown msg_id resync",
                     "Split sweep: two frames at every boundary",
                     "Split-buffer: CRC error status preserved",
+                    "Status: CRC_FAILURE on bad checksum",
+                    "Status: SYNC_RECOVERY on forced resync",
                     "Stream mode: recovers after garbage prefix",
                     "Streaming: Corrupted CRC detection",
                     "Streaming: Garbage data handling",
@@ -460,7 +474,25 @@ SECTIONS = [
                     "TryNext drain: CRC/resync + valid",
                     "TryNext partial pending contract",
                     "Truncated frame detection",
-                    "Zero-length buffer handling")],
+                    "Zero-length buffer handling")] + [
+                    _row("Buffer mode: invalid result carries diagnostics",
+                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
+                          "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
+                    _row("Status: COLLECTING during frame reception",
+                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
+                          "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
+                    _row("Status: WAITING_FOR_START before first byte",
+                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
+                          "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
+                ],
+                "caption": (
+                    "> **Rust ⚠️:** its `push_byte`/`next` return "
+                    "`Option<FrameMsgInfo>` and fold \"waiting for start\"/"
+                    "\"collecting\" into `None` instead of a status value, and "
+                    "its `FrameMsgInfo` carries no diagnostics field -- a "
+                    "documented API asymmetry, see "
+                    "`tests/rust/src/test_negative.rs`."
+                ),
             },
         ],
     },

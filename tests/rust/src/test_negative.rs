@@ -1119,6 +1119,52 @@ fn test_network_corrupted_pkg_id() -> bool {
     }
 }
 
+/// FrameMsgStatus: push_byte() surfaces CrcFailure when a complete frame has
+/// a bad CRC.
+///
+/// Note: unlike the other six languages, Rust's `push_byte`/`next` return
+/// `Option<FrameMsgInfo>` and fold the "waiting for start" and "collecting"
+/// states into `None` rather than surfacing a status value for them (see the
+/// doc comment on `AccumulatingReader::next`). Only definitive outcomes
+/// (valid frame, CrcFailure, SyncRecovery) produce `Some(..)`, so
+/// `WAITING_FOR_START`/`COLLECTING` status probes and the
+/// diagnostics-on-result test (Rust's `FrameMsgInfo` has no diagnostics
+/// field) have no portable equivalent here; that's a genuine API asymmetry,
+/// not a missing test.
+fn test_status_crc_failure() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer.write_crc(&msg, 0);
+    let mut data = writer.data().to_vec();
+    let frame_size = data.len();
+    if frame_size < 4 {
+        return false;
+    }
+    data[frame_size - 1] ^= 0xFF;
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    let mut result = None;
+    for b in &data {
+        result = reader.push_byte(*b, &get_message_info);
+    }
+    matches!(result, Some(f) if f.status == FrameMsgStatus::CrcFailure)
+}
+
+/// FrameMsgStatus: push_byte() surfaces SyncRecovery when the parser is
+/// forced to resync (bad second start byte, once a full header's worth of
+/// bytes has been buffered).
+fn test_status_sync_recovery() -> bool {
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    reader.add_data(&[0x90, 0xAB, 0x00, 0x00, 0x00, 0x00]); // bad start2 -> resync
+    let mut saw_sync = false;
+    while let Some(f) = reader.try_next(&get_message_info) {
+        if f.status == FrameMsgStatus::SyncRecovery {
+            saw_sync = true;
+        }
+    }
+    saw_sync
+}
+
 
 fn main() {
     println!("\n========================================");
@@ -1137,11 +1183,11 @@ fn main() {
         ("Buffer mode: recovers after CRC failure",  test_buffer_mode_recovers_after_crc_failure),
         ("Buffer reader: skips CRC-failed frame",    test_buffer_reader_skips_crc_failure),
         ("Bulk profile: Corrupted CRC",              test_bulk_profile_corrupted_crc),
-        ("Bulk profile: Corrupted pkg_id byte",      test_bulk_corrupted_pkg_id),
+        ("Bulk profile: Corrupted pkg_id",           test_bulk_corrupted_pkg_id),
         ("Bulk profile: Corrupted msg_id low byte",  test_bulk_corrupted_msg_id_low_byte),
         ("Corrupted CRC detection",                  test_corrupted_crc),
         ("Corrupted length field detection",         test_corrupted_length),
-        ("Cross-package rejection (pkgid mismatch)", test_cross_package_rejection),
+        ("Cross-package message rejection",          test_cross_package_rejection),
         ("Diagnostics: CRC failure counter",         test_diagnostic_crc_failure),
         ("Diagnostics: Length error counter",        test_diagnostic_len_error),
         ("Diagnostics: Reset diagnostics",           test_diagnostic_reset),
@@ -1153,7 +1199,7 @@ fn main() {
         ("Minimal profile: Truncated frame",         test_minimal_profile_truncated_frame),
         ("Multiple frames: CRC error then valid frame", test_crc_error_then_valid_frame),
         ("Multiple frames: Corrupted middle frame",  test_multiple_corrupted_frames),
-        ("Network profile: Corrupted pkg_id byte",   test_network_corrupted_pkg_id),
+        ("Network profile: Corrupted pkg_id",        test_network_corrupted_pkg_id),
         ("Network profile: SysId/CompId corruption", test_network_sysid_compid),
         ("Partial frame across buffer boundary",     test_partial_frame_boundary),
         ("Sensor buffer: unknown msg_id resync",     test_sensor_buffer_unknown_msg_id_resync),
@@ -1161,6 +1207,8 @@ fn main() {
         ("Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status),
         ("TryNext drain: CRC/resync + valid", test_try_next_drain_contract),
         ("TryNext partial pending contract", test_try_next_partial_pending_contract),
+        ("Status: CRC_FAILURE on bad checksum", test_status_crc_failure),
+        ("Status: SYNC_RECOVERY on forced resync", test_status_sync_recovery),
         ("Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage),
         ("Streaming: Corrupted CRC detection",       test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling",         test_streaming_garbage),

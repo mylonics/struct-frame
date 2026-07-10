@@ -1066,6 +1066,67 @@ function testBufferModeOversizedLengthRecovers() {
   return probeValid >= 1;
 }
 
+/**
+ * Diagnostics: an invalid (partial) result from AccumulatingReader.next()
+ * still carries a diagnostics snapshot consistent with the reader's own
+ * counters (not undefined/stale).
+ */
+function testBufferModeInvalidResultHasDiagnostics() {
+  const [frames, sizes] = encodeStandardFrames(1);
+  const frameSize = sizes[0];
+  if (frameSize < 10) return false;
+  const frame = frames.slice(0, frameSize);
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  reader.addData(frame.subarray(0, Math.floor(frameSize / 2)));
+  const result = reader.next();
+  if (result.valid || result.diagnostics == null) return false;
+
+  const diag = reader.diagnostics;
+  return result.diagnostics.cntCrcFailures === diag.cntCrcFailures &&
+         result.diagnostics.cntSyncRecoveries === diag.cntSyncRecoveries;
+}
+
+/** FrameMsgStatus: pushByte() returns WaitingForStart before any start byte has been seen. */
+function testStatusWaitingForStart() {
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  // 0x42 is not the start byte (0x90); parser stays in waiting state.
+  const result = reader.pushByte(0x42);
+  return result.status === FrameMsgStatus.WaitingForStart;
+}
+
+/** FrameMsgStatus: pushByte() returns Collecting once a valid start byte is in progress. */
+function testStatusCollecting() {
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  // 0x90 is startByte1 -> move to LookingForStart2.
+  const result = reader.pushByte(0x90);
+  return result.status === FrameMsgStatus.Collecting;
+}
+
+/** FrameMsgStatus: pushByte() returns CrcFailure when a complete frame has a bad CRC. */
+function testStatusCrcFailure() {
+  const [buffer, sizes] = encodeStandardFrames(1);
+  const frameSize = sizes[0];
+  if (frameSize < 4) return false;
+
+  buffer[frameSize - 1] ^= 0xFF;
+
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  let result;
+  for (let i = 0; i < frameSize; i++) {
+    result = reader.pushByte(buffer[i]);
+  }
+  return result.status === FrameMsgStatus.CrcFailure;
+}
+
+/** FrameMsgStatus: pushByte() returns SyncRecovery when the parser is forced to resync. */
+function testStatusSyncRecovery() {
+  const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo, 1024);
+  reader.pushByte(0x90);  // valid startByte1
+  // 0x42 is neither startByte2 (0xAB) nor startByte1 (0x90) -> triggers resync.
+  const result = reader.pushByte(0x42);
+  return result.status === FrameMsgStatus.SyncRecovery;
+}
 
 function main() {
   console.log('\n========================================');
@@ -1078,6 +1139,7 @@ function main() {
     ['Buffer mode: Sequence gap counted', testBufferModeSeqGap],
     ['Buffer mode: garbage prefix partial recovers', testBufferModeGarbagePrefixRecovers],
     ['Buffer mode: oversized length recovers', testBufferModeOversizedLengthRecovers],
+    ['Buffer mode: invalid result carries diagnostics', testBufferModeInvalidResultHasDiagnostics],
     ['Buffer mode: recovers after CRC failure', testBufferModeRecoversAfterCrcFailure],
     ['Buffer reader: skips CRC-failed frame', testBufferReaderSkipsCrcFailure],
     ['Bulk profile: Corrupted CRC', testBulkProfileCorruptedCrc],
@@ -1100,6 +1162,10 @@ function main() {
     ['Split-buffer: CRC error status preserved', testSplitBufferCrcErrorStatus],
     ['TryNext drain: CRC/resync + valid', testTryNextDrainContract],
     ['TryNext partial pending contract', testTryNextPartialPendingContract],
+    ['Status: COLLECTING during frame reception', testStatusCollecting],
+    ['Status: CRC_FAILURE on bad checksum', testStatusCrcFailure],
+    ['Status: SYNC_RECOVERY on forced resync', testStatusSyncRecovery],
+    ['Status: WAITING_FOR_START before first byte', testStatusWaitingForStart],
     ['Network profile: Corrupted pkg_id', testNetworkCorruptedPkgId],
     ['Network profile: SysId/CompId corruption', testNetworkSysIdCompId],
     ['Partial frame across buffer boundary', testPartialFrameBoundary],

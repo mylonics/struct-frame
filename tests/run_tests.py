@@ -143,11 +143,15 @@ def render_results_table(
     Status values in the inner dict:
         True        -> green  "OK"
         False       -> red    "FAIL"
-        "MISSING"   -> yellow "??"
-        None        -> plain  "--"   (not applicable)
+        "MISSING"   -> yellow "??"    (applicable, expected to run, but didn't --
+                                       gated to a hard failure; see _gate_missing_applicable)
+        "GAP"       -> yellow "GAP"   (applicable, but no test has been written yet --
+                                       informational, does not fail the run)
+        None        -> plain  "n/a"  (not applicable to this language, by design)
 
     Summary row counts only cells that actually ran (True or False), excluding
-    None (N/A) and "MISSING" (ran but couldn't even start).
+    None (N/A), "GAP" (not yet implemented), and "MISSING" (ran but couldn't
+    even start).
     """
     if not rows or not languages:
         return
@@ -167,7 +171,9 @@ def render_results_table(
             return Colors.red("FAIL".center(col_width))
         if status == "MISSING":
             return Colors.yellow("??".center(col_width))
-        return "--".center(col_width)
+        if status == "GAP":
+            return Colors.yellow("GAP".center(col_width))
+        return "n/a".center(col_width)
 
     header = f"  {row_label:<{row_w}}" + "".join(
         lang_display.get(l.id, l.id).center(col_width) for l in languages
@@ -197,6 +203,8 @@ def render_results_table(
         else:
             summary += Colors.red(f"{passed}/{total}".center(col_width))
     print(summary)
+    print(f"  Legend: OK=pass  FAIL=fail  n/a=not applicable to this language  "
+          f"GAP=applicable, test not yet written  ??=expected to run but didn't (counts as failure)")
     print()
 
 
@@ -268,6 +276,70 @@ EXTENDED_PROFILES = [
 # will fail the run rather than being silently absorbed.
 STANDARD_MESSAGE_COUNT = 21
 EXTENDED_MESSAGE_COUNT = 10
+
+# Canonical negative-test scenario names. All 7 languages implement all 42
+# scenarios identically (same name, same behaviour) -- see
+# tests/NEGATIVE_TESTS.md. A name a language prints that isn't in this list
+# is drift (see run_negative_tests); a name in this list a language doesn't
+# print is either a known gap (NEGATIVE_TEST_GAPS below) or a real regression.
+NEGATIVE_SCENARIOS = [
+    "Buffer mode: CRC failure counters",
+    "Buffer mode: Sequence gap counted",
+    "Buffer mode: garbage prefix partial recovers",
+    "Buffer mode: invalid result carries diagnostics",
+    "Buffer mode: oversized length recovers",
+    "Buffer mode: recovers after CRC failure",
+    "Buffer reader: skips CRC-failed frame",
+    "Bulk profile: Corrupted CRC",
+    "Bulk profile: Corrupted msg_id low byte",
+    "Bulk profile: Corrupted pkg_id",
+    "Corrupted CRC detection",
+    "Corrupted length field detection",
+    "Cross-package message rejection",
+    "Diagnostics: CRC failure counter",
+    "Diagnostics: Length error counter",
+    "Diagnostics: Reset diagnostics",
+    "Diagnostics: Sequence gap counter",
+    "Diagnostics: Sync recovery counter",
+    "IPC buffer: unknown msg_id advances one byte",
+    "Invalid message ID rejection",
+    "Invalid start bytes detection",
+    "Minimal profile: Truncated frame",
+    "Multiple frames: CRC error then valid frame",
+    "Multiple frames: Corrupted middle frame",
+    "Network profile: Corrupted pkg_id",
+    "Network profile: SysId/CompId corruption",
+    "Partial frame across buffer boundary",
+    "Sensor buffer: unknown msg_id resync",
+    "Split sweep: two frames at every boundary",
+    "Split-buffer: CRC error status preserved",
+    "Status: COLLECTING during frame reception",
+    "Status: CRC_FAILURE on bad checksum",
+    "Status: SYNC_RECOVERY on forced resync",
+    "Status: WAITING_FOR_START before first byte",
+    "Stream mode: recovers after garbage prefix",
+    "Streaming: Corrupted CRC detection",
+    "Streaming: Garbage data handling",
+    "Streaming: two frames byte-by-byte",
+    "Truncated frame detection",
+    "TryNext drain: CRC/resync + valid",
+    "TryNext partial pending contract",
+    "Zero-length buffer handling",
+]
+
+# Known, documented gaps: Rust's push_byte()/next() return Option<FrameMsgInfo>
+# and fold "waiting for start" / "collecting" into None rather than surfacing
+# a status value (only definitive outcomes -- valid, CrcFailure, SyncRecovery
+# -- produce Some(..)), and Rust's FrameMsgInfo carries no diagnostics field.
+# This is a genuine API asymmetry, not a missing test -- see the doc comment
+# on test_status_crc_failure in tests/rust/src/test_negative.rs.
+NEGATIVE_TEST_GAPS = {
+    "rust": {
+        "Buffer mode: invalid result carries diagnostics",
+        "Status: COLLECTING during frame reception",
+        "Status: WAITING_FOR_START before first byte",
+    },
+}
 
 
 # =============================================================================
@@ -788,7 +860,8 @@ class TestRunner:
             base_runners = ["test_standard", "test_extended", "test_variable_flag",
                            "test_profiling", "test_profiling_generated", "test_negative",
                            "test_wire_evolution", "test_wire_evolution_interop",
-                           "test_wire_evolution_file_io"]
+                           "test_wire_evolution_file_io",
+                           "test_envelope_sdk", "test_oneof_special"]
             sdk_runners = ["test_streaming"] if lang.id == "c" else ["test_sdk_units", "test_sdk_subscribe", "test_sdk_headers_compile"]
             
             for runner in base_runners + sdk_runners:
@@ -1520,8 +1593,7 @@ class TestRunner:
         
         # Collect results from all languages
         test_results = {}  # {lang_id: {test_name: "PASS"/"FAIL"}}
-        all_test_names = set()  # All unique test names across languages
-        
+
         all_success = True
 
         def _record_missing(lang: Language) -> None:
@@ -1640,7 +1712,6 @@ class TestRunner:
                                 result = result.strip()
                                 if result in ('PASS', 'FAIL') and test_nm:
                                     lang_tests[test_nm] = result
-                                    all_test_names.add(test_nm)
             
             test_results[lang.id] = lang_tests
             
@@ -1656,62 +1727,36 @@ class TestRunner:
                     "reason": "Error handling tests failed"
                 })
         
-        # Display cross-tabulation matrix
-        if test_results and all_test_names:
-            print("\nNegative Test Results (tests x languages):\n")
-            
-            # Get sorted language IDs and test names
-            lang_ids = sorted([lang.id for lang in self.get_testable_languages() if lang.id in test_results])
-            test_names = sorted(all_test_names)
-            
-            # Calculate column widths
-            test_name_width = max(len(name) for name in test_names) + 2
-            lang_col_width = 6  # Width for each language column
-            
-            # Print header
-            header = f"{'Test Name':<{test_name_width}}"
-            for lang_id in lang_ids:
-                # Use short language names for columns
-                lang_display = {"c": "C", "cpp": "C++", "py": "Py", "ts": "TS", "js": "JS", "csharp": "C#", "rust": "Rs"}
-                lang_name = lang_display.get(lang_id, lang_id.upper()[:6])
-                header += f" {lang_name:^{lang_col_width}}"
-            print(header)
-            
-            # Print separator
-            separator = "=" * test_name_width
-            for _ in lang_ids:
-                separator += " " + "=" * lang_col_width
-            print(separator)
-            
-            # Print each test row
-            for test_name in test_names:
-                row = f"{test_name:<{test_name_width}}"
-                for lang_id in lang_ids:
-                    result = test_results.get(lang_id, {}).get(test_name, "-")
-                    # Build padded cell: pad first, then apply color so ANSI
-                    # codes don't break alignment
-                    if result == "PASS":
-                        cell = f"{'OK':^{lang_col_width}}"
-                        row += " " + Colors.green(cell)
-                    elif result == "FAIL":
-                        cell = f"{'NO':^{lang_col_width}}"
-                        row += " " + Colors.red(cell)
-                    else:
-                        row += f" {'--':^{lang_col_width}}"
-                print(row)
-            
-            # Print summary row
-            print()
-            print("=" * (test_name_width + len(lang_ids) * (lang_col_width + 1)))
-            summary_row = f"{'Summary (Pass/Total)':<{test_name_width}}"
-            for lang_id in lang_ids:
-                lang_tests = test_results.get(lang_id, {})
-                total = len(lang_tests)
-                passed = sum(1 for r in lang_tests.values() if r == "PASS")
-                cell = f"{passed}/{total}"
-                summary_row += f" {cell:^{lang_col_width}}"
-            print(summary_row)
-            print()
+        # Display cross-tabulation matrix, built from the canonical scenario
+        # manifest rather than whatever names happened to be parsed. This
+        # turns "a language never printed this scenario" into an explicit
+        # MISSING/GAP distinction instead of a blank "-" cell, and flags any
+        # parsed name that has drifted from the canonical spelling.
+        testable = self.get_testable_languages()
+        all_lang_ids = [l.id for l in testable]
+
+        table_data: Dict[str, Dict[str, Any]] = {
+            scenario: {
+                lid: ("GAP" if scenario in NEGATIVE_TEST_GAPS.get(lid, set()) else "MISSING")
+                for lid in all_lang_ids
+            }
+            for scenario in NEGATIVE_SCENARIOS
+        }
+
+        for lang_id, lang_tests in test_results.items():
+            for test_nm, result in lang_tests.items():
+                if test_nm not in NEGATIVE_SCENARIOS:
+                    print(f"  {Colors.warn_tag()} {lang_id}: negative test name "
+                          f"'{test_nm}' is not in the canonical scenario list "
+                          f"(renamed/drifted? update NEGATIVE_SCENARIOS or the test)")
+                    continue
+                table_data[test_nm][lang_id] = (result == "PASS")
+
+        if self._gate_missing_applicable(table_data, self.results["negative"], "negative"):
+            all_success = False
+
+        print("\nNegative Test Results (tests x languages):\n")
+        render_results_table(table_data, testable, row_label="Test Name")
         
         return all_success
 
@@ -1752,8 +1797,10 @@ class TestRunner:
         all_lang_ids = [l.id for l in testable]
 
         ENVELOPE_APPLICABILITY: Dict[str, List[str]] = {
-            "test_envelope_sdk":  ["csharp", "rust"],
-            "test_oneof_special": ["rust"],
+            # C has no SDK and no generated oneof accessors, so both rows are
+            # N/A there by design (candidate future feature, not a test gap).
+            "test_envelope_sdk":  ["cpp", "py", "ts", "js", "csharp", "rust"],
+            "test_oneof_special": ["cpp", "py", "ts", "js", "csharp", "rust"],
         }
 
         table_data: Dict[str, Dict[str, Any]] = {
@@ -1778,6 +1825,53 @@ class TestRunner:
                         print(f"  {line}")
                 self.add_failure("envelope_sdk", lang_id, None, failure_msg)
 
+        # ---- C++ ----
+        cpp = self.languages.get("cpp")
+        if cpp and self.results["compilation"].get("cpp", False):
+            build_dir = self.project_root / cpp.build_dir
+            for runner in ("test_envelope_sdk", "test_oneof_special"):
+                exe = build_dir / f"{runner}{cpp.exe_ext}"
+                if exe.exists():
+                    success, stdout, stderr = self.run_cmd(str(exe), timeout=30)
+                    _record(runner, "cpp", success, stdout, stderr, f"C++ {runner} failed")
+                    if not success:
+                        all_success = False
+
+        # ---- Python ----
+        py = self.languages.get("py")
+        if py:
+            for runner in ("test_envelope_sdk", "test_oneof_special"):
+                script = self.project_root / py.test_dir / f"{runner}.py"
+                if script.exists():
+                    success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
+                    _record(runner, "py", success, stdout, stderr, f"Python {runner} failed")
+                    if not success:
+                        all_success = False
+
+        # ---- TypeScript ----
+        ts = self.languages.get("ts")
+        if ts and self.results["compilation"].get("ts", False):
+            ts_dir = self.project_root / ts.test_dir
+            for runner in ("test_envelope_sdk", "test_oneof_special"):
+                script = ts_dir / f"{runner}.ts"
+                if script.exists():
+                    success, stdout, stderr = self.run_cmd(f'npx ts-node "{script}"', cwd=ts_dir, timeout=60)
+                    _record(runner, "ts", success, stdout, stderr, f"TypeScript {runner} failed")
+                    if not success:
+                        all_success = False
+
+        # ---- JavaScript ----
+        js = self.languages.get("js")
+        if js and "js" not in self.skipped_languages:
+            js_dir = self.project_root / js.test_dir
+            for runner in ("test_envelope_sdk", "test_oneof_special"):
+                script = js_dir / f"{runner}.js"
+                if script.exists():
+                    success, stdout, stderr = self.run_cmd(f'node "{script}"', timeout=30)
+                    _record(runner, "js", success, stdout, stderr, f"JavaScript {runner} failed")
+                    if not success:
+                        all_success = False
+
         # ---- C# ----
         csharp = self.languages.get("csharp")
         if csharp and self.results["compilation"].get("csharp", False):
@@ -1785,16 +1879,16 @@ class TestRunner:
             test_exe = build_dir / "StructFrameTests.exe"
             if not test_exe.exists():
                 test_exe = build_dir / "StructFrameTests.dll"
-                cmd = f'dotnet "{test_exe}" --runner test_envelope_sdk' if test_exe.exists() else None
+                cmd_prefix = f'dotnet "{test_exe}"' if test_exe.exists() else None
             else:
-                cmd = f'"{test_exe}" --runner test_envelope_sdk'
+                cmd_prefix = f'"{test_exe}"'
 
-            if cmd:
-                success, stdout, stderr = self.run_cmd(cmd, timeout=30)
-                _record("test_envelope_sdk", "csharp", success, stdout, stderr,
-                        "Envelope SDK test failed")
-                if not success:
-                    all_success = False
+            if cmd_prefix:
+                for runner in ("test_envelope_sdk", "test_oneof_special"):
+                    success, stdout, stderr = self.run_cmd(f'{cmd_prefix} --runner {runner}', timeout=30)
+                    _record(runner, "csharp", success, stdout, stderr, f"C# {runner} failed")
+                    if not success:
+                        all_success = False
 
         # ---- Rust ----
         rust = self.languages.get("rust")
@@ -1827,23 +1921,34 @@ class TestRunner:
         testable = self.get_testable_languages()
         all_lang_ids = [l.id for l in testable]
 
-        # Which lang_ids each test row applies to (others show N/A)
+        # Which lang_ids each test row applies to (others show N/A). Several
+        # languages use a different runner name for the same capability
+        # (e.g. Python/TS/JS "test_sdk" vs C++/C#/Rust "test_sdk_subscribe"
+        # both exercise subscribe/dispatch) -- SDK_ROW_ALIAS below merges
+        # those into one shared display row so the table reads by capability
+        # rather than by literal runner filename.
         SDK_APPLICABILITY: Dict[str, List[str]] = {
             "test_streaming":           ["c", "rust"],
             "test_sdk_units":           ["cpp"],
             "test_sdk_headers_compile": ["cpp"],
-            "test_sdk_subscribe":           ["cpp", "csharp", "rust"],
-            "test_sdk":                     ["py", "ts", "js"],
+            "SDK subscribe/dispatch":       ["cpp", "py", "ts", "js", "csharp", "rust"],
             "test_async_sdk":               ["py"],
             "test_sdk_strict_ordering":     ["csharp"],
             "test_sdk_lifecycle":           ["csharp"],
             "test_sdk_client_wrapper":      ["csharp"],
             "test_sdk_profiles":            ["csharp"],
             "test_base_transport":          ["csharp"],
-            "test_request_response_sdk":    ["py", "ts"],
+            "Request/response":             ["py", "ts", "csharp"],
             "test_request_response_async":  ["py"],
-            "test_sdk_request_response":    ["csharp"],
             "test_tcp_transport":           ["py"],
+        }
+
+        # Maps a runner name to its shared display row (identity if unmerged).
+        SDK_ROW_ALIAS: Dict[str, str] = {
+            "test_sdk": "SDK subscribe/dispatch",
+            "test_sdk_subscribe": "SDK subscribe/dispatch",
+            "test_request_response_sdk": "Request/response",
+            "test_sdk_request_response": "Request/response",
         }
 
         # Initialise table: None = N/A, "MISSING" = applicable but not yet run
@@ -1886,7 +1991,7 @@ class TestRunner:
             build_dir = self.project_root / cpp_lang.build_dir
             for runner, test_row in [
                 ("test_sdk_units",     "test_sdk_units"),
-                ("test_sdk_subscribe", "test_sdk_subscribe"),
+                ("test_sdk_subscribe", SDK_ROW_ALIAS["test_sdk_subscribe"]),
                 ("test_sdk_headers_compile", "test_sdk_headers_compile"),
             ]:
                 exe = build_dir / f"{runner}{cpp_lang.exe_ext}"
@@ -1903,7 +2008,7 @@ class TestRunner:
             script = self.project_root / py_lang.test_dir / "test_sdk.py"
             if script.exists():
                 success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
-                _record("test_sdk", "py", success, stdout, stderr,
+                _record(SDK_ROW_ALIAS["test_sdk"], "py", success, stdout, stderr,
                         "py:sdk", "test_sdk.py failed")
                 if not success:
                     all_success = False
@@ -1923,7 +2028,7 @@ class TestRunner:
             script = self.project_root / py_lang.test_dir / "test_request_response_sdk.py"
             if script.exists():
                 success, stdout, stderr = self.run_cmd(f'python "{script}"', timeout=30)
-                _record("test_request_response_sdk", "py", success, stdout, stderr,
+                _record(SDK_ROW_ALIAS["test_request_response_sdk"], "py", success, stdout, stderr,
                         "py:request_response_sdk", "test_request_response_sdk.py failed")
                 if not success:
                     all_success = False
@@ -1957,7 +2062,7 @@ class TestRunner:
                 success, stdout, stderr = self.run_cmd(
                     f'npx ts-node "{script}"', cwd=ts_dir, timeout=60
                 )
-                _record("test_sdk", "ts", success, stdout, stderr,
+                _record(SDK_ROW_ALIAS["test_sdk"], "ts", success, stdout, stderr,
                         "ts:sdk", "test_sdk.ts failed")
                 if not success:
                     all_success = False
@@ -1970,7 +2075,7 @@ class TestRunner:
                 success, stdout, stderr = self.run_cmd(
                     f'npx ts-node "{script}"', cwd=ts_dir, timeout=60
                 )
-                _record("test_request_response_sdk", "ts", success, stdout, stderr,
+                _record(SDK_ROW_ALIAS["test_request_response_sdk"], "ts", success, stdout, stderr,
                         "ts:request_response_sdk", "test_request_response_sdk.ts failed")
                 if not success:
                     all_success = False
@@ -1984,7 +2089,7 @@ class TestRunner:
                 success, stdout, stderr = self.run_cmd(
                     f'node "{script}"', cwd=js_dir, timeout=30
                 )
-                _record("test_sdk", "js", success, stdout, stderr,
+                _record(SDK_ROW_ALIAS["test_sdk"], "js", success, stdout, stderr,
                         "js:sdk", "test_sdk.js failed")
                 if not success:
                     all_success = False
@@ -2012,7 +2117,7 @@ class TestRunner:
                 ]:
                     cmd = f'{cmd_prefix} --runner {runner_arg}'
                     success, stdout, stderr = self.run_cmd(cmd, timeout=60)
-                    _record(runner_arg, "csharp", success, stdout, stderr,
+                    _record(SDK_ROW_ALIAS.get(runner_arg, runner_arg), "csharp", success, stdout, stderr,
                             f"csharp:{runner_arg}", f"{runner_arg} failed")
                     if not success:
                         all_success = False
@@ -2024,7 +2129,7 @@ class TestRunner:
             if rust_runner.exists():
                 for runner_arg, test_row in [
                     ("test_streaming",    "test_streaming"),
-                    ("test_sdk_subscribe","test_sdk_subscribe"),
+                    ("test_sdk_subscribe", SDK_ROW_ALIAS["test_sdk_subscribe"]),
                 ]:
                     success, stdout, stderr = self.run_cmd(f'"{rust_runner}" {runner_arg}', timeout=30)
                     _record(test_row, "rust", success, stdout, stderr,
@@ -2049,8 +2154,8 @@ class TestRunner:
         WIRE_APPLICABILITY: Dict[str, List[str]] = {
             # Base wire-evolution has no C runner by design (C is covered by the
             # interop suite + the top-level Python orchestrator); see tests/README.md.
-            "test_wire_evolution":        ["cpp", "ts", "js", "csharp"],
-            "test_wire_evolution_interop": ["c", "cpp", "ts", "js", "csharp", "rust"],
+            "test_wire_evolution":        ["cpp", "py", "ts", "js", "csharp"],
+            "test_wire_evolution_interop": ["c", "cpp", "py", "ts", "js", "csharp", "rust"],
         }
 
         table_data: Dict[str, Dict[str, Any]] = {
@@ -2060,6 +2165,10 @@ class TestRunner:
             }
             for test_name, applicable in WIRE_APPLICABILITY.items()
         }
+        # Rust has no base test_wire_evolution runner yet (only the interop
+        # suite) -- documented future work, not an N/A design choice.
+        if "rust" in table_data["test_wire_evolution"]:
+            table_data["test_wire_evolution"]["rust"] = "GAP"
 
         def _record(test_name: str, lang_id: str, success: bool,
                     stdout: str, stderr: str, failure_msg: str) -> None:
@@ -2140,6 +2249,44 @@ class TestRunner:
                     _record(test_name, "csharp", success, stdout, stderr, f"C# {test_name} failed")
                     if not success:
                         all_success = False
+
+        # ---- Python (via pytest; see tests/test_wire_evolution*.py) ----
+        py_lang = self.languages.get("py")
+        if py_lang and "py" not in self.skipped_languages:
+            probe_ok, _, _ = self.run_cmd("python -m pytest --version", timeout=10)
+            if probe_ok:
+                success, stdout, stderr = self.run_cmd(
+                    f'python -m pytest "{self.tests_dir / "test_wire_evolution.py"}" -q --tb=short',
+                    timeout=120,
+                )
+                _record("test_wire_evolution", "py", success, stdout, stderr,
+                        "Python test_wire_evolution.py failed")
+                if not success:
+                    all_success = False
+
+                interop_paths = " ".join(
+                    f'"{self.tests_dir / name}"'
+                    for name in ("test_wire_evolution_interop.py", "test_wire_evolution_cross_lang.py")
+                )
+                success2, stdout2, stderr2 = self.run_cmd(
+                    f'python -m pytest {interop_paths} -q --tb=short', timeout=120,
+                )
+                _record("test_wire_evolution_interop", "py", success2, stdout2, stderr2,
+                        "Python wire-evolution interop/cross-lang tests failed")
+                if not success2:
+                    all_success = False
+            elif os.environ.get("CI"):
+                # In CI a missing pytest must not silently skip this suite --
+                # leave the cells as "MISSING" so _gate_missing_applicable
+                # below turns them into recorded failures.
+                pass
+            else:
+                # Locally, mirror run_standalone_tests()'s soft-skip: missing
+                # pytest is not itself a test failure.
+                print(f"  {Colors.warn_tag()} Python wire-evolution: pytest not installed "
+                      f"-- run: pip install pytest")
+                table_data["test_wire_evolution"]["py"] = True
+                table_data["test_wire_evolution_interop"]["py"] = True
 
         # ---- Rust (interop only) ----
         rust_lang = self.languages.get("rust")

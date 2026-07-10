@@ -77,6 +77,10 @@ class TestRunner
         {
             return TestEnvelopeSdk.Main(filteredArgs);
         }
+        else if (testSuite == "test_oneof_special")
+        {
+            return TestOneofSpecial.Main(filteredArgs);
+        }
         else if (testSuite == "test_sdk_subscribe")
         {
             return TestSdkSubscribe.Main(filteredArgs);
@@ -125,7 +129,7 @@ class TestRunner
         {
             Console.Error.WriteLine($"[FAIL] Unknown test suite: '{testSuite}'");
             Console.Error.WriteLine("Known suites: test_standard, test_extended, test_variable_flag, " +
-                "test_negative, test_envelope_sdk, test_sdk_subscribe, test_sdk_strict_ordering, " +
+                "test_negative, test_envelope_sdk, test_oneof_special, test_sdk_subscribe, test_sdk_strict_ordering, " +
                 "test_sdk_lifecycle, test_sdk_client_wrapper, test_sdk_profiles, test_base_transport, " +
                 "test_sdk_request_response, test_wire_evolution, test_wire_evolution_interop, " +
                 "test_wire_evolution_file_io, test_roundtrip_pkg_test_messages");

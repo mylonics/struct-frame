@@ -16,51 +16,65 @@ Negative tests are critical for ensuring robust error handling. They verify that
 
 ## Test Files
 
-All seven language implementations now share **33 identical test scenarios** (same names,
-same behaviour), including a common `tryNext` drain contract, partial-pending checks,
-diagnostic-counter assertions, minimal-profile resync scenarios, and a chunk-boundary
-split sweep. All languages also carry the four package-corruption scenarios (bulk
-`pkg_id`/`msg_id` corruption, cross-package rejection, network `pkg_id` corruption), so
-every language runs **37 scenarios**; Python adds 5 status-machine/diagnostic extras (42).
+All seven language implementations share a **42-scenario canonical list** (same names,
+same behaviour) enforced by `NEGATIVE_SCENARIOS` in `tests/run_tests.py`: the 33 uniform
+scenarios (common `tryNext` drain contract, partial-pending checks, diagnostic-counter
+assertions, minimal-profile resync scenarios, a chunk-boundary split sweep), the 4
+package-corruption scenarios (bulk `pkg_id`/`msg_id` corruption, cross-package rejection,
+network `pkg_id` corruption), and 5 status-machine/diagnostic scenarios (buffer-mode
+diagnostics-on-invalid-result, and the four `FrameMsgStatus` probes: `COLLECTING`,
+`CRC_FAILURE`, `SYNC_RECOVERY`, `WAITING_FOR_START`).
+
+**Rust implements 39 of the 42.** Rust's `push_byte`/`next` return
+`Option<FrameMsgInfo>` and fold "waiting for start" and "collecting" into `None` rather
+than surfacing a status value for them -- only definitive outcomes (valid frame,
+`CrcFailure`, `SyncRecovery`) produce `Some(..)`, and `FrameMsgInfo` carries no
+diagnostics field. This is a genuine API asymmetry (documented in
+`tests/rust/src/test_negative.rs` next to `test_status_crc_failure`), not a missing
+test, and shows as `GAP` (not a failure) in the test-runner's Negative Test Results
+table for: `Buffer mode: invalid result carries diagnostics`,
+`Status: COLLECTING during frame reception`, `Status: WAITING_FOR_START before first byte`.
 
 ### C Tests (`tests/c/test_negative.c`)
-- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
+- **42 test cases** -- the full canonical list
 - Tests buffer reader and accumulating reader (buffer mode) APIs
 - Uses ProfileStandard, ProfileSensor, ProfileBulk, and ProfileNetwork configurations
 
 ### C++ Tests (`tests/cpp/test_negative.cpp`)
-- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
+- **42 test cases** -- the full canonical list
 - Tests both BufferReader and AccumulatingReader APIs
 - Tests multiple frame profiles (Standard, Sensor, Bulk, Network)
 
 ### Python Tests (`tests/py/test_negative.py`)
-- **42 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios + 5 Python-specific status-machine/diagnostic extras
+- **42 test cases** -- the full canonical list
 - Tests both buffer and streaming modes
 - Uses ProfileStandardReader, ProfileSensorReader, and ProfileNetworkReader
 
 ### TypeScript Tests (`tests/ts/test_negative.ts`)
-- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
+- **42 test cases** -- the full canonical list
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### JavaScript Tests (`tests/js/test_negative.js`)
-- **37 test cases** identical to TypeScript
+- **42 test cases** identical to TypeScript
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### C# Tests (`tests/csharp/TestNegative.cs`)
-- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
+- **42 test cases** -- the full canonical list
 - Tests ProfileStandardWriter/Reader and AccumulatingReader
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### Rust Tests (`tests/rust/src/test_negative.rs`)
-- **37 test cases**: the 33 uniform scenarios + 4 package-corruption scenarios
+- **39 test cases** -- the canonical list minus the 3 documented API-asymmetry gaps above
 - Tests BufferReader and AccumulatingReader APIs
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ## Uniform Test Scenarios
 
-All seven languages implement the following 33 scenarios with identical names:
+All seven languages implement the following 33 scenarios with identical names (plus the
+4 package-corruption scenarios and 5 status/diagnostics scenarios listed after; Rust
+implements all but the 3 gaps noted above):
 
 1. **Buffer mode: recovers after CRC failure** – buffer-mode accumulating reader resyncs and returns the next valid frame after a CRC-failed frame
 2. **Buffer reader: skips CRC-failed frame** – `BufferReader` advances past a CRC-failed frame instead of stalling on it
@@ -95,6 +109,21 @@ All seven languages implement the following 33 scenarios with identical names:
 31. **Streaming: two frames byte-by-byte** – two back-to-back frames are both decoded in byte-at-a-time mode
 32. **Buffer mode: garbage prefix partial recovers** – a garbage tail that looks like a truncated frame start is saved as a partial; the reader resyncs inside its internal buffer and keeps delivering subsequent frames (livelock regression)
 33. **Buffer mode: oversized length recovers** – a corrupted length field claiming more bytes than the reader’s internal buffer can hold does not wedge the reader permanently (livelock regression)
+
+Package-corruption scenarios (all 7 languages):
+
+34. **Bulk profile: Corrupted pkg_id** – corrupting the pkg_id byte on the Bulk profile invalidates the CRC
+35. **Bulk profile: Corrupted msg_id low byte** – corrupting the msg_id low byte invalidates the CRC
+36. **Cross-package message rejection** – a frame from one package fails validation when decoded with another package's message info
+37. **Network profile: Corrupted pkg_id** – corrupting the pkg_id byte on the Network profile invalidates the CRC
+
+Status/diagnostics scenarios (all 7 languages except Rust's 3 documented gaps above):
+
+38. **Buffer mode: invalid result carries diagnostics** – an invalid/partial result from buffer-mode `next()` still carries diagnostics consistent with the reader's own counters
+39. **Status: COLLECTING during frame reception** – `pushByte`/`push_byte` reports `COLLECTING` once a valid start byte is in progress but the frame isn't complete
+40. **Status: CRC_FAILURE on bad checksum** – `pushByte`/`push_byte` reports `CRC_FAILURE` when a complete frame has a bad checksum
+41. **Status: SYNC_RECOVERY on forced resync** – `pushByte`/`push_byte` reports `SYNC_RECOVERY` when the parser is forced to discard bytes and resync
+42. **Status: WAITING_FOR_START before first byte** – `pushByte`/`push_byte` reports `WAITING_FOR_START` before any start byte has been seen
 
 ### `tryNext` Contract (Unified)
 
@@ -215,9 +244,7 @@ To add a new negative test scenario, add it to **all seven** language files:
 6. **C#**: Add a new test method following the pattern in `TestNegative.cs`
 7. **Rust**: Add a new test function following the pattern in `test_negative.rs`
 
-Add the test name to the list in `main()` / `Main()` in each file, keeping the list alphabetically sorted.
-
-Add the test name to the list in `main()` / `Main()` in each file, keeping the list alphabetically sorted.
+Add the test name to the list in `main()` / `Main()` in each file, keeping the list alphabetically sorted. Also add the canonical name to `NEGATIVE_SCENARIOS` in `tests/run_tests.py` so it shows up in the Negative Test Results table instead of triggering a drift warning.
 
 ### Test Function Templates
 

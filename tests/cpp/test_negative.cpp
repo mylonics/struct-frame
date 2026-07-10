@@ -1125,6 +1125,81 @@ bool test_buffer_mode_oversized_length_recovers() {
   return probe_valid >= 1;
 }
 
+/**
+ * Diagnostics: an invalid (partial) result from AccumulatingReader::next()
+ * still carries a non-null diagnostics pointer, consistent with the
+ * reader's own counters (not a stale/zeroed snapshot).
+ */
+bool test_buffer_mode_invalid_result_has_diagnostics() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  size_t frame_size = encode_standard_frame(writer);
+  if (frame_size < 10) return false;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  reader.add_data(buffer.data(), frame_size / 2);
+  auto result = reader.next();
+  if (result.valid || result.diagnostics == nullptr) return false;
+
+  auto diag = reader.diagnostics();
+  return result.diagnostics->cnt_crc_failures == diag.cnt_crc_failures &&
+         result.diagnostics->cnt_sync_recoveries == diag.cnt_sync_recoveries;
+}
+
+/**
+ * FrameMsgStatus: push_byte() returns WaitingForStart before any start byte
+ * has been seen.
+ */
+bool test_status_waiting_for_start() {
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  // 0x42 is not the start byte (0x90); parser stays in waiting state.
+  auto result = reader.push_byte(0x42);
+  return result.status == FrameMsgStatus::WaitingForStart;
+}
+
+/**
+ * FrameMsgStatus: push_byte() returns Collecting once a valid start byte is
+ * in progress.
+ */
+bool test_status_collecting() {
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  // 0x90 is startByte1 -> move to LookingForStart2.
+  auto result = reader.push_byte(0x90);
+  return result.status == FrameMsgStatus::Collecting;
+}
+
+/**
+ * FrameMsgStatus: push_byte() returns CrcFailure when a complete frame has
+ * a bad CRC.
+ */
+bool test_status_crc_failure() {
+  std::vector<uint8_t> buffer(1024);
+  BufferWriter<ProfileStandardConfig> writer(buffer.data(), buffer.size());
+  size_t frame_size = encode_standard_frame(writer);
+  if (frame_size < 4) return false;
+
+  buffer[frame_size - 1] ^= 0xFF;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  FrameMsgInfo result;
+  for (size_t i = 0; i < frame_size; i++) {
+    result = reader.push_byte(buffer[i]);
+  }
+  return result.status == FrameMsgStatus::CrcFailure;
+}
+
+/**
+ * FrameMsgStatus: push_byte() returns SyncRecovery when the parser is
+ * forced to resync.
+ */
+bool test_status_sync_recovery() {
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+  reader.push_byte(0x90);  // valid startByte1
+  // 0x42 is neither startByte2 (0xAB) nor startByte1 (0x90) -> triggers resync.
+  auto result = reader.push_byte(0x42);
+  return result.status == FrameMsgStatus::SyncRecovery;
+}
+
 // Test function pointer type
 typedef bool (*TestFunc)();
 
@@ -1145,6 +1220,7 @@ int main() {
     {"Buffer mode: Sequence gap counted", test_buffer_mode_seq_gap},
     {"Buffer mode: garbage prefix partial recovers", test_buffer_mode_garbage_prefix_recovers},
     {"Buffer mode: oversized length recovers", test_buffer_mode_oversized_length_recovers},
+    {"Buffer mode: invalid result carries diagnostics", test_buffer_mode_invalid_result_has_diagnostics},
     {"Buffer mode: recovers after CRC failure", test_buffer_mode_recovers_after_crc_failure},
     {"Buffer reader: skips CRC-failed frame", test_buffer_reader_skips_crc_failure},
     {"Bulk profile: Corrupted CRC", test_bulk_profile_corrupted_crc},
@@ -1172,6 +1248,10 @@ int main() {
     {"Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status},
     {"TryNext drain: CRC/resync + valid", test_try_next_drain_contract},
     {"TryNext partial pending contract", test_try_next_partial_pending_contract},
+    {"Status: COLLECTING during frame reception", test_status_collecting},
+    {"Status: CRC_FAILURE on bad checksum", test_status_crc_failure},
+    {"Status: SYNC_RECOVERY on forced resync", test_status_sync_recovery},
+    {"Status: WAITING_FOR_START before first byte", test_status_waiting_for_start},
     {"Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage},
     {"Streaming: Corrupted CRC detection", test_streaming_corrupted_crc},
     {"Streaming: Garbage data handling", test_streaming_garbage_data},

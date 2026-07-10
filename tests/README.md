@@ -93,21 +93,29 @@ Higher-level test infrastructure (includes `profile_runner.h`):
 
 ### 4. Negative Tests (`test_negative.*`)
 **Purpose**: Validates parsers reject corrupted, truncated, or malformed frames.
-33 uniform + 4 package scenarios (37 total) implemented identically in all 7 languages, Python has 5 additional scenarios (42 total) — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
+A canonical 42-scenario list (33 uniform + 4 package + 5 status/diagnostics) implemented
+identically in all 7 languages; Rust implements 39 of the 42 due to a documented API
+asymmetry (its `push_byte`/`next` fold "waiting"/"collecting" into `None` and carry no
+diagnostics on the result) — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
 
 ### 5. Streaming Tests (`test_streaming.*`)
 **Purpose**: Validates byte-at-a-time accumulating-reader behaviour (C, Rust).
 
-### 6. SDK Tests (`test_sdk.*`, `test_sdk_subscribe.*`, `test_envelope_sdk.*`)
-**Purpose**: Validates `StructFrameSdk` subscribe/dispatch with mock transports.
-Languages: C++, Python, TypeScript, JavaScript, C#, Rust.
+### 6. SDK Tests (`test_sdk.*`, `test_sdk_subscribe.*`, `test_envelope_sdk.*`, `test_oneof_special.*`)
+**Purpose**: Validates `StructFrameSdk` subscribe/dispatch with mock transports, the
+envelope (oneof-wrapping) SDK interface, and oneof special cases (discriminator=none,
+multi-oneof messages).
+Languages: C++, Python, TypeScript, JavaScript, C#, Rust (C has no SDK and no generated
+oneof accessors, so it's N/A by design for the envelope/oneof suites).
 
 ### 7. Wire-Evolution Tests (`test_wire_evolution.*`)
 **Purpose**: Validates backward-compatible message extension: unknown trailing
 fields are ignored, legacy frames decode against new schemas, magic bytes are
 computed only from base fields.
-Top-level orchestrator: `tests/test_wire_evolution.py`. Per-language compiled
-tests: C++, TS, JS, C#.
+Top-level orchestrator: `tests/test_wire_evolution.py` (also runs, via pytest, as the
+Python column of the test-runner's Wire Evolution table). Per-language compiled
+tests: C++, TS, JS, C#. C has no base runner by design (covered by the interop suite);
+Rust has no base runner yet (only interop) -- tracked as a documented gap, not N/A.
 
 ### 8. Cross-Cutting Generator Tests (top-level `tests/test_*.py`)
 - `test_magic_bytes.py` — magic-byte derivation + enforcement
@@ -145,12 +153,16 @@ tests/
 │   │                         #  test_streaming.c)
 │   └── include/              # Shared message defs + profile_runner + test_harness
 ├── cpp/                      # C++ tests (adds test_profiling*, test_sdk_*,
+│                             #  test_envelope_sdk.cpp, test_oneof_special.cpp,
 │                             #  test_wire_evolution.cpp)
-├── py/                       # Python tests (adds test_sdk.py)
-├── ts/                       # TypeScript tests (adds test_sdk.ts, test_wire_evolution.ts)
-├── js/                       # JavaScript tests (adds test_sdk.js, test_wire_evolution.js)
+├── py/                       # Python tests (adds test_sdk.py, test_envelope_sdk.py,
+│                             #  test_oneof_special.py)
+├── ts/                       # TypeScript tests (adds test_sdk.ts, test_envelope_sdk.ts,
+│                             #  test_oneof_special.ts, test_wire_evolution.ts)
+├── js/                       # JavaScript tests (adds test_sdk.js, test_envelope_sdk.js,
+│                             #  test_oneof_special.js, test_wire_evolution.js)
 ├── csharp/                   # C# tests (adds TestSdkSubscribe.cs, test_envelope_sdk.cs,
-│                             #  test_wire_evolution.cs)
+│                             #  test_oneof_special.cs, test_wire_evolution.cs)
 ├── rust/                     # Rust tests (single binary with subcommands)
 └── generated/                # Generated code output (git-ignored)
     ├── c/  cpp/  py/  ts/  js/  csharp/  gql/
