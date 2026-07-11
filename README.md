@@ -10,7 +10,7 @@
 [![.NET](https://img.shields.io/badge/.NET-8%20%7C%2010-512BD4)](https://github.com/mylonics/struct-frame/actions/workflows/test.yml)
 [![Rust](https://img.shields.io/badge/rust-stable-orange)](https://github.com/mylonics/struct-frame/actions/workflows/test.yml)
 
-A multi-language code generation framework that converts Protocol Buffer (.proto) files into serialization/deserialization code for C, C++, TypeScript, Python, and GraphQL. It provides framing and parsing utilities for structured message communication.
+A multi-language code generation framework that converts Protocol Buffer (.proto) files into serialization/deserialization code for C, C++, TypeScript, JavaScript, Python, C#, Rust, and GraphQL. It provides framing and parsing utilities for structured message communication.
 
 ## Installation
 
@@ -217,17 +217,17 @@ python -m struct_frame examples/myl_vehicle.proto --build_gql
 
 ## Feature Compatibility Matrix
 
-| Feature | C | C++ | TypeScript | Python | C# | GraphQL | Status |
-|---------|---|-----|------------|--------|----|---------|--------|
-| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
-| **String** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Enums** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Enum Classes** | N/A | ✓ | N/A | N/A | N/A | N/A | Stable |
-| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
-| **Message IDs** | ✓ | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
-| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
-| **Flatten** | N/A | N/A | N/A | ✓ | N/A | ✓ | Partial |
-| **Arrays** | ✓ | ✓ | Partial | ✓ | ✓ | ✓ | Stable |
+| Feature | C | C++ | TypeScript | JavaScript | Python | C# | Rust | GraphQL | Status |
+|---------|---|-----|------------|------------|--------|----|----|---------|--------|
+| **Core Types** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **String** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enums** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Enum Classes** | N/A | ✓ | N/A | N/A | N/A | N/A | N/A | N/A | Stable |
+| **Nested Messages** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
+| **Message IDs** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
+| **Message Serialization** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | N/A | Stable |
+| **Flatten** | ✓ | N/A | N/A | N/A | ✓ | N/A | N/A | ✓ | Partial |
+| **Arrays** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | Stable |
 
 **Legend:**
 - **✓** - Feature works as documented

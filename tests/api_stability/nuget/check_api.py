@@ -15,7 +15,29 @@ GENERATED_DIR = ROOT / 'generated' / 'csharp'
 BASELINE = Path(__file__).with_name('PublicAPI.Shipped.txt')
 
 PUB_RE = re.compile(
-    r'public\s+(?:const|static|readonly|class|struct|enum|interface|delegate|void|int|uint|long|ulong|float|double|bool|string|byte|var)\s+(\w+)'
+    r'public\s+'
+    # Modifiers (any count, any order) -- must be skipped before the type,
+    # not captured as the type/name themselves (see below).
+    r'(?:(?:static|readonly|sealed|abstract|partial|virtual|override|async|unsafe|new|extern)\s+)*'
+    r'(?:const\s+)?'
+    # `delegate` declares `delegate <ReturnType> <Name>(...)` -- unlike
+    # class/struct/enum/interface/record, the name is NOT the token right
+    # after the keyword, so consume it as a prefix and let the ordinary
+    # return-type + name matching below do the rest.
+    r'(?:delegate\s+)?'
+    r'(?:'
+    # Type-declaration keywords, captured directly as the declared name is
+    # the identifier that follows them.
+    r'class|struct|enum|interface|record|const|'
+    # Simple built-in return/field types.
+    r'void|int|uint|long|ulong|short|ushort|byte|sbyte|'
+    r'float|double|decimal|bool|string|char|object|dynamic|var|'
+    # Anything else: a (possibly generic, possibly array/nullable) type
+    # name used as a return/field type, e.g. `Task<T>`, `IEnumerable<X>`,
+    # `MessageEntry`, `int[]`, `string?`.
+    r'[A-Za-z_][\w.]*(?:<[^>]*>)?(?:\[\])?\??'
+    r')'
+    r'\s+(\w+)'
 )
 
 def collect_public_items() -> list[str]:

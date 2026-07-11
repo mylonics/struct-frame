@@ -26,6 +26,9 @@ import math
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
 from test_utils import _check, run_generator, load_generated_module, REPO_ROOT, SRC_DIR
 
 PROTO_FILE = REPO_ROOT / "tests" / "proto" / "wire_evolution_messages.sf"
@@ -298,8 +301,7 @@ def _c_compiles(c_dir: Path) -> None:
     """Check that the generated C headers compile (compile-only, no link)."""
     import shutil
     if not shutil.which("gcc"):
-        print("  [SKIP] gcc not found -- skipping C compilation check")
-        return
+        pytest.skip("gcc not found -- skipping C compilation check")
 
     src = c_dir / "test_c_smoke.c"
     src.write_text(

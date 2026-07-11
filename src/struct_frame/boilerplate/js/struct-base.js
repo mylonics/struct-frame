@@ -246,7 +246,12 @@ class MessageBase {
         // allocating a temporary Buffer and copying — saves one allocation + one copy
         // per string field on the encode path. Truncation is byte-level, identical to
         // the previous Buffer.from(...).copy(...) behavior.
-        this._buffer.write(String(value || ''), offset, size, 'utf8');
+        // Returns the actual UTF-8 byte count written (Buffer.write() stops at a
+        // codepoint boundary rather than splitting a multi-byte sequence), so
+        // callers can use it as the authoritative length for a paired
+        // length-prefix field instead of the source string's .length (UTF-16
+        // code units, which undercounts any multibyte character).
+        return this._buffer.write(String(value || ''), offset, size, 'utf8');
     }
     _writeInt8Array(offset, length, value) {
         const copyLen = Math.min(value.length, length);

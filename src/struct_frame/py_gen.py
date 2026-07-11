@@ -584,7 +584,23 @@ class MessagePyGen():
                     result += f'        # Oneof {oneof_name} discriminator (uint8 - field order, 1-based)\n'
                     result += f'        discriminator = struct.unpack_from("<B", data, offset)[0]\n'
                     result += f'        offset += 1\n'
-                result += f'        fields["{oneof_name}_discriminator"] = discriminator\n'
+                if oneof.discriminator_type == "field_order":
+                    # wrap() constructs this field as the enum type (see
+                    # generate_wrap_method); deserialize must match so that
+                    # equality checks and unwrap() behave the same whether the
+                    # envelope was just constructed or round-tripped over the wire.
+                    # Wire evolution: an older schema may see a discriminator value
+                    # from a newer sender's extra oneof variant that isn't in this
+                    # enum -- keep the raw ordinal rather than raising, matching
+                    # this codebase's zero-fill/ignore approach to unknown
+                    # extension data elsewhere.
+                    enum_name = get_discriminator_enum_name(oneof, msg.name)
+                    result += f'        try:\n'
+                    result += f'            fields["{oneof_name}_discriminator"] = {enum_name}(discriminator)\n'
+                    result += f'        except ValueError:\n'
+                    result += f'            fields["{oneof_name}_discriminator"] = discriminator\n'
+                else:
+                    result += f'        fields["{oneof_name}_discriminator"] = discriminator\n'
             
             # Unpack the union payload
             result += f'        # Oneof {oneof_name} payload\n'

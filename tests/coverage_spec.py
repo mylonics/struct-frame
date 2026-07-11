@@ -230,7 +230,11 @@ SECTIONS = [
                     "standard test helpers; C# via "
                     "`CheckDiscriminatorNone()`/`CheckMultiOneof()` in "
                     "`tests/csharp/include/StandardMessages.cs`; Rust via the "
-                    "`test_oneof_special` runner in `tests/rust/src/main.rs`."
+                    "`test_oneof_special` runner in `tests/rust/src/main.rs`. "
+                    "A standalone `test_oneof_special.*` runner (same scenarios: "
+                    "`NoneDiscriminatorMessage`, `MultiOneofMessage`) now also "
+                    "exists for C++, Python, TS, JS, and C# alongside Rust's; C "
+                    "is N/A (no generated oneof accessors)."
                 ),
             },
             {
@@ -251,10 +255,11 @@ SECTIONS = [
                     "> **C/Python `flatten`:** Verified by "
                     "`tests/test_proto_field_types.py` -- Python `to_dict()` "
                     "inlines inner fields; C generates the struct inline (compile "
-                    "test). **Rust envelope:** `tests/rust/src/main.rs` "
-                    "`test_envelope_sdk` runner tests `CommandEnvelope` (msgid "
-                    "discriminator) and `RawDataEnvelope` (field_order "
-                    "discriminator) round-trips."
+                    "test). **Envelope round-trips:** a `test_envelope_sdk.*` "
+                    "runner tests `CommandEnvelope` (msgid discriminator) and "
+                    "`RawDataEnvelope` (field_order discriminator) round-trips "
+                    "in C++, Python, TS, JS, C#, and Rust (`tests/rust/src/main.rs`); "
+                    "C is N/A (no SDK)."
                 ),
             },
         ],
@@ -368,8 +373,16 @@ SECTIONS = [
         "number": "4",
         "title": "Cross-Language Compatibility Matrix",
         "intro": (
-            "The test runner builds a compatibility matrix by having each "
-            "language encode a frame and every other language decode it."
+            "The test runner establishes cross-language wire compatibility via a "
+            "C++-anchored hub, not by literally running every encoder against every "
+            "decoder: each language (1) encodes a frame to its own file, (2) that "
+            "file is byte-compared against the C++ reference encoding and decoded "
+            "by the C++ decoder, and (3) every language decodes the C++ reference "
+            "bytes. Because step (2) proves each language's bytes are byte-identical "
+            "to the C++ reference, and step (3) proves every language can decode "
+            "those reference bytes, any two languages are transitively guaranteed "
+            "to interoperate without ever being executed back-to-back. See "
+            "`_validate_encoded_file`/`_run_decode` in `tests/run_tests.py`."
         ),
         "tables": [
             {
@@ -404,15 +417,13 @@ SECTIONS = [
         "intro": (
             "Test files: `tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*`\n\n"
             "See `tests/NEGATIVE_TESTS.md` for full scenario descriptions.\n\n"
-            "The 33 scenarios in the table below are registered in every "
-            "language's `test_negative.*` file, covering corruption handling, "
-            "the `tryNext` drain contract, diagnostic counters (unified "
-            "semantics in buffer and stream mode), minimal-profile resync, and "
-            "a chunk-boundary split sweep. All seven languages additionally "
-            "carry the four package-corruption scenarios (bulk "
-            "`pkg_id`/`msg_id` corruption, cross-package rejection, network "
-            "`pkg_id` corruption) for 37 scenarios each; Python (42) adds "
-            "status-machine and buffer-mode diagnostic extras."
+            "All 42 scenarios below (the 33 uniform scenarios, 4 "
+            "package-corruption scenarios, and 5 status/diagnostics "
+            "scenarios) are registered identically in every language's "
+            "`test_negative.*` file, covering corruption handling, the "
+            "`tryNext` drain contract, diagnostic counters (unified semantics "
+            "in buffer and stream mode), minimal-profile resync, and a "
+            "chunk-boundary split sweep."
         ),
         "tables": [
             {
@@ -427,8 +438,11 @@ SECTIONS = [
                     "Buffer mode: recovers after CRC failure",
                     "Buffer reader: skips CRC-failed frame",
                     "Bulk profile: Corrupted CRC",
+                    "Bulk profile: Corrupted msg_id low byte",
+                    "Bulk profile: Corrupted pkg_id",
                     "Corrupted CRC detection",
                     "Corrupted length field detection",
+                    "Cross-package message rejection",
                     "Diagnostics: CRC failure counter",
                     "Diagnostics: Length error counter",
                     "Diagnostics: Reset diagnostics",
@@ -440,11 +454,14 @@ SECTIONS = [
                     "Minimal profile: Truncated frame",
                     "Multiple frames: CRC error then valid frame",
                     "Multiple frames: Corrupted middle frame",
+                    "Network profile: Corrupted pkg_id",
                     "Network profile: SysId/CompId corruption",
                     "Partial frame across buffer boundary",
                     "Sensor buffer: unknown msg_id resync",
                     "Split sweep: two frames at every boundary",
                     "Split-buffer: CRC error status preserved",
+                    "Status: CRC_FAILURE on bad checksum",
+                    "Status: SYNC_RECOVERY on forced resync",
                     "Stream mode: recovers after garbage prefix",
                     "Streaming: Corrupted CRC detection",
                     "Streaming: Garbage data handling",
@@ -452,7 +469,10 @@ SECTIONS = [
                     "TryNext drain: CRC/resync + valid",
                     "TryNext partial pending contract",
                     "Truncated frame detection",
-                    "Zero-length buffer handling")],
+                    "Zero-length buffer handling",
+                    "Buffer mode: invalid result carries diagnostics",
+                    "Status: COLLECTING during frame reception",
+                    "Status: WAITING_FOR_START before first byte")],
             },
         ],
     },
@@ -571,7 +591,7 @@ SECTIONS = [
                     "> **Closed.** `StructFrameSdk` subscribe/dispatch is now "
                     "tested with mock transports in six languages:\n"
                     "> - **C++** -- `tests/cpp/test_sdk_subscribe.cpp` (17 `run_test` registrations)\n"
-                    "> - **Python** -- `tests/py/test_sdk.py` (8 test functions, 31 `run_test` assertions)\n"
+                    "> - **Python** -- `tests/py/test_sdk.py` (8 test functions, 32 `run_test` assertions)\n"
                     "> - **TypeScript** -- `tests/ts/test_sdk.ts` (7 test functions, 25 `assert` assertions)\n"
                     "> - **C#** -- `tests/csharp/TestSdkSubscribe.cs` (32 `Assert` assertions)\n"
                     "> - **JavaScript** -- `tests/js/test_sdk.js` (7 test functions, 25 `assert` assertions)\n"

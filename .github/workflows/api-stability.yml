@@ -14,7 +14,6 @@ jobs:
   api-stability:
     name: Public API compatibility
     runs-on: ubuntu-latest
-    continue-on-error: true
     permissions:
       contents: read
     steps:
@@ -29,6 +28,9 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Install Python dependencies
         run: pip install proto-schema-parser
+      - name: Install Node.js dependencies
+        run: npm ci
+        working-directory: tests/ts
       - name: Generate code (ts + csharp + rust)
         run: python tests/run_tests.py --only-generate --skip-lang c --skip-lang cpp --skip-lang py --skip-lang js --skip-lang gql
       - name: Run Python API stability

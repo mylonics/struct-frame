@@ -119,7 +119,10 @@ def check_message(index: int, info) -> bool:
         return False
     msg_class = type(expected)
     decoded = msg_class.deserialize(info)
-    # Normalize expected through a serialize/deserialize round-trip so that
-    # padding and truncation are applied consistently before comparison.
-    expected_normalized = msg_class.deserialize(expected.serialize())
-    return decoded.to_dict() == expected_normalized.to_dict()
+    if decoded is None:
+        return False
+    # Strong check against the *pristine* expected message (which never passes
+    # through the Python decoder): a deterministic decode-side bug is caught
+    # rather than masked by comparing two identically-decoded operands.
+    # serialize() applies identical float/quantization to both sides.
+    return decoded.serialize() == expected.serialize()

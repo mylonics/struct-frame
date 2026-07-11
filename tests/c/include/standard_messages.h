@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <math.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -220,9 +221,11 @@ static inline const SerializationTestBasicTypesMessage* get_basic_types_messages
     messages[2] = create_basic_types(-128, -32768, -2147483648, -9223372036854775807LL, 255, 65535, 4294967295U,
                                      9223372036854775807ULL, -273.15f, -9999.999999, false, "NEG-TEST",
                                      "Negative and max values");
-    messages[3] = create_basic_types(-128, -32768, -2147483648, -9223372036854775807LL, 255, 65535, 4294967295U,
-                                     9223372036854775807ULL, -273.15f, -9999.999999, false, "NEG-TEST",
-                                     "Negative and max values");
+    /* True int64/uint64 extremes + IEEE-754 infinities + multibyte UTF-8,
+       distinct from messages[2] above (was a byte-for-byte duplicate). */
+    messages[3] = create_basic_types(-128, -32768, -2147483648, INT64_MIN, 255, 65535, 4294967295U,
+                                     UINT64_MAX, INFINITY, -INFINITY, false, "NEG-TEST",
+                                     "UTF-8 edge: café 日本語 🚀!");
 
     initialized = true;
   }

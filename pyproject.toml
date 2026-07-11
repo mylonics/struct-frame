@@ -36,4 +36,4 @@ Issues = "https://github.com/mylonics/struct-frame/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = ["generated", "py", "ts", "js", "c", "cpp", "csharp", "rust", "build", ".git"]
+norecursedirs = ["generated", "py", "ts", "js", "c", "cpp", "csharp", "rust", "build", ".git", "api_stability", "benchmarks"]

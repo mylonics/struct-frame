@@ -1194,6 +1194,74 @@ public class TestNegative
             return probeValid >= 1;
         }
 
+        /**
+         * Diagnostics: an invalid (partial) result from AccumulatingReader.Next()
+         * still carries a diagnostics snapshot consistent with the reader's own
+         * counters (not a default/stale value).
+         */
+        private static bool TestBufferModeInvalidResultHasDiagnostics()
+        {
+            byte[] buffer = new byte[1024];
+            var sizes = EncodeStandardFrames(buffer, 1);
+            int frameSize = sizes[0];
+            if (frameSize < 10) return false;
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            reader.AddData(buffer, 0, frameSize / 2);
+            var result = reader.Next();
+            if (result.Valid || result.Diagnostics == null) return false;
+
+            var diag = reader.Diagnostics;
+            return result.Diagnostics.Value.CntCrcFailures == diag.CntCrcFailures &&
+                   result.Diagnostics.Value.CntSyncRecoveries == diag.CntSyncRecoveries;
+        }
+
+        /** FrameMsgStatus: PushByte() returns WaitingForStart before any start byte has been seen. */
+        private static bool TestStatusWaitingForStart()
+        {
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            // 0x42 is not the start byte (0x90); parser stays in waiting state.
+            var result = reader.PushByte(0x42);
+            return result.Status == FrameMsgStatus.WaitingForStart;
+        }
+
+        /** FrameMsgStatus: PushByte() returns Collecting once a valid start byte is in progress. */
+        private static bool TestStatusCollecting()
+        {
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            // 0x90 is startByte1 -> move to LookingForStart2.
+            var result = reader.PushByte(0x90);
+            return result.Status == FrameMsgStatus.Collecting;
+        }
+
+        /** FrameMsgStatus: PushByte() returns CrcFailure when a complete frame has a bad CRC. */
+        private static bool TestStatusCrcFailure()
+        {
+            byte[] buffer = new byte[1024];
+            var sizes = EncodeStandardFrames(buffer, 1);
+            int frameSize = sizes[0];
+            if (frameSize < 4) return false;
+
+            buffer[frameSize - 1] ^= 0xFF;
+
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            FrameMsgInfo result = default;
+            for (int i = 0; i < frameSize; i++)
+            {
+                result = reader.PushByte(buffer[i]);
+            }
+            return result.Status == FrameMsgStatus.CrcFailure;
+        }
+
+        /** FrameMsgStatus: PushByte() returns SyncRecovery when the parser is forced to resync. */
+        private static bool TestStatusSyncRecovery()
+        {
+            var reader = new AccumulatingReader<StandardProfile>(1024, SerializationTestMD.GetMessageInfo);
+            reader.PushByte(0x90);  // valid startByte1
+            // 0x42 is neither startByte2 (0xAB) nor startByte1 (0x90) -> triggers resync.
+            var result = reader.PushByte(0x42);
+            return result.Status == FrameMsgStatus.SyncRecovery;
+        }
 
         public static int Main(string[] args)
         {
@@ -1208,14 +1276,15 @@ public class TestNegative
                 ("Buffer mode: Sequence gap counted", TestBufferModeSeqGap),
                 ("Buffer mode: garbage prefix partial recovers", TestBufferModeGarbagePrefixRecovers),
                 ("Buffer mode: oversized length recovers", TestBufferModeOversizedLengthRecovers),
+                ("Buffer mode: invalid result carries diagnostics", TestBufferModeInvalidResultHasDiagnostics),
                 ("Buffer mode: recovers after CRC failure", TestBufferModeRecoverAfterCrcFailure),
                 ("Buffer reader: skips CRC-failed frame", TestBufferReaderSkipsCrcFailed),
                 ("Bulk profile: Corrupted CRC", TestBulkProfileCorruptedCrc),
-                ("Bulk profile: Corrupted pkg_id byte", TestBulkCorruptedPkgId),
+                ("Bulk profile: Corrupted pkg_id", TestBulkCorruptedPkgId),
                 ("Bulk profile: Corrupted msg_id low byte", TestBulkCorruptedMsgIdLowByte),
                 ("Corrupted CRC detection", TestCorruptedCrc),
                 ("Corrupted length field detection", TestCorruptedLength),
-                ("Cross-package rejection (pkgid mismatch)", TestCrossPackageRejection),
+                ("Cross-package message rejection", TestCrossPackageRejection),
                 ("Diagnostics: CRC failure counter", TestDiagnosticCrcFailure),
                 ("Diagnostics: Length error counter", TestDiagnosticLenError),
                 ("Diagnostics: Reset diagnostics", TestDiagnosticReset),
@@ -1227,7 +1296,7 @@ public class TestNegative
                 ("Minimal profile: Truncated frame", TestMinimalProfileTruncatedFrame),
                 ("Multiple frames: CRC error then valid frame", TestCrcErrorThenValidFrame),
                 ("Multiple frames: Corrupted middle frame", TestMultipleCorruptedFrames),
-                ("Network profile: Corrupted pkg_id byte", TestNetworkCorruptedPkgId),
+                ("Network profile: Corrupted pkg_id", TestNetworkCorruptedPkgId),
                 ("Network profile: SysId/CompId corruption", TestNetworkSysIdCompId),
                 ("Partial frame across buffer boundary", TestPartialFrameBoundary),
                 ("Sensor buffer: unknown msg_id resync", TestSensorBufferUnknownMsgIdResync),
@@ -1235,6 +1304,10 @@ public class TestNegative
                 ("Split-buffer: CRC error status preserved", TestSplitBufferCrcErrorStatus),
                 ("TryNext drain: CRC/resync + valid", TestTryNextDrainContract),
                 ("TryNext partial pending contract", TestTryNextPartialPendingContract),
+                ("Status: COLLECTING during frame reception", TestStatusCollecting),
+                ("Status: CRC_FAILURE on bad checksum", TestStatusCrcFailure),
+                ("Status: SYNC_RECOVERY on forced resync", TestStatusSyncRecovery),
+                ("Status: WAITING_FOR_START before first byte", TestStatusWaitingForStart),
                 ("Stream mode: recovers after garbage prefix", TestStreamRecoversAfterGarbage),
                 ("Streaming: Corrupted CRC detection", TestStreamingCorruptedCrc),
                 ("Streaming: Garbage data handling", TestStreamingGarbage),

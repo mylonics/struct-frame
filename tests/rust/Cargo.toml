@@ -13,3 +13,7 @@ path = "src/main.rs"
 [[bin]]
 name = "test_negative"
 path = "src/test_negative.rs"
+
+[[bin]]
+name = "test_wire_evolution_file_io"
+path = "src/test_wire_evolution_file_io.rs"

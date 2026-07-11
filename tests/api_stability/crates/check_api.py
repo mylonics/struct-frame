@@ -15,7 +15,8 @@ GENERATED_DIR = ROOT / 'generated' / 'rust'
 BASELINE = Path(__file__).with_name('public-api.txt')
 
 PUB_RE = re.compile(
-    r'pub\s+(?:const|static|fn|struct|enum|trait|type|mod)\s+(\w+)'
+    r'pub\s+(?:(?:unsafe|async)\s+)*(?:const\s+)?'
+    r'(?:const|static|fn|struct|enum|trait|type|mod|union)\s+(\w+)'
 )
 
 def collect_public_items() -> list[str]:
@@ -24,11 +25,19 @@ def collect_public_items() -> list[str]:
         print(f'Generated directory not found: {GENERATED_DIR}', file=sys.stderr)
         sys.exit(1)
     for f in sorted(GENERATED_DIR.glob('*.rs')):
-        if f.name == 'lib.rs' or f.suffix == '.rs' and '.structframe.' in f.name:
-            for i, line in enumerate(f.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
-                m = PUB_RE.match(line.strip())
-                if m:
-                    items.append(f'{f.name}:{m.group(1)}')
+        # Scan every real library module -- lib.rs itself, every generated
+        # per-schema `*.structframe.rs` message module, and the boilerplate
+        # SDK/runtime modules it declares `pub mod` (frame_base.rs,
+        # frame_headers.rs, payload_types.rs, frame_profiles.rs,
+        # struct_frame_sdk.rs). Only the `test_roundtrip_*.rs` scaffolding
+        # (generated test binaries, never `pub mod`-ed from lib.rs) is
+        # excluded -- it isn't part of the published crate's public API.
+        if f.name.startswith('test_'):
+            continue
+        for i, line in enumerate(f.read_text(encoding='utf-8', errors='replace').splitlines(), 1):
+            m = PUB_RE.match(line.strip())
+            if m:
+                items.append(f'{f.name}:{m.group(1)}')
     return sorted(items)
 
 def main() -> int:

@@ -291,7 +291,7 @@ namespace StructFrame.Framing
                 }
             }
 
-            return FrameMsgInfo.Invalid;
+            return AttachDiagnostics(FrameMsgInfo.Invalid);
         }
 
         /// <summary>

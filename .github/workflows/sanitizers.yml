@@ -45,7 +45,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm
-          pip install proto-schema-parser
+          pip install proto-schema-parser pytest
           (cd tests/ts && npm ci)
       - name: Run C / C++ suite under ASan + UBSan
         run: python test_all.py --skip-lang csharp --skip-lang rust
@@ -73,7 +73,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm
-          pip install proto-schema-parser
+          pip install proto-schema-parser pytest
           (cd tests/ts && npm ci)
       - name: Run C / C++ suite under TSan
         # TSan is mutually exclusive with ASan; the SDK subscribe / streaming
@@ -144,6 +144,20 @@ jobs:
                 valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
                          --errors-for-leak-kinds=definite,possible \
                          --track-origins=yes "$exe" decode bulk "$tmp_dir/variable.bin"
+                ;;
+              test_wire_evolution_file_io|test_wire_evolution_file_io.exe)
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" encode v1 "$tmp_dir/wire_evo_v1.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" decode v1 "$tmp_dir/wire_evo_v1.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" encode v2 "$tmp_dir/wire_evo_v2.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" decode v2 "$tmp_dir/wire_evo_v2.bin"
                 ;;
               *)
                 valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \

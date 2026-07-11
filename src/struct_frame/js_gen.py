@@ -234,8 +234,8 @@ class MessageJsClassGen():
         result += f'   * @param {{Buffer|Object}} [bufferOrInit] - Buffer to wrap or init object with field values\n'
         result += f'   */\n'
         result += f'  constructor(bufferOrInit) {{\n'
-        result += f'    super(Buffer.isBuffer(bufferOrInit) ? bufferOrInit : undefined);\n'
-        result += f'    if (bufferOrInit && !Buffer.isBuffer(bufferOrInit)) {{\n'
+        result += f'    super(bufferOrInit instanceof Uint8Array || Buffer.isBuffer(bufferOrInit) ? bufferOrInit : undefined);\n'
+        result += f'    if (bufferOrInit && !Buffer.isBuffer(bufferOrInit) && !(bufferOrInit instanceof Uint8Array)) {{\n'
         result += f'      this._applyInit(bufferOrInit);\n'
         result += f'    }}\n'
         result += f'  }}\n\n'
@@ -879,10 +879,27 @@ class MessageJsClassGen():
         result = f'  get {name}() {{\n'
         result += f'    return this._readString({offset}, {size});\n'
         result += f'  }}\n'
-        result += f'  set {name}(value) {{\n'
-        result += f'    this._writeString({offset}, {size}, value);\n'
-        result += f'  }}\n\n'
-        
+        if field_info.is_variable:
+            # Variable (length-prefixed) string: the paired `*Length` field
+            # is always laid out immediately before this Data field (see
+            # calculate_field_layout in ts_js_base.py). Recompute it from the
+            # actual UTF-8 bytes _writeString() wrote rather than trusting
+            # the caller to pass a matching length separately -- the natural
+            # `str.length` idiom is UTF-16 code units and silently
+            # undercounts any multibyte character, corrupting the wire
+            # length prefix for non-ASCII content.
+            length_size = 2 if size > 255 else 1
+            length_offset = offset - length_size
+            length_write = 'writeUInt16LE' if length_size == 2 else 'writeUInt8'
+            result += f'  set {name}(value) {{\n'
+            result += f'    const written = this._writeString({offset}, {size}, value);\n'
+            result += f'    this._buffer.{length_write}(written, {length_offset});\n'
+            result += f'  }}\n\n'
+        else:
+            result += f'  set {name}(value) {{\n'
+            result += f'    this._writeString({offset}, {size}, value);\n'
+            result += f'  }}\n\n'
+
         return result
     
     @staticmethod

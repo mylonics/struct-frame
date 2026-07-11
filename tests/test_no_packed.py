@@ -18,6 +18,9 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
+
+import pytest
+
 from test_utils import _check, run_generator, PROTO_FILE
 
 
@@ -82,8 +85,7 @@ def test_no_packed_flag():
             _compile_c(nopacked_dir / "c")
             _compile_cpp(nopacked_dir / "cpp")
         except FileNotFoundError:
-            print("SKIP: gcc/g++ not available, skipping compilation check")
-            return
+            pytest.skip("gcc/g++ not available, skipping compilation check")
 
         # 5. Encode/decode round-trip with --no_packed succeeds.
         _roundtrip_c(nopacked_dir / "c")

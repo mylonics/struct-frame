@@ -84,6 +84,12 @@ pub struct FrameMsgInfo {
     pub msg_data: Vec<u8>,
     /// Status indicating the reason this result is not valid (only meaningful when valid is false).
     pub status: FrameMsgStatus,
+    /// Diagnostics snapshot at the moment this result was produced. Only populated by
+    /// `AccumulatingReader::push_byte()` (mirrors the other six languages' push_byte
+    /// contract, where every result -- valid or not -- carries a diagnostics snapshot).
+    /// `next()`/`try_next()` leave this `None`; call `AccumulatingReader::diagnostics()`
+    /// directly in buffer mode instead.
+    pub diagnostics: Option<ParserDiagnostics>,
 }
 
 impl FrameMsgInfo {

@@ -20,11 +20,15 @@ verifies:
 
 from __future__ import annotations
 
+import math
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
 from test_utils import _check, run_generator, PROTO_FILE
 
 
@@ -110,6 +114,27 @@ def _python_equality(gen_dir: Path) -> None:
     _check(a != c, "__ne__ should return True for unequal messages")
     _check(not (a != b), "__ne__ should return False for equal messages")
 
+    # IEEE-754 edge cases (NaN/-Inf): the generated __eq__ does naive `==`
+    # on float fields, so NaN != NaN there too -- that is correct IEEE-754
+    # behavior, not a bug. The only sound way to verify these values survive
+    # the wire is a byte-level round-trip, not value equality.
+    d = BasicTypesMessage()
+    d.single_precision = float('nan')
+    d.double_precision = float('-inf')
+    d_bytes = d.serialize()
+    d2 = BasicTypesMessage.deserialize(d_bytes)
+    _check(d2.serialize() == d_bytes,
+           "NaN/-Inf float round-trip: re-serialized bytes must match byte-for-byte")
+    _check(math.isnan(d2.single_precision),
+           f"NaN float field should decode as NaN, got {d2.single_precision}")
+    _check(d2.double_precision == float('-inf'),
+           f"-Inf double field should decode as -Inf, got {d2.double_precision}")
+    d_copy = BasicTypesMessage()
+    d_copy.single_precision = float('nan')
+    d_copy.double_precision = float('-inf')
+    _check(not (d == d_copy),
+           "IEEE-754: two messages with the same NaN field must not compare equal via ==")
+
 
 # ---------------------------------------------------------------------------
 # C equality tests
@@ -118,13 +143,14 @@ def _python_equality(gen_dir: Path) -> None:
 def _c_equality(gen_dir: Path) -> None:
     """Generated C *_equals() functions compile and work correctly."""
     if not shutil.which("gcc"):
-        print("SKIP: gcc not available")
-        return
+        pytest.skip("gcc not available")
 
     c_dir = gen_dir / "c"
     src = c_dir / "_equality_test.c"
     src.write_text(
+        '#include <math.h>\n'
         '#include <stdio.h>\n'
+        '#include <string.h>\n'
         '#include "serialization_test.structframe.h"\n'
         "int main(void) {\n"
         "    SerializationTestBasicTypesMessage a = {0}, b = {0}, c = {0};\n"
@@ -133,6 +159,26 @@ def _c_equality(gen_dir: Path) -> None:
         "    c.small_int = 99; c.medium_int = 1000;\n"
         "    if (!SerializationTestBasicTypesMessage_equals(&a, &b)) return 1;\n"
         "    if (SerializationTestBasicTypesMessage_equals(&a, &c)) return 2;\n"
+        "\n"
+        "    /* IEEE-754 edge cases: NaN/-Inf must round-trip byte-for-byte even\n"
+        "       though NaN != NaN under normal equality -- that is correct\n"
+        "       IEEE-754 behavior, not a bug; verify via bytes, not equals(). */\n"
+        "    SerializationTestBasicTypesMessage d = {0}, d2 = {0};\n"
+        "    d.single_precision = (float)NAN;\n"
+        "    d.double_precision = -INFINITY;\n"
+        "    uint8_t buf1[512], buf2[512];\n"
+        "    size_t n1 = SerializationTestBasicTypesMessage_serialize(&d, buf1);\n"
+        "    if (n1 == 0) return 3;\n"
+        "    size_t r1 = SerializationTestBasicTypesMessage_deserialize(buf1, n1, &d2);\n"
+        "    if (r1 == 0) return 4;\n"
+        "    size_t n2 = SerializationTestBasicTypesMessage_serialize(&d2, buf2);\n"
+        "    if (n2 != n1 || memcmp(buf1, buf2, n1) != 0) return 5;\n"
+        "    if (!isnan(d2.single_precision)) return 6;\n"
+        "    if (d2.double_precision != -INFINITY) return 7;\n"
+        "    SerializationTestBasicTypesMessage d_copy = {0};\n"
+        "    d_copy.single_precision = (float)NAN;\n"
+        "    d_copy.double_precision = -INFINITY;\n"
+        "    if (SerializationTestBasicTypesMessage_equals(&d, &d_copy)) return 8;\n"
         "    return 0;\n"
         "}\n",
         encoding="utf-8",
@@ -154,12 +200,13 @@ def _c_equality(gen_dir: Path) -> None:
 def _cpp_equality(gen_dir: Path) -> None:
     """Generated C++ operator== compiles and works correctly."""
     if not shutil.which("g++"):
-        print("SKIP: g++ not available")
-        return
+        pytest.skip("g++ not available")
 
     cpp_dir = gen_dir / "cpp"
     src = cpp_dir / "_equality_test.cpp"
     src.write_text(
+        '#include <cmath>\n'
+        '#include <cstring>\n'
         '#include "serialization_test.structframe.hpp"\n'
         "using structframe::serialization_test::BasicTypesMessage;\n"
         "int main() {\n"
@@ -171,6 +218,26 @@ def _cpp_equality(gen_dir: Path) -> None:
         "    if (a == c) return 2;\n"
         "    if (a != b) return 3;\n"
         "    if (!(a != c)) return 4;\n"
+        "\n"
+        "    // IEEE-754 edge cases: NaN/-Inf must round-trip byte-for-byte even\n"
+        "    // though NaN != NaN under normal equality -- that is correct\n"
+        "    // IEEE-754 behavior, not a bug; verify via bytes, not operator==.\n"
+        "    BasicTypesMessage d{}, d2{};\n"
+        "    d.single_precision = std::nanf(\"\");\n"
+        "    d.double_precision = -INFINITY;\n"
+        "    uint8_t buf1[512], buf2[512];\n"
+        "    size_t n1 = d.serialize(buf1);\n"
+        "    if (n1 == 0) return 5;\n"
+        "    size_t r1 = d2.deserialize(buf1, n1);\n"
+        "    if (r1 == 0) return 6;\n"
+        "    size_t n2 = d2.serialize(buf2);\n"
+        "    if (n2 != n1 || std::memcmp(buf1, buf2, n1) != 0) return 7;\n"
+        "    if (!std::isnan(d2.single_precision)) return 8;\n"
+        "    if (d2.double_precision != -INFINITY) return 9;\n"
+        "    BasicTypesMessage d_copy{};\n"
+        "    d_copy.single_precision = std::nanf(\"\");\n"
+        "    d_copy.double_precision = -INFINITY;\n"
+        "    if (d == d_copy) return 10;\n"
         "    return 0;\n"
         "}\n",
         encoding="utf-8",
@@ -193,8 +260,7 @@ def _ts_equality(gen_dir: Path) -> None:
     """Generated TypeScript equals() method works correctly."""
     tsc = shutil.which("tsc")
     if not tsc or not shutil.which("node"):
-        print("SKIP: tsc or node not available")
-        return
+        pytest.skip("tsc or node not available")
 
     ts_dir = gen_dir / "ts"
     # Find the existing node_modules with @types/node (installed in tests/ts)
@@ -222,7 +288,24 @@ def _ts_equality(gen_dir: Path) -> None:
         "const c = new BasicTypesMessage();\n"
         "c.smallInt = 99; c.mediumInt = 1000;\n"
         "if (!a.equals(b)) { throw new Error('FAIL: equal messages should compare as equal'); }\n"
-        "if (a.equals(c)) { throw new Error('FAIL: unequal messages should not compare as equal'); }\n",
+        "if (a.equals(c)) { throw new Error('FAIL: unequal messages should not compare as equal'); }\n"
+        "\n"
+        "// IEEE-754 edge cases: NaN/-Inf must round-trip byte-for-byte even\n"
+        "// though NaN != NaN under normal equality -- that is correct\n"
+        "// IEEE-754 behavior, not a bug; verify via bytes, not equals().\n"
+        "const d = new BasicTypesMessage();\n"
+        "d.singlePrecision = NaN;\n"
+        "d.doublePrecision = -Infinity;\n"
+        "const dBuf = d.serialize();\n"
+        "const d2 = BasicTypesMessage.deserialize(dBuf);\n"
+        "const d2Buf = d2.serialize();\n"
+        "if (Buffer.compare(dBuf, d2Buf) !== 0) { throw new Error('FAIL: NaN/-Inf float round-trip must match byte-for-byte'); }\n"
+        "if (!Number.isNaN(d2.singlePrecision)) { throw new Error('FAIL: NaN float field should decode as NaN'); }\n"
+        "if (d2.doublePrecision !== -Infinity) { throw new Error('FAIL: -Inf double field should decode as -Inf'); }\n"
+        "const dCopy = new BasicTypesMessage();\n"
+        "dCopy.singlePrecision = NaN;\n"
+        "dCopy.doublePrecision = -Infinity;\n"
+        "if (d.equals(dCopy)) { throw new Error('FAIL: IEEE-754: two messages with the same NaN field must not compare equal via equals()'); }\n",
         encoding="utf-8",
     )
     try:
@@ -255,8 +338,7 @@ def _ts_equality(gen_dir: Path) -> None:
 def _js_equality(gen_dir: Path) -> None:
     """Generated JavaScript equals() method works correctly."""
     if not shutil.which("node"):
-        print("SKIP: node not available")
-        return
+        pytest.skip("node not available")
 
     js_dir = gen_dir / "js"
     test_js = js_dir / "_equality_test.js"
@@ -271,6 +353,23 @@ def _js_equality(gen_dir: Path) -> None:
         "c.smallInt = 99; c.mediumInt = 1000;\n"
         "if (!a.equals(b)) { console.error('FAIL: equal messages should compare as equal'); process.exit(1); }\n"
         "if (a.equals(c)) { console.error('FAIL: unequal messages should not compare as equal'); process.exit(2); }\n"
+        "\n"
+        "// IEEE-754 edge cases: NaN/-Inf must round-trip byte-for-byte even\n"
+        "// though NaN != NaN under normal equality -- that is correct\n"
+        "// IEEE-754 behavior, not a bug; verify via bytes, not equals().\n"
+        "const d = new BasicTypesMessage();\n"
+        "d.singlePrecision = NaN;\n"
+        "d.doublePrecision = -Infinity;\n"
+        "const dBuf = d.serialize();\n"
+        "const d2 = BasicTypesMessage.deserialize(dBuf);\n"
+        "const d2Buf = d2.serialize();\n"
+        "if (Buffer.compare(dBuf, d2Buf) !== 0) { console.error('FAIL: NaN/-Inf float round-trip must match byte-for-byte'); process.exit(3); }\n"
+        "if (!Number.isNaN(d2.singlePrecision)) { console.error('FAIL: NaN float field should decode as NaN'); process.exit(4); }\n"
+        "if (d2.doublePrecision !== -Infinity) { console.error('FAIL: -Inf double field should decode as -Inf'); process.exit(5); }\n"
+        "const dCopy = new BasicTypesMessage();\n"
+        "dCopy.singlePrecision = NaN;\n"
+        "dCopy.doublePrecision = -Infinity;\n"
+        "if (d.equals(dCopy)) { console.error('FAIL: IEEE-754: two messages with the same NaN field must not compare equal via equals()'); process.exit(6); }\n"
         "process.exit(0);\n",
         encoding="utf-8",
     )
@@ -287,8 +386,7 @@ def _js_equality(gen_dir: Path) -> None:
 def _csharp_equality(gen_dir: Path) -> None:
     """Generated C# Equals() / == operator compiles and works correctly."""
     if not shutil.which("dotnet"):
-        print("SKIP: dotnet not available")
-        return
+        pytest.skip("dotnet not available")
 
     cs_dir = gen_dir / "csharp"
     test_dir = gen_dir / "_cs_eq_test"
@@ -303,6 +401,19 @@ def _csharp_equality(gen_dir: Path) -> None:
         "if (a.Equals(c)) { Console.Error.WriteLine(\"FAIL: unequal messages should not be equal\"); return 2; }\n"
         "if (!(a == b)) { Console.Error.WriteLine(\"FAIL: == should return true for equal messages\"); return 3; }\n"
         "if (a == c) { Console.Error.WriteLine(\"FAIL: == should return false for unequal messages\"); return 4; }\n"
+        "\n"
+        "// IEEE-754 edge cases: NaN/-Inf must round-trip byte-for-byte even\n"
+        "// though NaN != NaN under normal equality -- that is correct\n"
+        "// IEEE-754 behavior, not a bug; verify via bytes, not Equals().\n"
+        "var d = new BasicTypesMessage { SinglePrecision = float.NaN, DoublePrecision = double.NegativeInfinity };\n"
+        "var dBytes = d.Serialize();\n"
+        "var d2 = BasicTypesMessage.Deserialize(dBytes);\n"
+        "var d2Bytes = d2.Serialize();\n"
+        "if (!dBytes.AsSpan().SequenceEqual(d2Bytes)) { Console.Error.WriteLine(\"FAIL: NaN/-Inf float round-trip must match byte-for-byte\"); return 5; }\n"
+        "if (!float.IsNaN(d2.SinglePrecision)) { Console.Error.WriteLine(\"FAIL: NaN float field should decode as NaN\"); return 6; }\n"
+        "if (d2.DoublePrecision != double.NegativeInfinity) { Console.Error.WriteLine(\"FAIL: -Inf double field should decode as -Inf\"); return 7; }\n"
+        "var dCopy = new BasicTypesMessage { SinglePrecision = float.NaN, DoublePrecision = double.NegativeInfinity };\n"
+        "if (d.Equals(dCopy)) { Console.Error.WriteLine(\"FAIL: IEEE-754: two messages with the same NaN field must not compare equal via Equals()\"); return 8; }\n"
         "return 0;\n",
         encoding="utf-8",
     )
@@ -347,8 +458,7 @@ def _csharp_equality(gen_dir: Path) -> None:
 def _rust_equality(gen_dir: Path) -> None:
     """Rust PartialEq derive (added when --equality is used) works correctly."""
     if not shutil.which("cargo"):
-        print("SKIP: cargo not available")
-        return
+        pytest.skip("cargo not available")
 
     rust_lib_dir = gen_dir / "rust"
     # Create a small Cargo binary project that depends on the generated library
@@ -376,6 +486,25 @@ def _rust_equality(gen_dir: Path) -> None:
         "    c.small_int = 99; c.medium_int = 1000;\n"
         '    assert!(a == b, "equal messages should compare as equal");\n'
         '    assert!(a != c, "unequal messages should not be equal");\n'
+        "\n"
+        "    // IEEE-754 edge cases: NaN/-Inf must round-trip byte-for-byte even\n"
+        "    // though NaN != NaN under normal equality -- that is correct\n"
+        "    // IEEE-754 behavior, not a bug; verify via bytes, not PartialEq.\n"
+        "    let mut d = BasicTypesMessage::default();\n"
+        "    d.single_precision = f32::NAN;\n"
+        "    d.double_precision = f64::NEG_INFINITY;\n"
+        "    let mut buf1 = [0u8; 512];\n"
+        "    let n1 = d.pack(&mut buf1);\n"
+        '    let d2 = BasicTypesMessage::unpack(&buf1[..n1]).expect("NaN/-Inf message should unpack");\n'
+        "    let mut buf2 = [0u8; 512];\n"
+        "    let n2 = d2.pack(&mut buf2);\n"
+        '    assert_eq!(&buf1[..n1], &buf2[..n2], "NaN/-Inf float round-trip must match byte-for-byte");\n'
+        '    assert!(d2.single_precision.is_nan(), "NaN float field should decode as NaN");\n'
+        '    assert_eq!(d2.double_precision, f64::NEG_INFINITY, "-Inf double field should decode as -Inf");\n'
+        "    let mut d_copy = BasicTypesMessage::default();\n"
+        "    d_copy.single_precision = f32::NAN;\n"
+        "    d_copy.double_precision = f64::NEG_INFINITY;\n"
+        '    assert!(d != d_copy, "IEEE-754: two messages with the same NaN field must not compare equal via PartialEq");\n'
         "}\n",
         encoding="utf-8",
     )

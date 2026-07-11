@@ -291,10 +291,20 @@ def validate():
     #    the spec automatically under --check.
     for claim in _SDK_COUNT_CLAIMS:
         expected = claim["expected"]
-        if expected == 0:
-            continue  # sentinel: file not yet present or count not yet tracked
         rel_path = claim["path"]
         full_path = REPO_ROOT / rel_path
+        if expected == 0:
+            # Sentinel: "file not yet present or count not yet tracked". Only
+            # legitimate while the file is genuinely absent -- otherwise it's
+            # a silent, permanent opt-out for whichever claim forgot to set a
+            # real count once its target file showed up.
+            if full_path.exists():
+                problems.append(
+                    f"SDK count claim '{claim['display']}' has expected=0 (the "
+                    f"'not yet tracked' sentinel) but {rel_path} now exists. "
+                    f"Set a real expected count in _SDK_COUNT_CLAIMS."
+                )
+            continue
         if not full_path.exists():
             problems.append(
                 f"SDK count claim '{claim['display']}' references missing file: {rel_path}"

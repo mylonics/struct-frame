@@ -233,7 +233,7 @@ namespace StructFrameTests
                 case 7: return CreateBasicTypes(-128, -32768, -2147483648, -9223372036854775807L, 255, 65535, 4294967295, 9223372036854775807UL, -273.15f, -9999.999999, false, "NEG-TEST", "Negative and max values");
                 case 8: return CreateUnionWithArray();
                 case 9: return CreateUnionWithTest();
-                case 10: return CreateBasicTypes(-128, -32768, -2147483648, -9223372036854775807L, 255, 65535, 4294967295, 9223372036854775807UL, -273.15f, -9999.999999, false, "NEG-TEST", "Negative and max values");
+                case 10: return CreateBasicTypes(-128, -32768, -2147483648, long.MinValue, 255, 65535, 4294967295, ulong.MaxValue, float.PositiveInfinity, double.NegativeInfinity, false, "NEG-TEST", "UTF-8 edge: café 日本語 🚀!");
                 case 11: return CreateVariableSingleArrayEmpty();
                 case 12: return CreateVariableSingleArraySingle();
                 case 13: return CreateVariableSingleArrayThird();
@@ -270,8 +270,6 @@ namespace StructFrameTests
                 decoded = UnionTestMessage.Deserialize(info);
             else if (info.MsgId == VariableSingleArray.MsgId)
                 decoded = VariableSingleArray.Deserialize(info);
-            else if (info.MsgId == SerializationTestMessage.MsgId)
-                decoded = SerializationTestMessage.Deserialize(info);
             else if (info.MsgId == Message.MsgId)
                 decoded = Message.Deserialize(info);
 

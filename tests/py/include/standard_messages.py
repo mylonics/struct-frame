@@ -170,8 +170,12 @@ def get_message(index: int) -> MessageType:
     elif index == 9:
         return create_union_with_test()
     elif index == 10:
-        return create_basic_types(-128, -32768, -2147483648, -9223372036854775807, 255, 65535, 4294967295, 9223372036854775807,
-                                  -273.15, -9999.999999, False, "NEG-TEST", "Negative and max values")
+        # True int64/uint64 extremes + IEEE-754 infinities + multibyte UTF-8,
+        # distinct from index 7's duplicate values above (was a byte-for-byte
+        # copy of the same create_basic_types() call; repurposed to close
+        # coverage gaps instead of wasting a message slot on a duplicate).
+        return create_basic_types(-128, -32768, -2147483648, -9223372036854775808, 255, 65535, 4294967295, 18446744073709551615,
+                                  float('inf'), float('-inf'), False, "NEG-TEST", "UTF-8 edge: café 日本語 🚀!")
     elif index == 11:
         return create_variable_single_array_empty()
     elif index == 12:
@@ -221,14 +225,13 @@ def check_message(index: int, info) -> bool:
     decoded = msg_class.deserialize(info)
     if decoded is None:
         return False
-    
-    # Normalize expected for comparison (round-trip through serialize/deserialize)
-    expected_normalized = msg_class.deserialize(expected.serialize())
-    if expected_normalized is None:
-        return False
 
-    # Strong check: serialized payload must match exactly.
-    if decoded.serialize() != expected_normalized.serialize():
-        return False
-    
-    return decoded.to_dict() == expected_normalized.to_dict()
+    # Strong check: the decoded payload must re-serialize to exactly the same
+    # bytes as the *pristine* expected message. Comparing against `expected`
+    # (which never passes through the Python decoder) means a deterministic
+    # decode-side bug — a dropped, zeroed, or mis-offset field — is caught,
+    # instead of being masked by routing both operands through the same
+    # (buggy) deserialize() path. serialize() applies identical float32/
+    # quantization to both operands, so no separate normalization pass is
+    # needed. This mirrors the C# byte-compare and TS/JS equals(expected).
+    return decoded.serialize() == expected.serialize()

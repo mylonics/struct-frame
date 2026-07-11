@@ -57,7 +57,11 @@ class TestRunner
         }
 
         // Route to the appropriate test suite
-        if (testSuite == "test_extended")
+        if (testSuite == "test_standard")
+        {
+            return TestStandard.Main(filteredArgs);
+        }
+        else if (testSuite == "test_extended")
         {
             return TestExtended.Main(filteredArgs);
         }
@@ -72,6 +76,10 @@ class TestRunner
         else if (testSuite == "test_envelope_sdk")
         {
             return TestEnvelopeSdk.Main(filteredArgs);
+        }
+        else if (testSuite == "test_oneof_special")
+        {
+            return TestOneofSpecial.Main(filteredArgs);
         }
         else if (testSuite == "test_sdk_subscribe")
         {
@@ -109,13 +117,23 @@ class TestRunner
         {
             return TestWireEvolutionInterop.Main(filteredArgs);
         }
+        else if (testSuite == "test_wire_evolution_file_io")
+        {
+            return TestWireEvolutionFileIo.Main(filteredArgs);
+        }
         else if (testSuite == "test_roundtrip_pkg_test_messages")
         {
             return StructFrame.PkgTestMessages.TestRoundtripPkgTestMessages.Main(filteredArgs);
         }
         else
         {
-            return TestStandard.Main(filteredArgs);
+            Console.Error.WriteLine($"[FAIL] Unknown test suite: '{testSuite}'");
+            Console.Error.WriteLine("Known suites: test_standard, test_extended, test_variable_flag, " +
+                "test_negative, test_envelope_sdk, test_oneof_special, test_sdk_subscribe, test_sdk_strict_ordering, " +
+                "test_sdk_lifecycle, test_sdk_client_wrapper, test_sdk_profiles, test_base_transport, " +
+                "test_sdk_request_response, test_wire_evolution, test_wire_evolution_interop, " +
+                "test_wire_evolution_file_io, test_roundtrip_pkg_test_messages");
+            return 2;
         }
     }
 }
