@@ -94,9 +94,7 @@ Higher-level test infrastructure (includes `profile_runner.h`):
 ### 4. Negative Tests (`test_negative.*`)
 **Purpose**: Validates parsers reject corrupted, truncated, or malformed frames.
 A canonical 42-scenario list (33 uniform + 4 package + 5 status/diagnostics) implemented
-identically in all 7 languages; Rust implements 39 of the 42 due to a documented API
-asymmetry (its `push_byte`/`next` fold "waiting"/"collecting" into `None` and carry no
-diagnostics on the result) — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
+identically in all 7 languages — see [`NEGATIVE_TESTS.md`](NEGATIVE_TESTS.md).
 
 ### 5. Streaming Tests (`test_streaming.*`)
 **Purpose**: Validates byte-at-a-time accumulating-reader behaviour (C, Rust).
@@ -114,8 +112,8 @@ fields are ignored, legacy frames decode against new schemas, magic bytes are
 computed only from base fields.
 Top-level orchestrator: `tests/test_wire_evolution.py` (also runs, via pytest, as the
 Python column of the test-runner's Wire Evolution table). Per-language compiled
-tests: C++, TS, JS, C#. C has no base runner by design (covered by the interop suite);
-Rust has no base runner yet (only interop) -- tracked as a documented gap, not N/A.
+tests: C++, TS, JS, C#, Rust. C has no base runner by design (covered by the interop
+suite + the top-level Python orchestrator).
 
 ### 8. Cross-Cutting Generator Tests (top-level `tests/test_*.py`)
 - `test_magic_bytes.py` — magic-byte derivation + enforcement

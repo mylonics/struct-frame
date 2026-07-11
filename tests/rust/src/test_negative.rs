@@ -1119,18 +1119,51 @@ fn test_network_corrupted_pkg_id() -> bool {
     }
 }
 
+/// FrameMsgStatus: push_byte() returns WaitingForStart before any start byte
+/// has been seen.
+fn test_status_waiting_for_start() -> bool {
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    // 0x42 is not the start byte (0x90); parser stays in waiting state.
+    matches!(reader.push_byte(0x42, &get_message_info), Some(f) if f.status == FrameMsgStatus::WaitingForStart)
+}
+
+/// FrameMsgStatus: push_byte() returns Collecting once a valid start byte is
+/// in progress.
+fn test_status_collecting() -> bool {
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    // 0x90 is startByte1 -> move to LookingForStart2.
+    matches!(reader.push_byte(0x90, &get_message_info), Some(f) if f.status == FrameMsgStatus::Collecting)
+}
+
+/// Diagnostics: an invalid (partial) result from push_byte() still carries a
+/// diagnostics snapshot consistent with the reader's own counters.
+fn test_buffer_mode_invalid_result_has_diagnostics() -> bool {
+    let msg = create_test_message();
+    let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+    writer.write_crc(&msg, 0);
+    let data = writer.data().to_vec();
+    let frame_size = data.len();
+    if frame_size < 10 {
+        return false;
+    }
+
+    let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 1024);
+    let mut result = None;
+    for b in &data[..frame_size / 2] {
+        result = reader.push_byte(*b, &get_message_info);
+    }
+
+    match result {
+        Some(f) if !f.valid => match f.diagnostics {
+            Some(diag) => diag == reader.diagnostics(),
+            None => false,
+        },
+        _ => false,
+    }
+}
+
 /// FrameMsgStatus: push_byte() surfaces CrcFailure when a complete frame has
 /// a bad CRC.
-///
-/// Note: unlike the other six languages, Rust's `push_byte`/`next` return
-/// `Option<FrameMsgInfo>` and fold the "waiting for start" and "collecting"
-/// states into `None` rather than surfacing a status value for them (see the
-/// doc comment on `AccumulatingReader::next`). Only definitive outcomes
-/// (valid frame, CrcFailure, SyncRecovery) produce `Some(..)`, so
-/// `WAITING_FOR_START`/`COLLECTING` status probes and the
-/// diagnostics-on-result test (Rust's `FrameMsgInfo` has no diagnostics
-/// field) have no portable equivalent here; that's a genuine API asymmetry,
-/// not a missing test.
 fn test_status_crc_failure() -> bool {
     let msg = create_test_message();
     let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
@@ -1207,8 +1240,11 @@ fn main() {
         ("Split-buffer: CRC error status preserved", test_split_buffer_crc_error_status),
         ("TryNext drain: CRC/resync + valid", test_try_next_drain_contract),
         ("TryNext partial pending contract", test_try_next_partial_pending_contract),
+        ("Buffer mode: invalid result carries diagnostics", test_buffer_mode_invalid_result_has_diagnostics),
+        ("Status: COLLECTING during frame reception", test_status_collecting),
         ("Status: CRC_FAILURE on bad checksum", test_status_crc_failure),
         ("Status: SYNC_RECOVERY on forced resync", test_status_sync_recovery),
+        ("Status: WAITING_FOR_START before first byte", test_status_waiting_for_start),
         ("Stream mode: recovers after garbage prefix", test_stream_recovers_after_garbage),
         ("Streaming: Corrupted CRC detection",       test_streaming_corrupted_crc),
         ("Streaming: Garbage data handling",         test_streaming_garbage),

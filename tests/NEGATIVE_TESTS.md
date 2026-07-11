@@ -25,15 +25,12 @@ network `pkg_id` corruption), and 5 status-machine/diagnostic scenarios (buffer-
 diagnostics-on-invalid-result, and the four `FrameMsgStatus` probes: `COLLECTING`,
 `CRC_FAILURE`, `SYNC_RECOVERY`, `WAITING_FOR_START`).
 
-**Rust implements 39 of the 42.** Rust's `push_byte`/`next` return
-`Option<FrameMsgInfo>` and fold "waiting for start" and "collecting" into `None` rather
-than surfacing a status value for them -- only definitive outcomes (valid frame,
-`CrcFailure`, `SyncRecovery`) produce `Some(..)`, and `FrameMsgInfo` carries no
-diagnostics field. This is a genuine API asymmetry (documented in
-`tests/rust/src/test_negative.rs` next to `test_status_crc_failure`), not a missing
-test, and shows as `GAP` (not a failure) in the test-runner's Negative Test Results
-table for: `Buffer mode: invalid result carries diagnostics`,
-`Status: COLLECTING during frame reception`, `Status: WAITING_FOR_START before first byte`.
+All seven languages, including Rust, implement all 42 scenarios. Rust's `push_byte`
+carries a `diagnostics` snapshot on every result and reports `Collecting`/`WaitingForStart`
+for in-progress/unrecognized-prefix bytes, matching the other six languages'
+`push_byte`/`pushByte` contract (`next()`/`try_next()` still fold those two states into
+`None`, preserving the drain-loop contract — see the doc comments on
+`AccumulatingReader::push_byte`/`next` in `tests/rust/src/frame_profiles.rs`).
 
 ### C Tests (`tests/c/test_negative.c`)
 - **42 test cases** -- the full canonical list
@@ -66,15 +63,14 @@ table for: `Buffer mode: invalid result carries diagnostics`,
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ### Rust Tests (`tests/rust/src/test_negative.rs`)
-- **39 test cases** -- the canonical list minus the 3 documented API-asymmetry gaps above
+- **42 test cases** -- the full canonical list
 - Tests BufferReader and AccumulatingReader APIs
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
 ## Uniform Test Scenarios
 
 All seven languages implement the following 33 scenarios with identical names (plus the
-4 package-corruption scenarios and 5 status/diagnostics scenarios listed after; Rust
-implements all but the 3 gaps noted above):
+4 package-corruption scenarios and 5 status/diagnostics scenarios listed after):
 
 1. **Buffer mode: recovers after CRC failure** – buffer-mode accumulating reader resyncs and returns the next valid frame after a CRC-failed frame
 2. **Buffer reader: skips CRC-failed frame** – `BufferReader` advances past a CRC-failed frame instead of stalling on it
@@ -117,7 +113,7 @@ Package-corruption scenarios (all 7 languages):
 36. **Cross-package message rejection** – a frame from one package fails validation when decoded with another package's message info
 37. **Network profile: Corrupted pkg_id** – corrupting the pkg_id byte on the Network profile invalidates the CRC
 
-Status/diagnostics scenarios (all 7 languages except Rust's 3 documented gaps above):
+Status/diagnostics scenarios (all 7 languages):
 
 38. **Buffer mode: invalid result carries diagnostics** – an invalid/partial result from buffer-mode `next()` still carries diagnostics consistent with the reader's own counters
 39. **Status: COLLECTING during frame reception** – `pushByte`/`push_byte` reports `COLLECTING` once a valid start byte is in progress but the frame isn't complete

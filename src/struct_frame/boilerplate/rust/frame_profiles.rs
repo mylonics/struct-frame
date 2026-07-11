@@ -1259,21 +1259,61 @@ impl AccumulatingReader {
     }
 
     /// Push a single byte and attempt to extract a complete frame.
-    /// Returns `Some(FrameMsgInfo)` as soon as a frame is available.
+    ///
+    /// Unlike `next()`/`try_next()` (which fold "waiting for start" and
+    /// "collecting" into `None` for drain-loop ergonomics), `push_byte()` always
+    /// returns `Some(FrameMsgInfo)` with `status` reflecting the parser's current
+    /// state (`WaitingForStart`, `Collecting`, `CrcFailure`, `SyncRecovery`, or a
+    /// valid frame) and a diagnostics snapshot attached -- matching the
+    /// `push_byte`/`pushByte` contract in the other six languages.
     pub fn push_byte(&mut self, byte: u8, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
+        // A byte that doesn't match start_byte1, pushed when nothing is
+        // buffered yet, is "still waiting for a start byte" -- there isn't
+        // enough information yet to justify a sync-recovery drain (nothing was
+        // ever accumulated). This matches the other six languages' explicit
+        // per-byte state machine, where the reader stays in "looking for
+        // start" without penalty until a byte actually begins a candidate
+        // frame. Once more bytes accumulate without resolving,
+        // parse_with_status's normal resync logic (below) takes over as before.
+        let fresh_start = self.buf().is_empty();
+        let mismatched_start = self.config.header.num_start_bytes >= 1
+            && byte != self.config.computed_start_byte1();
         self.add_data(&[byte]);
-        self.try_next(get_message_info)
+        if fresh_start && mismatched_start {
+            let mut r = FrameMsgInfo::invalid();
+            r.status = FrameMsgStatus::WaitingForStart;
+            r.diagnostics = Some(self.diagnostics);
+            return Some(r);
+        }
+        Some(self.parse_with_status(get_message_info))
     }
 
     /// Get the next complete frame, or None if not enough data yet.
     /// Automatically re-synchronizes past noise or partial frames.
     pub fn next(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> Option<FrameMsgInfo> {
+        let result = self.parse_with_status(get_message_info);
+        if result.valid || result.frame_size > 0 || result.status == FrameMsgStatus::SyncRecovery {
+            Some(result)
+        } else {
+            None
+        }
+    }
+
+    /// Core parse step shared by `next()` and `push_byte()`. Always returns a
+    /// `FrameMsgInfo` reflecting the current status with a diagnostics snapshot
+    /// attached; `next()`/`try_next()` filter `WaitingForStart`/`Collecting` down
+    /// to `None` to preserve the drain-loop contract (see their doc comments),
+    /// while `push_byte()` returns it directly.
+    fn parse_with_status(&mut self, get_message_info: &dyn Fn(u16) -> Option<MessageInfo>) -> FrameMsgInfo {
         if self.buf().is_empty() {
             self.partial_pending = false;
-            return None;
+            let mut r = FrameMsgInfo::invalid();
+            r.status = FrameMsgStatus::WaitingForStart;
+            r.diagnostics = Some(self.diagnostics);
+            return r;
         }
 
-        let result = if self.config.payload.has_crc {
+        let mut result = if self.config.payload.has_crc {
             parse_with_crc(&self.config, self.buf(), get_message_info)
         } else {
             parse_minimal(&self.config, self.buf(), get_message_info)
@@ -1296,7 +1336,8 @@ impl AccumulatingReader {
             self.record_len_error_if_any(get_message_info);
             self.partial_pending = false;
             self.drain_head(frame_size);
-            return Some(result);
+            result.diagnostics = Some(self.diagnostics);
+            return result;
         }
 
         // Complete-but-invalid frame (e.g. CRC failure): surface it and advance.
@@ -1309,26 +1350,31 @@ impl AccumulatingReader {
             self.record_len_error_if_any(get_message_info);
             self.partial_pending = false;
             self.drain_head(result.frame_size);
-            return Some(result);
+            result.diagnostics = Some(self.diagnostics);
+            return result;
         }
 
         if result.status == FrameMsgStatus::Collecting {
             // A frame whose claimed size exceeds the reader capacity can never
             // complete — resync past the stuck prefix instead of wedging.
-            if let Some(sync) = self.forced_resync_if_full() {
-                return Some(sync);
+            if let Some(mut sync) = self.forced_resync_if_full() {
+                sync.diagnostics = Some(self.diagnostics);
+                return sync;
             }
             self.partial_pending = true;
-            return None;
+            result.diagnostics = Some(self.diagnostics);
+            return result;
         }
 
         let bytes_to_drain = self.bytes_to_drain_for_resync(get_message_info);
         if bytes_to_drain == 0 {
-            if let Some(sync) = self.forced_resync_if_full() {
-                return Some(sync);
+            if let Some(mut sync) = self.forced_resync_if_full() {
+                sync.diagnostics = Some(self.diagnostics);
+                return sync;
             }
             self.partial_pending = true;
-            return None;
+            result.diagnostics = Some(self.diagnostics);
+            return result;
         }
 
         // Record diagnostics before draining
@@ -1342,7 +1388,8 @@ impl AccumulatingReader {
         let mut sync = FrameMsgInfo::invalid();
         sync.status = FrameMsgStatus::SyncRecovery;
         sync.frame_size = bytes_to_drain;
-        Some(sync)
+        sync.diagnostics = Some(self.diagnostics);
+        sync
     }
 }
 

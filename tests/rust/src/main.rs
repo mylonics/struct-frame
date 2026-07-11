@@ -923,7 +923,10 @@ fn run_streaming_tests() {
         for (i, &byte) in frame.iter().enumerate() {
             let r = reader.push_byte(byte, &struct_frame_sdk::serialization_test::get_message_info);
             if i < frame.len() - 1 {
-                if r.is_some() { failed += 1; break; }
+                // push_byte() always returns Some (WaitingForStart/Collecting for
+                // an in-progress frame); only a valid frame before the last byte
+                // would indicate a bug.
+                if r.map_or(false, |f| f.valid) { failed += 1; break; }
             } else {
                 result = r;
             }
@@ -1173,6 +1176,186 @@ fn run_sdk_subscribe_tests() {
 // exactly as two independently built code-bases would.  The scenarios mirror
 // the project's interop plan (1-10) over the length-bearing and length-less profiles.
 // ============================================================================
+// ============================================================================
+// Base (single-schema) wire-evolution extension field tests
+// ============================================================================
+//
+// Mirrors tests/cpp/test_wire_evolution.cpp: verifies `option extensions_start`
+// and the extension-aware CRC algorithm end-to-end using the generated Rust
+// bindings for a single schema (wire_evolution.sf), not the cross-version
+// v1/v2 interop pair covered by run_wire_evolution_interop_tests().
+fn run_wire_evolution_tests() -> ! {
+    use struct_frame_sdk::wire_evolution::*;
+    use struct_frame_sdk::{BufferReader, BufferWriter, PROFILE_STANDARD_CONFIG};
+
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+
+    macro_rules! check {
+        ($cond:expr, $name:expr) => {
+            if $cond {
+                println!("  [PASS] {}", $name);
+                passed += 1;
+            } else {
+                println!("  [FAIL] {}", $name);
+                failed += 1;
+            }
+        };
+    }
+
+    println!("=== Rust Wire-Evolution Extension Field Tests ===\n");
+
+    // ---- Test group 1: BASE_SIZE constants ----
+    println!("Test group 1: BASE_SIZE constants");
+    check!(BaseExtensionMessage::BASE_SIZE < BaseExtensionMessage::MAX_SIZE,
+           "BaseExtensionMessage BASE_SIZE < MAX_SIZE");
+    check!(BaseExtensionMessage::BASE_SIZE == 3,
+           "BaseExtensionMessage BASE_SIZE == 3 (header+seq)");
+    check!(BaseExtensionMessage::MAX_SIZE == 7,
+           "BaseExtensionMessage MAX_SIZE == 7 (header+seq+crc_seed)");
+    check!(OneOfExtensionMessage::BASE_SIZE < OneOfExtensionMessage::MAX_SIZE,
+           "OneOfExtensionMessage BASE_SIZE < MAX_SIZE");
+    check!(MultiOneOfExtensionMessage::BASE_SIZE == MultiOneOfExtensionMessage::MAX_SIZE,
+           "MultiOneOfExtensionMessage BASE_SIZE == MAX_SIZE (no extensions)");
+    println!();
+
+    // ---- Test group 2: BaseExtensionMessage encode -> decode round-trip ----
+    println!("Test group 2: BaseExtensionMessage encode/decode round-trip");
+    {
+        let mut msg = BaseExtensionMessage::default();
+        msg.header = 0xBEEF;
+        msg.seq = 42;
+        msg.crc_seed = 0xDEADC0DE;
+
+        let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 512);
+        let written = writer.write_crc(&msg, 0);
+        check!(written > 0, "BaseExtensionMessage encode succeeded");
+
+        let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, writer.data().to_vec());
+        let result = reader.next(&get_message_info);
+        let valid = result.as_ref().map_or(false, |f| f.valid);
+        check!(valid, "BaseExtensionMessage frame validates CRC");
+
+        if let Some(f) = result.filter(|f| f.valid) {
+            let decoded = BaseExtensionMessage::unpack(&f.msg_data);
+            check!(decoded.as_ref().map_or(false, |d| d.header == 0xBEEF), "decoded header matches");
+            check!(decoded.as_ref().map_or(false, |d| d.seq == 42), "decoded seq matches");
+            check!(decoded.as_ref().map_or(false, |d| d.crc_seed == 0xDEADC0DE), "decoded crc_seed matches");
+        }
+    }
+    println!();
+
+    // ---- Test group 3: OneOfExtensionMessage with extension variant ----
+    println!("Test group 3: OneOfExtensionMessage (extension variant) round-trip");
+    {
+        let mut msg = OneOfExtensionMessage::default();
+        msg.device_id = 7;
+        let cmd_c = ExtCommandC { value_c: 3.14, mode_c: 2 };
+        msg.set_cmd_c(&cmd_c);
+
+        let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 512);
+        let written = writer.write_crc(&msg, 0);
+        check!(written > 0, "OneOfExtensionMessage (ext variant) encode succeeded");
+
+        let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, writer.data().to_vec());
+        let result = reader.next(&get_message_info);
+        let valid = result.as_ref().map_or(false, |f| f.valid);
+        check!(valid, "OneOfExtensionMessage (ext variant) frame validates CRC");
+
+        if let Some(f) = result.filter(|f| f.valid) {
+            let decoded = OneOfExtensionMessage::unpack(&f.msg_data);
+            check!(decoded.as_ref().map_or(false, |d| d.device_id == 7), "decoded device_id matches");
+            check!(decoded.as_ref().map_or(false, |d| d.command_discriminator == 3),
+                   "decoded command discriminator == 3 (cmd_c)");
+            if let Some(d) = &decoded {
+                let c = d.get_cmd_c();
+                check!(c.as_ref().map_or(false, |c| (c.value_c - 3.14).abs() < 1e-4), "decoded cmd_c.value_c matches");
+                check!(c.as_ref().map_or(false, |c| c.mode_c == 2), "decoded cmd_c.mode_c matches");
+            }
+        }
+    }
+    println!();
+
+    // ---- Test group 4: MultiOneOfExtensionMessage with extension variant in second oneof ----
+    println!("Test group 4: MultiOneOfExtensionMessage (extension variant) round-trip");
+    {
+        let mut msg = MultiOneOfExtensionMessage::default();
+        msg.priority = 3;
+        let first_a = BaseCommandA { value_a: 100, flags_a: 5 };
+        msg.set_first_a(&first_a);
+        let second_ext = ExtCommandC { value_c: 2.71, mode_c: 1 };
+        msg.set_second_ext(&second_ext);
+
+        let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 512);
+        let written = writer.write_crc(&msg, 0);
+        check!(written > 0, "MultiOneOfExtensionMessage encode succeeded");
+
+        let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, writer.data().to_vec());
+        let result = reader.next(&get_message_info);
+        let valid = result.as_ref().map_or(false, |f| f.valid);
+        check!(valid, "MultiOneOfExtensionMessage frame validates CRC");
+
+        if let Some(f) = result.filter(|f| f.valid) {
+            let decoded = MultiOneOfExtensionMessage::unpack(&f.msg_data);
+            check!(decoded.as_ref().map_or(false, |d| d.priority == 3), "decoded priority matches");
+            check!(decoded.as_ref().map_or(false, |d| d.ext_union_discriminator == 2),
+                   "decoded ext_union discriminator == 2 (second_ext)");
+            if let Some(d) = &decoded {
+                let e = d.get_second_ext();
+                check!(e.as_ref().map_or(false, |e| (e.value_c - 2.71).abs() < 1e-4), "decoded second_ext.value_c matches");
+            }
+        }
+    }
+    println!();
+
+    // ---- Test group 5: Legacy-frame compatibility ----
+    // A "legacy" sender encodes only the base portion; extension bytes are
+    // all-zero. The CRC must still validate because the extension bytes are
+    // mixed into the CRC as zeros, matching what an extension-aware receiver
+    // computes when it zero-fills the missing extension field.
+    println!("Test group 5: Legacy-frame compatibility");
+    {
+        let mut msg = BaseExtensionMessage::default();
+        msg.header = 0x1234;
+        msg.seq = 7;
+        msg.crc_seed = 0; // legacy sender does not set this
+
+        let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 512);
+        let written = writer.write_crc(&msg, 0);
+        check!(written > 0, "legacy (zero extension) frame encodes");
+
+        let data = writer.data().to_vec();
+        let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data.clone());
+        let result = reader.next(&get_message_info);
+        let valid = result.as_ref().map_or(false, |f| f.valid);
+        check!(valid, "legacy (zero extension) frame validates CRC");
+
+        if let Some(f) = result.filter(|f| f.valid) {
+            let decoded = BaseExtensionMessage::unpack(&f.msg_data);
+            check!(decoded.as_ref().map_or(false, |d| d.header == 0x1234), "legacy decoded header matches");
+            check!(decoded.as_ref().map_or(false, |d| d.seq == 7), "legacy decoded seq matches");
+            check!(decoded.as_ref().map_or(false, |d| d.crc_seed == 0), "legacy decoded crc_seed is 0");
+        }
+
+        // Corrupting the extension bytes must invalidate the CRC.
+        if written > 0 {
+            let mut bad_data = data.clone();
+            // Payload starts after the header; the extension field sits at
+            // payload offset BASE_SIZE..MAX_SIZE-1.
+            let ext_offset = PROFILE_STANDARD_CONFIG.header_size() + BaseExtensionMessage::BASE_SIZE;
+            bad_data[ext_offset] ^= 0xFF;
+            let mut bad_reader = BufferReader::new(PROFILE_STANDARD_CONFIG, bad_data);
+            let bad_result = bad_reader.next(&get_message_info);
+            let bad_valid = bad_result.as_ref().map_or(false, |f| f.valid);
+            check!(!bad_valid, "corrupted extension bytes invalidate CRC");
+        }
+    }
+    println!();
+
+    println!("Results: {} passed, {} failed", passed, failed);
+    std::process::exit(if failed == 0 { 0 } else { 1 });
+}
+
 fn run_wire_evolution_interop_tests() -> ! {
     use struct_frame_sdk::frame_base::{FrameMsgInfo, MessageInfo, StructFrameMessage};
     use struct_frame_sdk::{BufferReader, BufferWriter};
@@ -1515,6 +1698,12 @@ fn main() {
     if args.len() >= 2 && args[1] == "test_wire_evolution_interop" {
         run_wire_evolution_interop_tests();
         // run_wire_evolution_interop_tests() always exits.
+    }
+
+    // Base (single-schema) wire-evolution extension field tests.
+    if args.len() >= 2 && args[1] == "test_wire_evolution" {
+        run_wire_evolution_tests();
+        // run_wire_evolution_tests() always exits.
     }
 
     // Envelope SDK test can be invoked without the standard runner args.

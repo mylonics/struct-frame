@@ -423,12 +423,7 @@ SECTIONS = [
             "`test_negative.*` file, covering corruption handling, the "
             "`tryNext` drain contract, diagnostic counters (unified semantics "
             "in buffer and stream mode), minimal-profile resync, and a "
-            "chunk-boundary split sweep. Rust implements 39 of the 42: its "
-            "`push_byte`/`next` return `Option<FrameMsgInfo>` and fold "
-            "\"waiting for start\"/\"collecting\" into `None` rather than "
-            "surfacing a status value, and its `FrameMsgInfo` carries no "
-            "diagnostics field -- a documented API asymmetry, not a gap in "
-            "test coverage (see `tests/rust/src/test_negative.rs`)."
+            "chunk-boundary split sweep."
         ),
         "tables": [
             {
@@ -474,25 +469,10 @@ SECTIONS = [
                     "TryNext drain: CRC/resync + valid",
                     "TryNext partial pending contract",
                     "Truncated frame detection",
-                    "Zero-length buffer handling")] + [
-                    _row("Buffer mode: invalid result carries diagnostics",
-                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
-                          "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
-                    _row("Status: COLLECTING during frame reception",
-                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
-                          "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
-                    _row("Status: WAITING_FOR_START before first byte",
-                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
-                          "JS": "✅", "C#": "✅", "Rust": "⚠️"}),
-                ],
-                "caption": (
-                    "> **Rust ⚠️:** its `push_byte`/`next` return "
-                    "`Option<FrameMsgInfo>` and fold \"waiting for start\"/"
-                    "\"collecting\" into `None` instead of a status value, and "
-                    "its `FrameMsgInfo` carries no diagnostics field -- a "
-                    "documented API asymmetry, see "
-                    "`tests/rust/src/test_negative.rs`."
-                ),
+                    "Zero-length buffer handling",
+                    "Buffer mode: invalid result carries diagnostics",
+                    "Status: COLLECTING during frame reception",
+                    "Status: WAITING_FOR_START before first byte")],
             },
         ],
     },

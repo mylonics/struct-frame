@@ -327,19 +327,10 @@ NEGATIVE_SCENARIOS = [
     "Zero-length buffer handling",
 ]
 
-# Known, documented gaps: Rust's push_byte()/next() return Option<FrameMsgInfo>
-# and fold "waiting for start" / "collecting" into None rather than surfacing
-# a status value (only definitive outcomes -- valid, CrcFailure, SyncRecovery
-# -- produce Some(..)), and Rust's FrameMsgInfo carries no diagnostics field.
-# This is a genuine API asymmetry, not a missing test -- see the doc comment
-# on test_status_crc_failure in tests/rust/src/test_negative.rs.
-NEGATIVE_TEST_GAPS = {
-    "rust": {
-        "Buffer mode: invalid result carries diagnostics",
-        "Status: COLLECTING during frame reception",
-        "Status: WAITING_FOR_START before first byte",
-    },
-}
+# Known, documented per-language negative-test gaps. All 7 languages now
+# implement the full 42-scenario canonical list; keep this dict for any future
+# genuine API asymmetries that surface (empty for now).
+NEGATIVE_TEST_GAPS: Dict[str, set] = {}
 
 
 # =============================================================================
@@ -2154,7 +2145,7 @@ class TestRunner:
         WIRE_APPLICABILITY: Dict[str, List[str]] = {
             # Base wire-evolution has no C runner by design (C is covered by the
             # interop suite + the top-level Python orchestrator); see tests/README.md.
-            "test_wire_evolution":        ["cpp", "py", "ts", "js", "csharp"],
+            "test_wire_evolution":        ["cpp", "py", "ts", "js", "csharp", "rust"],
             "test_wire_evolution_interop": ["c", "cpp", "py", "ts", "js", "csharp", "rust"],
         }
 
@@ -2165,10 +2156,6 @@ class TestRunner:
             }
             for test_name, applicable in WIRE_APPLICABILITY.items()
         }
-        # Rust has no base test_wire_evolution runner yet (only the interop
-        # suite) -- documented future work, not an N/A design choice.
-        if "rust" in table_data["test_wire_evolution"]:
-            table_data["test_wire_evolution"]["rust"] = "GAP"
 
         def _record(test_name: str, lang_id: str, success: bool,
                     stdout: str, stderr: str, failure_msg: str) -> None:
@@ -2288,17 +2275,25 @@ class TestRunner:
                 table_data["test_wire_evolution"]["py"] = True
                 table_data["test_wire_evolution_interop"]["py"] = True
 
-        # ---- Rust (interop only) ----
+        # ---- Rust ----
         rust_lang = self.languages.get("rust")
         if rust_lang and "rust" not in self.skipped_languages and self.results["compilation"].get("rust", False):
             rust_runner = self.project_root / rust_lang.build_dir / f"struct_frame_rust_tests{rust_lang.exe_ext}"
             if rust_runner.exists():
                 success, stdout, stderr = self.run_cmd(
+                    f'"{rust_runner}" test_wire_evolution', timeout=30
+                )
+                _record("test_wire_evolution", "rust", success, stdout, stderr,
+                        "Rust test_wire_evolution failed")
+                if not success:
+                    all_success = False
+
+                success2, stdout2, stderr2 = self.run_cmd(
                     f'"{rust_runner}" test_wire_evolution_interop', timeout=30
                 )
-                _record("test_wire_evolution_interop", "rust", success, stdout, stderr,
+                _record("test_wire_evolution_interop", "rust", success2, stdout2, stderr2,
                         "Rust test_wire_evolution_interop failed")
-                if not success:
+                if not success2:
                     all_success = False
 
         if self._gate_missing_applicable(table_data, results, "wire_evolution"):
