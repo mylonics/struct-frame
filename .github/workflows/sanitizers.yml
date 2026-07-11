@@ -45,7 +45,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm
-          pip install proto-schema-parser
+          pip install proto-schema-parser pytest
           (cd tests/ts && npm ci)
       - name: Run C / C++ suite under ASan + UBSan
         run: python test_all.py --skip-lang csharp --skip-lang rust
@@ -73,7 +73,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm
-          pip install proto-schema-parser
+          pip install proto-schema-parser pytest
           (cd tests/ts && npm ci)
       - name: Run C / C++ suite under TSan
         # TSan is mutually exclusive with ASan; the SDK subscribe / streaming
