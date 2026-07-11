@@ -145,6 +145,20 @@ jobs:
                          --errors-for-leak-kinds=definite,possible \
                          --track-origins=yes "$exe" decode bulk "$tmp_dir/variable.bin"
                 ;;
+              test_wire_evolution_file_io|test_wire_evolution_file_io.exe)
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" encode v1 "$tmp_dir/wire_evo_v1.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" decode v1 "$tmp_dir/wire_evo_v1.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" encode v2 "$tmp_dir/wire_evo_v2.bin"
+                valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
+                         --errors-for-leak-kinds=definite,possible \
+                         --track-origins=yes "$exe" decode v2 "$tmp_dir/wire_evo_v2.bin"
+                ;;
               *)
                 valgrind --error-exitcode=1 --leak-check=full --show-leak-kinds=all \
                          --errors-for-leak-kinds=definite,possible \
