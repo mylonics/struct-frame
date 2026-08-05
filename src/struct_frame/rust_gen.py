@@ -661,8 +661,11 @@ def _rust_scalar_default_literal(field):
         return f'{base_type}::{field.default.upper()}'
     if field.field_type == "bool":
         return "true" if field.default else "false"
+    if field.field_type == "float":
+        return f"{field.default}f32"
+    if field.field_type == "double":
+        return f"{field.default}f64"
     return f"{field.default}"
-
 
 def _generate_default_impl(msg, struct_name):
     """Generate manual Default implementation for structs with large arrays."""
