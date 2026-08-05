@@ -61,9 +61,10 @@ function doDecode(version: string, path: string): number {
                     `(expected 0x${HEADER.toString(16).padStart(4, '0')}) seq=${msg.seq} (expected ${SEQ})`);
       return 1;
     }
-    // A legacy (v1-sized, 3-byte) frame decoded as v2 must zero-fill the
-    // extension; a genuine v2-sized (7-byte) frame must preserve it.
-    const expectedCrc = buf.length >= V2BaseExtensionMessage._baseSize + 4 ? CRC_SEED : 0;
+    // A legacy (v1-sized, 3-byte) frame decoded as v2 must fill the extension
+    // with its schema default (4242, not zero); a genuine v2-sized (7-byte)
+    // frame must preserve the transmitted value.
+    const expectedCrc = buf.length >= V2BaseExtensionMessage._baseSize + 4 ? CRC_SEED : 4242;
     if (msg.crcSeed !== expectedCrc) {
       console.error(`[DECODE] FAILED: crcSeed=0x${msg.crcSeed.toString(16).padStart(8, '0')} ` +
                     `(expected 0x${expectedCrc.toString(16).padStart(8, '0')} for ${buf.length}-byte input)`);

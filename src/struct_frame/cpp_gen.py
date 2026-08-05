@@ -12,6 +12,11 @@ import time
 
 _style_cpp = NamingStyleCpp()
 
+
+def _c_byte_array_literal(data):
+    """Render `data` as a C/C++ brace-initializer list body, e.g. "0x01, 0x02"."""
+    return ', '.join('0x%02x' % b for b in data)
+
 cpp_types = {"uint8": "uint8_t",
              "int8": "int8_t",
              "uint16": "uint16_t",
@@ -84,31 +89,48 @@ class EnumCppGen():
         return result
 
 
+def _cpp_field_base_type(field, use_namespace=False):
+    """Resolve the C++ type name FieldCppGen.generate() would declare for
+    `field` (before array/string wrapping). Also used to build qualified
+    enum-member references for [default = ...] initializers.
+    """
+    type_name = field.field_type
+    if type_name in cpp_types:
+        return cpp_types[type_name]
+    if use_namespace:
+        # When using namespaces, use namespace-qualified name for cross-package types
+        type_pkg = field.type_package if field.type_package else field.package
+        if type_pkg != field.package:
+            return '%s::%s' % (camel_to_snake_case(type_pkg), type_name)
+        return type_name
+    elif getattr(field, 'type_message', None):
+        # Nested enum: use OwnerMessage::EnumName (valid even inside the same struct)
+        return '%s::%s' % (field.type_message, type_name)
+    else:
+        # Flat namespace mode: prefix with the type's defining package name
+        pkg_prefix = field.type_package if field.type_package else field.package
+        return '%s%s' % (pascal_case(pkg_prefix), type_name)
+
+
+def _cpp_scalar_default_literal(field, use_namespace=False):
+    """Render field.default as a C++ literal for a default member initializer."""
+    if field.is_enum:
+        base_type = _cpp_field_base_type(field, use_namespace)
+        return f'{base_type}::{_style_cpp.enum_entry(field.default)}'
+    if field.field_type == "bool":
+        return "true" if field.default else "false"
+    if field.field_type == "float":
+        return f"{field.default}f"
+    return f"{field.default}"
+
+
 class FieldCppGen():
     @staticmethod
     def generate(field, use_namespace=False):
         result = ''
         var_name = field.name
         type_name = field.field_type
-
-        # Handle basic type resolution
-        if type_name in cpp_types:
-            base_type = cpp_types[type_name]
-        else:
-            if use_namespace:
-                # When using namespaces, use namespace-qualified name for cross-package types
-                type_pkg = field.type_package if field.type_package else field.package
-                if type_pkg != field.package:
-                    base_type = '%s::%s' % (camel_to_snake_case(type_pkg), type_name)
-                else:
-                    base_type = type_name
-            elif getattr(field, 'type_message', None):
-                # Nested enum: use OwnerMessage::EnumName (valid even inside the same struct)
-                base_type = '%s::%s' % (field.type_message, type_name)
-            else:
-                # Flat namespace mode: prefix with the type's defining package name
-                pkg_prefix = field.type_package if field.type_package else field.package
-                base_type = '%s%s' % (pascal_case(pkg_prefix), type_name)
+        base_type = _cpp_field_base_type(field, use_namespace)
 
         # Handle arrays
         if field.is_array:
@@ -145,14 +167,19 @@ class FieldCppGen():
 
         # Handle regular strings
         elif field.field_type in ("string", "bytes"):
+            default_text = field.default.encode('utf-8') if field.default is not None else b""
             if field.size_option is not None:
                 # Fixed string: exactly size_option characters
-                declaration = f"char {var_name}[{field.size_option}];"
+                init = f" = {{{_c_byte_array_literal(default_text)}}}" if default_text else ""
+                declaration = f"char {var_name}[{field.size_option}]{init};"
                 comment = f"  // Fixed string: exactly {field.size_option} chars"
             elif field.max_size is not None:
                 # Variable string: length (uint8_t or uint16_t) + max characters
                 length_type = "uint16_t" if field.max_size > 255 else "uint8_t"
-                declaration = f"struct {{ {length_type} length; char data[{field.max_size}]; }} {var_name};"
+                length_init = f" = {len(default_text)}" if default_text else ""
+                data_init = f" = {{{_c_byte_array_literal(default_text)}}}" if default_text else ""
+                declaration = (f"struct {{ {length_type} length{length_init}; "
+                                f"char data[{field.max_size}]{data_init}; }} {var_name};")
                 comment = f"  // Variable string: up to {field.max_size} chars"
             else:
                 declaration = f"char {var_name}[1];"  # Fallback
@@ -162,7 +189,8 @@ class FieldCppGen():
 
         # Handle regular fields
         else:
-            result += f"    {base_type} {var_name};"
+            init = f" = {_cpp_scalar_default_literal(field, use_namespace)}" if field.default is not None else ""
+            result += f"    {base_type} {var_name}{init};"
 
         # Add leading comments
         leading_comment = field.comments
@@ -597,7 +625,7 @@ class MessageCppGen():
         result += f'     */\n'
         result += f'    size_t _deserialize_variable(const uint8_t* buffer, size_t buffer_size) {{\n'
         result += f'        size_t offset = 0;\n'
-        result += f'        std::memset(this, 0, sizeof(*this));\n'
+        result += f'        *this = {{}};  // Reset to schema defaults (or zero) before reading\n'
         
         for key, field in msg.fields.items():
             var_name = field.name
@@ -728,13 +756,20 @@ class MessageCppGen():
                 result += f'            return _deserialize_variable(buffer, buffer_size);\n'
                 result += f'        }}\n'
         else:
-            # Non-variable message: zero-fill any bytes the sender omitted (wire
-            # evolution). A buffer shorter than MAX_SIZE (older sender, base
-            # fields only) leaves the missing extension fields at their default;
-            # a buffer longer than MAX_SIZE (newer sender) has its trailing
-            # extension bytes ignored. Callers never need to pad or truncate.
+            # Non-variable message: fill any bytes the sender omitted with the
+            # schema default (wire evolution). A buffer shorter than MAX_SIZE
+            # (older sender, base fields only) leaves the missing extension
+            # fields at their schema default (zero if none declared); a buffer
+            # longer than MAX_SIZE (newer sender) has its trailing extension
+            # bytes ignored. Callers never need to pad or truncate.
+            #
+            # `*this = {}` (not std::memset) so it respects each field's
+            # default member initializer, correctly regardless of whether this
+            # package's structs are #pragma pack(1)'d -- an all-variable
+            # package skips packing (see `packed_structs` in FileCppGen), so a
+            # raw byte-blob memcpy of the struct wouldn't be layout-safe there.
             result += f'        size_t copy_len = buffer_size < MAX_SIZE ? buffer_size : MAX_SIZE;\n'
-            result += f'        std::memset(this, 0, sizeof(*this));\n'
+            result += f'        *this = {{}};\n'
             result += f'        if (copy_len > 0) std::memcpy(this, buffer, copy_len);\n'
             result += f'        return copy_len;\n'
         

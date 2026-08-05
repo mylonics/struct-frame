@@ -33,7 +33,8 @@ class MessageBase {
             this._buffer = Buffer.from(bufferOrInit.buffer, bufferOrInit.byteOffset, bufferOrInit.byteLength);
         }
         else {
-            this._buffer = Buffer.alloc(size);
+            const defaultBytes = this.constructor._defaultBytes;
+            this._buffer = defaultBytes ? Buffer.from(defaultBytes) : Buffer.alloc(size);
             // If init object provided, apply values after subclass constructor runs
             // This is handled by generated constructors calling _applyInit()
         }

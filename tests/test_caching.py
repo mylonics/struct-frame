@@ -120,3 +120,94 @@ def test_changed_proto_invalidates_hash():
                f"Modified proto should NOT be skipped, got:\n{output2}")
         _check(new_hash != original_hash,
                f"Hash should change after proto modification; was {original_hash}, still {new_hash}")
+
+
+def test_changed_default_value_invalidates_hash():
+    """Changing only a field's [default=...] value must change the hash and
+    trigger regeneration -- same field, same type, same size/offset, only the
+    default literal differs."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        out = tmp_path / "gen"
+
+        proto_v1 = (
+            "package default_hash_test;\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 retry_ms = 1 [default = 1000];\n"
+            "}\n"
+        )
+        proto_v2 = (
+            "package default_hash_test;\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 retry_ms = 1 [default = 2000];\n"
+            "}\n"
+        )
+        proto_copy = tmp_path / "default_hash_test.sf"
+        proto_copy.write_text(proto_v1, encoding="utf-8")
+
+        code, _ = _run_generator(proto_copy, out, force=True)
+        _check(code == 0, "First generation should succeed")
+        hash_file = out / HASH_FILENAME
+        original_hash = hash_file.read_text().strip()
+
+        proto_copy.write_text(proto_v2, encoding="utf-8")
+
+        code2, output2 = _run_generator(proto_copy, out, force=False)
+        _check(code2 == 0, f"Generation after default change should succeed, got {code2}")
+        new_hash = hash_file.read_text().strip()
+        _check("no changes detected" not in output2.lower(),
+               f"Changing only a default value should NOT be skipped, got:\n{output2}")
+        _check(new_hash != original_hash,
+               f"Hash should change when a field's default changes; was {original_hash}, still {new_hash}")
+
+
+def test_default_vs_no_default_hash_differs_but_deterministic():
+    """A schema with a default and the identical schema without one must hash
+    differently (defaults are part of the hashed schema), while regenerating
+    the *same* schema twice (with or without a default) is deterministic."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+
+        proto_no_default = (
+            "package default_hash_determinism_test;\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 value = 1;\n"
+            "}\n"
+        )
+        proto_with_default = (
+            "package default_hash_determinism_test;\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 value = 1 [default = 5];\n"
+            "}\n"
+        )
+
+        out_a = tmp_path / "gen_a"
+        proto_a = tmp_path / "a.sf"
+        proto_a.write_text(proto_no_default, encoding="utf-8")
+        code, _ = _run_generator(proto_a, out_a, force=True)
+        _check(code == 0, "no-default generation should succeed")
+        hash_no_default = (out_a / HASH_FILENAME).read_text().strip()
+
+        out_b = tmp_path / "gen_b"
+        proto_b = tmp_path / "b.sf"
+        proto_b.write_text(proto_with_default, encoding="utf-8")
+        code, _ = _run_generator(proto_b, out_b, force=True)
+        _check(code == 0, "with-default generation should succeed")
+        hash_with_default = (out_b / HASH_FILENAME).read_text().strip()
+
+        _check(hash_no_default != hash_with_default,
+               "Adding a default should change the hash even though size/layout are identical")
+
+        # Regenerating the same schema into the same output dir again (the
+        # hash also covers CLI args like --py_path, so reuse out_b rather
+        # than a fresh directory) must produce the identical hash --
+        # deterministic, not e.g. dict-ordering-dependent.
+        code, _ = _run_generator(proto_b, out_b, force=True)
+        _check(code == 0, "repeat with-default generation should succeed")
+        hash_repeat = (out_b / HASH_FILENAME).read_text().strip()
+        _check(hash_repeat == hash_with_default,
+               f"Hashing the same schema twice should be deterministic: {hash_with_default} != {hash_repeat}")

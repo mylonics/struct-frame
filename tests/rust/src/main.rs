@@ -1420,8 +1420,8 @@ fn run_wire_evolution_interop_tests() -> ! {
         }
     }
 
-    // -- Scenario 2: older sender -> newer receiver (zero-fill extensions)
-    println!("\nScenario 2: older sender -> newer receiver (zero-fill)");
+    // -- Scenario 2: older sender -> newer receiver (defaults fill extensions)
+    println!("\nScenario 2: older sender -> newer receiver (defaults)");
     {
         let mut m = v1::BaseExtensionMessage::default();
         m.header = 0x1234;
@@ -1433,15 +1433,16 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S2] v1->v2 base-only frame validates CRC"
         );
         if let Some(f) = frame {
-            // unpack() zero-fills the missing extension bytes internally.
+            // unpack() fills the missing extension bytes with the schema
+            // default internally.
             let d = v2::BaseExtensionMessage::unpack(&f.msg_data);
             check!(
                 d.as_ref().map_or(false, |x| x.header == 0x1234 && x.seq == 7),
                 "[S2] v2 decodes base fields correctly"
             );
             check!(
-                d.map_or(false, |x| x.crc_seed == 0),
-                "[S2] v2 extension field zero-filled to default"
+                d.map_or(false, |x| x.crc_seed == 4242),
+                "[S2] v2 extension field filled with its schema default (not zero)"
             );
         }
     }
@@ -1654,7 +1655,8 @@ fn run_wire_evolution_interop_tests() -> ! {
             );
         }
 
-        // Older -> newer: v2 zero-fills the trailing extension field.
+        // Older -> newer: v2 fills the trailing extension fields with their
+        // schema defaults.
         let mut m1 = v1::VariableExtensionMessage::default();
         m1.node_id = 9;
         m1.readings_count = 2;
@@ -1666,7 +1668,8 @@ fn run_wire_evolution_interop_tests() -> ! {
             "[S10] v1 variable (base-only) -> v2 validates CRC"
         );
         if let Some(f2) = frame2 {
-            // unpack() zero-fills the missing trailing extension field internally.
+            // unpack() fills the missing trailing extension fields with their
+            // schema defaults internally.
             let d2 = v2::VariableExtensionMessage::unpack(&f2.msg_data);
             check!(
                 d2.as_ref().map_or(false, |x|
@@ -1677,12 +1680,12 @@ fn run_wire_evolution_interop_tests() -> ! {
                 "[S10] v2 locates variable base after cross-version decode"
             );
             check!(
-                d2.as_ref().map_or(false, |x| x.ext_timestamp == 0),
-                "[S10] v2 zero-fills the trailing extension field"
+                d2.as_ref().map_or(false, |x| x.ext_timestamp == 999999),
+                "[S10] v2 fills the trailing extension field with its schema default"
             );
             check!(
-                d2.map_or(false, |x| x.ext_note_length == 0),
-                "[S10] v2 zero-fills the count-prefixed (string) extension field"
+                d2.as_ref().map_or(false, |x| x.ext_note_length == 4 && &x.ext_note[..4] == b"none"),
+                "[S10] v2 fills the count-prefixed (string) extension field with its schema default"
             );
         }
     }

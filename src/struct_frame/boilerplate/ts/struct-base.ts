@@ -17,6 +17,13 @@ export interface MessageConstructor<T extends MessageBase = MessageBase> {
   readonly _magic1?: number;
   readonly _magic2?: number;
   readonly _baseSize?: number;
+  /**
+   * Wire-format bytes with schema [default = ...] values applied to unset
+   * fields (zero elsewhere). Declared only for messages that actually use
+   * defaults; when absent, construction/decode fall back to a zero-filled
+   * buffer exactly as before this feature existed.
+   */
+  readonly _defaultBytes?: Uint8Array;
   getSize(): number;
   unpack?(buffer: Buffer): T;
 }
@@ -47,7 +54,8 @@ export abstract class MessageBase {
       // on the hot receive path to avoid a redundant allocation + memcpy.
       this._buffer = Buffer.from(bufferOrInit.buffer, bufferOrInit.byteOffset, bufferOrInit.byteLength);
     } else {
-      this._buffer = Buffer.alloc(size);
+      const defaultBytes = (this.constructor as MessageConstructor)._defaultBytes;
+      this._buffer = defaultBytes ? Buffer.from(defaultBytes) : Buffer.alloc(size);
       // If init object provided, apply values after subclass constructor runs
       // This is handled by generated constructors calling _applyInit()
     }

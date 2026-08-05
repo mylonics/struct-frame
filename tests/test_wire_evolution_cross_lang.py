@@ -24,7 +24,8 @@ transitively --
   1. every language's v1/v2 encoding is byte-compared against the C++
      reference encoding, and
   2. every language decodes the C++ reference bytes in both cross-version
-     directions (v1 bytes read as v2 => extension zero-filled; v2 bytes
+     directions (v1 bytes read as v2 => extension filled with its schema
+     default (crc_seed's [default = ...] is 4242, not zero); v2 bytes
      read as v1 => degrades gracefully to the base fields).
 
 Since (1) proves every language's bytes are identical to C++'s, and (2)
@@ -36,7 +37,7 @@ matrix sound (see tests/coverage_spec.py section 4).
 Each language's helper validates its own decoded header/seq/crc_seed
 against the shared canonical constants (HEADER/SEQ/CRC_SEED below) and
 exits non-zero on any mismatch, so a clean exit code from a decode call
-already proves the zero-fill/degrade semantics held -- no fragile
+already proves the default-fill/degrade semantics held -- no fragile
 per-language stdout parsing needed.
 
 Skips entirely if the C++ helper isn't built (it anchors the whole
@@ -181,12 +182,12 @@ def test_wire_evolution_cross_lang_matrix(tmp_path: Path) -> None:
                f"{runner.lang_id}: v2 encoding does not match the C++ reference byte-for-byte")
 
         # Decode the C++ reference bytes in both cross-version directions.
-        # A clean exit code already proves the zero-fill/degrade semantics
+        # A clean exit code already proves the default-fill/degrade semantics
         # held, since each helper validates header/seq/crc_seed internally.
         rc, out, err = runner.run("decode", "v2", cpp_v1_file)
         _check(rc == 0,
                f"{runner.lang_id}: failed to decode the C++ v1 reference bytes as v2 "
-               f"(extension should zero-fill):\n{out}{err}")
+               f"(extension should be filled with its schema default):\n{out}{err}")
         rc, out, err = runner.run("decode", "v1", cpp_v2_file)
         _check(rc == 0,
                f"{runner.lang_id}: failed to decode the C++ v2 reference bytes as v1 "
@@ -202,8 +203,8 @@ def test_wire_evolution_cross_lang_matrix(tmp_path: Path) -> None:
     _check(py_v2.serialize() == cpp_v2_bytes,
            "py: v2 encoding does not match the C++ reference byte-for-byte")
     decoded_as_v2 = v2.BaseExtensionMessage.deserialize(cpp_v1_bytes)
-    _check(decoded_as_v2.header == HEADER and decoded_as_v2.seq == SEQ and decoded_as_v2.crc_seed == 0,
-           f"py: failed to decode the C++ v1 reference bytes as v2 (zero-fill expected), got {decoded_as_v2}")
+    _check(decoded_as_v2.header == HEADER and decoded_as_v2.seq == SEQ and decoded_as_v2.crc_seed == 4242,
+           f"py: failed to decode the C++ v1 reference bytes as v2 (schema default expected), got {decoded_as_v2}")
     decoded_as_v1 = v1.BaseExtensionMessage.deserialize(cpp_v2_bytes)
     _check(decoded_as_v1.header == HEADER and decoded_as_v1.seq == SEQ,
            f"py: failed to decode the C++ v2 reference bytes as v1, got {decoded_as_v1}")

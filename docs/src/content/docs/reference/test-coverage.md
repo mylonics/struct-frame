@@ -417,7 +417,7 @@ Proto source: `tests/proto/test_messages.sf` (Python generator + round-trip).
 | Cross-version interop scenario | C | C++ | Python | TS | JS | C# | Rust |
 |--------|--------|--------|--------|--------|--------|--------|--------|
 | Newer sender → older receiver (length-bearing; base decodes, trailing ext bytes skipped) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Older sender → newer receiver (extension fields zero-filled to defaults) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Older sender → newer receiver (extension fields filled with their schema defaults) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Same-version round-trip regression guard (v2 → v2) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Newer ext oneof variant → older receiver degrades gracefully (unknown discriminator) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Older base oneof variant → newer receiver decodes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |

@@ -21,7 +21,7 @@ Scenarios (mirrors the project's wire-evolution interop plan):
   1. Newer sender -> older receiver: v2 encodes extensions, v1 decodes base,
      trailing extension bytes skipped via the frame length field.
   2. Older sender -> newer receiver: v1 encodes base-only, v2 decodes base and
-     zero-fills the extension fields.
+     fills the extension fields with their schema defaults.
   3. Same-version sanity: v2 -> v2 with extensions round-trips fully.
   4. Newer ext oneof variant -> older receiver degrades gracefully (unknown
      discriminator, no corruption).
@@ -119,7 +119,7 @@ def scenario_1_newer_to_older(v1, v2, fr: Framing) -> None:
 
 
 def scenario_2_older_to_newer(v1, v2, fr: Framing) -> None:
-    """Older sender -> newer receiver: extensions zero-filled."""
+    """Older sender -> newer receiver: extensions filled with their schema defaults."""
     orig = v1.BaseExtensionMessage(header=0x1234, seq=7)
     buf = fr.encode("standard", orig)
     info = fr.parse("standard", buf, v2.get_message_info)
@@ -129,7 +129,7 @@ def scenario_2_older_to_newer(v1, v2, fr: Framing) -> None:
     decoded = v2.BaseExtensionMessage.deserialize(info)
     _check(decoded.header == 0x1234 and decoded.seq == 7,
            "[S2] v2 decodes base fields correctly")
-    _check(decoded.crc_seed == 0, "[S2] v2 extension field zero-filled to default")
+    _check(decoded.crc_seed == 4242, "[S2] v2 extension field filled with its schema default (not zero)")
 
 
 def scenario_3_same_version(v2, fr: Framing) -> None:
@@ -259,7 +259,8 @@ def scenario_10_variable(v1, v2, fr: Framing) -> None:
     _check(decoded.node_id == 7 and list(decoded.readings) == [10, 20, 30],
            "[S10] v1 locates/decodes variable base; trailing ext bytes ignored")
 
-    # Older -> newer: v2 zero-fills the extension after the variable base.
+    # Older -> newer: v2 fills the extensions after the variable base with
+    # their schema defaults.
     orig2 = v1.VariableExtensionMessage(node_id=9, readings=[1, 2])
     buf2 = fr.encode("standard", orig2)
     info2 = fr.parse("standard", buf2, v2.get_message_info)
@@ -267,10 +268,10 @@ def scenario_10_variable(v1, v2, fr: Framing) -> None:
     decoded2 = v2.VariableExtensionMessage.deserialize(info2)
     _check(decoded2.node_id == 9 and list(decoded2.readings) == [1, 2],
            "[S10] v2 locates variable base after cross-version decode")
-    _check(decoded2.ext_timestamp == 0,
-           "[S10] v2 zero-fills the trailing extension field")
-    _check(decoded2.ext_note == b"",
-           "[S10] v2 zero-fills the count-prefixed (string) extension field")
+    _check(decoded2.ext_timestamp == 999999,
+           "[S10] v2 fills the trailing extension field with its schema default")
+    _check(decoded2.ext_note == b"none",
+           "[S10] v2 fills the count-prefixed (string) extension field with its schema default")
 
 
 # ---------------------------------------------------------------------------

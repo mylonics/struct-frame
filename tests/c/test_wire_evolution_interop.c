@@ -14,7 +14,7 @@
  *
  * Scenarios (mirrors the project's wire-evolution interop plan, 1-10):
  *   1. Newer sender -> older receiver (v2 encodes extensions, v1 decodes base)
- *   2. Older sender -> newer receiver (v1 base-only, v2 zero-fills extensions)
+ *   2. Older sender -> newer receiver (v1 base-only, v2 fills extensions with schema defaults)
  *   3. Same-version sanity (v2 -> v2 with extension variant)
  *   4. Newer ext oneof variant -> older receiver degrades gracefully
  *   5. Older base oneof variant -> newer receiver decodes correctly
@@ -100,7 +100,7 @@ static void scenario_1(void) {
 }
 
 /* -------------------------------------------------------------------------
- * Scenario 2: older sender -> newer receiver (zero-fill extensions)
+ * Scenario 2: older sender -> newer receiver (defaults fill extensions)
  * ------------------------------------------------------------------------- */
 static void scenario_2(void) {
     WireEvolutionV1BaseExtensionMessage m = {0};
@@ -120,11 +120,12 @@ static void scenario_2(void) {
     check(r.valid, "[S2] v1->v2 base-only frame validates CRC");
 
     if (r.valid && r.msg_data) {
-        /* deserialize() zero-fills the missing extension bytes internally. */
+        /* deserialize() fills the missing extension bytes with the schema
+         * default internally. */
         WireEvolutionV2BaseExtensionMessage d = {0};
         WireEvolutionV2BaseExtensionMessage_deserialize(r.msg_data, r.msg_len, &d);
         check(d.header == 0x1234 && d.seq == 7, "[S2] v2 decodes base fields correctly");
-        check(d.crc_seed == 0, "[S2] v2 extension field zero-filled to default");
+        check(d.crc_seed == 4242, "[S2] v2 extension field filled with its schema default (not zero)");
     }
 }
 
@@ -391,7 +392,8 @@ static void scenario_10(void) {
               "[S10] v1 locates/decodes variable base; trailing ext bytes ignored");
     }
 
-    /* Older -> newer: v2 zero-fills the trailing extension field. */
+    /* Older -> newer: v2 fills the trailing extension fields with their
+     * schema defaults. */
     WireEvolutionV1VariableExtensionMessage m1 = {0};
     m1.node_id = 9;
     m1.readings.count = 2;
@@ -419,9 +421,9 @@ static void scenario_10(void) {
               && d2.readings.data[0] == 1
               && d2.readings.data[1] == 2,
               "[S10] v2 locates variable base after cross-version decode");
-        check(d2.ext_timestamp == 0, "[S10] v2 zero-fills the trailing extension field");
-        check(d2.ext_note.length == 0,
-              "[S10] v2 zero-fills the count-prefixed (string) extension field");
+        check(d2.ext_timestamp == 999999, "[S10] v2 fills the trailing extension field with its schema default");
+        check(d2.ext_note.length == 4 && memcmp(d2.ext_note.data, "none", 4) == 0,
+              "[S10] v2 fills the count-prefixed (string) extension field with its schema default");
     }
 }
 
@@ -429,7 +431,7 @@ int main(void) {
     printf("=== C Cross-Version Wire-Evolution Interop Tests ===\n\n");
     printf("Scenario 1: newer sender -> older receiver (length-bearing)\n");
     scenario_1();
-    printf("\nScenario 2: older sender -> newer receiver (zero-fill)\n");
+    printf("\nScenario 2: older sender -> newer receiver (defaults)\n");
     scenario_2();
     printf("\nScenario 3: same-version sanity (v2 -> v2)\n");
     scenario_3();

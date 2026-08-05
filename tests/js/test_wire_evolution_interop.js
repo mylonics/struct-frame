@@ -14,7 +14,7 @@
  *
  * Scenarios (mirrors the project's wire-evolution interop plan, 1-10):
  *   1. Newer sender -> older receiver (v2 encodes extensions, v1 decodes base)
- *   2. Older sender -> newer receiver (v1 base-only, v2 zero-fills extensions)
+ *   2. Older sender -> newer receiver (v1 base-only, v2 fills extensions with schema defaults)
  *   3. Same-version sanity (v2 -> v2 with extension variant)
  *   4. Newer ext oneof variant -> older receiver degrades gracefully
  *   5. Older base oneof variant -> newer receiver decodes correctly
@@ -102,7 +102,7 @@ function scenario1() {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario 2: older sender -> newer receiver (zero-fill extensions)
+// Scenario 2: older sender -> newer receiver (defaults fill extensions)
 // ---------------------------------------------------------------------------
 function scenario2() {
   const orig = new V1BaseExtensionMessage();
@@ -112,11 +112,12 @@ function scenario2() {
   const info = parseFrameWithCrc(ProfileStandardConfig, frame, v2GetMessageInfo);
   check(info.valid, '[S2] v1->v2 base-only frame validates CRC');
   if (info.valid && info.msgData) {
-    // V2 deserialize copies the short payload into a _size buffer, leaving the
-    // extension bytes zero-filled to their defaults.
+    // V2 deserialize copies the short payload into a _size buffer pre-filled
+    // with the schema defaults, so the missing extension field reads back as
+    // its declared default rather than zero.
     const d = V2BaseExtensionMessage.deserialize(info);
     check(d.header === 0x1234 && d.seq === 7, '[S2] v2 decodes base fields correctly');
-    check(d.crcSeed === 0, '[S2] v2 extension field zero-filled to default');
+    check(d.crcSeed === 4242, '[S2] v2 extension field filled with its schema default (not zero)');
   }
 }
 
@@ -307,7 +308,8 @@ function scenario10() {
       '[S10] v1 locates/decodes variable base; trailing ext bytes ignored');
   }
 
-  // Older -> newer: v2 zero-fills the trailing extension field.
+  // Older -> newer: v2 fills the trailing extension fields with their
+  // schema defaults.
   const orig2 = new V1VariableExtensionMessage();
   orig2.nodeId = 9;
   orig2.readingsCount = 2;
@@ -323,9 +325,9 @@ function scenario10() {
       && d2.readingsData[0] === 1
       && d2.readingsData[1] === 2,
       '[S10] v2 locates variable base after cross-version decode');
-    check(d2.extTimestamp === 0, '[S10] v2 zero-fills the trailing extension field');
-    check(d2.extNoteLength === 0,
-      '[S10] v2 zero-fills the count-prefixed (string) extension field');
+    check(d2.extTimestamp === 999999, '[S10] v2 fills the trailing extension field with its schema default');
+    check(d2.extNoteLength === 4 && d2.extNoteData === 'none',
+      '[S10] v2 fills the count-prefixed (string) extension field with its schema default');
   }
 }
 
@@ -333,7 +335,7 @@ console.log('=== JavaScript Cross-Version Wire-Evolution Interop Tests ===\n');
 
 console.log('Scenario 1: newer sender -> older receiver (length-bearing)');
 scenario1();
-console.log('\nScenario 2: older sender -> newer receiver (zero-fill)');
+console.log('\nScenario 2: older sender -> newer receiver (defaults)');
 scenario2();
 console.log('\nScenario 3: same-version sanity (v2 -> v2)');
 scenario3();

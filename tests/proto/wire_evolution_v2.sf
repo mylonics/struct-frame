@@ -50,7 +50,10 @@ message BaseExtensionMessage {
   uint8  seq    = 2;
 
   option extensions_start = 3;
-  uint32 crc_seed = 3;
+  // Schema default: an older (v1) sender never transmits this field, so a v2
+  // receiver decoding a base-only frame should fill it with 4242, not 0 --
+  // exercises requirement 11 (nonzero defaults for older payloads).
+  uint32 crc_seed = 3 [default = 4242];
 }
 
 // ============================================================================
@@ -67,8 +70,8 @@ message VariableExtensionMessage {
   repeated uint16 readings = 2 [max_size=16];
 
   option extensions_start = 3;
-  uint32 ext_timestamp = 3;
-  string ext_note      = 4 [max_size=8];
+  uint32 ext_timestamp = 3 [default = 999999];
+  string ext_note      = 4 [max_size=8, default = "none"];
 }
 
 // ============================================================================

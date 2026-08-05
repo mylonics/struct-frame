@@ -87,9 +87,10 @@ class TestWireEvolutionFileIo
                                         $"seq={msg.Seq} (expected {Seq})");
                 return 1;
             }
-            // A legacy (v1-sized, 3-byte) frame decoded as v2 must zero-fill the
-            // extension; a genuine v2-sized (7-byte) frame must preserve it.
-            uint expectedCrc = buf.Length >= V2.BaseExtensionMessage.BaseSize + 4 ? CrcSeed : 0;
+            // A legacy (v1-sized, 3-byte) frame decoded as v2 must fill the
+            // extension with its schema default (4242, not zero); a genuine
+            // v2-sized (7-byte) frame must preserve the transmitted value.
+            uint expectedCrc = buf.Length >= V2.BaseExtensionMessage.BaseSize + 4 ? CrcSeed : 4242;
             if (msg.CrcSeed != expectedCrc)
             {
                 Console.Error.WriteLine($"[DECODE] FAILED: crcSeed=0x{msg.CrcSeed:x8} (expected 0x{expectedCrc:x8} " +

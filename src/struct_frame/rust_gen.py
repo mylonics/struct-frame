@@ -612,8 +612,16 @@ def _large_array_size(field):
 
 
 def _needs_manual_default(msg):
-    """Returns True if the message struct has arrays larger than 32 elements."""
+    """Returns True if the message struct has arrays larger than 32 elements,
+    or any field declares a schema [default = ...].
+
+    A nested message field with no default of its own doesn't force this:
+    #[derive(Default)] already calls NestedType::default() for that field,
+    which correctly picks up defaults declared inside the nested type.
+    """
     for field in msg.fields.values():
+        if field.default is not None:
+            return True
         if _large_array_size(field) > 0:
             return True
         # Non-array string/bytes fields with large max_size or size_option
@@ -637,6 +645,23 @@ def _rust_zero_literal(type_name):
     if type_name == 'bool':
         return 'false'
     return '0'
+
+
+def _rust_byte_array_literal(data):
+    """Render `data` as a Rust array-literal body, e.g. "0x01, 0x02"."""
+    return ', '.join('0x%02x' % b for b in data)
+
+
+def _rust_scalar_default_literal(field):
+    """Render field.default as a Rust literal for a Default::default() field."""
+    if field.is_enum:
+        base_type = _get_field_type(field)
+        # Both top-level and message-nested Rust enums use SCREAMING_CASE
+        # variant names (EnumRustGen, via NamingStyleC.enum_entry).
+        return f'{base_type}::{field.default.upper()}'
+    if field.field_type == "bool":
+        return "true" if field.default else "false"
+    return f"{field.default}"
 
 
 def _generate_default_impl(msg, struct_name):
@@ -670,13 +695,25 @@ def _generate_default_impl(msg, struct_name):
                     nested_type = _get_field_type(field)
                     result += f'            {var_name}: core::array::from_fn(|_| {nested_type}::default()),\n'
         elif type_name == "string":
+            default_text = field.default.encode('utf-8') if field.default is not None else b""
             if field.size_option is not None:
-                result += f'            {var_name}: [0u8; {field.size_option}],\n'
+                if default_text:
+                    padded = _rust_byte_array_literal(default_text.ljust(field.size_option, b"\x00"))
+                    result += f'            {var_name}: [{padded}],\n'
+                else:
+                    result += f'            {var_name}: [0u8; {field.size_option}],\n'
             elif field.max_size is not None:
-                result += f'            {var_name}_length: 0,\n'
-                result += f'            {var_name}: [0u8; {field.max_size}],\n'
+                if default_text:
+                    padded = _rust_byte_array_literal(default_text.ljust(field.max_size, b"\x00"))
+                    result += f'            {var_name}_length: {len(default_text)},\n'
+                    result += f'            {var_name}: [{padded}],\n'
+                else:
+                    result += f'            {var_name}_length: 0,\n'
+                    result += f'            {var_name}: [0u8; {field.max_size}],\n'
             else:
                 result += f'            {var_name}: Default::default(),\n'
+        elif field.default is not None:
+            result += f'            {var_name}: {_rust_scalar_default_literal(field)},\n'
         else:
             result += f'            {var_name}: Default::default(),\n'
     for oneof_name, oneof in msg.oneofs.items():
@@ -776,6 +813,14 @@ class MessageRustGen():
         else:
             result += f'    pub const MAX_SIZE: usize = {const_prefix}_MAX_SIZE;\n'
             result += f'    pub const SIZE: usize = {const_prefix}_MAX_SIZE;\n'
+
+        # Wire-format bytes with schema [default=...] values applied to unset
+        # fields (zero elsewhere). Used by _unpack_fixed (and the plain,
+        # oneof-less fixed unpack below) to pad a short buffer so missing
+        # trailing bytes resolve to the schema default instead of always zero.
+        has_defaults = msg.default_bytes and msg.default_bytes != b"\x00" * msg.size
+        if has_defaults:
+            result += f'    const DEFAULT_BYTES: [u8; {msg.size}] = [{_rust_byte_array_literal(msg.default_bytes)}];\n'
 
         # Oneof accessor methods
         for oneof_name, oneof in msg.oneofs.items():
@@ -922,7 +967,15 @@ class MessageRustGen():
                 emitted_ext_pad = False
                 for key, field in msg.fields.items():
                     if variable_mode and ext_width > 0 and getattr(field, 'is_extension', False) and not emitted_ext_pad:
-                        result += f'{indent}let mut _ext_padded = [0u8; {ext_width}];\n'
+                        ext_default = msg.default_bytes[msg.base_size:msg.base_size + ext_width] if msg.default_bytes else b""
+                        if ext_default and ext_default != b"\x00" * ext_width:
+                            # Extension fields declare schema defaults: pad with
+                            # those instead of zero, so a base-only (older
+                            # sender) frame decodes with the defaults rather
+                            # than zero for the fields it never sent.
+                            result += f'{indent}let mut _ext_padded: [u8; {ext_width}] = [{_rust_byte_array_literal(ext_default)}];\n'
+                        else:
+                            result += f'{indent}let mut _ext_padded = [0u8; {ext_width}];\n'
                         result += f'{indent}let _ext_n = buf.len().saturating_sub(_pos).min({ext_width});\n'
                         result += f'{indent}_ext_padded[.._ext_n].copy_from_slice(&buf[_pos.._pos + _ext_n]);\n'
                         result += f'{indent}let buf = &_ext_padded[..];\n'
@@ -1034,12 +1087,16 @@ class MessageRustGen():
             result += '    }\n'
         else:
             # Fixed message: simple unpack.
-            # Wire evolution: zero-fill any bytes an older sender omitted (a shorter
-            # buffer); ignore any trailing bytes a newer sender appended (a longer
-            # buffer). Padding into a fixed Self::SIZE-length array up front means
+            # Wire evolution: fill any bytes an older sender omitted (a shorter
+            # buffer) with the schema default (zero if none declared); ignore
+            # any trailing bytes a newer sender appended (a longer buffer).
+            # Padding into a fixed Self::SIZE-length array up front means
             # every field read below always has the bytes it expects, so callers
             # never need to pad or truncate the buffer themselves.
-            result += '        let mut _padded = [0u8; Self::SIZE];\n'
+            if has_defaults:
+                result += '        let mut _padded = Self::DEFAULT_BYTES;\n'
+            else:
+                result += '        let mut _padded = [0u8; Self::SIZE];\n'
             result += '        let _n = buf.len().min(Self::SIZE);\n'
             result += '        _padded[.._n].copy_from_slice(&buf[.._n]);\n'
             result += '        let buf = &_padded[..];\n'

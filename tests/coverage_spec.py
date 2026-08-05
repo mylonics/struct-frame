@@ -772,7 +772,7 @@ SECTIONS = [
                          "base decodes, trailing ext bytes skipped)",
                          {lang: "✅" for lang in LANGS}),
                     _row("Older sender → newer receiver (extension fields "
-                         "zero-filled to defaults)",
+                         "filled with their schema defaults)",
                          {lang: "✅" for lang in LANGS}),
                     _row("Same-version round-trip regression guard (v2 → v2)",
                          {lang: "✅" for lang in LANGS}),

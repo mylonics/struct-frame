@@ -90,7 +90,10 @@ static int do_decode(const char* version, const char* path) {
               msg.header, kHeader, msg.seq, kSeq);
       return 1;
     }
-    uint32_t expected_crc = (n >= WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_BASE_SIZE + 4) ? kCrcSeed : 0;
+    /* 4242 is crc_seed's schema [default = ...]; an older sender never
+     * transmits this field, so a short input must decode to the default,
+     * not zero. */
+    uint32_t expected_crc = (n >= WIRE_EVOLUTION_V2_BASE_EXTENSION_MESSAGE_BASE_SIZE + 4) ? kCrcSeed : 4242;
     if (msg.crc_seed != expected_crc) {
       fprintf(stderr, "[DECODE] FAILED: crc_seed=0x%08x (expected 0x%08x for %zu-byte input)\n",
               msg.crc_seed, expected_crc, n);

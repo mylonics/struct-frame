@@ -456,3 +456,172 @@ message Foo {
         sf.write_text(proto)
         result = _run(str(sf))
     _report("oneof_level_extensions_allowed", result, expected_reject=False)
+
+
+# ---------------------------------------------------------------------------
+# Field default values ([default = ...])
+# ---------------------------------------------------------------------------
+
+def test_default_wrong_literal_type() -> None:
+    """A bool literal default on an integer field must be rejected."""
+    proto = """\
+package default_wrong_type_test;
+
+message Foo {
+  option msgid = 1;
+  uint8 a = 1 [default = true];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "default_wrong_type.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("default_wrong_literal_type", result, expected_reject=True,
+            expected_msg="must be an integer literal")
+
+
+def test_default_integer_overflow() -> None:
+    """An out-of-range integer default must be rejected."""
+    proto = """\
+package default_overflow_test;
+
+message Foo {
+  option msgid = 1;
+  uint8 a = 1 [default = 999];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "default_overflow.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("default_integer_overflow", result, expected_reject=True,
+            expected_msg="out of range")
+
+
+def test_default_unknown_enum_value() -> None:
+    """A default naming an enum member that doesn't exist must be rejected."""
+    proto = """\
+package default_unknown_enum_test;
+
+enum Mode {
+  IDLE = 0;
+  ACTIVE = 1;
+}
+
+message Foo {
+  option msgid = 1;
+  Mode a = 1 [default = UNKNOWN];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "default_unknown_enum.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("default_unknown_enum_value", result, expected_reject=True,
+            expected_msg="is not a member of enum")
+
+
+def test_default_string_exceeds_size() -> None:
+    """A string default longer than the field's `size` must be rejected."""
+    proto = """\
+package default_string_too_long_test;
+
+message Foo {
+  option msgid = 1;
+  string a = 1 [size = 4, default = "toolong"];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "default_string_too_long.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("default_string_exceeds_size", result, expected_reject=True,
+            expected_msg="exceeds size")
+
+
+def test_default_on_repeated_field_rejected() -> None:
+    """`[default = ...]` on a repeated field must be rejected."""
+    proto = """\
+package default_repeated_test;
+
+message Foo {
+  option msgid = 1;
+  repeated uint8 a = 1 [size = 2, default = 1];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "default_repeated.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("default_on_repeated_field", result, expected_reject=True,
+            expected_msg="not supported on repeated fields")
+
+
+def test_default_on_message_field_rejected() -> None:
+    """`[default = ...]` on a nested message-typed field must be rejected."""
+    proto = """\
+package default_message_field_test;
+
+message Sub {
+  uint8 x = 1;
+}
+
+message Foo {
+  option msgid = 1;
+  Sub a = 1 [default = 1];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "default_message_field.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("default_on_message_field", result, expected_reject=True,
+            expected_msg="not supported on message-typed fields")
+
+
+def test_default_on_oneof_field_rejected() -> None:
+    """`[default = ...]` on a field inside a oneof must be rejected."""
+    proto = """\
+package default_oneof_field_test;
+
+message Foo {
+  option msgid = 1;
+  oneof payload {
+    uint8 a = 1 [default = 5];
+    uint8 b = 2;
+  }
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "default_oneof_field.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("default_on_oneof_field", result, expected_reject=True,
+            expected_msg="not supported on oneof fields")
+
+
+def test_default_valid_accepted() -> None:
+    """A well-formed set of defaults across supported types must be accepted."""
+    proto = """\
+package default_valid_test;
+
+enum Mode {
+  IDLE = 0;
+  ACTIVE = 1;
+}
+
+message Foo {
+  option msgid = 1;
+  uint32 a = 1 [default = 1000];
+  bool b = 2 [default = true];
+  Mode c = 3 [default = ACTIVE];
+  string d = 4 [size = 16, default = "device"];
+  float e = 5 [default = 1.5];
+  int8 f = 6 [default = -5];
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        sf = Path(tmp) / "default_valid.sf"
+        sf.write_text(proto)
+        result = _run(str(sf))
+    _report("default_valid_accepted", result, expected_reject=False)
