@@ -15,6 +15,7 @@ Covers (see tests/proto/default_values.sf):
 from __future__ import annotations
 
 import subprocess
+import shutil
 from pathlib import Path
 
 import pytest
@@ -200,6 +201,24 @@ def _c_defaults(c_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Rust
+# ---------------------------------------------------------------------------
+
+def _rust_defaults(rust_dir: Path) -> None:
+    """Generated Rust defaults compile, including f32/f64 default literals."""
+    if shutil.which("cargo") is None:
+        pytest.skip("cargo not available - skipping Rust default-values test")
+    result = subprocess.run(
+        ["cargo", "check", "--manifest-path", str(rust_dir / "Cargo.toml")],
+        capture_output=True,
+        text=True,
+    )
+    _check(result.returncode == 0,
+           f"Generated Rust default-values crate failed to compile:\n"
+           f"{result.stdout}{result.stderr}")
+
+
+# ---------------------------------------------------------------------------
 # Single collected pytest entry point
 # ---------------------------------------------------------------------------
 
@@ -210,6 +229,7 @@ def test_default_values(tmp_path: Path) -> None:
 
     py_dir = tmp_path / "py"
     c_dir = tmp_path / "c"
+    rust_dir = tmp_path / "rust"
 
     mod = _import_generated_module(py_dir)
 
@@ -219,3 +239,4 @@ def test_default_values(tmp_path: Path) -> None:
     _python_decode_missing_trailing_field(mod)
     _python_no_defaults_control(mod)
     _c_defaults(c_dir)
+    _rust_defaults(rust_dir)

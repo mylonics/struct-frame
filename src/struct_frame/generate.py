@@ -797,11 +797,13 @@ class Field:
                     f"Field {self.name}: [default] is not supported on repeated fields")
                 return False
             elif self.is_enum:
-                if not isinstance(self.default, str) or self.type_ref is None or self.default not in self.type_ref.data:
+                enum_member = getattr(self.default, "name", self.default)
+                if not isinstance(enum_member, str) or self.type_ref is None or enum_member not in self.type_ref.data:
                     print(
-                        f"Field {self.name}: default value '{self.default}' is not a member of enum {self.field_type}")
+                        f"Field {self.name}: default value '{enum_member}' is not a member of enum {self.field_type}")
                     return False
-                self.default_numeric = self.type_ref.data[self.default][0]
+                self.default = enum_member
+                self.default_numeric = self.type_ref.data[enum_member][0]
             elif self.is_default_type:
                 ok, result = _coerce_scalar_default(self.field_type, self.default)
                 if not ok:
