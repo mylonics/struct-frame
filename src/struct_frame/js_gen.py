@@ -15,6 +15,8 @@ from struct_frame.ts_js_base import (
     BaseFieldGen,
     BaseEnumGen,
     to_camel_case,
+    needs_default_bytes,
+    ts_default_bytes_literal,
     # New class-based generation utilities
     TYPE_SIZES,
     READ_METHODS,
@@ -225,7 +227,15 @@ class MessageJsClassGen():
         if msg.variable:
             result += f'  static _minSize = {msg.min_size}; // Minimum size when all variable fields are empty\n'
             result += f'  static _isVariable = true; // This message uses variable-length encoding\n'
-        
+
+        # Wire-format bytes with schema [default = ...] values applied to
+        # unset fields (zero elsewhere). MessageBase's constructor uses this
+        # to pre-fill _buffer instead of zero-allocating, so a fresh instance
+        # (or a decoded buffer shorter than _size -- wire evolution) reads
+        # back the schema default for any field it didn't explicitly set.
+        if needs_default_bytes(msg):
+            result += f'  static _defaultBytes = {ts_default_bytes_literal(msg.default_bytes)};\n'
+
         result += '\n'
         
         # Generate constructor that supports init object

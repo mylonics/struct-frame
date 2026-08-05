@@ -429,12 +429,16 @@ class MessagePyGen():
         result += '        """Deserialize binary data into a message instance (fixed-size format).\n'
         result += '\n'
         result += '        Wire evolution: a buffer shorter than MAX_SIZE (older sender, base fields\n'
-        result += '        only) is zero-filled for the missing extension fields; a buffer longer\n'
-        result += '        than MAX_SIZE (newer sender) has its trailing extension bytes ignored.\n'
-        result += '        Callers never need to pad or truncate the buffer themselves.\n'
+        result += '        only) is filled for the missing extension fields (schema default if one\n'
+        result += '        is declared, otherwise zero); a buffer longer than MAX_SIZE (newer sender)\n'
+        result += '        has its trailing extension bytes ignored. Callers never need to pad or\n'
+        result += '        truncate the buffer themselves.\n'
         result += '        """\n'
         result += '        if len(data) < cls.MAX_SIZE:\n'
-        result += '            data = data + b"\\x00" * (cls.MAX_SIZE - len(data))\n'
+        if getattr(msg, 'default_bytes', b"") and msg.default_bytes != b"\x00" * msg.size:
+            result += '            data = data + cls._DEFAULT_BYTES[len(data):cls.MAX_SIZE]\n'
+        else:
+            result += '            data = data + b"\\x00" * (cls.MAX_SIZE - len(data))\n'
         result += '        offset = 0\n'
         result += '        fields = {}\n'
 
@@ -685,6 +689,13 @@ class MessagePyGen():
                 result += ' (combined: pkg_id=%s, local_id=%s)' % (package_id, msg.id)
             result += '\n'
         
+        # Default-bytes constant: only emitted when this message (or a nested
+        # message field, recursively) actually declares a [default = ...].
+        # Used by _deserialize_fixed() to pad missing trailing bytes with the
+        # schema default instead of zero (wire evolution decode fallback).
+        if msg.default_bytes and msg.default_bytes != b"\x00" * msg.size:
+            result += f'    _DEFAULT_BYTES = {msg.default_bytes!r}\n'
+
         # Add magic numbers for checksum
         if msg.id is not None and msg.magic_bytes:
             result += f'    MAGIC1 = {msg.magic_bytes[0]}  # Checksum magic number (based on field types and positions)\n'
@@ -724,19 +735,25 @@ class MessagePyGen():
                 else:
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else []\n'
             elif f.field_type in ("string", "bytes"):
-                result += f'        self.{f.name} = {f.name} if {f.name} is not None else b""\n'
+                fallback = repr(f.default.encode('utf-8')) if f.default is not None else 'b""'
+                result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
             elif f.field_type in py_type_hints:
                 if f.field_type == "bool":
-                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else False\n'
+                    fallback = repr(f.default) if f.default is not None else 'False'
+                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
                 elif f.field_type == "float":
                     # Truncate float32 to 32-bit precision
-                    result += f'        self.{f.name} = _truncate_float32({f.name}) if {f.name} is not None else 0.0\n'
+                    fallback = repr(f.default) if f.default is not None else '0.0'
+                    result += f'        self.{f.name} = _truncate_float32({f.name}) if {f.name} is not None else _truncate_float32({fallback})\n'
                 elif f.field_type == "double":
-                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else 0.0\n'
+                    fallback = repr(f.default) if f.default is not None else '0.0'
+                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
                 else:
-                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else 0\n'
+                    fallback = repr(f.default) if f.default is not None else '0'
+                    result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
             elif f.is_enum:
-                result += f'        self.{f.name} = {f.name} if {f.name} is not None else 0\n'
+                fallback = repr(f.default_numeric) if f.default is not None else '0'
+                result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
             else:
                 # Nested message
                 type_name = f.field_type

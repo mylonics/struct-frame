@@ -46,6 +46,31 @@ csharp_type_sizes = {
 }
 
 
+def _csharp_byte_array_literal(data):
+    """Render `data` as a C# array-initializer list body, e.g. "0x01, 0x02"."""
+    return ', '.join('0x%02x' % b for b in data)
+
+
+def _csharp_scalar_default_literal(field, base_type):
+    """Render field.default as a C# literal for a property initializer."""
+    if field.is_enum:
+        # Top-level enums use SCREAMING_CASE entries (EnumCSharpGen.generate,
+        # via NamingStyleC.enum_entry); nested (message-scoped) enums use
+        # PascalCase (EnumCSharpGen.generate_nested) -- see Field.type_message.
+        entry = pascal_case(field.default) if field.type_message else field.default.upper()
+        return f'{base_type}.{entry}'
+    if field.field_type == "bool":
+        return "true" if field.default else "false"
+    if field.field_type == "float":
+        return f"{field.default}f"
+    if field.field_type == "double":
+        return f"{field.default}d"
+    if field.field_type in ("int64", "uint64"):
+        suffix = "L" if field.field_type == "int64" else "UL"
+        return f"{field.default}{suffix}"
+    return f"{field.default}"
+
+
 def format_xml_summary(comments, indent='    '):
     """
     Format multi-line comments into a single XML summary block.
@@ -203,20 +228,34 @@ class FieldCSharpGen():
 
         # Handle regular strings
         elif type_name == "string":
+            default_text = field.default.encode('utf-8') if field.default is not None else b""
             if field.size_option is not None:
-                # Fixed string — pre-allocate
-                result += f'        public byte[] {var_name} {{ get; set; }} = new byte[{field.size_option}];  // Fixed string: exactly {field.size_option} chars\n'
+                # Fixed string — pre-allocate, filling with the schema default if any
+                padded = _csharp_byte_array_literal(default_text.ljust(field.size_option, b"\x00"))
+                init = f'new byte[] {{ {padded} }}' if default_text else f'new byte[{field.size_option}]'
+                result += f'        public byte[] {var_name} {{ get; set; }} = {init};  // Fixed string: exactly {field.size_option} chars\n'
             elif field.max_size is not None:
                 # Variable string
                 length_type = "ushort" if field.max_size > 255 else "byte"
-                result += f'        public {length_type} {var_name}Length {{ get; set; }}\n'
-                result += f'        public byte[] {var_name}Data {{ get; set; }} = new byte[{field.max_size}];  // Variable string: up to {field.max_size} chars\n'
+                length_init = f' = {len(default_text)};' if default_text else ''
+                result += f'        public {length_type} {var_name}Length {{ get; set; }}{length_init}\n'
+                padded = _csharp_byte_array_literal(default_text.ljust(field.max_size, b"\x00"))
+                data_init = f'new byte[] {{ {padded} }}' if default_text else f'new byte[{field.max_size}]'
+                result += f'        public byte[] {var_name}Data {{ get; set; }} = {data_init};  // Variable string: up to {field.max_size} chars\n'
 
         # Handle regular fields
         else:
             if type_name not in csharp_types and not field.is_enum:
-                # Nested struct - reference type needs null-forgiving operator
-                result += f'        public {base_type} {var_name} {{ get; set; }} = null!;\n'
+                # Nested struct - reference type. When the nested type has a
+                # schema default somewhere in its own fields, construct it (so
+                # those defaults apply) instead of leaving it null.
+                nested = field.type_ref
+                if nested is not None and getattr(nested, 'default_bytes', b"") != b"\x00" * getattr(nested, 'size', 0):
+                    result += f'        public {base_type} {var_name} {{ get; set; }} = new {base_type}();\n'
+                else:
+                    result += f'        public {base_type} {var_name} {{ get; set; }} = null!;\n'
+            elif field.default is not None:
+                result += f'        public {base_type} {var_name} {{ get; set; }} = {_csharp_scalar_default_literal(field, base_type)};\n'
             else:
                 # Primitive type or enum - value type doesn't need initializer
                 result += f'        public {base_type} {var_name} {{ get; set; }}\n'
@@ -500,6 +539,14 @@ class MessageCSharpGen():
 
         result += '        public const int MaxSize = %d;\n' % msg.size
 
+        # Wire-format bytes with schema [default=...] values applied to unset
+        # fields (zero elsewhere). Used by Deserialize() to pad a short buffer
+        # so missing trailing bytes resolve to the schema default instead of
+        # always zero (wire evolution) -- see _DeserializeMaxSize below.
+        has_defaults = msg.default_bytes and msg.default_bytes != b"\x00" * msg.size
+        if has_defaults:
+            result += f'        private static readonly byte[] DefaultBytes = new byte[] {{ {_csharp_byte_array_literal(msg.default_bytes)} }};\n'
+
         # Build rename map: nested enum names that collide with a property name get an 'Enum' suffix
         field_property_names = {pascal_case(f.name) for f in msg.fields.values()}
         renamed_enums = {name: f'{name}Enum' for name in msg.enums if name in field_property_names}
@@ -658,14 +705,19 @@ class MessageCSharpGen():
             result += f'        private static {structName} _DeserializeMaxSize(ReadOnlySpan<byte> data)\n'
             result += '        {\n'
         else:
-            # Non-variable message: zero-fill any bytes the sender omitted (wire
-            # evolution). A buffer shorter than MaxSize (older sender, base fields
-            # only) leaves the missing extension fields at their default; a buffer
-            # longer than MaxSize (newer sender) has its trailing extension bytes
-            # ignored. Callers never need to pad or truncate the buffer themselves.
+            # Non-variable message: fill any bytes the sender omitted with the
+            # schema default (wire evolution). A buffer shorter than MaxSize
+            # (older sender, base fields only) leaves the missing extension
+            # fields at their schema default (zero if none declared); a buffer
+            # longer than MaxSize (newer sender) has its trailing extension
+            # bytes ignored. Callers never need to pad or truncate the buffer
+            # themselves.
             result += '            if (data.Length != MaxSize)\n'
             result += '            {\n'
-            result += '                byte[] _padded = new byte[MaxSize];\n'
+            if has_defaults:
+                result += '                byte[] _padded = (byte[])DefaultBytes.Clone();\n'
+            else:
+                result += '                byte[] _padded = new byte[MaxSize];\n'
             result += '                int _n = Math.Min(data.Length, MaxSize);\n'
             result += '                data.Slice(0, _n).CopyTo(_padded);\n'
             result += '                data = _padded;\n'

@@ -18,6 +18,24 @@ def to_camel_case(name: str) -> str:
     return parts[0] + ''.join(p.capitalize() for p in parts[1:])
 
 
+def needs_default_bytes(msg) -> bool:
+    """True if this message's wire-format default state (schema
+    [default = ...] values, zero elsewhere) differs from all-zero -- i.e.
+    whether a `_defaultBytes` static is worth emitting at all. Both TS and JS
+    are buffer-backed (field getters/setters just read/write `_buffer` at a
+    fixed offset), so this one static array is the entire default-values
+    mechanism for these two languages: MessageBase's constructor pre-fills
+    `_buffer` from it instead of zero-allocating, and every existing getter/
+    setter and wire-evolution decode path works unchanged from there.
+    """
+    return bool(msg.default_bytes) and msg.default_bytes != b"\x00" * msg.size
+
+
+def ts_default_bytes_literal(data: bytes) -> str:
+    """Render `data` as a `new Uint8Array([...])` literal."""
+    return 'new Uint8Array([%s])' % ', '.join('0x%02x' % b for b in data)
+
+
 # Common type mappings shared by TypeScript and JavaScript generators
 # Maps proto types to struct method names
 common_types = {

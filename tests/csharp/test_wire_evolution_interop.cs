@@ -14,7 +14,7 @@
  *
  * Scenarios (mirrors the project's wire-evolution interop plan, 1-10):
  *   1. Newer sender -> older receiver (v2 encodes extensions, v1 decodes base)
- *   2. Older sender -> newer receiver (v1 base-only, v2 zero-fills extensions)
+ *   2. Older sender -> newer receiver (v1 base-only, v2 fills extensions with schema defaults)
  *   3. Same-version sanity (v2 -> v2 with extension variant)
  *   4. Newer ext oneof variant -> older receiver degrades gracefully
  *   5. Older base oneof variant -> newer receiver decodes correctly
@@ -87,7 +87,7 @@ public class TestWireEvolutionInterop
     }
 
     // -------------------------------------------------------------------------
-    // Scenario 2: older sender -> newer receiver (zero-fill extensions)
+    // Scenario 2: older sender -> newer receiver (defaults fill extensions)
     // -------------------------------------------------------------------------
     private static void Scenario2()
     {
@@ -103,7 +103,7 @@ public class TestWireEvolutionInterop
         {
             var d = V2.BaseExtensionMessage.Deserialize(info);
             Check(d.Header == 0x1234 && d.Seq == 7, "[S2] v2 decodes base fields correctly");
-            Check(d.CrcSeed == 0, "[S2] v2 extension field zero-filled to default");
+            Check(d.CrcSeed == 4242, "[S2] v2 extension field filled with its schema default (not zero)");
         }
     }
 
@@ -318,7 +318,8 @@ public class TestWireEvolutionInterop
                   "[S10] v1 locates/decodes variable base; trailing ext bytes ignored");
         }
 
-        // Older -> newer: v2 zero-fills the trailing extension field.
+        // Older -> newer: v2 fills the trailing extension fields with their
+        // schema defaults.
         var parserV2 = new BufferParser<StandardProfile>(V2.MessageDefinitions.GetMessageInfo);
 
         var orig2 = new V1.VariableExtensionMessage
@@ -340,9 +341,10 @@ public class TestWireEvolutionInterop
                   && d2.ReadingsData[0] == 1
                   && d2.ReadingsData[1] == 2,
                   "[S10] v2 locates variable base after cross-version decode");
-            Check(d2.ExtTimestamp == 0, "[S10] v2 zero-fills the trailing extension field");
-            Check(d2.ExtNoteLength == 0,
-                  "[S10] v2 zero-fills the count-prefixed (string) extension field");
+            Check(d2.ExtTimestamp == 999999, "[S10] v2 fills the trailing extension field with its schema default");
+            Check(d2.ExtNoteLength == 4
+                  && System.Text.Encoding.UTF8.GetString(d2.ExtNoteData, 0, 4) == "none",
+                  "[S10] v2 fills the count-prefixed (string) extension field with its schema default");
         }
     }
 
@@ -352,7 +354,7 @@ public class TestWireEvolutionInterop
 
         Console.WriteLine("Scenario 1: newer sender -> older receiver (length-bearing)");
         Scenario1();
-        Console.WriteLine("\nScenario 2: older sender -> newer receiver (zero-fill)");
+        Console.WriteLine("\nScenario 2: older sender -> newer receiver (defaults)");
         Scenario2();
         Console.WriteLine("\nScenario 3: same-version sanity (v2 -> v2)");
         Scenario3();

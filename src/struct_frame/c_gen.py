@@ -28,6 +28,62 @@ c_types = {"uint8": "uint8_t",
            }
 
 
+def _c_byte_array_literal(data):
+    """Render `data` as a C brace-initializer list body, e.g. "0x01, 0x02"."""
+    return ', '.join('0x%02x' % b for b in data)
+
+
+def _c_scalar_default_literal(field):
+    """Render field.default as a C literal for a direct assignment."""
+    if field.field_type == "bool":
+        return "true" if field.default else "false"
+    if field.field_type == "float":
+        return f"{field.default}f"
+    if field.field_type == "double":
+        return f"{field.default}"
+    return f"{field.default}"
+
+
+def _c_field_default_stmts(field):
+    """Generate the C statement(s) that apply field's schema default onto an
+    already-zeroed `msg`, for use inside <StructName>_init(). Returns a list
+    of statement strings (no trailing newline), or [] if nothing to do (the
+    zero from the preceding memset is already correct).
+
+    A raw byte-blob memcpy isn't safe here: not-fully-variable packages use
+    #pragma pack(1) (struct layout == wire layout) but all-variable packages
+    don't (see FileCGen.generate's `packed_structs`), so this assigns each
+    defaulted field individually -- correct regardless of struct packing.
+    """
+    if field.is_array or field.default is None:
+        if (not field.is_array and not field.is_default_type and not field.is_enum
+                and field.type_ref is not None
+                and getattr(field.type_ref, 'default_bytes', b"") != b"\x00" * getattr(field.type_ref, 'size', 0)):
+            # Nested message field with no default of its own, but its type
+            # has defaults somewhere inside it -- recurse so they still apply.
+            nested_struct = '%s%s' % (pascal_case(field.type_ref.package), field.type_ref.name)
+            return [f'{nested_struct}_init(&msg->{field.name});']
+        return []
+
+    if field.is_enum:
+        return [f'msg->{field.name} = {field.default_numeric}; /* {field.field_type}.{field.default} */']
+
+    if field.field_type in ("string", "bytes"):
+        text_bytes = field.default.encode('utf-8')
+        if not text_bytes:
+            return []
+        literal = _c_byte_array_literal(text_bytes)
+        if field.size_option is not None:
+            return [f'memcpy(msg->{field.name}, (const uint8_t[]){{{literal}}}, {len(text_bytes)});']
+        else:
+            return [
+                f'msg->{field.name}.length = {len(text_bytes)};',
+                f'memcpy(msg->{field.name}.data, (const uint8_t[]){{{literal}}}, {len(text_bytes)});',
+            ]
+
+    return [f'msg->{field.name} = {_c_scalar_default_literal(field)};']
+
+
 class EnumCGen():
     @staticmethod
     def generate(field):
@@ -393,6 +449,31 @@ class MessageCGen():
             result += f'#define {defineName}_MAGIC1 {msg.magic_bytes[0]} /* Checksum magic (based on field types and positions) */\n'
             result += f'#define {defineName}_MAGIC2 {msg.magic_bytes[1]} /* Checksum magic (based on field types and positions) */\n'
 
+        # Default-value initialization helper. C structs can't have default
+        # member initializers, so this is the generated substitute: it's also
+        # reused as the zero/default fill step in deserialize() below, so a
+        # truncated buffer's missing trailing bytes resolve to the schema
+        # default instead of always zero (wire evolution). Zero first, then
+        # assign only the fields that declare a [default=...] (or, for a
+        # nested-message field with none of its own, recurse into that
+        # type's _init() so its internal defaults still apply) -- assigning
+        # field-by-field rather than memcpy-ing a precomputed wire-byte blob
+        # keeps this correct regardless of whether this package's structs
+        # are #pragma pack(1)'d (see `packed_structs` above: an all-variable
+        # package skips packing, so struct layout can differ from wire layout).
+        default_stmts = []
+        for f in msg.fields.values():
+            default_stmts.extend(_c_field_default_stmts(f))
+        result += f'/**\n'
+        result += f' * Initialize *msg with its schema default values ([default = ...] in the\n'
+        result += f' * .sf source; zero for fields without one).\n'
+        result += f' */\n'
+        result += f'static inline void {structName}_init({structName}* msg) {{\n'
+        result += f'    memset(msg, 0, sizeof(*msg));\n'
+        for stmt in default_stmts:
+            result += f'    {stmt}\n'
+        result += f'}}\n\n'
+
         # Generate variable message functions
         if msg.variable:
             result += MessageCGen._generate_variable_functions(msg, structName, defineName, packed_structs)
@@ -636,7 +717,7 @@ class MessageCGen():
         result += f' */\n'
         result += f'static inline size_t {structName}_deserialize_variable(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
         result += f'    size_t offset = 0;\n'
-        result += f'    memset(msg, 0, sizeof({structName}));  // Zero-initialize\n'
+        result += f'    {structName}_init(msg);  // Schema defaults, or zero if none\n'
         
         _type_sizes2 = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4,
                         "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
@@ -819,18 +900,19 @@ class MessageCGen():
             result += f' * Deserialize function for {structName}.\n'
             result += f' * For fixed-size messages: uses memcpy with size validation.\n'
             result += f' * Wire evolution: a buffer shorter than MAX_SIZE (older sender, base fields\n'
-            result += f' * only) is zero-filled for the missing extension fields; a buffer longer\n'
-            result += f' * than MAX_SIZE (newer sender) has its trailing extension bytes ignored.\n'
-            result += f' * Callers never need to pad or truncate the buffer themselves.\n'
+            result += f' * only) has its missing extension fields filled with the schema default\n'
+            result += f' * (zero if none declared); a buffer longer than MAX_SIZE (newer sender) has\n'
+            result += f' * its trailing extension bytes ignored. Callers never need to pad or\n'
+            result += f' * truncate the buffer themselves.\n'
             result += f' * @param buffer Input buffer\n'
             result += f' * @param buffer_size Size of the input buffer\n'
             result += f' * @param msg Pointer to the message to deserialize into\n'
             result += f' * @return The number of bytes copied from the buffer\n'
             result += f' */\n'
             result += f'static inline size_t {structName}_deserialize(const uint8_t* buffer, size_t buffer_size, {structName}* msg) {{\n'
-            result += f'    /* Fixed-size message - zero-fill any bytes the sender omitted (wire evolution) */\n'
+            result += f'    /* Fixed-size message - fill any bytes the sender omitted with the schema default (wire evolution) */\n'
             result += f'    size_t copy_len = buffer_size < {defineName}_MAX_SIZE ? buffer_size : {defineName}_MAX_SIZE;\n'
-            result += f'    memset(msg, 0, sizeof({structName}));\n'
+            result += f'    {structName}_init(msg);\n'
             result += f'    if (copy_len > 0) memcpy(msg, buffer, copy_len);\n'
             result += f'    return copy_len;\n'
             result += f'}}\n'

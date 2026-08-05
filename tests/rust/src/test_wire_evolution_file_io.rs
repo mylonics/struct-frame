@@ -82,9 +82,10 @@ fn do_decode(version: &str, path: &str) -> u8 {
                       msg.header, HEADER, msg.seq, SEQ);
             return 1;
         }
-        // A legacy (v1-sized, 3-byte) frame decoded as v2 must zero-fill the
-        // extension; a genuine v2-sized (7-byte) frame must preserve it.
-        let expected_crc = if buf.len() >= v2::BaseExtensionMessage::BASE_SIZE + 4 { CRC_SEED } else { 0 };
+        // A legacy (v1-sized, 3-byte) frame decoded as v2 must fill the
+        // extension with its schema default (4242, not zero); a genuine
+        // v2-sized (7-byte) frame must preserve the transmitted value.
+        let expected_crc = if buf.len() >= v2::BaseExtensionMessage::BASE_SIZE + 4 { CRC_SEED } else { 4242 };
         if msg.crc_seed != expected_crc {
             eprintln!("[DECODE] FAILED: crc_seed=0x{:08x} (expected 0x{:08x} for {}-byte input)",
                       msg.crc_seed, expected_crc, buf.len());

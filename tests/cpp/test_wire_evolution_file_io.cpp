@@ -8,7 +8,8 @@
  * tests/README.md and tests/test_wire_evolution_interop.py). This exists
  * specifically so tests/test_wire_evolution_cross_lang.py can prove that a
  * v1 frame encoded by one language is correctly read (with the extension
- * zero-filled) by another language's v2 decoder, and vice versa.
+ * filled with its schema default) by another language's v2 decoder, and
+ * vice versa.
  *
  * Usage:
  *   test_wire_evolution_file_io encode v1 <file>
@@ -100,9 +101,10 @@ static int do_decode(const char* version, const char* path) {
               msg.header, kHeader, msg.seq, kSeq);
       return 1;
     }
-    // A legacy (v1-sized, 3-byte) frame decoded as v2 must zero-fill the
-    // extension; a genuine v2-sized (7-byte) frame must preserve it.
-    uint32_t expected_crc = (n >= wire_evolution_v2::BaseExtensionMessage::BASE_SIZE + 4) ? kCrcSeed : 0;
+    // A legacy (v1-sized, 3-byte) frame decoded as v2 must fill the extension
+    // with its schema default (4242, not zero); a genuine v2-sized (7-byte)
+    // frame must preserve the transmitted value.
+    uint32_t expected_crc = (n >= wire_evolution_v2::BaseExtensionMessage::BASE_SIZE + 4) ? kCrcSeed : 4242;
     if (msg.crc_seed != expected_crc) {
       fprintf(stderr, "[DECODE] FAILED: crc_seed=0x%08x (expected 0x%08x for %zu-byte input)\n",
               msg.crc_seed, expected_crc, n);

@@ -97,6 +97,54 @@ Enables extended message addressing with 16-bit message IDs (256 packages × 256
 
 All types use little-endian byte order.
 
+## Field Default Values
+
+A field can declare a default value with `[default = ...]`, using the same bracket-option
+syntax as `size`/`max_size`/`flatten`:
+
+```proto
+message DeviceConfig {
+  option msgid = 1;
+
+  uint32 retry_ms = 1 [default = 1000];
+  bool   enabled  = 2 [default = true];
+  Mode   mode     = 3 [default = ACTIVE];
+  string name     = 4 [size = 16, default = "device"];
+}
+```
+
+**Supported types:** all integer types, `bool`, `float`, `double`, `enum` fields (using the
+bare enum member name, e.g. `default = ACTIVE`), and fixed- or bounded-size `string`/`bytes`
+fields (using a quoted string literal).
+
+**Not supported** — rejected at generation time with a validation error:
+- `repeated` (array) fields
+- nested message-typed fields
+- fields inside a `oneof`
+
+The generator validates the literal against the field's type (wrong literal type, integer
+range overflow, unknown enum member, or a string/bytes value longer than `size`/`max_size`
+are all rejected with a specific error message).
+
+**What a default changes:**
+- A freshly-constructed message (or one built with a constructor/init argument omitted) gets
+  the default value for that field instead of the type's zero value.
+- Decoding an older or truncated payload (see [Wire Evolution](#wire-evolution-extension-fields)
+  below) applies the default to any field the sender didn't actually transmit.
+- A value **explicitly** set to zero/`false`/empty — whether at construction or because the
+  sender actually transmitted it — is never overwritten back to the default.
+
+**What a default does *not* change:** wire layout, field offsets, message size, magic bytes,
+or CRC behavior. A default-valued field is still always present on the wire and still always
+serialized — it is purely an initialization and decode-fallback value, not a "this field can
+be omitted from the wire" marker (`optional`-style omission is not part of this feature).
+
+> **Note:** because the underlying `.proto` grammar parser types option values generically
+> (bool/int/float/string), a *quoted* string default whose text happens to look like a number
+> or boolean (e.g. `default = "1000"`) is round-tripped through that type and reconstructed —
+> this preserves the value but can normalize unusual formatting (e.g. `"True"` becomes `"true"`).
+> Prefer defaults whose text doesn't look like another literal type if exact formatting matters.
+
 ## Strings
 
 Strings require a size specification.
@@ -827,7 +875,7 @@ The generator enforces:
 ### How it works
 
 - Fields with number `< extensions_start` are **base fields** — always present on the wire, always covered by the magic-byte checksum seed.
-- Fields with number `>= extensions_start` are **extension fields** — newer senders include them; older receivers that received a shorter payload zero-fill them on reception.
+- Fields with number `>= extensions_start` are **extension fields** — newer senders include them; older receivers that received a shorter payload fill them with their [schema default](#field-default-values) on reception (zero if the field has no declared default — this is the behavior for every extension field until you add `[default = ...]` to it).
 - The magic bytes (CRC seed) are computed only from base fields. Adding extension fields never changes the magic bytes, so older parsers still validate the base portion correctly.
 - Extension bytes are still mixed into the full CRC *after* the magic seed, so corruption of extension data is detected.
 
@@ -860,7 +908,7 @@ message StatusReport {
 |--------|----------|--------|
 | v1 (base only) | v1 (base only) | ✓ Normal fixed-size frame |
 | v2 (base + ext) | v1 (base only) | ✓ Receiver ignores extra trailing bytes |
-| v1 (base only) | v2 (base + ext) | ✓ Receiver zero-fills extension fields |
+| v1 (base only) | v2 (base + ext) | ✓ Receiver fills extension fields with their schema default (zero if none declared) |
 | v2 (base + ext) | v2 (base + ext) | ✓ Full round-trip |
 
 ### Oneof-level extensions (extension variants)

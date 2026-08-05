@@ -6,6 +6,7 @@ import os
 import shutil
 import hashlib
 import json
+import struct
 import time
 from struct_frame import FileCGen
 from struct_frame import FileTsGen, TestTsGen
@@ -62,6 +63,38 @@ type_codes = {
     "string": 12,
     "bytes": 14,  # Raw byte array (distinct from string for magic number purposes)
     "enum": 13,  # Fixed code for all enum types (name-independent)
+}
+
+# Little-endian struct.pack() format codes per scalar wire type, used to encode
+# [default = ...] literals into the wire-format byte pattern (see
+# Message.default_bytes / _field_default_bytes below). Enum fields are always
+# packed as a single byte ("B"), matching Enum.size (== 1) everywhere else.
+wire_struct_format = {
+    "uint8": "B",
+    "int8": "b",
+    "uint16": "H",
+    "int16": "h",
+    "uint32": "I",
+    "int32": "i",
+    "uint64": "Q",
+    "int64": "q",
+    "bool": "B",
+    "float": "f",
+    "double": "d",
+}
+
+# Inclusive (min, max) value ranges for integer field types, used to validate
+# [default = N] literals. Unlike the flat 1-65535 range used for size/max_size
+# options, these are the true representable ranges of each wire integer type.
+INTEGER_RANGES = {
+    "uint8": (0, 0xFF),
+    "int8": (-0x80, 0x7F),
+    "uint16": (0, 0xFFFF),
+    "int16": (-0x8000, 0x7FFF),
+    "uint32": (0, 0xFFFFFFFF),
+    "int32": (-0x80000000, 0x7FFFFFFF),
+    "uint64": (0, 0xFFFFFFFFFFFFFFFF),
+    "int64": (-0x8000000000000000, 0x7FFFFFFFFFFFFFFF),
 }
 
 
@@ -136,6 +169,110 @@ def calculate_magic_numbers(message):
         magic2 = 0xA5  # Default non-zero magic byte
 
     return (magic1, magic2)
+
+
+def _coerce_scalar_default(field_type, raw_value):
+    """Validate/coerce a parsed [default = ...] literal against a scalar field_type.
+
+    `raw_value` is whatever proto_schema_parser produced for the option value:
+    a Python bool, int, float, or str (compact-option values are never
+    Identifier instances -- see Field.parse). Returns (True, coerced_value) on
+    success, or (False, error_message) on failure. Does not handle enum types;
+    callers check `field.is_enum` separately.
+    """
+    if field_type == "bool":
+        if not isinstance(raw_value, bool):
+            return False, f"default value must be a bool literal (true/false), got {raw_value!r}"
+        return True, raw_value
+
+    if field_type in INTEGER_RANGES:
+        # bool is a subclass of int in Python -- must reject it explicitly.
+        if isinstance(raw_value, bool) or not isinstance(raw_value, int):
+            return False, f"default value must be an integer literal for type {field_type}, got {raw_value!r}"
+        lo, hi = INTEGER_RANGES[field_type]
+        if raw_value < lo or raw_value > hi:
+            return False, f"default value {raw_value} out of range for {field_type} ({lo}..{hi})"
+        return True, raw_value
+
+    if field_type in ("float", "double"):
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+            return False, f"default value must be a numeric literal for type {field_type}, got {raw_value!r}"
+        return True, float(raw_value)
+
+    if field_type in ("string", "bytes"):
+        # proto_schema_parser's compact-option value coercion is lossy for
+        # quoted literals that look like a bool/int/float (e.g. default =
+        # "1000" and default = 1000 are indistinguishable after parsing --
+        # both arrive as Python int(1000)). Reconstruct canonical text rather
+        # than rejecting: bools become lowercase true/false, everything else
+        # goes through str(). This is an accepted, documented limitation of
+        # reusing the third-party parser's compact-option grammar rather than
+        # writing a custom one.
+        if isinstance(raw_value, bool):
+            return True, ("true" if raw_value else "false")
+        return True, str(raw_value)
+
+    return False, f"default values are not supported for field type {field_type}"
+
+
+def _field_default_bytes(field):
+    """Return the little-endian wire-format bytes for `field` when unset.
+
+    This is the schema default's byte pattern if one was declared, otherwise
+    exactly `field.size` zero bytes -- i.e. byte-identical to today's
+    (pre-default-values) zero-fill for any field without a [default=...].
+    """
+    if field.is_array:
+        return b"\x00" * field.size
+
+    if field.default is not None:
+        if field.is_enum:
+            return struct.pack("<B", field.default_numeric)
+
+        if field.field_type in ("string", "bytes"):
+            text_bytes = field.default.encode("utf-8")
+            if field.size_option is not None:
+                return text_bytes.ljust(field.size_option, b"\x00")[:field.size_option]
+            else:
+                count_fmt = "<H" if field.max_size > 255 else "<B"
+                payload = text_bytes.ljust(field.max_size, b"\x00")
+                return struct.pack(count_fmt, len(text_bytes)) + payload
+
+        fmt = wire_struct_format[field.field_type]
+        return struct.pack("<" + fmt, field.default)
+
+    if not field.is_default_type and not field.is_enum:
+        # Message-typed field with no default of its own (defaults are
+        # rejected on message-typed fields -- see Field.validate) recursively
+        # uses the nested message's own default_bytes so that a nested type's
+        # internal schema defaults still apply through the parent field.
+        nested = field.type_ref
+        if nested is not None and getattr(nested, "default_bytes", b""):
+            return nested.default_bytes
+
+    return b"\x00" * field.size
+
+
+def _compute_message_default_bytes(msg):
+    """Concatenate the default-initialized wire bytes for every field/oneof in
+    `msg`, in wire order (fields, then oneofs) -- see Message.default_bytes.
+    """
+    parts = []
+    for field in msg.fields.values():
+        parts.append(_field_default_bytes(field))
+
+    for oneof in msg.oneofs.values():
+        # Defaults are rejected on oneof member fields (see OneOf.validate), so
+        # an unset oneof is always all-zero: this is identical to today's
+        # "no variant selected" wire representation.
+        length_prefix = 2 if oneof.variable else 0
+        if oneof.auto_discriminator:
+            disc_width = 2 if oneof.discriminator_type == "msgid" else 1
+        else:
+            disc_width = 0
+        parts.append(b"\x00" * (length_prefix + disc_width + oneof.size))
+
+    return b"".join(parts)
 
 
 # Generation hash file name
@@ -272,6 +409,8 @@ def compute_generation_hash(args, packages_dict):
                     field_info += f":element_size={field.element_size}"
                 if field.flatten:
                     field_info += ":flatten"
+                if field.default is not None:
+                    field_info += f":default={field.default}"
                 hasher.update(f"{field_info}\n".encode('utf-8'))
 
             # Add oneofs (sorted by name)
@@ -449,6 +588,18 @@ class Field:
         # True if this field is in the trailing extensions block
         # (number >= message.extensions_start). Set during Message.validate.
         self.is_extension = False
+        # Schema default from [default = ...]. Canonical form: bool/int/float
+        # for those field types, decoded str text for string/bytes, the enum
+        # *member name* (str) for enums. None means no default was declared.
+        self.default = None
+        # Resolved numeric value of an enum default (set only when is_enum is
+        # True and self.default is not None). Used by generators that store
+        # enum fields as raw integers, and by _field_default_bytes.
+        self.default_numeric = None
+        # The resolved Enum or Message object this field's type points to
+        # (set during validate()). Used to validate enum default names and to
+        # recurse into a nested message type's own default_bytes.
+        self.type_ref = None
 
     def parse(self, field):
         self.name = field.name
@@ -514,6 +665,11 @@ class Field:
                             print(
                                 f"Invalid element_size value {ovalue} for field {self.name}, must be an integer")
                             return False
+                    elif lname in ('default', '(sf.default)', '(struct_frame.default)'):
+                        # Raw literal (bool/int/float/str) from the parser.
+                        # Type-checked/coerced against field_type in validate()
+                        # once the type is resolved (enum lookups need it).
+                        self.default = ovalue
         except (AttributeError, TypeError):
             pass
         return True
@@ -530,6 +686,7 @@ class Field:
                 self.is_enum = True
                 self.type_message = current_message.name
                 self.validated = True
+                self.type_ref = nested_enum
                 base_size = nested_enum.size
             else:
                 # Handle fully-qualified type names like "pkg_name.TypeName"
@@ -566,6 +723,7 @@ class Field:
                         self.is_enum = ret.is_enum
                         self.validated = True
                         base_size = ret.size
+                        self.type_ref = ret
                         # Track which package the type comes from
                         self.type_package = source_package.name
                         # Normalize field_type to the bare name (strip package qualifier)
@@ -629,6 +787,43 @@ class Field:
                 return False
         else:
             self.size = base_size
+
+        # Validate [default = ...], if declared. Wire size/layout above is
+        # already final and unaffected by this -- defaults never change
+        # self.size.
+        if self.default is not None:
+            if self.is_array:
+                print(
+                    f"Field {self.name}: [default] is not supported on repeated fields")
+                return False
+            elif self.is_enum:
+                enum_member = getattr(self.default, "name", self.default)
+                if not isinstance(enum_member, str) or self.type_ref is None or enum_member not in self.type_ref.data:
+                    print(
+                        f"Field {self.name}: default value '{enum_member}' is not a member of enum {self.field_type}")
+                    return False
+                self.default = enum_member
+                self.default_numeric = self.type_ref.data[enum_member][0]
+            elif self.is_default_type:
+                ok, result = _coerce_scalar_default(self.field_type, self.default)
+                if not ok:
+                    print(f"Field {self.name}: {result}")
+                    return False
+                self.default = result
+                if self.field_type in ("string", "bytes"):
+                    limit = self.size_option if self.size_option is not None else self.max_size
+                    encoded_len = len(self.default.encode("utf-8"))
+                    if limit is not None and encoded_len > limit:
+                        limit_name = "size" if self.size_option is not None else "max_size"
+                        print(
+                            f"Field {self.name}: default value ({encoded_len} bytes) exceeds "
+                            f"{limit_name}={limit}")
+                        return False
+            else:
+                # Neither a primitive nor an enum -> a message-typed field.
+                print(
+                    f"Field {self.name}: [default] is not supported on message-typed fields")
+                return False
 
         # Debug output - only show when debug flag is enabled
         if debug:
@@ -861,6 +1056,10 @@ class OneOf:
             if not field.validate(current_package, packages, debug, current_message=current_message):
                 print(f"Failed to validate field {key} in oneof {self.name}")
                 return False
+            if field.default is not None:
+                print(
+                    f"Field '{key}' in OneOf {self.name}: [default] is not supported on oneof fields")
+                return False
             max_size = max(max_size, field.size)
             if not getattr(field, 'is_extension', False):
                 max_base_size = max(max_base_size, field.size)
@@ -1017,6 +1216,15 @@ class Message:
         # Computed during validate(): byte size of the non-extension portion
         # of the encoded message (== self.size when extensions_start is None).
         self.base_size = 0
+        # Computed during validate(): the wire-format bytes of this message
+        # with schema [default = ...] values applied to unset fields, and
+        # zero bytes everywhere else (fields with no default, oneofs). Used
+        # by generators as the pad/pre-fill source for decode/construction so
+        # missing trailing bytes resolve to the schema default instead of
+        # zero. Byte-identical to an all-zero buffer of length self.size when
+        # no field in this message (or its nested message fields) has a
+        # default -- i.e. a no-op for schemas that don't use this feature.
+        self.default_bytes = b""
 
     def parse(self, msg):
         self.name = msg.name
@@ -1327,6 +1535,12 @@ class Message:
                     self.min_size += oneof.size
         else:
             self.min_size = self.size
+
+        # Wire-format bytes for this message with schema defaults applied to
+        # unset fields (see Field.default / _field_default_bytes). Computed
+        # last, after all fields/oneofs are validated and sized, so any
+        # nested message field's own default_bytes is already available.
+        self.default_bytes = _compute_message_default_bytes(self)
 
         return True
 
