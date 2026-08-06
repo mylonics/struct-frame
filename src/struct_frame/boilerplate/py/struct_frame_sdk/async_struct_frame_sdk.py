@@ -44,12 +44,17 @@ class AsyncStructFrameSdkConfig:
             for minimal profiles; recommended for CRC profiles.
         buffer_size: Size of the reader's internal accumulation buffer.
         debug: Enable debug logging.
+        on_error: Called with any transport error, handler exception, or
+            deserialization failure. Without it these are only visible when
+            ``debug`` is on, so production code cannot tell that a message was
+            dropped. The callback must not raise.
     """
     transport: IAsyncTransport
     profile: ProfileConfig
     get_message_info: Optional[GetMessageInfo] = None
     buffer_size: int = 4096
     debug: bool = False
+    on_error: Optional[Callable[[Exception], None]] = None
 
 
 class AsyncStructFrameSdk:
@@ -60,6 +65,7 @@ class AsyncStructFrameSdk:
         self.profile = config.profile
         self.get_message_info = config.get_message_info
         self.debug = config.debug
+        self._on_error = config.on_error
         self.message_handlers: Dict[int, List[MessageHandler]] = {}
         self.message_codecs: Dict[int, MessageCodec] = {}
         self.reader = AccumulatingReader(
@@ -233,17 +239,34 @@ class AsyncStructFrameSdk:
             try:
                 message = codec.deserialize(result.msg_data)
             except Exception as e:
+                # Do not fall through with the raw payload: handlers registered
+                # through a codec expect the decoded type, and handing them bytes
+                # only turns one silent failure into two.
                 self._log(f'Failed to deserialize message ID {result.msg_id}: {e}')
+                self._raise_error(e)
+                return
 
         for handler in list(handlers):
             try:
                 handler(message, result.msg_id)
             except Exception as e:
+                # Keep dispatching to the remaining handlers, but surface the fault.
                 self._log(f'Handler error for message ID {result.msg_id}: {e}')
+                self._raise_error(e)
 
     def _handle_error(self, error: Exception) -> None:
         """Handle transport error"""
         self._log(f'Transport error: {error}')
+        self._raise_error(error)
+
+    def _raise_error(self, error: Exception) -> None:
+        """Publish an error to the configured on_error callback, if any."""
+        if self._on_error is None:
+            return
+        try:
+            self._on_error(error)
+        except Exception as e:
+            self._log(f'on_error callback raised: {e}')
 
     def _handle_close(self) -> None:
         """Handle transport close - discard any partial frame state."""

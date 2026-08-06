@@ -940,21 +940,22 @@ class MessagePyGen():
             elif f.is_array:
                 if f.field_type in ("string", "bytes"):
                     element_size = f.element_size if f.element_size else 16
+                    # Each element occupies exactly element_size bytes on the wire —
+                    # the reader unpacks fixed-width slots — so pack to that width
+                    # ("<Ns" pads short values with NULs) rather than to len(item),
+                    # which desyncs every following field.
                     if f.size_option is not None:
                         result += f'        # Fixed string array: {f.name}\n'
                         result += f'        for i in range({f.size_option}):\n'
-                        result += f'            if i < len(self.{f.name}):\n'
-                        result += f'                item = self.{f.name}[i][: {element_size}]\n'
-                        result += '                data += struct.pack(f"<{len(item)}s", item)\n'
-                        result += f'            else:\n'
-                        result += '                data += struct.pack("<0s", b"")\n'
+                        result += f'            item = self.{f.name}[i][: {element_size}] if i < len(self.{f.name}) else b""\n'
+                        result += f'            data += struct.pack("<{element_size}s", item)\n'
                     elif f.max_size is not None:
                         count_fmt = "H" if f.max_size > 255 else "B"
                         result += f'        # Bounded string array: {f.name}\n'
                         result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
                         result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
                         result += f'            item = self.{f.name}[i][: {element_size}]\n'
-                        result += '            data += struct.pack(f"<{len(item)}s", item)\n'
+                        result += f'            data += struct.pack("<{element_size}s", item)\n'
                 else:
                     fmt = MessagePyGen.get_struct_format(f)
                     if f.size_option is not None:
@@ -1111,6 +1112,10 @@ class MessagePyGen():
                 field_lines.append(f'str_len = struct.unpack_from("<{count_fmt}", data, offset)[0]')
                 field_lines.append(f'offset += {count_size}')
                 field_lines.append(f'str_len = min(str_len, {f.max_size})')
+                # A slice past the end silently returns fewer bytes, leaving every
+                # later field reading from the wrong offset. Reject instead.
+                field_lines.append(f'if offset + str_len > len(data):')
+                field_lines.append(f'    raise ValueError("Truncated data reading {f.name}")')
                 field_lines.append(f'fields["{f.name}"] = data[offset:offset+str_len]')
                 field_lines.append(f'offset += str_len')
             elif f.field_type in ("string", "bytes") and f.size_option is not None:

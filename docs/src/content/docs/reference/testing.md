@@ -16,7 +16,7 @@ This page is the user-facing entry point. Deeper documents:
 | [`tests/README.md`](https://github.com/mylonics/struct-frame/blob/main/tests/README.md) | Repository-local quickstart, file layout, suite-by-suite overview |
 | [Test Coverage](./test-coverage) | The authoritative feature × language matrix — every ✅/⚠️/❌ entry, kept in sync with the code |
 | [Conformance](./conformance) | Wire-format spec + canonical test vectors a new implementation must pass |
-| [`tests/NEGATIVE_TESTS.md`](https://github.com/mylonics/struct-frame/blob/main/tests/NEGATIVE_TESTS.md) | The 13 malformed-frame scenarios run in every language |
+| [`tests/NEGATIVE_TESTS.md`](https://github.com/mylonics/struct-frame/blob/main/tests/NEGATIVE_TESTS.md) | The canonical 42 framing-layer negative scenarios, plus the separate C# codec-robustness coverage |
 
 ## Running Tests
 
@@ -96,7 +96,8 @@ The same suites are implemented in every per-language directory under
 | `test_standard` | Primitive types, fixed/bounded arrays, strings, unions, enums | C, C++, Py, TS, JS, C#, Rust |
 | `test_extended` | Message IDs > 255, multi-byte msg-id encoding, `pkgid` | C, C++, Py, TS, JS, C#, Rust |
 | `test_variable_flag` | `option variable=true` truncates unused array slots | C, C++, Py, TS, JS, C#, Rust |
-| `test_negative` | 13 malformed-frame / corruption scenarios | C, C++, Py, TS, JS, C#, Rust |
+| `test_negative` | 42 canonical framing-layer corruption / resync / diagnostics scenarios | C, C++, Py, TS, JS, C#, Rust |
+| `test_codec_robustness` | Payloads whose internal count/length prefixes disagree with the bytes present, and handler faults during dispatch | C# |
 | `test_streaming` | `AccumulatingReader::push_byte` byte-at-a-time mode | C, Rust |
 | `test_sdk*` | `StructFrameSdk` subscribe/dispatch with mock transports | C++, Py, TS, JS, C#, Rust |
 | `test_envelope_sdk` | `oneof` envelopes via SDK dispatch | C#, Rust |

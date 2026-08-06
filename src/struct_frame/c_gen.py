@@ -531,20 +531,24 @@ class MessageCGen():
             if field.is_array and field.max_size is not None:
                 # Variable array: count field (1 or 2 bytes) + actual data
                 count_bytes = 2 if field.max_size > 255 else 1
+                # Clamp to max_size so this stays in lockstep with _serialize_variable,
+                # which never emits more than max_size elements.
+                clamped = f'(msg->{var_name}.count > {field.max_size} ? {field.max_size} : msg->{var_name}.count)'
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
-                    result += f'    size += {count_bytes} + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
+                    result += f'    size += {count_bytes} + ({clamped} * {element_size});  // {var_name}: count + data\n'
                 else:
                     if field.field_type in type_sizes:
                         element_size = type_sizes[field.field_type]
                     else:
                         # Nested message: derive element size from total field size minus count field
                         element_size = (field.size - count_bytes) // field.max_size
-                    result += f'    size += {count_bytes} + (msg->{var_name}.count * {element_size});  // {var_name}: count + data\n'
+                    result += f'    size += {count_bytes} + ({clamped} * {element_size});  // {var_name}: count + data\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 # Variable string: length field (1 or 2 bytes) + actual data
                 length_bytes = 2 if field.max_size > 255 else 1
-                result += f'    size += {length_bytes} + msg->{var_name}.length;  // {var_name}: length + data\n'
+                clamped = f'(msg->{var_name}.length > {field.max_size} ? {field.max_size} : msg->{var_name}.length)'
+                result += f'    size += {length_bytes} + {clamped};  // {var_name}: length + data\n'
             else:
                 # Fixed-size field
                 result += f'    size += {field.size};  // {var_name}\n'
@@ -617,37 +621,42 @@ class MessageCGen():
                 count_bytes = 2 if field.max_size > 255 else 1
                 if field.field_type in ("string", "bytes"):
                     element_size = field.element_size if field.element_size else 1
-                    result += f'    // {var_name}: variable string array\n'
-                    if count_bytes == 2:
-                        result += f'    memcpy(buffer + offset, &msg->{var_name}.count, 2); offset += 2;\n'
-                    else:
-                        result += f'    buffer[offset++] = (uint8_t)msg->{var_name}.count;\n'
-                    result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.count * {element_size});\n'
-                    result += f'    offset += msg->{var_name}.count * {element_size};\n'
+                    label = 'variable string array'
                 else:
                     if field.field_type in _type_sizes:
                         element_size = _type_sizes[field.field_type]
                     else:
                         element_size = (field.size - count_bytes) // field.max_size
-                    result += f'    // {var_name}: variable array\n'
-                    if count_bytes == 2:
-                        result += f'    memcpy(buffer + offset, &msg->{var_name}.count, 2); offset += 2;\n'
-                    else:
-                        result += f'    buffer[offset++] = (uint8_t)msg->{var_name}.count;\n'
-                    result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.count * {element_size});\n'
-                    result += f'    offset += msg->{var_name}.count * {element_size};\n'
+                    label = 'variable array'
+                # .data is a fixed max_size array: copying .count elements unchecked
+                # reads past it when the caller left an inconsistent count behind.
+                result += f'    // {var_name}: {label}\n'
+                result += f'    {{\n'
+                result += f'        size_t _n = msg->{var_name}.count > {field.max_size} ? {field.max_size} : msg->{var_name}.count;\n'
+                if count_bytes == 2:
+                    result += f'        uint16_t _n16 = (uint16_t)_n;\n'
+                    result += f'        memcpy(buffer + offset, &_n16, 2); offset += 2;\n'
+                else:
+                    result += f'        buffer[offset++] = (uint8_t)_n;\n'
+                result += f'        memcpy(buffer + offset, msg->{var_name}.data, _n * {element_size});\n'
+                result += f'        offset += _n * {element_size};\n'
+                result += f'    }}\n'
             elif field.field_type in ("string", "bytes") and field.max_size is not None:
                 if packed_structs:
                     _flush_fixed_run()
                 # Variable string: length stored as uint8_t or uint16_t in the struct
                 length_bytes = 2 if field.max_size > 255 else 1
                 result += f'    // {var_name}: variable string\n'
+                result += f'    {{\n'
+                result += f'        size_t _n = msg->{var_name}.length > {field.max_size} ? {field.max_size} : msg->{var_name}.length;\n'
                 if length_bytes == 2:
-                    result += f'    memcpy(buffer + offset, &msg->{var_name}.length, 2); offset += 2;\n'
+                    result += f'        uint16_t _n16 = (uint16_t)_n;\n'
+                    result += f'        memcpy(buffer + offset, &_n16, 2); offset += 2;\n'
                 else:
-                    result += f'    buffer[offset++] = (uint8_t)msg->{var_name}.length;\n'
-                result += f'    memcpy(buffer + offset, msg->{var_name}.data, msg->{var_name}.length);\n'
-                result += f'    offset += msg->{var_name}.length;\n'
+                    result += f'        buffer[offset++] = (uint8_t)_n;\n'
+                result += f'        memcpy(buffer + offset, msg->{var_name}.data, _n);\n'
+                result += f'        offset += _n;\n'
+                result += f'    }}\n'
             else:
                 if packed_structs:
                     # Fixed-size field - accumulate into the current contiguous run
