@@ -89,3 +89,40 @@ message ExtendedVariableLargeArray {
   string big_label = 3 [max_size=300];               // >255 -> 2-byte length prefix
   uint16 trailer = 4;
 }
+
+// Fixed-size message carrying a string array whose max_size > 255. The count
+// prefix is 2 bytes here too, and the fixed pack/unpack path must agree with
+// it: writing a 1-byte count shifts every following field by one and does not
+// even compile in languages whose count field is a 16-bit type.
+message ExtendedFixedStringArray {
+  option msgid = 804;
+
+  uint32 id = 1;
+  repeated string labels = 2 [max_size=300, element_size=4];  // >255 -> 2-byte count prefix
+  uint16 trailer = 3;
+}
+
+// Variable message carrying string arrays, at both prefix widths. Exercises
+// the variable-encoding path for repeated strings, which is distinct from the
+// primitive-array and single-string paths next to it.
+message ExtendedVariableStringArray {
+  option msgid = 805;
+  option variable = true;
+
+  uint32 id = 1;
+  repeated string tags = 2 [max_size=4, element_size=8];       // 1-byte count prefix
+  repeated string big_tags = 3 [max_size=300, element_size=4];  // >255 -> 2-byte count prefix
+  uint16 trailer = 4;
+}
+
+// A >255 bounded array as the *last* field. The copy cap in the fixed-size
+// serializer is derived from the field size minus its count prefix; getting
+// that prefix width wrong writes one byte past the end of the message buffer
+// instead of harmlessly into the next field, where a following field's own
+// write would paper over it.
+message ExtendedTrailingLargeArray {
+  option msgid = 806;
+
+  uint32 id = 1;
+  repeated uint8 payload = 2 [max_size=300];  // >255 -> 2-byte count prefix, last field
+}

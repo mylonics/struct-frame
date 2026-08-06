@@ -109,6 +109,10 @@ class TestRunner
         {
             return TestSdkRequestResponse.Main(filteredArgs);
         }
+        else if (testSuite == "test_codec_robustness")
+        {
+            return TestCodecRobustness.Main(filteredArgs);
+        }
         else if (testSuite == "test_wire_evolution")
         {
             return TestWireEvolution.Main(filteredArgs);
@@ -131,7 +135,8 @@ class TestRunner
             Console.Error.WriteLine("Known suites: test_standard, test_extended, test_variable_flag, " +
                 "test_negative, test_envelope_sdk, test_oneof_special, test_sdk_subscribe, test_sdk_strict_ordering, " +
                 "test_sdk_lifecycle, test_sdk_client_wrapper, test_sdk_profiles, test_base_transport, " +
-                "test_sdk_request_response, test_wire_evolution, test_wire_evolution_interop, " +
+                "test_sdk_request_response, test_codec_robustness, test_wire_evolution, " +
+                "test_wire_evolution_interop, " +
                 "test_wire_evolution_file_io, test_roundtrip_pkg_test_messages");
             return 2;
         }

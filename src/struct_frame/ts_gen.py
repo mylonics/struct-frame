@@ -719,6 +719,11 @@ class MessageTsClassGen():
                     field_lines.append(f'msg._buffer.writeUInt16LE({name}Count, {msg_offset});')
                 else:
                     field_lines.append(f'msg._buffer.writeUInt8({name}Count, {msg_offset});')
+                # Buffer.copy() clamps sourceEnd to the source length, so a truncated
+                # frame would silently short-copy and leave later fields misaligned.
+                field_lines.append(f'if (offset + {name}Count * {element_size} > buffer.length) {{')
+                field_lines.append(f'  throw new RangeError("Truncated data reading {field.name}");')
+                field_lines.append(f'}}')
                 field_lines.append(f'for (let i = 0; i < {name}Count; i++) {{')
                 field_lines.append(f'  buffer.copy(msg._buffer, {msg_offset + count_bytes} + i * {element_size}, offset, offset + {element_size});')
                 field_lines.append(f'  offset += {element_size};')
@@ -738,12 +743,18 @@ class MessageTsClassGen():
                     field_lines.append(f'msg._buffer.writeUInt16LE({name}Len, {msg_offset});')
                 else:
                     field_lines.append(f'msg._buffer.writeUInt8({name}Len, {msg_offset});')
+                field_lines.append(f'if (offset + {name}Len > buffer.length) {{')
+                field_lines.append(f'  throw new RangeError("Truncated data reading {field.name}");')
+                field_lines.append(f'}}')
                 field_lines.append(f'buffer.copy(msg._buffer, {msg_offset + length_bytes}, offset, offset + {name}Len);')
                 field_lines.append(f'offset += {name}Len;')
             else:
                 # Fixed field
                 min_prefix = field.size
                 field_lines.append(f'// {name}: fixed size ({field.size} bytes)')
+                field_lines.append(f'if (offset + {field.size} > buffer.length) {{')
+                field_lines.append(f'  throw new RangeError("Truncated data reading {field.name}");')
+                field_lines.append(f'}}')
                 field_lines.append(f'buffer.copy(msg._buffer, {msg_offset}, offset, offset + {field.size});')
                 field_lines.append(f'offset += {field.size};')
 

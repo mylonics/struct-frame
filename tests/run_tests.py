@@ -1929,6 +1929,7 @@ class TestRunner:
             "test_sdk_client_wrapper":      ["csharp"],
             "test_sdk_profiles":            ["csharp"],
             "test_base_transport":          ["csharp"],
+            "test_codec_robustness":        ["csharp"],
             "Request/response":             ["py", "ts", "csharp"],
             "test_request_response_async":  ["py"],
             "test_tcp_transport":           ["py"],
@@ -2105,6 +2106,7 @@ class TestRunner:
                     "test_sdk_profiles",
                     "test_base_transport",
                     "test_sdk_request_response",
+                    "test_codec_robustness",
                 ]:
                     cmd = f'{cmd_prefix} --runner {runner_arg}'
                     success, stdout, stderr = self.run_cmd(cmd, timeout=60)

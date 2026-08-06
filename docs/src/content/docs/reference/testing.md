@@ -97,6 +97,7 @@ The same suites are implemented in every per-language directory under
 | `test_extended` | Message IDs > 255, multi-byte msg-id encoding, `pkgid` | C, C++, Py, TS, JS, C#, Rust |
 | `test_variable_flag` | `option variable=true` truncates unused array slots | C, C++, Py, TS, JS, C#, Rust |
 | `test_negative` | 13 malformed-frame / corruption scenarios | C, C++, Py, TS, JS, C#, Rust |
+| `test_codec_robustness` | Payloads whose internal count/length prefixes disagree with the bytes present, and handler faults during dispatch | C# |
 | `test_streaming` | `AccumulatingReader::push_byte` byte-at-a-time mode | C, Rust |
 | `test_sdk*` | `StructFrameSdk` subscribe/dispatch with mock transports | C++, Py, TS, JS, C#, Rust |
 | `test_envelope_sdk` | `oneof` envelopes via SDK dispatch | C#, Rust |

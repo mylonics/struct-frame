@@ -300,14 +300,25 @@ class FieldCSharpGen():
                     total_size = field.size_option * field.element_size
                     lines.append(f'            if ({var_name} != null) Array.Copy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length, {total_size}));')
                 elif field.max_size is not None:
-                    # Variable string array
+                    # Variable string array — count is 1 or 2 bytes on the wire,
+                    # matching the ushort/byte property type and the layout in
+                    # generate.py (count_bytes + max_size * element_size).
                     total_size = field.max_size * field.element_size
-                    lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name}Count;')
-                    lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {fmt_offset(base_offset + 1)}, Math.Min({var_name}Data.Length, {total_size}));')
+                    count_size = 2 if field.max_size > 255 else 1
+                    if count_size == 2:
+                        lines.append(f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan({fmt_offset(base_offset)}, 2), {var_name}Count);')
+                    else:
+                        lines.append(f'            buffer[{fmt_offset(base_offset)}] = {var_name}Count;')
+                    lines.append(f'            if ({var_name}Data != null) Array.Copy({var_name}Data, 0, buffer, {fmt_offset(base_offset + count_size)}, Math.Min({var_name}Data.Length, {total_size}));')
             else:
                 element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.field_type, 1)
                 array_size = field.size_option if field.size_option else field.max_size
-                total_data_size = field.size - (1 if field.max_size else 0)  # subtract count byte if variable
+                # Subtract the count prefix (2 bytes when max_size > 255, else 1)
+                # to get the bytes actually available for element data.
+                if field.max_size is not None:
+                    total_data_size = field.size - (2 if field.max_size > 255 else 1)
+                else:
+                    total_data_size = field.size
                 if field.size_option is not None:
                     # Fixed array
                     if field.is_enum:
@@ -412,11 +423,15 @@ class FieldCSharpGen():
                     lines.append(f'            msg.{var_name} = new byte[{total_size}];')
                     lines.append(f'            data.Slice({offset}, {total_size}).CopyTo(msg.{var_name}.AsSpan());')
                 elif field.max_size is not None:
-                    # Variable string array
+                    # Variable string array — count prefix width must match the writer
                     total_size = field.max_size * field.element_size
-                    lines.append(f'            msg.{var_name}Count = data[{offset}];')
+                    count_size = 2 if field.max_size > 255 else 1
+                    if count_size == 2:
+                        lines.append(f'            msg.{var_name}Count = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice({offset}, 2));')
+                    else:
+                        lines.append(f'            msg.{var_name}Count = data[{offset}];')
                     lines.append(f'            msg.{var_name}Data = new byte[{total_size}];')
-                    lines.append(f'            data.Slice({offset + 1}, {total_size}).CopyTo(msg.{var_name}Data.AsSpan());')
+                    lines.append(f'            data.Slice({offset + count_size}, {total_size}).CopyTo(msg.{var_name}Data.AsSpan());')
             else:
                 element_size = field.element_size if field.element_size else csharp_type_sizes.get(field.field_type, 1)
                 if field.size_option is not None:
@@ -887,10 +902,12 @@ class MessageCSharpGen():
                     element_size = f.element_size if f.element_size else 1
                 else:
                     element_size = type_sizes.get(f.field_type, (f.size - count_bytes) // f.max_size)
-                result += f'            size += {count_bytes} + ({var_name}Count * {element_size}); // {f.name}\n'
+                # Clamp to max_size so this stays in lockstep with _SerializeVariable,
+                # which writes at most max_size elements no matter what the caller set.
+                result += f'            size += {count_bytes} + (Math.Min((int){var_name}Count, {f.max_size}) * {element_size}); // {f.name}\n'
             elif f.field_type == "string" and f.max_size is not None:
                 length_bytes = 2 if f.max_size > 255 else 1
-                result += f'            size += {length_bytes} + {var_name}Length; // {f.name}\n'
+                result += f'            size += {length_bytes} + Math.Min((int){var_name}Length, {f.max_size}); // {f.name}\n'
             else:
                 result += f'            size += {f.size}; // {f.name}\n'
         
@@ -942,34 +959,46 @@ class MessageCSharpGen():
                     element_size = f.element_size if f.element_size else 1
                 else:
                     element_size = type_sizes.get(type_name, (f.size - count_bytes) // f.max_size)
+                # Never trust Count blindly: clamp to max_size (matching SerializedSize,
+                # which sizes the buffer) and cap each copy at the backing array's own
+                # length so an inconsistent object serializes short instead of throwing.
+                n_var = f'_{f.name}_n'
                 result += f'            // {f.name}: variable array\n'
+                result += f'            int {n_var} = Math.Min((int){var_name}Count, {f.max_size});\n'
                 if count_bytes == 2:
-                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), {var_name}Count); offset += 2;\n'
+                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), (ushort){n_var}); offset += 2;\n'
                 else:
-                    result += f'            buffer[offset++] = (byte){var_name}Count;\n'
-                if type_name in type_sizes:
+                    result += f'            buffer[offset++] = (byte){n_var};\n'
+                if normalize_bytes_type(type_name) == "string":
+                    # Variable string array: flat byte[] holding element_size bytes per element
                     result += f'            if ({var_name}Data != null)\n'
-                    result += f'                Buffer.BlockCopy({var_name}Data, 0, buffer, offset, {var_name}Count * {element_size});\n'
-                    result += f'            offset += {var_name}Count * {element_size};\n'
+                    result += f'                Array.Copy({var_name}Data, 0, buffer, offset, Math.Min({var_name}Data.Length, {n_var} * {element_size}));\n'
+                    result += f'            offset += {n_var} * {element_size};\n'
+                elif type_name in type_sizes:
+                    result += f'            if ({var_name}Data != null)\n'
+                    result += f'                Buffer.BlockCopy({var_name}Data, 0, buffer, offset, Math.Min({var_name}Data.Length, {n_var}) * {element_size});\n'
+                    result += f'            offset += {n_var} * {element_size};\n'
                 elif f.is_enum:
                     result += f'            if ({var_name}Data != null)\n'
-                    result += f'                Array.Copy({var_name}Data, 0, buffer, offset, {var_name}Count);\n'
-                    result += f'            offset += {var_name}Count;\n'
+                    result += f'                Array.Copy({var_name}Data, 0, buffer, offset, Math.Min({var_name}Data.Length, {n_var}));\n'
+                    result += f'            offset += {n_var};\n'
                 else:
                     result += f'            if ({var_name}Data != null)\n'
-                    result += f'                for (int i = 0; i < {var_name}Count; i++)\n'
+                    result += f'                for (int i = 0; i < Math.Min({var_name}Data.Length, {n_var}); i++)\n'
                     result += f'                    if ({var_name}Data[i] != null) {var_name}Data[i].SerializeTo(buffer, offset + i * {element_size});\n'
-                    result += f'            offset += {var_name}Count * {element_size};\n'
+                    result += f'            offset += {n_var} * {element_size};\n'
             elif normalize_bytes_type(type_name) == "string" and f.max_size is not None:
                 length_bytes = 2 if f.max_size > 255 else 1
+                n_var = f'_{f.name}_n'
                 result += f'            // {f.name}: variable string\n'
+                result += f'            int {n_var} = Math.Min((int){var_name}Length, {f.max_size});\n'
                 if length_bytes == 2:
-                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), {var_name}Length); offset += 2;\n'
+                    result += f'            BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), (ushort){n_var}); offset += 2;\n'
                 else:
-                    result += f'            buffer[offset++] = (byte){var_name}Length;\n'
+                    result += f'            buffer[offset++] = (byte){n_var};\n'
                 result += f'            if ({var_name}Data != null)\n'
-                result += f'                Array.Copy({var_name}Data, 0, buffer, offset, {var_name}Length);\n'
-                result += f'            offset += {var_name}Length;\n'
+                result += f'                Array.Copy({var_name}Data, 0, buffer, offset, Math.Min({var_name}Data.Length, {n_var}));\n'
+                result += f'            offset += {n_var};\n'
             else:
                 # Fixed field - generate pack code inline
                 if type_name in csharp_type_sizes:
@@ -1092,6 +1121,7 @@ class MessageCSharpGen():
             type_name = f.field_type
             field_lines = []
             min_prefix = 0
+            fixed_field = False
             if f.is_array and f.max_size is not None:
                 type_sizes = {"uint8": 1, "int8": 1, "uint16": 2, "int16": 2, "uint32": 4, "int32": 4, "uint64": 8, "int64": 8, "float": 4, "double": 8, "bool": 1}
                 if normalize_bytes_type(type_name) == "string":
@@ -1108,7 +1138,15 @@ class MessageCSharpGen():
                 else:
                     field_lines.append(f'if (offset >= data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} count");')
                     field_lines.append(f'msg.{var_name}Count = Math.Min(data[offset++], (byte){f.max_size});')
-                if type_name in type_sizes:
+                if normalize_bytes_type(type_name) == "string":
+                    # Variable string array: a flat byte[] of max_size * element_size,
+                    # carrying Count elements of element_size bytes each.
+                    total_size = f.max_size * element_size
+                    field_lines.append(f'msg.{var_name}Data = new byte[{total_size}];')
+                    field_lines.append(f'if (offset + msg.{var_name}Count * {element_size} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");')
+                    field_lines.append(f'data.Slice(offset, msg.{var_name}Count * {element_size}).CopyTo(msg.{var_name}Data.AsSpan());')
+                    field_lines.append(f'offset += msg.{var_name}Count * {element_size};')
+                elif type_name in type_sizes:
                     base_type = csharp_types.get(type_name, type_name)
                     field_lines.append(f'msg.{var_name}Data = new {base_type}[{f.max_size}];')
                     field_lines.append(f'if (offset + msg.{var_name}Count * {element_size} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");')
@@ -1131,15 +1169,21 @@ class MessageCSharpGen():
                 min_prefix = 2 if f.max_size > 255 else 1
                 field_lines.append(f'// {f.name}: variable string')
                 if f.max_size > 255:
+                    field_lines.append(f'if (offset + 2 > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} length");')
                     field_lines.append(f'msg.{var_name}Length = Math.Min(BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)), (ushort){f.max_size});')
                     field_lines.append(f'offset += 2;')
                 else:
+                    field_lines.append(f'if (offset >= data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} length");')
                     field_lines.append(f'msg.{var_name}Length = Math.Min(data[offset++], (byte){f.max_size});')
                 field_lines.append(f'msg.{var_name}Data = new byte[{f.max_size}];')
+                field_lines.append(f'if (offset + msg.{var_name}Length > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name}");')
                 field_lines.append(f'data.Slice(offset, msg.{var_name}Length).CopyTo(msg.{var_name}Data.AsSpan());')
                 field_lines.append(f'offset += msg.{var_name}Length;')
             else:
-                # Fixed field
+                # Fixed field. Every branch below reads exactly min_prefix bytes, so a
+                # single guard in front of them covers the whole branch (added after the
+                # chain, once min_prefix is known).
+                fixed_field = True
                 if type_name in csharp_type_sizes:
                     min_prefix = csharp_type_sizes[type_name]
                     if type_name == "uint8":
@@ -1180,6 +1224,12 @@ class MessageCSharpGen():
                     nested_type = type_name
                     min_prefix = f.size
                     field_lines.append(f'msg.{var_name} = {nested_type}.Deserialize(data[offset..(offset + {nested_type}.MaxSize)]); offset += {nested_type}.MaxSize;')
+
+            if fixed_field and min_prefix and not getattr(f, 'is_extension', False):
+                # Non-extension fixed field: a short buffer is malformed input, not wire
+                # evolution, so fail with the same typed error the variable branches use
+                # instead of an ArgumentOutOfRangeException from Slice.
+                field_lines.insert(0, f'if (offset + {min_prefix} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name}");')
 
             if getattr(f, 'is_extension', False):
                 # Extension field: older senders may omit it entirely. Only attempt

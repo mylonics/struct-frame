@@ -36,6 +36,12 @@ export interface StructFrameSdkConfig {
   getMessageInfo?: GetMessageInfo;
   /** Enable debug logging */
   debug?: boolean;
+  /**
+   * Called with any transport error, handler exception, or deserialization
+   * failure. Without it these are only visible when `debug` is on, so
+   * production code cannot tell that a message was dropped. Must not throw.
+   */
+  onError?: (error: unknown) => void;
 }
 
 /**
@@ -49,6 +55,7 @@ export class StructFrameSdk {
   private debug: boolean;
   private messageHandlers: Map<number, MessageHandler[]> = new Map();
   private messageCodecs: Map<number, MessageCodec> = new Map();
+  private onError?: (error: unknown) => void;
 
   constructor(config: StructFrameSdkConfig) {
     this.transport = config.transport;
@@ -56,6 +63,7 @@ export class StructFrameSdk {
     this.getMessageInfo = config.getMessageInfo;
     this.reader = new AccumulatingReader(config.profile, config.getMessageInfo);
     this.debug = config.debug ?? false;
+    this.onError = config.onError;
 
     this.transport.onData((data) => this.handleIncomingData(data));
     this.transport.onError((error) => this.handleError(error));
@@ -226,7 +234,12 @@ export class StructFrameSdk {
           try {
             message = codec.deserialize(result.msgData);
           } catch (error) {
+            // Do not fall through with the raw payload: handlers registered
+            // through a codec expect the decoded type, and handing them raw
+            // bytes only turns one silent failure into two.
             this.log(`Failed to deserialize message ID ${result.msgId}: ${error}`);
+            this.raiseError(error);
+            continue;
           }
         }
         // Iterate a snapshot: a handler that unsubscribes during dispatch (e.g. the
@@ -237,7 +250,9 @@ export class StructFrameSdk {
           try {
             snapshot[i](message, result.msgId);
           } catch (error) {
+            // Keep dispatching to the remaining handlers, but surface the fault.
             this.log(`Handler error for message ID ${result.msgId}: ${error}`);
+            this.raiseError(error);
           }
         }
       }
@@ -246,6 +261,17 @@ export class StructFrameSdk {
 
   private handleError(error: Error): void {
     this.log(`Transport error: ${error.message}`);
+    this.raiseError(error);
+  }
+
+  /** Publish an error to the configured onError callback, if any. */
+  private raiseError(error: unknown): void {
+    if (!this.onError) return;
+    try {
+      this.onError(error);
+    } catch (err) {
+      this.log(`onError callback threw: ${err}`);
+    }
   }
 
   private handleClose(): void {

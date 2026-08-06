@@ -33,6 +33,16 @@ def _get_nested_enum_name(field, type_name, package):
     return type_name
 
 
+def _count_cast(field):
+    """Return the C# cast matching the generated Count/Length property type.
+
+    csharp_gen declares those properties as ushort when max_size > 255 and byte
+    otherwise; casting to byte unconditionally silently truncates (300 -> 44,
+    4096 -> 0) because C# casts are unchecked by default.
+    """
+    return '(ushort)' if field.max_size is not None and field.max_size > 255 else '(byte)'
+
+
 def get_csharp_field_type(field, package_name, package=None):
     """Get the C# type for a field"""
     from struct_frame.csharp_gen import csharp_types
@@ -231,7 +241,7 @@ class SdkInterfaceGen:
                             yield f'            message.{struct_field_name} = {param_name};\n'
                         elif field.max_size is not None:
                             # Variable string array - use integer division
-                            yield f'            message.{struct_field_name}Count = (byte)Math.Min({param_name}.Length / {field.element_size}, {field.max_size});\n'
+                            yield f'            message.{struct_field_name}Count = {_count_cast(field)}Math.Min({param_name}.Length / {field.element_size}, {field.max_size});\n'
                             yield f'            message.{struct_field_name}Data = {param_name};\n'
                     else:
                         # Non-string arrays
@@ -240,7 +250,7 @@ class SdkInterfaceGen:
                             yield f'            message.{struct_field_name} = {param_name};\n'
                         elif field.max_size is not None:
                             # Variable array
-                            yield f'            message.{struct_field_name}Count = (byte)Math.Min({param_name}.Length, {field.max_size});\n'
+                            yield f'            message.{struct_field_name}Count = {_count_cast(field)}Math.Min({param_name}.Length, {field.max_size});\n'
                             yield f'            message.{struct_field_name}Data = {param_name};\n'
                 elif field.field_type == "string":
                     # Regular strings
@@ -249,7 +259,7 @@ class SdkInterfaceGen:
                         yield f'            message.{struct_field_name} = {param_name};\n'
                     elif field.max_size is not None:
                         # Variable string
-                        yield f'            message.{struct_field_name}Length = (byte)Math.Min({param_name}.Length, {field.max_size});\n'
+                        yield f'            message.{struct_field_name}Length = {_count_cast(field)}Math.Min({param_name}.Length, {field.max_size});\n'
                         yield f'            message.{struct_field_name}Data = {param_name};\n'
                 else:
                     # Regular fields
@@ -485,19 +495,19 @@ class SdkInterfaceGen:
                             if pf.size_option is not None:
                                 yield f'            message.{struct_field_name} = {param_name};\n'
                             elif pf.max_size is not None:
-                                yield f'            message.{struct_field_name}Count = (byte)Math.Min({param_name}.Length / {pf.element_size}, {pf.max_size});\n'
+                                yield f'            message.{struct_field_name}Count = {_count_cast(pf)}Math.Min({param_name}.Length / {pf.element_size}, {pf.max_size});\n'
                                 yield f'            message.{struct_field_name}Data = {param_name};\n'
                         else:
                             if pf.size_option is not None:
                                 yield f'            message.{struct_field_name} = {param_name};\n'
                             elif pf.max_size is not None:
-                                yield f'            message.{struct_field_name}Count = (byte)Math.Min({param_name}.Length, {pf.max_size});\n'
+                                yield f'            message.{struct_field_name}Count = {_count_cast(pf)}Math.Min({param_name}.Length, {pf.max_size});\n'
                                 yield f'            message.{struct_field_name}Data = {param_name};\n'
                     elif pf.field_type == "string":
                         if pf.size_option is not None:
                             yield f'            message.{struct_field_name} = {param_name};\n'
                         elif pf.max_size is not None:
-                            yield f'            message.{struct_field_name}Length = (byte)Math.Min({param_name}.Length, {pf.max_size});\n'
+                            yield f'            message.{struct_field_name}Length = {_count_cast(pf)}Math.Min({param_name}.Length, {pf.max_size});\n'
                             yield f'            message.{struct_field_name}Data = {param_name};\n'
                     else:
                         yield f'            message.{struct_field_name} = {param_name};\n'

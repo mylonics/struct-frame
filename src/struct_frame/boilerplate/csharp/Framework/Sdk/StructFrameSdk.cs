@@ -183,7 +183,10 @@ namespace StructFrame.Sdk
         public event RawMessageHandler? UnhandledMessage;
 
         /// <summary>
-        /// Fired when the transport reports an error.
+        /// Fired when the transport reports an error, and when a message handler or the
+        /// deserialization feeding it throws. Handler faults arrive wrapped in an
+        /// <see cref="InvalidOperationException"/> naming the message ID, so subscribers
+        /// can tell them apart from transport faults.
         /// </summary>
         public event EventHandler<Exception>? ErrorOccurred;
 
@@ -563,7 +566,12 @@ namespace StructFrame.Sdk
                     }
                     catch (Exception ex)
                     {
+                        // Keep dispatching to the remaining subscribers — one faulty
+                        // handler must not silence the others — but surface the failure
+                        // instead of dropping it into debug-only logging.
                         Log($"Handler error for message ID {dispatchFrame.MsgId}: {ex.Message}");
+                        RaiseError(new InvalidOperationException(
+                            $"Handler for message ID {dispatchFrame.MsgId} threw {ex.GetType().Name}: {ex.Message}", ex));
                     }
                 }
             }
@@ -635,7 +643,25 @@ namespace StructFrame.Sdk
         private void HandleError(Exception error)
         {
             Log($"Transport error: {error.Message}");
-            ErrorOccurred?.Invoke(this, error);
+            RaiseError(error);
+        }
+
+        /// <summary>
+        /// Publish an error to <see cref="ErrorOccurred"/> without the transport-specific
+        /// log line. A subscriber that itself throws must not break the caller's loop.
+        /// </summary>
+        private void RaiseError(Exception error)
+        {
+            var handler = ErrorOccurred;
+            if (handler == null) return;
+            try
+            {
+                handler.Invoke(this, error);
+            }
+            catch (Exception ex)
+            {
+                Log($"ErrorOccurred subscriber threw: {ex.Message}");
+            }
         }
 
         private void HandleClose()

@@ -67,6 +67,27 @@ for in-progress/unrecognized-prefix bytes, matching the other six languages'
 - Tests BufferReader and AccumulatingReader APIs
 - Tests multiple profiles (Standard, Sensor, Bulk, Network)
 
+## Scope: framing layer vs. message codec
+
+The 42 canonical scenarios above all target the **framing layer** -- start bytes,
+length fields, CRC, resync, chunk boundaries. They deliberately say nothing about a
+frame that is well-formed at the framing layer but carries a **payload whose internal
+count/length prefixes disagree with the bytes present**. CRC only covers what the
+sender actually transmitted, so a buggy or hostile peer can produce exactly that.
+
+Message-codec robustness is covered separately, per language:
+
+### C# (`tests/csharp/TestCodecRobustness.cs`)
+- Truncated variable payloads must raise `System.IO.InvalidDataException`, the same
+  typed error the array branch already used, rather than letting
+  `ArgumentOutOfRangeException` escape from `Span.Slice`
+- Counts above 255 must survive the generated `Send<Msg>(fields...)` helper
+- An oversized or short backing array must serialize without overrunning the field
+- A subscriber that throws must reach `ErrorOccurred` even with `Debug` off
+
+C and Rust already reject truncated payloads by construction (`return 0` guards and
+`buf.get(..)?` respectively); Python and TypeScript raise `ValueError` / `RangeError`.
+
 ## Uniform Test Scenarios
 
 All seven languages implement the following 33 scenarios with identical names (plus the
