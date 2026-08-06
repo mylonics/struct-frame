@@ -234,12 +234,12 @@ Corrupted CRC detection                              PASS
 ...
 
 ========================================
-Summary: 20/20 tests passed
+Summary: 42/42 tests passed
 ========================================
 ```
 
-(The example above shows a 24-scenario language; the exact total varies per language —
-see the per-file counts under [Test Files](#test-files).)
+All seven framing-layer negative suites now run the same 42 canonical scenarios.
+The separate C# codec-robustness suite reports its own `5/5` summary.
 
 ## Integration with Test Suite
 
