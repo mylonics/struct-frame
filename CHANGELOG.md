@@ -6,9 +6,21 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
-## [0.10.2](https://github.com/mylonics/struct-frame/releases/tag/0.10.2) - 2026-07-07
+## [0.10.3](https://github.com/mylonics/struct-frame/releases/tag/0.10.3) - 2026-08-06
 
-<small>[Compare with v0.10.1](https://github.com/mylonics/struct-frame/compare/v0.10.1...0.10.2)</small>
+<small>[Compare with v0.10.2](https://github.com/mylonics/struct-frame/compare/v0.10.2...0.10.3)</small>
+
+### Added
+
+- Added default values (#360) ([912a1e1](https://github.com/mylonics/struct-frame/commit/912a1e1222399d98398878c4976f2195ffb4f71b) by Rijesh Augustine).
+
+### Fixed
+
+- Fixing stale tests (#359) ([8d7749e](https://github.com/mylonics/struct-frame/commit/8d7749ed075ca80dc204d38caedb8253acf4866a) by Rijesh Augustine).
+
+## [v0.10.2](https://github.com/mylonics/struct-frame/releases/tag/v0.10.2) - 2026-07-06
+
+<small>[Compare with v0.10.1](https://github.com/mylonics/struct-frame/compare/v0.10.1...v0.10.2)</small>
 
 ### Fixed
 
