@@ -14,6 +14,7 @@ namespace StructFrame.Framing
         private readonly ProfileConfig _config;
         private readonly Func<int, MessageInfo?>? _getMessageInfo;
 
+        /// <summary>Creates a parser for the supplied profile.</summary>
         public BufferParser(ProfileConfig config, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             _config = config;
@@ -217,6 +218,7 @@ namespace StructFrame.Framing
     /// </summary>
     public class BufferParser<TProfile> : BufferParser where TProfile : struct, IProfileProvider
     {
+        /// <summary>Creates a parser for the compile-time profile.</summary>
         public BufferParser(Func<int, MessageInfo?>? getMessageInfo = null) : base(TProfile.Profile, getMessageInfo) { }
     }
 }

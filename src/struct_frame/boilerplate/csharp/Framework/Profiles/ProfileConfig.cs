@@ -7,8 +7,11 @@ namespace StructFrame.Profiles
     /// </summary>
     public class ProfileConfig
     {
+        /// <summary>Profile name.</summary>
         public string Name { get; }
+        /// <summary>Frame header configuration.</summary>
         public HeaderConfig Header { get; }
+        /// <summary>Payload configuration.</summary>
         public PayloadConfig Payload { get; }
 
         // Cached computed values for performance
@@ -16,20 +19,33 @@ namespace StructFrame.Profiles
         private readonly byte _computedStartByte2;
 
         // Computed properties
+        /// <summary>Number of frame start bytes.</summary>
         public byte NumStartBytes => Header.NumStartBytes;
+        /// <summary>Whether the profile includes a length field.</summary>
         public bool HasLength => Payload.HasLength;
+        /// <summary>Length field size in bytes.</summary>
         public byte LengthBytes => Payload.LengthBytes;
+        /// <summary>Whether the profile includes a checksum.</summary>
         public bool HasCrc => Payload.HasCrc;
+        /// <summary>Whether the profile includes a package ID.</summary>
         public bool HasPkgId => Payload.HasPkgId;
+        /// <summary>Whether the profile includes a sequence number.</summary>
         public bool HasSeq => Payload.HasSeq;
+        /// <summary>Whether the profile includes a system ID.</summary>
         public bool HasSysId => Payload.HasSysId;
+        /// <summary>Whether the profile includes a component ID.</summary>
         public bool HasCompId => Payload.HasCompId;
 
+        /// <summary>Total header size including start bytes.</summary>
         public int HeaderSize => Header.NumStartBytes + Payload.HeaderSize;
+        /// <summary>Footer size in bytes.</summary>
         public int FooterSize => Payload.FooterSize;
+        /// <summary>Total framing overhead in bytes.</summary>
         public int Overhead => HeaderSize + FooterSize;
+        /// <summary>Maximum payload size allowed by the profile.</summary>
         public int MaxPayload => Payload.MaxPayload;
 
+        /// <summary>Creates a profile configuration.</summary>
         public ProfileConfig(string name, HeaderConfig header, PayloadConfig payload)
         {
             Name = name;

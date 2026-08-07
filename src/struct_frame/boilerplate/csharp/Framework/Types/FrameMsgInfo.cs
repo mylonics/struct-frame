@@ -9,10 +9,15 @@ namespace StructFrame
     /// </summary>
     public enum FrameMsgStatus
     {
+        /// <summary>No parser status.</summary>
         None = 0,
+        /// <summary>Waiting for a frame start byte.</summary>
         WaitingForStart = 1,
+        /// <summary>Collecting an incomplete frame.</summary>
         Collecting = 2,
+        /// <summary>Checksum validation failed.</summary>
         CrcFailure = 3,
+        /// <summary>Parser recovered by skipping invalid bytes.</summary>
         SyncRecovery = 4
     }
 
@@ -21,18 +26,29 @@ namespace StructFrame
     /// </summary>
     public struct FrameMsgInfo
     {
+        /// <summary>Whether the frame is valid.</summary>
         public bool Valid { get; set; }
+        /// <summary>Message identifier.</summary>
         public ushort MsgId { get; set; }
+        /// <summary>Payload length in bytes.</summary>
         public int MsgLen { get; set; }
+        /// <summary>Total frame size in bytes.</summary>
         public int FrameSize { get; set; }
+        /// <summary>Backing buffer containing the message data.</summary>
         public byte[]? MsgData { get; set; }
+        /// <summary>Payload offset within the backing buffer.</summary>
         public int MsgDataOffset { get; set; }
+        /// <summary>Frame data view including framing bytes.</summary>
         public ReadOnlyMemory<byte> FrameData { get; set; }
 
         // Additional fields for extended profiles
+        /// <summary>Sequence number.</summary>
         public byte Seq { get; set; }
+        /// <summary>System identifier.</summary>
         public byte SysId { get; set; }
+        /// <summary>Component identifier.</summary>
         public byte CompId { get; set; }
+        /// <summary>Package identifier.</summary>
         public byte PkgId { get; set; }
 
         /// <summary>
@@ -45,6 +61,7 @@ namespace StructFrame
         /// </summary>
         public ParserDiagnostics? Diagnostics { get; set; }
 
+        /// <summary>Creates frame parse information.</summary>
         public FrameMsgInfo(bool valid, ushort msgId, int msgLen, int frameSize, byte[]? msgData, int offset = 0)
         {
             Valid = valid;
@@ -62,6 +79,7 @@ namespace StructFrame
             Diagnostics = null;
         }
 
+        /// <summary>Gets an invalid frame result.</summary>
         public static FrameMsgInfo Invalid => new FrameMsgInfo(false, 0, 0, 0, null);
 
         /// <summary>

@@ -13,6 +13,7 @@ namespace StructFrame.Framing
     {
         private readonly ProfileConfig _config;
 
+        /// <summary>Creates an encoder for the supplied profile.</summary>
         public FrameEncoder(ProfileConfig config)
         {
             _config = config;
@@ -236,6 +237,7 @@ namespace StructFrame.Framing
     /// </summary>
     public class FrameEncoder<TProfile> : FrameEncoder where TProfile : struct, IProfileProvider
     {
+        /// <summary>Creates an encoder for the compile-time profile.</summary>
         public FrameEncoder() : base(TProfile.Profile) { }
     }
 }

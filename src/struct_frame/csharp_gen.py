@@ -71,7 +71,7 @@ def _csharp_scalar_default_literal(field, base_type):
     return f"{field.default}"
 
 
-def format_xml_summary(comments, indent='    '):
+def format_xml_summary(comments, indent='    ', fallback=None):
     """
     Format multi-line comments into a single XML summary block.
     
@@ -83,7 +83,9 @@ def format_xml_summary(comments, indent='    '):
         Formatted XML summary string with all comments in a single block
     """
     if not comments:
-        return ''
+        if fallback is None:
+            return ''
+        comments = [fallback]
     
     result = f'{indent}/// <summary>\n'
     for comment in comments:
@@ -99,28 +101,32 @@ class EnumCSharpGen():
     def generate(field):
         # C# uses XML doc comments with different formatting
         result = ''
-        if field.comments:
-            result += format_xml_summary(field.comments, indent='    ')
-
         enum_name = field.name
+        result += format_xml_summary(
+            field.comments,
+            indent='    ',
+            fallback=f'Generated enum {enum_name}.',
+        )
         result += '    public enum %s : byte\n' % enum_name
         result += '    {\n'
 
         def csharp_comment_formatter(comments):
             if not comments:
-                return []
+                comments = ['Generated enum value.']
             lines = ['        /// <summary>']
             for c in comments:
                 lines.append('        /// %s' % c.strip('/').strip())
             lines.append('        /// </summary>')
             return lines
 
-        enum_values = build_enum_values(
-            field, _style_c,
-            value_format='        {name} = {value}{comma}',
-            comment_formatter=csharp_comment_formatter,
-            skip_trailing_comma=True
-        )
+        enum_values = []
+        entries = list(field.data.items())
+        for index, (entry_name, (value, comments)) in enumerate(entries):
+            enum_values.extend(csharp_comment_formatter(comments or ['Generated enum value.']))
+            comma = ',' if index < len(entries) - 1 else ''
+            enum_values.append(
+                '        %s = %s%s' % (_style_c.enum_entry(entry_name), value, comma)
+            )
 
         result += '\n'.join(enum_values)
         result += '\n    }\n'
@@ -131,15 +137,21 @@ class EnumCSharpGen():
     def generate_nested(field, name_override=None):
         """Generate a nested enum inside a C# class body (double-indented)."""
         result = ''
-        if field.comments:
-            result += format_xml_summary(field.comments, indent='        ')
         enum_name = name_override if name_override else field.name
+        result += format_xml_summary(
+            field.comments,
+            indent='        ',
+            fallback=f'Generated enum {enum_name}.',
+        )
         result += '        public enum %s : byte\n' % enum_name
         result += '        {\n'
         entries = list(field.data.items())
         for i, (entry_name, (value, comments)) in enumerate(entries):
-            if comments:
-                result += '            /// <summary>%s</summary>\n' % ' '.join(c.strip('/').strip() for c in comments)
+            result += format_xml_summary(
+                comments,
+                indent='            ',
+                fallback=f'Generated enum value {pascal_case(entry_name)}.',
+            )
             comma = ',' if i < len(entries) - 1 else ''
             result += '            %s = %d%s\n' % (pascal_case(entry_name), value, comma)
         result += '        }\n'
@@ -164,7 +176,16 @@ class EnumCSharpGen():
         result = f'    /// <summary>Discriminator enum for {msg_name}.{oneof.name} oneof</summary>\n'
         result += f'    public enum {enum_name} : byte\n'
         result += f'    {{\n'
-        result += '\n'.join(lines) + '\n'
+        result += '        /// <summary>\n'
+        result += '        /// No oneof field is selected.\n'
+        result += '        /// </summary>\n'
+        result += lines[0] + '\n'
+        for index, line in enumerate(lines[1:]):
+            field_name = list(oneof.fields)[index]
+            result += '        /// <summary>\n'
+            result += f'        /// Selects the {field_name} oneof field.\n'
+            result += '        /// </summary>\n'
+            result += line + '\n'
         result += f'    }}\n'
         return result
 
@@ -184,8 +205,11 @@ class FieldCSharpGen():
 
         # Add leading comments
         leading_comment = field.comments
-        if leading_comment:
-            result += format_xml_summary(leading_comment, indent='        ')
+        result += format_xml_summary(
+            leading_comment,
+            indent='        ',
+            fallback=f'Field {field.name}.',
+        )
 
         # Handle basic type resolution
         if type_name in csharp_types:
@@ -208,6 +232,7 @@ class FieldCSharpGen():
                     count_type = "ushort" if field.max_size > 255 else "byte"
                     total_bytes = field.max_size * (field.element_size or 1)
                     result += f'        public {count_type} {var_name}Count {{ get; set; }}\n'
+                    result += f'        /// <summary>Backing data for the {field.name} string array.</summary>\n'
                     result += f'        public byte[] {var_name}Data {{ get; set; }} = new byte[{total_bytes}];  // Variable string array: up to {field.max_size} strings, each max {field.element_size} chars\n'
             else:
                 # Non-string arrays
@@ -221,6 +246,7 @@ class FieldCSharpGen():
                     # Variable array — backing store pre-allocated to max capacity
                     count_type = "ushort" if field.max_size > 255 else "byte"
                     result += f'        public {count_type} {var_name}Count {{ get; set; }}\n'
+                    result += f'        /// <summary>Backing data for the {field.name} array.</summary>\n'
                     if field.is_enum:
                         result += f'        public byte[] {var_name}Data {{ get; set; }} = new byte[{field.max_size}];  // Variable array of {base_type}: up to {field.max_size} elements\n'
                     else:
@@ -241,6 +267,7 @@ class FieldCSharpGen():
                 result += f'        public {length_type} {var_name}Length {{ get; set; }}{length_init}\n'
                 padded = _csharp_byte_array_literal(default_text.ljust(field.max_size, b"\x00"))
                 data_init = f'new byte[] {{ {padded} }}' if default_text else f'new byte[{field.max_size}]'
+                result += f'        /// <summary>Backing data for the {field.name} string.</summary>\n'
                 result += f'        public byte[] {var_name}Data {{ get; set; }} = {data_init};  // Variable string: up to {field.max_size} chars\n'
 
         # Handle regular fields
@@ -540,10 +567,12 @@ class MessageCSharpGen():
         leading_comment = msg.comments
 
         result = ''
-        if leading_comment:
-            result += format_xml_summary(leading_comment, indent='    ')
-
         structName = msg.name
+        result += format_xml_summary(
+            leading_comment,
+            indent='    ',
+            fallback=f'Generated message {structName}.',
+        )
 
         # Add IEquatable<T> interface if equality is requested
         if equality:
@@ -552,6 +581,7 @@ class MessageCSharpGen():
             result += '    public class %s : IStructFrameMessage<%s>\n' % (structName, structName)
         result += '    {\n'
 
+        result += '        /// <summary>Maximum serialized size in bytes.</summary>\n'
         result += '        public const int MaxSize = %d;\n' % msg.size
 
         # Wire-format bytes with schema [default=...] values applied to unset
@@ -572,6 +602,7 @@ class MessageCSharpGen():
             result += '\n'
 
         if msg.id:
+            result += '        /// <summary>Message identifier.</summary>\n'
             if package and package.package_id is not None:
                 combined_msg_id = (package.package_id << 8) | msg.id
                 result += '        public const ushort MsgId = %d;\n' % combined_msg_id
@@ -580,13 +611,18 @@ class MessageCSharpGen():
         
         # Add magic numbers for checksum
         if msg.id is not None and msg.magic_bytes:
+            result += '        /// <summary>First checksum magic byte.</summary>\n'
             result += f'        public const byte Magic1 = {msg.magic_bytes[0]}; // Checksum magic (based on field types and positions)\n'
+            result += '        /// <summary>Second checksum magic byte.</summary>\n'
             result += f'        public const byte Magic2 = {msg.magic_bytes[1]}; // Checksum magic (based on field types and positions)\n'
+            result += '        /// <summary>Serialized size of the non-extension fields.</summary>\n'
             result += f'        public const int BaseSize = {msg.base_size}; // Non-extension portion size (== MaxSize when no extensions)\n'
         
         # Add variable message constants
         if msg.variable:
+            result += '        /// <summary>Minimum serialized size in bytes.</summary>\n'
             result += f'        public const int MinSize = {msg.min_size}; // Minimum size when all variable fields are empty\n'
+            result += '        /// <summary>Indicates that this message uses variable-length encoding.</summary>\n'
             result += f'        public const bool IsVariable = true; // This message uses variable-length encoding\n'
         
         result += '\n'
@@ -598,6 +634,7 @@ class MessageCSharpGen():
         # Generate oneofs - declarations for discriminator and union members
         for key, oneof in msg.oneofs.items():
             if oneof.auto_discriminator:
+                result += f'        /// <summary>Active field discriminator for the {oneof.name} oneof.</summary>\n'
                 if oneof.discriminator_type == "msgid":
                     result += f'        public ushort {pascal_case(oneof.name)}Discriminator {{ get; set; }}\n'
                 else:  # field_order
@@ -688,7 +725,7 @@ class MessageCSharpGen():
         # Generate Deserialize() static method
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Deserialize a <see cref="ReadOnlySpan{byte}"/> into this message type.\n'
+        result += '        /// Deserialize a <c>ReadOnlySpan&lt;byte&gt;</c> into this message type.\n'
         result += '        /// This is the primary implementation - the <c>byte[]</c> and\n'
         result += '        /// <see cref="FrameMsgInfo"/> overloads delegate here.\n'
         if msg.variable:
@@ -806,7 +843,7 @@ class MessageCSharpGen():
         # byte[] overload - delegates to the span overload (keeps API compatibility)
         result += '\n'
         result += '        /// <summary>\n'
-        result += '        /// Deserialize a byte array. Delegates to <see cref="Deserialize(ReadOnlySpan{byte})"/>.\n'
+        result += '        /// Deserialize a byte array. Delegates to <c>Deserialize(ReadOnlySpan&lt;byte&gt;)</c>.\n'
         result += '        /// </summary>\n'
         result += f'        public static {structName} Deserialize(byte[] data) => Deserialize(data.AsSpan());\n'
 
@@ -855,6 +892,7 @@ class MessageCSharpGen():
         result += '        /// </summary>\n'
         if msg.id is not None and msg.magic_bytes:
             result += f'        public (byte Magic1, byte Magic2) GetMagicNumbers() => (Magic1, Magic2);\n'
+            result += '        /// <summary>Get the serialized size of the non-extension fields.</summary>\n'
             result += f'        public int GetBaseSize() => BaseSize;\n'
         else:
             result += '        public (byte Magic1, byte Magic2) GetMagicNumbers() => (0, 0);\n'
@@ -1370,13 +1408,18 @@ class MessageCSharpGen():
         r += '    [Obsolete("Use ' + structName + ' for extension-aware devices. ' + non_ext_name + ' is a transitional helper for legacy firmware only.")]\n'
         r += f'    public class {non_ext_name} : IStructFrameMessage\n'
         r += '    {\n'
+        r += '        /// <summary>Maximum serialized size of the base fields.</summary>\n'
         r += f'        public const int MaxSize = {structName}.BaseSize;\n'
+        r += '        /// <summary>Message identifier.</summary>\n'
         r += f'        public const ushort MsgId = {structName}.MsgId;\n'
+        r += '        /// <summary>First checksum magic byte.</summary>\n'
         r += f'        public const byte Magic1 = {structName}.Magic1;\n'
+        r += '        /// <summary>Second checksum magic byte.</summary>\n'
         r += f'        public const byte Magic2 = {structName}.Magic2;\n'
         r += '\n'
         r += f'        private readonly {structName} _inner;\n'
         r += '\n'
+        r += f'        /// <summary>Wrap a full {structName} for base-field serialization.</summary>\n'
         r += f'        /// <param name="inner">The full {structName} whose base fields will be sent.</param>\n'
         r += f'        public {non_ext_name}({structName} inner)\n'
         r += '        {\n'
@@ -1393,8 +1436,11 @@ class MessageCSharpGen():
         r += '            return baseOnly;\n'
         r += '        }\n'
         r += '\n'
+        r += '        /// <summary>Get the message ID.</summary>\n'
         r += '        public ushort GetMsgId() => MsgId;\n'
+        r += '        /// <summary>Get the serialized size.</summary>\n'
         r += '        public int GetSize() => MaxSize;\n'
+        r += '        /// <summary>Get the checksum magic numbers.</summary>\n'
         r += '        public (byte Magic1, byte Magic2) GetMagicNumbers() => (Magic1, Magic2);\n'
         r += '    }\n'
         return r
@@ -1675,8 +1721,10 @@ class FileCSharpGen():
         if package.package_id is not None:
             content = header()
             content += f'    // Package ID for extended message IDs\n'
+            content += '    /// <summary>Package metadata for extended message IDs.</summary>\n'
             content += f'    public static class PackageInfo\n'
             content += f'    {{\n'
+            content += '        /// <summary>Package identifier.</summary>\n'
             content += f'        public const byte PackageId = {package.package_id};\n'
             content += f'    }}\n'
             content += footer
@@ -1983,8 +2031,10 @@ class FileCSharpGen():
         # Add package ID constant if present
         if package.package_id is not None:
             yield f'    // Package ID for extended message IDs\n'
+            yield '    /// <summary>Package metadata for extended message IDs.</summary>\n'
             yield f'    public static class PackageInfo\n'
             yield f'    {{\n'
+            yield '        /// <summary>Package identifier.</summary>\n'
             yield f'        public const byte PackageId = {package.package_id};\n'
             yield f'    }}\n\n'
 
@@ -2171,6 +2221,7 @@ class TestCSharpGen():
         yield '\n'
         yield f'namespace StructFrame.{pkg_pascal}\n'
         yield '{\n'
+        yield f'    /// <summary>Generated round-trip tests for the {package.name} package.</summary>\n'
         yield f'    public static class TestRoundtrip{pkg_pascal}\n'
         yield '    {\n'
 
@@ -2269,6 +2320,7 @@ class TestCSharpGen():
         yield '        private const int RtFail = 0;\n'
         yield '        private const int RtPass = 1;\n'
         yield '        private const int RtSkip = 2;\n\n'
+        yield '        /// <summary>Run all generated round-trip tests.</summary>\n'
         yield '        public static bool RunAll(bool verbose)\n'
         yield '        {\n'
         yield '            bool allOk = true;\n'
@@ -2307,6 +2359,7 @@ class TestCSharpGen():
         yield '            return allOk;\n'
         yield '        }\n\n'
 
+        yield '        /// <summary>Run the generated round-trip test executable.</summary>\n'
         yield '        public static int Main(string[] args)\n'
         yield '        {\n'
         yield '            bool verbose = args.Any(a => a == "-v" || a == "--verbose");\n'
