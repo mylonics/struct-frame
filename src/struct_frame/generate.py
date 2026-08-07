@@ -2688,6 +2688,17 @@ def _generateCSharpProjectFile(namespace):
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.*" PrivateAssets="All" />
   </ItemGroup>
 
+  <!-- Never compile build intermediates or outputs. The SDK already excludes the
+       default obj/ and bin/ via DefaultItemExcludes, so this is a no-op in a normal
+       build. It matters when BaseIntermediateOutputPath is redirected (artifacts
+       output, a Directory.Build.props override, or a nested project's obj landing
+       inside this tree): a leftover AssemblyInfo.cs then gets globbed and the build
+       fails with CS0579 duplicate-attribute errors that look nothing like the cause. -->
+  <ItemGroup>
+    <Compile Remove="**\\obj\\**" />
+    <Compile Remove="**\\bin\\**" />
+  </ItemGroup>
+
   <!-- Exclude all transports by default -->
   <ItemGroup>
     <Compile Remove="Framework\\Sdk\\Transports\\**" />

@@ -1,6 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <!-- Keep this a superset of the generated library's TargetFrameworks
+         (see _generateCSharpProjectFile in src/struct_frame/generate.py).
+         run_tests.py picks one TFM from the installed .NET SDK version unless
+         SF_DOTNET_TFM overrides it, and building a TFM this project does not
+         declare fails with NETSDK1047. -->
+    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
@@ -8,7 +13,29 @@
     <StartupObject>TestRunner</StartupObject>
   </PropertyGroup>
 
-  <!-- The following include is important and should not be removed as a way of fixing a c# compilation error. Look elsewhere to fix a c# compilation error. -->
+  <!-- Seeing "CS0246: The type or namespace name 'StructFrame' could not be found
+       (are you missing a using directive or an assembly reference?)"
+
+       Then the generated library is missing, not this reference. Regenerate it:
+
+           python test_all.py
+
+       (or run tests/run_tests.py with the only-generate flag to skip the tests).
+
+       Do NOT delete the ItemGroup below to make that error go away. It resolves
+       ..\generated\csharp\StructFrame.csproj, which is generated and gitignored,
+       and is the ONLY source of the StructFrame namespace: there is no NuGet
+       package and no shared source glob. Removing it does not fix the missing
+       library, it just turns one problem into hundreds of CS0246 errors across
+       every test file, plus "Negative Tests: C# - negative-test runner missing".
+       This ItemGroup has been deleted and restored repeatedly for that reason.
+
+       How the library usually goes missing: a `dotnet build` run by hand leaves
+       the .NET build server holding directory handles under tests/generated/csharp.
+       The next clean() then deletes that folder's contents but cannot remove the
+       folder itself (WinError 32), so the run aborts with the library already gone.
+       run_tests.py now shuts the build server down before cleaning, retries the
+       delete, and fails loudly rather than continuing on a half deleted tree. -->
   <ItemGroup>
     <ProjectReference Include="..\generated\csharp\StructFrame.csproj" />
   </ItemGroup>

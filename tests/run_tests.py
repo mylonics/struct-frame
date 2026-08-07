@@ -581,6 +581,45 @@ class TestRunner:
         except (OSError, ValueError, subprocess.SubprocessError) as e:
             return False, "", str(e)
     
+    def shutdown_dotnet_build_server(self):
+        """Release MSBuild/Roslyn file handles under tests/generated/csharp.
+
+        The .NET build server is a long-lived process that keeps directory
+        handles open after a build finishes. On Windows those handles make
+        rmtree fail with WinError 32, so clean() must shut it down first.
+        Any `dotnet build` run outside this script - including one typed by
+        hand while debugging - starts a server that will break the next run.
+        """
+        if not shutil.which("dotnet"):
+            return
+        self.run_cmd("dotnet build-server shutdown", timeout=60)
+
+    @staticmethod
+    def rmtree_retry(path: Path, attempts: int = 5, delay: float = 0.5) -> bool:
+        """Delete a tree, retrying while another process still holds handles.
+
+        Mirrors the PermissionError retry that generate.py already uses when
+        writing StructFrame.csproj. Returns True if the tree is gone.
+
+        rmtree deletes depth-first, so a failure part-way leaves an emptied
+        directory behind rather than the original tree - see clean() for why
+        that half-state is the dangerous outcome.
+        """
+        for attempt in range(attempts):
+            if not path.exists():
+                return True
+            # ignore_errors so one locked entry does not abort the sweep: plain
+            # rmtree raises on the first failure and never reaches its siblings,
+            # which is how a single held file used to leave most of the tree intact.
+            shutil.rmtree(path, ignore_errors=True)
+            if not path.exists():
+                return True
+            # PermissionError (WinError 32, handle held) and "directory is not
+            # empty" (WinError 145, deletes still pending) usually clear on retry.
+            if attempt < attempts - 1:
+                time.sleep(delay * (attempt + 1))
+        return not path.exists()
+
     def print_section(self, title: str):
         """Print a section header."""
         print(f"\n{'=' * 60}\n{title}\n{'=' * 60}")
@@ -601,18 +640,41 @@ class TestRunner:
     
     def clean(self):
         """Clean all generated, copied, and built files."""
+        # Must happen before the rmtree below: the .NET build server holds
+        # handles under tests/generated/csharp and would otherwise make the
+        # delete fail part-way, leaving an emptied directory.
+        self.shutdown_dotnet_build_server()
+
         print("[CLEAN] Deleting tests/generated folder...")
         gen_dir = self.tests_dir / "generated"
-        if gen_dir.exists():
-            shutil.rmtree(gen_dir)
+        if not self.rmtree_retry(gen_dir):
+            # An IDE C# language server (Microsoft.CodeAnalysis.LanguageServer,
+            # from the VS Code C# Dev Kit) keeps a handle on the generated project
+            # for as long as the workspace is open, so the directory itself often
+            # cannot be removed. That on its own is harmless - generation
+            # repopulates it. What is NOT safe is continuing with real files still
+            # in there, because a half-cleaned tree builds against stale sources.
+            leftover = [p for p in gen_dir.rglob("*") if p.is_file()]
+            if leftover:
+                raise RuntimeError(
+                    f"Could not clear {gen_dir} - {len(leftover)} file(s) are still held open.\n"
+                    f"  First few: {', '.join(str(p.relative_to(gen_dir)) for p in leftover[:3])}\n"
+                    f"  The tree is half-cleaned and NOT safe to build against. Close the editor\n"
+                    f"  indexing that folder (VS Code C# Dev Kit holds it), run\n"
+                    f"  'dotnet build-server shutdown', then re-run.\n"
+                    f"  Do NOT 'fix' the resulting CS0246 errors by editing\n"
+                    f"  tests/csharp/StructFrameTests.csproj - the ProjectReference there is correct."
+                )
+            print(f"  {Colors.warn_tag()} {gen_dir} could not be removed (held open by an "
+                  f"editor/language server), but it is empty - generation will repopulate it.")
         print("[CLEAN] Done.")
-        
+
         # Clean TypeScript output
         ts_out = self.tests_dir / "ts" / "ts_out"
         if ts_out.exists():
             print("[CLEAN] Deleting tests/ts/ts_out folder...")
             shutil.rmtree(ts_out)
-        
+
         # Clean build folders
         print("[CLEAN] Cleaning build folders...")
         cleaned = 0
@@ -622,7 +684,24 @@ class TestRunner:
                 if build_path.exists():
                     shutil.rmtree(build_path)
                     cleaned += 1
-        
+
+        # lang.build_dir only reaches tests/csharp/bin/Release/<tfm>, which
+        # leaves per-TFM/per-config intermediates behind. Stale obj/ trees are
+        # what produce CS0579 duplicate-attribute errors if anything ever
+        # redirects the intermediate path away from the SDK default.
+        # Not fatal: unlike tests/generated these hold no generated sources, so a
+        # leftover only risks a stale-intermediate build, not a missing library.
+        for stale in (self.tests_dir / "csharp" / "bin",
+                      self.tests_dir / "csharp" / "obj",
+                      self.tests_dir / "build" / "csharp_roundtrip"):
+            if not stale.exists():
+                continue
+            if self.rmtree_retry(stale):
+                cleaned += 1
+            else:
+                print(f"  {Colors.warn_tag()} Could not fully delete {stale} "
+                      f"(still held open); continuing with a stale intermediate tree")
+
         # Clean any .bin files in test directories
         for lang in self.languages.values():
             if lang.test_dir:
@@ -904,26 +983,59 @@ class TestRunner:
         if lang.id == "csharp":
             csproj = test_dir / "StructFrameTests.csproj"
             if csproj.exists():
+                gen_csproj = gen_dir / "StructFrame.csproj"
+
+                # StructFrameTests.csproj has a ProjectReference to this generated,
+                # gitignored project - the ONLY source of the StructFrame namespace.
+                # If it is missing, dotnet reports ~224 CS0246 "are you missing an
+                # assembly reference?" errors against the test sources and never
+                # mentions the generated library, which reliably gets the
+                # ProjectReference blamed and deleted. Say the real cause instead.
+                if not gen_csproj.exists():
+                    print(f"  {Colors.fail_tag()} Generated C# library missing: {gen_csproj}")
+                    print(f"      The C# code generation step did not run or was wiped by a failed clean.")
+                    print(f"      Re-run generation (python test_all.py) before building the C# tests.")
+                    print(f"      Do NOT remove the ProjectReference from StructFrameTests.csproj -")
+                    print(f"      it is correct, and removing it only converts this into CS0246 noise.")
+                    self.add_failure("compilation", "C#", None,
+                                     "generated StructFrame.csproj missing (generation did not run)")
+                    return False
+
+                # Belt-and-braces with clean(): covers the --no-clean path, where a
+                # stale intermediate tree from a differently-configured build survives.
+                self.rmtree_retry(gen_dir / "obj")
+
                 cmd = (
                     f'dotnet build "{csproj}" -c Release --framework {self.dotnet_framework} '
                     f'-o "{build_dir}" --verbosity quiet'
                 )
                 success, _, _ = self.run_cmd(cmd)
-                
-                # Also verify transport implementations compile
-                gen_csproj = gen_dir / "StructFrame.csproj"
-                if gen_csproj.exists():
-                    transport_build_dir = build_dir / "transport_verify"
-                    transport_build_dir.mkdir(parents=True, exist_ok=True)
-                    transport_cmd = (
-                        f'dotnet build "{gen_csproj}" -c Release --framework {self.dotnet_framework} '
-                        f'-o "{transport_build_dir}" -p:IncludeTransports=true --verbosity quiet'
-                    )
-                    transport_ok, _, _ = self.run_cmd(transport_cmd)
-                    if not transport_ok:
+
+                # Also verify transport implementations compile. The generated
+                # csproj gates these on IncludeSerialTransport/IncludeNetCoreServer;
+                # an unrecognised property would silently verify nothing.
+                transport_build_dir = build_dir / "transport_verify"
+                transport_build_dir.mkdir(parents=True, exist_ok=True)
+                transport_cmd = (
+                    f'dotnet build "{gen_csproj}" -c Release --framework {self.dotnet_framework} '
+                    f'-o "{transport_build_dir}" '
+                    f'-p:IncludeSerialTransport=true -p:IncludeNetCoreServer=true --verbosity quiet'
+                )
+                transport_ok, _, transport_err = self.run_cmd(transport_cmd, timeout=180)
+                if not transport_ok:
+                    # These transports pull System.IO.Ports and NetCoreServer from
+                    # NuGet. Offline or restore failures are an environment problem,
+                    # not a source defect - warn but do not fail the build.
+                    combined = (transport_err or "").lower()
+                    restore_issue = any(marker in combined for marker in
+                                        ("nu1101", "nu1301", "unable to load the service index",
+                                         "no such host is known", "restore"))
+                    if restore_issue:
+                        print(f"  {Colors.warn_tag()} Transport verification skipped (NuGet restore unavailable)")
+                    else:
                         print(f"  WARNING: Transport compilation verification failed (transport files may have errors)")
                         success = False
-                
+
                 return success
             return False
         
@@ -3017,7 +3129,14 @@ class TestRunner:
         except KeyboardInterrupt:
             print(f"\n{Colors.warn_tag()} Test run interrupted by user")
             return False
-        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError) as e:
+        except RuntimeError as e:
+            # Raised deliberately by this script with an actionable message.
+            # No traceback: it interleaves with stdout and buries the message.
+            sys.stdout.flush()
+            print(f"\n{Colors.fail_tag()} Test run failed: {e}")
+            sys.stdout.flush()
+            return False
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
             print(f"\n{Colors.fail_tag()} Test run failed: {e}")
             import traceback
             traceback.print_exc()
