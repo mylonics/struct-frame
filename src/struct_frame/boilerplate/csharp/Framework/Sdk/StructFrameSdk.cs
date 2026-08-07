@@ -195,6 +195,7 @@ namespace StructFrame.Sdk
         /// </summary>
         public event EventHandler? ConnectionClosed;
 
+        /// <summary>Creates an SDK client with the supplied configuration.</summary>
         public StructFrameSdk(StructFrameSdkConfig config)
         {
             _transport = config.Transport;
@@ -485,8 +486,10 @@ namespace StructFrame.Sdk
         }
 
         // Keep old names as thin wrappers so existing tests compile without changes.
+        /// <summary>Re-encode and send a parsed frame using the configured profile.</summary>
         [Obsolete("Use ReencodeAsync")]
         public Task<SendResult> Send(FrameMsgInfo frame) => ReencodeAsync(frame);
+        /// <summary>Forward an already-framed message without re-encoding.</summary>
         [Obsolete("Use ForwardAsync")]
         public Task<SendResult> SendDirect(FrameMsgInfo frame) => ForwardAsync(frame);
 

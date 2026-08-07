@@ -17,6 +17,7 @@ namespace StructFrame.Framing
         private int _offset;
         private int _size;
 
+        /// <summary>Creates a reader for the supplied profile.</summary>
         public BufferReader(ProfileConfig config, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             _config = config;
@@ -132,6 +133,7 @@ namespace StructFrame.Framing
     /// </summary>
     public class BufferReader<TProfile> : BufferReader where TProfile : struct, IProfileProvider
     {
+        /// <summary>Creates a reader for the compile-time profile.</summary>
         public BufferReader(Func<int, MessageInfo?>? getMessageInfo = null) : base(TProfile.Profile, getMessageInfo) { }
     }
 }

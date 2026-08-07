@@ -864,18 +864,20 @@ The generator enforces:
 - Envelope messages must have exactly one oneof field
 - Envelope oneof fields must be message types (not primitives/enums)
 - Envelope oneof using `msgid` discriminator must have messages with msgid
-- `extensions_start` must be ≥ 2 (at least one non-extension base field required)
-- `extensions_start` must equal an existing field number in the same scope
+- For message and oneof scopes, `extensions_start` must be ≥ 2 (at least one non-extension base field required)
+- For message and oneof scopes, `extensions_start` must equal an existing field number in the same scope
+- `extensions_start` is also accepted inside enums; enum entries with values `>= extensions_start` are excluded from the generation hash, but remain generated enum members
 - Message-level `extensions_start` cannot be combined with `oneof` fields — the wire serializes fields before oneofs, so extension fields would not be trailing. Use `option extensions_start` *inside* the `oneof` to add extension variants instead
 
 ## Wire Evolution (Extension Fields)
 
-`option extensions_start = N;` allows a message (or a `oneof` inside a message) to be extended with new fields in the future without breaking older receivers.
+`option extensions_start = N;` allows a message (or a `oneof` inside a message) to be extended with new fields in the future without breaking older receivers. It is also accepted inside enums to mark future enum values without changing the wire representation.
 
 ### How it works
 
 - Fields with number `< extensions_start` are **base fields** — always present on the wire, always covered by the magic-byte checksum seed.
 - Fields with number `>= extensions_start` are **extension fields** — newer senders include them; older receivers that received a shorter payload fill them with their [schema default](#field-default-values) on reception (zero if the field has no declared default — this is the behavior for every extension field until you add `[default = ...]` to it).
+- Enum values with number `>= extensions_start` are **extension values** — they are still emitted by every generator and still occupy the enum's normal one-byte representation. Unlike message and oneof scopes, enum scope does not require `N` to match an existing value or be at least `2`.
 - The magic bytes (CRC seed) are computed only from base fields. Adding extension fields never changes the magic bytes, so older parsers still validate the base portion correctly.
 - Extension bytes are still mixed into the full CRC *after* the magic seed, so corruption of extension data is detected.
 
@@ -966,6 +968,26 @@ message JobMessage {
 - **base_size** of the message uses the largest *base* variant size, not the largest extension variant size.
 - Magic bytes are computed from base variants only.
 - The discriminator field itself is always a base field (present in every frame).
+
+### Enum-level extensions
+
+An enum can use `extensions_start` to mark values introduced by newer schema versions:
+
+```proto
+enum JobStatus {
+  option extensions_start = 3;
+
+  UNKNOWN = 0;
+  QUEUED  = 1;
+  RUNNING = 2;
+
+  // Added in a later schema version
+  COMPLETE = 3;
+  FAILED   = 4;
+}
+```
+
+This option does not add extension bytes or change enum serialization: enum fields remain one byte, and all declared values are generated. Values at or above `extensions_start` are omitted from the generation hash, so adding them does not change that hash. The enum parser accepts an integer value without requiring it to match an existing enum member or to be at least `2`.
 
 ### `BASE_SIZE` constant
 

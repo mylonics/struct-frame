@@ -16,11 +16,17 @@ namespace StructFrame.Framing
         /// </summary>
         public enum State
         {
+            /// <summary>Reader is idle.</summary>
             Idle = 0,
+            /// <summary>Looking for the first frame start byte.</summary>
             LookingForStart1,
+            /// <summary>Looking for the second frame start byte.</summary>
             LookingForStart2,
+            /// <summary>Collecting frame header bytes.</summary>
             CollectingHeader,
+            /// <summary>Collecting frame payload bytes.</summary>
             CollectingPayload,
+            /// <summary>Parsing a complete buffer.</summary>
             BufferMode
         }
 
@@ -49,6 +55,7 @@ namespace StructFrame.Framing
         private byte _lastSeq;
         private bool _lastSeqValid;
 
+        /// <summary>Creates a reader for the supplied profile.</summary>
         public AccumulatingReader(ProfileConfig config, int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null)
         {
             _config = config;
@@ -720,6 +727,7 @@ namespace StructFrame.Framing
     /// </summary>
     public class AccumulatingReader<TProfile> : AccumulatingReader where TProfile : struct, IProfileProvider
     {
+        /// <summary>Creates a reader for the compile-time profile.</summary>
         public AccumulatingReader(int bufferSize = 1024, Func<int, MessageInfo?>? getMessageInfo = null)
             : base(TProfile.Profile, bufferSize, getMessageInfo) { }
     }

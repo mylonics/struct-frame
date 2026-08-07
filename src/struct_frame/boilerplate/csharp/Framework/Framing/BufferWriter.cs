@@ -17,6 +17,7 @@ namespace StructFrame.Framing
         private int _offset;
         private int _capacity;
 
+        /// <summary>Creates a writer for the supplied profile.</summary>
         public BufferWriter(ProfileConfig config)
         {
             _config = config;
@@ -113,6 +114,7 @@ namespace StructFrame.Framing
     /// </summary>
     public class BufferWriter<TProfile> : BufferWriter where TProfile : struct, IProfileProvider
     {
+        /// <summary>Creates a writer for the compile-time profile.</summary>
         public BufferWriter() : base(TProfile.Profile) { }
     }
 }

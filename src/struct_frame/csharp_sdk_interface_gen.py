@@ -280,7 +280,7 @@ class SdkInterfaceGen:
         yield f'        /// Send <see cref="{struct_name}"/> without extension fields (for legacy firmware).\n'
         yield '        /// </summary>\n'
         yield '        /// <remarks>\n'
-        yield f'        /// This method is deprecated. Use <see cref="Send{struct_name}"/> once all target\n'
+        yield f'        /// This method is deprecated. Use <c>Send{struct_name}</c> once all target\n'
         yield '        /// devices have been upgraded to firmware that understands the extension fields.\n'
         yield '        /// </remarks>\n'
         yield f'        [Obsolete("Use Send{struct_name} for extension-aware devices. {method_name} is a transitional helper for legacy firmware only.")]\n'

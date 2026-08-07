@@ -14,8 +14,11 @@ namespace StructFrame.Sdk
     /// </summary>
     public class TransportConfig
     {
+        /// <summary>Whether to reconnect automatically after a failure.</summary>
         public bool AutoReconnect { get; set; } = false;
+        /// <summary>Delay between reconnect attempts in milliseconds.</summary>
         public int ReconnectDelayMs { get; set; } = 1000;
+        /// <summary>Maximum reconnect attempts; zero means unlimited.</summary>
         public int MaxReconnectAttempts { get; set; } = 0; // 0 = infinite
     }
 
@@ -24,10 +27,14 @@ namespace StructFrame.Sdk
     /// </summary>
     public readonly struct SendResult
     {
+        /// <summary>Whether the send completed successfully.</summary>
         public bool Success { get; }
+        /// <summary>Number of bytes attempted.</summary>
         public int AttemptedBytes { get; }
+        /// <summary>Number of bytes written.</summary>
         public int BytesWritten { get; }
 
+        /// <summary>Creates a send result.</summary>
         public SendResult(bool success, int attemptedBytes, int bytesWritten)
         {
             Success = success;
@@ -107,26 +114,37 @@ namespace StructFrame.Sdk
     public abstract class BaseTransport : ITransport, IBufferReceiveTransport, IDisposable
     {
         // Volatile: written on connect/disconnect paths and read from receive threads.
+        /// <summary>Connection state shared across transport threads.</summary>
         protected volatile bool _connected;
+        /// <summary>Transport reconnect configuration.</summary>
         protected TransportConfig _config;
+        /// <summary>Number of reconnect attempts made.</summary>
         protected int _reconnectAttempts;
         private readonly SemaphoreSlim _sendSemaphore = new SemaphoreSlim(1, 1);
         private int _reconnectInProgress;
         private bool _disposed;
 
+        /// <summary>Raised when byte-array data is received.</summary>
         public event EventHandler<byte[]>? DataReceived;
+        /// <summary>Raised when memory data is received.</summary>
         public event EventHandler<ReadOnlyMemory<byte>>? DataReceivedMemory;
+        /// <summary>Raised when a transport error occurs.</summary>
         public event EventHandler<Exception>? ErrorOccurred;
+        /// <summary>Raised when the connection closes.</summary>
         public event EventHandler? ConnectionClosed;
 
+        /// <summary>Gets whether the transport is connected.</summary>
         public bool IsConnected => _connected;
 
+        /// <summary>Creates a base transport with optional configuration.</summary>
         protected BaseTransport(TransportConfig? config = null)
         {
             _config = config ?? new TransportConfig();
         }
 
+        /// <summary>Connects to the transport endpoint.</summary>
         public abstract Task ConnectAsync();
+        /// <summary>Disconnects from the transport endpoint.</summary>
         public abstract Task DisconnectAsync();
 
         /// <summary>
@@ -190,12 +208,14 @@ namespace StructFrame.Sdk
         protected virtual Task<int> SendCoreAsync(byte[] data)
             => throw new NotImplementedException("Override SendCoreAsync(ReadOnlyMemory<byte>) or SendCoreAsync(byte[])");
 
+        /// <summary>Raises data-received events for a byte array.</summary>
         protected void OnDataReceived(byte[] data)
         {
             DataReceivedMemory?.Invoke(this, data);
             DataReceived?.Invoke(this, data);
         }
 
+        /// <summary>Raises data-received events for a memory slice.</summary>
         protected void OnDataReceived(ReadOnlyMemory<byte> data)
         {
             DataReceivedMemory?.Invoke(this, data);
@@ -208,6 +228,7 @@ namespace StructFrame.Sdk
         private static byte[] ToByteArrayForLegacyEvent(ReadOnlyMemory<byte> data)
             => data.ToArray();
 
+        /// <summary>Raises an error event and starts reconnect handling when enabled.</summary>
         protected void OnErrorOccurred(Exception error)
         {
             ErrorOccurred?.Invoke(this, error);
@@ -217,6 +238,7 @@ namespace StructFrame.Sdk
             }
         }
 
+        /// <summary>Raises the connection-closed event and starts reconnect handling when enabled.</summary>
         protected void OnConnectionClosed()
         {
             _connected = false;
