@@ -42,6 +42,26 @@
 
 5. **Don't grep for `*.proto`.** Definitions live in `tests/proto/*.sf`.
 
+6. **Never delete the `ProjectReference` in `tests/csharp/StructFrameTests.csproj`.**
+   It points at `tests/generated/csharp/StructFrame.csproj` — generated,
+   gitignored, and the *only* source of the `StructFrame` namespace. If you see
+   `CS0246: The type or namespace name 'StructFrame' could not be found (are you
+   missing a using directive or an assembly reference?)`, the generated library is
+   missing; run `python test_all.py` to regenerate it. Removing the reference
+   turns one missing-library problem into ~224 CS0246 errors, and the next agent
+   adds it back — this file has oscillated for exactly this reason.
+
+7. **Don't run bare `dotnet build` on the generated C# project.** A `dotnet build`
+   run by hand starts the persistent .NET build server, which holds directory
+   handles under `tests/generated/csharp`. The next `clean()` then deletes the
+   folder's *contents* and fails to remove the folder itself (`WinError 32`),
+   aborting the run with the generated library already gone — which is what
+   produces the CS0246 storm above. `run_tests.py` now runs
+   `dotnet build-server shutdown` before cleaning and fails loudly rather than
+   continuing on a half-deleted tree, but if you build C# by hand, shut the server
+   down yourself afterwards. Omitting `-c`/`--framework` also builds every TFM in
+   `Debug`, leaving intermediates the runner did not expect.
+
 ## Quick reference
 
 ```bash

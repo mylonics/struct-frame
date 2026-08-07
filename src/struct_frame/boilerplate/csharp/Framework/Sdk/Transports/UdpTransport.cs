@@ -15,10 +15,15 @@ namespace StructFrame.Sdk
     /// </summary>
     public class UdpTransportConfig : TransportConfig
     {
+        /// <summary>Local UDP port to bind.</summary>
         public int LocalPort { get; set; } = 0;
+        /// <summary>Local address to bind.</summary>
         public string LocalAddress { get; set; } = "0.0.0.0";
+        /// <summary>Remote host name or IP address.</summary>
         public string RemoteHost { get; set; } = "127.0.0.1";
+        /// <summary>Remote UDP port.</summary>
         public int RemotePort { get; set; }
+        /// <summary>Whether broadcast datagrams are enabled.</summary>
         public bool EnableBroadcast { get; set; } = false;
     }
 
@@ -51,11 +56,13 @@ namespace StructFrame.Sdk
         private UdpClient? _client;
         private IPEndPoint? _remoteEndpoint;
 
+        /// <summary>Creates a UDP transport with the supplied configuration.</summary>
         public UdpTransport(UdpTransportConfig config) : base(config)
         {
             _udpConfig = config;
         }
 
+        /// <summary>Opens the UDP socket and starts receiving datagrams.</summary>
         public override async Task ConnectAsync()
         {
             try
@@ -86,6 +93,7 @@ namespace StructFrame.Sdk
             }
         }
 
+        /// <summary>Stops receiving datagrams and closes the UDP socket.</summary>
         public override async Task DisconnectAsync()
         {
             _connected = false;
@@ -96,6 +104,7 @@ namespace StructFrame.Sdk
         }
 
         // UdpClient.SendAsync accepts byte[], so no zero-copy opportunity here.
+        /// <summary>Sends framed data as a UDP datagram.</summary>
         protected override async Task<int> SendCoreAsync(ReadOnlyMemory<byte> data)
         {
             if (_client == null || !_connected)

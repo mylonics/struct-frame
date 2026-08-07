@@ -14,8 +14,11 @@ namespace StructFrame.Sdk
     /// </summary>
     public class TcpTransportConfig : TransportConfig
     {
+        /// <summary>Remote host name or IP address.</summary>
         public string Host { get; set; } = "localhost";
+        /// <summary>Remote TCP port.</summary>
         public int Port { get; set; }
+        /// <summary>Connection timeout in milliseconds.</summary>
         public int TimeoutMs { get; set; } = 5000;
         /// <summary>
         /// Size of the pre-allocated receive buffer. Larger buffers reduce allocation
@@ -54,12 +57,14 @@ namespace StructFrame.Sdk
         // Pre-allocated receive buffer to reduce allocation in receive loop
         private readonly byte[] _receiveBuffer;
 
+        /// <summary>Creates a TCP transport with the supplied configuration.</summary>
         public TcpTransport(TcpTransportConfig config) : base(config)
         {
             _tcpConfig = config;
             _receiveBuffer = new byte[config.ReceiveBufferSize];
         }
 
+        /// <summary>Connects to the configured TCP endpoint and starts receiving data.</summary>
         public override async Task ConnectAsync()
         {
             try
@@ -79,6 +84,7 @@ namespace StructFrame.Sdk
             }
         }
 
+        /// <summary>Stops receiving data and closes the TCP connection.</summary>
         public override async Task DisconnectAsync()
         {
             _connected = false;
@@ -90,6 +96,7 @@ namespace StructFrame.Sdk
         }
 
         // Override the ReadOnlyMemory overload for zero-copy sends via NetworkStream.
+        /// <summary>Sends framed data through the TCP connection.</summary>
         protected override async Task<int> SendCoreAsync(ReadOnlyMemory<byte> data)
         {
             if (_stream == null || !_connected)

@@ -13,10 +13,15 @@ namespace StructFrame.Sdk
     /// </summary>
     public class SerialTransportConfig : TransportConfig
     {
+        /// <summary>Serial port name, such as <c>COM1</c>.</summary>
         public string PortName { get; set; } = "COM1";
+        /// <summary>Serial port baud rate.</summary>
         public int BaudRate { get; set; } = 9600;
+        /// <summary>Number of data bits per character.</summary>
         public int DataBits { get; set; } = 8;
+        /// <summary>Serial port parity mode.</summary>
         public System.IO.Ports.Parity Parity { get; set; } = System.IO.Ports.Parity.None;
+        /// <summary>Serial port stop-bit mode.</summary>
         public System.IO.Ports.StopBits StopBits { get; set; } = System.IO.Ports.StopBits.One;
     }
 
@@ -32,11 +37,13 @@ namespace StructFrame.Sdk
         private System.Threading.CancellationTokenSource? _readCts;
         private Task? _readTask;
 
+        /// <summary>Creates a serial transport with the supplied configuration.</summary>
         public SerialTransport(SerialTransportConfig config) : base(config)
         {
             _serialConfig = config;
         }
 
+        /// <summary>Opens the serial port and starts receiving data.</summary>
         public override async Task ConnectAsync()
         {
             try
@@ -70,6 +77,7 @@ namespace StructFrame.Sdk
             }
         }
 
+        /// <summary>Stops receiving data and closes the serial port.</summary>
         public override async Task DisconnectAsync()
         {
             _connected = false;
@@ -105,6 +113,7 @@ namespace StructFrame.Sdk
             }
         }
 
+        /// <summary>Sends framed data through the serial port.</summary>
         protected override async Task<int> SendCoreAsync(byte[] data)
         {
             if (_serialPort == null || !_connected || !_serialPort.IsOpen)
@@ -197,10 +206,15 @@ namespace StructFrame.Sdk
     /// </summary>
     public interface IGenericSerialPort
     {
+        /// <summary>Opens the platform-specific serial port.</summary>
         Task<bool> OpenAsync();
+        /// <summary>Closes the platform-specific serial port.</summary>
         Task CloseAsync();
+        /// <summary>Writes data to the platform-specific serial port.</summary>
         Task<int> WriteAsync(byte[] data);
+        /// <summary>Reads available data from the platform-specific serial port.</summary>
         Task<byte[]> ReadAsync();
+        /// <summary>Gets whether the platform-specific serial port is open.</summary>
         bool IsOpen { get; }
     }
 
@@ -211,12 +225,14 @@ namespace StructFrame.Sdk
     {
         private readonly IGenericSerialPort _serialPort;
 
+        /// <summary>Creates a generic serial transport.</summary>
         public GenericSerialTransport(IGenericSerialPort serialPort, TransportConfig? config = null)
             : base(config)
         {
             _serialPort = serialPort;
         }
 
+        /// <summary>Opens the platform-specific serial port and starts receiving data.</summary>
         public override async Task ConnectAsync()
         {
             try
@@ -238,6 +254,7 @@ namespace StructFrame.Sdk
             }
         }
 
+        /// <summary>Stops receiving data and closes the platform-specific serial port.</summary>
         public override async Task DisconnectAsync()
         {
             _connected = false;
@@ -247,6 +264,7 @@ namespace StructFrame.Sdk
             }
         }
 
+        /// <summary>Sends framed data through the platform-specific serial port.</summary>
         protected override async Task<int> SendCoreAsync(byte[] data)
         {
             if (!_connected || !_serialPort.IsOpen)
