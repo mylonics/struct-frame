@@ -182,12 +182,17 @@ jobs:
         with: { submodules: true }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
           dotnet-quality: "ga"
       - name: Install Python deps
         run: pip install proto-schema-parser pytest
+      - name: Install Node deps
+        run: npm ci
+        working-directory: tests/ts
       - name: Run C# slice
         run: python test_all.py --skip-lang rust
 
@@ -204,12 +209,17 @@ jobs:
         with: { submodules: true }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
           dotnet-quality: "preview"
       - name: Install Python deps
         run: pip install proto-schema-parser pytest
+      - name: Install Node deps
+        run: npm ci
+        working-directory: tests/ts
       - name: Run C# slice
         run: python test_all.py --skip-lang rust
 
