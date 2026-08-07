@@ -629,7 +629,7 @@ starlight-tabs:where(.astro-esqgolmp){display:block}.tablist-wrapper:where(.astr
 
 <table><thead><tr><th>Feature</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td><code dir="auto">oneof</code> with <code dir="auto">msgid</code> discriminator</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">oneof</code> with <code dir="auto">field_order</code> discriminator</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">oneof</code> with <code dir="auto">discriminator = none</code></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple <code dir="auto">oneof</code> fields in one message</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Envelope messages (<code dir="auto">is_envelope</code>)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
 <blockquote>
-<p><strong>All gaps closed.</strong> <code dir="auto">discriminator = none</code> and multi-oneof encode/decode tested in all 7 languages: Python via <code dir="auto">tests/test_proto_field_types.py</code>; C and C++ via compiled binaries in the same file; TS/JS via <code dir="auto">checkDiscriminatorNone()</code>/<code dir="auto">checkMultiOneof()</code> in their standard test helpers; C# via <code dir="auto">CheckDiscriminatorNone()</code>/<code dir="auto">CheckMultiOneof()</code> in <code dir="auto">tests/csharp/include/StandardMessages.cs</code>; Rust via the <code dir="auto">test_oneof_special</code> runner in <code dir="auto">tests/rust/src/main.rs</code>.</p>
+<p><strong>All gaps closed.</strong> <code dir="auto">discriminator = none</code> and multi-oneof encode/decode tested in all 7 languages: Python via <code dir="auto">tests/test_proto_field_types.py</code>; C and C++ via compiled binaries in the same file; TS/JS via <code dir="auto">checkDiscriminatorNone()</code>/<code dir="auto">checkMultiOneof()</code> in their standard test helpers; C# via <code dir="auto">CheckDiscriminatorNone()</code>/<code dir="auto">CheckMultiOneof()</code> in <code dir="auto">tests/csharp/include/StandardMessages.cs</code>; Rust via the <code dir="auto">test_oneof_special</code> runner in <code dir="auto">tests/rust/src/main.rs</code>. A standalone <code dir="auto">test_oneof_special.*</code> runner (same scenarios: <code dir="auto">NoneDiscriminatorMessage</code>, <code dir="auto">MultiOneofMessage</code>) now also exists for C++, Python, TS, JS, and C# alongside Rust’s; C is N/A (no generated oneof accessors).</p>
 </blockquote>
 <h3 id="27-message-options">2.7 Message Options</h3>
 
@@ -699,7 +699,7 @@ starlight-tabs:where(.astro-esqgolmp){display:block}.tablist-wrapper:where(.astr
 
 <table><thead><tr><th>Option</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td><code dir="auto">msgid</code></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">variable = true</code></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">pkgid</code> (package ID)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">is_envelope</code></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">flatten</code></td><td>✅</td><td>N/A</td><td>✅</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr></tbody></table>
 <blockquote>
-<p><strong>C/Python <code dir="auto">flatten</code>:</strong> Verified by <code dir="auto">tests/test_proto_field_types.py</code> — Python <code dir="auto">to_dict()</code> inlines inner fields; C generates the struct inline (compile test). <strong>Rust envelope:</strong> <code dir="auto">tests/rust/src/main.rs</code> <code dir="auto">test_envelope_sdk</code> runner tests <code dir="auto">CommandEnvelope</code> (msgid discriminator) and <code dir="auto">RawDataEnvelope</code> (field_order discriminator) round-trips.</p>
+<p><strong>C/Python <code dir="auto">flatten</code>:</strong> Verified by <code dir="auto">tests/test_proto_field_types.py</code> — Python <code dir="auto">to_dict()</code> inlines inner fields; C generates the struct inline (compile test). <strong>Envelope round-trips:</strong> a <code dir="auto">test_envelope_sdk.*</code> runner tests <code dir="auto">CommandEnvelope</code> (msgid discriminator) and <code dir="auto">RawDataEnvelope</code> (field_order discriminator) round-trips in C++, Python, TS, JS, C#, and Rust (<code dir="auto">tests/rust/src/main.rs</code>); C is N/A (no SDK).</p>
 </blockquote>
 <hr>
 <h2 id="3-frame-profiles">3. Frame Profiles</h2>
@@ -1003,7 +1003,7 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 <p>Generated files: <code dir="auto">tests/generated/&#x3C;lang>/test_roundtrip_&#x3C;pkg>.{c,cpp,py,ts,js,cs,rs}</code> for all seven targets.</p>
 <hr>
 <h2 id="4-cross-language-compatibility-matrix">4. Cross-Language Compatibility Matrix</h2>
-<p>The test runner builds a compatibility matrix by having each language encode a frame and every other language decode it.</p>
+<p>The test runner establishes cross-language wire compatibility via a C++-anchored hub, not by literally running every encoder against every decoder: each language (1) encodes a frame to its own file, (2) that file is byte-compared against the C++ reference encoding and decoded by the C++ decoder, and (3) every language decodes the C++ reference bytes. Because step (2) proves each language’s bytes are byte-identical to the C++ reference, and step (3) proves every language can decode those reference bytes, any two languages are transitively guaranteed to interoperate without ever being executed back-to-back. See <code dir="auto">_validate_encoded_file</code>/<code dir="auto">_run_decode</code> in <code dir="auto">tests/run_tests.py</code>.</p>
 
 
 
@@ -1095,7 +1095,7 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 <h2 id="5-error-handling--negative-tests">5. Error Handling / Negative Tests</h2>
 <p>Test files: <code dir="auto">tests/{c,cpp,py,ts,js,csharp,rust}/test_negative.*</code></p>
 <p>See <code dir="auto">tests/NEGATIVE_TESTS.md</code> for full scenario descriptions.</p>
-<p>The 33 scenarios in the table below are registered in every language’s <code dir="auto">test_negative.*</code> file, covering corruption handling, the <code dir="auto">tryNext</code> drain contract, diagnostic counters (unified semantics in buffer and stream mode), minimal-profile resync, and a chunk-boundary split sweep. All seven languages additionally carry the four package-corruption scenarios (bulk <code dir="auto">pkg_id</code>/<code dir="auto">msg_id</code> corruption, cross-package rejection, network <code dir="auto">pkg_id</code> corruption) for 37 scenarios each; Python (42) adds status-machine and buffer-mode diagnostic extras.</p>
+<p>All 42 scenarios below (the 33 uniform scenarios, 4 package-corruption scenarios, and 5 status/diagnostics scenarios) are registered identically in every language’s <code dir="auto">test_negative.*</code> file, covering corruption handling, the <code dir="auto">tryNext</code> drain contract, diagnostic counters (unified semantics in buffer and stream mode), minimal-profile resync, and a chunk-boundary split sweep.</p>
 
 
 
@@ -1441,7 +1441,97 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 
 
 
-<table><thead><tr><th>Error Scenario (test name)</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td>Buffer mode: CRC failure counters</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: Sequence gap counted</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: garbage prefix partial recovers</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: oversized length recovers</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: recovers after CRC failure</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer reader: skips CRC-failed frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Bulk profile: Corrupted CRC</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted length field detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: CRC failure counter</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: Length error counter</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: Reset diagnostics</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: Sequence gap counter</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: Sync recovery counter</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid message ID rejection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid start bytes detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>IPC buffer: unknown msg_id advances one byte</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Minimal profile: Truncated frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: CRC error then valid frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: Corrupted middle frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Network profile: SysId/CompId corruption</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Partial frame across buffer boundary</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Sensor buffer: unknown msg_id resync</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Split sweep: two frames at every boundary</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Split-buffer: CRC error status preserved</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Stream mode: recovers after garbage prefix</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Garbage data handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: two frames byte-by-byte</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>TryNext drain: CRC/resync + valid</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>TryNext partial pending contract</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Truncated frame detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Zero-length buffer handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Error Scenario (test name)</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td>Buffer mode: CRC failure counters</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: Sequence gap counted</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: garbage prefix partial recovers</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: oversized length recovers</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: recovers after CRC failure</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer reader: skips CRC-failed frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Bulk profile: Corrupted CRC</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Bulk profile: Corrupted msg_id low byte</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Bulk profile: Corrupted pkg_id</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted length field detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Cross-package message rejection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: CRC failure counter</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: Length error counter</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: Reset diagnostics</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: Sequence gap counter</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Diagnostics: Sync recovery counter</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid message ID rejection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Invalid start bytes detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>IPC buffer: unknown msg_id advances one byte</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Minimal profile: Truncated frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: CRC error then valid frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple frames: Corrupted middle frame</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Network profile: Corrupted pkg_id</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Network profile: SysId/CompId corruption</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Partial frame across buffer boundary</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Sensor buffer: unknown msg_id resync</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Split sweep: two frames at every boundary</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Split-buffer: CRC error status preserved</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Status: CRC_FAILURE on bad checksum</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Status: SYNC_RECOVERY on forced resync</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Stream mode: recovers after garbage prefix</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Corrupted CRC detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: Garbage data handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Streaming: two frames byte-by-byte</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>TryNext drain: CRC/resync + valid</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>TryNext partial pending contract</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Truncated frame detection</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Zero-length buffer handling</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Buffer mode: invalid result carries diagnostics</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Status: COLLECTING during frame reception</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Status: WAITING_FOR_START before first byte</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
 <hr>
 <h2 id="6-sdk-classes">6. SDK Classes</h2>
 <h3 id="61-encoders--writers">6.1 Encoders / Writers</h3>
@@ -1738,7 +1828,7 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 <p><strong>Closed.</strong> <code dir="auto">StructFrameSdk</code> subscribe/dispatch is now tested with mock transports in six languages:</p>
 <ul>
 <li><strong>C++</strong> — <code dir="auto">tests/cpp/test_sdk_subscribe.cpp</code> (17 <code dir="auto">run_test</code> registrations)</li>
-<li><strong>Python</strong> — <code dir="auto">tests/py/test_sdk.py</code> (8 test functions, 31 <code dir="auto">run_test</code> assertions)</li>
+<li><strong>Python</strong> — <code dir="auto">tests/py/test_sdk.py</code> (8 test functions, 32 <code dir="auto">run_test</code> assertions)</li>
 <li><strong>TypeScript</strong> — <code dir="auto">tests/ts/test_sdk.ts</code> (7 test functions, 25 <code dir="auto">assert</code> assertions)</li>
 <li><strong>C#</strong> — <code dir="auto">tests/csharp/TestSdkSubscribe.cs</code> (32 <code dir="auto">Assert</code> assertions)</li>
 <li><strong>JavaScript</strong> — <code dir="auto">tests/js/test_sdk.js</code> (7 test functions, 25 <code dir="auto">assert</code> assertions)</li>
@@ -2057,7 +2147,7 @@ Proto: <code dir="auto">tests/proto/extended_messages.sf</code></p>
 
 
 
-<table><thead><tr><th>Cross-version interop scenario</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td>Newer sender → older receiver (length-bearing; base decodes, trailing ext bytes skipped)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Older sender → newer receiver (extension fields zero-filled to defaults)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Same-version round-trip regression guard (v2 → v2)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Newer ext oneof variant → older receiver degrades gracefully (unknown discriminator)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Older base oneof variant → newer receiver decodes</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multi-oneof: base oneof unaffected while 2nd oneof carries an extension variant</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted extension bytes invalidate full CRC (magic from base still matches)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Truncated payload (length &#x3C; base_size) rejected</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Length-less profile guard (Sensor/IPC: both sides must agree on full message size)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Variable base array + trailing extension field interop (both directions)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
+<table><thead><tr><th>Cross-version interop scenario</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td>Newer sender → older receiver (length-bearing; base decodes, trailing ext bytes skipped)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Older sender → newer receiver (extension fields filled with their schema defaults)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Same-version round-trip regression guard (v2 → v2)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Newer ext oneof variant → older receiver degrades gracefully (unknown discriminator)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Older base oneof variant → newer receiver decodes</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multi-oneof: base oneof unaffected while 2nd oneof carries an extension variant</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Corrupted extension bytes invalidate full CRC (magic from base still matches)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Truncated payload (length &#x3C; base_size) rejected</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Length-less profile guard (Sensor/IPC: both sides must agree on full message size)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Variable base array + trailing extension field interop (both directions)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
 <blockquote>
 <p>Genuine cross-version interop uses a paired schema set, <code dir="auto">tests/proto/wire_evolution_v1.sf</code> (base only, no <code dir="auto">extensions_start</code>) and <code dir="auto">tests/proto/wire_evolution_v2.sf</code> (same <code dir="auto">msg_id</code>/base fields + extension fields), generated into separate namespaces so each side is unaware of the other’s extra fields. Magic bytes and <code dir="auto">base_size</code> match across versions because they are computed from the base fields only, which is what lets cross-version CRC validation work over the length-bearing Standard/Bulk/Network profiles.</p>
 <p>Dedicated runners (scenarios 1–10 in every language):</p>
