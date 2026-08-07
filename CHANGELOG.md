@@ -6,9 +6,17 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
-## [0.10.5](https://github.com/mylonics/struct-frame/releases/tag/0.10.5) - 2026-08-07
+## [0.10.6](https://github.com/mylonics/struct-frame/releases/tag/0.10.6) - 2026-08-07
 
-<small>[Compare with v0.10.2](https://github.com/mylonics/struct-frame/compare/v0.10.2...0.10.5)</small>
+<small>[Compare with v0.10.5](https://github.com/mylonics/struct-frame/compare/v0.10.5...0.10.6)</small>
+
+### Fixed
+
+- Fix csproj issue (#366) ([c77a2c8](https://github.com/mylonics/struct-frame/commit/c77a2c890783784e63e667e3930fb5bc9e90bbaa) by Rijesh Augustine).
+
+## [v0.10.5](https://github.com/mylonics/struct-frame/releases/tag/v0.10.5) - 2026-08-06
+
+<small>[Compare with v0.10.2](https://github.com/mylonics/struct-frame/compare/v0.10.2...v0.10.5)</small>
 
 ### Added
 
