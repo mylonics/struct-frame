@@ -90,7 +90,13 @@ export class WebSocketTransport extends BaseTransport {
       }
 
       try {
-        this.ws.send(data);
+        if (data.buffer instanceof ArrayBuffer) {
+          this.ws.send(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+        } else {
+          const buffer = new ArrayBuffer(data.byteLength);
+          new Uint8Array(buffer).set(data);
+          this.ws.send(buffer);
+        }
         resolve(data.length);
       } catch (error) {
         reject(error);
