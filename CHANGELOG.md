@@ -6,9 +6,17 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
-## [0.10.6](https://github.com/mylonics/struct-frame/releases/tag/0.10.6) - 2026-08-07
+## [0.10.7](https://github.com/mylonics/struct-frame/releases/tag/0.10.7) - 2026-09-01
 
-<small>[Compare with v0.10.5](https://github.com/mylonics/struct-frame/compare/v0.10.5...0.10.6)</small>
+<small>[Compare with v0.10.6](https://github.com/mylonics/struct-frame/compare/v0.10.6...0.10.7)</small>
+
+### Fixed
+
+- Fixing ts lint issue (#368) ([77cb7a1](https://github.com/mylonics/struct-frame/commit/77cb7a1ca24475c6b043be326e7e3baac542830e) by Rijesh Augustine).
+
+## [v0.10.6](https://github.com/mylonics/struct-frame/releases/tag/v0.10.6) - 2026-08-07
+
+<small>[Compare with v0.10.5](https://github.com/mylonics/struct-frame/compare/v0.10.5...v0.10.6)</small>
 
 ### Fixed
 
