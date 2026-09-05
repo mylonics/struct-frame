@@ -13,6 +13,8 @@ import {
   NoneDiscriminatorMessage,
   MultiOneofMessage,
   BasicTypesMessage,
+  VariableOneofMessage,
+  VarEnvPayloadB,
 } from '../generated/ts/serialization-test.structframe';
 
 let passed = 0;
@@ -58,6 +60,28 @@ function main(): number {
     'MultiOneof: firstPayload discriminator is BasicTypesMessage msgid');
   const b2 = BasicTypesMessage.deserialize(dec2.firstPayloadData);
   expect(b2.smallInt === 99, 'MultiOneof: basic.smallInt round-trips');
+
+  // --- VariableOneofMessage: a wire frame that is exactly _size bytes long ---
+  // A variable oneof writes a uint16 length prefix ahead of the union payload
+  // that the fixed layout does not have, so the largest variant produces a
+  // frame exactly _size bytes long. The default 'auto' mode must still decode
+  // it as wire -- reading it as fixed takes the length prefix for payload.
+  const large = new VarEnvPayloadB({ flags: 0x0A0B0C0D, ratio: 1.5 });
+  const largeBytes = large.serialize();
+  const msg3 = new VariableOneofMessage({
+    header: 0x42,
+    dataDiscriminator: 2,  // large_payload
+    dataData: largeBytes,
+  });
+
+  const raw3 = msg3.serialize();
+  expect(raw3.length === VariableOneofMessage._size,
+    'VariableOneof: large variant frame is exactly _size bytes');
+  const dec3 = VariableOneofMessage.deserialize(raw3);
+  expect(dec3.header === 0x42, 'VariableOneof: header round-trips');
+  expect(dec3.dataDiscriminator === 2, 'VariableOneof: discriminator round-trips');
+  expect(Buffer.from(dec3.dataData).equals(largeBytes),
+    'VariableOneof: largePayload bytes round-trip at the ambiguous length');
 
   console.log(`\nSummary: ${passed} passed, ${failed} failed`);
   return failed > 0 ? 1 : 0;

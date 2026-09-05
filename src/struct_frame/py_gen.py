@@ -854,13 +854,24 @@ class MessagePyGen():
         result += '        \n'
         
         if msg.variable:
-            result += '        # Variable message - check encoding format\n'
-            result += '        if len(data) == cls.MAX_SIZE:\n'
-            result += '            # Minimal profile format (MAX_SIZE encoding)\n'
-            result += '            return cls._deserialize_fixed(data)\n'
-            result += '        else:\n'
-            result += '            # Variable-length format\n'
-            result += '            return cls._deserialize_variable(data)\n'
+            # A variable-length oneof writes a uint16 length prefix ahead of the
+            # union payload that the MAX_SIZE layout does not have, so once the
+            # largest variant is active the two encodings are different byte
+            # layouts of the same length and the size check can no longer tell
+            # them apart. C, C++ and Rust always read such a message with the
+            # variable decoder; match them.
+            if any(o.variable for o in msg.oneofs.values()):
+                result += '        # Variable oneof message - the union length prefix is always\n'
+                result += '        # on the wire, so the MAX_SIZE layout never applies here.\n'
+                result += '        return cls._deserialize_variable(data)\n'
+            else:
+                result += '        # Variable message - check encoding format\n'
+                result += '        if len(data) == cls.MAX_SIZE:\n'
+                result += '            # Minimal profile format (MAX_SIZE encoding)\n'
+                result += '            return cls._deserialize_fixed(data)\n'
+                result += '        else:\n'
+                result += '            # Variable-length format\n'
+                result += '            return cls._deserialize_variable(data)\n'
         else:
             result += '        # Fixed-size message - use standard deserialization\n'
             result += '        return cls._deserialize_fixed(data)\n'

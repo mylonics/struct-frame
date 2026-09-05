@@ -71,6 +71,30 @@ int main() {
   expect(dec2.second_payload.msg_payload.severity == MsgSeverity::SevWarn,
          "MultiOneof: msg_payload.severity round-trips");
 
+  // --- VariableOneofMessage: a wire frame that is exactly MAX_SIZE long ---
+  // A variable oneof writes a uint16 length prefix ahead of the union payload
+  // that the fixed layout does not have, so the largest variant produces a
+  // frame exactly MAX_SIZE bytes long. deserialize() must still read it as
+  // wire-encoded; the fixed layout would take the prefix for payload bytes.
+  VariableOneofMessage msg3{};
+  msg3.header = 0x42;
+  msg3.data_discriminator = VariableOneofMessage::DataField::LARGE_PAYLOAD;
+  msg3.data.large_payload.flags = 0x0A0B0C0D;
+  msg3.data.large_payload.ratio = 1.5f;
+
+  uint8_t buf3[VariableOneofMessage::MAX_SIZE];
+  size_t w3 = msg3.serialize(buf3);
+  expect(w3 == VariableOneofMessage::MAX_SIZE,
+         "VariableOneof: large variant frame is exactly MAX_SIZE bytes");
+  VariableOneofMessage dec3;
+  size_t n3 = dec3.deserialize(buf3, w3);
+  expect(n3 > 0, "VariableOneof: deserialize succeeds");
+  expect(dec3.header == 0x42, "VariableOneof: header round-trips");
+  expect(dec3.data_discriminator == VariableOneofMessage::DataField::LARGE_PAYLOAD,
+         "VariableOneof: discriminator round-trips");
+  expect(dec3.data.large_payload.flags == 0x0A0B0C0D,
+         "VariableOneof: large_payload round-trips at the ambiguous length");
+
   printf("\nSummary: %d passed, %d failed\n", g_passed, g_failed);
   return g_failed > 0 ? 1 : 0;
 }

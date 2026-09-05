@@ -300,7 +300,16 @@ class MessageTsClassGen():
     def _generate_unified_unpack(msg, package_msg_name):
         """Generate unified deserialize() method that works for both variable and non-variable messages."""
         result = ''
-        
+
+        # A variable-length oneof writes a uint16 length prefix ahead of the union
+        # payload that the fixed layout does not have, so a max-capacity wire frame
+        # and a fixed frame have the same length but different layouts. Ordinary
+        # variable fields do not have that problem (at max capacity the two
+        # encodings are byte-identical), which is what makes the length heuristic
+        # safe everywhere else. C, C++ and Rust always read a variable-oneof
+        # message with the wire decoder; match them for mode="auto".
+        variable_oneof = any(o.variable for o in msg.oneofs.values())
+
         result += f'\n  /**\n'
         result += f'   * Deserialize message from binary data.\n'
         result += f'   * Works for both variable and non-variable messages.\n'
@@ -314,12 +323,16 @@ class MessageTsClassGen():
         if msg.variable:
             result += f'    if (buffer && typeof buffer === "object" && "msgData" in buffer) {{\n'
             result += f'      const msgBuf = Buffer.from(buffer.msgData);\n'
-            result += f'      // msgLen heuristic: minimal profiles always send _size bytes (fixed layout);\n'
-            result += f'      // length-bearing profiles send wire-encoded size, which can equal _size when\n'
-            result += f'      // all variable fields are at max capacity — this case is ambiguous.\n'
-            result += f'      // For unambiguous decode when msgLen === _size, call deserializeFixed() or\n'
-            result += f'      // deserializeWire() directly with explicit mode="fixed" or mode="wire".\n'
-            result += f'      if (mode === "fixed" || (mode !== "wire" && buffer.msgLen === {package_msg_name}._size)) {{\n'
+            if variable_oneof:
+                result += f'      // Variable oneof: the union length prefix is always on the wire, so a\n'
+                result += f'      // msgLen === _size frame is still wire-encoded, not the fixed layout.\n'
+                result += f'      if (mode === "fixed") {{\n'
+            else:
+                result += f'      // msgLen heuristic: minimal profiles always send _size bytes (fixed layout);\n'
+                result += f'      // length-bearing profiles send wire-encoded size, which can equal _size when\n'
+                result += f'      // all variable fields are at max capacity — the two encodings are identical\n'
+                result += f'      // in that case, so either decoder yields the same message.\n'
+                result += f'      if (mode === "fixed" || (mode !== "wire" && buffer.msgLen === {package_msg_name}._size)) {{\n'
             result += f'        return {package_msg_name}.deserializeFixed(msgBuf);\n'
             result += f'      }}\n'
             result += f'      return {package_msg_name}._deserializeVariable(msgBuf);\n'
@@ -329,9 +342,10 @@ class MessageTsClassGen():
             result += f'    if (mode === "fixed") {{\n'
             result += f'      return {package_msg_name}.deserializeFixed(buf);\n'
             result += f'    }}\n'
-            result += f'    if (mode === "auto" && buf.length === {package_msg_name}._size) {{\n'
-            result += f'      return {package_msg_name}.deserializeFixed(buf);\n'
-            result += f'    }}\n'
+            if not variable_oneof:
+                result += f'    if (mode === "auto" && buf.length === {package_msg_name}._size) {{\n'
+                result += f'      return {package_msg_name}.deserializeFixed(buf);\n'
+                result += f'    }}\n'
             result += f'    return {package_msg_name}._deserializeVariable(buf);\n'
             result += f'  }}\n'
             result += f'\n'

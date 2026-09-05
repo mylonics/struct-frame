@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'generated', 'p
 
 from struct_frame.generated.serialization_test import (
     NoneDiscriminatorMessage, MultiOneofMessage, BasicTypesMessage,
+    VariableOneofMessage, VarEnvPayloadB,
 )
 
 _passed = 0
@@ -71,6 +72,26 @@ def main():
     expect(b2 is not None, "MultiOneof: first_payload auto-decoded")
     if b2 is not None:
         expect(b2.small_int == 99, "MultiOneof: basic.small_int round-trips")
+
+    # --- VariableOneofMessage: a wire frame that is exactly MAX_SIZE long ---
+    # A variable oneof writes a uint16 length prefix ahead of the union payload
+    # that the MAX_SIZE layout does not have, so the largest variant produces a
+    # frame exactly MAX_SIZE bytes long. deserialize() must not take it for the
+    # MAX_SIZE layout -- that reads the length prefix as payload bytes.
+    msg3 = VariableOneofMessage(
+        header=0x42,
+        data={"large_payload": VarEnvPayloadB(flags=0x0A0B0C0D, ratio=1.5)},
+        data_which="large_payload",
+    )
+    raw3 = msg3.serialize()
+    expect(len(raw3) == VariableOneofMessage.MAX_SIZE,
+           "VariableOneof: large variant frame is exactly MAX_SIZE bytes")
+    dec3 = VariableOneofMessage.deserialize(raw3)
+    expect(dec3.header == 0x42, "VariableOneof: header round-trips")
+    expect(dec3.data_which == "large_payload", "VariableOneof: active variant resolved")
+    lp = dec3.data.get("large_payload")
+    expect(lp is not None and lp.flags == 0x0A0B0C0D,
+           "VariableOneof: large_payload round-trips at the ambiguous length")
 
     print(f"\nSummary: {_passed} passed, {_failed} failed")
     return 1 if _failed > 0 else 0
