@@ -410,13 +410,26 @@ class MessagePyGen():
             
             # Pack the union field (whichever is active)
             result += f'        # Oneof {oneof_name} payload\n'
-            # We need to allocate the full size for the union
-            result += f'        union_data = b""\n'
-            result += f'        if self.{oneof_name}_which is not None:\n'
-            result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
-            result += f'        # Pad to union size\n'
-            result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
-            result += f'        data += union_data\n'
+            if oneof.variable:
+                # A variable oneof carries no length prefix in the fixed
+                # (MAX_SIZE) layout -- the union region is oneof.size, padded
+                # from the active variant, and the final ljust below tops the
+                # frame up to MAX_SIZE (which counts the 2 prefix bytes).
+                result += f'        # Fixed layout: no length prefix, union padded to {oneof.size} bytes\n'
+                result += f'        union_data = b""\n'
+                result += f'        if self.{oneof_name}_which is not None:\n'
+                result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
+                result += f'        data += union_data.ljust({oneof.size}, b"\\x00")\n'
+                result += f'        # MAX_SIZE counts the wire-only length prefix: top up to MAX_SIZE\n'
+                result += f'        data = data.ljust(self.MAX_SIZE, b"\\x00")\n'
+            else:
+                # We need to allocate the full size for the union
+                result += f'        union_data = b""\n'
+                result += f'        if self.{oneof_name}_which is not None:\n'
+                result += f'            union_data = self.{oneof_name}[self.{oneof_name}_which].serialize()\n'
+                result += f'        # Pad to union size\n'
+                result += f'        union_data = union_data.ljust({oneof.size}, b"\\x00")\n'
+                result += f'        data += union_data\n'
 
         result += '        return bytes(data)\n'
         return result
@@ -854,13 +867,43 @@ class MessagePyGen():
         result += '        \n'
         
         if msg.variable:
-            result += '        # Variable message - check encoding format\n'
-            result += '        if len(data) == cls.MAX_SIZE:\n'
-            result += '            # Minimal profile format (MAX_SIZE encoding)\n'
-            result += '            return cls._deserialize_fixed(data)\n'
-            result += '        else:\n'
-            result += '            # Variable-length format\n'
-            result += '            return cls._deserialize_variable(data)\n'
+            # A variable-length oneof writes a uint16 length prefix ahead of the
+            # union payload that the MAX_SIZE layout does not have, so once the
+            # largest variant is active the two encodings are different byte
+            # layouts of the same length. The layout cannot be derived from the
+            # schema or the payload length alone -- the profile that framed the
+            # payload decides it: length-bearing profiles always carry the wire
+            # form, while minimal profiles (has_length == false) carry the fixed
+            # form produced by serialize_max_size().
+            #
+            # deserialize() therefore keeps the length heuristic: a MAX_SIZE
+            # payload is read with the fixed-layout decoder, anything else with
+            # the wire decoder. That is correct in the only ambiguous case
+            # (MAX_SIZE bytes) whenever the sender was a minimal profile, and it
+            # keeps serialize_max_size() -> deserialize() round-trips working
+            # for ProfileSensor/ProfileIPC. A caller holding a length-bearing
+            # profile's wire frame that happens to be exactly MAX_SIZE bytes
+            # must decode explicitly with _deserialize_variable() instead.
+            #
+            # Exception: a discriminator-less oneof (discriminator = none) has
+            # nothing on the fixed layout telling the reader which union member
+            # is active, so its MAX_SIZE read cannot populate the variant. Such
+            # a message is always read with the wire decoder, matching C, C++
+            # and Rust.
+            wire_only = any(
+                o.variable and o.discriminator_type is None for o in msg.oneofs.values())
+            if wire_only:
+                result += '        # Discriminator-less variable oneof - only the wire encoding\n'
+                result += '        # records the active variant, so the fixed layout cannot be read.\n'
+                result += '        return cls._deserialize_variable(data)\n'
+            else:
+                result += '        # Variable message - check encoding format\n'
+                result += '        if len(data) == cls.MAX_SIZE:\n'
+                result += '            # Minimal profile format (MAX_SIZE encoding)\n'
+                result += '            return cls._deserialize_fixed(data)\n'
+                result += '        else:\n'
+                result += '            # Variable-length format\n'
+                result += '            return cls._deserialize_variable(data)\n'
         else:
             result += '        # Fixed-size message - use standard deserialization\n'
             result += '        return cls._deserialize_fixed(data)\n'

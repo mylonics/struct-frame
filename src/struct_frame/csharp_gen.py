@@ -71,6 +71,79 @@ def _csharp_scalar_default_literal(field, base_type):
     return f"{field.default}"
 
 
+def _oneof_payload_cases(oneof):
+    """Return ``(discriminator_value, field_name, field)`` for each union variant.
+
+    Variants repeating a discriminator value already emitted are dropped so the
+    generated ``switch`` can never carry duplicate case labels (first wins --
+    which is what the old declaration-order chain did for such a schema too).
+    """
+    cases = []
+    seen = set()
+    for disc_val, field_name, _field_size in oneof.variant_info:
+        if disc_val in seen:
+            continue
+        seen.add(disc_val)
+        cases.append((disc_val, field_name, oneof.fields[field_name]))
+    return cases
+
+
+def _oneof_payload_switch(oneof, oneof_name, indent, target_offset, clear_span=None):
+    """Generate the union-payload write as a ``switch`` on the discriminator.
+
+    The discriminator -- not property nullability or declaration order -- decides
+    which union member is serialized. Members of the other variants may well be
+    non-null (a nested type carrying schema defaults is constructed eagerly, and
+    a reused message object keeps whatever was assigned before), so picking the
+    first non-null property would happily write variant A's bytes underneath
+    variant B's discriminator.
+
+    Args:
+        oneof: the oneof model (must have a discriminator).
+        oneof_name: the oneof's schema name, source of the property name.
+        indent: leading whitespace for the emitted ``switch``.
+        target_offset: C# expression for where the payload starts in ``buffer``.
+        clear_span: optional C# span expression covering the union bytes. When
+            given, that range is zeroed before the ``switch`` runs, so a
+            caller-supplied buffer cannot leak stale bytes into the frame when
+            the selected member is null or a shorter variant follows a longer
+            one.
+    """
+    oneof_pascal = pascal_case(oneof_name)
+    body = ''
+    if clear_span:
+        body += f'{indent}// Clear the full union span first: the selected member may be null\n'
+        body += f'{indent}// or shorter than a variant previously written into this buffer.\n'
+        body += f'{indent}{clear_span}.Clear();\n'
+    body += f'{indent}switch ((int){oneof_pascal}Discriminator)\n'
+    body += indent + '{\n'
+    for disc_val, field_name, _field in _oneof_payload_cases(oneof):
+        field_var = pascal_case(field_name)
+        body += f'{indent}    case {disc_val}:  // {field_name}\n'
+        body += f'{indent}        if ({field_var} != null) {field_var}.SerializeTo(buffer, {target_offset});\n'
+        body += f'{indent}        break;\n'
+    body += indent + '}\n'
+    return body
+
+
+def _oneof_payload_declaration_order(oneof, indent, target_offset):
+    """Union write for ``discriminator = none`` oneofs.
+
+    Nothing on the wire identifies the active variant, so the first non-null
+    member wins -- the application is responsible for keeping exactly one set.
+    """
+    body = ''
+    first = True
+    for field_name, _field in oneof.fields.items():
+        field_var = pascal_case(field_name)
+        body += f'{indent}{"if" if first else "else if"} ({field_var} != null)\n'
+        first = False
+        body += indent + '{\n'
+        body += f'{indent}    {field_var}.SerializeTo(buffer, {target_offset});\n'
+        body += indent + '}\n'
+    return body
+
+
 def format_xml_summary(comments, indent='    ', fallback=None):
     """
     Format multi-line comments into a single XML summary block.
@@ -705,22 +778,47 @@ class MessageCSharpGen():
                     offset += 1
             
             result += f'            // Oneof {oneof_name} payload (union size: {oneof.size})\n'
-            first = True
-            for field_name, field in oneof.fields.items():
-                type_name = field.field_type
-                field_var = pascal_case(field_name)
-                if first:
-                    result += f'            if ({field_var} != null)\n'
-                    first = False
-                else:
-                    result += f'            else if ({field_var} != null)\n'
-                result += '            {\n'
-                result += f'                {field_var}.SerializeTo(buffer, offset + {offset});\n'
-                result += '            }\n'
+            if oneof.discriminator_type is not None:
+                # SerializeTo writes into a caller-owned buffer, so the union
+                # bytes are zeroed when no payload is written -- otherwise a
+                # reused buffer would keep a previous message's variant bytes.
+                result += _oneof_payload_switch(
+                    oneof, oneof_name, '            ', f'offset + {offset}',
+                    clear_span=f'buffer.AsSpan(offset + {offset}, {oneof.size})')
+            else:
+                result += _oneof_payload_declaration_order(
+                    oneof, '            ', f'offset + {offset}')
             offset += oneof.size
 
         result += f'            return MaxSize;\n'
         result += '        }\n'
+
+        # A variable-length oneof puts a uint16 length prefix in front of the
+        # union payload that the MAX_SIZE layout does not have, so once the
+        # largest variant is active the two encodings are different byte
+        # layouts of the same length. The layout cannot be derived from the
+        # schema or from the payload length alone -- the profile that framed
+        # the payload decides it: length-bearing profiles always carry the
+        # wire form, while minimal profiles (HasLength == false) carry the
+        # fixed form produced by SerializeMaxSize().
+        #
+        # Deserialize() therefore keeps the length heuristic: a MaxSize
+        # payload is read with the fixed-layout decoder, anything else with
+        # the wire decoder. That is correct in the only ambiguous case
+        # (MaxSize bytes) whenever the sender was a minimal profile, and it
+        # keeps SerializeMaxSize() -> Deserialize() round-trips working for
+        # ProfileSensor/ProfileIPC. A caller holding a length-bearing
+        # profile's wire frame that happens to be exactly MaxSize bytes must
+        # pass an explicit layout -- DeserializeFixed()/DeserializeVariable()
+        # below -- just like the generated C struct reader does.
+        #
+        # Exception: a discriminator-less oneof (discriminator = none) has
+        # nothing on the fixed layout telling the reader which union member
+        # is active, so its MAX_SIZE read cannot populate the variant. Such
+        # a message is always read with the wire decoder, matching C, C++
+        # and Rust.
+        wire_only_variable_oneof = any(
+            o.variable and o.discriminator_type is None for o in msg.oneofs.values())
 
         # Generate Deserialize() static method
         result += '\n'
@@ -728,26 +826,61 @@ class MessageCSharpGen():
         result += '        /// Deserialize a <c>ReadOnlySpan&lt;byte&gt;</c> into this message type.\n'
         result += '        /// This is the primary implementation - the <c>byte[]</c> and\n'
         result += '        /// <see cref="FrameMsgInfo"/> overloads delegate here.\n'
-        if msg.variable:
+        if msg.variable and wire_only_variable_oneof:
+            result += '        /// This message carries a variable-length oneof without a\n'
+            result += '        /// discriminator, which only the wire encoding records - so it\n'
+            result += '        /// is always read with the variable decoder, never the MAX_SIZE one.\n'
+        elif msg.variable and any(o.variable for o in msg.oneofs.values()):
+            result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding.\n'
+            result += '        /// This message carries a variable-length oneof, whose wire form is\n'
+            result += '        /// exactly MaxSize bytes when the largest variant is active; a minimal\n'
+            result += '        /// profile (no length field) sends the fixed layout at that length, so\n'
+            result += '        /// the length check resolves it. A length-bearing profile frame of\n'
+            result += '        /// exactly MaxSize bytes needs an explicit layout: use\n'
+            result += '        /// <see cref="DeserializeVariable"/>.\n'
+        elif msg.variable:
             result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding.\n'
         result += '        /// </summary>\n'
         result += f'        public static {structName} Deserialize(ReadOnlySpan<byte> data)\n'
         result += '        {\n'
-        
+
         # For variable messages, detect format based on size
         if msg.variable:
-            result += f'            // Variable message - detect encoding format\n'
-            result += f'            if (data.Length == MaxSize)\n'
-            result += '            {\n'
-            result += f'                // MAX_SIZE encoding (minimal profiles)\n'
-            result += f'                return _DeserializeMaxSize(data);\n'
-            result += '            }\n'
-            result += '            else\n'
-            result += '            {\n'
-            result += f'                // Variable-length encoding\n'
-            result += f'                return _DeserializeVariable(data);\n'
-            result += '            }\n'
+            if wire_only_variable_oneof:
+                result += f'            // Discriminator-less variable oneof - only the wire encoding\n'
+                result += f'            // records the active variant, so the fixed layout cannot be read.\n'
+                result += f'            return _DeserializeVariable(data);\n'
+            else:
+                result += f'            // Variable message - detect encoding format\n'
+                result += f'            if (data.Length == MaxSize)\n'
+                result += '            {\n'
+                result += f'                // MAX_SIZE encoding (minimal profiles)\n'
+                result += f'                return _DeserializeMaxSize(data);\n'
+                result += '            }\n'
+                result += '            else\n'
+                result += '            {\n'
+                result += f'                // Variable-length encoding\n'
+                result += f'                return _DeserializeVariable(data);\n'
+                result += '            }\n'
             result += '        }\n'
+
+            # Public explicit-layout decode entry points. The length heuristic
+            # in Deserialize() resolves the ambiguous MaxSize case as the fixed
+            # (minimal profile) layout; a caller holding a length-bearing
+            # profile's wire frame of exactly MaxSize bytes uses
+            # DeserializeVariable() instead.
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += '        /// Deserialize a fixed-layout (MAX_SIZE) payload, as produced by\n'
+            result += '        /// <see cref="SerializeMaxSize"/> for minimal profiles (no length field).\n'
+            result += '        /// </summary>\n'
+            result += f'        public static {structName} DeserializeFixed(ReadOnlySpan<byte> data) => _DeserializeMaxSize(data);\n'
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += '        /// Deserialize a variable-length (wire) payload, as produced by\n'
+            result += '        /// <see cref="Serialize"/> on length-bearing profiles.\n'
+            result += '        /// </summary>\n'
+            result += f'        public static {structName} DeserializeVariable(ReadOnlySpan<byte> data) => _DeserializeVariable(data);\n'
             
             # Add _DeserializeMaxSize for variable messages
             result += '\n'
@@ -1086,22 +1219,26 @@ class MessageCSharpGen():
                 else:  # field_order
                     result += f'            buffer[offset++] = (byte){oneof_pascal}Discriminator;\n'
             if oneof.variable:
+                # The discriminator picks the variant; the length prefix and the
+                # offset advance must match SerializedSize() for every value it
+                # can hold, including one whose union member was left null.
                 result += f'            // Oneof {oneof_name} variable-length union payload\n'
-                for disc_val, field_name, field_size in oneof.variant_info:
+                result += f'            switch ((int){oneof_pascal}Discriminator)\n'
+                result += '            {\n'
+                for disc_val, field_name, field in _oneof_payload_cases(oneof):
                     field_var = pascal_case(field_name)
-                    effective_size = max(field_size, oneof.min_size_override) if oneof.min_size_override else field_size
-                    result += f'            if ((int){oneof_pascal}Discriminator == {disc_val} && {field_var} != null)\n'
-                    result += f'            {{\n'
-                    result += f'                BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), (ushort){effective_size});\n'
-                    result += f'                offset += 2;\n'
-                    result += f'                {field_var}.SerializeTo(buffer, offset);\n'
-                    result += f'                offset += {effective_size};\n'
-                    result += f'            }}\n'
-                result += f'            else if ({oneof_pascal}Discriminator == 0 || ({" && ".join(f"(int){oneof_pascal}Discriminator != {dv}" for dv, _, _ in oneof.variant_info)}))\n'
-                result += f'            {{\n'
-                result += f'                // Unknown or NONE discriminator: write 0-length payload\n'
-                result += f'                BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), 0); offset += 2;\n'
-                result += f'            }}\n'
+                    effective_size = max(field.size, oneof.min_size_override) if oneof.min_size_override else field.size
+                    result += f'                case {disc_val}:  // {field_name}\n'
+                    result += f'                    BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), (ushort){effective_size});\n'
+                    result += f'                    offset += 2;\n'
+                    result += f'                    if ({field_var} != null) {field_var}.SerializeTo(buffer, offset);\n'
+                    result += f'                    offset += {effective_size};\n'
+                    result += f'                    break;\n'
+                result += '                default:\n'
+                result += '                    // Unknown or NONE discriminator: write 0-length payload\n'
+                result += '                    BinaryPrimitives.WriteUInt16LittleEndian(buffer.AsSpan(offset, 2), 0); offset += 2;\n'
+                result += '                    break;\n'
+                result += '            }\n'
             elif oneof.discriminator_type is not None:
                 _trim_label = f'trimmed union (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union'
                 result += f'            // Oneof {oneof_name} {_trim_label}\n'
@@ -1111,32 +1248,14 @@ class MessageCSharpGen():
                     result += f'                if ((int){oneof_pascal}Discriminator == {disc_val}) _{oneof_name}_tlen = {field_size};\n'
                 if oneof.min_size_override:
                     result += f'                if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
-                first = True
-                for field_name, field in oneof.fields.items():
-                    field_var = pascal_case(field_name)
-                    if first:
-                        result += f'                if ({field_var} != null)\n'
-                        first = False
-                    else:
-                        result += f'                else if ({field_var} != null)\n'
-                    result += '                {\n'
-                    result += f'                    {field_var}.SerializeTo(buffer, offset);\n'
-                    result += '                }\n'
+                # The buffer is freshly allocated (and therefore zeroed) here, so
+                # an unset variant needs no explicit clear.
+                result += _oneof_payload_switch(oneof, oneof_name, '                ', 'offset')
                 result += f'                offset += _{oneof_name}_tlen;\n'
                 result += f'            }}\n'
             else:
                 result += f'            // Oneof {oneof_name} union payload\n'
-                first = True
-                for field_name, field in oneof.fields.items():
-                    field_var = pascal_case(field_name)
-                    if first:
-                        result += f'            if ({field_var} != null)\n'
-                        first = False
-                    else:
-                        result += f'            else if ({field_var} != null)\n'
-                    result += '            {\n'
-                    result += f'                {field_var}.SerializeTo(buffer, offset);\n'
-                    result += '            }\n'
+                result += _oneof_payload_declaration_order(oneof, '            ', 'offset')
                 result += f'            offset += {oneof.size};\n'
         
         result += '            return buffer;\n'

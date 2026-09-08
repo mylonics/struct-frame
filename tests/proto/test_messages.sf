@@ -461,3 +461,37 @@ message MinSizeOneofMessage {
     VarEnvPayloadB large_payload = 2;
   }
 }
+
+// ============================================================================
+// Defaulted Oneof Variant Test (msgid: 226)
+// A union member whose type carries schema defaults is materialised eagerly by
+// generators that map union members onto nullable references (C#), so it stays
+// non-null while a *different* variant is the active one. Serialization must
+// therefore pick the payload from the discriminator, never from declaration
+// order or property nullability.
+// ============================================================================
+
+// Variant A: carries defaults, so generated code constructs it up front.
+message DefaultedVariantA {
+  uint8  code  = 1 [default = 170];
+  uint16 value = 2 [default = 4660];
+}
+
+// Variant B: no defaults - stays unset until the application assigns it.
+message DefaultedVariantB {
+  uint32 payload = 1;
+}
+
+// Envelope whose first union member is the default-carrying variant.
+message DefaultedOneofEnvelope {
+  option msgid = 226;
+  option is_envelope = true;
+
+  uint8 header = 1;
+
+  oneof command {
+    option discriminator = "field_order";
+    DefaultedVariantA command_a = 1;
+    DefaultedVariantB command_b = 2;
+  }
+}

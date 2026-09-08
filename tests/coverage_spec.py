@@ -220,6 +220,18 @@ SECTIONS = [
                     _full("`oneof` with `discriminator = none`", "✅"),
                     _full("Multiple `oneof` fields in one message", "✅"),
                     _full("Envelope messages (`is_envelope`)", "✅"),
+                    _row(
+                        "Discriminator (not declaration order) selects the "
+                        "serialized union payload",
+                        {"C": "N/A", "C++": "N/A", "Python": "N/A", "TS": "N/A",
+                         "JS": "N/A", "C#": "✅", "Rust": "N/A"},
+                    ),
+                    _row(
+                        "`oneof` with `option variable = true` decoded in both "
+                        "the wire layout and the minimal-profile fixed layout",
+                        {"C": "N/A", "C++": "✅", "Python": "✅", "TS": "✅",
+                         "JS": "✅", "C#": "✅", "Rust": "✅"},
+                    ),
                 ],
                 "caption": (
                     "> **All gaps closed.** `discriminator = none` and "
@@ -234,7 +246,34 @@ SECTIONS = [
                     "A standalone `test_oneof_special.*` runner (same scenarios: "
                     "`NoneDiscriminatorMessage`, `MultiOneofMessage`) now also "
                     "exists for C++, Python, TS, JS, and C# alongside Rust's; C "
-                    "is N/A (no generated oneof accessors)."
+                    "is N/A (no generated oneof accessors).\n\n"
+                    "> **Payload selection.** Only C# can hold more than one "
+                    "union member at once -- they are separate nullable "
+                    "properties, and a variant whose type carries schema "
+                    "defaults is constructed eagerly -- so only there can "
+                    "serialization pick the wrong one. `DefaultedOneofEnvelope` "
+                    "in `tests/csharp/test_oneof_special.cs` covers all three C# "
+                    "serialization paths (fixed/MAX_SIZE, `SerializeTo` into a "
+                    "reused buffer, and both variable-length forms). Elsewhere "
+                    "the union is a single storage location (C/C++/Rust union, "
+                    "TS/JS payload buffer, Python `_which` key), so there is no "
+                    "non-active member to pick by mistake.\n\n"
+                    "> **Variable oneof decode.** A `oneof` with `option variable "
+                    "= true` puts a uint16 length prefix in front of the union "
+                    "payload that the fixed (MAX_SIZE) layout does not have, so "
+                    "its largest variant produces a wire frame exactly MAX_SIZE "
+                    "bytes long — the same length as the fixed layout a minimal "
+                    "profile (no length field) sends. Only the framing profile "
+                    "can tell the two layouts apart, so the auto decode path "
+                    "resolves that length as the fixed layout and a max-length "
+                    "wire frame is decoded explicitly (`mode=\"wire\"` in TS/JS, "
+                    "`DeserializeVariable()` in C#, `_deserialize_variable()` in "
+                    "Python). Each `test_oneof_special` runner round-trips "
+                    "`VariableOneofMessage` in the wire layout at that exact "
+                    "length plus the minimal-profile fixed layout through the "
+                    "auto path. C is N/A: it already skips the length check for "
+                    "every message with a oneof, and has no generated oneof "
+                    "accessors to test with."
                 ),
             },
             {

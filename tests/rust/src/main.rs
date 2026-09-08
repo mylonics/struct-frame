@@ -875,6 +875,35 @@ fn run_oneof_special_tests() {
         }
     }
 
+    // --- VariableOneofMessage: a wire frame that is exactly MAX_SIZE long ---
+    // A variable oneof writes a uint16 length prefix ahead of the union payload
+    // that the fixed layout does not have, so the largest variant packs to
+    // exactly MAX_SIZE bytes. unpack() must still read it as wire-encoded; the
+    // fixed layout would take the length prefix for payload bytes.
+    let mut msg3 = VariableOneofMessage::default();
+    msg3.header = 0x42;
+    let mut large = VarEnvPayloadB::default();
+    large.flags = 0x0A0B0C0D;
+    large.ratio = 1.5;
+    msg3.set_large_payload(&large);
+
+    let mut buf3 = [0u8; VariableOneofMessage::MAX_SIZE];
+    let n3 = msg3.pack(&mut buf3);
+    expect!(n3 == VariableOneofMessage::MAX_SIZE,
+            "VariableOneof: large variant frame is exactly MAX_SIZE bytes");
+    let dec3 = VariableOneofMessage::unpack(&buf3[..n3]);
+    expect!(dec3.is_some(), "VariableOneof: unpack succeeds");
+    if let Some(d) = dec3 {
+        expect!(d.header == 0x42, "VariableOneof: header round-trips");
+        expect!(d.data_discriminator == 2, "VariableOneof: discriminator round-trips");
+        let lp = d.get_large_payload();
+        expect!(lp.is_some(), "VariableOneof: get_large_payload() returns Some");
+        if let Some(l) = lp {
+            expect!(l.flags == 0x0A0B0C0D,
+                    "VariableOneof: large_payload round-trips at the ambiguous length");
+        }
+    }
+
     println!("\nSummary: {} passed, {} failed", passed, failed);
     if failed > 0 {
         std::process::exit(1);

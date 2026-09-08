@@ -50,9 +50,13 @@ if (!fs.existsSync(baseline)) {
   process.exit(1);
 }
 
+// Split on \r?\n, not \n: the baseline is stored with LF but git checks it out
+// with CRLF on Windows (core.autocrlf), and a trailing \r on every entry made
+// each one compare unequal — reporting the whole baseline as REMOVED.
 const expected = fs.readFileSync(baseline, 'utf8')
-  .split('\n')
-  .filter(l => l.trim() && !l.startsWith('#'));
+  .split(/\r?\n/)
+  .map(l => l.trim())
+  .filter(l => l && !l.startsWith('#'));
 
 const removed = expected.filter(e => !current.includes(e));
 const added = current.filter(e => !expected.includes(e));

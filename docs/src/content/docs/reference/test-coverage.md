@@ -115,8 +115,14 @@ Test file: `ComprehensiveArrayMessage` in `tests/proto/test_messages.sf`
 | `oneof` with `discriminator = none` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Multiple `oneof` fields in one message | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Envelope messages (`is_envelope`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Discriminator (not declaration order) selects the serialized union payload | N/A | N/A | N/A | N/A | N/A | ✅ | N/A |
+| `oneof` with `option variable = true` decoded in both the wire layout and the minimal-profile fixed layout | N/A | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 > **All gaps closed.** `discriminator = none` and multi-oneof encode/decode tested in all 7 languages: Python via `tests/test_proto_field_types.py`; C and C++ via compiled binaries in the same file; TS/JS via `checkDiscriminatorNone()`/`checkMultiOneof()` in their standard test helpers; C# via `CheckDiscriminatorNone()`/`CheckMultiOneof()` in `tests/csharp/include/StandardMessages.cs`; Rust via the `test_oneof_special` runner in `tests/rust/src/main.rs`. A standalone `test_oneof_special.*` runner (same scenarios: `NoneDiscriminatorMessage`, `MultiOneofMessage`) now also exists for C++, Python, TS, JS, and C# alongside Rust's; C is N/A (no generated oneof accessors).
+
+> **Payload selection.** Only C# can hold more than one union member at once -- they are separate nullable properties, and a variant whose type carries schema defaults is constructed eagerly -- so only there can serialization pick the wrong one. `DefaultedOneofEnvelope` in `tests/csharp/test_oneof_special.cs` covers all three C# serialization paths (fixed/MAX_SIZE, `SerializeTo` into a reused buffer, and both variable-length forms). Elsewhere the union is a single storage location (C/C++/Rust union, TS/JS payload buffer, Python `_which` key), so there is no non-active member to pick by mistake.
+
+> **Variable oneof decode.** A `oneof` with `option variable = true` puts a uint16 length prefix in front of the union payload that the fixed (MAX_SIZE) layout does not have, so its largest variant produces a wire frame exactly MAX_SIZE bytes long — the same length as the fixed layout a minimal profile (no length field) sends. Only the framing profile can tell the two layouts apart, so the auto decode path resolves that length as the fixed layout and a max-length wire frame is decoded explicitly (`mode="wire"` in TS/JS, `DeserializeVariable()` in C#, `_deserialize_variable()` in Python). Each `test_oneof_special` runner round-trips `VariableOneofMessage` in the wire layout at that exact length plus the minimal-profile fixed layout through the auto path. C is N/A: it already skips the length check for every message with a oneof, and has no generated oneof accessors to test with.
 
 ### 2.7 Message Options
 
