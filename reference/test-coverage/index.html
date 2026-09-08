@@ -627,9 +627,35 @@ starlight-tabs:where(.astro-esqgolmp){display:block}.tablist-wrapper:where(.astr
 
 
 
-<table><thead><tr><th>Feature</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td><code dir="auto">oneof</code> with <code dir="auto">msgid</code> discriminator</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">oneof</code> with <code dir="auto">field_order</code> discriminator</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">oneof</code> with <code dir="auto">discriminator = none</code></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple <code dir="auto">oneof</code> fields in one message</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Envelope messages (<code dir="auto">is_envelope</code>)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<table><thead><tr><th>Feature</th><th>C</th><th>C++</th><th>Python</th><th>TS</th><th>JS</th><th>C#</th><th>Rust</th></tr></thead><tbody><tr><td><code dir="auto">oneof</code> with <code dir="auto">msgid</code> discriminator</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">oneof</code> with <code dir="auto">field_order</code> discriminator</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td><code dir="auto">oneof</code> with <code dir="auto">discriminator = none</code></td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Multiple <code dir="auto">oneof</code> fields in one message</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Envelope messages (<code dir="auto">is_envelope</code>)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr><tr><td>Discriminator (not declaration order) selects the serialized union payload</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td><td>✅</td><td>N/A</td></tr><tr><td><code dir="auto">oneof</code> with <code dir="auto">option variable = true</code> decoded in both the wire layout and the minimal-profile fixed layout</td><td>N/A</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr></tbody></table>
 <blockquote>
 <p><strong>All gaps closed.</strong> <code dir="auto">discriminator = none</code> and multi-oneof encode/decode tested in all 7 languages: Python via <code dir="auto">tests/test_proto_field_types.py</code>; C and C++ via compiled binaries in the same file; TS/JS via <code dir="auto">checkDiscriminatorNone()</code>/<code dir="auto">checkMultiOneof()</code> in their standard test helpers; C# via <code dir="auto">CheckDiscriminatorNone()</code>/<code dir="auto">CheckMultiOneof()</code> in <code dir="auto">tests/csharp/include/StandardMessages.cs</code>; Rust via the <code dir="auto">test_oneof_special</code> runner in <code dir="auto">tests/rust/src/main.rs</code>. A standalone <code dir="auto">test_oneof_special.*</code> runner (same scenarios: <code dir="auto">NoneDiscriminatorMessage</code>, <code dir="auto">MultiOneofMessage</code>) now also exists for C++, Python, TS, JS, and C# alongside Rust’s; C is N/A (no generated oneof accessors).</p>
+</blockquote>
+<blockquote>
+<p><strong>Payload selection.</strong> Only C# can hold more than one union member at once — they are separate nullable properties, and a variant whose type carries schema defaults is constructed eagerly — so only there can serialization pick the wrong one. <code dir="auto">DefaultedOneofEnvelope</code> in <code dir="auto">tests/csharp/test_oneof_special.cs</code> covers all three C# serialization paths (fixed/MAX_SIZE, <code dir="auto">SerializeTo</code> into a reused buffer, and both variable-length forms). Elsewhere the union is a single storage location (C/C++/Rust union, TS/JS payload buffer, Python <code dir="auto">_which</code> key), so there is no non-active member to pick by mistake.</p>
+</blockquote>
+<blockquote>
+<p><strong>Variable oneof decode.</strong> A <code dir="auto">oneof</code> with <code dir="auto">option variable = true</code> puts a uint16 length prefix in front of the union payload that the fixed (MAX_SIZE) layout does not have, so its largest variant produces a wire frame exactly MAX_SIZE bytes long — the same length as the fixed layout a minimal profile (no length field) sends. Only the framing profile can tell the two layouts apart, so the auto decode path resolves that length as the fixed layout and a max-length wire frame is decoded explicitly (<code dir="auto">mode="wire"</code> in TS/JS, <code dir="auto">DeserializeVariable()</code> in C#, <code dir="auto">_deserialize_variable()</code> in Python). Each <code dir="auto">test_oneof_special</code> runner round-trips <code dir="auto">VariableOneofMessage</code> in the wire layout at that exact length plus the minimal-profile fixed layout through the auto path. C is N/A: it already skips the length check for every message with a oneof, and has no generated oneof accessors to test with.</p>
 </blockquote>
 <h3 id="27-message-options">2.7 Message Options</h3>
 
