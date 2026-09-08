@@ -114,6 +114,16 @@ public class TestOneofSpecial
     Expect(reused.AsSpan(2, 4).SequenceEqual(payloadB),
            "Defaulted: SerializeTo into a reused buffer writes only CommandB");
 
+    // The same rule with the roles swapped: serializing the smaller variant
+    // (CommandA, 3 bytes) after the larger one (CommandB, 4 bytes) must not
+    // leave CommandB's trailing union byte in the frame.
+    byte[] reused2 = new byte[DefaultedOneofEnvelope.MaxSize];
+    envB.SerializeTo(reused2, 0);
+    DefaultedOneofEnvelope.Wrap(new DefaultedVariantA { Code = 0x11, Value = 0x2233 }, 0x01)
+                          .SerializeTo(reused2, 0);
+    Expect(reused2.AsSpan(2, 4).SequenceEqual(new byte[] { 0x11, 0x33, 0x22, 0x00 }),
+           "Defaulted: SerializeTo clears stale trailing bytes from the larger variant");
+
     // --- Same rule with a msgid discriminator and a stale union member ---
     var multi = new MultiOneofMessage
     {
@@ -160,14 +170,25 @@ public class TestOneofSpecial
            "VariableOneof: payload bytes are LargePayload's, not the stale SmallPayload's");
 
     // A LargePayload frame is exactly MaxSize bytes long (MaxSize counts the
-    // 2-byte union length prefix). Deserialize() must not mistake it for the
-    // MAX_SIZE layout, which has no prefix: a message carrying a variable
-    // oneof is always read with the variable decoder, as in C/C++/Rust.
+    // 2-byte union length prefix) -- the same length as the fixed layout that
+    // SerializeMaxSize() emits for minimal profiles. The two layouts are only
+    // distinguishable by the framing profile, so Deserialize() resolves the
+    // ambiguous length as the fixed (minimal profile) layout and a max-length
+    // wire frame must be decoded explicitly with DeserializeVariable().
     Expect(raw6.Length == VariableOneofMessage.MaxSize,
            "VariableOneof: large variant frame is exactly MaxSize bytes");
-    var dec6 = VariableOneofMessage.Deserialize(raw6);
+    var dec6 = VariableOneofMessage.DeserializeVariable(raw6);
     Expect(dec6.LargePayload != null && dec6.LargePayload.Flags == 0x0A0B0C0D,
            "VariableOneof: LargePayload round-trips at the ambiguous length");
+
+    // The fixed layout that a minimal profile (ProfileSensor/ProfileIPC) sends
+    // must round-trip through Deserialize() at exactly MaxSize bytes.
+    byte[] fixed6 = varOneof.SerializeMaxSize();
+    Expect(fixed6.Length == VariableOneofMessage.MaxSize,
+           "VariableOneof: SerializeMaxSize is MaxSize bytes");
+    var dec6f = VariableOneofMessage.Deserialize(fixed6);
+    Expect(dec6f.LargePayload != null && dec6f.LargePayload.Flags == 0x0A0B0C0D,
+           "VariableOneof: LargePayload round-trips from the fixed layout");
 
     var varOneofSmall = new VariableOneofMessage
     {

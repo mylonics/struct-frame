@@ -104,22 +104,23 @@ def _oneof_payload_switch(oneof, oneof_name, indent, target_offset, clear_span=N
         indent: leading whitespace for the emitted ``switch``.
         target_offset: C# expression for where the payload starts in ``buffer``.
         clear_span: optional C# span expression covering the union bytes. When
-            given, that range is zeroed whenever no payload is written, so a
-            caller-supplied buffer cannot leak stale bytes into the frame.
+            given, that range is zeroed before the ``switch`` runs, so a
+            caller-supplied buffer cannot leak stale bytes into the frame when
+            the selected member is null or a shorter variant follows a longer
+            one.
     """
     oneof_pascal = pascal_case(oneof_name)
-    body = f'{indent}switch ((int){oneof_pascal}Discriminator)\n'
+    body = ''
+    if clear_span:
+        body += f'{indent}// Clear the full union span first: the selected member may be null\n'
+        body += f'{indent}// or shorter than a variant previously written into this buffer.\n'
+        body += f'{indent}{clear_span}.Clear();\n'
+    body += f'{indent}switch ((int){oneof_pascal}Discriminator)\n'
     body += indent + '{\n'
     for disc_val, field_name, _field in _oneof_payload_cases(oneof):
         field_var = pascal_case(field_name)
         body += f'{indent}    case {disc_val}:  // {field_name}\n'
         body += f'{indent}        if ({field_var} != null) {field_var}.SerializeTo(buffer, {target_offset});\n'
-        if clear_span:
-            body += f'{indent}        else {clear_span}.Clear();\n'
-        body += f'{indent}        break;\n'
-    if clear_span:
-        body += f'{indent}    default:  // no active variant\n'
-        body += f'{indent}        {clear_span}.Clear();\n'
         body += f'{indent}        break;\n'
     body += indent + '}\n'
     return body
@@ -793,13 +794,31 @@ class MessageCSharpGen():
         result += '        }\n'
 
         # A variable-length oneof puts a uint16 length prefix in front of the
-        # union payload that the MAX_SIZE layout does not have, so the two
-        # encodings are *different byte layouts of the same length* once the
-        # largest variant is active. Length alone can no longer tell them
-        # apart, and the MAX_SIZE decoder would read the prefix as payload.
-        # C, C++ and Rust already resolve this by always decoding such a
-        # message with the variable reader; match them.
-        has_variable_oneof = any(o.variable for o in msg.oneofs.values())
+        # union payload that the MAX_SIZE layout does not have, so once the
+        # largest variant is active the two encodings are different byte
+        # layouts of the same length. The layout cannot be derived from the
+        # schema or from the payload length alone -- the profile that framed
+        # the payload decides it: length-bearing profiles always carry the
+        # wire form, while minimal profiles (HasLength == false) carry the
+        # fixed form produced by SerializeMaxSize().
+        #
+        # Deserialize() therefore keeps the length heuristic: a MaxSize
+        # payload is read with the fixed-layout decoder, anything else with
+        # the wire decoder. That is correct in the only ambiguous case
+        # (MaxSize bytes) whenever the sender was a minimal profile, and it
+        # keeps SerializeMaxSize() -> Deserialize() round-trips working for
+        # ProfileSensor/ProfileIPC. A caller holding a length-bearing
+        # profile's wire frame that happens to be exactly MaxSize bytes must
+        # pass an explicit layout -- DeserializeFixed()/DeserializeVariable()
+        # below -- just like the generated C struct reader does.
+        #
+        # Exception: a discriminator-less oneof (discriminator = none) has
+        # nothing on the fixed layout telling the reader which union member
+        # is active, so its MAX_SIZE read cannot populate the variant. Such
+        # a message is always read with the wire decoder, matching C, C++
+        # and Rust.
+        wire_only_variable_oneof = any(
+            o.variable and o.discriminator_type is None for o in msg.oneofs.values())
 
         # Generate Deserialize() static method
         result += '\n'
@@ -807,10 +826,18 @@ class MessageCSharpGen():
         result += '        /// Deserialize a <c>ReadOnlySpan&lt;byte&gt;</c> into this message type.\n'
         result += '        /// This is the primary implementation - the <c>byte[]</c> and\n'
         result += '        /// <see cref="FrameMsgInfo"/> overloads delegate here.\n'
-        if msg.variable and has_variable_oneof:
-            result += '        /// This message carries a variable-length oneof, whose wire form\n'
-            result += '        /// always has the union length prefix - so it is always read with\n'
-            result += '        /// the variable decoder, never the MAX_SIZE one.\n'
+        if msg.variable and wire_only_variable_oneof:
+            result += '        /// This message carries a variable-length oneof without a\n'
+            result += '        /// discriminator, which only the wire encoding records - so it\n'
+            result += '        /// is always read with the variable decoder, never the MAX_SIZE one.\n'
+        elif msg.variable and any(o.variable for o in msg.oneofs.values()):
+            result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding.\n'
+            result += '        /// This message carries a variable-length oneof, whose wire form is\n'
+            result += '        /// exactly MaxSize bytes when the largest variant is active; a minimal\n'
+            result += '        /// profile (no length field) sends the fixed layout at that length, so\n'
+            result += '        /// the length check resolves it. A length-bearing profile frame of\n'
+            result += '        /// exactly MaxSize bytes needs an explicit layout: use\n'
+            result += '        /// <see cref="DeserializeVariable"/>.\n'
         elif msg.variable:
             result += '        /// For variable messages: auto-detects MAX_SIZE vs variable encoding.\n'
         result += '        /// </summary>\n'
@@ -819,8 +846,9 @@ class MessageCSharpGen():
 
         # For variable messages, detect format based on size
         if msg.variable:
-            if has_variable_oneof:
-                result += f'            // Variable oneof message - always variable-length encoding\n'
+            if wire_only_variable_oneof:
+                result += f'            // Discriminator-less variable oneof - only the wire encoding\n'
+                result += f'            // records the active variant, so the fixed layout cannot be read.\n'
                 result += f'            return _DeserializeVariable(data);\n'
             else:
                 result += f'            // Variable message - detect encoding format\n'
@@ -835,6 +863,24 @@ class MessageCSharpGen():
                 result += f'                return _DeserializeVariable(data);\n'
                 result += '            }\n'
             result += '        }\n'
+
+            # Public explicit-layout decode entry points. The length heuristic
+            # in Deserialize() resolves the ambiguous MaxSize case as the fixed
+            # (minimal profile) layout; a caller holding a length-bearing
+            # profile's wire frame of exactly MaxSize bytes uses
+            # DeserializeVariable() instead.
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += '        /// Deserialize a fixed-layout (MAX_SIZE) payload, as produced by\n'
+            result += '        /// <see cref="SerializeMaxSize"/> for minimal profiles (no length field).\n'
+            result += '        /// </summary>\n'
+            result += f'        public static {structName} DeserializeFixed(ReadOnlySpan<byte> data) => _DeserializeMaxSize(data);\n'
+            result += '\n'
+            result += '        /// <summary>\n'
+            result += '        /// Deserialize a variable-length (wire) payload, as produced by\n'
+            result += '        /// <see cref="Serialize"/> on length-bearing profiles.\n'
+            result += '        /// </summary>\n'
+            result += f'        public static {structName} DeserializeVariable(ReadOnlySpan<byte> data) => _DeserializeVariable(data);\n'
             
             # Add _DeserializeMaxSize for variable messages
             result += '\n'
