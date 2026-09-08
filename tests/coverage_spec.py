@@ -227,8 +227,8 @@ SECTIONS = [
                          "JS": "N/A", "C#": "✅", "Rust": "N/A"},
                     ),
                     _row(
-                        "`oneof` with `option variable = true` decoded at the "
-                        "MAX_SIZE frame length",
+                        "`oneof` with `option variable = true` decoded in both "
+                        "the wire layout and the minimal-profile fixed layout",
                         {"C": "N/A", "C++": "✅", "Python": "✅", "TS": "✅",
                          "JS": "✅", "C#": "✅", "Rust": "✅"},
                     ),
@@ -260,15 +260,20 @@ SECTIONS = [
                     "non-active member to pick by mistake.\n\n"
                     "> **Variable oneof decode.** A `oneof` with `option variable "
                     "= true` puts a uint16 length prefix in front of the union "
-                    "payload that the MAX_SIZE layout does not have, so its "
-                    "largest variant produces a frame exactly MAX_SIZE bytes "
-                    "long — a length the \"is this MAX_SIZE or wire encoding?\" "
-                    "check cannot resolve. Every language therefore reads such a "
-                    "message with the wire decoder unconditionally, and each "
-                    "`test_oneof_special` runner round-trips "
-                    "`VariableOneofMessage` at that exact length. C is N/A: it "
-                    "already skips the length check for every message with a "
-                    "oneof, and has no generated oneof accessors to test with."
+                    "payload that the fixed (MAX_SIZE) layout does not have, so "
+                    "its largest variant produces a wire frame exactly MAX_SIZE "
+                    "bytes long — the same length as the fixed layout a minimal "
+                    "profile (no length field) sends. Only the framing profile "
+                    "can tell the two layouts apart, so the auto decode path "
+                    "resolves that length as the fixed layout and a max-length "
+                    "wire frame is decoded explicitly (`mode=\"wire\"` in TS/JS, "
+                    "`DeserializeVariable()` in C#, `_deserialize_variable()` in "
+                    "Python). Each `test_oneof_special` runner round-trips "
+                    "`VariableOneofMessage` in the wire layout at that exact "
+                    "length plus the minimal-profile fixed layout through the "
+                    "auto path. C is N/A: it already skips the length check for "
+                    "every message with a oneof, and has no generated oneof "
+                    "accessors to test with."
                 ),
             },
             {

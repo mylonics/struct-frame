@@ -322,12 +322,19 @@ class MessageTsClassGen():
         # is always read with the wire decoder, matching C, C++ and Rust.
         wire_only_oneof = any(
             o.variable and o.discriminator_type is None for o in msg.oneofs.values())
+        has_variable_oneof = any(o.variable for o in msg.oneofs.values())
 
         result += f'\n  /**\n'
         result += f'   * Deserialize message from binary data.\n'
         result += f'   * Works for both variable and non-variable messages.\n'
         result += f'   * For variable messages, raw buffers default to wire decoding to avoid ambiguous\n'
         result += f'   * length-based guessing. Use mode="fixed" (or deserializeFixed()) for minimal frames.\n'
+        if has_variable_oneof and not wire_only_oneof:
+            result += f'   * This message carries a variable-length oneof: its wire form is exactly _size\n'
+            result += f'   * bytes when the largest variant is active, the same length as the fixed\n'
+            result += f'   * layout a minimal profile sends. Only the framing profile can tell the two\n'
+            result += f'   * apart, so mode="auto" resolves that length as the fixed layout; pass\n'
+            result += f'   * mode="wire" (or call deserializeWire()) for a max-length wire frame.\n'
         result += f'   * @param buffer Input buffer containing serialized message data, or FrameMsgInfo from frame parser\n'
         result += f'   * @param mode Decode mode: "auto" (default, heuristic), "wire" (force wire decode), "fixed" (force fixed-layout)\n'
         result += f'   * @returns New instance with deserialized data\n'
@@ -340,6 +347,13 @@ class MessageTsClassGen():
                 result += f'      // Discriminator-less variable oneof: only the wire encoding records\n'
                 result += f'      // the active variant, so the fixed layout cannot be read.\n'
                 result += f'      if (mode === "fixed") {{\n'
+            elif has_variable_oneof:
+                result += f'      // msgLen heuristic: minimal profiles always send _size bytes (fixed layout);\n'
+                result += f'      // length-bearing profiles send wire-encoded size, which can also equal _size\n'
+                result += f'      // when the largest union variant is active. The layouts differ at that\n'
+                result += f'      // length (the wire form has the union length prefix), so a max-length wire\n'
+                result += f'      // frame must be decoded with mode="wire" / deserializeWire().\n'
+                result += f'      if (mode === "fixed" || (mode !== "wire" && buffer.msgLen === {package_msg_name}._size)) {{\n'
             else:
                 result += f'      // msgLen heuristic: minimal profiles always send _size bytes (fixed layout);\n'
                 result += f'      // length-bearing profiles send wire-encoded size, which can equal _size when\n'
