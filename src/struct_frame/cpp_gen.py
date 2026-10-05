@@ -615,6 +615,10 @@ class MessageCppGen():
         
         result += f'        return offset;\n'
         result += f'    }}\n'
+        result += f'\n    template <typename Buffer>\n'
+        result += f'    size_t serialize(Buffer& buffer) const {{\n'
+        result += f'        return serialize(buffer.data());\n'
+        result += f'    }}\n'
         
         # Generate _deserialize_variable method (was unpack_variable, now private)
         result += f'\n    /**\n'
@@ -784,6 +788,10 @@ class MessageCppGen():
         result += f'    size_t deserialize(const structframe::FrameMsgInfo& frame_info) {{\n'
         result += f'        return deserialize(frame_info.msg_data, frame_info.msg_len);\n'
         result += f'    }}\n'
+        result += f'\n    template <typename Buffer>\n'
+        result += f'    size_t deserialize(const Buffer& buffer) {{\n'
+        result += f'        return deserialize(buffer.data(), buffer.size());\n'
+        result += f'    }}\n'
         
         # Add serialize method for non-variable messages (simple case)
         if not msg.variable:
@@ -795,6 +803,10 @@ class MessageCppGen():
             result += f'    size_t serialize(uint8_t* buffer) const {{\n'
             result += f'        std::memcpy(buffer, this, MAX_SIZE);\n'
             result += f'        return MAX_SIZE;\n'
+            result += f'    }}\n'
+            result += f'\n    template <typename Buffer>\n'
+            result += f'    size_t serialize(Buffer& buffer) const {{\n'
+            result += f'        return serialize(buffer.data());\n'
             result += f'    }}\n'
         
         return result

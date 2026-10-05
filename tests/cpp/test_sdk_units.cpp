@@ -10,6 +10,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <array>
+#include <span>
 #include <vector>
 
 #include "include/standard_messages.hpp"
@@ -410,6 +412,22 @@ bool test_parser_minimal_rejects_truncated() {
   return !result.valid;
 }
 
+bool test_std_array_and_span_overloads() {
+  BasicTypesMessage msg = StandardMessages::create_basic_types(
+      1, 2, 3, 4, 5u, 6u, 7u, 8u, 1.0f, 2.0, true, "array", "span");
+  std::array<uint8_t, 512> frame{};
+  const size_t encoded = FrameEncoderWithCrc<ProfileStandardConfig>::encode(frame, msg);
+  if (encoded == 0) return false;
+
+  const std::span<const uint8_t> view(frame.data(), encoded);
+  auto result = BufferParserWithCrc<ProfileStandardConfig>::parse(view, get_message_info);
+  if (!result.valid || result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+
+  BasicTypesMessage decoded{};
+  std::span<const uint8_t> payload(result.msg_data, result.msg_len);
+  return decoded.deserialize(payload) == result.msg_len && decoded.small_int == 1;
+}
+
 // ============================================================================
 // Test runner
 // ============================================================================
@@ -474,6 +492,8 @@ int main() {
            test_parser_minimal_rejects_unknown_id);
   run_test("BufferParserMinimal: rejects truncated frame",
            test_parser_minimal_rejects_truncated);
+   run_test("std::array/std::span buffer overloads",
+            test_std_array_and_span_overloads);
 
   printf("\n========================================\n");
   printf("Summary: %d/%d tests passed\n", tests_passed, tests_run);
