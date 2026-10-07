@@ -49,6 +49,10 @@ inline FrameChecksum fletcher_checksum(const uint8_t* data, size_t length, uint8
 }
 
 template <typename Buffer>
+  requires requires(const Buffer& buffer) {
+    buffer.data();
+    buffer.size();
+  }
 inline FrameChecksum fletcher_checksum(const Buffer& data, uint8_t magic1 = 0, uint8_t magic2 = 0) {
   return fletcher_checksum(data.data(), data.size(), magic1, magic2);
 }
@@ -76,6 +80,10 @@ inline FrameChecksum fletcher_checksum_ext(const uint8_t* data, size_t base_len,
 }
 
 template <typename Buffer>
+  requires requires(const Buffer& buffer) {
+    buffer.data();
+    buffer.size();
+  }
 inline FrameChecksum fletcher_checksum_ext(const Buffer& data, size_t base_len, uint8_t magic1 = 0,
                                            uint8_t magic2 = 0) {
   return fletcher_checksum_ext(data.data(), base_len, data.size(), magic1, magic2);
