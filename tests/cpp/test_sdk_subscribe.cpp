@@ -11,6 +11,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <array>
+#include <span>
 #include <vector>
 
 // Generated message types
@@ -311,13 +313,13 @@ bool test_end_to_end_parse_pipeline() {
   msg.regular_int = 777;
   msg.flag = false;
 
-  uint8_t encoded[512];
+  std::array<uint8_t, 512> encoded{};
   size_t frame_len =
-      FrameEncoderWithCrc<ProfileStandardConfig>::encode(encoded, sizeof(encoded), msg);
+      FrameEncoderWithCrc<ProfileStandardConfig>::encode(encoded, msg);
   if (frame_len == 0) return false;
 
-  // Inject the complete frame via the transport
-  transport.inject_data(encoded, frame_len);
+  // Feed the complete frame through the SDK using a span view.
+  sdk.Feed(std::span<const uint8_t>(encoded.data(), frame_len));
 
   // Subscriber must have been called with the correct decoded values
   if (dispatch_count != 1) return false;
@@ -609,10 +611,10 @@ bool test_send_raw_returns_success_result() {
 
   BasicTypesMessage msg{};
   msg.regular_int = 99;
-  uint8_t payload[BasicTypesMessage::MAX_SIZE];
+  std::array<uint8_t, BasicTypesMessage::MAX_SIZE> payload{};
   msg.serialize(payload);
 
-  SendResult result = sdk.SendRaw(BasicTypesMessage::MSG_ID, payload, BasicTypesMessage::MAX_SIZE);
+  SendResult result = sdk.SendRaw(BasicTypesMessage::MSG_ID, payload);
 
   if (!result.success) return false;
   if (result.attempted_bytes == 0) return false;

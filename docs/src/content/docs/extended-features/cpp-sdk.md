@@ -169,5 +169,35 @@ ProfileSensorWriter sensor_writer(buffer, sizeof(buffer));
 ProfileSensorAccumulatingReader sensor_reader(get_message_info);
 ```
 
-See [Framing Details](/basic-usage/framing-details/) for more profiles.
+### Contiguous buffer overloads
 
+The C++ APIs retain their pointer-and-length overloads and also accept any
+contiguous buffer exposing `data()` and `size()`. This includes
+`std::array`, `std::span`, `etl::array`, and `etl::span` when those libraries
+are available:
+
+```cpp
+#include <array>
+#include <span>
+
+std::array<uint8_t, 1024> storage{};
+auto encoded = FrameEncoderWithCrc<ProfileStandardConfig>::encode(storage, msg);
+
+std::span<const uint8_t> frame(storage.data(), encoded);
+auto parsed = BufferParserWithCrc<ProfileStandardConfig>::parse(frame, get_message_info);
+
+BasicTypesMessage decoded{};
+decoded.deserialize(frame.subspan(parsed.msg_data - frame.data(), parsed.msg_len));
+
+ProfileStandardWriter writer(storage);
+writer.write(msg);
+ProfileStandardReader reader(frame, get_message_info);
+```
+
+The same overloads are available on generated message `serialize`/`deserialize`,
+`BufferWriter`, `BufferReader`, `AccumulatingReader::add_data`, frame checksum
+helpers, SDK `Feed`/`SendRaw`, and transport `Send`. These overloads do not
+allocate or change the existing raw-pointer APIs, so ETL containers and views
+can be used without conversions.
+
+See [Framing Details](/basic-usage/framing-details/) for more profiles.
