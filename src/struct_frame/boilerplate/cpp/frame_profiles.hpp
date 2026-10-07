@@ -192,6 +192,11 @@ class FrameEncoderWithCrc {
 
     return idx;
   }
+
+  template <typename Buffer, FramedMessage T>
+  static size_t encode(Buffer& buffer, const T& msg, uint8_t seq = 0, uint8_t sys_id = 0, uint8_t comp_id = 0) {
+    return encode(buffer.data(), buffer.size(), msg, seq, sys_id, comp_id);
+  }
 };
 
 /**
@@ -247,6 +252,11 @@ class FrameEncoderMinimal {
     idx += payload_size;
 
     return idx;
+  }
+
+  template <typename Buffer, FramedMessage T>
+  static size_t encode(Buffer& buffer, const T& msg) {
+    return encode(buffer.data(), buffer.size(), msg);
   }
 };
 
@@ -358,6 +368,11 @@ class BufferParserWithCrc {
     return FrameMsgInfo(true, msg_id, msg_len, total_size,
                         buffer + Config::header_size, buffer);
   }
+
+  template <typename Buffer, typename GetMessageInfoFn = std::nullptr_t>
+  static FrameMsgInfo parse(const Buffer& buffer, GetMessageInfoFn get_message_info = nullptr) {
+    return parse(buffer.data(), buffer.size(), get_message_info);
+  }
 };
 
 /**
@@ -433,6 +448,11 @@ class BufferParserMinimal {
     r.status = FrameMsgStatus::WaitingForStart;
     return r;
   }
+
+  template <typename Buffer, typename GetMessageInfoFn = std::nullptr_t>
+  static FrameMsgInfo parse(const Buffer& buffer, GetMessageInfoFn get_message_info = nullptr) {
+    return parse(buffer.data(), buffer.size(), get_message_info);
+  }
 };
 
 /*===========================================================================
@@ -492,6 +512,13 @@ class BufferReader {
 
   BufferReader(const uint8_t* buffer, size_t size, GetMessageInfoFn get_message_info)
       : buffer_(buffer), size_(size), offset_(0), get_message_info_(get_message_info) {}
+
+  template <typename Buffer>
+  explicit BufferReader(const Buffer& buffer) : BufferReader(buffer.data(), buffer.size()) {}
+
+  template <typename Buffer>
+  BufferReader(const Buffer& buffer, GetMessageInfoFn get_message_info)
+      : BufferReader(buffer.data(), buffer.size(), get_message_info) {}
 
   /**
    * Parse the next frame in the buffer.
@@ -602,6 +629,9 @@ template <typename Config>
 class BufferWriter {
  public:
   BufferWriter(uint8_t* buffer, size_t capacity) : buffer_(buffer), capacity_(capacity), offset_(0) {}
+
+  template <typename Buffer>
+  explicit BufferWriter(Buffer& buffer) : BufferWriter(buffer.data(), buffer.size()) {}
 
   /**
    * Write a message to the buffer.
@@ -801,6 +831,11 @@ class AccumulatingReader {
       internal_data_len_ += bytes_to_copy;
       bytes_appended_to_internal_ = bytes_to_copy;
     }
+  }
+
+  template <typename Buffer>
+  void add_data(const Buffer& buffer) {
+    add_data(buffer.data(), buffer.size());
   }
 
   /**

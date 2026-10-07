@@ -355,6 +355,11 @@ class StructFrameSdkT : public IStructFrameSdk {
     ParseBuffer();
   }
 
+  template <typename Buffer>
+  void Feed(const Buffer& data) {
+    Feed(data.data(), data.size());
+  }
+
   // -----------------------------------------------------------------------
   // Send
   // -----------------------------------------------------------------------
@@ -403,6 +408,11 @@ class StructFrameSdkT : public IStructFrameSdk {
     if (framedLen == 0) return {};
     const size_t written = transport_->Send(frame_buf, framedLen);
     return SendResult{written == framedLen, framedLen, written};
+  }
+
+  template <typename Buffer>
+  SendResult SendRaw(uint16_t msgId, const Buffer& data) {
+    return SendRaw(msgId, data.data(), data.size());
   }
 
   /**

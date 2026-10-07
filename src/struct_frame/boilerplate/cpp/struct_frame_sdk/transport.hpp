@@ -128,6 +128,9 @@ public:
      * @return Number of bytes sent.
      */
     size_t Send(const uint8_t*, size_t) { return 0; }
+
+    template <typename Buffer>
+    size_t Send(const Buffer& data) { return Send(data.data(), data.size()); }
 };
 
 } // namespace sdk

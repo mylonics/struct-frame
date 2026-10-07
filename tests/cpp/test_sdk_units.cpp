@@ -10,6 +10,8 @@
 
 #include <cstdio>
 #include <cstring>
+#include <array>
+#include <span>
 #include <vector>
 
 #include "include/standard_messages.hpp"
@@ -410,6 +412,42 @@ bool test_parser_minimal_rejects_truncated() {
   return !result.valid;
 }
 
+bool test_std_array_and_span_overloads() {
+  BasicTypesMessage msg = StandardMessages::create_basic_types(
+      1, 2, 3, 4, 5u, 6u, 7u, 8u, 1.0f, 2.0, true, "array", "span");
+  std::array<uint8_t, 512> frame{};
+  const size_t encoded = FrameEncoderWithCrc<ProfileStandardConfig>::encode(frame, msg);
+  if (encoded == 0) return false;
+
+  const std::span<const uint8_t> view(frame.data(), encoded);
+  auto result = BufferParserWithCrc<ProfileStandardConfig>::parse(view, get_message_info);
+  if (!result.valid || result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+
+  BasicTypesMessage decoded{};
+  std::span<const uint8_t> payload(result.msg_data, result.msg_len);
+  if (decoded.deserialize(payload) != result.msg_len || decoded.small_int != 1) return false;
+
+  std::array<uint8_t, 512> written{};
+  BufferWriter<ProfileStandardConfig> writer(written);
+  if (writer.write(msg) != encoded || writer.size() != encoded) return false;
+
+  BufferReader<ProfileStandardConfig, decltype(&get_message_info)> reader(
+      std::span<const uint8_t>(written.data(), writer.size()), get_message_info);
+  auto read_result = reader.next();
+  if (!read_result.valid || read_result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)> accumulating(
+      get_message_info);
+  accumulating.add_data(std::span<const uint8_t>(written.data(), writer.size()));
+  auto accumulated_result = accumulating.next();
+  if (!accumulated_result.valid || accumulated_result.msg_len != BasicTypesMessage::MAX_SIZE) return false;
+  const auto span_checksum = fletcher_checksum(
+      std::span<const uint8_t>(written.data(), writer.size()));
+  const auto pointer_checksum = fletcher_checksum(written.data(), writer.size());
+  return span_checksum.byte1 == pointer_checksum.byte1 &&
+         span_checksum.byte2 == pointer_checksum.byte2;
+}
+
 // ============================================================================
 // Test runner
 // ============================================================================
@@ -474,6 +512,8 @@ int main() {
            test_parser_minimal_rejects_unknown_id);
   run_test("BufferParserMinimal: rejects truncated frame",
            test_parser_minimal_rejects_truncated);
+   run_test("std::array/std::span buffer overloads",
+            test_std_array_and_span_overloads);
 
   printf("\n========================================\n");
   printf("Summary: %d/%d tests passed\n", tests_passed, tests_run);
