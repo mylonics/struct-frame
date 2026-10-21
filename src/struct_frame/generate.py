@@ -2245,6 +2245,87 @@ def needs_extended_payload_types():
     return False
 
 
+def _message_dependencies(msg, pkg):
+    """Names of same-package messages that *msg* embeds (via fields or oneof variants)."""
+    deps = set()
+    fields = list(msg.fields.values())
+    for oneof in msg.oneofs.values():
+        fields.extend(oneof.fields.values())
+    for field in fields:
+        ref = field.type_ref
+        if isinstance(ref, Message) and pkg.messages.get(ref.name) is ref and ref is not msg:
+            deps.add(ref.name)
+    return deps
+
+
+def dependency_ordered_messages(pkg):
+    """Return the package's messages as ``[(name, Message), ...]`` in a stable order.
+
+    Messages are listed dependencies-first (a message that embeds another
+    follows it); messages that are not ordered relative to each other are
+    sorted by name.  The result therefore depends only on the schema, never on
+    the order declarations were written, split across files, or imported.
+    """
+    import heapq
+
+    names = list(pkg.messages.keys())
+    deps = {name: _message_dependencies(pkg.messages[name], pkg) for name in names}
+    dependants = {name: [] for name in names}
+    remaining = {}
+    for name in names:
+        remaining[name] = len(deps[name])
+        for dep in deps[name]:
+            dependants[dep].append(name)
+
+    ready = [name for name in names if remaining[name] == 0]
+    heapq.heapify(ready)
+    ordered = []
+    while ready:
+        name = heapq.heappop(ready)
+        ordered.append(name)
+        for dependant in dependants[name]:
+            remaining[dependant] -= 1
+            if remaining[dependant] == 0:
+                heapq.heappush(ready, dependant)
+
+    # Anything left is part of a dependency cycle (rejected by validation, but
+    # stay deterministic regardless).
+    ordered.extend(sorted(name for name in names if name not in set(ordered)))
+    return [(name, pkg.messages[name]) for name in ordered]
+
+
+def normalize_output_order():
+    """Put parsed declarations into a stable, dependency-aware order.
+
+    Parse and import order must not influence generated output, otherwise
+    reorganising or splitting source files churns every generated file.
+    After this runs:
+
+    * packages are in dependency-first topological order (name tie-break)
+    * each package's import list follows that same order
+    * enums are sorted by name
+    * messages are listed dependencies-first, then by name
+
+    Order that is part of the schema is left untouched: message fields,
+    oneof variants (``field_order`` discriminators depend on them), enum
+    entries and message-scoped enums keep their declaration order.
+    """
+    order = topological_sort_packages(packages, package_imports)
+    rank = {name: index for index, name in enumerate(order)}
+
+    reordered = [(name, packages[name]) for name in order]
+    packages.clear()
+    packages.update(reordered)
+
+    for pkg_name, imported in list(package_imports.items()):
+        package_imports[pkg_name] = sorted(
+            imported, key=lambda name: (rank.get(name, len(rank)), name))
+
+    for pkg in packages.values():
+        pkg.enums = {name: pkg.enums[name] for name in sorted(pkg.enums)}
+        pkg.messages = dict(dependency_ordered_messages(pkg))
+
+
 def printPackages():
     for key, value in packages.items():
         print(value)
@@ -2959,6 +3040,8 @@ def main():
     if not valid:
         print("Validation failed")
         return 1
+
+    normalize_output_order()
 
     if args.validate:
         # In validate mode, only perform validation - no file generation

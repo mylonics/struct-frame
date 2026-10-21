@@ -173,8 +173,7 @@ class FieldPyGen():
         
         leading_comment = field.comments
         if leading_comment:
-            for c in leading_comment:
-                result = "#" + c + "\n" + result
+            result = "".join("#" + c + "\n" for c in leading_comment) + result
         
         return result
 
