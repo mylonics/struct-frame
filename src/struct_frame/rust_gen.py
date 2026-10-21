@@ -8,6 +8,7 @@ pack/unpack methods for binary compatibility across platforms.
 """
 
 from struct_frame import version, NamingStyleC, camel_to_snake_case, pascal_case, build_enum_leading_comments, build_enum_values, normalize_bytes_type
+from struct_frame.base import format_file_docs
 import os
 import time
 
@@ -1212,11 +1213,10 @@ class FileRustGen():
             result.append(f'use crate::{pkg_mod}::*;\n')
         result.append('\n')
 
-        # Package comments
-        if hasattr(package, 'comments') and package.comments:
-            for c in package.comments:
-                result.append('//%s\n' % c)
-            result.append('\n')
+        # File-level docs (own-line comments before the `package` statement)
+        file_docs = format_file_docs(package, '// ')
+        if file_docs:
+            result.append(file_docs)
 
         # Generate enums
         if package.enums:

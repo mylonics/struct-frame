@@ -12,6 +12,9 @@ Covered behaviours:
 2. Second run without ``--force`` detects a matching hash and skips.
 3. Second run with ``--force`` ignores the hash and regenerates.
 4. Changing the proto content invalidates the hash and forces regeneration.
+5. Documentation comments are part of the cache key: changing a leading,
+   trailing or file-level comment regenerates and the generated docs change.
+6. Field and oneof-variant declaration order is part of the cache key.
 """
 
 from __future__ import annotations
@@ -24,8 +27,9 @@ from test_utils import _check, run_generator, PROTO_FILE
 HASH_FILENAME = ".structframe.hash"
 
 
-def _run_generator(proto: Path, out_dir: Path, force: bool = False) -> tuple[int, str]:
-    flags = ["--build_py", "--py_path", str(out_dir) + os.sep]
+def _run_generator(proto: Path, out_dir: Path, force: bool = False,
+                   lang: str = "py") -> tuple[int, str]:
+    flags = [f"--build_{lang}", f"--{lang}_path", str(out_dir) + os.sep]
     if force:
         flags.append("--force")
     result = run_generator(proto, *flags)
@@ -211,3 +215,141 @@ def test_default_vs_no_default_hash_differs_but_deterministic():
         hash_repeat = (out_b / HASH_FILENAME).read_text().strip()
         _check(hash_repeat == hash_with_default,
                f"Hashing the same schema twice should be deterministic: {hash_with_default} != {hash_repeat}")
+
+
+def _generate(proto: Path, out_dir: Path, source: str, force: bool = False):
+    """Write *source* to *proto*, run the generator and return (code, output, hash)."""
+    proto.write_text(source, encoding="utf-8")
+    code, output = _run_generator(proto, out_dir, force=force, lang="cpp")
+    hash_file = out_dir / HASH_FILENAME
+    stored = hash_file.read_text().strip() if hash_file.exists() else None
+    return code, output, stored
+
+
+def _generated_text(out_dir: Path) -> str:
+    """Concatenated C++ output (C++ emits file, message, enum and field docs)."""
+    return "\n".join(p.read_text(encoding="utf-8") for p in sorted(out_dir.rglob("*.hpp")))
+
+
+def _assert_regenerates(tmp_path: Path, v1: str, v2: str, what: str):
+    """Generate *v1*, then *v2* without --force; the second run must not be skipped
+    and must rewrite the stored hash and generated output."""
+    out = tmp_path / "gen"
+    proto = tmp_path / "doc_cache_test.sf"
+    code, output, hash1 = _generate(proto, out, v1, force=True)
+    _check(code == 0, f"First generation should succeed:\n{output}")
+    text1 = _generated_text(out)
+
+    code, output, hash2 = _generate(proto, out, v2)
+    _check(code == 0, f"Generation after {what} should succeed:\n{output}")
+    _check("no changes detected" not in output.lower(),
+           f"Changing {what} must NOT be reported as 'no changes detected':\n{output}")
+    _check(hash1 != hash2, f"Hash should change after {what}")
+    return text1, _generated_text(out)
+
+
+def test_changed_leading_comment_invalidates_hash():
+    """Regression: editing only a declaration comment used to print
+    'no changes detected' and leave the generated docs stale."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v1 = (
+            "package doc_cache_test;\n"
+            "// Original message docs\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 value = 1;\n"
+            "}\n"
+        )
+        v2 = v1.replace("Original message docs", "Updated message docs")
+        before, after = _assert_regenerates(Path(tmp), v1, v2, "a leading comment")
+        _check("Original message docs" in before, "First run should emit the original docs")
+        _check("Updated message docs" in after, "Regenerated output should contain the updated docs")
+        _check("Original message docs" not in after, "Stale docs must not remain after regeneration")
+
+
+def test_changed_trailing_comment_invalidates_hash():
+    """Trailing (same-line) comments document the preceding field and are cached too."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v1 = (
+            "package doc_cache_test;\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 value = 1; // Counts widgets\n"
+            "}\n"
+        )
+        v2 = v1.replace("Counts widgets", "Counts gadgets")
+        before, after = _assert_regenerates(Path(tmp), v1, v2, "a trailing comment")
+        _check("Counts widgets" in before and "Counts gadgets" in after,
+               "Trailing comment edit should be reflected in generated output")
+
+
+def test_changed_file_header_comment_invalidates_hash():
+    """File-level docs (comments before the package statement) are cached too."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v1 = (
+            "// Header describing the file\n"
+            "package doc_cache_test;\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 value = 1;\n"
+            "}\n"
+        )
+        v2 = v1.replace("describing the file", "describing the module")
+        before, after = _assert_regenerates(Path(tmp), v1, v2, "a file header comment")
+        _check("describing the file" in before and "describing the module" in after,
+               "File header edit should be reflected in generated output")
+
+
+def test_unchanged_comments_still_skip():
+    """Whitespace-only edits that keep every comment identical must still hit the cache."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        out = tmp_path / "gen"
+        proto = tmp_path / "doc_cache_test.sf"
+        v1 = (
+            "package doc_cache_test;\n"
+            "// Docs\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 value = 1;\n"
+            "}\n"
+        )
+        code, output, _ = _generate(proto, out, v1, force=True)
+        _check(code == 0, f"First generation should succeed:\n{output}")
+        code, output, _ = _generate(proto, out, v1.replace("{\n  option", "{\n\n\n  option"))
+        _check(code == 0, f"Second generation should succeed:\n{output}")
+        _check("no changes detected" in output.lower(),
+               f"Formatting-only edits should be skipped, got:\n{output}")
+
+
+def test_field_order_change_invalidates_hash():
+    """Reordering same-typed fields (fields are numbered in declaration order)
+    changes the generated layout/accessors, so it must invalidate the cache."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v1 = (
+            "package doc_cache_test;\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  uint32 first = 1;\n"
+            "  uint32 second = 2;\n"
+            "}\n"
+        )
+        v2 = v1.replace("first = 1;\n  uint32 second = 2;", "second = 1;\n  uint32 first = 2;")
+        _assert_regenerates(Path(tmp), v1, v2, "field order")
+
+
+def test_oneof_variant_order_change_invalidates_hash():
+    """Oneof variant order is significant (field_order discriminators)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v1 = (
+            "package doc_cache_test;\n"
+            "message MsgA {\n"
+            "  option msgid = 1;\n"
+            "  oneof payload {\n"
+            "    uint32 alpha = 1;\n"
+            "    uint32 beta = 2;\n"
+            "  }\n"
+            "}\n"
+        )
+        v2 = v1.replace("uint32 alpha = 1;\n    uint32 beta = 2;", "uint32 beta = 1;\n    uint32 alpha = 2;")
+        _assert_regenerates(Path(tmp), v1, v2, "oneof variant order")

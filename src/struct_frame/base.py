@@ -125,6 +125,67 @@ def camel_to_snake_case(data):
 
 
 # =============================================================================
+# File-level documentation
+# =============================================================================
+
+def comment_text_lines(text):
+    """Strip comment delimiters (``//``, ``///``, ``/* ... */``) from a schema comment.
+
+    Returns the plain text lines.  Used for file-level docs, which are
+    re-rendered with each target language's own line-comment syntax so that a
+    block comment can never terminate the generated comment early.
+    """
+    text = str(text).strip()
+    if text.startswith('/*'):
+        body = text[2:]
+        if body.endswith('*/'):
+            body = body[:-2]
+        lines = []
+        for line in body.splitlines():
+            line = line.strip()
+            if line.startswith('*'):
+                line = line[1:].strip()
+            lines.append(line)
+        while lines and not lines[0]:
+            lines.pop(0)
+        while lines and not lines[-1]:
+            lines.pop()
+        return lines
+    return [re.sub(r'^/+\s?', '', text).rstrip()]
+
+
+def format_file_docs(package, prefix='// '):
+    """Render a package's file-level docs as line comments.
+
+    File docs are the own-line comments written *before* the ``package``
+    statement of a schema file.  Each file contributes one block; blocks are
+    emitted in a layout-independent order (see ``Package.file_doc_blocks``).
+    Returns an empty string when the package has no file docs, otherwise the
+    comment lines followed by one blank line.
+    """
+    blocks = getattr(package, 'file_doc_blocks', None)
+    if blocks is None:
+        return ''
+    rendered = []
+    for block in blocks():
+        lines = []
+        for comment in block:
+            lines.extend(comment_text_lines(comment))
+        if any(lines):
+            rendered.append(lines)
+    if not rendered:
+        return ''
+    out = []
+    for index, lines in enumerate(rendered):
+        if index:
+            out.append(prefix.rstrip() + '\n')
+        for line in lines:
+            out.append((prefix + line).rstrip() + '\n')
+    out.append('\n')
+    return ''.join(out)
+
+
+# =============================================================================
 # Shared Enum Generation Utilities
 # =============================================================================
 

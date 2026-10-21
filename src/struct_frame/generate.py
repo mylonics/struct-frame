@@ -308,9 +308,171 @@ def get_version():
     return "unknown"
 
 
+def _hash_line(hasher, text):
+    hasher.update(f"{text}\n".encode('utf-8'))
+
+
+def _hash_enum_entries(hasher, enum, indent):
+    """Hash enum entries in declaration order (values *and* order matter)."""
+    for entry_name, (value, _comments) in enum.data.items():
+        marker = ""
+        if enum.extensions_start is not None and value >= enum.extensions_start:
+            marker = ":extension"
+        _hash_line(hasher, f"{indent}{entry_name}={value}{marker}")
+
+
+def compute_schema_hash(packages_dict):
+    """
+    Hash everything that determines the *structure* of the generated code:
+    packages, enums, messages, field types/numbers/options and oneof variants.
+
+    Field and oneof-variant declaration order is part of the hash: it defines
+    the wire layout and (for ``field_order`` discriminators) the discriminator
+    values, so reordering must invalidate cached output.  Packages, enums and
+    messages are hashed by name because generated output lists them in a
+    layout-independent (sorted, dependency-aware) order.
+    """
+    hasher = hashlib.sha256()
+    for pkg_name in sorted(packages_dict.keys()):
+        pkg = packages_dict[pkg_name]
+        _hash_line(hasher, f"package:{pkg_name}")
+
+        if pkg.package_id is not None:
+            _hash_line(hasher, f"  pkgid:{pkg.package_id}")
+
+        # Enums (sorted by name; entries in declaration order)
+        for enum_name in sorted(pkg.enums.keys()):
+            enum = pkg.enums[enum_name]
+            _hash_line(hasher, f"  enum:{enum_name}")
+            if enum.source_file:
+                _hash_line(hasher, f"    source:{os.path.basename(enum.source_file)}")
+            if enum.extensions_start is not None:
+                _hash_line(hasher, f"    extensions_start:{enum.extensions_start}")
+            _hash_enum_entries(hasher, enum, "    ")
+
+        # Messages (sorted by name)
+        for msg_name in sorted(pkg.messages.keys()):
+            msg = pkg.messages[msg_name]
+            _hash_line(hasher, f"  message:{msg_name}")
+            if msg.source_file:
+                _hash_line(hasher, f"    source:{os.path.basename(msg.source_file)}")
+            if msg.id is not None:
+                _hash_line(hasher, f"    msgid:{msg.id}")
+            if msg.variable:
+                _hash_line(hasher, "    variable:true")
+            if msg.is_envelope:
+                _hash_line(hasher, "    is_envelope:true")
+            if msg.discriminator_mode:
+                _hash_line(hasher, f"    discriminator:{msg.discriminator_mode}")
+            if msg.extensions_start is not None:
+                _hash_line(hasher, f"    extensions_start:{msg.extensions_start}")
+            if msg.magic_bytes_override is not None:
+                _hash_line(hasher, f"    magic_bytes:{msg.magic_bytes_override[0]},{msg.magic_bytes_override[1]}")
+
+            # Message-scoped enums (sorted by name; entries in declaration order)
+            for enum_name in sorted(msg.enums.keys()):
+                enum = msg.enums[enum_name]
+                _hash_line(hasher, f"    enum:{enum_name}")
+                if enum.extensions_start is not None:
+                    _hash_line(hasher, f"      extensions_start:{enum.extensions_start}")
+                _hash_enum_entries(hasher, enum, "      ")
+
+            # Fields in declaration order (== wire order)
+            for field_name, field in msg.fields.items():
+                _hash_line(hasher, "    " + _field_signature(field_name, field))
+
+            # Oneofs (sorted by name); variants in declaration order
+            for oneof_name in sorted(msg.oneofs.keys()):
+                oneof = msg.oneofs[oneof_name]
+                _hash_line(hasher, f"    oneof:{oneof_name}")
+                if oneof.variable:
+                    _hash_line(hasher, "      variable:true")
+                if oneof.discriminator_mode and oneof.discriminator_mode != "auto":
+                    _hash_line(hasher, f"      discriminator:{oneof.discriminator_mode}")
+                if oneof.max_size_override is not None:
+                    _hash_line(hasher, f"      max_size:{oneof.max_size_override}")
+                if oneof.min_size_override is not None:
+                    _hash_line(hasher, f"      min_size:{oneof.min_size_override}")
+                if oneof.extensions_start is not None:
+                    _hash_line(hasher, f"      extensions_start:{oneof.extensions_start}")
+                for oneof_field_name, oneof_field in oneof.fields.items():
+                    _hash_line(hasher, "      " + _field_signature(oneof_field_name, oneof_field))
+
+    return hasher.hexdigest()
+
+
+def _field_signature(field_name, field):
+    info = f"field:{field_name}:{field.field_type}"
+    if field.type_package:
+        info += f":pkg={field.type_package}"
+    if field.number is not None:
+        info += f":number={field.number}"
+    if field.is_array:
+        info += ":array"
+    if field.size_option is not None:
+        info += f":size={field.size_option}"
+    if field.max_size is not None:
+        info += f":max_size={field.max_size}"
+    if field.element_size is not None:
+        info += f":element_size={field.element_size}"
+    if field.flatten:
+        info += ":flatten"
+    if field.default is not None:
+        info += f":default={field.default}"
+    return info
+
+
+def compute_documentation_hash(packages_dict):
+    """
+    Hash every comment that can reach generated output: file-level docs and
+    the leading/trailing docs of packages' enums (and entries), messages,
+    fields and oneofs.
+
+    Kept separate from :func:`compute_schema_hash` so a comment-only edit is
+    recognised as such (and still invalidates the generation cache).
+    """
+    hasher = hashlib.sha256()
+
+    def hash_docs(label, comments):
+        if comments:
+            _hash_line(hasher, label)
+            for comment in comments:
+                _hash_line(hasher, "  " + json.dumps(comment))
+
+    def hash_enum(label, enum):
+        hash_docs(f"{label}:{enum.name}", enum.comments)
+        for entry_name, (_value, comments) in enum.data.items():
+            hash_docs(f"{label}:{enum.name}:{entry_name}", comments)
+
+    for pkg_name in sorted(packages_dict.keys()):
+        pkg = packages_dict[pkg_name]
+        for index, block in enumerate(pkg.file_doc_blocks()):
+            hash_docs(f"file:{pkg_name}:{index}", block)
+        for enum_name in sorted(pkg.enums.keys()):
+            hash_enum(f"enum:{pkg_name}", pkg.enums[enum_name])
+        for msg_name in sorted(pkg.messages.keys()):
+            msg = pkg.messages[msg_name]
+            hash_docs(f"message:{pkg_name}:{msg_name}", msg.comments)
+            for enum_name in sorted(msg.enums.keys()):
+                hash_enum(f"enum:{pkg_name}:{msg_name}", msg.enums[enum_name])
+            for field_name, field in msg.fields.items():
+                hash_docs(f"field:{pkg_name}:{msg_name}:{field_name}", field.comments)
+            for oneof_name in sorted(msg.oneofs.keys()):
+                oneof = msg.oneofs[oneof_name]
+                hash_docs(f"oneof:{pkg_name}:{msg_name}:{oneof_name}", oneof.comments)
+                for field_name, field in oneof.fields.items():
+                    hash_docs(f"field:{pkg_name}:{msg_name}:{oneof_name}:{field_name}", field.comments)
+
+    return hasher.hexdigest()
+
+
 def compute_generation_hash(args, packages_dict):
     """
-    Compute a hash based on CLI parameters, struct-frame version, and parsed message definitions.
+    Compute a hash based on CLI parameters, struct-frame version, the parsed
+    schema (structure) and the documentation comments.
+
+    Comments are part of the key: they are emitted into generated code as
+    docs, so editing one must regenerate the output.
 
     Args:
         args: Parsed argparse arguments
@@ -323,7 +485,7 @@ def compute_generation_hash(args, packages_dict):
 
     # 1. Add struct-frame version
     version = get_version()
-    hasher.update(f"version:{version}\n".encode('utf-8'))
+    _hash_line(hasher, f"version:{version}")
 
     # 2. Add relevant CLI parameters (sorted for consistency)
     cli_params = {
@@ -349,88 +511,11 @@ def compute_generation_hash(args, packages_dict):
         'csharp_namespace': args.csharp_namespace[0],
         'no_packed': args.no_packed,
     }
-    hasher.update(
-        f"cli:{json.dumps(cli_params, sort_keys=True)}\n".encode('utf-8'))
+    _hash_line(hasher, f"cli:{json.dumps(cli_params, sort_keys=True)}")
 
-    # 3. Add parsed message definitions (sorted by package name for consistency)
-    for pkg_name in sorted(packages_dict.keys()):
-        pkg = packages_dict[pkg_name]
-        hasher.update(f"package:{pkg_name}\n".encode('utf-8'))
-
-        if pkg.package_id is not None:
-            hasher.update(f"  pkgid:{pkg.package_id}\n".encode('utf-8'))
-
-        # Add enums (sorted by name)
-        for enum_name in sorted(pkg.enums.keys()):
-            enum = pkg.enums[enum_name]
-            hasher.update(f"  enum:{enum_name}\n".encode('utf-8'))
-            for entry_name in sorted(enum.data.keys()):
-                value, _ = enum.data[entry_name]
-                if enum.extensions_start is not None and value >= enum.extensions_start:
-                    continue
-                hasher.update(f"    {entry_name}={value}\n".encode('utf-8'))
-
-        # Add messages (sorted by name)
-        for msg_name in sorted(pkg.messages.keys()):
-            msg = pkg.messages[msg_name]
-            hasher.update(f"  message:{msg_name}\n".encode('utf-8'))
-            if msg.id is not None:
-                hasher.update(f"    msgid:{msg.id}\n".encode('utf-8'))
-            if msg.variable:
-                hasher.update(f"    variable:true\n".encode('utf-8'))
-            if msg.is_envelope:
-                hasher.update(f"    is_envelope:true\n".encode('utf-8'))
-            if msg.extensions_start is not None:
-                hasher.update(f"    extensions_start:{msg.extensions_start}\n".encode('utf-8'))
-            if msg.magic_bytes_override is not None:
-                hasher.update(f"    magic_bytes:{msg.magic_bytes_override[0]},{msg.magic_bytes_override[1]}\n".encode('utf-8'))
-
-            # Add message-scoped enums (sorted by name)
-            for enum_name in sorted(msg.enums.keys()):
-                enum = msg.enums[enum_name]
-                hasher.update(f"    enum:{enum_name}\n".encode('utf-8'))
-                for entry_name in sorted(enum.data.keys()):
-                    value, _ = enum.data[entry_name]
-                    if enum.extensions_start is not None and value >= enum.extensions_start:
-                        continue
-                    hasher.update(f"      {entry_name}={value}\n".encode('utf-8'))
-
-            # Add fields (sorted by name)
-            for field_name in sorted(msg.fields.keys()):
-                field = msg.fields[field_name]
-                field_info = f"    field:{field_name}:{field.field_type}"
-                if field.is_array:
-                    field_info += ":array"
-                if field.size_option is not None:
-                    field_info += f":size={field.size_option}"
-                if field.max_size is not None:
-                    field_info += f":max_size={field.max_size}"
-                if field.element_size is not None:
-                    field_info += f":element_size={field.element_size}"
-                if field.flatten:
-                    field_info += ":flatten"
-                if field.default is not None:
-                    field_info += f":default={field.default}"
-                hasher.update(f"{field_info}\n".encode('utf-8'))
-
-            # Add oneofs (sorted by name)
-            for oneof_name in sorted(msg.oneofs.keys()):
-                oneof = msg.oneofs[oneof_name]
-                hasher.update(f"    oneof:{oneof_name}\n".encode('utf-8'))
-                if oneof.variable:
-                    hasher.update(f"      variable:true\n".encode('utf-8'))
-                if oneof.discriminator_mode and oneof.discriminator_mode != "auto":
-                    hasher.update(f"      discriminator:{oneof.discriminator_mode}\n".encode('utf-8'))
-                if oneof.max_size_override is not None:
-                    hasher.update(f"      max_size:{oneof.max_size_override}\n".encode('utf-8'))
-                if oneof.min_size_override is not None:
-                    hasher.update(f"      min_size:{oneof.min_size_override}\n".encode('utf-8'))
-                if oneof.extensions_start is not None:
-                    hasher.update(f"      extensions_start:{oneof.extensions_start}\n".encode('utf-8'))
-                for oneof_field_name in sorted(oneof.fields.keys()):
-                    oneof_field = oneof.fields[oneof_field_name]
-                    hasher.update(
-                        f"      field:{oneof_field_name}:{oneof_field.field_type}\n".encode('utf-8'))
+    # 3. Schema structure and 4. documentation, hashed separately and combined
+    _hash_line(hasher, f"schema:{compute_schema_hash(packages_dict)}")
+    _hash_line(hasher, f"docs:{compute_documentation_hash(packages_dict)}")
 
     return hasher.hexdigest()
 
@@ -508,12 +593,83 @@ def write_generation_hash(hash_file_path, hash_value):
         f.write(hash_value)
 
 
-class Enum:
+class _Documented:
+    """Documentation attached to a declaration (message, enum, field, oneof).
+
+    Comment ownership rules (see docs: "Comments and documentation"):
+
+    * ``leading_comments``  -- own-line comments that directly precede the
+      declaration (no other declaration or statement in between).
+    * ``trailing_comments`` -- comments on the same line *after* the
+      declaration (``uint32 x = 1;  // note``).  For a message/enum/oneof, a
+      comment on the same line as the opening ``{`` also counts.
+    * ``comments`` -- what generators emit as the declaration's documentation:
+      the leading comments followed by the trailing comments.
+    """
+
+    def _init_docs(self, comments):
+        self.leading_comments = list(comments)
+        self.trailing_comments = []
+        self.comments = list(comments)
+
+    def add_trailing_comment(self, text):
+        self.trailing_comments.append(text)
+        self.comments.append(text)
+
+
+class _EntryDocs(_Documented):
+    """Docs holder for one enum entry (shares its lists with Enum.data/entry_trailing_comments)."""
+
+    def __init__(self, comments):
+        self._init_docs(comments)
+
+
+class _DocCollector:
+    """Tracks comment ownership while walking the elements of one scope.
+
+    Own-line comments are held back until the next declaration arrives and
+    become its leading documentation.  Comments that share a line with a
+    preceding declaration (``inline``) are attached to *that* declaration as
+    trailing documentation instead of leaking onto the next one.  Comments
+    that precede a non-declaration statement (``option``/``import``) or that
+    are left dangling at the end of a scope document nothing and are dropped.
+    """
+
+    def __init__(self, owner=None):
+        self.pending = []
+        self.target = owner
+
+    def comment(self, element):
+        if getattr(element, 'inline', False):
+            if self.target is not None:
+                self.target.add_trailing_comment(element.text)
+        else:
+            self.pending.append(element.text)
+
+    def statement(self, owner=None):
+        """A non-declaration statement (option/import) was seen."""
+        self.pending = []
+        self.target = owner
+
+    def take(self):
+        """Return and clear the pending leading comments."""
+        comments, self.pending = self.pending, []
+        return comments
+
+    def declared(self, declaration):
+        """A documentable declaration was seen; later inline comments belong to it."""
+        self.target = declaration
+
+
+class Enum(_Documented):
     def __init__(self, package, comments):
         self.name = None
         self.data = {}
         self.size = 1
-        self.comments = comments
+        self._init_docs(comments)
+        # Per-entry trailing (same-line) comments; entries' combined docs
+        # (leading + trailing) live in the second item of data[name].
+        self.entry_trailing_comments = {}
         self.package = package
         self.is_enum = True
         self.source_file = None
@@ -524,11 +680,12 @@ class Enum:
 
     def parse(self, enum):
         self.name = enum.name
-        comments = []
+        docs = _DocCollector(owner=self)
         for e in enum.elements:
             if type(e) == ast.Comment:
-                comments.append(e.text)
+                docs.comment(e)
             elif type(e) == ast.Option:
+                docs.statement(owner=self)
                 if e.name == "extensions_start":
                     try:
                         self.extensions_start = int(e.value)
@@ -541,8 +698,10 @@ class Enum:
                 if e.name in self.data:
                     print(f"Enum Field Redclaration")
                     return False
-                self.data[e.name] = (e.number, comments)
-                comments = []
+                entry_docs = _EntryDocs(docs.take())
+                self.data[e.name] = (e.number, entry_docs.comments)
+                self.entry_trailing_comments[e.name] = entry_docs.trailing_comments
+                docs.declared(entry_docs)
 
         return True
 
@@ -561,14 +720,14 @@ class Enum:
         return output
 
 
-class Field:
+class Field(_Documented):
     def __init__(self, package, comments):
         self.name = None
         self.field_type = None
         self.is_default_type = False
         self.size = 0
         self.validated = False
-        self.comments = comments
+        self._init_docs(comments)
         self.package = package  # Package where this field is defined
         # Package where the field's type is defined (for cross-package refs)
         self.type_package = None
@@ -874,7 +1033,7 @@ class Field:
         return output
 
 
-class OneOf:
+class OneOf(_Documented):
     """Represents a oneof (union) construct in a message.
 
     Discriminator modes:
@@ -894,7 +1053,7 @@ class OneOf:
         # when there are no extensions in this oneof.
         self.base_size = 0
         self.validated = False
-        self.comments = comments
+        self._init_docs(comments)
         self.package = package
         self.discriminator_mode = "auto"  # "auto", "msgid", "field_order", "none"
         # True if using msgid, False if using field_order, None if none
@@ -925,17 +1084,18 @@ class OneOf:
     def parse(self, oneof_element):
         """Parse a oneof element from the AST."""
         self.name = oneof_element.name
-        comments = []
+        docs = _DocCollector(owner=self)
 
         for e in oneof_element.elements:
             if type(e) == ast.Comment:
-                comments.append(e.text)
+                docs.comment(e)
                 # Detect the visual extension marker: any comment containing
                 # 'Extension::' (case-sensitive) marks the start of extension
                 # variants.  The next field encountered becomes extensions_start.
                 if 'Extension::' in e.text and self.extensions_start is None:
                     self._pending_extensions = True
             elif type(e) == ast.Option:
+                docs.statement(owner=self)
                 if e.name == "extensions_start":
                     try:
                         self.extensions_start = int(e.value)
@@ -994,9 +1154,9 @@ class OneOf:
                 if e.name in self.fields:
                     print(f"Field Redeclaration in oneof {self.name}")
                     return False
-                self.fields[e.name] = Field(self.package, comments)
+                self.fields[e.name] = Field(self.package, docs.take())
                 self.field_order.append(e.name)  # Track declaration order
-                comments = []
+                docs.declared(self.fields[e.name])
                 if not self.fields[e.name].parse(e):
                     return False
                 # Apply the pending Extension:: marker: the first field after
@@ -1190,7 +1350,7 @@ class OneOf:
         return output
 
 
-class Message:
+class Message(_Documented):
     def __init__(self, package, comments):
         self.id = None
         self.size = 0
@@ -1199,7 +1359,7 @@ class Message:
         self.oneofs = {}  # Dictionary of oneof constructs
         self.enums = {}  # Nested enum definitions (message-scoped)
         self.validated = False
-        self.comments = comments
+        self._init_docs(comments)
         self.package = package
         self.is_enum = False
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
@@ -1228,9 +1388,10 @@ class Message:
 
     def parse(self, msg):
         self.name = msg.name
-        comments = []
+        docs = _DocCollector(owner=self)
         for e in msg.elements:
             if type(e) == ast.Option:
+                docs.statement(owner=self)
                 if e.name == "msgid":
                     if self.id:
                         raise Exception(f"Redefinition of msg_id for {e.name}")
@@ -1298,30 +1459,30 @@ class Message:
                         return False
                     self.magic_bytes_override = (b1, b2)
             elif type(e) == ast.Comment:
-                comments.append(e.text)
+                docs.comment(e)
             elif type(e) == ast.OneOf:
                 if e.name in self.oneofs:
                     print(f"OneOf Redeclaration")
                     return False
-                self.oneofs[e.name] = OneOf(self.package, comments)
-                comments = []
+                self.oneofs[e.name] = OneOf(self.package, docs.take())
+                docs.declared(self.oneofs[e.name])
                 if not self.oneofs[e.name].parse(e):
                     return False
             elif type(e) == ast.Enum:
                 if e.name in self.enums:
                     print(f"Enum Redeclaration in message {self.name}")
                     return False
-                self.enums[e.name] = Enum(self.package, comments)
+                self.enums[e.name] = Enum(self.package, docs.take())
                 self.enums[e.name].message = self.name
-                comments = []
+                docs.declared(self.enums[e.name])
                 if not self.enums[e.name].parse(e):
                     return False
             elif type(e) == ast.Field:
                 if e.name in self.fields:
                     print(f"Field Redeclaration")
                     return False
-                self.fields[e.name] = Field(self.package, comments)
-                comments = []
+                self.fields[e.name] = Field(self.package, docs.take())
+                docs.declared(self.fields[e.name])
                 if not self.fields[e.name].parse(e):
                     return False
         return True
@@ -1571,9 +1732,30 @@ class Package:
         self.messages = {}
         self.package_id = None  # Package ID for extended message IDs (0-255)
         self.package_id_explicit = False
+        # File-level documentation: own-line comments that precede the
+        # ``package`` statement of a source file (license/overview headers).
+        # Keyed by absolute source path; they document the file, not the first
+        # declaration that happens to follow.
+        self.file_docs = {}
+
+    def add_file_docs(self, source_file, comments):
+        if comments:
+            self.file_docs.setdefault(source_file, []).extend(comments)
+
+    def file_doc_blocks(self):
+        """File-doc comment blocks in a layout-independent order.
+
+        Sorted by file name (then path) so that the generated output does not
+        depend on the order in which files were imported.
+        """
+        return [self.file_docs[path] for path in sorted(
+            self.file_docs, key=lambda p: (os.path.basename(p), p))]
+
+    def file_doc_lines(self):
+        """Flattened :meth:`file_doc_blocks` (one list of comment strings)."""
+        return [line for block in self.file_doc_blocks() for line in block]
 
     def addEnum(self, enum, comments, source_file=None):
-        self.comments = comments
         if enum.name in self.enums:
             print(f"Enum Redclaration")
             return False
@@ -1780,7 +1962,11 @@ def parseFile(filename, base_path=None, importing_package=None):
 
     foundPackage = False
     package_name = ""
-    comments = []
+    # Own-line comments seen before the ``package`` statement document the
+    # file; once the package is known, comment ownership follows the usual
+    # leading/trailing rules via _DocCollector.
+    file_header = []
+    docs = _DocCollector()
     pending_imports = []
 
     def record_package_import(importer, import_path):
@@ -1804,6 +1990,9 @@ def parseFile(filename, base_path=None, importing_package=None):
             package_name = e.name
             if package_name not in packages:
                 packages[package_name] = Package(package_name)
+            packages[package_name].add_file_docs(abs_filename, file_header)
+            file_header = []
+            docs.statement()
             file_to_package[abs_filename] = package_name
             # Track import relationship if this file was imported
             if importing_package and importing_package != package_name:
@@ -1814,6 +2003,7 @@ def parseFile(filename, base_path=None, importing_package=None):
 
         elif (type(e) == ast.Import):
             # Handle import statements
+            docs.statement()
             import_file = e.name
 
             # Try to resolve import path relative to base_path first
@@ -1846,6 +2036,7 @@ def parseFile(filename, base_path=None, importing_package=None):
 
         elif (type(e) == ast.Option):
             # Handle file-level options (like pkgid)
+            docs.statement()
             if not foundPackage:
                 print(
                     f"Option {e.name} found before package declaration in {filename}")
@@ -1858,25 +2049,28 @@ def parseFile(filename, base_path=None, importing_package=None):
             if not foundPackage:
                 print(f"Enum found before package declaration in {filename}")
                 return False
-            if not packages[package_name].addEnum(e, comments, source_file=abs_filename):
+            if not packages[package_name].addEnum(e, docs.take(), source_file=abs_filename):
                 print(
                     f"Enum Error in Package: {package_name}  FileName: {filename} EnumName: {e.name}")
                 return False
-            comments = []
+            docs.declared(packages[package_name].enums[e.name])
 
         elif (type(e) == ast.Message):
             if not foundPackage:
                 print(
                     f"Message found before package declaration in {filename}")
                 return False
-            if not packages[package_name].addMessage(e, comments, source_file=abs_filename):
+            if not packages[package_name].addMessage(e, docs.take(), source_file=abs_filename):
                 print(
                     f"Message Error in Package: {package_name}  FileName: {filename} MessageName: {e.name}")
                 return False
-            comments = []
+            docs.declared(packages[package_name].messages[e.name])
 
         elif (type(e) == ast.Comment):
-            comments.append(e.text)
+            if foundPackage:
+                docs.comment(e)
+            elif not getattr(e, 'inline', False):
+                file_header.append(e.text)
 
     if foundPackage and pending_imports:
         for pending_import in pending_imports:
