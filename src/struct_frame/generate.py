@@ -8,6 +8,7 @@ import hashlib
 import json
 import struct
 import time
+import contextlib
 from struct_frame import FileCGen
 from struct_frame import FileTsGen, TestTsGen
 from struct_frame import FileJsGen, TestJsGen
@@ -22,6 +23,7 @@ from struct_frame import TestCGen
 from struct_frame import TestCSharpGen
 from struct_frame import pascal_case
 from struct_frame import camel_to_snake_case
+from struct_frame.naming import NameOverrides, NameOverrideError
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -466,7 +468,7 @@ def compute_documentation_hash(packages_dict):
     return hasher.hexdigest()
 
 
-def compute_generation_hash(args, packages_dict):
+def compute_generation_hash(args, packages_dict, name_overrides=None):
     """
     Compute a hash based on CLI parameters, struct-frame version, the parsed
     schema (structure) and the documentation comments.
@@ -477,6 +479,7 @@ def compute_generation_hash(args, packages_dict):
     Args:
         args: Parsed argparse arguments
         packages_dict: Dictionary of parsed packages with their messages and enums
+        name_overrides: Optional NameOverrides (their content is part of the key)
 
     Returns:
         str: SHA256 hash hex string
@@ -510,6 +513,7 @@ def compute_generation_hash(args, packages_dict):
         'equality': args.equality,
         'csharp_namespace': args.csharp_namespace[0],
         'no_packed': args.no_packed,
+        'name_overrides': name_overrides.fingerprint() if name_overrides else None,
     }
     _hash_line(hasher, f"cli:{json.dumps(cli_params, sort_keys=True)}")
 
@@ -1915,6 +1919,12 @@ parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
                     help='Path to store the generation hash file (default: first output path)')
 parser.add_argument('--generate_tests', action='store_true',
                     help='Generate test code with dummy values for all messages (round-trip encode/decode verification)')
+parser.add_argument('--name_overrides', nargs=1, type=str, default=[None],
+                    help=('JSON file with explicit per-language name overrides, e.g. '
+                          '{"csharp": {"BleMCuHost": "BleMcuHost"}}. Keys are source names '
+                          '(Message, Message.field, Message.oneof.variant, Enum.ENTRY, ...), '
+                          'optionally package-qualified; "all" applies to every language. '
+                          'Wire layout is unaffected.'))
 parser.add_argument('--no_packed', action='store_true',
                     help=('Generate code without packed structs. All messages are treated as variable, '
                           'so serialization/deserialization is performed field-by-field instead of relying on '
@@ -2326,6 +2336,28 @@ def normalize_output_order():
         pkg.messages = dict(dependency_ordered_messages(pkg))
 
 
+@contextlib.contextmanager
+def language_model(lang, name_overrides):
+    """Temporarily swap ``packages`` for the model renamed for *lang*.
+
+    Generators read the module-level ``packages`` dict.  When name overrides
+    exist for *lang*, they run against a renamed deep copy (same wire layout,
+    different declaration names); otherwise nothing changes.
+    """
+    if name_overrides is None or not name_overrides.has_language(lang):
+        yield
+        return
+    original = dict(packages)
+    renamed = name_overrides.apply(lang, original)
+    packages.clear()
+    packages.update(renamed)
+    try:
+        yield
+    finally:
+        packages.clear()
+        packages.update(original)
+
+
 def printPackages():
     for key, value in packages.items():
         print(value)
@@ -2381,7 +2413,7 @@ def topological_sort_packages(pkgs, pkg_imports):
     return result
 
 
-def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
+def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None, name_overrides=None):
     """Generate a single JSON catalog file for language-server navigation.
 
     Produces one language-agnostic ``sf_compile.json`` that lists
@@ -2393,6 +2425,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
         catalog_path: Directory where ``sf_compile.json`` will be written.
         build_flags:  dict {lang: bool}  e.g. {'c': True, 'cpp': False, ...}
         paths:        dict {lang: str}   absolute output directory for each language
+        name_overrides: optional NameOverrides; element names follow them per language
 
     Returns:
         dict {filename: content}
@@ -2440,9 +2473,16 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                                                    f'{pkg_name}.structframe.rs'))
         return result
 
+    def _ov(lang, pkg_name, *path):
+        """Name of the declaration at *path* in *lang* (honours --name_overrides)."""
+        if name_overrides is None:
+            return path[-1]
+        return name_overrides.rename(lang, pkg_name, path)
+
     def _lang_symbol_info(lang, pkg, symbol_name):
         """Return language-specific namespace, element, and qualified element."""
         pkg_name = pkg.name
+        symbol_name = _ov(lang, pkg_name, symbol_name)
         pkg_pascal = pascal_case(pkg_name)
 
         if lang == 'c':
@@ -2512,7 +2552,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
             if build_flags.get('csharp'):
                 gen_files['csharp'] = _relpath(
                     os.path.join(os.path.abspath(paths['csharp']),
-                                 pkg_pascal, 'Messages', f'{msg_name}.cs'))
+                                 pkg_pascal, 'Messages', f'{_ov("csharp", pkg_name, msg_name)}.cs'))
 
             # Build oneof summary list
             oneof_entries = []
@@ -2563,6 +2603,9 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
 
                 def _nested_enum_symbol_info(lang, pkg_, msg_name_, enum_name_):
                     pkg_name_ = pkg_.name
+                    source_msg_name_ = msg_name_
+                    enum_name_ = _ov(lang, pkg_name_, msg_name_, enum_name_)
+                    msg_name_ = _ov(lang, pkg_name_, msg_name_)
                     pkg_pascal_ = pascal_case(pkg_name_)
                     flat_name = f'{pkg_pascal_}{msg_name_}{enum_name_}'
 
@@ -2592,7 +2635,9 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                         ns = f'StructFrame.{pkg_pascal_}'
                         # Apply the same collision-avoidance logic as csharp_gen.py:
                         # if the enum name matches a field property name, add 'Enum' suffix
-                        field_property_names = {pascal_case(f.name) for f in msg.fields.values()}
+                        field_property_names = {
+                            pascal_case(_ov('csharp', pkg_name_, source_msg_name_, f))
+                            for f in msg.fields}
                         effective_name = f'{enum_name_}Enum' if enum_name_ in field_property_names else enum_name_
                         return ns, effective_name, f'{ns}.{msg_name_}.{effective_name}'
 
@@ -2623,7 +2668,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
             if build_flags.get('csharp'):
                 gen_files['csharp'] = _relpath(
                     os.path.join(os.path.abspath(paths['csharp']),
-                                 pkg_pascal, 'Enums', f'{enum_name}.cs'))
+                                 pkg_pascal, 'Enums', f'{_ov("csharp", pkg_name, enum_name)}.cs'))
             enums.append({
                 "name": enum_name,
                 "package": pkg_name,
@@ -3043,6 +3088,15 @@ def main():
 
     normalize_output_order()
 
+    name_overrides = None
+    if args.name_overrides[0]:
+        try:
+            name_overrides = NameOverrides.load(args.name_overrides[0])
+            name_overrides.validate(packages)
+        except NameOverrideError as err:
+            print(f"Error: {err}")
+            return 1
+
     if args.validate:
         # In validate mode, only perform validation - no file generation
         print("Validation successful")
@@ -3051,7 +3105,7 @@ def main():
         return 0
 
     # Compute generation hash and check if regeneration is needed
-    current_hash = compute_generation_hash(args, packages)
+    current_hash = compute_generation_hash(args, packages, name_overrides)
     hash_file_path = get_hash_file_path(args)
     previous_hash = read_previous_hash(hash_file_path)
 
@@ -3071,70 +3125,78 @@ def main():
     # Normal mode: generate files
     files = {}
     if (args.build_c):
-        files.update(generateCFileStrings(
-            args.c_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('c', name_overrides):
+            files.update(generateCFileStrings(
+                args.c_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_ts):
-        files.update(generateTsFileStrings(
-            args.ts_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('ts', name_overrides):
+            files.update(generateTsFileStrings(
+                args.ts_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_js):
-        files.update(generateJsFileStrings(
-            args.js_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('js', name_overrides):
+            files.update(generateJsFileStrings(
+                args.js_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_py):
-        files.update(generatePyFileStrings(
-            args.py_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('py', name_overrides):
+            files.update(generatePyFileStrings(
+                args.py_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_cpp):
-        files.update(generateCppFileStrings(
-            args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('cpp', name_overrides):
+            files.update(generateCppFileStrings(
+                args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_csharp):
-        files.update(generateCSharpFileStrings(args.csharp_path[0],
-                                               equality=args.equality,
-                                               namespace=args.csharp_namespace[0],
-                                               generate_tests=args.generate_tests))
+        with language_model('csharp', name_overrides):
+            files.update(generateCSharpFileStrings(args.csharp_path[0],
+                                                   equality=args.equality,
+                                                   namespace=args.csharp_namespace[0],
+                                                   generate_tests=args.generate_tests))
 
     if (args.build_gql):
-        from struct_frame.gql_gen import _PACKAGE_DIRECTIVE_DEF
-        for key, value in packages.items():
-            name = os.path.join(args.gql_path[0], value.name + '.graphql')
-            data = ''.join(FileGqlGen.generate(value))
-            files[name] = data
+        with language_model('gql', name_overrides):
+            from struct_frame.gql_gen import _PACKAGE_DIRECTIVE_DEF
+            for key, value in packages.items():
+                name = os.path.join(args.gql_path[0], value.name + '.graphql')
+                data = ''.join(FileGqlGen.generate(value))
+                files[name] = data
 
-        # Generate a stitched schema.graphql that combines all packages into
-        # one document with extend-based merging.  Each per-package file is
-        # included via a comment header so tooling can trace provenance.
-        stitched_parts = [
-            f'# Stitched schema — generated by struct-frame {get_version()}\n',
-            f'# Contains all packages: {", ".join(sorted(packages.keys()))}\n\n',
-            _PACKAGE_DIRECTIVE_DEF + '\n\n',
-        ]
-        query_fields = []
-        for key, value in packages.items():
-            stitched_parts.append(f'# --- Package: {value.name} ---\n')
-            # Re-emit enum and message types (without the per-file directive def)
-            from struct_frame.gql_gen import EnumGqlGen, MessageGqlGen, pascal_case as _pc
-            for _, enum in value.enums.items():
-                stitched_parts.append(
-                    EnumGqlGen.generate(enum).rstrip() + '\n\n')
-            for _, msg in value.sortedMessages().items():
-                stitched_parts.append(MessageGqlGen.generate(
-                    value, msg).rstrip() + '\n\n')
-            for _, msg in value.sortedMessages().items():
-                type_name = f'{_pc(value.name)}{msg.name}'
-                query_fields.append(f'  {msg.name}: {type_name}')
-        if query_fields:
-            stitched_parts.append('type Query {\n')
-            stitched_parts.append('\n'.join(query_fields) + '\n')
-            stitched_parts.append('}\n')
-        files[os.path.join(args.gql_path[0], 'schema.graphql')
-              ] = ''.join(stitched_parts)
+            # Generate a stitched schema.graphql that combines all packages into
+            # one document with extend-based merging.  Each per-package file is
+            # included via a comment header so tooling can trace provenance.
+            stitched_parts = [
+                f'# Stitched schema — generated by struct-frame {get_version()}\n',
+                f'# Contains all packages: {", ".join(sorted(packages.keys()))}\n\n',
+                _PACKAGE_DIRECTIVE_DEF + '\n\n',
+            ]
+            query_fields = []
+            for key, value in packages.items():
+                stitched_parts.append(f'# --- Package: {value.name} ---\n')
+                # Re-emit enum and message types (without the per-file directive def)
+                from struct_frame.gql_gen import EnumGqlGen, MessageGqlGen, pascal_case as _pc
+                for _, enum in value.enums.items():
+                    stitched_parts.append(
+                        EnumGqlGen.generate(enum).rstrip() + '\n\n')
+                for _, msg in value.sortedMessages().items():
+                    stitched_parts.append(MessageGqlGen.generate(
+                        value, msg).rstrip() + '\n\n')
+                for _, msg in value.sortedMessages().items():
+                    type_name = f'{_pc(value.name)}{msg.name}'
+                    query_fields.append(f'  {msg.name}: {type_name}')
+            if query_fields:
+                stitched_parts.append('type Query {\n')
+                stitched_parts.append('\n'.join(query_fields) + '\n')
+                stitched_parts.append('}\n')
+            files[os.path.join(args.gql_path[0], 'schema.graphql')
+                  ] = ''.join(stitched_parts)
 
     if (args.build_rust):
-        files.update(generateRustFileStrings(
-            args.rust_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('rust', name_overrides):
+            files.update(generateRustFileStrings(
+                args.rust_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     # Generate LSP type catalog (single language-agnostic JSON file)
     lsp_build_flags = {
@@ -3158,7 +3220,7 @@ def main():
         'rust':   args.rust_path[0],
     }
     files.update(generate_lsp_file_strings(
-        args.catalog_path[0], lsp_build_flags, lsp_paths))
+        args.catalog_path[0], lsp_build_flags, lsp_paths, name_overrides))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)

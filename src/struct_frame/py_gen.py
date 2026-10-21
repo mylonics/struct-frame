@@ -109,7 +109,7 @@ class EnumPyGen():
         for entry_name, (value, comments) in field.data.items():
             for c in comments:
                 result += f'        #{c}\n'
-            result += f'        {entry_name.upper()} = {value}\n'
+            result += f'        {_style_c.enum_entry(entry_name)} = {value}\n'
         return result
 
     @staticmethod

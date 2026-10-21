@@ -58,7 +58,7 @@ def _csharp_scalar_default_literal(field, base_type):
         # Top-level enums use SCREAMING_CASE entries (EnumCSharpGen.generate,
         # via NamingStyleC.enum_entry); nested (message-scoped) enums use
         # PascalCase (EnumCSharpGen.generate_nested) -- see Field.type_message.
-        entry = pascal_case(field.default) if field.type_message else field.default.upper()
+        entry = pascal_case(field.default) if field.type_message else _style_c.enum_entry(field.default)
         return f'{base_type}.{entry}'
     if field.field_type == "bool":
         return "true" if field.default else "false"

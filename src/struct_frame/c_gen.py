@@ -150,7 +150,7 @@ class EnumCGen():
             for c in comments:
                 result += f'    {c}\n'
             comma = ',' if i < len(entries) - 1 else ''
-            result += f'    {enum_prefix}_{entry_name.upper()} = {value}{comma}\n'
+            result += f'    {enum_prefix}_{_style_c.enum_entry(entry_name)} = {value}{comma}\n'
         result += f'}} {enum_name};\n'
         result += f'typedef uint8_t {enum_name}_t;\n'
         # enum-to-string helper
@@ -158,7 +158,7 @@ class EnumCGen():
         result += f'static inline const char* {enum_name}_to_string({enum_name} value) {{\n'
         result += '    switch (value) {\n'
         for entry_name, (value, _) in enum.data.items():
-            result += f'        case {enum_prefix}_{entry_name.upper()}: return "{entry_name.upper()}";\n'
+            result += f'        case {enum_prefix}_{_style_c.enum_entry(entry_name)}: return "{_style_c.enum_entry(entry_name)}";\n'
         result += '        default: return "UNKNOWN";\n'
         result += '    }\n'
         result += '}\n'

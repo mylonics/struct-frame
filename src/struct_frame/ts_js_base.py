@@ -8,14 +8,17 @@ to reduce code duplication and ensure consistent behavior.
 """
 
 from struct_frame import NamingStyleC, pascal_case
+from struct_frame.naming import to_camel_case as _to_camel_case
 
 _style_c = NamingStyleC()
 
 
 def to_camel_case(name: str) -> str:
-    """Convert snake_case to camelCase for TypeScript/JavaScript identifiers."""
-    parts = name.split('_')
-    return parts[0] + ''.join(p.capitalize() for p in parts[1:])
+    """Convert snake_case to camelCase for TypeScript/JavaScript identifiers.
+
+    Acronyms in mixed-case names are preserved (``ble_HOST_id`` -> ``bleHOSTId``).
+    """
+    return _to_camel_case(name)
 
 
 def needs_default_bytes(msg) -> bool:

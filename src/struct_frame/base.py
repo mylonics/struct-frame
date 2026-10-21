@@ -7,6 +7,8 @@ language-specific code generators.
 
 import re
 
+from struct_frame.naming import to_pascal_case, to_screaming_snake_case
+
 try:
     from importlib.metadata import PackageNotFoundError, version as _pkg_version
     version = _pkg_version("struct-frame")
@@ -84,7 +86,7 @@ class NamingStyleC(NamingStyle):
         return self.underscore(name)
 
     def enum_entry(self, name):
-        return name.upper()
+        return to_screaming_snake_case(name)
 
     def func_name(self, name):
         return self.underscore(name)
@@ -112,8 +114,13 @@ class NamingStyleCpp(NamingStyleC):
 
 
 def pascal_case(st):
-    """Convert string to PascalCase (first letter uppercase)."""
-    return ''.join(x for x in st.title() if x.isalnum())
+    """Convert string to PascalCase (first letter uppercase).
+
+    Acronyms that are visible in the source are preserved:
+    ``BleMCuHost`` stays ``BleMCuHost`` and ``gate_current`` becomes
+    ``GateCurrent``.  See :mod:`struct_frame.naming` for the tokenizer rules.
+    """
+    return to_pascal_case(st)
 
 
 pattern = re.compile(r'(?<!^)(?=[A-Z])')

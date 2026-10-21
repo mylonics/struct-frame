@@ -659,7 +659,7 @@ def _rust_scalar_default_literal(field):
         base_type = _get_field_type(field)
         # Both top-level and message-nested Rust enums use SCREAMING_CASE
         # variant names (EnumRustGen, via NamingStyleC.enum_entry).
-        return f'{base_type}::{field.default.upper()}'
+        return f'{base_type}::{_style_c.enum_entry(field.default)}'
     if field.field_type == "bool":
         return "true" if field.default else "false"
     if field.field_type == "float":
