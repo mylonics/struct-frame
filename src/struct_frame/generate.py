@@ -29,6 +29,7 @@ from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
 
 import argparse
+import sys
 
 current_error_field = ""
 current_error_message = ""
@@ -1876,7 +1877,9 @@ file_to_package = {}
 
 parser = argparse.ArgumentParser(
     prog='struct_frame',
-    description='Message serialization and header generation program')
+    description='Message serialization and header generation program',
+    epilog=('Wire-compatibility check between two schema revisions: '
+            'struct_frame diff OLD.sf NEW.sf  (see "struct_frame diff --help")'))
 
 parser.add_argument('filename', nargs='?', default=None,
                     help='Proto file to process')
@@ -3043,7 +3046,18 @@ def _generateCSharpProjectFile(namespace):
     return project_content
 
 
+SCHEMA_DIFF_COMMANDS = ('diff', 'schema-diff')
+
+
 def main():
+
+    # ``struct-frame diff OLD NEW``: wire-compatibility check between two
+    # schema revisions. A schema file that happens to be named "diff" still
+    # generates code as before.
+    argv = sys.argv[1:]
+    if argv and argv[0] in SCHEMA_DIFF_COMMANDS and not os.path.isfile(argv[0]):
+        from struct_frame import schema_diff
+        return schema_diff.main(argv[1:])
 
     args = parser.parse_args()
 
