@@ -1007,6 +1007,10 @@ print(StatusReport.BASE_SIZE)  # 7  (device_id + status_code + error_flags)
 print(StatusReport.MAX_SIZE)   # 43 (+ uptime_seconds + cpu_temperature + firmware_version)
 ```
 
+### Checking wire compatibility
+
+Run [`struct_frame diff OLD.sf NEW.sf`](/reference/cli-reference/#schema-diff-wire-compatibility-check) in CI to verify that a new revision only adds extensions: it reports changed message IDs, magic bytes, field types and numbers, enum values, extension blocks and order-sensitive oneof variants, and lists source-only renames and file moves separately.
+
 ### Complete wire-evolution example
 
 ```proto
@@ -1045,6 +1049,69 @@ message JobEnvelope {
   }
 }
 ```
+
+## Comments and Documentation
+
+Comments in a `.sf` file become documentation in the generated code. Every comment has exactly one owner, decided by where it is written:
+
+| Kind | Where it is written | Documents |
+|------|---------------------|-----------|
+| **File docs** | Own-line comments before the `package` statement | The generated file (license headers, overviews). They are emitted in each generated file's header and are **never** attached to the first declaration. |
+| **Leading docs** | Own-line comments directly before a message, enum, enum value, field, oneof or oneof variant | The next declaration |
+| **Trailing docs** | A comment on the same line, after a declaration | That declaration |
+
+```proto
+// Copyright (c) Example Corp.      <- file docs
+// Robot telemetry definitions.     <- file docs
+package robot;
+
+// Current robot state.             <- leading docs of RobotState
+enum RobotState {
+  IDLE = 0;      // Waiting         <- trailing docs of IDLE
+  // Driving.                       <- leading docs of MOVING
+  MOVING = 1;
+}
+```
+
+Comments before an `option` or `import` statement, and comments left dangling at the end of a scope, document nothing and are dropped. Multi-line comments keep their line order in every generated language.
+
+Documentation takes part in incremental generation: changing any comment that reaches generated output (including a file header) regenerates the files even though the schema structure is unchanged. Use `--force` only to regenerate unchanged input.
+
+## Generated Names
+
+Source identifiers are converted to each language's conventions with one shared tokenizer. It splits on `_`, `-`, lower→upper transitions and acronym boundaries (`BLEHost` → `BLE` + `Host`), so mixed-case names keep their acronyms instead of being flattened:
+
+| Source name | PascalCase name (C++/TS enum entries, C# properties, JS enum keys, type names) | SCREAMING_SNAKE name (C#/Python/Rust enum entries, C constants) |
+|-------------|------|------|
+| `BleMCuHost` | `BleMCuHost` | `BLE_M_CU_HOST` |
+| `BleHost` | `BleHost` | `BLE_HOST` |
+| `GateCurrent` | `GateCurrent` | `GATE_CURRENT` |
+| `BLEHost` | `BLEHost` | `BLE_HOST` |
+| `gate_current` | `GateCurrent` | `GATE_CURRENT` |
+
+TypeScript/JavaScript property accessors start with a lower-case letter (`gateCurrent`, `bleHostId`) but keep the remaining acronym casing (`BLEHost` stays `BLEHost`).
+
+Names written entirely in one case (`BLE_HOST_OK`, `ble_host`) carry no acronym information, so they are title-cased (`BleHostOk`) as before.
+
+When no heuristic can produce the name you want, pass `--name_overrides FILE` with a JSON file. Overrides are keyed by `all` or a language (`c`, `cpp`, `ts`, `js`, `py`, `gql`, `csharp`, `rust`); each entry maps a source name path to the exact generated name:
+
+```json
+{
+  "all": { "BleMCuHost": "BleMcuHost" },
+  "csharp": { "Telemetry.gate_current": "GateCurrentAmps" },
+  "cpp": { "demo.Mode.RUN": "Running" }
+}
+```
+
+Keys are dotted source paths (`Name`, `Message.field`, `Message.oneof.variant`, `Enum.ENTRY`, `Message.Nested`, `Message.Nested.ENTRY`), optionally prefixed with the package. A language entry wins over `all`, and a package-qualified key wins over an unqualified one. Unknown keys, invalid identifiers and collisions are errors. Overrides only rename generated symbols: message IDs, magic bytes and the wire layout are unchanged, and the overrides file is part of the generation hash.
+
+## Output Ordering
+
+Generated output does not depend on the order in which files were imported or declarations were written, so reorganizing a schema into several files produces a reviewable diff:
+
+- Packages are emitted dependency-first (imported packages before importers).
+- Within a package, enums are sorted by name and messages are emitted dependencies-first, with ties broken by name.
+- **Order-sensitive content is never reordered:** fields, oneof variants (their `field_order` discriminator values are the 1-based declaration index), enum entries and message-nested enums keep their declaration order.
 
 ## Complete Example
 
