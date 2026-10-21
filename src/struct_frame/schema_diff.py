@@ -269,8 +269,8 @@ def _describe(member):
     return text
 
 
-def _hex_id(msgid):
-    return "none" if msgid is None else f"0x{msgid:04X}"
+def _id_text(msgid):
+    return "no message ID" if msgid is None else f"ID 0x{msgid:04X}"
 
 
 class _Differ:
@@ -345,11 +345,11 @@ class _Differ:
         for key in message_removed:
             msg = old_pkgs[key[0]]["messages"][key[1]]
             self.add(BREAKING, "message_removed", ".".join(key),
-                     f"message removed (ID {_hex_id(msg['msgid'])})", msg["msgid"])
+                     f"message removed ({_id_text(msg['msgid'])})", msg["msgid"])
         for key in message_added:
             msg = new_pkgs[key[0]]["messages"][key[1]]
             self.add(COMPATIBLE, "message_added", ".".join(key),
-                     f"message added (ID {_hex_id(msg['msgid'])})", None, msg["msgid"])
+                     f"message added ({_id_text(msg['msgid'])})", None, msg["msgid"])
 
         order = {category: index for index, category in enumerate(CATEGORIES)}
         self.changes.sort(key=lambda c: (order[c.category], c.path, c.kind))
@@ -445,7 +445,7 @@ class _Differ:
 
         if old_key != new_key:
             self.add(RENAME, "message_renamed", ".".join(old_key),
-                     f"message renamed to {path} (ID {_hex_id(new['msgid'])} unchanged)",
+                     f"message renamed to {path} ({_id_text(new['msgid'])} unchanged)",
                      ".".join(old_key), path)
         if old["source"] != new["source"]:
             self.add(MOVE, "file_moved", path,
