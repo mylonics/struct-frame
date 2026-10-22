@@ -954,7 +954,17 @@ class MessageRustGen():
             # Helper to build unpack body
             def _build_unpack_body(result, variable_mode, indent='        '):
                 field_names = []
-                result += f'{indent}if buf.len() < Self::{"SIZE" if not variable_mode else "MIN_SIZE"} {{ return None; }}\n'
+                min_guard = "Self::SIZE"
+                if variable_mode:
+                    min_guard = "Self::MIN_SIZE"
+                    if any(o.discriminator_type is not None and not o.variable for o in msg.oneofs.values()):
+                        structural_min_size = msg.min_size
+                        for oneof in msg.oneofs.values():
+                            if oneof.discriminator_type is not None and not oneof.variable:
+                                structural_min_size -= oneof.min_wire_size()
+                                structural_min_size += oneof.min_size_override or 0
+                        min_guard = str(structural_min_size)
+                result += f'{indent}if buf.len() < {min_guard} {{ return None; }}\n'
                 result += f'{indent}let mut _pos = 0usize;\n'
                 result += f'{indent}#[allow(unused_variables)]\n'
                 result += f'{indent}let _ = _pos;\n'
@@ -1015,17 +1025,29 @@ class MessageRustGen():
                     elif variable_mode and oneof.auto_discriminator:
                         _min_sz = oneof.min_size_override or 0
                         _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
+                        _trailing = oneof_name == list(msg.oneofs.keys())[-1]
                         result += f'{indent}// Oneof {oneof_name} {_trim_label}\n'
-                        result += f'{indent}let _{oneof_name}_rlen: usize = match {oneof_name}_discriminator as u16 {{\n'
-                        for disc_val, field_name, field_size in oneof.variant_info:
-                            result += f'{indent}    {disc_val} => {max(field_size, _min_sz)},  // {field_name}\n'
-                        result += f'{indent}    _ => {_min_sz},\n'
+                        result += f'{indent}let _{oneof_name}_avail: usize = buf.len().saturating_sub(_pos);\n'
+                        result += f'{indent}let (_{oneof_name}_min, _{oneof_name}_max, _{oneof_name}_vsize): (usize, usize, usize) = match {oneof_name}_discriminator as u16 {{\n'
+                        for _i, (disc_val, field_name, field_size) in enumerate(oneof.variant_info):
+                            result += f'{indent}    {disc_val} => ({oneof.variant_min_wire(_i)}, {oneof.variant_max_wire(_i)}, {field_size}),  // {field_name}\n'
+                        result += f'{indent}    _ => ({_min_sz}, {_min_sz}, 0),\n'
                         result += f'{indent}}};\n'
-                        result += f'{indent}if _pos + _{oneof_name}_rlen > buf.len() {{ return None; }}\n'
-                        result += f'{indent}let _copy = _{oneof_name}_rlen.min({oneof.size});\n'
+                        result += f'{indent}if _{oneof_name}_avail < _{oneof_name}_min {{ return None; }}\n'
+                        _defaults = [(oneof.variant_info[_i][0], oneof.variant_extra[_i][1]) for _i in range(len(oneof.variant_info)) if oneof.variant_extra[_i][1]]
+                        if _defaults:
+                            result += f'{indent}match {oneof_name}_discriminator as u16 {{\n'
+                            for disc_val, def_bytes in _defaults:
+                                result += f'{indent}    {disc_val} => {oneof_name}_bytes[..{len(def_bytes)}].copy_from_slice(&[{_rust_byte_array_literal(def_bytes)}]),\n'
+                            result += f'{indent}    _ => {{}}\n'
+                            result += f'{indent}}}\n'
+                        result += f'{indent}let _copy = _{oneof_name}_avail.min(_{oneof_name}_vsize);\n'
                         # A1: safe slice
                         result += f'{indent}{oneof_name}_bytes[.._copy].copy_from_slice(buf.get(_pos.._pos+_copy)?);\n'
-                        result += f'{indent}_pos += _{oneof_name}_rlen;\n'
+                        if _trailing:
+                            result += f'{indent}_pos += _{oneof_name}_avail;\n'
+                        else:
+                            result += f'{indent}_pos += _{oneof_name}_avail.min(_{oneof_name}_max);\n'
                     else:
                         # A1: safe slice
                         result += f'{indent}{oneof_name}_bytes.copy_from_slice(buf.get(_pos.._pos+{oneof.size})?);\n'
@@ -1073,7 +1095,7 @@ class MessageRustGen():
                     if oneof.min_size_override:
                         min_size += oneof.min_size_override  # min_size guarantee
                 elif oneof.auto_discriminator:
-                    min_size += oneof.min_size_override or 0  # trimmed min is min_size (or 0 if unset)
+                    min_size += oneof.min_wire_size()  # smallest valid trimmed payload
                 else:
                     min_size += oneof.size
                 if oneof.auto_discriminator:

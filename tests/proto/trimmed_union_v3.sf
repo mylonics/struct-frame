@@ -1,0 +1,87 @@
+// Trimmed-union wire-evolution fixture, schema version 3.
+// A variable envelope carrying a trimmed oneof (min_size = 60). Each version
+// extends ScanTaskCommand via `extensions_start`; see test_trimmed_union_evolution.py.
+package trimmed_union_v3;
+
+enum ActionMode {
+  KEEP_CURRENT = 0;
+  DISABLE = 1;
+  ENABLE = 2;
+}
+
+message WarmupConfig {
+  ActionMode mode = 1;
+  double duration_sec = 2;
+  uint8 stage_id = 3;
+}
+
+message ScanTaskCommand {
+  uint8 channel_mask = 1;
+  uint32 step_count = 2;
+  float start_level = 3;
+  float end_level = 4;
+  float rate_hz = 5;
+  repeated uint8 reserved = 6 [size=32];
+  uint8 request_id = 7;
+
+  option extensions_start = 8;
+  uint8 window_begin_pct = 8 [default = 80];
+  uint8 window_end_pct = 9 [default = 100];
+  WarmupConfig warmup = 10;
+}
+
+message BulkConfigCommand {
+  repeated uint8 table_bytes = 1 [size=353];
+}
+
+message TaskEnvelope {
+  option msgid = 100;
+  option is_envelope = true;
+  option variable = true;
+
+  bool execute_now = 1;
+  oneof task {
+    option discriminator = "field_order";
+    option min_size = 60;
+
+    ScanTaskCommand scan_task = 1;
+    BulkConfigCommand bulk_config = 2;
+  }
+}
+
+message TinyDefaultCommand {
+  uint32 prefix = 1;
+  uint32 inherited_value = 2 [default = 80];
+}
+
+message TinyZeroCommand {
+  uint32 prefix = 1;
+
+  option extensions_start = 2;
+  uint32 extra = 2;
+}
+
+message TinyEnvelope {
+  option msgid = 101;
+  option variable = true;
+
+  oneof command {
+    option discriminator = "field_order";
+    option min_size = 4;
+
+    TinyDefaultCommand with_default = 1;
+    TinyZeroCommand zero_default = 2;
+  }
+}
+
+message TinyUnknownEnvelope {
+  option msgid = 102;
+  option variable = true;
+
+  oneof command {
+    option discriminator = "field_order";
+    option min_size = 4;
+
+    TinyDefaultCommand command = 1;
+  }
+}

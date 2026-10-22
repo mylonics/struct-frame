@@ -1097,6 +1097,15 @@ class MessagePyGen():
         result += '        """Deserialize message using variable-length encoding."""\n'
         result += '        offset = 0\n'
         result += '        fields = {}\n'
+        if msg.variable and any(o.discriminator_type is not None and not o.variable for o in msg.oneofs.values()):
+            # The structural minimum also permits unset/unknown discriminators;
+            # known variants retain their stricter per-variant bounds below.
+            _entry_min_size = msg.min_size
+            for _oneof in msg.oneofs.values():
+                if _oneof.discriminator_type is not None and not _oneof.variable:
+                    _entry_min_size -= _oneof.min_wire_size()
+                    _entry_min_size += _oneof.min_size_override or 0
+            result += f'        if len(data) < {_entry_min_size}: return None\n'
         
         for key, f in msg.fields.items():
             field_lines = []
@@ -1234,10 +1243,12 @@ class MessagePyGen():
             if oneof.auto_discriminator:
                 if oneof.discriminator_type == "msgid":
                     result += f'        # Oneof {oneof_name} discriminator (uint16 - message ID)\n'
+                    result += f'        if offset + 2 > len(data): return None\n'
                     result += f'        disc_val = struct.unpack_from("<H", data, offset)[0]\n'
                     result += f'        offset += 2\n'
                 else:  # field_order
                     result += f'        # Oneof {oneof_name} discriminator (uint8 - field order)\n'
+                    result += f'        if offset + 1 > len(data): return None\n'
                     result += f'        disc_val = struct.unpack_from("<B", data, offset)[0]\n'
                     result += f'        offset += 1\n'
             else:
@@ -1258,17 +1269,22 @@ class MessagePyGen():
                 _min_sz = oneof.min_size_override or 0
                 _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
                 result += f'        # Oneof {oneof_name} {_trim_label}\n'
-                result += f'        _{oneof_name}_rlen = {_min_sz}\n'
-                for disc_val_const, field_name, field_size in oneof.variant_info:
-                    result += f'        if disc_val == {disc_val_const}: _{oneof_name}_rlen = max({field_size}, {_min_sz})\n'
-                for disc_val_const, field_name, field_size in oneof.variant_info:
+                _trailing = oneof_name == list(msg.oneofs.keys())[-1]
+                result += f'        _{oneof_name}_avail = len(data) - offset\n'
+                for _i, (disc_val_const, field_name, field_size) in enumerate(oneof.variant_info):
                     type_name = oneof.fields[field_name].field_type
-                    result += f'        if disc_val == {disc_val_const}:\n'
+                    _kw = 'if' if _i == 0 else 'elif'
+                    result += f'        {_kw} disc_val == {disc_val_const}:\n'
+                    result += f'            if _{oneof_name}_avail < {oneof.variant_min_wire(_i)}: return None\n'
                     result += f'            fields["{oneof_name}_which"] = "{field_name}"\n'
-                    result += f'            _slice = data[offset:offset+{type_name}.MAX_SIZE]\n'
-                    result += f'            if len(_slice) < {type_name}.MAX_SIZE: _slice = _slice.ljust({type_name}.MAX_SIZE, b"\\x00")\n'
-                    result += f'            fields["{oneof_name}"] = {{"{field_name}": {type_name}._deserialize_fixed(_slice)}}\n'
-                result += f'        offset += _{oneof_name}_rlen\n'
+                    result += f'            fields["{oneof_name}"] = {{"{field_name}": {type_name}._deserialize_fixed(data[offset:offset+{field_size}])}}\n'
+                    if _trailing:
+                        result += f'            offset += _{oneof_name}_avail\n'
+                    else:
+                        result += f'            offset += min(_{oneof_name}_avail, {oneof.variant_max_wire(_i)})\n'
+                result += f'        else:\n'
+                result += f'            if _{oneof_name}_avail < {_min_sz}: return None\n'
+                result += f'            offset += {"_" + oneof_name + "_avail" if _trailing else _min_sz}\n'
             else:
                 result += f'        # Oneof {oneof_name} union payload ({oneof.size} bytes)\n'
                 # Build dispatch: map discriminator value -> field name

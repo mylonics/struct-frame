@@ -761,6 +761,9 @@ class MessageJsClassGen():
             if oneof.auto_discriminator:
                 disc_bytes = 2 if oneof.discriminator_type == "msgid" else 1
                 result += f'    // {oneof_name}: discriminator ({disc_bytes} bytes)\n'
+                result += f'    if (offset + {disc_bytes} > buffer.length) {{\n'
+                result += f'      throw new RangeError("Truncated data reading {oneof_name} discriminator");\n'
+                result += f'    }}\n'
                 result += f'    buffer.copy(msg._buffer, {msg_offset}, offset, offset + {disc_bytes});\n'
                 result += f'    offset += {disc_bytes};\n'
                 msg_offset += disc_bytes
@@ -780,13 +783,27 @@ class MessageJsClassGen():
                 _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
                 result += f'    // {oneof_name}: {_trim_label}\n'
                 result += f'    const _{oneof_name}TRDisc = msg._buffer.{disc_read_method}({disc_offset});\n'
-                result += f'    let _{oneof_name}TRLen = {_min_sz};\n'
-                for disc_val, field_name, field_size in oneof.variant_info:
-                    result += f'    if (_{oneof_name}TRDisc === {disc_val}) _{oneof_name}TRLen = Math.max({field_size}, {_min_sz});\n'
-                result += f'    if (offset + _{oneof_name}TRLen <= buffer.length) {{\n'
-                result += f'      buffer.copy(msg._buffer, {msg_offset}, offset, offset + Math.min(_{oneof_name}TRLen, {oneof.size}));\n'
+                _trailing = oneof_name == list(msg.oneofs.keys())[-1]
+                result += f'    const _{oneof_name}TRAvail = buffer.length - offset;\n'
+                result += f'    let _{oneof_name}TRAdv = {"_" + oneof_name + "TRAvail" if _trailing else _min_sz};\n'
+                for _i, (disc_val, field_name, field_size) in enumerate(oneof.variant_info):
+                    _kw = 'if' if _i == 0 else 'else if'
+                    result += f'    {_kw} (_{oneof_name}TRDisc === {disc_val}) {{\n'
+                    result += f'      if (_{oneof_name}TRAvail < {oneof.variant_min_wire(_i)}) {{\n'
+                    result += f'        throw new RangeError("Truncated data reading {oneof_name} payload");\n'
+                    result += f'      }}\n'
+                    _def = oneof.variant_extra[_i][1]
+                    if _def:
+                        _arr = ', '.join(f'0x{b:02x}' for b in _def)
+                        result += f'      Buffer.from([{_arr}]).copy(msg._buffer, {msg_offset});\n'
+                    result += f'      buffer.copy(msg._buffer, {msg_offset}, offset, offset + Math.min(_{oneof_name}TRAvail, {field_size}));\n'
+                    if not _trailing:
+                        result += f'      _{oneof_name}TRAdv = Math.min(_{oneof_name}TRAvail, {oneof.variant_max_wire(_i)});\n'
+                    result += f'    }}\n'
+                result += f'    {"else " if oneof.variant_info else ""}if (_{oneof_name}TRAvail < {_min_sz}) {{\n'
+                result += f'      throw new RangeError("Truncated data reading {oneof_name} payload");\n'
                 result += f'    }}\n'
-                result += f'    offset += _{oneof_name}TRLen;\n'
+                result += f'    offset += _{oneof_name}TRAdv;\n'
                 msg_offset += oneof.size
             else:
                 result += f'    // {oneof_name}: union payload ({oneof.size} bytes)\n'
