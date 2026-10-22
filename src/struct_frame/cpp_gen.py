@@ -613,11 +613,15 @@ class MessageCppGen():
                 result += f'        // {oneof_name}: {_trim_label}\n'
                 result += f'        {{\n'
                 result += f'            uint16_t _{oneof_name}_tlen = 0;\n'
+                result += f'            uint16_t _{oneof_name}_vlen = 0;\n'
                 for disc_val, field_name, field_size in oneof.variant_info:
-                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) _{oneof_name}_tlen = {field_size};\n'
+                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) {{ _{oneof_name}_tlen = {field_size}; _{oneof_name}_vlen = {field_size}; }}\n'
                 if oneof.min_size_override:
                     result += f'            if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
-                result += f'            std::memcpy(buffer + offset, &{oneof_name}, _{oneof_name}_tlen);\n'
+                result += f'            if (_{oneof_name}_tlen > 0) {{\n'
+                result += f'                std::memset(buffer + offset, 0, _{oneof_name}_tlen);\n'
+                result += f'                if (_{oneof_name}_vlen > 0) std::memcpy(buffer + offset, &{oneof_name}, _{oneof_name}_vlen);\n'
+                result += f'            }}\n'
                 result += f'            offset += _{oneof_name}_tlen;\n'
                 result += f'        }}\n'
             else:
@@ -725,8 +729,7 @@ class MessageCppGen():
                     result += f'            {_kw} (static_cast<int>({oneof_name}_discriminator) == {disc_val}) {{\n'
                     if _min_w:
                         result += f'                if (_{oneof_name}_avail < {_min_w}) return 0;\n'
-                    if oneof.variant_extra[_i][1]:
-                        result += f'                {oneof_name}.{field_name} = decltype({oneof_name}.{field_name}){{}};  // apply schema defaults\n'
+                    result += f'                {oneof_name}.{field_name} = decltype({oneof_name}.{field_name}){{}};  // apply schema defaults\n'
                     result += f'                size_t _copy = _{oneof_name}_avail < {field_size} ? _{oneof_name}_avail : {field_size};\n'
                     result += f'                std::memcpy(&{oneof_name}, buffer + offset, _copy);\n'
                     if _trailing:

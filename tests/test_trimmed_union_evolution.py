@@ -36,10 +36,32 @@ BASE = dict(channel_mask=1, step_count=7, start_level=1.5, end_level=2.5,
 CPP_HARNESS = r"""
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 #include PKG_HDR
 using namespace structframe::PKG;
 int main(int, char** argv) {
+    if (std::strcmp(argv[1], "serialize") == 0) {
+        TaskEnvelope e{};
+        e.execute_now = true;
+        e.task_discriminator = static_cast<decltype(e.task_discriminator)>(1);
+        e.task.scan_task = {};
+        std::vector<uint8_t> out(e.serialized_size());
+        size_t n = e.serialize(out);
+        std::printf("n=%zu\nbytes=", n);
+        for (uint8_t b : out) std::printf("%02x", b);
+        std::printf("\n");
+        return 0;
+    }
+#ifdef HAS_TINY
+    if (std::strcmp(argv[1], "tiny") == 0) {
+        const uint8_t frame[] = {2, 0x44, 0x33, 0x22, 0x11};
+        TinyEnvelope e;
+        size_t n = e.deserialize(frame, sizeof(frame));
+        std::printf("n=%zu extra=%u\n", n, (unsigned)e.command.zero_default.extra);
+        return 0;
+    }
+#endif
     std::vector<uint8_t> buf;
     for (const char* p = argv[1]; p[0] && p[1]; p += 2) {
         char h[3] = {p[0], p[1], 0};
@@ -99,6 +121,10 @@ def gen(tmp_path_factory):
             "--build_py", "--py_path", str(out / "py"),
             "--build_c", "--c_path", str(out / "c"),
             "--build_cpp", "--cpp_path", str(out / "cpp"),
+            "--build_ts", "--ts_path", str(out / "ts"),
+            "--build_js", "--js_path", str(out / "js"),
+            "--build_rust", "--rust_path", str(out / "rust"),
+            "--build_csharp", "--csharp_path", str(out / "csharp"),
             "--force")
         assert result.returncode == 0, result.stdout + result.stderr
     mods = {
@@ -204,8 +230,8 @@ def test_py_variant_shorter_than_base_rejected(gen):
 # C / C++ (compiled harness)
 # ---------------------------------------------------------------------------
 
-def _run(exe: Path, frame: bytes) -> dict:
-    out = subprocess.run([str(exe), frame.hex()], capture_output=True, text=True, check=True).stdout
+def _run_args(exe: Path, *args: str) -> dict:
+    out = subprocess.run([str(exe), *args], capture_output=True, text=True, check=True).stdout
     result = {}
     for line in out.split():
         for item in line.split():
@@ -214,10 +240,16 @@ def _run(exe: Path, frame: bytes) -> dict:
     return result
 
 
+def _run(exe: Path, frame: bytes) -> dict:
+    return _run_args(exe, frame.hex())
+
+
 def _build(tmp: Path, lang: str, ver: int, gen_dir: Path) -> Path:
     flags = []
     if ver >= 3:
         flags.append("-DHAS_WARMUP")
+    if ver == 3:
+        flags.append("-DHAS_TINY")
     if ver >= 4:
         flags.append("-DHAS_SCALE")
     exe = tmp / f"{lang}_v{ver}"
@@ -269,3 +301,27 @@ def test_native_decoders(gen, tmp_path, lang):
     for size in (0, 1, 61):
         assert _run(v3, _v2_frame(mods)[:size])["n"] == "0"
     assert _run(v3, _bulk_frame(mods)[:62])["n"] == "0"
+
+
+def test_cpp_serialization_zeroes_min_size_padding(gen, tmp_path):
+    gen_dir, _ = gen
+    v2 = _build(tmp_path, "cpp", 2, gen_dir)
+    serialized = _run_args(v2, "serialize")
+    wire = bytes.fromhex(serialized["bytes"])
+    assert int(serialized["n"]) == len(wire) == 62
+    assert wire[-8:] == b"\x00" * 8
+
+
+def test_cpp_short_zero_default_variant_is_initialized(gen, tmp_path):
+    gen_dir, _ = gen
+    v3 = _build(tmp_path, "cpp", 3, gen_dir)
+    result = _run_args(v3, "tiny")
+    assert result == {"n": "5", "extra": "0"}
+
+
+def test_py_unknown_discriminator_uses_structural_minimum(gen):
+    _, mods = gen
+    unknown = b"\x00" + b"\x00" * 4
+    decoded = mods[3].TinyUnknownEnvelope.deserialize(unknown)
+    assert decoded is not None
+    assert mods[3].TinyUnknownEnvelope.MIN_SIZE == 9

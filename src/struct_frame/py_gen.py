@@ -1098,8 +1098,14 @@ class MessagePyGen():
         result += '        offset = 0\n'
         result += '        fields = {}\n'
         if msg.variable and any(o.discriminator_type is not None and not o.variable for o in msg.oneofs.values()):
-            # Trimmed union: anything below the smallest valid frame is malformed.
-            result += '        if len(data) < cls.MIN_SIZE: return None\n'
+            # The structural minimum also permits unset/unknown discriminators;
+            # known variants retain their stricter per-variant bounds below.
+            _entry_min_size = msg.min_size
+            for _oneof in msg.oneofs.values():
+                if _oneof.discriminator_type is not None and not _oneof.variable:
+                    _entry_min_size -= _oneof.min_wire_size()
+                    _entry_min_size += _oneof.min_size_override or 0
+            result += f'        if len(data) < {_entry_min_size}: return None\n'
         
         for key, f in msg.fields.items():
             field_lines = []

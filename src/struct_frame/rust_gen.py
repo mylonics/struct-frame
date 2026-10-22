@@ -954,7 +954,17 @@ class MessageRustGen():
             # Helper to build unpack body
             def _build_unpack_body(result, variable_mode, indent='        '):
                 field_names = []
-                result += f'{indent}if buf.len() < Self::{"SIZE" if not variable_mode else "MIN_SIZE"} {{ return None; }}\n'
+                min_guard = "Self::SIZE"
+                if variable_mode:
+                    min_guard = "Self::MIN_SIZE"
+                    if any(o.discriminator_type is not None and not o.variable for o in msg.oneofs.values()):
+                        structural_min_size = msg.min_size
+                        for oneof in msg.oneofs.values():
+                            if oneof.discriminator_type is not None and not oneof.variable:
+                                structural_min_size -= oneof.min_wire_size()
+                                structural_min_size += oneof.min_size_override or 0
+                        min_guard = str(structural_min_size)
+                result += f'{indent}if buf.len() < {min_guard} {{ return None; }}\n'
                 result += f'{indent}let mut _pos = 0usize;\n'
                 result += f'{indent}#[allow(unused_variables)]\n'
                 result += f'{indent}let _ = _pos;\n'

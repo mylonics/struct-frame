@@ -48,3 +48,40 @@ message TaskEnvelope {
     BulkConfigCommand bulk_config = 2;
   }
 }
+
+message TinyDefaultCommand {
+  uint32 prefix = 1;
+  uint32 inherited_value = 2 [default = 80];
+}
+
+message TinyZeroCommand {
+  uint32 prefix = 1;
+
+  option extensions_start = 2;
+  uint32 extra = 2;
+}
+
+message TinyEnvelope {
+  option msgid = 101;
+  option variable = true;
+
+  oneof command {
+    option discriminator = "field_order";
+    option min_size = 4;
+
+    TinyDefaultCommand with_default = 1;
+    TinyZeroCommand zero_default = 2;
+  }
+}
+
+message TinyUnknownEnvelope {
+  option msgid = 102;
+  option variable = true;
+
+  oneof command {
+    option discriminator = "field_order";
+    option min_size = 4;
+
+    TinyDefaultCommand command = 1;
+  }
+}
