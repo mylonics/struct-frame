@@ -7,7 +7,7 @@ language-specific code generators.
 
 import re
 
-from struct_frame.naming import to_pascal_case, to_screaming_snake_case
+from struct_frame.naming import ExplicitName, to_pascal_case, to_screaming_snake_case
 
 try:
     from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -95,6 +95,8 @@ class NamingStyleC(NamingStyle):
         return "%s_%s_t" % (self.underscore(struct_name), self.underscore(name))
 
     def underscore(self, word):
+        if isinstance(word, ExplicitName):
+            return str(word)
         word = str(word)
         word = re.sub(r"([A-Z]+)([A-Z][a-z])", r'\1_\2', word)
         word = re.sub(r"([a-z\d])([A-Z])", r'\1_\2', word)
@@ -128,6 +130,8 @@ pattern = re.compile(r'(?<!^)(?=[A-Z])')
 
 def camel_to_snake_case(data):
     """Convert CamelCase or PascalCase to snake_case."""
+    if isinstance(data, ExplicitName):
+        return str(data)
     return pattern.sub('_', data).lower()
 
 

@@ -112,6 +112,28 @@ def test_file_header_is_not_attached_to_first_declaration():
         _check("and spans two lines" in text, f"{lang}: full file docs emitted")
 
 
+def test_csharp_file_docs_are_emitted_for_enum_only_packages():
+    schema = """\
+// Enum-only package overview
+package enum_docs;
+
+enum State {
+  IDLE = 0;
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        proto = root / "enum_docs.sf"
+        proto.write_text(schema, encoding="utf-8")
+        result = run_generator(proto, "--force", "--build_csharp", "--csharp_path",
+                               str(root / "csharp") + os.sep)
+        _check(result.returncode == 0, f"Generation failed:\n{result.stdout}\n{result.stderr}")
+        aggregate = root / "csharp" / "EnumDocs" / "MessageDefinitions.cs"
+        _check(aggregate.is_file(), "enum-only package should emit the C# documentation aggregation file")
+        _check("Enum-only package overview" in aggregate.read_text(encoding="utf-8"),
+               "C# aggregation file must preserve file-level documentation")
+
+
 def test_leading_comments_document_next_declaration():
     out = _generate()
     cpp = _find(out, "cpp", "docs_test.structframe.hpp")

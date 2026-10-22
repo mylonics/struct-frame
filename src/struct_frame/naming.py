@@ -27,6 +27,7 @@ exact name a declaration should have in a given language.
 
 import copy
 import json
+import keyword
 import re
 
 LANGUAGES = ('c', 'cpp', 'ts', 'js', 'py', 'gql', 'csharp', 'rust')
@@ -35,6 +36,55 @@ ALL_LANGUAGES_KEY = 'all'
 _SEPARATORS = re.compile(r'[\W_]+')
 _BOUNDARY = re.compile(r'(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])')
 _IDENTIFIER = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+_SCHEMA_TYPES = {
+    'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'bool', 'float',
+    'double', 'int64', 'uint64', 'string', 'bytes',
+}
+_C_KEYWORDS = set('''auto break case char const continue default do double else enum extern
+float for goto if inline int long register restrict return short signed sizeof static
+struct switch typedef union unsigned void volatile while _Alignas _Alignof _Atomic
+_Bool _Complex _Generic _Imaginary _Noreturn _Static_assert _Thread_local'''.split())
+_CPP_KEYWORDS = _C_KEYWORDS | set('''alignas alignof and and_eq asm atomic_cancel atomic_commit
+atomic_noexcept bitand bitor bool catch char8_t char16_t char32_t class compl concept
+consteval constexpr constinit const_cast co_await co_return co_yield decltype delete
+dynamic_cast explicit export false friend mutable namespace new noexcept not not_eq nullptr
+operator or or_eq private protected public reflexpr reinterpret_cast requires static_assert
+static_cast synchronized template this thread_local throw true try typeid typename
+using virtual wchar_t xor xor_eq'''.split())
+_JS_KEYWORDS = set('''await break case catch class const continue debugger default delete do
+else export extends finally for function if import in instanceof let new return super
+switch this throw try typeof var void while with yield enum implements interface package
+private protected public static null true false'''.split())
+_CSHARP_KEYWORDS = set('''abstract as base bool break byte case catch char checked class const
+continue decimal default delegate do double else enum event explicit extern false finally
+fixed float for foreach goto if implicit in int interface internal is lock long namespace
+new null object operator out override params private protected public readonly ref return
+sbyte sealed short sizeof stackalloc static string struct switch this throw true try typeof
+uint ulong unchecked unsafe ushort using virtual void volatile while add alias ascending
+async await by descending dynamic equals from get global group into join let nameof on orderby
+partial remove select set value var when where yield'''.split())
+_RUST_KEYWORDS = set('''as async await break const continue crate dyn else enum extern false fn
+for if impl in let loop match mod move mut pub ref return self Self static struct super
+trait true type unsafe use where while abstract become box do final macro override priv typeof
+unsized virtual yield try'''.split())
+_GRAPHQL_KEYWORDS = {'true', 'false', 'null'}
+
+
+class ExplicitName(str):
+    """A replacement name that must bypass target-language case conversion."""
+
+
+def _keywords(lang):
+    return {
+        'c': _C_KEYWORDS,
+        'cpp': _CPP_KEYWORDS,
+        'ts': _JS_KEYWORDS,
+        'js': _JS_KEYWORDS,
+        'py': set(keyword.kwlist),
+        'gql': _GRAPHQL_KEYWORDS,
+        'csharp': _CSHARP_KEYWORDS,
+        'rust': _RUST_KEYWORDS,
+    }[lang]
 
 
 def split_identifier(name):
@@ -63,6 +113,8 @@ def to_pascal_case(name):
     ``BLEHost`` -> ``BLEHost``, ``bleHostId`` -> ``BleHostId``,
     ``BLE_HOST_OK`` -> ``BleHostOk`` (single-case names carry no acronym hint).
     """
+    if isinstance(name, ExplicitName):
+        return str(name)
     keep_caps = _is_mixed_case(name)
     parts = []
     for token in split_identifier(name):
@@ -80,6 +132,8 @@ def to_screaming_snake_case(name):
     upper-cased as before; mixed-case names are split at word boundaries
     (``GateCurrent`` -> ``GATE_CURRENT``, ``BleMCuHost`` -> ``BLE_M_CU_HOST``).
     """
+    if isinstance(name, ExplicitName):
+        return str(name)
     name = str(name)
     if not _has_lowercase(name):
         return name.upper()
@@ -96,6 +150,8 @@ def to_camel_case(name):
     (``ble_HOST_id`` -> ``bleHOSTId``); single-case identifiers
     (``MAX_VALUE``) are capitalised part by part as before.
     """
+    if isinstance(name, ExplicitName):
+        return str(name)
     parts = str(name).split('_')
     keep_caps = _is_mixed_case(name)
     out = [parts[0]]
@@ -213,7 +269,7 @@ class NameOverrides:
     def rename(self, lang, package, path):
         """Name of the declaration at *path* in *lang* (the source name when not overridden)."""
         override = self.lookup(lang, package, path)
-        return override if override is not None else path[-1]
+        return ExplicitName(override) if override is not None else path[-1]
 
     # -- applying --------------------------------------------------------
     def validate(self, packages):
@@ -231,7 +287,21 @@ class NameOverrides:
         if unknown:
             raise NameOverrideError(
                 "name overrides do not match any declaration: " + ", ".join(unknown))
+        type_paths = set()
+        for pkg_name, pkg in packages.items():
+            paths = _type_declaration_paths(pkg)
+            type_paths.update('.'.join(path) for path in paths)
+            type_paths.update('.'.join((pkg_name,) + path) for path in paths)
         for lang in LANGUAGES:
+            mapping = dict(self.table.get(ALL_LANGUAGES_KEY, {}))
+            mapping.update(self.table.get(lang, {}))
+            for path, replacement in mapping.items():
+                if replacement in _keywords(lang):
+                    raise NameOverrideError(
+                        f"{lang}: override '{path}' -> '{replacement}' is a reserved keyword")
+                if path in type_paths and replacement in _SCHEMA_TYPES:
+                    raise NameOverrideError(
+                        f"{lang}: type override '{path}' -> '{replacement}' is a built-in schema type")
             if self.has_language(lang):
                 self.apply(lang, packages)
 
@@ -350,3 +420,76 @@ def _declaration_paths(pkg):
             paths.append((msg_name, oneof_name))
             paths.extend((msg_name, oneof_name, variant) for variant in oneof.fields)
     return paths
+
+
+def _type_declaration_paths(pkg):
+    paths = [(name,) for name in pkg.enums]
+    for msg_name, msg in pkg.messages.items():
+        paths.append((msg_name,))
+        paths.extend((msg_name, enum_name) for enum_name in msg.enums)
+    return paths
+
+
+def validate_generated_names(packages, languages, overrides=None):
+    """Reject final identifiers that collide within a generated language scope."""
+    for lang in languages:
+        language_packages = overrides.apply(lang, packages) if overrides else packages
+        _validate_language_names(lang, language_packages)
+
+
+def _validate_language_names(lang, packages):
+    def record(scope, name, source, seen):
+        previous = seen.get(name)
+        if previous is not None:
+            raise NameOverrideError(
+                f"{lang}: generated name collision '{name}' in {scope}: {previous} and {source}")
+        seen[name] = source
+
+    def enum_entry_name(name):
+        if lang == 'gql' and not isinstance(name, ExplicitName):
+            value = str(name)
+            return value if value.replace('_', '').isupper() else re.sub(
+                r'(?<!^)(?=[A-Z])', '_', value).upper()
+        if lang in ('cpp', 'ts', 'js'):
+            return to_pascal_case(name)
+        return to_screaming_snake_case(name)
+
+    for pkg_name, pkg in packages.items():
+        types = {}
+        for enum_name in pkg.enums:
+            record(f"package '{pkg_name}'", enum_name, f"{pkg_name}.{enum_name}", types)
+        for msg_name, msg in pkg.messages.items():
+            record(f"package '{pkg_name}'", msg_name, f"{pkg_name}.{msg_name}", types)
+
+            members = {}
+            for field_name in msg.fields:
+                if lang == 'csharp':
+                    emitted = to_pascal_case(field_name)
+                elif lang in ('ts', 'js'):
+                    emitted = to_camel_case(field_name)
+                else:
+                    emitted = field_name
+                record(f"message '{pkg_name}.{msg_name}'", emitted,
+                       f"{pkg_name}.{msg_name}.{field_name}", members)
+            for oneof_name, oneof in msg.oneofs.items():
+                for field_name in oneof.fields:
+                    if lang == 'csharp':
+                        emitted = to_pascal_case(field_name)
+                    elif lang in ('ts', 'js'):
+                        emitted = to_camel_case(field_name)
+                    else:
+                        emitted = field_name
+                    record(f"message '{pkg_name}.{msg_name}'", emitted,
+                           f"{pkg_name}.{msg_name}.{oneof_name}.{field_name}", members)
+
+        for enum_name, enum in pkg.enums.items():
+            entries = {}
+            for entry_name in enum.data:
+                record(f"enum '{pkg_name}.{enum_name}'", enum_entry_name(entry_name),
+                       f"{pkg_name}.{enum_name}.{entry_name}", entries)
+        for msg_name, msg in pkg.messages.items():
+            for enum_name, enum in msg.enums.items():
+                entries = {}
+                for entry_name in enum.data:
+                    record(f"enum '{pkg_name}.{msg_name}.{enum_name}'", enum_entry_name(entry_name),
+                           f"{pkg_name}.{msg_name}.{enum_name}.{entry_name}", entries)

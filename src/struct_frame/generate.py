@@ -23,7 +23,7 @@ from struct_frame import TestCGen
 from struct_frame import TestCSharpGen
 from struct_frame import pascal_case
 from struct_frame import camel_to_snake_case
-from struct_frame.naming import NameOverrides, NameOverrideError
+from struct_frame.naming import NameOverrides, NameOverrideError, validate_generated_names
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -3103,13 +3103,18 @@ def main():
     normalize_output_order()
 
     name_overrides = None
-    if args.name_overrides[0]:
-        try:
+    try:
+        if args.name_overrides[0]:
             name_overrides = NameOverrides.load(args.name_overrides[0])
             name_overrides.validate(packages)
-        except NameOverrideError as err:
-            print(f"Error: {err}")
-            return 1
+        target_languages = [lang for lang, enabled in (
+            ('c', args.build_c), ('cpp', args.build_cpp), ('ts', args.build_ts),
+            ('js', args.build_js), ('py', args.build_py), ('gql', args.build_gql),
+            ('csharp', args.build_csharp), ('rust', args.build_rust)) if enabled]
+        validate_generated_names(packages, target_languages, name_overrides)
+    except NameOverrideError as err:
+        print(f"Error: {err}")
+        return 1
 
     if args.validate:
         # In validate mode, only perform validation - no file generation

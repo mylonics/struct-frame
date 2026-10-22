@@ -190,6 +190,33 @@ def test_field_reorder_is_one_breaking_finding():
     _check("field_type_changed" not in _kinds(report, "breaking"), "reorder must not be reported as N type changes")
 
 
+def test_reorder_with_extension_addition_is_still_breaking():
+    old = """\
+package demo;
+message Evolving {
+  option msgid = 4;
+  uint8 a = 1;
+  uint8 b = 2;
+}
+"""
+    new = """\
+package demo;
+message Evolving {
+  option msgid = 4;
+  uint8 b = 1;
+  uint8 a = 2;
+  option extensions_start = 3;
+  uint8 c = 3;
+}
+"""
+    code, report = _report(old, new)
+    _check(code == 1, f"reordering common fields must fail despite an extension addition: {report}")
+    reorder = _find(report, "fields_reordered", "demo.Evolving")
+    _check(reorder["old"] == ["a", "b"] and reorder["new"] == ["b", "a"],
+           f"common field order not reported: {reorder}")
+    _find(report, "field_extension_added", "demo.Evolving.c")
+
+
 def test_message_removed_and_added():
     removed = _edit(BASE, "message Evolving {\n  option msgid = 4;\n  uint8 a = 1;\n}\n", "")
     code, report = _report(BASE, removed)
@@ -257,6 +284,35 @@ def test_appended_extension_field_and_variant_are_compatible():
     code, report = _report(base_with_mid, with_variant)
     _check(code == 0, f"appending an extension variant must be compatible: {report['changes']}")
     _find(report, "variant_extension_added", "demo.Choice.data.mid")
+
+
+def test_growing_oneof_union_that_shifts_later_oneof_is_breaking():
+    old = """\
+package demo;
+message TwoChoices {
+  option msgid = 8;
+  oneof first {
+    option discriminator = "field_order";
+    option extensions_start = 2;
+    uint8 small = 1;
+    uint8 extra = 2;
+  }
+  oneof second {
+    option discriminator = "field_order";
+    uint8 other = 1;
+  }
+}
+"""
+    new = old.replace(
+        "    uint8 extra = 2;\n",
+        "    uint8 extra = 2;\n    uint64 large = 3;\n")
+    code, report = _report(old, new)
+    _check(code == 1, f"union growth must not shift the later discriminator compatibly: {report}")
+    _find(report, "variant_extension_added", "demo.TwoChoices.first.large")
+    shifted = _find(report, "oneof_offset_changed", "demo.TwoChoices.second")
+    _check(shifted["old"] == 2 and shifted["new"] == 9, f"unexpected discriminator offsets: {shifted}")
+    _check(_kinds(report, "breaking") == ["oneof_offset_changed"],
+           f"only the shifted later oneof should be breaking: {report['changes']}")
 
 
 def test_moving_a_field_into_the_extension_block_is_breaking():
@@ -441,6 +497,22 @@ def test_invalid_input_exits_with_error_status():
         result = run(tmp / "good.sf", tmp / "bad.sf")
         _check(result.returncode == 2 and "schema is not valid" in result.stderr,
                f"invalid schema: {result.returncode} {result.stderr}")
+
+
+def test_malformed_nested_snapshot_exits_with_load_error():
+    with tempfile.TemporaryDirectory() as tmp_name:
+        tmp = Path(tmp_name)
+        (tmp / "baseline.json").write_text(
+            json.dumps({"version": 1, "packages": {"demo": {}}}), encoding="utf-8")
+        (tmp / "current.sf").write_text(BASE, encoding="utf-8")
+        env = dict(os.environ, PYTHONPATH=str(SRC_DIR))
+        result = subprocess.run(
+            [sys.executable, str(SRC_DIR / "main.py"), "diff", str(tmp / "baseline.json"),
+             str(tmp / "current.sf"), "--format", "json"],
+            capture_output=True, text=True, env=env)
+    _check(result.returncode == 2, f"malformed snapshot should exit with load-error status 2: {result}")
+    _check("invalid schema snapshot" in result.stderr and "Traceback" not in result.stderr,
+           f"malformed snapshot must be reported without traceback: {result.stderr}")
 
 
 def test_snapshot_round_trip_matches_schema_diff():

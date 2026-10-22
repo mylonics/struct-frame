@@ -8,6 +8,7 @@ converting proto types to GraphQL scalars and generating type/input definitions.
 
 from struct_frame import version, pascal_case, camel_to_snake_case
 from struct_frame.base import format_file_docs
+from struct_frame.naming import ExplicitName
 import time
 
 # Mapping from proto primitive types to GraphQL scalar types
@@ -29,6 +30,8 @@ gql_types = {
 
 
 def _gql_enum_value_name(name: str) -> str:
+    if isinstance(name, ExplicitName):
+        return str(name)
     # If already in ALL_CAPS (possibly with underscores) keep as is
     if name.replace('_', '').isupper():
         return name

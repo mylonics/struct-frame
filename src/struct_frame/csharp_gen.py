@@ -1886,7 +1886,7 @@ class FileCSharpGen():
                 files[os.path.join('Messages', f'{msg.name}.cs')] = content
 
         # MessageDefinitions in its own file (includes timestamp since it's the single aggregation file)
-        if package.messages:
+        if package.messages or format_file_docs(package):
             content = FileCSharpGen._file_header(package, equality=equality, needs_collections=True, include_timestamp=True, file_docs=True)
             content += FileCSharpGen._generate_message_definitions(package)
             content += footer

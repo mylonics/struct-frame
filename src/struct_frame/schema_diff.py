@@ -56,6 +56,12 @@ EXIT_OK = 0
 EXIT_CHANGES = 1
 EXIT_ERROR = 2
 
+_SCALAR_SIZES = {
+    "uint8": 1, "int8": 1, "bool": 1, "uint16": 2, "int16": 2,
+    "uint32": 4, "int32": 4, "float": 4, "uint64": 8, "int64": 8,
+    "double": 8,
+}
+
 
 class SchemaLoadError(Exception):
     """A schema or snapshot could not be loaded."""
@@ -99,6 +105,7 @@ def _field_snapshot(field, package_name):
         "name": field.name,
         "number": field.number,
         "type": _type_ref(field, package_name),
+        "wire_size": field.size,
         "array": bool(field.is_array),
         "size": field.size_option,
         "max_size": field.max_size,
@@ -116,7 +123,7 @@ def _enum_snapshot(enum, root):
     }
 
 
-def _oneof_snapshot(oneof, package_name):
+def _oneof_snapshot(oneof, package_name, offset):
     disc = {name: value for value, name, _ in oneof.variant_info}
     variants = []
     for name, field in oneof.fields.items():
@@ -131,6 +138,10 @@ def _oneof_snapshot(oneof, package_name):
         "min_size": oneof.min_size_override,
         "extensions_start": oneof.extensions_start,
         "base_size": oneof.base_size,
+        "size": oneof.size,
+        "offset": offset,
+        "discriminator_size": (2 if oneof.discriminator_type == "msgid" else 1)
+        if oneof.auto_discriminator else 0,
         "variants": variants,
     }
 
@@ -139,6 +150,13 @@ def _message_snapshot(pkg, msg, root):
     msgid = None
     if msg.id is not None:
         msgid = msg.id if pkg.package_id is None else (pkg.package_id << 8) | msg.id
+    fields = [_field_snapshot(f, pkg.name) for f in msg.fields.values()]
+    oneofs = []
+    offset = sum(field["wire_size"] for field in fields)
+    for oneof in msg.oneofs.values():
+        snapshot = _oneof_snapshot(oneof, pkg.name, offset)
+        oneofs.append(snapshot)
+        offset += snapshot["discriminator_size"] + (2 if snapshot["variable"] else 0) + snapshot["size"]
     return {
         "source": _relpath(msg.source_file, root),
         "id": msg.id,
@@ -149,8 +167,8 @@ def _message_snapshot(pkg, msg, root):
         "magic_bytes": list(msg.magic_bytes) if msg.magic_bytes else None,
         "size": msg.size,
         "base_size": msg.base_size,
-        "fields": [_field_snapshot(f, pkg.name) for f in msg.fields.values()],
-        "oneofs": [_oneof_snapshot(o, pkg.name) for o in msg.oneofs.values()],
+        "fields": fields,
+        "oneofs": oneofs,
         "enums": {name: _enum_snapshot(e, root) for name, e in msg.enums.items()},
     }
 
@@ -228,8 +246,168 @@ def load_snapshot(path):
         if not isinstance(snapshot, dict) or snapshot.get("version") != SNAPSHOT_VERSION \
                 or not isinstance(snapshot.get("packages"), dict):
             raise SchemaLoadError(f"{path}: not a version {SNAPSHOT_VERSION} schema snapshot")
+        _validate_snapshot(snapshot, path)
         return snapshot
     return _snapshot_from_schema(path)
+
+
+def _validate_snapshot(snapshot, path):
+    def fail(where, detail):
+        raise SchemaLoadError(f"{path}: invalid schema snapshot at {where}: {detail}")
+
+    def object_with(value, keys, where):
+        if not isinstance(value, dict):
+            fail(where, "expected an object")
+        missing = sorted(set(keys) - set(value))
+        if missing:
+            fail(where, "missing " + ", ".join(missing))
+
+    def value_type(value, expected, where, nullable=False):
+        if nullable and value is None:
+            return
+        if expected is int:
+            valid = type(value) is int
+        elif expected is bool:
+            valid = type(value) is bool
+        else:
+            valid = isinstance(value, expected)
+        if not valid:
+            fail(where, f"expected {expected.__name__}" + (" or null" if nullable else ""))
+
+    def check_member(member, where):
+        object_with(member, ("name", "number", "type", "array", "size", "max_size",
+                             "element_size", "default", "extension"), where)
+        value_type(member["name"], str, f"{where}.name")
+        value_type(member["number"], int, f"{where}.number", nullable=True)
+        value_type(member["type"], str, f"{where}.type")
+        value_type(member["array"], bool, f"{where}.array")
+        for key in ("size", "max_size", "element_size"):
+            value_type(member[key], int, f"{where}.{key}", nullable=True)
+        value_type(member["extension"], bool, f"{where}.extension")
+        if "wire_size" in member:
+            value_type(member["wire_size"], int, f"{where}.wire_size")
+            if member["wire_size"] < 0:
+                fail(f"{where}.wire_size", "must be non-negative")
+
+    def check_enum(enum, where):
+        object_with(enum, ("source", "extensions_start", "entries"), where)
+        value_type(enum["source"], str, f"{where}.source", nullable=True)
+        value_type(enum["extensions_start"], int, f"{where}.extensions_start", nullable=True)
+        if not isinstance(enum["entries"], list):
+            fail(f"{where}.entries", "expected an array")
+        for index, entry in enumerate(enum["entries"]):
+            if not isinstance(entry, list) or len(entry) != 2:
+                fail(f"{where}.entries[{index}]", "expected a [name, value] pair")
+            value_type(entry[0], str, f"{where}.entries[{index}][0]")
+            value_type(entry[1], int, f"{where}.entries[{index}][1]")
+
+    packages = snapshot["packages"]
+    for pkg_name, pkg in packages.items():
+        object_with(pkg, ("id", "enums", "messages"), f"packages.{pkg_name}")
+        value_type(pkg["id"], int, f"packages.{pkg_name}.id", nullable=True)
+        for kind in ("enums", "messages"):
+            if not isinstance(pkg[kind], dict):
+                fail(f"packages.{pkg_name}.{kind}", "expected an object")
+        for enum_name, enum in pkg["enums"].items():
+            check_enum(enum, f"packages.{pkg_name}.enums.{enum_name}")
+        for msg_name, msg in pkg["messages"].items():
+            where = f"packages.{pkg_name}.messages.{msg_name}"
+            object_with(msg, ("source", "id", "msgid", "variable", "discriminator_mode",
+                              "extensions_start", "magic_bytes", "size", "base_size",
+                              "fields", "oneofs", "enums"), where)
+            value_type(msg["source"], str, f"{where}.source", nullable=True)
+            for key in ("id", "msgid", "extensions_start"):
+                value_type(msg[key], int, f"{where}.{key}", nullable=True)
+            value_type(msg["variable"], bool, f"{where}.variable")
+            value_type(msg["discriminator_mode"], str, f"{where}.discriminator_mode", nullable=True)
+            for key in ("size", "base_size"):
+                value_type(msg[key], int, f"{where}.{key}")
+            if msg["magic_bytes"] is not None:
+                if not isinstance(msg["magic_bytes"], list) or any(
+                        type(byte) is not int or not 0 <= byte <= 255 for byte in msg["magic_bytes"]):
+                    fail(f"{where}.magic_bytes", "expected an array of bytes or null")
+            for key in ("fields", "oneofs"):
+                if not isinstance(msg[key], list):
+                    fail(f"{where}.{key}", "expected an array")
+            if not isinstance(msg["enums"], dict):
+                fail(f"{where}.enums", "expected an object")
+            for enum_name, enum in msg["enums"].items():
+                check_enum(enum, f"{where}.enums.{enum_name}")
+            for index, field in enumerate(msg["fields"]):
+                check_member(field, f"{where}.fields[{index}]")
+            for index, oneof in enumerate(msg["oneofs"]):
+                oneof_path = f"{where}.oneofs[{index}]"
+                object_with(oneof, ("name", "variable", "discriminator", "max_size", "min_size",
+                                    "extensions_start", "base_size", "variants"), oneof_path)
+                value_type(oneof["name"], str, f"{oneof_path}.name")
+                value_type(oneof["variable"], bool, f"{oneof_path}.variable")
+                value_type(oneof["discriminator"], str, f"{oneof_path}.discriminator", nullable=True)
+                for key in ("max_size", "min_size", "extensions_start"):
+                    value_type(oneof[key], int, f"{oneof_path}.{key}", nullable=True)
+                value_type(oneof["base_size"], int, f"{oneof_path}.base_size")
+                if oneof["base_size"] < 0:
+                    fail(f"{oneof_path}.base_size", "must be non-negative")
+                if not isinstance(oneof["variants"], list):
+                    fail(f"{oneof_path}.variants", "expected an array")
+                for variant_index, variant in enumerate(oneof["variants"]):
+                    variant_path = f"{oneof_path}.variants[{variant_index}]"
+                    check_member(variant, variant_path)
+                    if "disc" not in variant:
+                        fail(variant_path, "missing disc")
+                    value_type(variant["disc"], int, f"{variant_path}.disc", nullable=True)
+                for key in ("size", "offset", "discriminator_size"):
+                    if key in oneof:
+                        value_type(oneof[key], int, f"{oneof_path}.{key}")
+                        if oneof[key] < 0:
+                            fail(f"{oneof_path}.{key}", "must be non-negative")
+
+    _normalize_snapshot_layout(snapshot)
+
+
+def _normalize_snapshot_layout(snapshot):
+    """Add layout values introduced after snapshot version 1 was published."""
+    for pkg_name, pkg in snapshot["packages"].items():
+        for msg in pkg["messages"].values():
+            offset = sum(field.get("wire_size", _estimated_wire_size(field, snapshot))
+                         for field in msg["fields"])
+            for oneof in msg["oneofs"]:
+                oneof.setdefault("size", max(
+                    [variant.get("wire_size", _estimated_wire_size(variant, snapshot))
+                     for variant in oneof["variants"]] + [oneof["max_size"] or 0] +
+                    ([oneof["min_size"] or 0] if not oneof["variable"] else [0])))
+                oneof.setdefault("discriminator_size",
+                                 2 if oneof["discriminator"] == "msgid" else
+                                 1 if oneof["discriminator"] == "field_order" else 0)
+                oneof.setdefault("offset", offset)
+                offset += oneof["discriminator_size"] + (2 if oneof["variable"] else 0) + oneof["size"]
+
+
+def _estimated_wire_size(member, snapshot):
+    type_name = member["type"]
+    base_size = _SCALAR_SIZES.get(type_name)
+    if base_size is None:
+        parts = type_name.rsplit(".", 1)
+        if len(parts) == 2:
+            referenced = snapshot["packages"].get(parts[0], {}).get("messages", {}).get(parts[1])
+            base_size = referenced["size"] if referenced else 1
+        else:
+            base_size = 1
+    if type_name in ("string", "bytes"):
+        if member["array"]:
+            if member["size"] is not None:
+                return member["size"] * (member["element_size"] or 1)
+            if member["max_size"] is not None:
+                return (2 if member["max_size"] > 255 else 1) + member["max_size"] * (member["element_size"] or 1)
+        if member["size"] is not None:
+            return member["size"]
+        if member["max_size"] is not None:
+            return member["max_size"] + (2 if member["max_size"] > 255 else 1)
+    if member["array"]:
+        if member["size"] is not None:
+            return member["size"] * base_size
+        if member["max_size"] is not None:
+            return (2 if member["max_size"] > 255 else 1) + member["max_size"] * base_size
+    return base_size
 
 
 # ---------------------------------------------------------------------------
@@ -532,13 +710,15 @@ class _Differ:
         new_by_num = {number(new_members, i): m for i, m in enumerate(new_members)}
 
         # A pure reordering is one finding, not N type changes.
+        old_names = [m["name"] for m in old_members]
+        new_names = [m["name"] for m in new_members]
+        old_common = [name for name in old_names if name in set(new_names)]
+        new_common = [name for name in new_names if name in set(old_names)]
         if len(old_members) == len(new_members):
             old_set = sorted(((m["name"], self._wire_signature(m, True)) for m in old_members),
                              key=lambda item: item[0])
             new_set = sorted(((m["name"], self._wire_signature(m, False)) for m in new_members),
                              key=lambda item: item[0])
-            old_names = [m["name"] for m in old_members]
-            new_names = [m["name"] for m in new_members]
             if old_set == new_set and old_names != new_names:
                 detail = ""
                 if kind == "variant":
@@ -552,6 +732,10 @@ class _Differ:
                          f"{kind} order {', '.join(old_names)} -> {', '.join(new_names)}{detail}",
                          old_names, new_names)
                 return
+        if old_common != new_common:
+            self.add(BREAKING, f"{kind}s_reordered", path,
+                     f"{kind} order {', '.join(old_common)} -> {', '.join(new_common)}",
+                     old_common, new_common)
 
         for num in sorted(set(old_by_num) | set(new_by_num)):
             old_m, new_m = old_by_num.get(num), new_by_num.get(num)
@@ -605,6 +789,11 @@ class _Differ:
             self.add(RENAME, "oneof_renamed", f"{message_path}.{old['name']}",
                      f"oneof renamed to {new['name']}", old["name"], new["name"])
         before = len(self.changes)
+        if old.get("offset") is not None and new.get("offset") is not None \
+                and old["offset"] != new["offset"]:
+            self.add(BREAKING, "oneof_offset_changed", path,
+                     f"oneof wire offset {old['offset']} -> {new['offset']}; earlier layout growth shifts this union",
+                     old["offset"], new["offset"])
         if old["variable"] != new["variable"]:
             self.add(BREAKING, "oneof_variable_changed", path,
                      f"variable {old['variable']} -> {new['variable']}", old["variable"], new["variable"])

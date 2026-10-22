@@ -304,7 +304,7 @@ def test_name_overrides_per_language():
         _check("public BleMcuHost Host { get; set; }" in _read(
             dirs["csharp"] / "NamesTest" / "Messages" / "BleHostStatus.cs"),
             "C# field typed with a renamed message should reference the new name")
-        _check("MCU_HOST_ENTRY = 2," in _read(dirs["csharp"] / "NamesTest" / "Enums" / "BleHost.cs"),
+        _check("McuHostEntry = 2," in _read(dirs["csharp"] / "NamesTest" / "Enums" / "BleHost.cs"),
                "C# enum entry should use the csharp override")
 
         ts = _read(dirs["ts"] / "names-test.structframe.ts")
@@ -361,24 +361,64 @@ def test_name_overrides_change_invalidates_cache():
 
 def test_name_overrides_errors():
     """Typos, unknown languages, invalid identifiers and collisions are rejected."""
-    bad_tables = {
-        "do not match any declaration": {"cpp": {"NoSuchMessage": "Foo"}},
-        "unknown language": {"cobol": {"BleMCuHost": "Foo"}},
-        "not a valid identifier": {"cpp": {"BleMCuHost": "not valid"}},
-        "resolve to the name": {"cpp": {"BleMCuHost": "BleHostStatus"}},
-    }
+    bad_tables = [
+        ("do not match any declaration", {"cpp": {"NoSuchMessage": "Foo"}}),
+        ("unknown language", {"cobol": {"BleMCuHost": "Foo"}}),
+        ("not a valid identifier", {"cpp": {"BleMCuHost": "not valid"}}),
+        ("resolve to the name", {"cpp": {"BleMCuHost": "BleHostStatus"}}),
+        ("built-in schema type", {"cpp": {"BleMCuHost": "uint32"}}),
+        ("reserved keyword", {"py": {"BleMCuHost": "class"}}),
+        ("generated name collision", {"csharp": {"BleMCuHost.BLEHost": "GateCurrent"}}),
+        ("generated name collision", {"csharp": {"BleMCuHost": "BleHost"}}),
+    ]
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp = Path(tmp_dir)
         proto = tmp / "names.sf"
         proto.write_text(NAMES_SCHEMA, encoding="utf-8")
-        for expected, table in bad_tables.items():
+        for expected, table in bad_tables:
             overrides = _write_overrides(tmp, table)
-            result = run_generator(proto, "--build_cpp", "--cpp_path", str(tmp / "cpp") + os.sep,
+            language = next(iter(table))
+            language = language if language in LANG_SUFFIXES else "cpp"
+            build, path_flag = LANG_SUFFIXES[language]
+            result = run_generator(proto, build, path_flag, str(tmp / language) + os.sep,
                                    "--catalog_path", str(tmp / "catalog") + os.sep,
                                    "--force", "--name_overrides", str(overrides))
             output = result.stdout + result.stderr
             _check(result.returncode == 1, f"Expected failure for {table}, got exit {result.returncode}:\n{output}")
             _check(expected in output, f"Expected {expected!r} in error output for {table}:\n{output}")
+
+
+def test_name_override_preserves_exact_emitted_enum_spelling():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp = Path(tmp_dir)
+        table = {"cpp": {"BleHost.GateCurrent": "RUN"}}
+        schema = NAMES_SCHEMA.replace(
+            "BleHost mode = 4;", "BleHost mode = 4 [default = GateCurrent];")
+        dirs = _generate(tmp, ["--name_overrides", str(_write_overrides(tmp, table))], schema)
+        cpp = _read(dirs["cpp"] / "names_test.structframe.hpp")
+        _check("    RUN = 1," in cpp, "C++ enum-entry overrides must bypass PascalCase conversion")
+        _check("case BleHost::RUN:" in cpp, "generated enum references must use the exact override")
+        _check("BleHost mode = BleHost::RUN;" in cpp, "enum defaults must use the exact override")
+
+
+def test_generated_enum_name_collisions_are_rejected_without_overrides():
+    schema = """\
+package collisions;
+
+enum State {
+  FooBar = 0;
+  FOO_BAR = 1;
+}
+"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp = Path(tmp_dir)
+        proto = tmp / "collisions.sf"
+        proto.write_text(schema, encoding="utf-8")
+        result = run_generator(proto, "--build_py", "--py_path", str(tmp / "py") + os.sep)
+    output = result.stdout + result.stderr
+    _check(result.returncode == 1, f"target-language enum collision must fail:\n{output}")
+    _check("collisions.State.FOO_BAR" in output and "collisions.State.FooBar" in output,
+           f"collision should identify both source paths:\n{output}")
 
 
 _LOOKUP_PROBE = r"""
