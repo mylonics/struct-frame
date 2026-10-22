@@ -632,6 +632,12 @@ oneof data {
 - `min_size` must be ≤ the oneof's buffer size (`max(variant_sizes)`, or `max_size` if set). Use `max_size` to increase the buffer first if needed.
 - Padding bytes are always zero.
 
+**Wire evolution of variants in a trimmed oneof:**
+- A variant message may grow through its own `extensions_start` block. Older senders omit the new bytes (a newer receiver fills them with schema defaults, or zero); newer senders add bytes that an older receiver ignores.
+- This works only for the **last** oneof of a variable message: its payload runs to the end of the frame, so the receiver treats every remaining byte as the active variant. The buffer passed to `deserialize` must therefore be exactly the message payload (frame parsers already guarantee this).
+- A trimmed oneof followed by another oneof cannot evolve, because the receiver cannot tell where its payload ends. Do not add extension fields to variants of a non-trailing trimmed oneof.
+- `MIN_SIZE` is the smallest valid payload across the known variants. `struct-frame diff` reports growth of a trailing trimmed oneof through variant extension fields as wire-compatible.
+
 ### Option Summary
 
 | Option | Applies to | Effect |
@@ -1092,6 +1098,8 @@ Source identifiers are converted to each language's conventions with one shared 
 TypeScript/JavaScript property accessors start with a lower-case letter (`gateCurrent`, `bleHostId`) but keep the remaining acronym casing (`BLEHost` stays `BLEHost`).
 
 Names written entirely in one case (`BLE_HOST_OK`, `ble_host`) carry no acronym information, so they are title-cased (`BleHostOk`) as before.
+
+> **Upgrading from 0.10.x:** acronym-aware conversion changes the generated names of identifiers that mix cases. For example a field `sensorId` is now `SensorId` in C# (previously `Sensorid`), an enum entry `GateCurrent` is `GATE_CURRENT` in C/Python/Rust/C# (previously `GATECURRENT`) and `GateCurrent` in C++ (previously `Gatecurrent`). Schemas that only use `snake_case` or `SCREAMING_SNAKE` names are unaffected. To keep an old spelling, pin it with `--name_overrides`.
 
 When no heuristic can produce the name you want, pass `--name_overrides FILE` with a JSON file. Overrides are keyed by `all` or a language (`c`, `cpp`, `ts`, `js`, `py`, `gql`, `csharp`, `rust`); each entry maps a source name path to the exact generated name:
 

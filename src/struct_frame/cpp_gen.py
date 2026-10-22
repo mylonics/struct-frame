@@ -257,10 +257,18 @@ class OneOfCppGen():
         # type with a constructor that initializes the first variant, so the
         # enclosing message stays default-constructible.
         _first_variant = next(iter(oneof.fields.keys()), None)
-        _defaulted = any(extra[1] for extra in oneof.variant_extra)
+        # Any message-typed variant may (transitively) carry default member
+        # initializers (e.g. [default = 0], or a nested message with its own
+        # named union), so gate on the variant kind, not on non-zero default
+        # bytes. The constructor also zeroes the bytes past the first variant
+        # so whole-union memcmp/equality stays well defined.
+        _defaulted = any(not f.is_default_type and not f.is_enum for f in oneof.fields.values())
         if _defaulted and _first_variant is not None:
             result += f'    union {oneof.name}_union_t {{\n'
-            result += f'        {oneof.name}_union_t() : {_first_variant}() {{}}\n'
+            result += f'        {oneof.name}_union_t() : {_first_variant}() {{\n'
+            result += f'            if (sizeof(*this) > sizeof({_first_variant}))\n'
+            result += f'                std::memset(reinterpret_cast<unsigned char*>(this) + sizeof({_first_variant}), 0, sizeof(*this) - sizeof({_first_variant}));\n'
+            result += f'        }}\n'
         else:
             result += f'    union {{\n'
         
@@ -710,7 +718,7 @@ class MessageCppGen():
                 for disc_val, field_name, field_size in oneof.variant_info:
                     result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) {{\n'
                     result += f'                size_t _copy = _{oneof_name}_len < {field_size} ? _{oneof_name}_len : {field_size};\n'
-                    result += f'                std::memcpy(&{oneof_name}, buffer + offset, _copy);\n'
+                    result += f'                std::memcpy(static_cast<void*>(&{oneof_name}), buffer + offset, _copy);\n'
                     result += f'            }}\n'
                 result += f'            offset += _{oneof_name}_len;  // Always skip full payload\n'
                 result += f'        }}\n'
@@ -729,9 +737,16 @@ class MessageCppGen():
                     result += f'            {_kw} (static_cast<int>({oneof_name}_discriminator) == {disc_val}) {{\n'
                     if _min_w:
                         result += f'                if (_{oneof_name}_avail < {_min_w}) return 0;\n'
-                    result += f'                {oneof_name}.{field_name} = decltype({oneof_name}.{field_name}){{}};  // apply schema defaults\n'
+                    # Zero the whole union (never assign to array/class members),
+                    # then lay down this variant's schema-default bytes, if any.
+                    result += f'                std::memset(static_cast<void*>(&{oneof_name}), 0, sizeof({oneof_name}));\n'
+                    _def = oneof.variant_extra[_i][1]
+                    if _def:
+                        _arr = ', '.join(f'0x{b:02x}' for b in _def)
+                        result += f'                static const uint8_t _{oneof_name}_def[{len(_def)}] = {{{_arr}}};\n'
+                        result += f'                std::memcpy(static_cast<void*>(&{oneof_name}), _{oneof_name}_def, {len(_def)});  // apply schema defaults\n'
                     result += f'                size_t _copy = _{oneof_name}_avail < {field_size} ? _{oneof_name}_avail : {field_size};\n'
-                    result += f'                std::memcpy(&{oneof_name}, buffer + offset, _copy);\n'
+                    result += f'                std::memcpy(static_cast<void*>(&{oneof_name}), buffer + offset, _copy);\n'
                     if _trailing:
                         result += f'                _{oneof_name}_adv = _{oneof_name}_avail;\n'
                     else:

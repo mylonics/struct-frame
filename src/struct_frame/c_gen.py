@@ -701,11 +701,13 @@ class MessageCGen():
                 result += f'    // {oneof_name}: {_trim_label}\n'
                 result += f'    {{\n'
                 result += f'        uint16_t _{oneof_name}_tlen = 0;\n'
+                result += f'        uint16_t _{oneof_name}_vlen = 0;\n'
                 for disc_val, field_name, field_size in oneof.variant_info:
-                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) _{oneof_name}_tlen = {field_size};\n'
+                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) {{ _{oneof_name}_tlen = {field_size}; _{oneof_name}_vlen = {field_size}; }}\n'
                 if oneof.min_size_override:
                     result += f'        if (_{oneof_name}_tlen < {oneof.min_size_override}) _{oneof_name}_tlen = {oneof.min_size_override};\n'
-                result += f'        memcpy(buffer + offset, &msg->{oneof_name}, _{oneof_name}_tlen);\n'
+                result += f'        memcpy(buffer + offset, &msg->{oneof_name}, _{oneof_name}_vlen);\n'
+                result += f'        if (_{oneof_name}_tlen > _{oneof_name}_vlen) memset(buffer + offset + _{oneof_name}_vlen, 0, (size_t)(_{oneof_name}_tlen - _{oneof_name}_vlen));  /* zero min_size padding */\n'
                 result += f'        offset += _{oneof_name}_tlen;\n'
                 result += f'    }}\n'
             else:

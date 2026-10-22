@@ -123,12 +123,16 @@ def _enum_snapshot(enum, root):
     }
 
 
-def _oneof_snapshot(oneof, package_name, offset):
+def _oneof_snapshot(oneof, package_name, offset, evolvable=False):
     disc = {name: value for value, name, _ in oneof.variant_info}
     variants = []
-    for name, field in oneof.fields.items():
+    for index, (name, field) in enumerate(oneof.fields.items()):
         entry = _field_snapshot(field, package_name)
         entry["disc"] = disc.get(name)
+        # Wire bytes of the variant's non-extension part (what an older
+        # receiver understands); differs from wire_size only for nested
+        # messages that grow through their own extension block.
+        entry["base_wire"] = oneof.variant_extra[index][0] if index < len(oneof.variant_extra) else None
         variants.append(entry)
     return {
         "name": oneof.name,
@@ -143,6 +147,9 @@ def _oneof_snapshot(oneof, package_name, offset):
         "discriminator_size": (2 if oneof.discriminator_type == "msgid" else 1)
         if oneof.auto_discriminator else 0,
         "variants": variants,
+        # Trailing trimmed oneof of a variable message: its payload runs to the
+        # end of the frame, so variants may grow through extension fields.
+        "evolvable": bool(evolvable),
     }
 
 
@@ -153,8 +160,11 @@ def _message_snapshot(pkg, msg, root):
     fields = [_field_snapshot(f, pkg.name) for f in msg.fields.values()]
     oneofs = []
     offset = sum(field["wire_size"] for field in fields)
+    last_oneof = next(reversed(msg.oneofs.values()), None)
     for oneof in msg.oneofs.values():
-        snapshot = _oneof_snapshot(oneof, pkg.name, offset)
+        evolvable = (msg.variable and oneof is last_oneof and not oneof.variable
+                     and oneof.discriminator_type is not None)
+        snapshot = _oneof_snapshot(oneof, pkg.name, offset, evolvable)
         oneofs.append(snapshot)
         offset += snapshot["discriminator_size"] + (2 if snapshot["variable"] else 0) + snapshot["size"]
     return {
@@ -663,8 +673,9 @@ class _Differ:
             self.add(BREAKING, "oneofs_reordered", path,
                      f"oneof order {', '.join(common_old)} -> {', '.join(common_new)}",
                      common_old, common_new)
+        tolerated = 0
         for old_name, new_name in pairs:
-            self._diff_oneof(path, old_oneofs[old_name], new_oneofs[new_name])
+            tolerated += self._diff_oneof(path, old_oneofs[old_name], new_oneofs[new_name])
 
         # Nested enums
         pairs, removed, added = self.nested[(old_key, new_key)]
@@ -688,7 +699,7 @@ class _Differ:
                      f"magic bytes {old['magic_bytes']} -> {new['magic_bytes']}{note}",
                      old["magic_bytes"], new["magic_bytes"])
 
-        if old["base_size"] != new["base_size"] and not any(
+        if old["base_size"] + tolerated != new["base_size"] and not any(
                 c.category == BREAKING for c in self.changes[before:]):
             self.add(BREAKING, "size_changed", path,
                      f"base wire size {old['base_size']} -> {new['base_size']} bytes",
@@ -784,6 +795,7 @@ class _Differ:
     # -- oneofs -----------------------------------------------------------
 
     def _diff_oneof(self, message_path, old, new):
+        """Diff one oneof; returns the base-size growth tolerated as wire-compatible."""
         path = f"{message_path}.{new['name']}"
         if old["name"] != new["name"]:
             self.add(RENAME, "oneof_renamed", f"{message_path}.{old['name']}",
@@ -819,9 +831,29 @@ class _Differ:
 
         if old["base_size"] != new["base_size"] and not any(
                 c.category == BREAKING for c in self.changes[before:]):
+            if self._trimmed_growth_is_compatible(old, new):
+                return new["base_size"] - old["base_size"]
             self.add(BREAKING, "oneof_size_changed", path,
                      f"base union size {old['base_size']} -> {new['base_size']} bytes",
                      old["base_size"], new["base_size"])
+        return 0
+
+    @staticmethod
+    def _trimmed_growth_is_compatible(old, new):
+        """A trailing trimmed oneof may grow when only variants' extension parts grew.
+
+        The payload is trimmed to the active variant and read to the end of the
+        frame, so an older receiver ignores the extra tail and a newer one fills
+        missing bytes with defaults. That holds only while every variant's
+        non-extension wire bytes are unchanged and no explicit sizing option moved.
+        """
+        if not (old.get("evolvable") and new.get("evolvable")):
+            return False
+        if old["max_size"] != new["max_size"]:
+            return False
+        old_base = [v.get("base_wire") for v in old["variants"] if not v["extension"]]
+        new_base = [v.get("base_wire") for v in new["variants"] if not v["extension"]]
+        return None not in old_base and None not in new_base and old_base == new_base
 
 
 def _pair_enums(old, new, left_old, left_new):

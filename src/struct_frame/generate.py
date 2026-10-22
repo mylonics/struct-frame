@@ -384,8 +384,8 @@ def compute_schema_hash(packages_dict):
             for field_name, field in msg.fields.items():
                 _hash_line(hasher, "    " + _field_signature(field_name, field))
 
-            # Oneofs (sorted by name); variants in declaration order
-            for oneof_name in sorted(msg.oneofs.keys()):
+            # Oneofs in declaration order (== wire order); variants in declaration order
+            for oneof_name in msg.oneofs:
                 oneof = msg.oneofs[oneof_name]
                 _hash_line(hasher, f"    oneof:{oneof_name}")
                 if oneof.variable:
@@ -460,7 +460,7 @@ def compute_documentation_hash(packages_dict):
                 hash_enum(f"enum:{pkg_name}:{msg_name}", msg.enums[enum_name])
             for field_name, field in msg.fields.items():
                 hash_docs(f"field:{pkg_name}:{msg_name}:{field_name}", field.comments)
-            for oneof_name in sorted(msg.oneofs.keys()):
+            for oneof_name in msg.oneofs:
                 oneof = msg.oneofs[oneof_name]
                 hash_docs(f"oneof:{pkg_name}:{msg_name}:{oneof_name}", oneof.comments)
                 for field_name, field in oneof.fields.items():
@@ -509,6 +509,8 @@ def compute_generation_hash(args, packages_dict, name_overrides=None):
         'csharp_path': args.csharp_path[0] if args.build_csharp else None,
         'gql_path': args.gql_path[0] if args.build_gql else None,
         'rust_path': args.rust_path[0] if args.build_rust else None,
+        'generate_tests': args.generate_tests,
+        'catalog_path': args.catalog_path[0],
         'sdk': args.sdk,
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
@@ -1966,6 +1968,26 @@ parser.add_argument('--no_packed', action='store_true',
                           'have different endianness/alignment requirements.'))
 
 
+_parser_checked = False
+
+
+def _warn_if_parser_lacks_inline_comments():
+    """Comment ownership needs ``ast.Comment.inline`` (proto-schema-parser >= 2.0.0).
+
+    Older parsers do not expose it, which would silently attach same-line
+    trailing comments to the *next* declaration. Warn once instead.
+    """
+    global _parser_checked
+    if _parser_checked:
+        return
+    _parser_checked = True
+    fields = getattr(ast.Comment, '__dataclass_fields__', None)
+    if fields is not None and 'inline' not in fields:
+        print("Warning: proto-schema-parser < 2.0.0 detected; same-line trailing comments "
+              "will not be attributed correctly. Upgrade with: pip install -U 'proto-schema-parser>=2.0.0'",
+              file=sys.stderr)
+
+
 def parseFile(filename, base_path=None, importing_package=None):
     """Parse a proto file and handle imports recursively.
 
@@ -1977,6 +1999,8 @@ def parseFile(filename, base_path=None, importing_package=None):
     Returns:
         bool: True if parsing succeeded, False otherwise
     """
+    _warn_if_parser_lacks_inline_comments()
+
     # Convert to absolute path for circular import detection
     abs_filename = os.path.abspath(filename)
 

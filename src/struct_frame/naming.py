@@ -472,6 +472,12 @@ def _validate_language_names(lang, packages):
                 record(f"message '{pkg_name}.{msg_name}'", emitted,
                        f"{pkg_name}.{msg_name}.{field_name}", members)
             for oneof_name, oneof in msg.oneofs.items():
+                # Variants live in the message's member scope only where the
+                # generator flattens them into the class (C#). Elsewhere they
+                # sit inside the oneof's own union/dict/accessor namespace, so
+                # sharing a name with a plain field is valid (and compiled
+                # before name validation existed).
+                variant_scope = members if lang == 'csharp' else {}
                 for field_name in oneof.fields:
                     if lang == 'csharp':
                         emitted = to_pascal_case(field_name)
@@ -480,7 +486,7 @@ def _validate_language_names(lang, packages):
                     else:
                         emitted = field_name
                     record(f"message '{pkg_name}.{msg_name}'", emitted,
-                           f"{pkg_name}.{msg_name}.{oneof_name}.{field_name}", members)
+                           f"{pkg_name}.{msg_name}.{oneof_name}.{field_name}", variant_scope)
 
         for enum_name, enum in pkg.enums.items():
             entries = {}

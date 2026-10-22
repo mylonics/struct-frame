@@ -1,0 +1,51 @@
+// Code-generation regression fixture for trimmed oneofs: variants that are
+// fixed strings, that declare a zero-valued default, or that contain a
+// nested oneof (named C++ union) must still compile and decode.
+package trimmed_union_codegen;
+
+message ZeroDef {
+  uint32 a = 1 [default = 0];
+}
+
+message Inner {
+  uint8 b = 1 [default = 7];
+}
+
+message Mid {
+  oneof m {
+    option discriminator = "field_order";
+    Inner i = 1;
+    uint8 k = 2;
+  }
+}
+
+message Tagged {
+  option msgid = 1;
+  option variable = true;
+  uint8 x = 1;
+  oneof payload {
+    option discriminator = "field_order";
+    string name = 1 [size = 16];
+    uint32 code = 2;
+  }
+}
+
+message Holder {
+  option msgid = 2;
+  option variable = true;
+  uint8 x = 1;
+  oneof u {
+    option discriminator = "field_order";
+    ZeroDef z = 1;
+    uint32 s = 2;
+  }
+}
+
+message Outer {
+  option msgid = 3;
+  oneof o {
+    option discriminator = "field_order";
+    Mid mid = 1;
+    uint8 q = 2;
+  }
+}

@@ -672,11 +672,13 @@ class MessageJsClassGen():
                 result += f'    // {oneof_name}: {_trim_label}\n'
                 result += f'    const _{oneof_name}TrimDisc = this._buffer.{disc_read_method}({disc_offset});\n'
                 result += f'    let _{oneof_name}TrimLen = 0;\n'
+                result += f'    let _{oneof_name}VarLen = 0;\n'
                 for disc_val, field_name, field_size in oneof.variant_info:
-                    result += f'    if (_{oneof_name}TrimDisc === {disc_val}) _{oneof_name}TrimLen = {field_size};\n'
+                    result += f'    if (_{oneof_name}TrimDisc === {disc_val}) {{ _{oneof_name}TrimLen = {field_size}; _{oneof_name}VarLen = {field_size}; }}\n'
                 if oneof.min_size_override:
                     result += f'    if (_{oneof_name}TrimLen < {oneof.min_size_override}) _{oneof_name}TrimLen = {oneof.min_size_override};\n'
-                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset} + _{oneof_name}TrimLen);\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset} + _{oneof_name}VarLen);\n'
+                result += f'    buffer.fill(0, offset + _{oneof_name}VarLen, offset + _{oneof_name}TrimLen); // zero min_size padding\n'
                 result += f'    offset += _{oneof_name}TrimLen;\n'
                 msg_offset += oneof.size
             else:
