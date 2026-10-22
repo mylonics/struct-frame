@@ -122,7 +122,32 @@ SECTIONS = [
                          "absence of `#pragma pack`, round-trip parity)"),
                     _full("Hash / `--force` caching", "✅",
                           "Verified by `tests/test_caching.py` (hash file creation, "
-                          "skip-on-match, `--force` bypass, structural change invalidation)"),
+                          "skip-on-match, `--force` bypass, structural change invalidation, "
+                          "documentation-only changes (leading, trailing and file-header "
+                          "comments) regenerate, field/oneof-variant order invalidates)"),
+                    _full("Comment ownership (file / leading / trailing docs)", "✅",
+                          "Verified by `tests/test_doc_ownership.py` (file headers are not "
+                          "attached to the first declaration; leading comments document the "
+                          "next declaration; trailing comments document the preceding one)"),
+                    _full("Stable, dependency-aware output order", "✅",
+                          "Verified by `tests/test_output_ordering.py` (declaration order, "
+                          "file split and import order do not change generated output; "
+                          "oneof variant and field order is preserved)"),
+                    _row("Acronym-aware identifier conversion",
+                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
+                          "JS": "✅", "C#": "✅", "Rust": "✅"},
+                         "Verified by `tests/test_naming.py` (exact C++, C#, TypeScript, C, "
+                         "Python, Rust and JavaScript names for `BleMCuHost`, `BleHost`, "
+                         "`GateCurrent`)"),
+                    _row("`--name_overrides` flag",
+                         {"C": "✅", "C++": "✅", "Python": "✅", "TS": "✅",
+                          "JS": "✅", "C#": "✅", "Rust": "✅"},
+                         "Verified by `tests/test_naming.py` (per-language and `all` overrides, "
+                         "wire format unchanged, cache invalidation, error handling)"),
+                    _full("`diff` subcommand (wire-compatibility check)", "✅",
+                          "Verified by `tests/test_schema_diff.py` (message IDs, magic bytes, "
+                          "field types/numbers, enum values, extensions, order-sensitive oneof "
+                          "variants, source-only renames, file moves, exit codes, snapshots)"),
                 ],
             },
         ],

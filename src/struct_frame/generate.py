@@ -8,6 +8,7 @@ import hashlib
 import json
 import struct
 import time
+import contextlib
 from struct_frame import FileCGen
 from struct_frame import FileTsGen, TestTsGen
 from struct_frame import FileJsGen, TestJsGen
@@ -22,11 +23,13 @@ from struct_frame import TestCGen
 from struct_frame import TestCSharpGen
 from struct_frame import pascal_case
 from struct_frame import camel_to_snake_case
+from struct_frame.naming import NameOverrides, NameOverrideError, validate_generated_names
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
 
 import argparse
+import sys
 
 current_error_field = ""
 current_error_message = ""
@@ -308,13 +311,176 @@ def get_version():
     return "unknown"
 
 
-def compute_generation_hash(args, packages_dict):
+def _hash_line(hasher, text):
+    hasher.update(f"{text}\n".encode('utf-8'))
+
+
+def _hash_enum_entries(hasher, enum, indent):
+    """Hash enum entries in declaration order (values *and* order matter)."""
+    for entry_name, (value, _comments) in enum.data.items():
+        marker = ""
+        if enum.extensions_start is not None and value >= enum.extensions_start:
+            marker = ":extension"
+        _hash_line(hasher, f"{indent}{entry_name}={value}{marker}")
+
+
+def compute_schema_hash(packages_dict):
     """
-    Compute a hash based on CLI parameters, struct-frame version, and parsed message definitions.
+    Hash everything that determines the *structure* of the generated code:
+    packages, enums, messages, field types/numbers/options and oneof variants.
+
+    Field and oneof-variant declaration order is part of the hash: it defines
+    the wire layout and (for ``field_order`` discriminators) the discriminator
+    values, so reordering must invalidate cached output.  Packages, enums and
+    messages are hashed by name because generated output lists them in a
+    layout-independent (sorted, dependency-aware) order.
+    """
+    hasher = hashlib.sha256()
+    for pkg_name in sorted(packages_dict.keys()):
+        pkg = packages_dict[pkg_name]
+        _hash_line(hasher, f"package:{pkg_name}")
+
+        if pkg.package_id is not None:
+            _hash_line(hasher, f"  pkgid:{pkg.package_id}")
+
+        # Enums (sorted by name; entries in declaration order)
+        for enum_name in sorted(pkg.enums.keys()):
+            enum = pkg.enums[enum_name]
+            _hash_line(hasher, f"  enum:{enum_name}")
+            if enum.source_file:
+                _hash_line(hasher, f"    source:{os.path.basename(enum.source_file)}")
+            if enum.extensions_start is not None:
+                _hash_line(hasher, f"    extensions_start:{enum.extensions_start}")
+            _hash_enum_entries(hasher, enum, "    ")
+
+        # Messages (sorted by name)
+        for msg_name in sorted(pkg.messages.keys()):
+            msg = pkg.messages[msg_name]
+            _hash_line(hasher, f"  message:{msg_name}")
+            if msg.source_file:
+                _hash_line(hasher, f"    source:{os.path.basename(msg.source_file)}")
+            if msg.id is not None:
+                _hash_line(hasher, f"    msgid:{msg.id}")
+            if msg.variable:
+                _hash_line(hasher, "    variable:true")
+            if msg.is_envelope:
+                _hash_line(hasher, "    is_envelope:true")
+            if msg.discriminator_mode:
+                _hash_line(hasher, f"    discriminator:{msg.discriminator_mode}")
+            if msg.extensions_start is not None:
+                _hash_line(hasher, f"    extensions_start:{msg.extensions_start}")
+            if msg.magic_bytes_override is not None:
+                _hash_line(hasher, f"    magic_bytes:{msg.magic_bytes_override[0]},{msg.magic_bytes_override[1]}")
+
+            # Message-scoped enums (sorted by name; entries in declaration order)
+            for enum_name in sorted(msg.enums.keys()):
+                enum = msg.enums[enum_name]
+                _hash_line(hasher, f"    enum:{enum_name}")
+                if enum.extensions_start is not None:
+                    _hash_line(hasher, f"      extensions_start:{enum.extensions_start}")
+                _hash_enum_entries(hasher, enum, "      ")
+
+            # Fields in declaration order (== wire order)
+            for field_name, field in msg.fields.items():
+                _hash_line(hasher, "    " + _field_signature(field_name, field))
+
+            # Oneofs (sorted by name); variants in declaration order
+            for oneof_name in sorted(msg.oneofs.keys()):
+                oneof = msg.oneofs[oneof_name]
+                _hash_line(hasher, f"    oneof:{oneof_name}")
+                if oneof.variable:
+                    _hash_line(hasher, "      variable:true")
+                if oneof.discriminator_mode and oneof.discriminator_mode != "auto":
+                    _hash_line(hasher, f"      discriminator:{oneof.discriminator_mode}")
+                if oneof.max_size_override is not None:
+                    _hash_line(hasher, f"      max_size:{oneof.max_size_override}")
+                if oneof.min_size_override is not None:
+                    _hash_line(hasher, f"      min_size:{oneof.min_size_override}")
+                if oneof.extensions_start is not None:
+                    _hash_line(hasher, f"      extensions_start:{oneof.extensions_start}")
+                for oneof_field_name, oneof_field in oneof.fields.items():
+                    _hash_line(hasher, "      " + _field_signature(oneof_field_name, oneof_field))
+
+    return hasher.hexdigest()
+
+
+def _field_signature(field_name, field):
+    info = f"field:{field_name}:{field.field_type}"
+    if field.type_package:
+        info += f":pkg={field.type_package}"
+    if field.number is not None:
+        info += f":number={field.number}"
+    if field.is_array:
+        info += ":array"
+    if field.size_option is not None:
+        info += f":size={field.size_option}"
+    if field.max_size is not None:
+        info += f":max_size={field.max_size}"
+    if field.element_size is not None:
+        info += f":element_size={field.element_size}"
+    if field.flatten:
+        info += ":flatten"
+    if field.default is not None:
+        info += f":default={field.default}"
+    return info
+
+
+def compute_documentation_hash(packages_dict):
+    """
+    Hash every comment that can reach generated output: file-level docs and
+    the leading/trailing docs of packages' enums (and entries), messages,
+    fields and oneofs.
+
+    Kept separate from :func:`compute_schema_hash` so a comment-only edit is
+    recognised as such (and still invalidates the generation cache).
+    """
+    hasher = hashlib.sha256()
+
+    def hash_docs(label, comments):
+        if comments:
+            _hash_line(hasher, label)
+            for comment in comments:
+                _hash_line(hasher, "  " + json.dumps(comment))
+
+    def hash_enum(label, enum):
+        hash_docs(f"{label}:{enum.name}", enum.comments)
+        for entry_name, (_value, comments) in enum.data.items():
+            hash_docs(f"{label}:{enum.name}:{entry_name}", comments)
+
+    for pkg_name in sorted(packages_dict.keys()):
+        pkg = packages_dict[pkg_name]
+        for index, block in enumerate(pkg.file_doc_blocks()):
+            hash_docs(f"file:{pkg_name}:{index}", block)
+        for enum_name in sorted(pkg.enums.keys()):
+            hash_enum(f"enum:{pkg_name}", pkg.enums[enum_name])
+        for msg_name in sorted(pkg.messages.keys()):
+            msg = pkg.messages[msg_name]
+            hash_docs(f"message:{pkg_name}:{msg_name}", msg.comments)
+            for enum_name in sorted(msg.enums.keys()):
+                hash_enum(f"enum:{pkg_name}:{msg_name}", msg.enums[enum_name])
+            for field_name, field in msg.fields.items():
+                hash_docs(f"field:{pkg_name}:{msg_name}:{field_name}", field.comments)
+            for oneof_name in sorted(msg.oneofs.keys()):
+                oneof = msg.oneofs[oneof_name]
+                hash_docs(f"oneof:{pkg_name}:{msg_name}:{oneof_name}", oneof.comments)
+                for field_name, field in oneof.fields.items():
+                    hash_docs(f"field:{pkg_name}:{msg_name}:{oneof_name}:{field_name}", field.comments)
+
+    return hasher.hexdigest()
+
+
+def compute_generation_hash(args, packages_dict, name_overrides=None):
+    """
+    Compute a hash based on CLI parameters, struct-frame version, the parsed
+    schema (structure) and the documentation comments.
+
+    Comments are part of the key: they are emitted into generated code as
+    docs, so editing one must regenerate the output.
 
     Args:
         args: Parsed argparse arguments
         packages_dict: Dictionary of parsed packages with their messages and enums
+        name_overrides: Optional NameOverrides (their content is part of the key)
 
     Returns:
         str: SHA256 hash hex string
@@ -323,7 +489,7 @@ def compute_generation_hash(args, packages_dict):
 
     # 1. Add struct-frame version
     version = get_version()
-    hasher.update(f"version:{version}\n".encode('utf-8'))
+    _hash_line(hasher, f"version:{version}")
 
     # 2. Add relevant CLI parameters (sorted for consistency)
     cli_params = {
@@ -348,89 +514,13 @@ def compute_generation_hash(args, packages_dict):
         'equality': args.equality,
         'csharp_namespace': args.csharp_namespace[0],
         'no_packed': args.no_packed,
+        'name_overrides': name_overrides.fingerprint() if name_overrides else None,
     }
-    hasher.update(
-        f"cli:{json.dumps(cli_params, sort_keys=True)}\n".encode('utf-8'))
+    _hash_line(hasher, f"cli:{json.dumps(cli_params, sort_keys=True)}")
 
-    # 3. Add parsed message definitions (sorted by package name for consistency)
-    for pkg_name in sorted(packages_dict.keys()):
-        pkg = packages_dict[pkg_name]
-        hasher.update(f"package:{pkg_name}\n".encode('utf-8'))
-
-        if pkg.package_id is not None:
-            hasher.update(f"  pkgid:{pkg.package_id}\n".encode('utf-8'))
-
-        # Add enums (sorted by name)
-        for enum_name in sorted(pkg.enums.keys()):
-            enum = pkg.enums[enum_name]
-            hasher.update(f"  enum:{enum_name}\n".encode('utf-8'))
-            for entry_name in sorted(enum.data.keys()):
-                value, _ = enum.data[entry_name]
-                if enum.extensions_start is not None and value >= enum.extensions_start:
-                    continue
-                hasher.update(f"    {entry_name}={value}\n".encode('utf-8'))
-
-        # Add messages (sorted by name)
-        for msg_name in sorted(pkg.messages.keys()):
-            msg = pkg.messages[msg_name]
-            hasher.update(f"  message:{msg_name}\n".encode('utf-8'))
-            if msg.id is not None:
-                hasher.update(f"    msgid:{msg.id}\n".encode('utf-8'))
-            if msg.variable:
-                hasher.update(f"    variable:true\n".encode('utf-8'))
-            if msg.is_envelope:
-                hasher.update(f"    is_envelope:true\n".encode('utf-8'))
-            if msg.extensions_start is not None:
-                hasher.update(f"    extensions_start:{msg.extensions_start}\n".encode('utf-8'))
-            if msg.magic_bytes_override is not None:
-                hasher.update(f"    magic_bytes:{msg.magic_bytes_override[0]},{msg.magic_bytes_override[1]}\n".encode('utf-8'))
-
-            # Add message-scoped enums (sorted by name)
-            for enum_name in sorted(msg.enums.keys()):
-                enum = msg.enums[enum_name]
-                hasher.update(f"    enum:{enum_name}\n".encode('utf-8'))
-                for entry_name in sorted(enum.data.keys()):
-                    value, _ = enum.data[entry_name]
-                    if enum.extensions_start is not None and value >= enum.extensions_start:
-                        continue
-                    hasher.update(f"      {entry_name}={value}\n".encode('utf-8'))
-
-            # Add fields (sorted by name)
-            for field_name in sorted(msg.fields.keys()):
-                field = msg.fields[field_name]
-                field_info = f"    field:{field_name}:{field.field_type}"
-                if field.is_array:
-                    field_info += ":array"
-                if field.size_option is not None:
-                    field_info += f":size={field.size_option}"
-                if field.max_size is not None:
-                    field_info += f":max_size={field.max_size}"
-                if field.element_size is not None:
-                    field_info += f":element_size={field.element_size}"
-                if field.flatten:
-                    field_info += ":flatten"
-                if field.default is not None:
-                    field_info += f":default={field.default}"
-                hasher.update(f"{field_info}\n".encode('utf-8'))
-
-            # Add oneofs (sorted by name)
-            for oneof_name in sorted(msg.oneofs.keys()):
-                oneof = msg.oneofs[oneof_name]
-                hasher.update(f"    oneof:{oneof_name}\n".encode('utf-8'))
-                if oneof.variable:
-                    hasher.update(f"      variable:true\n".encode('utf-8'))
-                if oneof.discriminator_mode and oneof.discriminator_mode != "auto":
-                    hasher.update(f"      discriminator:{oneof.discriminator_mode}\n".encode('utf-8'))
-                if oneof.max_size_override is not None:
-                    hasher.update(f"      max_size:{oneof.max_size_override}\n".encode('utf-8'))
-                if oneof.min_size_override is not None:
-                    hasher.update(f"      min_size:{oneof.min_size_override}\n".encode('utf-8'))
-                if oneof.extensions_start is not None:
-                    hasher.update(f"      extensions_start:{oneof.extensions_start}\n".encode('utf-8'))
-                for oneof_field_name in sorted(oneof.fields.keys()):
-                    oneof_field = oneof.fields[oneof_field_name]
-                    hasher.update(
-                        f"      field:{oneof_field_name}:{oneof_field.field_type}\n".encode('utf-8'))
+    # 3. Schema structure and 4. documentation, hashed separately and combined
+    _hash_line(hasher, f"schema:{compute_schema_hash(packages_dict)}")
+    _hash_line(hasher, f"docs:{compute_documentation_hash(packages_dict)}")
 
     return hasher.hexdigest()
 
@@ -508,12 +598,83 @@ def write_generation_hash(hash_file_path, hash_value):
         f.write(hash_value)
 
 
-class Enum:
+class _Documented:
+    """Documentation attached to a declaration (message, enum, field, oneof).
+
+    Comment ownership rules (see docs: "Comments and documentation"):
+
+    * ``leading_comments``  -- own-line comments that directly precede the
+      declaration (no other declaration or statement in between).
+    * ``trailing_comments`` -- comments on the same line *after* the
+      declaration (``uint32 x = 1;  // note``).  For a message/enum/oneof, a
+      comment on the same line as the opening ``{`` also counts.
+    * ``comments`` -- what generators emit as the declaration's documentation:
+      the leading comments followed by the trailing comments.
+    """
+
+    def _init_docs(self, comments):
+        self.leading_comments = list(comments)
+        self.trailing_comments = []
+        self.comments = list(comments)
+
+    def add_trailing_comment(self, text):
+        self.trailing_comments.append(text)
+        self.comments.append(text)
+
+
+class _EntryDocs(_Documented):
+    """Docs holder for one enum entry (shares its lists with Enum.data/entry_trailing_comments)."""
+
+    def __init__(self, comments):
+        self._init_docs(comments)
+
+
+class _DocCollector:
+    """Tracks comment ownership while walking the elements of one scope.
+
+    Own-line comments are held back until the next declaration arrives and
+    become its leading documentation.  Comments that share a line with a
+    preceding declaration (``inline``) are attached to *that* declaration as
+    trailing documentation instead of leaking onto the next one.  Comments
+    that precede a non-declaration statement (``option``/``import``) or that
+    are left dangling at the end of a scope document nothing and are dropped.
+    """
+
+    def __init__(self, owner=None):
+        self.pending = []
+        self.target = owner
+
+    def comment(self, element):
+        if getattr(element, 'inline', False):
+            if self.target is not None:
+                self.target.add_trailing_comment(element.text)
+        else:
+            self.pending.append(element.text)
+
+    def statement(self, owner=None):
+        """A non-declaration statement (option/import) was seen."""
+        self.pending = []
+        self.target = owner
+
+    def take(self):
+        """Return and clear the pending leading comments."""
+        comments, self.pending = self.pending, []
+        return comments
+
+    def declared(self, declaration):
+        """A documentable declaration was seen; later inline comments belong to it."""
+        self.target = declaration
+
+
+class Enum(_Documented):
     def __init__(self, package, comments):
         self.name = None
         self.data = {}
         self.size = 1
-        self.comments = comments
+        self._init_docs(comments)
+        # Per-entry trailing (same-line) comments; entries' combined docs
+        # (leading + trailing) live in the second item of data[name].
+        self.entry_trailing_comments = {}
         self.package = package
         self.is_enum = True
         self.source_file = None
@@ -524,11 +685,12 @@ class Enum:
 
     def parse(self, enum):
         self.name = enum.name
-        comments = []
+        docs = _DocCollector(owner=self)
         for e in enum.elements:
             if type(e) == ast.Comment:
-                comments.append(e.text)
+                docs.comment(e)
             elif type(e) == ast.Option:
+                docs.statement(owner=self)
                 if e.name == "extensions_start":
                     try:
                         self.extensions_start = int(e.value)
@@ -541,8 +703,10 @@ class Enum:
                 if e.name in self.data:
                     print(f"Enum Field Redclaration")
                     return False
-                self.data[e.name] = (e.number, comments)
-                comments = []
+                entry_docs = _EntryDocs(docs.take())
+                self.data[e.name] = (e.number, entry_docs.comments)
+                self.entry_trailing_comments[e.name] = entry_docs.trailing_comments
+                docs.declared(entry_docs)
 
         return True
 
@@ -561,14 +725,14 @@ class Enum:
         return output
 
 
-class Field:
+class Field(_Documented):
     def __init__(self, package, comments):
         self.name = None
         self.field_type = None
         self.is_default_type = False
         self.size = 0
         self.validated = False
-        self.comments = comments
+        self._init_docs(comments)
         self.package = package  # Package where this field is defined
         # Package where the field's type is defined (for cross-package refs)
         self.type_package = None
@@ -874,7 +1038,7 @@ class Field:
         return output
 
 
-class OneOf:
+class OneOf(_Documented):
     """Represents a oneof (union) construct in a message.
 
     Discriminator modes:
@@ -894,7 +1058,7 @@ class OneOf:
         # when there are no extensions in this oneof.
         self.base_size = 0
         self.validated = False
-        self.comments = comments
+        self._init_docs(comments)
         self.package = package
         self.discriminator_mode = "auto"  # "auto", "msgid", "field_order", "none"
         # True if using msgid, False if using field_order, None if none
@@ -925,17 +1089,18 @@ class OneOf:
     def parse(self, oneof_element):
         """Parse a oneof element from the AST."""
         self.name = oneof_element.name
-        comments = []
+        docs = _DocCollector(owner=self)
 
         for e in oneof_element.elements:
             if type(e) == ast.Comment:
-                comments.append(e.text)
+                docs.comment(e)
                 # Detect the visual extension marker: any comment containing
                 # 'Extension::' (case-sensitive) marks the start of extension
                 # variants.  The next field encountered becomes extensions_start.
                 if 'Extension::' in e.text and self.extensions_start is None:
                     self._pending_extensions = True
             elif type(e) == ast.Option:
+                docs.statement(owner=self)
                 if e.name == "extensions_start":
                     try:
                         self.extensions_start = int(e.value)
@@ -994,9 +1159,9 @@ class OneOf:
                 if e.name in self.fields:
                     print(f"Field Redeclaration in oneof {self.name}")
                     return False
-                self.fields[e.name] = Field(self.package, comments)
+                self.fields[e.name] = Field(self.package, docs.take())
                 self.field_order.append(e.name)  # Track declaration order
-                comments = []
+                docs.declared(self.fields[e.name])
                 if not self.fields[e.name].parse(e):
                     return False
                 # Apply the pending Extension:: marker: the first field after
@@ -1190,7 +1355,7 @@ class OneOf:
         return output
 
 
-class Message:
+class Message(_Documented):
     def __init__(self, package, comments):
         self.id = None
         self.size = 0
@@ -1199,7 +1364,7 @@ class Message:
         self.oneofs = {}  # Dictionary of oneof constructs
         self.enums = {}  # Nested enum definitions (message-scoped)
         self.validated = False
-        self.comments = comments
+        self._init_docs(comments)
         self.package = package
         self.is_enum = False
         self.magic_bytes = None  # Magic numbers for checksum (byte1, byte2)
@@ -1228,9 +1393,10 @@ class Message:
 
     def parse(self, msg):
         self.name = msg.name
-        comments = []
+        docs = _DocCollector(owner=self)
         for e in msg.elements:
             if type(e) == ast.Option:
+                docs.statement(owner=self)
                 if e.name == "msgid":
                     if self.id:
                         raise Exception(f"Redefinition of msg_id for {e.name}")
@@ -1298,30 +1464,30 @@ class Message:
                         return False
                     self.magic_bytes_override = (b1, b2)
             elif type(e) == ast.Comment:
-                comments.append(e.text)
+                docs.comment(e)
             elif type(e) == ast.OneOf:
                 if e.name in self.oneofs:
                     print(f"OneOf Redeclaration")
                     return False
-                self.oneofs[e.name] = OneOf(self.package, comments)
-                comments = []
+                self.oneofs[e.name] = OneOf(self.package, docs.take())
+                docs.declared(self.oneofs[e.name])
                 if not self.oneofs[e.name].parse(e):
                     return False
             elif type(e) == ast.Enum:
                 if e.name in self.enums:
                     print(f"Enum Redeclaration in message {self.name}")
                     return False
-                self.enums[e.name] = Enum(self.package, comments)
+                self.enums[e.name] = Enum(self.package, docs.take())
                 self.enums[e.name].message = self.name
-                comments = []
+                docs.declared(self.enums[e.name])
                 if not self.enums[e.name].parse(e):
                     return False
             elif type(e) == ast.Field:
                 if e.name in self.fields:
                     print(f"Field Redeclaration")
                     return False
-                self.fields[e.name] = Field(self.package, comments)
-                comments = []
+                self.fields[e.name] = Field(self.package, docs.take())
+                docs.declared(self.fields[e.name])
                 if not self.fields[e.name].parse(e):
                     return False
         return True
@@ -1571,9 +1737,30 @@ class Package:
         self.messages = {}
         self.package_id = None  # Package ID for extended message IDs (0-255)
         self.package_id_explicit = False
+        # File-level documentation: own-line comments that precede the
+        # ``package`` statement of a source file (license/overview headers).
+        # Keyed by absolute source path; they document the file, not the first
+        # declaration that happens to follow.
+        self.file_docs = {}
+
+    def add_file_docs(self, source_file, comments):
+        if comments:
+            self.file_docs.setdefault(source_file, []).extend(comments)
+
+    def file_doc_blocks(self):
+        """File-doc comment blocks in a layout-independent order.
+
+        Sorted by file name (then path) so that the generated output does not
+        depend on the order in which files were imported.
+        """
+        return [self.file_docs[path] for path in sorted(
+            self.file_docs, key=lambda p: (os.path.basename(p), p))]
+
+    def file_doc_lines(self):
+        """Flattened :meth:`file_doc_blocks` (one list of comment strings)."""
+        return [line for block in self.file_doc_blocks() for line in block]
 
     def addEnum(self, enum, comments, source_file=None):
-        self.comments = comments
         if enum.name in self.enums:
             print(f"Enum Redclaration")
             return False
@@ -1690,7 +1877,9 @@ file_to_package = {}
 
 parser = argparse.ArgumentParser(
     prog='struct_frame',
-    description='Message serialization and header generation program')
+    description='Message serialization and header generation program',
+    epilog=('Wire-compatibility check between two schema revisions: '
+            'struct_frame diff OLD.sf NEW.sf  (see "struct_frame diff --help")'))
 
 parser.add_argument('filename', nargs='?', default=None,
                     help='Proto file to process')
@@ -1733,6 +1922,12 @@ parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
                     help='Path to store the generation hash file (default: first output path)')
 parser.add_argument('--generate_tests', action='store_true',
                     help='Generate test code with dummy values for all messages (round-trip encode/decode verification)')
+parser.add_argument('--name_overrides', nargs=1, type=str, default=[None],
+                    help=('JSON file with explicit per-language name overrides, e.g. '
+                          '{"csharp": {"BleMCuHost": "BleMcuHost"}}. Keys are source names '
+                          '(Message, Message.field, Message.oneof.variant, Enum.ENTRY, ...), '
+                          'optionally package-qualified; "all" applies to every language. '
+                          'Wire layout is unaffected.'))
 parser.add_argument('--no_packed', action='store_true',
                     help=('Generate code without packed structs. All messages are treated as variable, '
                           'so serialization/deserialization is performed field-by-field instead of relying on '
@@ -1780,7 +1975,11 @@ def parseFile(filename, base_path=None, importing_package=None):
 
     foundPackage = False
     package_name = ""
-    comments = []
+    # Own-line comments seen before the ``package`` statement document the
+    # file; once the package is known, comment ownership follows the usual
+    # leading/trailing rules via _DocCollector.
+    file_header = []
+    docs = _DocCollector()
     pending_imports = []
 
     def record_package_import(importer, import_path):
@@ -1804,6 +2003,9 @@ def parseFile(filename, base_path=None, importing_package=None):
             package_name = e.name
             if package_name not in packages:
                 packages[package_name] = Package(package_name)
+            packages[package_name].add_file_docs(abs_filename, file_header)
+            file_header = []
+            docs.statement()
             file_to_package[abs_filename] = package_name
             # Track import relationship if this file was imported
             if importing_package and importing_package != package_name:
@@ -1814,6 +2016,7 @@ def parseFile(filename, base_path=None, importing_package=None):
 
         elif (type(e) == ast.Import):
             # Handle import statements
+            docs.statement()
             import_file = e.name
 
             # Try to resolve import path relative to base_path first
@@ -1846,6 +2049,7 @@ def parseFile(filename, base_path=None, importing_package=None):
 
         elif (type(e) == ast.Option):
             # Handle file-level options (like pkgid)
+            docs.statement()
             if not foundPackage:
                 print(
                     f"Option {e.name} found before package declaration in {filename}")
@@ -1858,25 +2062,28 @@ def parseFile(filename, base_path=None, importing_package=None):
             if not foundPackage:
                 print(f"Enum found before package declaration in {filename}")
                 return False
-            if not packages[package_name].addEnum(e, comments, source_file=abs_filename):
+            if not packages[package_name].addEnum(e, docs.take(), source_file=abs_filename):
                 print(
                     f"Enum Error in Package: {package_name}  FileName: {filename} EnumName: {e.name}")
                 return False
-            comments = []
+            docs.declared(packages[package_name].enums[e.name])
 
         elif (type(e) == ast.Message):
             if not foundPackage:
                 print(
                     f"Message found before package declaration in {filename}")
                 return False
-            if not packages[package_name].addMessage(e, comments, source_file=abs_filename):
+            if not packages[package_name].addMessage(e, docs.take(), source_file=abs_filename):
                 print(
                     f"Message Error in Package: {package_name}  FileName: {filename} MessageName: {e.name}")
                 return False
-            comments = []
+            docs.declared(packages[package_name].messages[e.name])
 
         elif (type(e) == ast.Comment):
-            comments.append(e.text)
+            if foundPackage:
+                docs.comment(e)
+            elif not getattr(e, 'inline', False):
+                file_header.append(e.text)
 
     if foundPackage and pending_imports:
         for pending_import in pending_imports:
@@ -2051,6 +2258,109 @@ def needs_extended_payload_types():
     return False
 
 
+def _message_dependencies(msg, pkg):
+    """Names of same-package messages that *msg* embeds (via fields or oneof variants)."""
+    deps = set()
+    fields = list(msg.fields.values())
+    for oneof in msg.oneofs.values():
+        fields.extend(oneof.fields.values())
+    for field in fields:
+        ref = field.type_ref
+        if isinstance(ref, Message) and pkg.messages.get(ref.name) is ref and ref is not msg:
+            deps.add(ref.name)
+    return deps
+
+
+def dependency_ordered_messages(pkg):
+    """Return the package's messages as ``[(name, Message), ...]`` in a stable order.
+
+    Messages are listed dependencies-first (a message that embeds another
+    follows it); messages that are not ordered relative to each other are
+    sorted by name.  The result therefore depends only on the schema, never on
+    the order declarations were written, split across files, or imported.
+    """
+    import heapq
+
+    names = list(pkg.messages.keys())
+    deps = {name: _message_dependencies(pkg.messages[name], pkg) for name in names}
+    dependants = {name: [] for name in names}
+    remaining = {}
+    for name in names:
+        remaining[name] = len(deps[name])
+        for dep in deps[name]:
+            dependants[dep].append(name)
+
+    ready = [name for name in names if remaining[name] == 0]
+    heapq.heapify(ready)
+    ordered = []
+    while ready:
+        name = heapq.heappop(ready)
+        ordered.append(name)
+        for dependant in dependants[name]:
+            remaining[dependant] -= 1
+            if remaining[dependant] == 0:
+                heapq.heappush(ready, dependant)
+
+    # Anything left is part of a dependency cycle (rejected by validation, but
+    # stay deterministic regardless).
+    ordered.extend(sorted(name for name in names if name not in set(ordered)))
+    return [(name, pkg.messages[name]) for name in ordered]
+
+
+def normalize_output_order():
+    """Put parsed declarations into a stable, dependency-aware order.
+
+    Parse and import order must not influence generated output, otherwise
+    reorganising or splitting source files churns every generated file.
+    After this runs:
+
+    * packages are in dependency-first topological order (name tie-break)
+    * each package's import list follows that same order
+    * enums are sorted by name
+    * messages are listed dependencies-first, then by name
+
+    Order that is part of the schema is left untouched: message fields,
+    oneof variants (``field_order`` discriminators depend on them), enum
+    entries and message-scoped enums keep their declaration order.
+    """
+    order = topological_sort_packages(packages, package_imports)
+    rank = {name: index for index, name in enumerate(order)}
+
+    reordered = [(name, packages[name]) for name in order]
+    packages.clear()
+    packages.update(reordered)
+
+    for pkg_name, imported in list(package_imports.items()):
+        package_imports[pkg_name] = sorted(
+            imported, key=lambda name: (rank.get(name, len(rank)), name))
+
+    for pkg in packages.values():
+        pkg.enums = {name: pkg.enums[name] for name in sorted(pkg.enums)}
+        pkg.messages = dict(dependency_ordered_messages(pkg))
+
+
+@contextlib.contextmanager
+def language_model(lang, name_overrides):
+    """Temporarily swap ``packages`` for the model renamed for *lang*.
+
+    Generators read the module-level ``packages`` dict.  When name overrides
+    exist for *lang*, they run against a renamed deep copy (same wire layout,
+    different declaration names); otherwise nothing changes.
+    """
+    if name_overrides is None or not name_overrides.has_language(lang):
+        yield
+        return
+    original = dict(packages)
+    renamed = name_overrides.apply(lang, original)
+    packages.clear()
+    packages.update(renamed)
+    try:
+        yield
+    finally:
+        packages.clear()
+        packages.update(original)
+
+
 def printPackages():
     for key, value in packages.items():
         print(value)
@@ -2106,7 +2416,7 @@ def topological_sort_packages(pkgs, pkg_imports):
     return result
 
 
-def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
+def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None, name_overrides=None):
     """Generate a single JSON catalog file for language-server navigation.
 
     Produces one language-agnostic ``sf_compile.json`` that lists
@@ -2118,6 +2428,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
         catalog_path: Directory where ``sf_compile.json`` will be written.
         build_flags:  dict {lang: bool}  e.g. {'c': True, 'cpp': False, ...}
         paths:        dict {lang: str}   absolute output directory for each language
+        name_overrides: optional NameOverrides; element names follow them per language
 
     Returns:
         dict {filename: content}
@@ -2165,9 +2476,16 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                                                    f'{pkg_name}.structframe.rs'))
         return result
 
+    def _ov(lang, pkg_name, *path):
+        """Name of the declaration at *path* in *lang* (honours --name_overrides)."""
+        if name_overrides is None:
+            return path[-1]
+        return name_overrides.rename(lang, pkg_name, path)
+
     def _lang_symbol_info(lang, pkg, symbol_name):
         """Return language-specific namespace, element, and qualified element."""
         pkg_name = pkg.name
+        symbol_name = _ov(lang, pkg_name, symbol_name)
         pkg_pascal = pascal_case(pkg_name)
 
         if lang == 'c':
@@ -2237,7 +2555,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
             if build_flags.get('csharp'):
                 gen_files['csharp'] = _relpath(
                     os.path.join(os.path.abspath(paths['csharp']),
-                                 pkg_pascal, 'Messages', f'{msg_name}.cs'))
+                                 pkg_pascal, 'Messages', f'{_ov("csharp", pkg_name, msg_name)}.cs'))
 
             # Build oneof summary list
             oneof_entries = []
@@ -2288,6 +2606,9 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
 
                 def _nested_enum_symbol_info(lang, pkg_, msg_name_, enum_name_):
                     pkg_name_ = pkg_.name
+                    source_msg_name_ = msg_name_
+                    enum_name_ = _ov(lang, pkg_name_, msg_name_, enum_name_)
+                    msg_name_ = _ov(lang, pkg_name_, msg_name_)
                     pkg_pascal_ = pascal_case(pkg_name_)
                     flat_name = f'{pkg_pascal_}{msg_name_}{enum_name_}'
 
@@ -2317,7 +2638,9 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
                         ns = f'StructFrame.{pkg_pascal_}'
                         # Apply the same collision-avoidance logic as csharp_gen.py:
                         # if the enum name matches a field property name, add 'Enum' suffix
-                        field_property_names = {pascal_case(f.name) for f in msg.fields.values()}
+                        field_property_names = {
+                            pascal_case(_ov('csharp', pkg_name_, source_msg_name_, f))
+                            for f in msg.fields}
                         effective_name = f'{enum_name_}Enum' if enum_name_ in field_property_names else enum_name_
                         return ns, effective_name, f'{ns}.{msg_name_}.{effective_name}'
 
@@ -2348,7 +2671,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None):
             if build_flags.get('csharp'):
                 gen_files['csharp'] = _relpath(
                     os.path.join(os.path.abspath(paths['csharp']),
-                                 pkg_pascal, 'Enums', f'{enum_name}.cs'))
+                                 pkg_pascal, 'Enums', f'{_ov("csharp", pkg_name, enum_name)}.cs'))
             enums.append({
                 "name": enum_name,
                 "package": pkg_name,
@@ -2723,7 +3046,18 @@ def _generateCSharpProjectFile(namespace):
     return project_content
 
 
+SCHEMA_DIFF_COMMANDS = ('diff', 'schema-diff')
+
+
 def main():
+
+    # ``struct-frame diff OLD NEW``: wire-compatibility check between two
+    # schema revisions. A schema file that happens to be named "diff" still
+    # generates code as before.
+    argv = sys.argv[1:]
+    if argv and argv[0] in SCHEMA_DIFF_COMMANDS and not os.path.isfile(argv[0]):
+        from struct_frame import schema_diff
+        return schema_diff.main(argv[1:])
 
     args = parser.parse_args()
 
@@ -2766,6 +3100,22 @@ def main():
         print("Validation failed")
         return 1
 
+    normalize_output_order()
+
+    name_overrides = None
+    try:
+        if args.name_overrides[0]:
+            name_overrides = NameOverrides.load(args.name_overrides[0])
+            name_overrides.validate(packages)
+        target_languages = [lang for lang, enabled in (
+            ('c', args.build_c), ('cpp', args.build_cpp), ('ts', args.build_ts),
+            ('js', args.build_js), ('py', args.build_py), ('gql', args.build_gql),
+            ('csharp', args.build_csharp), ('rust', args.build_rust)) if enabled]
+        validate_generated_names(packages, target_languages, name_overrides)
+    except NameOverrideError as err:
+        print(f"Error: {err}")
+        return 1
+
     if args.validate:
         # In validate mode, only perform validation - no file generation
         print("Validation successful")
@@ -2774,7 +3124,7 @@ def main():
         return 0
 
     # Compute generation hash and check if regeneration is needed
-    current_hash = compute_generation_hash(args, packages)
+    current_hash = compute_generation_hash(args, packages, name_overrides)
     hash_file_path = get_hash_file_path(args)
     previous_hash = read_previous_hash(hash_file_path)
 
@@ -2794,70 +3144,78 @@ def main():
     # Normal mode: generate files
     files = {}
     if (args.build_c):
-        files.update(generateCFileStrings(
-            args.c_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('c', name_overrides):
+            files.update(generateCFileStrings(
+                args.c_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_ts):
-        files.update(generateTsFileStrings(
-            args.ts_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('ts', name_overrides):
+            files.update(generateTsFileStrings(
+                args.ts_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_js):
-        files.update(generateJsFileStrings(
-            args.js_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('js', name_overrides):
+            files.update(generateJsFileStrings(
+                args.js_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_py):
-        files.update(generatePyFileStrings(
-            args.py_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('py', name_overrides):
+            files.update(generatePyFileStrings(
+                args.py_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_cpp):
-        files.update(generateCppFileStrings(
-            args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('cpp', name_overrides):
+            files.update(generateCppFileStrings(
+                args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     if (args.build_csharp):
-        files.update(generateCSharpFileStrings(args.csharp_path[0],
-                                               equality=args.equality,
-                                               namespace=args.csharp_namespace[0],
-                                               generate_tests=args.generate_tests))
+        with language_model('csharp', name_overrides):
+            files.update(generateCSharpFileStrings(args.csharp_path[0],
+                                                   equality=args.equality,
+                                                   namespace=args.csharp_namespace[0],
+                                                   generate_tests=args.generate_tests))
 
     if (args.build_gql):
-        from struct_frame.gql_gen import _PACKAGE_DIRECTIVE_DEF
-        for key, value in packages.items():
-            name = os.path.join(args.gql_path[0], value.name + '.graphql')
-            data = ''.join(FileGqlGen.generate(value))
-            files[name] = data
+        with language_model('gql', name_overrides):
+            from struct_frame.gql_gen import _PACKAGE_DIRECTIVE_DEF
+            for key, value in packages.items():
+                name = os.path.join(args.gql_path[0], value.name + '.graphql')
+                data = ''.join(FileGqlGen.generate(value))
+                files[name] = data
 
-        # Generate a stitched schema.graphql that combines all packages into
-        # one document with extend-based merging.  Each per-package file is
-        # included via a comment header so tooling can trace provenance.
-        stitched_parts = [
-            f'# Stitched schema — generated by struct-frame {get_version()}\n',
-            f'# Contains all packages: {", ".join(sorted(packages.keys()))}\n\n',
-            _PACKAGE_DIRECTIVE_DEF + '\n\n',
-        ]
-        query_fields = []
-        for key, value in packages.items():
-            stitched_parts.append(f'# --- Package: {value.name} ---\n')
-            # Re-emit enum and message types (without the per-file directive def)
-            from struct_frame.gql_gen import EnumGqlGen, MessageGqlGen, pascal_case as _pc
-            for _, enum in value.enums.items():
-                stitched_parts.append(
-                    EnumGqlGen.generate(enum).rstrip() + '\n\n')
-            for _, msg in value.sortedMessages().items():
-                stitched_parts.append(MessageGqlGen.generate(
-                    value, msg).rstrip() + '\n\n')
-            for _, msg in value.sortedMessages().items():
-                type_name = f'{_pc(value.name)}{msg.name}'
-                query_fields.append(f'  {msg.name}: {type_name}')
-        if query_fields:
-            stitched_parts.append('type Query {\n')
-            stitched_parts.append('\n'.join(query_fields) + '\n')
-            stitched_parts.append('}\n')
-        files[os.path.join(args.gql_path[0], 'schema.graphql')
-              ] = ''.join(stitched_parts)
+            # Generate a stitched schema.graphql that combines all packages into
+            # one document with extend-based merging.  Each per-package file is
+            # included via a comment header so tooling can trace provenance.
+            stitched_parts = [
+                f'# Stitched schema — generated by struct-frame {get_version()}\n',
+                f'# Contains all packages: {", ".join(sorted(packages.keys()))}\n\n',
+                _PACKAGE_DIRECTIVE_DEF + '\n\n',
+            ]
+            query_fields = []
+            for key, value in packages.items():
+                stitched_parts.append(f'# --- Package: {value.name} ---\n')
+                # Re-emit enum and message types (without the per-file directive def)
+                from struct_frame.gql_gen import EnumGqlGen, MessageGqlGen, pascal_case as _pc
+                for _, enum in value.enums.items():
+                    stitched_parts.append(
+                        EnumGqlGen.generate(enum).rstrip() + '\n\n')
+                for _, msg in value.sortedMessages().items():
+                    stitched_parts.append(MessageGqlGen.generate(
+                        value, msg).rstrip() + '\n\n')
+                for _, msg in value.sortedMessages().items():
+                    type_name = f'{_pc(value.name)}{msg.name}'
+                    query_fields.append(f'  {msg.name}: {type_name}')
+            if query_fields:
+                stitched_parts.append('type Query {\n')
+                stitched_parts.append('\n'.join(query_fields) + '\n')
+                stitched_parts.append('}\n')
+            files[os.path.join(args.gql_path[0], 'schema.graphql')
+                  ] = ''.join(stitched_parts)
 
     if (args.build_rust):
-        files.update(generateRustFileStrings(
-            args.rust_path[0], equality=args.equality, generate_tests=args.generate_tests))
+        with language_model('rust', name_overrides):
+            files.update(generateRustFileStrings(
+                args.rust_path[0], equality=args.equality, generate_tests=args.generate_tests))
 
     # Generate LSP type catalog (single language-agnostic JSON file)
     lsp_build_flags = {
@@ -2881,7 +3239,7 @@ def main():
         'rust':   args.rust_path[0],
     }
     files.update(generate_lsp_file_strings(
-        args.catalog_path[0], lsp_build_flags, lsp_paths))
+        args.catalog_path[0], lsp_build_flags, lsp_paths, name_overrides))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)

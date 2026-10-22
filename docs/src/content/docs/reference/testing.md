@@ -79,7 +79,7 @@ python tests/test_wire_evolution.py
 
 | Need | Install |
 | --- | --- |
-| Python 3.8+ + `proto-schema-parser` | `pip install proto-schema-parser` |
+| Python 3.9+ + `proto-schema-parser` | `pip install proto-schema-parser` |
 | C tests | GCC (`apt install gcc`) |
 | C++ tests | G++ with C++20 (`apt install g++`) |
 | TypeScript / JavaScript | Node.js + `cd tests/ts && npm install` |

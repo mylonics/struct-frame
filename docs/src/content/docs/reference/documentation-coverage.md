@@ -58,6 +58,8 @@ This document maps every user-facing feature area to its documentation status, i
 | `--validate` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example showing validation errors | Low |
 | `--debug` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example of debug output | Low |
 | `--no_packed` | ✅ [CLI Reference](/reference/cli-reference/), [Message Definitions](/basic-usage/message-definitions/) | ✅ | — | — |
+| `--name_overrides` | ✅ [CLI Reference](/reference/cli-reference/), [Message Definitions](/basic-usage/message-definitions/#generated-names) | ✅ | — | — |
+| `diff` subcommand | ✅ [CLI Reference](/reference/cli-reference/#schema-diff-wire-compatibility-check), [Message Definitions](/basic-usage/message-definitions/#checking-wire-compatibility) | ✅ | — | — |
 | `--csharp_namespace` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
 | `--csharp_sdk` | ✅ [C# SDK](/extended-features/csharp-sdk/) | ✅ | — | — |
 | `--target_framework` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example showing framework targeting | Low |

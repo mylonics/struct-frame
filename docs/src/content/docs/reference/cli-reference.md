@@ -7,6 +7,7 @@ description: Complete reference for all struct-frame command-line flags and opti
 
 ```bash
 python -m struct_frame [proto_file] [options]
+python -m struct_frame diff OLD.sf NEW.sf [options]   # wire-compatibility check
 ```
 
 ## Code Generation Flags
@@ -55,13 +56,42 @@ python -m struct_frame [proto_file] [options]
 | Flag | Description |
 |------|-------------|
 | `--equality` | Generate equality comparison operators/methods for messages |
-| `--force` | Force regeneration even if hash matches previous generation |
+| `--force` | Force regeneration even if hash matches previous generation. The generation hash covers the schema structure **and** documentation (comments that reach generated output), the CLI parameters and the `--name_overrides` file, so editing a comment regenerates without `--force`. |
 | `--hash_path PATH` | Path to store the generation hash file |
 | `--generate_tests` | Generate test code with dummy values for round-trip verification |
 | `--no_packed` | Generate code without packed structs. Treats every message as variable so that serialization is performed field-by-field. Useful on platforms that do not support struct packing or have different endianness/alignment requirements. |
+| `--name_overrides FILE` | JSON file with explicit per-language name overrides for generated identifiers (see [Generated Names](/basic-usage/message-definitions/#generated-names)) |
 | `--validate` | Validate the proto file without generating code |
 | `--debug` | Enable debug output during code generation |
 | `--catalog_path PATH` | Directory for the LSP type catalog file (`sf_compile.json`); default `generated/` |
+
+## Schema Diff (Wire-Compatibility Check)
+
+```bash
+python -m struct_frame diff OLD.sf NEW.sf [--format text|json] [--fail-on breaking|rename|any] [--write-snapshot PATH]
+```
+
+Compares two schema revisions and reports whether the wire format is still compatible. Each side can be a `.sf` file (imports are followed) or a snapshot `.json` written by `--write-snapshot`, so a checked-in baseline can replace a second checkout. Differences are reported in separate groups:
+
+| Group | Meaning | Examples |
+|-------|---------|----------|
+| **Wire-breaking** | The wire format changes | Changed message ID or package ID, changed magic bytes, field type/size/number changes, removed fields, fields added to the base layout, reordered fields or oneof variants (discriminator values follow declaration order), changed enum values, removed messages/enums/enum values, changed `variable`/discriminator/`max_size` options |
+| **Wire-compatible** | Additive changes that older receivers tolerate | New messages and enums, new enum values, fields and oneof variants appended after `extensions_start`, changed defaults and `min_size` |
+| **Source-only renames** | Same wire identity (message ID, field number, enum value, variant position), different source name | Renamed messages, fields, enums, enum values, oneofs and variants |
+| **File moves** | A declaration moved to another source file | Splitting a schema into imported files |
+
+Comments, documentation and the declaration order of messages and enums are ignored. A renamed message is reported as a rename, but because magic bytes include the *name* of embedded message types, messages that embed it also report a changed magic bytes value (breaking).
+
+Exit status: `0` when nothing in the failing groups was found, `1` otherwise, `2` when a schema or snapshot cannot be loaded. By default only wire-breaking changes fail; `--fail-on rename` also fails on source-only renames and `--fail-on any` also fails on additive changes. File moves never fail.
+
+```bash
+# Gate a pull request on wire compatibility
+python -m struct_frame diff main/messages.sf messages.sf
+
+# Keep a baseline instead of a second checkout
+python -m struct_frame diff messages.sf messages.sf --write-snapshot baseline.json
+python -m struct_frame diff baseline.json messages.sf --format json
+```
 
 ## Examples
 

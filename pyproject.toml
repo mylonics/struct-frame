@@ -9,11 +9,11 @@ authors = [
   { name="Rijesh Augustine", email="rijesh@mylonics.com" },
 ]
 dependencies = [
-    "proto-schema-parser>=1.4.5",
+    "proto-schema-parser>=2.0.0",
 ]
 description = "A framework for serializing data with headers"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",

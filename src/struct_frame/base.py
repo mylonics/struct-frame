@@ -7,6 +7,8 @@ language-specific code generators.
 
 import re
 
+from struct_frame.naming import ExplicitName, to_pascal_case, to_screaming_snake_case
+
 try:
     from importlib.metadata import PackageNotFoundError, version as _pkg_version
     version = _pkg_version("struct-frame")
@@ -84,7 +86,7 @@ class NamingStyleC(NamingStyle):
         return self.underscore(name)
 
     def enum_entry(self, name):
-        return name.upper()
+        return to_screaming_snake_case(name)
 
     def func_name(self, name):
         return self.underscore(name)
@@ -93,6 +95,8 @@ class NamingStyleC(NamingStyle):
         return "%s_%s_t" % (self.underscore(struct_name), self.underscore(name))
 
     def underscore(self, word):
+        if isinstance(word, ExplicitName):
+            return str(word)
         word = str(word)
         word = re.sub(r"([A-Z]+)([A-Z][a-z])", r'\1_\2', word)
         word = re.sub(r"([a-z\d])([A-Z])", r'\1_\2', word)
@@ -112,8 +116,13 @@ class NamingStyleCpp(NamingStyleC):
 
 
 def pascal_case(st):
-    """Convert string to PascalCase (first letter uppercase)."""
-    return ''.join(x for x in st.title() if x.isalnum())
+    """Convert string to PascalCase (first letter uppercase).
+
+    Acronyms that are visible in the source are preserved:
+    ``BleMCuHost`` stays ``BleMCuHost`` and ``gate_current`` becomes
+    ``GateCurrent``.  See :mod:`struct_frame.naming` for the tokenizer rules.
+    """
+    return to_pascal_case(st)
 
 
 pattern = re.compile(r'(?<!^)(?=[A-Z])')
@@ -121,7 +130,70 @@ pattern = re.compile(r'(?<!^)(?=[A-Z])')
 
 def camel_to_snake_case(data):
     """Convert CamelCase or PascalCase to snake_case."""
+    if isinstance(data, ExplicitName):
+        return str(data)
     return pattern.sub('_', data).lower()
+
+
+# =============================================================================
+# File-level documentation
+# =============================================================================
+
+def comment_text_lines(text):
+    """Strip comment delimiters (``//``, ``///``, ``/* ... */``) from a schema comment.
+
+    Returns the plain text lines.  Used for file-level docs, which are
+    re-rendered with each target language's own line-comment syntax so that a
+    block comment can never terminate the generated comment early.
+    """
+    text = str(text).strip()
+    if text.startswith('/*'):
+        body = text[2:]
+        if body.endswith('*/'):
+            body = body[:-2]
+        lines = []
+        for line in body.splitlines():
+            line = line.strip()
+            if line.startswith('*'):
+                line = line[1:].strip()
+            lines.append(line)
+        while lines and not lines[0]:
+            lines.pop(0)
+        while lines and not lines[-1]:
+            lines.pop()
+        return lines
+    return [re.sub(r'^/+\s?', '', text).rstrip()]
+
+
+def format_file_docs(package, prefix='// '):
+    """Render a package's file-level docs as line comments.
+
+    File docs are the own-line comments written *before* the ``package``
+    statement of a schema file.  Each file contributes one block; blocks are
+    emitted in a layout-independent order (see ``Package.file_doc_blocks``).
+    Returns an empty string when the package has no file docs, otherwise the
+    comment lines followed by one blank line.
+    """
+    blocks = getattr(package, 'file_doc_blocks', None)
+    if blocks is None:
+        return ''
+    rendered = []
+    for block in blocks():
+        lines = []
+        for comment in block:
+            lines.extend(comment_text_lines(comment))
+        if any(lines):
+            rendered.append(lines)
+    if not rendered:
+        return ''
+    out = []
+    for index, lines in enumerate(rendered):
+        if index:
+            out.append(prefix.rstrip() + '\n')
+        for line in lines:
+            out.append((prefix + line).rstrip() + '\n')
+    out.append('\n')
+    return ''.join(out)
 
 
 # =============================================================================
