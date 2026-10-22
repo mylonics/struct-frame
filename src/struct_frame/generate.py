@@ -1085,6 +1085,23 @@ class OneOf(_Documented):
         self.variable = False
         # Pre-computed variant info for code generation: [(disc_value, field_name, field_size), ...]
         self.variant_info = []
+        # Parallel to variant_info: per-variant (base_size, default_bytes) used
+        # for trimmed-union wire evolution (short reads / schema defaults).
+        self.variant_extra = []
+
+    def variant_min_wire(self, index):
+        """Smallest accepted trimmed-union payload length for variant `index`."""
+        return max(self.variant_extra[index][0], self.min_size_override or 0)
+
+    def variant_max_wire(self, index):
+        """Trimmed-union payload length written for variant `index`."""
+        return max(self.variant_info[index][2], self.min_size_override or 0)
+
+    def min_wire_size(self):
+        """Smallest valid trimmed-union payload length across all variants."""
+        if not self.variant_extra:
+            return self.size
+        return min(self.variant_min_wire(i) for i in range(len(self.variant_extra)))
 
     def parse(self, oneof_element):
         """Parse a oneof element from the AST."""
@@ -1318,12 +1335,23 @@ class OneOf(_Documented):
 
         # Pre-compute discriminator values for each variant (used by code generators)
         self.variant_info = []
+        self.variant_extra = []
         for field_name, field in self.fields.items():
             if self.discriminator_type is not None:
                 disc_val = self.get_field_discriminator_value(field_name, current_package, packages)
             else:
                 disc_val = 0
             self.variant_info.append((disc_val, field_name, field.size))
+            nested = None if (field.is_default_type or field.is_enum) else field.type_ref
+            if nested is not None and getattr(nested, "base_size", 0):
+                base = min(nested.base_size, field.size)
+                default_bytes = getattr(nested, "default_bytes", b"")
+            else:
+                base = field.size
+                default_bytes = b""
+            if len(default_bytes) != field.size or not any(default_bytes):
+                default_bytes = b""
+            self.variant_extra.append((base, default_bytes))
 
         self.validated = True
         return True
@@ -1697,6 +1725,9 @@ class Message(_Documented):
                     self.min_size += disc_bytes
                 if oneof.variable:
                     self.min_size += 2  # uint16 length prefix; minimum payload is 0 bytes
+                elif oneof.discriminator_type is not None:
+                    # Trimmed union: smallest valid wire payload, not the largest variant
+                    self.min_size += oneof.min_wire_size()
                 else:
                     self.min_size += oneof.size
         else:

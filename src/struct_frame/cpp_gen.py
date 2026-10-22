@@ -251,7 +251,18 @@ class OneOfCppGen():
                 result += f'    {enum_name} {oneof.name}_discriminator;  // Auto-generated field order discriminator\n'
         
         # Generate the union
-        result += f'    union {{\n'
+        # A variant whose message type declares schema defaults has non-trivial
+        # default member initializers, which would implicitly delete the
+        # default constructor of an unnamed union. Give such unions a named
+        # type with a constructor that initializes the first variant, so the
+        # enclosing message stays default-constructible.
+        _first_variant = next(iter(oneof.fields.keys()), None)
+        _defaulted = any(extra[1] for extra in oneof.variant_extra)
+        if _defaulted and _first_variant is not None:
+            result += f'    union {oneof.name}_union_t {{\n'
+            result += f'        {oneof.name}_union_t() : {_first_variant}() {{}}\n'
+        else:
+            result += f'    union {{\n'
         
         # Generate each field in the union
         for key, field in oneof.fields.items():
@@ -703,14 +714,32 @@ class MessageCppGen():
                 _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
                 result += f'        // {oneof_name}: {_trim_label}\n'
                 result += f'        {{\n'
-                result += f'            uint16_t _{oneof_name}_rlen = 0;\n'
-                for disc_val, field_name, field_size in oneof.variant_info:
-                    result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) _{oneof_name}_rlen = {field_size};\n'
-                if oneof.min_size_override:
-                    result += f'            if (_{oneof_name}_rlen < {oneof.min_size_override}) _{oneof_name}_rlen = {oneof.min_size_override};\n'
-                result += f'            if (offset + _{oneof_name}_rlen > buffer_size) return 0;\n'
-                result += f'            std::memcpy(&{oneof_name}, buffer + offset, _{oneof_name}_rlen);\n'
-                result += f'            offset += _{oneof_name}_rlen;\n'
+                _trailing = oneof_name == list(msg.oneofs.keys())[-1]
+                _unk_min = oneof.min_size_override or 0
+                result += f'            size_t _{oneof_name}_avail = buffer_size - offset;\n'
+                result += f'            size_t _{oneof_name}_adv = 0;\n'
+                for _i, (disc_val, field_name, field_size) in enumerate(oneof.variant_info):
+                    _min_w = oneof.variant_min_wire(_i)
+                    _max_w = oneof.variant_max_wire(_i)
+                    _kw = 'if' if _i == 0 else 'else if'
+                    result += f'            {_kw} (static_cast<int>({oneof_name}_discriminator) == {disc_val}) {{\n'
+                    if _min_w:
+                        result += f'                if (_{oneof_name}_avail < {_min_w}) return 0;\n'
+                    if oneof.variant_extra[_i][1]:
+                        result += f'                {oneof_name}.{field_name} = decltype({oneof_name}.{field_name}){{}};  // apply schema defaults\n'
+                    result += f'                size_t _copy = _{oneof_name}_avail < {field_size} ? _{oneof_name}_avail : {field_size};\n'
+                    result += f'                std::memcpy(&{oneof_name}, buffer + offset, _copy);\n'
+                    if _trailing:
+                        result += f'                _{oneof_name}_adv = _{oneof_name}_avail;\n'
+                    else:
+                        result += f'                _{oneof_name}_adv = _{oneof_name}_avail < {_max_w} ? _{oneof_name}_avail : {_max_w};\n'
+                    result += f'            }}\n'
+                result += f'            {"else " if oneof.variant_info else ""}{{\n'
+                if _unk_min:
+                    result += f'                if (_{oneof_name}_avail < {_unk_min}) return 0;\n'
+                result += f'                _{oneof_name}_adv = {"_" + oneof_name + "_avail" if _trailing else _unk_min};\n'
+                result += f'            }}\n'
+                result += f'            offset += _{oneof_name}_adv;\n'
                 result += f'        }}\n'
             else:
                 result += f'        if (offset + {oneof.size} > buffer_size) return 0;\n'

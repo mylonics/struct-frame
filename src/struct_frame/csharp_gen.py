@@ -1409,11 +1409,13 @@ class MessageCSharpGen():
             if oneof.auto_discriminator:
                 result += f'            // Oneof {oneof_name} discriminator\n'
                 if oneof.discriminator_type == "msgid":
+                    result += f'            if (offset + 2 > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {oneof_name} discriminator");\n'
                     result += f'            msg.{oneof_pascal}Discriminator = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2));\n'
                     result += f'            var {oneof_name}_discriminator = msg.{oneof_pascal}Discriminator;\n'
                     result += f'            offset += 2;\n'
                 else:  # field_order
                     enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
+                    result += f'            if (offset >= data.Length) throw new System.IO.InvalidDataException("Truncated data reading {oneof_name} discriminator");\n'
                     result += f'            msg.{oneof_pascal}Discriminator = ({enum_name})data[offset++];\n'
                     result += f'            var {oneof_name}_discriminator = msg.{oneof_pascal}Discriminator;\n'
             if oneof.variable:
@@ -1433,39 +1435,27 @@ class MessageCSharpGen():
                 _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
                 result += f'            // Oneof {oneof_name} {_trim_label}\n'
                 result += f'            {{\n'
-                result += f'                int _{oneof_name}_rlen = {_min_sz};\n'
-                for disc_val, field_name, field_size in oneof.variant_info:
-                    result += f'                if ((int)msg.{oneof_pascal}Discriminator == {disc_val}) _{oneof_name}_rlen = Math.Max({field_size}, {_min_sz});\n'
-                if oneof.discriminator_type == "msgid":
-                    first = True
-                    for field_name, field_obj in oneof.fields.items():
-                        type_name = field_obj.field_type
-                        field_var = pascal_case(field_name)
-                        if first:
-                            result += f'                if (msg.{oneof_pascal}Discriminator == {type_name}.MsgId)\n'
-                            first = False
-                        else:
-                            result += f'                else if (msg.{oneof_pascal}Discriminator == {type_name}.MsgId)\n'
-                        result += '                {\n'
-                        result += f'                    msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {type_name}.MaxSize)]);\n'
-                        result += '                }\n'
-                else:  # field_order
-                    enum_name = EnumCSharpGen.get_discriminator_enum_name(oneof, structName)
-                    first = True
-                    for idx, field_name in enumerate(oneof.field_order):
-                        field_obj = oneof.fields[field_name]
-                        type_name = field_obj.field_type
-                        enum_entry = pascal_case(field_name)
-                        field_var = pascal_case(field_name)
-                        if first:
-                            result += f'                if (msg.{oneof_pascal}Discriminator == {enum_name}.{enum_entry})\n'
-                            first = False
-                        else:
-                            result += f'                else if (msg.{oneof_pascal}Discriminator == {enum_name}.{enum_entry})\n'
-                        result += '                {\n'
-                        result += f'                    msg.{field_var} = {type_name}.Deserialize(data[offset..(offset + {type_name}.MaxSize)]);\n'
-                        result += '                }\n'
-                result += f'                offset += _{oneof_name}_rlen;\n'
+                _trailing = oneof_name == list(msg.oneofs.keys())[-1]
+                result += f'                int _{oneof_name}_avail = data.Length - offset;\n'
+                for _i, (disc_val, field_name, field_size) in enumerate(oneof.variant_info):
+                    type_name = oneof.fields[field_name].field_type
+                    field_var = pascal_case(field_name)
+                    _kw = 'if' if _i == 0 else 'else if'
+                    result += f'                {_kw} ((int)msg.{oneof_pascal}Discriminator == {disc_val})\n'
+                    result += '                {\n'
+                    result += f'                    if (_{oneof_name}_avail < {oneof.variant_min_wire(_i)}) throw new System.IO.InvalidDataException("Truncated data reading {oneof_name} payload");\n'
+                    result += f'                    msg.{field_var} = {type_name}.Deserialize(data.Slice(offset, Math.Min(_{oneof_name}_avail, {type_name}.MaxSize)));\n'
+                    if _trailing:
+                        result += f'                    offset += _{oneof_name}_avail;\n'
+                    else:
+                        result += f'                    offset += Math.Min(_{oneof_name}_avail, {oneof.variant_max_wire(_i)});\n'
+                    result += '                }\n'
+                result += '                else\n'
+                result += '                {\n'
+                if _min_sz:
+                    result += f'                    if (_{oneof_name}_avail < {_min_sz}) throw new System.IO.InvalidDataException("Truncated data reading {oneof_name} payload");\n'
+                result += f'                    offset += {"_" + oneof_name + "_avail" if _trailing else _min_sz};\n'
+                result += '                }\n'
                 result += f'            }}\n'
             else:
                 result += f'            // Oneof {oneof_name} union payload ({oneof.size} bytes)\n'

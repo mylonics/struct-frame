@@ -838,14 +838,38 @@ class MessageCGen():
                 _trim_label = f'trimmed union read (min_size={oneof.min_size_override})' if oneof.min_size_override else 'trimmed union read'
                 result += f'    // {oneof_name}: {_trim_label}\n'
                 result += f'    {{\n'
-                result += f'        uint16_t _{oneof_name}_rlen = 0;\n'
-                for disc_val, field_name, field_size in oneof.variant_info:
-                    result += f'        if (msg->{oneof_name}_discriminator == {disc_val}) _{oneof_name}_rlen = {field_size};\n'
-                if oneof.min_size_override:
-                    result += f'        if (_{oneof_name}_rlen < {oneof.min_size_override}) _{oneof_name}_rlen = {oneof.min_size_override};\n'
-                result += f'        if (offset + _{oneof_name}_rlen > buffer_size) return 0;\n'
-                result += f'        memcpy(&msg->{oneof_name}, buffer + offset, _{oneof_name}_rlen);\n'
-                result += f'        offset += _{oneof_name}_rlen;\n'
+                _trailing = oneof_name == list(msg.oneofs.keys())[-1]
+                _unk_min = oneof.min_size_override or 0
+                result += f'        size_t _{oneof_name}_avail = buffer_size - offset;\n'
+                result += f'        size_t _{oneof_name}_adv;\n'
+                for _i, (disc_val, field_name, field_size) in enumerate(oneof.variant_info):
+                    _min_w = oneof.variant_min_wire(_i)
+                    _max_w = oneof.variant_max_wire(_i)
+                    _kw = 'if' if _i == 0 else 'else if'
+                    result += f'        {_kw} (msg->{oneof_name}_discriminator == {disc_val}) {{\n'
+                    if _min_w:
+                        result += f'            if (_{oneof_name}_avail < {_min_w}) return 0;\n'
+                    _def = oneof.variant_extra[_i][1]
+                    if _def:
+                        _arr = ', '.join(f'0x{b:02x}' for b in _def)
+                        result += f'            static const uint8_t _{oneof_name}_def[{len(_def)}] = {{{_arr}}};\n'
+                        result += f'            memcpy(&msg->{oneof_name}, _{oneof_name}_def, {len(_def)});\n'
+                    result += f'            size_t _copy = _{oneof_name}_avail < {field_size} ? _{oneof_name}_avail : {field_size};\n'
+                    result += f'            memcpy(&msg->{oneof_name}, buffer + offset, _copy);\n'
+                    if _trailing:
+                        result += f'            _{oneof_name}_adv = _{oneof_name}_avail;\n'
+                    else:
+                        result += f'            _{oneof_name}_adv = _{oneof_name}_avail < {_max_w} ? _{oneof_name}_avail : {_max_w};\n'
+                    result += f'        }}\n'
+                result += f'        {"else " if oneof.variant_info else ""}{{\n'
+                if _unk_min:
+                    result += f'            if (_{oneof_name}_avail < {_unk_min}) return 0;\n'
+                if _trailing:
+                    result += f'            _{oneof_name}_adv = _{oneof_name}_avail;\n'
+                else:
+                    result += f'            _{oneof_name}_adv = {_unk_min};\n'
+                result += f'        }}\n'
+                result += f'        offset += _{oneof_name}_adv;\n'
                 result += f'    }}\n'
             else:
                 result += f'    // {oneof_name} union payload ({oneof.size} bytes)\n'
