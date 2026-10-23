@@ -142,7 +142,7 @@ class MessageTsGen():
             package_msg_name, package_msg_name)
         
         # Add message ID if present
-        if msg.id:
+        if msg.id is not None:
             result += '.msgId(%d)' % msg.id
         
         # Add magic numbers if present
@@ -218,7 +218,7 @@ class MessageTsClassGen():
         
         # Static properties
         result += f'  static readonly _size: number = {total_size};\n'
-        if msg.id:
+        if msg.id is not None:
             result += f'  static readonly _msgid: number = {msg.id};\n'
         
         # Add magic numbers for checksum

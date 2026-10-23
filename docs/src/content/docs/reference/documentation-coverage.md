@@ -61,9 +61,11 @@ This document maps every user-facing feature area to its documentation status, i
 | `--name_overrides` | ✅ [CLI Reference](/reference/cli-reference/), [Message Definitions](/basic-usage/message-definitions/#generated-names) | ✅ | — | — |
 | `diff` subcommand | ✅ [CLI Reference](/reference/cli-reference/#schema-diff-wire-compatibility-check), [Message Definitions](/basic-usage/message-definitions/#checking-wire-compatibility) | ✅ | — | — |
 | `--csharp_namespace` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
-| `--csharp_sdk` | ✅ [C# SDK](/extended-features/csharp-sdk/) | ✅ | — | — |
-| `--target_framework` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example showing framework targeting | Low |
-| `--csharp_legacy_enum_names` | ❌ | ❌ | Migration flag not documented | Medium |
+| `schema-diff` (alias of `diff`) | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
+| `--sdk` / `--sdk_embedded` per-language behaviour | ✅ [CLI Reference](/reference/cli-reference/), [SDK Overview](/extended-features/sdk-overview/) | ✅ | — | — |
+| `.structframe.hash` and `--hash_path` default | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No worked example | Low |
+| Field `[default = ...]` per-language API | ✅ [Message Definitions](/basic-usage/message-definitions/) | ✅ | No per-language accessor docs | Low |
+| SDK request/response and error hooks | ✅ [SDK Overview](/extended-features/sdk-overview/) | ✅ | — | — |
 
 ---
 
@@ -266,7 +268,7 @@ This document maps every user-facing feature area to its documentation status, i
 
 13. **Fletcher-16 walkthrough** — Algorithm is named but no byte-level walkthrough is provided.
 
-14. **`--equality`, `--force`, `--hash_path`, `--validate`, `--debug`, `--target_framework`** — Each of these flags lacks a code example showing the effect.
+14. **`--equality`, `--force`, `--hash_path`, `--validate`, `--debug`** — Each of these flags lacks a code example showing the effect.
 
 ---
 

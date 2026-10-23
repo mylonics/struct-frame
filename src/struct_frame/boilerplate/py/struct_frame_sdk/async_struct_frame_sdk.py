@@ -15,9 +15,9 @@ from .async_transport import IAsyncTransport
 from .transport import SendResult
 
 try:
-    from frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message
+    from frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message, _msg_id_of
 except ImportError:  # pragma: no cover - import shim for packaged layout
-    from ..frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message
+    from ..frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message, _msg_id_of
 
 
 GetMessageInfo = Callable[[int], Optional[MessageInfo]]
@@ -147,7 +147,7 @@ class AsyncStructFrameSdk:
         framed = encode_message(self.profile, message, seq=seq, sys_id=sys_id, comp_id=comp_id)
         attempted = len(framed)
         written = await self.transport.send(framed)
-        msg_id = getattr(message, 'MSG_ID', None) or getattr(message, 'msg_id', None)
+        msg_id = _msg_id_of(message)
         self._log(f'Sent message ID {msg_id}, {attempted} frame bytes')
         return SendResult(success=written == attempted, attempted_bytes=attempted, bytes_written=written)
 
@@ -183,10 +183,7 @@ class AsyncStructFrameSdk:
         Raises:
             TimeoutError: No matching response arrived within *timeout* seconds.
         """
-        response_msg_id = (
-            getattr(response_msg_class, 'MSG_ID', None)
-            or getattr(response_msg_class, 'msg_id', None)
-        )
+        response_msg_id = _msg_id_of(response_msg_class)
         if response_msg_id is None:
             raise ValueError(
                 f'{response_msg_class!r} has no MSG_ID or msg_id attribute; '

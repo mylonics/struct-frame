@@ -85,6 +85,29 @@ jobs:
             tests/py/build/
           retention-days: 5
 
+  # Windows lane: the primary development platform. Scoped to the languages that need
+  # no compiler setup (the generator itself, Python, TypeScript, JavaScript) so the lane
+  # stays reliable; --require-langs makes a missing tool a failure instead of a skip.
+  windows:
+    name: windows (py3.11)
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: Install Python deps
+        run: pip install proto-schema-parser pytest hypothesis
+      - name: Install Node deps
+        run: npm ci
+        working-directory: tests/ts
+      - name: Run test suite (Python, TypeScript, JavaScript)
+        run: python test_all.py --skip-lang c --skip-lang cpp --skip-lang csharp --skip-lang rust --require-langs py,ts,js
+
   # Cross-OS matrix: confirm the suite is portable to macOS.  Each runner
   # only exercises languages whose toolchains are present out of the box,
   # so we drop .NET on macOS to avoid spending the matrix on installer flakes.
@@ -108,12 +131,12 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest
+        run: pip install proto-schema-parser pytest hypothesis
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
       - name: Run test suite (skip C# — no .NET 10 SDK on macOS runner)
-        run: python test_all.py --skip-lang csharp
+        run: python test_all.py --skip-lang csharp --require-langs c,cpp,py,ts,js,rust
 
   # Python version matrix: catch interpreter-specific regressions.  We skip
   # the heavier compiled-language phases via --skip-lang to keep wall time
@@ -136,12 +159,12 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest
+        run: pip install proto-schema-parser pytest hypothesis
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
       - name: Run Python + C suite
-        run: python test_all.py --skip-lang csharp --skip-lang rust
+        run: python test_all.py --skip-lang csharp --skip-lang rust --require-langs c,cpp,py,ts,js
 
   # Node version matrix: focused JS/TS validation against supported LTS lines.
   node-matrix:
@@ -162,12 +185,12 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest
+        run: pip install proto-schema-parser pytest hypothesis
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
       - name: Run JS + TS suite
-        run: python test_all.py --skip-lang csharp --skip-lang rust
+        run: python test_all.py --skip-lang csharp --skip-lang rust --require-langs c,cpp,py,ts,js
 
   # .NET 8 compatibility lane.
   dotnet-8:
@@ -189,12 +212,12 @@ jobs:
           dotnet-version: "8.0.x"
           dotnet-quality: "ga"
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest
+        run: pip install proto-schema-parser pytest hypothesis
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
       - name: Run C# slice
-        run: python test_all.py --skip-lang rust
+        run: python test_all.py --skip-lang rust --require-langs c,cpp,py,ts,js,csharp
 
   # .NET 10 compatibility lane.
   dotnet-10:
@@ -216,12 +239,12 @@ jobs:
           dotnet-version: "10.0.x"
           dotnet-quality: "preview"
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest
+        run: pip install proto-schema-parser pytest hypothesis
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
       - name: Run C# slice
-        run: python test_all.py --skip-lang rust
+        run: python test_all.py --skip-lang rust --require-langs c,cpp,py,ts,js,csharp
 
   # Compiler matrix: GCC vs Clang for the C / C++ binaries.
   compiler-matrix:
@@ -256,4 +279,4 @@ jobs:
           pip install proto-schema-parser pytest hypothesis
           (cd tests/ts && npm ci)
       - name: Run C / C++ suite under ${{ matrix.cc }}
-        run: python test_all.py --skip-lang csharp --skip-lang rust
+        run: python test_all.py --skip-lang csharp --skip-lang rust --require-langs c,cpp,py,ts,js

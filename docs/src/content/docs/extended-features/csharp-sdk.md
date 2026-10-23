@@ -7,7 +7,7 @@ The C# SDK provides async/await-based transport layers for .NET applications usi
 
 ## Requirements
 
-- .NET 7.0+ (required for static abstract interface members)
+- .NET 8.0+ (the generated project targets `net8.0;net9.0;net10.0`)
 - For serial port support: `System.IO.Ports` NuGet package
 - For network transports: `NetCoreServer` NuGet package
 
@@ -16,29 +16,19 @@ The C# SDK provides async/await-based transport layers for .NET applications usi
 Generate C# code (messages, framing, SDK core, and `.csproj`):
 
 ```bash
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/
+python -m struct_frame messages.sf --build_csharp --csharp_path Generated/
 ```
 
-Generate with transports (includes Serial, TCP, UDP, WebSocket transport implementations):
-
-```bash
-python -m struct_frame messages.proto --build_csharp --csharp_path Generated/ --csharp_sdk
-```
+The Serial, TCP, UDP and WebSocket transport implementations are always copied to `Framework/Sdk/Transports/`; they are compiled only when you enable them in the build (see [Transport Compilation](#transport-compilation)).
 
 ### Generation Options
 
 ```bash
 # With custom namespace (default: StructFrame)
-python -m struct_frame messages.proto --build_csharp --csharp_namespace MyApp.Protocol
-
-# With custom target framework (default: net8.0)
-python -m struct_frame messages.proto --build_csharp --target_framework net7.0
+python -m struct_frame messages.sf --build_csharp --csharp_namespace MyApp.Protocol
 
 # With equality operators
-python -m struct_frame messages.proto --build_csharp --equality
-
-# With transports
-python -m struct_frame messages.proto --build_csharp --csharp_sdk
+python -m struct_frame messages.sf --build_csharp --equality
 ```
 
 ### Generated Output Structure
@@ -50,7 +40,7 @@ Generated/
 │   ├── Framing/                    # Frame encoders, parsers, readers, writers
 │   ├── Profiles/                   # Frame profiles (Standard, Sensor, IPC, etc.)
 │   ├── Sdk/                        # SDK core (StructFrameSdk, Transport base)
-│   │   └── Transports/             # Only with --csharp_sdk
+│   │   └── Transports/             # Always copied; compiled via the .csproj properties below
 │   │       ├── SerialTransport.cs
 │   │       ├── TcpTransport.cs
 │   │       ├── UdpTransport.cs
@@ -65,7 +55,7 @@ Generated/
 
 ### Transport Compilation
 
-When `--csharp_sdk` is used, transport implementations are copied but excluded from compilation by default in the `.csproj`. Enable them at build time:
+Transport implementations are always copied but excluded from compilation by default in the `.csproj`. Enable them at build time:
 
 ```bash
 # Serial transport (System.IO.Ports)

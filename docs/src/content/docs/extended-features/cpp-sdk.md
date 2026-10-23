@@ -13,7 +13,7 @@ The C++ SDK provides transport layers and message routing with an observer/subsc
 python -m struct_frame messages.proto --build_cpp --cpp_path generated/ --sdk
 ```
 
-Includes ASIO for UDP, TCP, Serial, and WebSocket transports.
+Includes ASIO for UDP, TCP and Serial transports. (There is no WebSocket transport in the C++ SDK; use the Python, TypeScript, JavaScript or C# SDK for WebSocket.)
 
 ### Embedded SDK (no external dependencies)
 
@@ -31,18 +31,20 @@ Subscribe to messages using function pointers or lambdas:
 #include "struct_frame_sdk/sdk_embedded.hpp"
 #include "messages.structframe.hpp"
 
-void handle_status(const StatusMessage& msg, uint8_t msgId) {
+void handle_status(const StatusMessage& msg, uint16_t msgId) {
     std::cout << "Status: " << msg.value << std::endl;
 }
 
 int main() {
     // Create SDK with transport and message-info callback.
     // The only template argument is the frame profile config.
-    StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+    structframe::sdk::StructFrameSdkT<structframe::ProfileStandardConfig>
         sdk(&my_transport, &get_message_info);
 
-    // Subscribe to messages by message ID
-    sdk.subscribe<StatusMessage>(StatusMessage::MSG_ID, handle_status);
+    // Subscribe to messages by message ID. subscribe() returns a [[nodiscard]]
+    // handle that unsubscribes when destroyed, so keep it alive for as long as
+    // you want to receive messages.
+    auto status_subscription = sdk.subscribe<StatusMessage>(StatusMessage::MSG_ID, handle_status);
 
     // Connect the transport (incoming data is handled via callbacks)
     sdk.Connect();
@@ -54,11 +56,11 @@ int main() {
 You can subscribe to every complete parsed frame directly as `FrameMsgInfo`:
 
 ```cpp
-StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+structframe::sdk::StructFrameSdkT<structframe::ProfileStandardConfig>
     sdk(&transport, &get_message_info);
 
 auto all_frames = sdk.subscribeFrameInfo(
-    [](const StructFrame::FrameMsgInfo& frame) {
+    [](const structframe::FrameMsgInfo& frame) {
         // Complete frame metadata is available even for CRC-failed frames.
         std::cout << "msg_id=" << frame.msg_id
                   << " len=" << frame.msg_len
@@ -74,14 +76,14 @@ To bridge two SDKs, use one of two forwarding modes:
 Most efficient same-profile bridge:
 
 ```cpp
-StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+structframe::sdk::StructFrameSdkT<structframe::ProfileStandardConfig>
     source_sdk(&transport_a, &get_message_info);
 
-StructFrame::StructFrameSdkT<StructFrame::ProfileStandardConfig>
+structframe::sdk::StructFrameSdkT<structframe::ProfileStandardConfig>
     target_sdk(&transport_b, &get_message_info);
 
 auto forward = source_sdk.subscribeFrameInfo(
-    [&](const StructFrame::FrameMsgInfo& frame) {
+    [&](const structframe::FrameMsgInfo& frame) {
         target_sdk.SendDirect(frame);  // fastest: forwards original frame bytes
     });
 
@@ -90,7 +92,7 @@ StatusMessage msg{};
 msg.value = 42;
 
 uint8_t wire[512];
-size_t wire_len = StructFrame::FrameEncoderWithCrc<StructFrame::ProfileStandardConfig>::encode(
+size_t wire_len = structframe::FrameEncoderWithCrc<structframe::ProfileStandardConfig>::encode(
     wire, sizeof(wire), msg);
 
 // Feed encoded bytes into source SDK parse path:
@@ -101,7 +103,7 @@ Cross-profile bridge (re-encode on destination):
 
 ```cpp
 auto forward_cross_profile = source_sdk.subscribeFrameInfo(
-    [&](const StructFrame::FrameMsgInfo& frame) {
+    [&](const structframe::FrameMsgInfo& frame) {
         target_sdk.Send(frame);  // profile-aware re-encode
     });
 ```
@@ -109,13 +111,13 @@ auto forward_cross_profile = source_sdk.subscribeFrameInfo(
 Use the same type for other profiles by changing only the config:
 
 ```cpp
-StructFrame::StructFrameSdkT<StructFrame::ProfileSensorConfig>
+structframe::sdk::StructFrameSdkT<structframe::ProfileSensorConfig>
     sensor_sdk(&transport, &get_message_info);
 
-StructFrame::StructFrameSdkT<StructFrame::ProfileIPCConfig>
+structframe::sdk::StructFrameSdkT<structframe::ProfileIPCConfig>
     ipc_sdk(&transport, &get_message_info);
 
-StructFrame::StructFrameSdkT<StructFrame::ProfileBulkConfig>
+structframe::sdk::StructFrameSdkT<structframe::ProfileBulkConfig>
     bulk_sdk(&transport, &get_message_info);
 ```
 
@@ -129,25 +131,25 @@ StructFrame::StructFrameSdkT<StructFrame::ProfileBulkConfig>
 // SerialTransport requires a platform-specific ISerialPort implementation.
 // Provide your own class that implements the ISerialPort interface
 // (open, close, write, read, is_open methods).
-StructFrame::SerialTransportConfig config;
-StructFrame::SerialTransport serial(&my_serial_port, config);
-serial.connect();
+structframe::sdk::SerialTransportConfig config;
+structframe::sdk::SerialTransport serial(&my_serial_port, config);
+serial.Connect();
 ```
 
-### Network (UDP, TCP, WebSocket)
+### Network (UDP, TCP)
 
 ```cpp
 #include "struct_frame_sdk/network_transports.hpp"
 
 // UDP
-StructFrame::UdpTransportConfig udp_config{.remoteHost = "192.168.1.100", .remotePort = 8080};
-StructFrame::UdpTransport udp(udp_config);
-udp.connect();
+structframe::sdk::UdpTransportConfig udp_config{.remoteHost = "192.168.1.100", .remotePort = 8080};
+structframe::sdk::UdpTransport udp(udp_config);
+udp.Connect();
 
 // TCP
-StructFrame::TcpTransportConfig tcp_config{.host = "192.168.1.100", .port = 8080};
-StructFrame::TcpTransport tcp(tcp_config);
-tcp.connect();
+structframe::sdk::TcpTransportConfig tcp_config{.host = "192.168.1.100", .port = 8080};
+structframe::sdk::TcpTransport tcp(tcp_config);
+tcp.Connect();
 ```
 
 ## Frame Profiles
@@ -157,7 +159,7 @@ Use predefined frame profiles:
 ```cpp
 #include "frame_profiles.hpp"
 
-using namespace FrameParsers;
+using namespace structframe;
 
 // Standard profile (recommended)
 uint8_t buffer[1024];

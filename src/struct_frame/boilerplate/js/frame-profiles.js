@@ -138,6 +138,11 @@ function encodeMessage(config, msg, options = {}) {
     else {
         pkgIdValue = options.pkgId ?? 0;
         msgIdValue = msgId;
+        // This profile carries a 1-byte message id: never truncate a larger one.
+        if (msgIdValue > 0xFF) {
+            throw new RangeError(`message id ${msgIdValue} does not fit the 1-byte id of ${config.name}; ` +
+                `use a profile with a package id (Bulk/Network)`);
+        }
     }
     const payloadSize = payload.length;
     const headerSize = profileHeaderSize(config);

@@ -50,15 +50,17 @@ For trusted links where synchronization isn't needed.
 
 ### Extended
 ```
-[LENGTH_HI] [LENGTH_LO] [MSG_ID] [PAYLOAD...] [CRC_HI] [CRC_LO]
+[LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD...] [CRC1] [CRC2]
 ```
-5 bytes overhead. 16-bit length field (max 65535 bytes).
+6 bytes overhead. 16-bit little-endian length (max 65535 bytes) and a package-ID byte, so the full message ID is `(PKG_ID << 8) | MSG_ID`.
 
 ### ExtendedMultiSystemStream
 ```
-[LENGTH_HI] [LENGTH_LO] [SRC] [DST] [SEQ] [MSG_ID] [PAYLOAD...] [CRC_HI] [CRC_LO]
+[SEQ] [SYS_ID] [COMP_ID] [LEN_LO] [LEN_HI] [PKG_ID] [MSG_ID] [PAYLOAD...] [CRC1] [CRC2]
 ```
-8 bytes overhead. Adds source/destination addresses and sequence numbers for multi-node networks.
+9 bytes overhead. Adds a sequence number and system/component IDs for multi-node networks.
+
+The Default payload is `[LEN] [MSG_ID] [PAYLOAD...] [CRC1] [CRC2]`; its CRC bytes are `sum1` then `sum2` of the checksum below.
 
 ## Frame Profiles
 
@@ -81,13 +83,13 @@ The Default and Extended payload types use Fletcher-16 checksum.
 - Tiny frame start: `0x70 + PayloadType`
 - Payload type base value: `0x70`
 
-The checksum algorithm:
+The checksum covers everything after the start bytes and before the CRC (for the Default payload: `LENGTH`, `MSG_ID`, `PAYLOAD`), followed by two per-message **magic bytes** (`MAGIC1`, `MAGIC2`) derived from the message layout and available in the generated code. The magic bytes are not transmitted, so a receiver needs the message definition to verify a frame:
 
 ```
-For each byte in [LENGTH, MSG_ID, PAYLOAD]:
-    sum1 = (sum1 + byte) mod 255
-    sum2 = (sum2 + sum1) mod 255
-checksum = (sum2 << 8) | sum1
+for each byte in [frame bytes..., MAGIC1, MAGIC2]:
+    sum1 = (sum1 + byte) mod 256
+    sum2 = (sum2 + sum1) mod 256
+CRC1 = sum1, CRC2 = sum2
 ```
 
 ## Parser State Machine
@@ -109,16 +111,17 @@ For Minimal payloads, the parser requires a message length callback to determine
 ```cpp
 #include "frame_profiles.hpp"
 
-using namespace FrameParsers;
+using namespace structframe;
 
-// Using profiles
+// Using profiles. CRC profiles need the message-info callback on the reader.
 uint8_t buffer[1024];
 ProfileStandardWriter writer(buffer, sizeof(buffer));
-ProfileStandardAccumulatingReader reader;
+AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)>
+    reader(get_message_info);
 
 // Encode
 writer.write(msg);
-send_data(writer.buffer(), writer.size());
+send_data(writer.data(), writer.size());
 
 // Decode (streaming)
 while (receiving) {
@@ -137,30 +140,27 @@ while (auto result = reader.next()) {
 ## Usage in Python
 
 ```python
-from frame_profiles import (
-    ProfileStandardWriter,
-    ProfileStandardAccumulatingReader,
-)
+from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
 from struct_frame.generated.messages import MyMessage, get_message_info
 
 # Encode
 msg = MyMessage(value=42)
-writer = ProfileStandardWriter(1024)
+writer = BufferWriter(PROFILE_STANDARD_CONFIG, 1024)
 writer.write(msg)
 frame = writer.data()
 
 # Decode (byte-by-byte streaming)
-reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
+reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
 for byte in frame:
     result = reader.push_byte(byte)
-    if result and result.valid:
+    if result.valid:
         handle_message(result)
 
 # Decode (buffer mode)
-reader2 = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
+reader2 = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
 reader2.add_data(frame)
 result = reader2.next()
-if result and result.valid:
+if result.valid:
     handle_message(result)
 ```
 

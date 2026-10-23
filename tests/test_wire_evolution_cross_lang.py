@@ -49,6 +49,7 @@ fully enforced there.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -143,8 +144,11 @@ def _csharp_runner() -> _Runner:
 
 def test_wire_evolution_cross_lang_matrix(tmp_path: Path) -> None:
     """Hub-based cross-language x cross-version matrix, anchored on C++."""
+    required = {l for l in os.environ.get("SF_REQUIRE_LANGS", "").split(",") if l}
     cpp = _cpp_runner()
     if not cpp.available:
+        if "cpp" in required:
+            pytest.fail("C++ test_wire_evolution_file_io not built but C++ is required (--require-langs)")
         pytest.skip("C++ test_wire_evolution_file_io not built -- run test_all.py or run_tests.py first")
 
     _generate(tmp_path)
@@ -166,6 +170,9 @@ def test_wire_evolution_cross_lang_matrix(tmp_path: Path) -> None:
 
     for runner in (_c_runner(), _ts_runner(), _js_runner(), _csharp_runner(), _rust_runner()):
         if not runner.available:
+            if runner.lang_id in required:
+                pytest.fail(f"{runner.lang_id} wire-evolution helper not built but the language is "
+                            f"required (--require-langs)")
             skipped.append(runner.lang_id)
             continue
         checked.append(runner.lang_id)

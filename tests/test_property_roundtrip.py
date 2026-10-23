@@ -42,7 +42,14 @@ except ModuleNotFoundError:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 GEN_PY = REPO_ROOT / "tests" / "generated" / "py"
 
-pytest.importorskip("hypothesis", reason="hypothesis not installed — run: pip install hypothesis")
+try:
+    import hypothesis  # noqa: F401
+except ModuleNotFoundError:
+    # Match the documented behaviour: skippable locally, a hard failure in CI. (A bare
+    # importorskip here skipped silently even in CI lanes that forgot to install it.)
+    if CI_MODE:
+        raise
+    pytest.skip("hypothesis not installed — run: pip install hypothesis", allow_module_level=True)
 from hypothesis import HealthCheck, given, settings, strategies as st  # noqa: E402
 
 if not GEN_PY.exists():

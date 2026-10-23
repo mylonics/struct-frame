@@ -256,9 +256,22 @@ def _cpp_equality(gen_dir: Path) -> None:
 # TypeScript equality tests
 # ---------------------------------------------------------------------------
 
+def _find_tsc():
+    """Locate tsc: on PATH, or in the repo's local node_modules (installed by `npm ci`)."""
+    found = shutil.which("tsc")
+    if found:
+        return found
+    bin_dir = Path(__file__).resolve().parents[1] / "node_modules" / ".bin"
+    for name in ("tsc.cmd", "tsc"):
+        candidate = bin_dir / name
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
 def _ts_equality(gen_dir: Path) -> None:
     """Generated TypeScript equals() method works correctly."""
-    tsc = shutil.which("tsc")
+    tsc = _find_tsc()
     if not tsc or not shutil.which("node"):
         pytest.skip("tsc or node not available")
 
@@ -517,48 +530,52 @@ def _rust_equality(gen_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Single collected pytest entry point
+# Collected pytest entry points (one generation, one test per language so a
+# missing toolchain skips only that language)
 # ---------------------------------------------------------------------------
 
-def test_equality_flag(tmp_path: Path) -> None:
-    """--equality flag: all languages emit and correctly execute equality comparisons."""
-    gen_dir = tmp_path
-    _run_generator(gen_dir)
+@pytest.fixture(scope="module")
+def gen_dir(tmp_path_factory) -> Path:
+    out = tmp_path_factory.mktemp("equality")
+    _run_generator(out)
+    return out
 
-    # Verify equality functions / operators are present in generated code
+
+def test_equality_functions_are_emitted(gen_dir: Path) -> None:
+    """--equality flag: every language emits comparison functions."""
     c_header = (gen_dir / "c" / "serialization_test.structframe.h").read_text(encoding="utf-8")
-    _check("_equals(" in c_header,
-           "C header should contain *_equals() functions")
+    _check("_equals(" in c_header, "C header should contain *_equals() functions")
 
     cpp_header = (gen_dir / "cpp" / "serialization_test.structframe.hpp").read_text(encoding="utf-8")
-    _check("operator==" in cpp_header,
-           "C++ header should contain operator== methods")
+    _check("operator==" in cpp_header, "C++ header should contain operator== methods")
 
     py_files = list((gen_dir / "py").rglob("*.py"))
     _check(any("def __eq__" in f.read_text(encoding="utf-8") for f in py_files),
            "Generated Python files should contain __eq__ methods")
 
     ts_src = (gen_dir / "ts" / "serialization-test.structframe.ts").read_text(encoding="utf-8")
-    _check("equals(" in ts_src,
-           "Generated TypeScript file should contain equals() method")
+    _check("equals(" in ts_src, "Generated TypeScript file should contain equals() method")
 
     js_src = (gen_dir / "js" / "serialization-test.structframe.js").read_text(encoding="utf-8")
-    _check("equals(" in js_src,
-           "Generated JavaScript file should contain equals() method")
+    _check("equals(" in js_src, "Generated JavaScript file should contain equals() method")
 
     cs_files = list((gen_dir / "csharp").rglob("*.cs"))
     _check(any("Equals(" in f.read_text(encoding="utf-8", errors="replace") for f in cs_files),
            "Generated C# files should contain Equals() method")
 
     rust_src = (gen_dir / "rust" / "serialization_test.structframe.rs").read_text(encoding="utf-8")
-    _check("PartialEq" in rust_src,
-           "Generated Rust file should derive PartialEq")
+    _check("PartialEq" in rust_src, "Generated Rust file should derive PartialEq")
 
-    # Functional tests per language
-    _python_equality(gen_dir)
-    _c_equality(gen_dir)
-    _cpp_equality(gen_dir)
-    _ts_equality(gen_dir)
-    _js_equality(gen_dir)
-    _csharp_equality(gen_dir)
-    _rust_equality(gen_dir)
+
+@pytest.mark.parametrize("lang,runner", [
+    ("python", _python_equality),
+    ("c", _c_equality),
+    ("cpp", _cpp_equality),
+    ("ts", _ts_equality),
+    ("js", _js_equality),
+    ("csharp", _csharp_equality),
+    ("rust", _rust_equality),
+])
+def test_equality_executes_correctly(lang: str, runner, gen_dir: Path) -> None:
+    """--equality flag: the generated comparison actually behaves correctly."""
+    runner(gen_dir)

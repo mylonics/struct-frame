@@ -15,11 +15,29 @@ description = "A framework for serializing data with headers"
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Code Generators",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
+
+# Optional runtime dependencies of the generated Python SDK transports (the
+# generator itself needs neither).
+[project.optional-dependencies]
+serial = ["pyserial"]
+websocket = ["websockets"]
+sdk = ["pyserial", "websockets"]
+
+[project.scripts]
+struct-frame = "struct_frame:main"
 
 [project.urls]
 Homepage = "https://github.com/mylonics/struct-frame"

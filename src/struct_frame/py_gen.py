@@ -563,6 +563,7 @@ class MessagePyGen():
                             result += f'        fields["{f.name}"] = list(_all[:min(count, {f.max_size})])\n'
                         else:
                             # Nested messages
+                            type_name = f.field_type
                             result += f'        # Bounded nested message array: {f.name}\n'
                             result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
                             result += f'        offset += {count_size}\n'

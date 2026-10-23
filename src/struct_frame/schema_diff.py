@@ -471,6 +471,9 @@ class _Differ:
         self.type_map = {}
         self.renamed_messages = set()
         self.nested = {}
+        # Enums that moved between message scope and package scope.
+        self.moved_old = set()
+        self.moved_new = set()
 
     # -- helpers ----------------------------------------------------------
 
@@ -514,6 +517,8 @@ class _Differ:
                 if old_ref != new_ref:
                     self.type_map[old_ref] = new_ref
 
+        self._pair_scope_moves(old_pkgs, new_pkgs, enum_removed, enum_added)
+
         # Enums
         for old_key, new_key in enum_pairs:
             self._diff_enum(".".join(new_key),
@@ -521,9 +526,11 @@ class _Differ:
                             new_pkgs[new_key[0]]["enums"][new_key[1]],
                             ".".join(old_key) if old_key != new_key else None)
         for key in enum_removed:
-            self.add(BREAKING, "enum_removed", ".".join(key), "enum removed")
+            if ".".join(key) not in self.moved_old:
+                self.add(BREAKING, "enum_removed", ".".join(key), "enum removed")
         for key in enum_added:
-            self.add(COMPATIBLE, "enum_added", ".".join(key), "enum added")
+            if ".".join(key) not in self.moved_new:
+                self.add(COMPATIBLE, "enum_added", ".".join(key), "enum added")
 
         # Messages
         for old_key, new_key in message_pairs:
@@ -544,6 +551,43 @@ class _Differ:
         return self.changes
 
     # -- matching ---------------------------------------------------------
+
+    def _pair_scope_moves(self, old_pkgs, new_pkgs, enum_removed, enum_added):
+        """Pair enums that moved between message scope and package scope.
+
+        An enum that disappears from one scope and appears in the other of the
+        same package with identical entries has the same wire format (enums are
+        stored as their value), so it is a source-only move, not a removal. Only
+        unambiguous one-to-one matches are paired; field types follow the move
+        through ``type_map``.
+        """
+        def signature(enum):
+            return tuple(map(tuple, enum["entries"]))
+
+        old_left, new_left = [], []
+        for (old_key, new_key), (_, removed, added) in self.nested.items():
+            for name in removed:
+                enum = old_pkgs[old_key[0]]["messages"][old_key[1]]["enums"][name]
+                old_left.append((old_key[0], ".".join(old_key + (name,)), signature(enum)))
+            for name in added:
+                enum = new_pkgs[new_key[0]]["messages"][new_key[1]]["enums"][name]
+                new_left.append((new_key[0], ".".join(new_key + (name,)), signature(enum)))
+        for key in enum_removed:
+            old_left.append((key[0], ".".join(key), signature(old_pkgs[key[0]]["enums"][key[1]])))
+        for key in enum_added:
+            new_left.append((key[0], ".".join(key), signature(new_pkgs[key[0]]["enums"][key[1]])))
+
+        for pkg, old_ref, sig in old_left:
+            candidates = [n for n in new_left if n[0] == pkg and n[2] == sig]
+            rivals = [o for o in old_left if o[0] == pkg and o[2] == sig]
+            if len(candidates) != 1 or len(rivals) != 1:
+                continue
+            new_ref = candidates[0][1]
+            self.type_map[old_ref] = new_ref
+            self.moved_old.add(old_ref)
+            self.moved_new.add(new_ref)
+            self.add(RENAME, "enum_scope_moved", new_ref,
+                     f"enum moved from {old_ref} to {new_ref} (same entries)", old_ref, new_ref)
 
     def _match_messages(self, old_pkgs, new_pkgs):
         old = {(p, n): m for p, pkg in old_pkgs.items() for n, m in pkg["messages"].items()}
@@ -683,9 +727,11 @@ class _Differ:
             self._diff_enum(f"{path}.{new_name}", old["enums"][old_name], new["enums"][new_name],
                             f"{'.'.join(old_key)}.{old_name}" if old_name != new_name else None)
         for name in removed:
-            self.add(BREAKING, "enum_removed", f"{'.'.join(old_key)}.{name}", "enum removed")
+            if f"{'.'.join(old_key)}.{name}" not in self.moved_old:
+                self.add(BREAKING, "enum_removed", f"{'.'.join(old_key)}.{name}", "enum removed")
         for name in added:
-            self.add(COMPATIBLE, "enum_added", f"{path}.{name}", "enum added")
+            if f"{path}.{name}" not in self.moved_new:
+                self.add(COMPATIBLE, "enum_added", f"{path}.{name}", "enum added")
 
         if old["magic_bytes"] != new["magic_bytes"]:
             note = ""
@@ -817,8 +863,18 @@ class _Differ:
             self.add(BREAKING, "oneof_max_size_changed", path,
                      f"max_size {old['max_size']} -> {new['max_size']}", old["max_size"], new["max_size"])
         if old["min_size"] != new["min_size"]:
-            self.add(COMPATIBLE, "oneof_min_size_changed", path,
-                     f"min_size {old['min_size']} -> {new['min_size']}", old["min_size"], new["min_size"])
+            # On a variable or trailing-trimmed oneof the payload length is on
+            # the wire and receivers reject payloads shorter than
+            # max(variant base size, min_size). Raising min_size makes a new
+            # receiver reject frames from old senders; lowering it makes a new
+            # sender emit frames old receivers reject. A fixed oneof's min_size
+            # only grows the union buffer, which the size/offset checks cover.
+            on_wire = (old["variable"] or new["variable"]
+                       or old.get("evolvable") or new.get("evolvable"))
+            self.add(BREAKING if on_wire else COMPATIBLE, "oneof_min_size_changed", path,
+                     f"min_size {old['min_size']} -> {new['min_size']}"
+                     + (" (the minimum accepted payload length is on the wire)" if on_wire else ""),
+                     old["min_size"], new["min_size"])
 
         def check_discriminator(variant_path, old_variant, new_variant):
             if old_variant["disc"] != new_variant["disc"]:

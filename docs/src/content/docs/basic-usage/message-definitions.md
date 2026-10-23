@@ -13,7 +13,7 @@ Proto files provide:
 - Familiar syntax for developers who know Protocol Buffers
 - Tooling support (syntax highlighting, linting)
 
-Struct Frame uses proto syntax but generates different code than Google's Protocol Buffers. Messages are fixed-size packed structs, not variable-length encoded.
+Struct Frame uses proto syntax but generates different code than Google's Protocol Buffers. By default messages are fixed-size packed structs; variable-length encoding is opt-in per message with `option variable = true` (see below).
 
 ## Packages
 
@@ -54,7 +54,7 @@ message Heartbeat {
 }
 ```
 
-Message IDs must be unique within a package (range 0-255).
+Message IDs must be unique within a package. Without a package ID the range is 0-65535; when the package sets `option pkgid`, the range is 0-255 and the full 16-bit wire ID is `(pkgid << 8) | msgid`. IDs above 255 only fit profiles that carry a package-ID byte (Bulk and Network); encoding such a message with a 1-byte-ID profile (Standard, Sensor, IPC) fails instead of truncating the ID. When several packages are compiled together, the *effective* IDs must be unique: a package without its own `pkgid` inherits its importer's, so its message IDs share that importer's ID space.
 
 **variable** (optional, enables variable-length encoding)
 
@@ -68,7 +68,7 @@ message SensorData {
 
 With variable encoding, arrays and strings only transmit actual used bytes instead of the full max_size. This reduces bandwidth when fields are partially filled.
 
-You can also enable variable-length encoding for **every** message in the project at code-generation time by passing the `--no_packed` CLI flag. This is equivalent to setting `option variable = true;` on every message and additionally drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ output. Use it on platforms that don't support packed structs or that have different endianness/alignment requirements. See the [CLI reference](/reference/cli-reference/) for details.
+You can also enable variable-length encoding for **every** message in the project at code-generation time by passing the `--no_packed` CLI flag. This is equivalent to setting `option variable = true;` on every message and additionally drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ output. Use it on platforms that don't support packed structs or that have strict alignment requirements. It does not change byte order: all multi-byte values are little-endian on the wire, and the generated C/C++ code assumes a little-endian host. See the [CLI reference](/reference/cli-reference/) for details.
 
 **pkgid** (optional package-level option)
 
@@ -94,6 +94,8 @@ Enables extended message addressing with 16-bit message IDs (256 packages × 256
 | float | 4 bytes | IEEE 754 single precision |
 | double | 8 bytes | IEEE 754 double precision |
 | bool | 1 byte | true or false |
+| string | see below | Text with `size` (fixed) or `max_size` (variable) |
+| bytes | see below | Raw bytes; same wire format and options as `string` |
 
 All types use little-endian byte order.
 
@@ -163,7 +165,7 @@ Always uses 16 bytes, padded with nulls if shorter.
 string description = 1 [max_size=256];
 ```
 
-Stores up to 256 characters plus a 1-byte length prefix.
+Stores up to 256 characters plus a length prefix. The prefix is 1 byte when `max_size` ≤ 255 and 2 bytes (`uint16`) when `max_size` is larger, so this example uses a 2-byte prefix.
 
 ## Arrays
 
@@ -354,7 +356,7 @@ message Vehicle {
 
 ## Flatten Option
 
-Flatten nested message fields into the parent (Python/GraphQL only):
+Flatten nested message fields into the parent. Only the Python `to_dict()` output and the GraphQL schema are flattened; the generated classes and structs in every language keep the nested field:
 
 ```proto
 message Status {
@@ -363,7 +365,7 @@ message Status {
 }
 ```
 
-Access: `status.lat` instead of `status.pos.lat`
+In the dictionary and in GraphQL the keys are `lat`, `lon`, … instead of `pos.lat`; in code you still access `status.pos.lat`. Flattening is rejected when a child field name collides with a field of the parent.
 
 ## Oneof (Union Types)
 
@@ -741,8 +743,8 @@ The SDK generates convenient helper methods for envelope messages:
 **C++ (msgid discriminator)**
 ```cpp
 // Wrap a command into an envelope - template ensures type safety
-EnvelopeTestADCCommand adc_cmd{.channel = 1, .sample_rate = 1000, .enable = true};
-auto envelope = EnvelopeTestCommandEnvelope::wrap(
+envelope_test::ADCCommand adc_cmd{.channel = 1, .sample_rate = 1000, .enable = true};
+auto envelope = envelope_test::CommandEnvelope::wrap(
     42,      // sequence_number
     1,       // priority
     true,    // run_immediately
@@ -750,13 +752,13 @@ auto envelope = EnvelopeTestCommandEnvelope::wrap(
 );
 
 // Only valid payload types are accepted - invalid types cause compile error:
-// auto bad = EnvelopeTestCommandEnvelope::wrap(42, 1, true, some_other_msg); // Won't compile!
+// auto bad = envelope_test::CommandEnvelope::wrap(42, 1, true, some_other_msg); // Won't compile!
 
 // Get payload message ID to determine which type was wrapped
 uint16_t payload_id = envelope.getPayloadMessageId();
 
 // Access the wrapped payload directly via the oneof field
-if (payload_id == EnvelopeTestADCCommand::MSG_ID) {
+if (payload_id == envelope_test::ADCCommand::MSG_ID) {
     auto& adc = envelope.command.adc;
     // Use adc.channel, adc.sample_rate, etc.
 }
@@ -775,8 +777,8 @@ uint8_t field_order = envelope.getPayloadFieldOrder();
 **Python**
 ```python
 # Wrap a command into an envelope
-adc_cmd = EnvelopeTestADCCommand(channel=1, sample_rate=1000, enable=True)
-envelope = EnvelopeTestCommandEnvelope.wrap(
+adc_cmd = ADCCommand(channel=1, sample_rate=1000, enable=True)
+envelope = CommandEnvelope.wrap(
     payload=adc_cmd,  # Runtime type check ensures valid payload
     sequence_number=42,
     priority=1,
@@ -784,7 +786,7 @@ envelope = EnvelopeTestCommandEnvelope.wrap(
 )
 
 # Invalid payload types raise TypeError:
-# envelope = EnvelopeTestCommandEnvelope.wrap(some_other_msg, ...)  # TypeError!
+# envelope = CommandEnvelope.wrap(some_other_msg, ...)  # TypeError!
 
 # Unwrap - returns the correct message type based on discriminator
 payload = envelope.unwrap()
@@ -793,29 +795,29 @@ if payload:
 
 # Get discriminator value (method name depends on discriminator type)
 payload_id = envelope.get_payload_message_id()  # For msgid discriminator
-# field_order = envelope.get_payload_field_order()  # For field_order discriminator
+# field_order = envelope.get_payload_field()  # For field_order discriminator
 ```
 
 **TypeScript**
 ```typescript
 // Wrap a command into an envelope - union type ensures type safety
-const adcCmd = new EnvelopeTestADCCommand();
+const adcCmd = new ADCCommand();
 adcCmd.channel = 1;
-adcCmd.sample_rate = 1000;
+adcCmd.sampleRate = 1000;
 adcCmd.enable = true;
 
-// payload type is: EnvelopeTestADCCommand | EnvelopeTestDACCommand | ...
-const envelope = EnvelopeTestCommandEnvelope.wrap(adcCmd, 42, 1, true);
+// payload type is: ADCCommand | DACCommand | ...
+const envelope = CommandEnvelope.wrap(adcCmd, 42, 1, true);
 
 // Get payload message ID to determine which type was wrapped
 const payloadId = envelope.getPayloadMessageId();
 ```
 
-**C#**
+**C#** (namespace `StructFrame.EnvelopeTest`)
 ```csharp
 // Wrap a command into an envelope - overloads provide type safety
-var adcCmd = new EnvelopeTestADCCommand { Channel = 1, SampleRate = 1000, Enable = true };
-var envelope = EnvelopeTestCommandEnvelope.Wrap(adcCmd, 42, 1, true);
+var adcCmd = new ADCCommand { Channel = 1, SampleRate = 1000, Enable = true };
+var envelope = CommandEnvelope.Wrap(adcCmd, 42, 1, true);
 
 // Get payload message ID to determine which type was wrapped
 var payloadId = envelope.GetPayloadMessageId();
@@ -856,17 +858,35 @@ message JobStatusMessage {
 
 > **When to use this:** Prefer keeping the calculated magic bytes — they serve as automatic structural validation. Only use `magic_bytes` when you intentionally need two schema revisions to be treated as wire-compatible by existing parsers, and you have verified that the wire layout is genuinely unchanged.
 
+## Syntax Details
+
+- **One `package` per file.** Declare `package` first; `option pkgid` and `import` follow it. Several files may belong to the same package.
+- **Imports** are resolved relative to the directory of the schema given on the command line first, then relative to the importing file. A type is looked up in its own package and then in the packages that file imports directly; qualify it (`other.Type`) when two imported packages define the same name.
+- **Qualified option names.** Field options also accept the forms `(sf.size)`, `(struct_frame.size)` and likewise for `max_size`, `element_size`, `default` and `flatten`.
+- **`option envelope = true`** is accepted as an alias of `is_envelope`.
+- **Discriminator values** are `auto`, `msgid`, `field_order` and `none`; `false`, `off` and `disabled` are accepted as aliases of `none`.
+- **The extension marker.** Inside a `oneof`, a standalone comment line that *starts with* `Extension::` marks the following variant as the first extension variant (equivalent to `option extensions_start`). A trailing comment on a variant, or prose that merely mentions the marker, is ignored.
+- **Reserved words.** Field, oneof and variant names that are reserved words in a target language (for example `class`, `self`, `delete`, `fn`) are rejected with an error naming the language; rename the field or map it with `--name_overrides`.
+
 ## Validation Rules
 
 The generator enforces:
 
-- Message IDs unique within package (0-255)
-- Package IDs unique across packages (0-255)
+- The file must parse: a syntax error, a missing import or a duplicate message, enum, oneof or field name is an error (and the generator exits non-zero)
+- Message IDs unique within package (0-65535 without a package ID, 0-255 with one), and unique across packages once the package ID is applied
+- Package IDs unique across packages (0-255); every package needs one when several are compiled together, except packages that inherit their importer's
+- A type name must resolve unambiguously: types come from the current package or its directly imported packages, and a name defined in two imported packages must be qualified (`pkg.Type`)
+- Unknown options (a typo such as `[defualt = 5]` or `option msg_id`) are errors, with a suggestion
+- Enum values must be distinct and fit one byte (0-255)
+- `size` and `max_size` are mutually exclusive; `element_size` only applies to repeated `string`/`bytes`
+- A `oneof` needs at least one variant, and `min_size` may not exceed `max_size`
+- Variants of a `msgid`-discriminated oneof must have distinct message IDs
+- Generated names must not collide or be reserved words in the target languages (see [Generated Names](#generated-names)); use `--name_overrides` to rename
 - Field numbers must be `1..N` in declaration order (no gaps, no duplicates)
 - All arrays must have size or max_size
 - All strings must have size or max_size
 - String arrays need both max_size and element_size
-- Array max_size limited to 255 (count fits in 1 byte)
+- Array and string `max_size` up to 65535 (the count/length prefix is 1 byte up to 255, otherwise 2 bytes)
 - Envelope messages must have exactly one oneof field
 - Envelope oneof fields must be message types (not primitives/enums)
 - Envelope oneof using `msgid` discriminator must have messages with msgid
@@ -1010,7 +1030,7 @@ The generator emits a `BASE_SIZE` constant alongside `MAX_SIZE` for every messag
 from struct_frame.generated.my_package import StatusReport
 
 print(StatusReport.BASE_SIZE)  # 7  (device_id + status_code + error_flags)
-print(StatusReport.MAX_SIZE)   # 43 (+ uptime_seconds + cpu_temperature + firmware_version)
+print(StatusReport.MAX_SIZE)   # 48 (+ uptime_seconds 4 + cpu_temperature 4 + firmware_version 33)
 ```
 
 ### Checking wire compatibility

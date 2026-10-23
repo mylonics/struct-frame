@@ -6,6 +6,36 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## Unreleased
+
+### Changed (breaking)
+
+- **Acronym-aware generated names.** Identifiers that mix cases are converted with acronym awareness, which changes some generated names: a field `sensorId` is now `SensorId` in C# (was `Sensorid`), and an enum entry `GateCurrent` is `GATE_CURRENT` in C/Python/Rust/C# (was `GATECURRENT`) and `GateCurrent` in C++ (was `Gatecurrent`). Schemas that only use `snake_case` or `SCREAMING_SNAKE` names are unaffected. Pin an old spelling with `--name_overrides` (#376).
+- **Stricter validation.** The generator now rejects input it used to accept silently: syntax errors and missing files (the generator now exits non-zero), duplicate messages/fields/enums/oneofs, unknown options (a typo like `[defualt = 5]`), enum values outside 0-255 or duplicated, a type name defined in two imported packages (qualify it), a type from a package that is not imported, effective message IDs that collide across packages, duplicate `msgid` discriminator values, empty oneofs, `size` together with `max_size`, `element_size` on non-string arrays, and field/oneof/variant names that are reserved words in a target language. `--validate` now checks names for every language.
+- **1-byte-ID profiles refuse oversized message IDs.** Encoding a message whose ID is above 255 with the Standard, Sensor or IPC profile now fails (C: returns 0; C++: returns 0; Python: `ValueError`; TypeScript/JavaScript: `RangeError`; C#: returns 0) instead of silently sending `id & 0xFF`.
+- **GraphQL.** `uint32`, `int64` and `uint64` map to the custom scalars `UInt32`, `Int64` and `UInt64` (declared in each document) instead of the 32-bit `Int`. Message-scoped enums are named `<Pkg><Message><Enum>`. `schema.graphql` is self-contained and prefixes `Query` fields with the package only when two packages share a message name.
+- **C and C++ headers refuse to compile on big-endian hosts** (`#error`), because the payload codecs copy host byte order. Define `STRUCT_FRAME_ASSUME_LITTLE_ENDIAN` to override.
+
+### Added
+
+- Wire-evolution of variants inside trailing trimmed `oneof` unions (#377).
+- `struct_frame diff` (alias `schema-diff`): wire-compatibility check between two schema revisions (#376). It now treats a changed `min_size` on a variable or trimmed oneof as breaking, and reports an enum that moved between message and package scope as a source-only move.
+- Generation cache is docs-aware, covers the import graph and the generator/runtime sources, and regenerates when an output directory is missing (#376).
+- Console script `struct-frame`, optional extras `serial`, `websocket` and `sdk` for the Python SDK transports.
+- `wireshark/magic_table.py` and a "Magic bytes" dissector preference so the Wireshark dissector can verify checksums.
+- C# `WireArray` helper: primitive arrays use little-endian wire order on every host.
+- Examples that are built and run by the test suite (`examples/`).
+
+### Fixed
+
+- Types of an imported package were resolved against the *importing* package, giving the wrong wire size when both defined a type with the same name.
+- `msgid = 0` was treated as "no message ID" by the TypeScript, JavaScript, C# and Python generators/runtimes.
+- Parse failures exited 0 and still wrote output; schemas are now read as UTF-8 on every platform.
+- Python generator crashed on a bounded array of nested messages.
+- The Wireshark dissector reported every real frame as having an invalid checksum (the magic bytes were not part of its checksum).
+- The compiled JavaScript SDK was missing `onError`; it is rebuilt from the TypeScript source.
+- The full C++ SDK now copies the real ASIO headers instead of a git symlink (a text file on Windows) and no longer copies the whole ASIO repository.
+
 ## [0.10.9](https://github.com/mylonics/struct-frame/releases/tag/0.10.9) - 2026-10-07
 
 <small>[Compare with v0.10.8](https://github.com/mylonics/struct-frame/compare/v0.10.8...0.10.9)</small>

@@ -40,8 +40,10 @@ def command(lang, iterations, out):
         exe=BENCH/'cpp/bench'
         cxx=os.environ.get('CXX','g++')
         return ['bash','-lc', f'{cxx} -O2 -std=c++17 tests/benchmarks/cpp/bench.cpp -o {exe} && {exe} --iterations {iterations} --output {out}']
-    if lang=='csharp': return ['dotnet','run','--project','tests/benchmarks/csharp/Bench.csproj','--','--iterations',str(iterations),'--output',str(out)]
-    if lang=='rust': return ['cargo','run','--quiet','--manifest-path','tests/benchmarks/rust/Cargo.toml','--','--iterations',str(iterations),'--output',str(out)]
+    # C and C++ are built with -O2, so build C# and Rust optimised as well; the
+    # default `dotnet run` / `cargo run` produce Debug builds that are far slower.
+    if lang=='csharp': return ['dotnet','run','-c','Release','--project','tests/benchmarks/csharp/Bench.csproj','--','--iterations',str(iterations),'--output',str(out)]
+    if lang=='rust': return ['cargo','run','--release','--quiet','--manifest-path','tests/benchmarks/rust/Cargo.toml','--','--iterations',str(iterations),'--output',str(out)]
     raise KeyError(lang)
 
 def main():

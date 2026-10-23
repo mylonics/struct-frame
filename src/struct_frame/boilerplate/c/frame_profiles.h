@@ -101,13 +101,19 @@ static inline size_t profile_encode_with_crc_ext(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
     uint8_t seq, uint8_t sys_id, uint8_t comp_id,
-    uint8_t pkg_id, uint8_t msg_id,
+    uint8_t pkg_id, uint16_t msg_id,
     const uint8_t* payload_data, size_t payload_size,
     size_t base_size,
     uint8_t magic1, uint8_t magic2) {
     
     uint8_t header_size = profile_header_size(config);
     uint8_t footer_size = profile_footer_size(config);
+    /* The wire carries a 1-byte message id (the package id travels separately).
+     * Refuse to truncate: a larger id means the caller picked the wrong profile. */
+    if (msg_id > 0xFF) {
+        return 0;
+    }
+
     size_t overhead = header_size + footer_size;
     size_t total_size = overhead + payload_size;
     size_t max_payload = (config->payload.length_bytes == 1) ? 255 : 65535;
@@ -199,7 +205,7 @@ static inline size_t profile_encode_with_crc(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
     uint8_t seq, uint8_t sys_id, uint8_t comp_id,
-    uint8_t pkg_id, uint8_t msg_id,
+    uint8_t pkg_id, uint16_t msg_id,
     const uint8_t* payload_data, size_t payload_size,
     uint8_t magic1, uint8_t magic2) {
     return profile_encode_with_crc_ext(
@@ -215,9 +221,15 @@ static inline size_t profile_encode_with_crc(
 static inline size_t profile_encode_minimal(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
-    uint8_t msg_id,
+    uint16_t msg_id,
     const uint8_t* payload_data, size_t payload_size) {
     
+    /* The wire carries a 1-byte message id (the package id travels separately).
+     * Refuse to truncate: a larger id means the caller picked the wrong profile. */
+    if (msg_id > 0xFF) {
+        return 0;
+    }
+
     uint8_t header_size = profile_header_size(config);
     size_t total_size = header_size + payload_size;
     
@@ -435,7 +447,7 @@ static inline size_t profile_encode_message(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
     uint8_t seq, uint8_t sys_id, uint8_t comp_id, uint8_t pkg_id,
-    uint8_t msg_id, const uint8_t* payload_data, size_t payload_size,
+    uint16_t msg_id, const uint8_t* payload_data, size_t payload_size,
     size_t base_size, uint8_t magic1, uint8_t magic2)
 {
     if (config->payload.has_crc) {
@@ -594,7 +606,7 @@ static inline void buffer_writer_init(
 
 static inline size_t buffer_writer_write_ext(
     buffer_writer_t* writer,
-    uint8_t msg_id,
+    uint16_t msg_id,
     const uint8_t* payload,
     size_t payload_size,
     uint8_t seq,
@@ -635,7 +647,7 @@ static inline size_t buffer_writer_write_ext(
  * the extension-aware variant for messages without extensions. */
 static inline size_t buffer_writer_write(
     buffer_writer_t* writer,
-    uint8_t msg_id,
+    uint16_t msg_id,
     const uint8_t* payload,
     size_t payload_size,
     uint8_t seq,

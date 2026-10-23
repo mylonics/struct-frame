@@ -101,8 +101,11 @@ struct_frame.profile_name contains "Standard"
 # Specific message ID
 struct_frame.message_id == 42
 
-# Invalid CRC
+# Invalid CRC (a verified mismatch)
 struct_frame.crc_status contains "Invalid"
+
+# Frames whose checksum could not be checked (magic bytes not configured)
+struct_frame.crc_status contains "Unverified"
 
 # Specific system ID (for Network profile)
 struct_frame.system_id == 1
@@ -229,16 +232,33 @@ To create test PCAP files for validation:
    ```
 3. Open in Wireshark to verify dissection
 
-Example Python code to generate test packets:
+Example Python code to generate test packets with the real runtime (after generating
+Python for your schema with `--build_py`):
 ```python
-from struct_frame.frame_formats import Profile, get_profile
+from frame_profiles import BufferWriter, PROFILE_STANDARD_CONFIG
+from struct_frame.generated.messages import Status
 
-# Get the Standard profile
-profile = get_profile(Profile.STANDARD)
-
-# Create a test message
-# [0x90] [0x71] [0x04] [0x2A] [0x01, 0x02, 0x03, 0x04] [CRC1] [CRC2]
+writer = BufferWriter(PROFILE_STANDARD_CONFIG, 256)
+writer.write(Status(value=42))
+frame = writer.data()  # [0x90] [0x71] [LEN] [MSG_ID] [payload] [CRC1] [CRC2]
 ```
+
+### Checksum verification needs the schema's magic bytes
+
+The struct-frame checksum is Fletcher-16 over the frame **plus two schema-derived
+magic bytes** per message. They are not on the wire, so the dissector can only verify
+a checksum when it knows them. Generate the table for your schema and paste it into
+**Edit → Preferences → Protocols → STRUCT_FRAME → Magic bytes** (or pass it with
+`-o struct_frame.magic_table:...` to tshark):
+
+```bash
+python wireshark/magic_table.py path/to/messages.sf
+# 0:1=27,55;0:2=17,19      (package id : message id = magic1,magic2)
+```
+
+Without the table the CRC status is reported as **Unverified** (never "Invalid"),
+because a mismatch would prove nothing. Frames that carry wire-evolution extension
+bytes use an extension-aware checksum and are also reported as unverified.
 
 ## Limitations
 

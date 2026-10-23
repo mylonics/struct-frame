@@ -146,7 +146,7 @@ class MessageJsGen():
             package_msg_name, package_msg_name)
         
         # Add message ID if present
-        if msg.id:
+        if msg.id is not None:
             result += '.msgId(%d)' % msg.id
 
         result += '\n'
@@ -215,7 +215,7 @@ class MessageJsClassGen():
         
         # Static properties
         result += f'  static _size = {total_size};\n'
-        if msg.id:
+        if msg.id is not None:
             result += f'  static _msgid = {msg.id};\n'
         
         # Add magic numbers for checksum

@@ -41,7 +41,7 @@ struct_frame_sdk = { path = "generated/rust" }
 Then in your source:
 
 ```rust
-use struct_frame_sdk::example::ExampleStatus;
+use struct_frame_sdk::example::Status;
 use struct_frame_sdk::{
     encode_message_crc, AccumulatingReader,
     PROFILE_STANDARD_CONFIG,
@@ -53,7 +53,7 @@ use struct_frame_sdk::{
 Each message is generated as a plain Rust struct implementing the `StructFrameMessage` trait:
 
 ```rust
-pub struct ExampleStatus {
+pub struct Status {
     pub id: u32,
     pub value: f32,
 }
@@ -94,10 +94,10 @@ Five pre-built profiles cover the most common framing configurations:
 ### Single Message
 
 ```rust
-use struct_frame_sdk::example::ExampleStatus;
+use struct_frame_sdk::example::Status;
 use struct_frame_sdk::{encode_message_crc, PROFILE_STANDARD_CONFIG};
 
-let msg = ExampleStatus { id: 42, value: 3.14 };
+let msg = Status { id: 42, value: 3.14 };
 
 let mut buffer = [0u8; 1024];
 let written = encode_message_crc(&PROFILE_STANDARD_CONFIG, &mut buffer, &msg, 0);
@@ -145,13 +145,13 @@ reader.add_data(&received_bytes);
 // Drain all complete messages
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        Status::MSG_ID => Some(Status::message_info()),
         _ => None,
     }
 };
 while let Some(info) = reader.next(&get_info) {
     if info.valid {
-        if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+        if let Some(msg) = Status::unpack(&info.msg_data) {
             println!("ID: {}, Value: {}", msg.id, msg.value);
         }
     }
@@ -166,7 +166,7 @@ Useful when receiving from a serial port or UART one byte at a time:
 let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        Status::MSG_ID => Some(Status::message_info()),
         _ => None,
     }
 };
@@ -175,7 +175,7 @@ for byte in uart.bytes() {
     reader.add_data(&[byte?]);
     if let Some(info) = reader.next(&get_info) {
         if info.valid {
-            if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+            if let Some(msg) = Status::unpack(&info.msg_data) {
                 // handle message
             }
         }
@@ -192,7 +192,7 @@ use struct_frame_sdk::{BufferReader, MessageInfo, PROFILE_STANDARD_CONFIG};
 
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        Status::MSG_ID => Some(Status::message_info()),
         _ => None,
     }
 };
@@ -201,8 +201,8 @@ let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data.to_vec());
 while let Some(info) = reader.next(&get_info) {
     if info.valid {
         match info.msg_id {
-            ExampleStatus::MSG_ID => {
-                if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+            Status::MSG_ID => {
+                if let Some(msg) = Status::unpack(&info.msg_data) {
                     // handle
                 }
             }
@@ -235,23 +235,23 @@ pub struct FrameMsgInfo {
 When a buffer may contain different message types, match on `msg_id`:
 
 ```rust
-use struct_frame_sdk::example::{ExampleStatus, ExampleCommand};
+use struct_frame_sdk::example::{Status, Command};
 
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        ExampleStatus::MSG_ID  => Some(ExampleStatus::message_info()),
-        ExampleCommand::MSG_ID => Some(ExampleCommand::message_info()),
+        Status::MSG_ID  => Some(Status::message_info()),
+        Command::MSG_ID => Some(Command::message_info()),
         _ => None,
     }
 };
 while let Some(info) = reader.next(&get_info) {
     if !info.valid { continue; }
     match info.msg_id {
-        ExampleStatus::MSG_ID  => {
-            if let Some(msg) = ExampleStatus::unpack(&info.payload) { handle_status(msg); }
+        Status::MSG_ID  => {
+            if let Some(msg) = Status::unpack(&info.msg_data) { handle_status(msg); }
         }
-        ExampleCommand::MSG_ID => {
-            if let Some(msg) = ExampleCommand::unpack(&info.payload) { handle_command(msg); }
+        Command::MSG_ID => {
+            if let Some(msg) = Command::unpack(&info.msg_data) { handle_command(msg); }
         }
         _ => { /* unknown message */ }
     }

@@ -4,18 +4,25 @@ This document explains how the Fletcher-16 checksum is calculated in the Struct 
 
 ## Fletcher-16 Algorithm
 
-The Fletcher-16 checksum used by Struct Frame is a simple two-byte checksum algorithm:
+The Fletcher-16 checksum used by Struct Frame is a two-byte checksum computed over the
+frame data **followed by two per-message magic bytes** derived from the message's field
+layout (`MAGIC1`, `MAGIC2` in the generated code):
 
 ```python
-def fletcher16(data):
-    """Calculate Fletcher-16 checksum."""
+def fletcher16(data, magic1, magic2):
+    """Fletcher-16 over data + [magic1, magic2], as every struct-frame runtime computes it."""
     sum1 = 0
     sum2 = 0
-    for byte in data:
+    for byte in bytes(data) + bytes([magic1, magic2]):
         sum1 = (sum1 + byte) % 256
         sum2 = (sum2 + sum1) % 256
     return sum1, sum2
 ```
+
+The magic bytes are not transmitted, so a receiver that does not know the message
+(a generic packet analyser) cannot verify the checksum. The Wireshark dissector takes
+them from its "Magic bytes" preference; see `wireshark/magic_table.py`. The worked
+examples below omit the magic bytes for readability; add them to reproduce real frames.
 
 ## What Data Is Included in the CRC
 

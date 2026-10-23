@@ -24,12 +24,16 @@ python -m struct_frame messages.proto --build_c --build_cpp --build_py --build_t
 |------|----------|--------|
 | `--build_c` | C | `<name>.structframe.h` |
 | `--build_cpp` | C++ | `<name>.structframe.hpp` |
-| `--build_ts` | TypeScript | `<name>.structframe.ts` |
+| `--build_ts` | TypeScript | `<name>.structframe.ts` (kebab-case file names, e.g. `pkg-test-a.structframe.ts`) |
 | `--build_py` | Python | `<name>.py` (in `struct_frame/generated/`) |
-| `--build_js` | JavaScript | `<name>.structframe.js` |
+| `--build_js` | JavaScript | `<name>.structframe.js` (kebab-case file names) |
 | `--build_csharp` | C# | `<PackageName>/Messages/*.cs`, `<PackageName>/Enums/*.cs` |
-| `--build_gql` | GraphQL | `<name>.structframe.graphql` |
+| `--build_gql` | GraphQL | `<package>.graphql` per package, plus a combined `schema.graphql` |
 | `--build_rust` | Rust | `<name>.structframe.rs` |
+
+### GraphQL type mapping
+
+`uint8`/`int8`/`uint16`/`int16`/`int32` map to `Int`, `float`/`double` to `Float`, `bool` to `Boolean` and `string`/`bytes` to `String`. GraphQL's `Int` is a signed 32-bit integer, so `uint32`, `int64` and `uint64` map to the custom scalars `UInt32`, `Int64` and `UInt64`, which every generated schema document declares (`scalar UInt32`, ...); serialize them as strings or numbers in your resolvers as appropriate. Types are named `<Package><Type>`, message-scoped enums `<Package><Message><Enum>`.
 
 ## Output Paths
 

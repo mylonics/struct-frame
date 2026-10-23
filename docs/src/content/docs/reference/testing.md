@@ -46,6 +46,10 @@ python tests/run_tests.py [options]
   --profile NAME      Only test specific profile(s) (e.g. ProfileStandard)
   --no-parallel       Disable parallel compilation
   --no-color          Disable colored output
+  --profiling         Also run the C++ profiling suites
+  --dotnet-framework TFM  Target framework for the C# tests (default: auto-detect)
+  --require-langs L,L Fail (instead of skipping) if any listed language's toolchain is
+                      missing, e.g. --require-langs c,cpp,py,ts,js,csharp,rust
 ```
 
 ### Wire-format and determinism checks

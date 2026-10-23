@@ -8,8 +8,10 @@ enum Status {
   ERROR = 2;
 }
 
+// msgid 100: this package inherits its importer's pkgid, so its ids share the
+// importer's id space. 1 would collide with pkg_test_messages.PackageTestMessage.
 message Timestamp {
-  option msgid = 1;
+  option msgid = 100;
   uint64 seconds = 1;
   uint32 nanoseconds = 2;
 }

@@ -53,6 +53,16 @@ except ImportError:
 # MessageInfo - Unified message information type
 # =============================================================================
 
+def _msg_id_of(obj):
+    """Return the message id of *obj* (a message instance or class).
+
+    Uses an explicit None check: ``option msgid = 0`` is a legitimate id and
+    must not be mistaken for "missing" by a truthiness test.
+    """
+    value = getattr(obj, 'MSG_ID', None)
+    return value if value is not None else getattr(obj, 'msg_id', None)
+
+
 class MessageInfo(NamedTuple):
     """
     Unified message information for parsing.
@@ -291,7 +301,7 @@ def _frame_format_encode_with_crc(
         Encoded frame as bytes
     """
     # Get message ID
-    msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
+    msg_id = _msg_id_of(msg)
     if msg_id is None:
         raise ValueError("Message object must have MSG_ID or msg_id attribute")
     
@@ -357,8 +367,13 @@ def _frame_format_encode_with_crc(
         output.append(pkg_id)
         output.append(local_msg_id)
     else:
-        # Write message ID only
-        output.append(msg_id & 0xFF)
+        # Write message ID only: this profile has a 1-byte id, so a larger id
+        # (e.g. a package-qualified one) cannot be represented. Never truncate.
+        if msg_id > 0xFF:
+            raise ValueError(
+                f"message id {msg_id} does not fit the 1-byte id of {config.name}; "
+                f"use a profile with a package id (Bulk/Network)")
+        output.append(msg_id)
     
     # Write payload
     output.extend(payload)
@@ -398,7 +413,7 @@ def _frame_format_encode_minimal(
         Encoded frame as bytes
     """
     # Get message ID
-    msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
+    msg_id = _msg_id_of(msg)
     if msg_id is None:
         raise ValueError("Message object must have MSG_ID or msg_id attribute")
     
@@ -421,8 +436,12 @@ def _frame_format_encode_minimal(
     if config.num_start_bytes >= 2:
         output.append(config.computed_start_byte2())
 
-    # Write message ID
-    output.append(msg_id & 0xFF)
+    # Write message ID (1 byte; never silently truncate a larger id)
+    if msg_id > 0xFF:
+        raise ValueError(
+            f"message id {msg_id} does not fit the 1-byte id of {config.name}; "
+            f"use a profile with a package id (Bulk/Network)")
+    output.append(msg_id)
     
     # Write payload
     output.extend(payload)

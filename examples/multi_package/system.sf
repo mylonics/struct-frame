@@ -1,0 +1,19 @@
+// Entry point that pulls every package together. Compile this file:
+//
+//   python -m struct_frame examples/multi_package/system.sf --build_py --py_path out/
+//
+// Each imported file is parsed too. When more than one package is compiled,
+// every package needs its own `option pkgid` (or inherits its importer's), and
+// the resulting 16-bit message ids, (pkgid << 8) | msgid, must be unique.
+package system;
+
+option pkgid = 4;
+
+import "events.sf";
+import "sensor_messages.sf";
+
+message Heartbeat {
+  option msgid = 1;
+  uint32 uptime_seconds = 1;
+  uint8 sensors_online = 2;
+}

@@ -9,7 +9,6 @@ converting proto types to GraphQL scalars and generating type/input definitions.
 from struct_frame import version, pascal_case, camel_to_snake_case
 from struct_frame.base import format_file_docs
 from struct_frame.naming import ExplicitName
-import time
 
 # Mapping from proto primitive types to GraphQL scalar types
 gql_types = {
@@ -17,16 +16,33 @@ gql_types = {
     "int8": "Int",
     "uint16": "Int",
     "int16": "Int",
-    "uint32": "Int",
+    "uint32": "UInt32",  # exceeds GraphQL's signed 32-bit Int
     "int32": "Int",
-    "uint64": "Int",  # Could be custom scalar if needed
-    "int64": "Int",   # Could be custom scalar if needed
+    "uint64": "UInt64",  # custom scalars: GraphQL Int cannot hold 64-bit values
+    "int64": "Int64",
     "bool": "Boolean",
     "float": "Float",
     "double": "Float",
     "string": "String",
     "bytes": "String",    # bytes treated identically to string (same wire format)
 }
+
+
+# Custom scalar declarations emitted once per schema document, next to the
+# @package directive definition, for the integer types GraphQL's Int cannot hold.
+_SCALAR_DEFS = 'scalar UInt32\nscalar Int64\nscalar UInt64'
+
+
+def _enum_type_name(enum) -> str:
+    """GraphQL type name of an enum.
+
+    Message-scoped enums include the message name so two messages can declare a
+    nested enum with the same name without colliding.
+    """
+    message = getattr(enum, 'message', None)
+    if message:
+        return f"{pascal_case(enum.package)}{message}{enum.name}"
+    return f"{pascal_case(enum.package)}{enum.name}"
 
 
 def _gql_enum_value_name(name: str) -> str:
@@ -74,7 +90,7 @@ class EnumGqlGen:
             desc = _triple_quote_block(enum.comments)
             if desc:
                 lines.append(desc)
-        enum_name = f"{pascal_case(enum.package)}{enum.name}"
+        enum_name = _enum_type_name(enum)
         lines.append(f'enum {enum_name} @package(name: "{enum.package}") {{')
         for key, value in enum.data.items():
             if value[1]:
@@ -90,7 +106,17 @@ class FieldGqlGen:
     @staticmethod
     def type_name(field):
         t = field.field_type
-        base_type = gql_types.get(t, f"{pascal_case(field.package)}{t}")
+        if t in gql_types:
+            base_type = gql_types[t]
+        else:
+            # Name the type after the package that *defines* it, which differs
+            # from the package of the field for imported types.
+            owner = getattr(field, 'type_package', None) or field.package
+            nested_in = getattr(field, 'type_message', None)
+            if nested_in and getattr(field, 'is_enum', False):
+                base_type = f"{pascal_case(owner)}{nested_in}{t}"
+            else:
+                base_type = f"{pascal_case(owner)}{t}"
 
         # Handle arrays
         if getattr(field, 'is_array', False):
@@ -151,7 +177,9 @@ class FieldGqlGen:
         # Expand a message-typed field into its child fields.
         # If a child field name collides, raise an error and fail generation.
         t = field.field_type
-        child_msg = package.messages.get(t)
+        child_msg = getattr(field, 'type_ref', None)
+        if child_msg is None or not hasattr(child_msg, 'fields'):
+            child_msg = package.messages.get(t)
         if not child_msg:
             # Fallback to normal generation if unknown
             return [FieldGqlGen.generate(field)]
@@ -189,17 +217,62 @@ class MessageGqlGen:
             for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
                 lines.append(f"  # oneof {oneof_name}")
                 for field_name, oneof_field in oneof.fields.items():
-                    gql_type = gql_types.get(oneof_field.field_type,
-                                              f"{pascal_case(oneof_field.package)}{oneof_field.field_type}")
-                    if getattr(oneof_field, 'is_array', False):
-                        gql_type = f"[{gql_type}!]!"
                     # Oneof members are nullable since only one is populated
+                    gql_type = FieldGqlGen.type_name(oneof_field)
                     lines.append(f"  {field_name}: {gql_type}")
         lines.append("}\n")
         return '\n'.join(lines)
 
 
 class FileGqlGen:
+    @staticmethod
+    def definitions(package):
+        """Yield the enum and object-type definitions of *package*, one block each.
+
+        Shared by the per-package files and the stitched schema so both contain
+        exactly the same declarations (including message-scoped enums).
+        """
+        for _, enum in package.enums.items():
+            yield EnumGqlGen.generate(enum).rstrip() + '\n'
+        for _, msg in package.sortedMessages().items():
+            for _, enum_obj in getattr(msg, 'enums', {}).items():
+                yield EnumGqlGen.generate(enum_obj).rstrip() + '\n'
+        for _, msg in package.sortedMessages().items():
+            yield MessageGqlGen.generate(package, msg).rstrip() + '\n'
+
+    @staticmethod
+    def stitched(packages, generator_version):
+        """Return one self-contained schema document covering every package.
+
+        Uses the same definitions as the per-package files (so message-scoped
+        enums are included) and declares the shared directive and scalars once.
+        Query fields keep the bare message name unless two packages declare the
+        same message name, in which case those fields are prefixed with their
+        package to stay unique.
+        """
+        parts = [
+            f'# Stitched schema - generated by struct-frame {generator_version}\n',
+            f'# Contains all packages: {", ".join(sorted(packages.keys()))}\n\n',
+            _PACKAGE_DIRECTIVE_DEF + '\n\n',
+            _SCALAR_DEFS + '\n\n',
+        ]
+        counts = {}
+        for pkg in packages.values():
+            for _, msg in pkg.sortedMessages().items():
+                counts[msg.name] = counts.get(msg.name, 0) + 1
+
+        query_fields = []
+        for pkg in packages.values():
+            parts.append(f'# --- Package: {pkg.name} ---\n')
+            for block in FileGqlGen.definitions(pkg):
+                parts.append(block + '\n')
+            for _, msg in pkg.sortedMessages().items():
+                field_name = msg.name if counts[msg.name] == 1 else f"{pkg.name}_{msg.name}"
+                query_fields.append(f"  {field_name}: {pascal_case(msg.package)}{msg.name}")
+        if query_fields:
+            parts.append('type Query {\n' + '\n'.join(query_fields) + '\n}\n')
+        return ''.join(parts)
+
     @staticmethod
     def generate(package):
         # Multiline triple-quoted header block
@@ -213,32 +286,15 @@ class FileGqlGen:
 
         # Emit the @package directive definition so consumers can introspect it
         yield _PACKAGE_DIRECTIVE_DEF + '\n\n'
+        yield _SCALAR_DEFS + '\n\n'
 
         first_block = True
-        # Enums (package-level)
-        for _, enum in package.enums.items():
+        # Enums (package-level and message-scoped) followed by object types
+        for block in FileGqlGen.definitions(package):
             if not first_block:
                 yield '\n'
             first_block = False
-            yield EnumGqlGen.generate(enum).rstrip() + '\n'
-
-        # Nested enums (message-scoped)
-        emitted_nested = set()
-        for _, msg in package.sortedMessages().items():
-            for enum_name, enum_obj in getattr(msg, 'enums', {}).items():
-                if enum_name not in emitted_nested:
-                    emitted_nested.add(enum_name)
-                    if not first_block:
-                        yield '\n'
-                    first_block = False
-                    yield EnumGqlGen.generate(enum_obj).rstrip() + '\n'
-
-        # Messages (object types)
-        for _, msg in package.sortedMessages().items():
-            if not first_block:
-                yield '\n'
-            first_block = False
-            yield MessageGqlGen.generate(package, msg).rstrip() + '\n'
+            yield block
 
         # Root Query type
         if package.messages:

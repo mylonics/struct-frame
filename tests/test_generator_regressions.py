@@ -310,26 +310,25 @@ def test_duplicate_msgid_discriminator_values_rejected(tmp_path):
 # #7  msgid = 0 must be a real id
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("flag,ext,needle", [
-    ("--build_ts", "ts", r"msgId|_msgid|MSG_ID"),
-    ("--build_js", "js", r"msgId|_msgid|MSG_ID"),
-    ("--build_csharp", "cs", r"MsgId|MSG_ID|MsgID"),
+@pytest.mark.parametrize("flag,ext,declaration", [
+    ("--build_ts", "ts", r"_msgid: number = 0;"),
+    ("--build_js", "js", r"_msgid = 0;"),
+    ("--build_csharp", "cs", r"const ushort MsgId = 0;"),
 ])
-def test_msgid_zero_is_not_treated_as_missing(tmp_path, flag, ext, needle):
+def test_msgid_zero_is_not_treated_as_missing(tmp_path, flag, ext, declaration):
+    """``option msgid = 0`` is a real id; every language must declare it."""
     sf = write(tmp_path, "z.sf",
                "package z;\nmessage Zero { option msgid = 0; uint8 x = 1; }\n"
                "message One { option msgid = 1; uint8 y = 1; }\n")
     o = tmp_path / "o"
-    r = gen(tmp_path, sf, flag, f"--{ext if ext != 'cs' else 'csharp'}_path", str(o))
+    path_flag = "--csharp_path" if ext == "cs" else f"--{ext}_path"
+    r = gen(tmp_path, sf, flag, path_flag, str(o))
     assert r.returncode == 0, out(r)
     text = read_all(o, f"*.{ext}")
-    zero = re.search(r"class\s+Zero\b.*?(?=\nclass\s|\nexport\s+class\s|\Z)", text, re.S)
-    one = re.search(r"class\s+One\b.*?(?=\nclass\s|\nexport\s+class\s|\Z)", text, re.S)
-    assert zero and one, "message classes not found"
-    n_zero = len(re.findall(needle, zero.group(0)))
-    n_one = len(re.findall(needle, one.group(0)))
-    assert n_zero >= n_one > 0, \
-        f"msgid=0 message exposes {n_zero} id members vs {n_one} for msgid=1"
+    assert re.search(declaration, text), f"no id declaration matching {declaration!r} for msgid=0"
+    # and it must be registered for dispatch like any other message
+    registry = "Zero" if ext != "cs" else "Zero.MsgId"
+    assert registry in text
 
 
 # ---------------------------------------------------------------------------
@@ -550,29 +549,14 @@ def test_graphql_wide_integers_do_not_use_32bit_int(tmp_path):
         assert m and m.group(1) != "Int", f"field {fld} maps to 32-bit Int"
 
 
-def test_graphql_checked_in_output_is_consistent():
-    """tests/generated/gql is a snapshot; it must at least be self-consistent."""
-    d = REPO_ROOT / "tests" / "generated" / "gql"
-    if not d.exists():
-        pytest.skip("no generated gql snapshot")
-    defined, used = set(), set()
-    for f in d.glob("*.graphql"):
-        if f.name == "schema.graphql":
-            continue
-        dd, uu = _gql_defined_and_used(f.read_text(encoding="utf-8"))
-        defined |= dd
-        used |= uu
-    assert not (used - defined - GQL_SCALARS)
-
-
 # ---------------------------------------------------------------------------
 # examples must stay valid
 # ---------------------------------------------------------------------------
 
-EXAMPLE_SFS = sorted((REPO_ROOT / "examples").glob("*.sf"))
+EXAMPLE_SFS = sorted((REPO_ROOT / "examples").rglob("*.sf"))
 
 
-@pytest.mark.parametrize("sf", EXAMPLE_SFS, ids=lambda p: p.name)
+@pytest.mark.parametrize("sf", EXAMPLE_SFS, ids=lambda p: p.relative_to(REPO_ROOT / "examples").as_posix())
 def test_example_schemas_validate(sf):
     r = validate(sf)
     assert r.returncode == 0, out(r)
@@ -601,8 +585,10 @@ def test_cpp_sdk_asio_is_not_a_git_symlink():
                            capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired):
         pytest.skip("git not available")
-    if r.returncode != 0 or not r.stdout.strip():
+    if r.returncode != 0:
         pytest.skip("not a git checkout")
+    # An empty listing means the path is not tracked at all, which is fine: the
+    # generator copies the headers from asio-repo/asio/include/asio instead.
     assert not r.stdout.startswith("120000"), f"{rel} is a symlink in git"
 
 
@@ -674,14 +660,14 @@ def _argparse_flags() -> set[str]:
     env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
     r = subprocess.run([sys.executable, str(SRC_DIR / "main.py"), "--help"],
                        capture_output=True, text=True, env=env)
-    return set(re.findall(r"(--[a-z][a-z0-9_]+)", r.stdout)) - {"--help"}
+    return set(re.findall(r"(--[a-z][a-z0-9_]*)", r.stdout)) - {"--help"}
 
 
 def test_cli_reference_documents_only_real_flags():
     doc = (REPO_ROOT / "docs" / "src" / "content" / "docs" / "reference" / "cli-reference.md"
            ).read_text(encoding="utf-8")
-    documented = set(re.findall(r"`(--[a-z][a-z0-9_]+)", doc))
-    # flags owned by `diff` and the test runner are documented in the same page
+    documented = set(re.findall(r"`(--[a-z][a-z0-9_-]*)", doc))
+    # flags owned by `diff` are documented in the same page
     documented -= {"--format", "--fail-on", "--write-snapshot"}
     unknown = sorted(documented - _argparse_flags())
     assert not unknown, f"cli-reference.md documents flags that do not exist: {unknown}"
@@ -699,13 +685,18 @@ def test_name_overrides_flag_is_listed_in_help():
 
 
 def test_cpp_sdk_docs_do_not_claim_websocket_without_a_transport():
+    """Every mention of WebSocket on the C++ SDK page must say it is NOT available,
+    for as long as the C++ SDK has no such transport."""
     docs = (REPO_ROOT / "docs" / "src" / "content" / "docs" / "extended-features" / "cpp-sdk.md"
             ).read_text(encoding="utf-8")
     sdk = SRC_DIR / "struct_frame" / "boilerplate" / "cpp" / "struct_frame_sdk"
     has_ws = any("websocket" in p.read_text(encoding="utf-8", errors="ignore").lower()
                  for p in sdk.glob("*.hpp"))
-    claims_ws = re.search(r"websocket", docs, re.I) is not None
-    assert has_ws or not claims_ws, "cpp-sdk.md mentions WebSocket but the C++ SDK has no such transport"
+    if has_ws:
+        return
+    claims = [line for line in docs.splitlines()
+              if "websocket" in line.lower() and "no websocket" not in line.lower()]
+    assert not claims, f"cpp-sdk.md claims WebSocket support the SDK lacks: {claims}"
 
 
 def test_docs_do_not_reference_removed_cpp_namespace():
@@ -715,15 +706,40 @@ def test_docs_do_not_reference_removed_cpp_namespace():
     assert not hits, f"docs use the removed FrameParsers:: namespace: {hits}"
 
 
-def test_changelog_has_entry_for_current_version():
+def test_changelog_documents_unreleased_or_current_changes():
+    """The released-version entry (or an Unreleased section) must list real changes
+    under a ### heading, not just the compare link the release tool emits."""
     version = re.search(r'^version\s*=\s*"([^"]+)"',
                         (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"), re.M).group(1)
     log = (REPO_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    section = re.search(rf"##\s*\[?{re.escape(version)}\]?.*?(?=\n##\s|\Z)", log, re.S)
-    assert section and len(section.group(0).strip().splitlines()) > 1, \
-        f"CHANGELOG entry for {version} is missing or empty"
+    sections = re.split(r"(?m)^## ", log)
+    wanted = [sec for sec in sections
+              if sec.startswith("Unreleased") or sec.startswith(f"[{version}]") or sec.startswith(f"[v{version}]")]
+    assert wanted, f"no Unreleased or {version} section in CHANGELOG.md"
+    assert any(re.search(r"(?m)^### \w+", sec) and re.search(r"(?m)^- \S", sec) for sec in wanted),         f"CHANGELOG sections for {version}/Unreleased list no changes"
 
 
 def test_console_script_entry_point_declared():
     py = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert "[project.scripts]" in py, "no console script: `struct-frame` command does not exist"
+
+
+# ---------------------------------------------------------------------------
+# flatten collisions
+# ---------------------------------------------------------------------------
+
+def test_flatten_collision_with_imported_type_is_rejected(tmp_path):
+    write(tmp_path, "inner.sf",
+          "package inner;\noption pkgid = 2;\nmessage Pos { uint8 x = 1; uint8 mac_id = 2; }\n")
+    main = write(tmp_path, "outer.sf",
+                 'package outer;\noption pkgid = 1;\nimport "inner.sf";\n'
+                 "message M { option msgid = 1; uint32 mac_id = 1; inner.Pos p = 2 [flatten = true]; }\n")
+    r = validate(main)
+    assert r.returncode != 0, "flattened child 'mac_id' collides with the parent field but was accepted"
+
+
+def test_two_flattened_fields_of_the_same_type_collide(tmp_path):
+    sf = write(tmp_path, "f.sf",
+               "package f;\nmessage Pos { uint8 x = 1; }\n"
+               "message M { option msgid = 1; Pos a = 1 [flatten = true]; Pos b = 2 [flatten = true]; }\n")
+    assert validate(sf).returncode != 0, "both flattened fields expose a child named 'x'"

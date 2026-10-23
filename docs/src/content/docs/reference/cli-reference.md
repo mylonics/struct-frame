@@ -7,8 +7,10 @@ description: Complete reference for all struct-frame command-line flags and opti
 
 ```bash
 python -m struct_frame [proto_file] [options]
-python -m struct_frame diff OLD.sf NEW.sf [options]   # wire-compatibility check
+python -m struct_frame diff OLD.sf NEW.sf [options]   # wire-compatibility check (alias: schema-diff)
 ```
+
+`python -m struct_frame` is the supported entry point. The generator exits with a non-zero status when the schema cannot be parsed or fails validation (including syntax errors, duplicate declarations, unknown options and name collisions), so it is safe to use as a build step.
 
 ## Code Generation Flags
 
@@ -40,16 +42,16 @@ python -m struct_frame diff OLD.sf NEW.sf [options]   # wire-compatibility check
 
 | Flag | Description |
 |------|-------------|
-| `--sdk` | Include full SDK with transports (C++, Python, TypeScript) |
-| `--sdk_embedded` | Include embedded SDK without external dependencies (C++ only) |
+| `--sdk` | Include the full SDK with transports. Applies to C++, Python, TypeScript and JavaScript. C# and Rust always receive their SDK core; C has no SDK. |
+| `--sdk_embedded` | Include the embedded SDK without external dependencies (serial transport only). Honoured by C++ only; for other languages the flag has no effect beyond `--sdk`. |
 
 ## C# Options
 
 | Flag | Description | Default |
 |------|-------------|--------|
 | `--csharp_namespace NS` | Root namespace for generated C# code | `StructFrame` |
-| `--csharp_sdk` | Include C# transport implementations (Serial, TCP, UDP, WebSocket) | |
-| `--target_framework TFM` | Target framework for generated `.csproj` | `net8.0` |
+
+The generated `StructFrame.csproj` targets `net8.0;net9.0;net10.0`. The transport implementations under `Framework/Sdk/Transports/` are always copied but only compiled when the matching MSBuild property is set: `-p:IncludeSerialTransport=true` adds the serial transport (and `System.IO.Ports`), and `-p:IncludeNetCoreServer=true` adds the TCP/UDP/WebSocket transports.
 
 ## Other Options
 
@@ -57,9 +59,9 @@ python -m struct_frame diff OLD.sf NEW.sf [options]   # wire-compatibility check
 |------|-------------|
 | `--equality` | Generate equality comparison operators/methods for messages |
 | `--force` | Force regeneration even if hash matches previous generation. The generation hash covers the schema structure **and** documentation (comments that reach generated output), the CLI parameters and the `--name_overrides` file, so editing a comment regenerates without `--force`. |
-| `--hash_path PATH` | Path to store the generation hash file |
+| `--hash_path PATH` | Directory in which to store the generation hash file `.structframe.hash`. Defaults to the first enabled output directory (checked in the order C, C++, Python, TypeScript, JavaScript, C#, GraphQL, Rust). Generation is also repeated when an expected output directory is missing. |
 | `--generate_tests` | Generate test code with dummy values for round-trip verification |
-| `--no_packed` | Generate code without packed structs. Treats every message as variable so that serialization is performed field-by-field. Useful on platforms that do not support struct packing or have different endianness/alignment requirements. |
+| `--no_packed` | Generate code without packed structs. Treats every message as variable so that serialization is performed field-by-field. Useful on platforms that do not support struct packing or have strict alignment requirements. It does **not** add byte-order handling: the C and C++ payload codecs still copy values in host byte order, and the wire format is little-endian (see [Conformance](/reference/conformance/)). |
 | `--name_overrides FILE` | JSON file with explicit per-language name overrides for generated identifiers (see [Generated Names](/basic-usage/message-definitions/#generated-names)) |
 | `--validate` | Validate the proto file without generating code |
 | `--debug` | Enable debug output during code generation |
@@ -127,7 +129,8 @@ treated as if it had been declared with `option variable = true`. The generated
 methods) then read and write each field individually instead of relying on the
 in-memory layout of the struct. This makes the generated code portable across
 platforms that lack support for packed structs or have different
-endianness/alignment requirements.
+alignment requirements. It does not change byte order: the generated C and C++
+code still assumes a little-endian host.
 
 ## Generated Files
 
@@ -141,8 +144,8 @@ endianness/alignment requirements.
 - `struct_frame_sdk/` - SDK files (if `--sdk` or `--sdk_embedded` used)
 
 ### TypeScript
-- `<name>.structframe.ts` - Message definitions and classes
-- Frame utilities (frame-base.ts, frame-headers.ts, frame-profiles.ts, etc.)
+- `<name>.structframe.ts` - Message definitions and classes (file names are kebab-case, e.g. `pkg-test-a.structframe.ts`)
+- Frame utilities (frame-base.ts, frame-headers.ts, frame-profiles.ts, etc.), plus `index.ts` and `package.json`
 - `struct-frame-sdk/` - SDK files (if `--sdk` used)
 
 ### Python
@@ -151,11 +154,12 @@ endianness/alignment requirements.
 - `struct_frame_sdk/` - SDK files (if `--sdk` used)
 
 ### JavaScript
-- `<name>.structframe.js` - Message definitions and classes
-- Frame parsing utilities
+- `<name>.structframe.js` - Message definitions and classes (kebab-case file names)
+- Frame parsing utilities, plus `index.js`
 
 ### GraphQL
-- `<name>.structframe.graphql` - GraphQL schema definitions
+- `<package>.graphql` - GraphQL schema definitions, one file per package
+- `schema.graphql` - All packages combined into one self-contained schema
 
 ### C#
 - `<PackageName>/Enums/<EnumName>.cs` - Enum definitions (one per enum)
@@ -163,7 +167,7 @@ endianness/alignment requirements.
 - `<PackageName>/MessageDefinitions.cs` - Message registry
 - `<PackageName>/SdkInterface.cs` - SDK interface (always generated)
 - `Framework/` - Framing, profiles, types, and SDK core
-- `Framework/Sdk/Transports/` - Transport implementations (if `--csharp_sdk` used)
+- `Framework/Sdk/Transports/` - Transport implementations (always copied; compiled according to the `.csproj` properties above)
 - `StructFrame.csproj` - Project file (always generated)
 
 ### Rust

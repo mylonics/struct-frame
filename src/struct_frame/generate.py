@@ -2,7 +2,9 @@
 # kate: replace-tabs on; indent-width 4;
 
 
+import io
 import os
+import re
 import shutil
 import hashlib
 import json
@@ -200,7 +202,12 @@ def _coerce_scalar_default(field_type, raw_value):
     if field_type in ("float", "double"):
         if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
             return False, f"default value must be a numeric literal for type {field_type}, got {raw_value!r}"
-        return True, float(raw_value)
+        value = float(raw_value)
+        if field_type == "float" and abs(value) > 3.4028234663852886e38 \
+                and value != float("inf") and value != float("-inf"):
+            return False, (f"default value {raw_value} out of range for float "
+                           f"(max 3.4028234663852886e+38)")
+        return True, value
 
     if field_type in ("string", "bytes"):
         # proto_schema_parser's compact-option value coercion is lossy for
@@ -309,6 +316,43 @@ def get_version():
 
     # Last fallback
     return "unknown"
+
+
+_GENERATOR_FINGERPRINT = None
+_FINGERPRINT_SKIP_DIRS = {'__pycache__', 'node_modules', 'asio', 'asio-repo', '.git', 'bin', 'obj'}
+_FINGERPRINT_EXTS = {'.py', '.h', '.hpp', '.ts', '.js', '.cs', '.rs', '.toml', '.json'}
+
+
+def generator_fingerprint():
+    """Hash of the generator and the runtime files it copies into the output.
+
+    The version string alone is not enough: editing a generator or a runtime
+    file in a development checkout (or installing a patched copy) must
+    invalidate previously generated output, otherwise a hash match skips
+    generation and leaves stale code behind. Vendored ASIO is skipped because
+    it is large and never changes with the generator.
+    """
+    global _GENERATOR_FINGERPRINT
+    if _GENERATOR_FINGERPRINT is not None:
+        return _GENERATOR_FINGERPRINT
+    root = os.path.dirname(os.path.realpath(__file__))
+    hasher = hashlib.sha256()
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in _FINGERPRINT_SKIP_DIRS)
+        for filename in sorted(filenames):
+            if os.path.splitext(filename)[1] not in _FINGERPRINT_EXTS:
+                continue
+            path = os.path.join(dirpath, filename)
+            try:
+                with open(path, 'rb') as handle:
+                    content = handle.read()
+            except OSError:
+                continue
+            hasher.update(os.path.relpath(path, root).replace(os.sep, '/').encode('utf-8'))
+            # Normalise line endings so a CRLF checkout hashes like an LF one.
+            hasher.update(content.replace(bytes([13, 10]), bytes([10])))
+    _GENERATOR_FINGERPRINT = hasher.hexdigest()
+    return _GENERATOR_FINGERPRINT
 
 
 def _hash_line(hasher, text):
@@ -490,6 +534,7 @@ def compute_generation_hash(args, packages_dict, name_overrides=None):
     # 1. Add struct-frame version
     version = get_version()
     _hash_line(hasher, f"version:{version}")
+    _hash_line(hasher, f"generator:{generator_fingerprint()}")
 
     # 2. Add relevant CLI parameters (sorted for consistency)
     cli_params = {
@@ -524,7 +569,36 @@ def compute_generation_hash(args, packages_dict, name_overrides=None):
     _hash_line(hasher, f"schema:{compute_schema_hash(packages_dict)}")
     _hash_line(hasher, f"docs:{compute_documentation_hash(packages_dict)}")
 
+    # 5. Import graph: generated #include / import lines come from it, so
+    # adding or removing an import changes the output even when no message does.
+    imports = {name: sorted(deps) for name, deps in sorted(package_imports.items())}
+    _hash_line(hasher, f"imports:{json.dumps(imports, sort_keys=True)}")
+
     return hasher.hexdigest()
+
+
+def expected_outputs_exist(args):
+    """True when every enabled output directory exists and is non-empty.
+
+    The hash file lives next to one output directory, so a matching hash says
+    nothing about the others: deleting e.g. the Python output must trigger
+    regeneration instead of being skipped as "unchanged".
+    """
+    targets = (
+        (args.build_c, args.c_path[0]), (args.build_cpp, args.cpp_path[0]),
+        (args.build_ts, args.ts_path[0]), (args.build_js, args.js_path[0]),
+        (args.build_py, args.py_path[0]), (args.build_gql, args.gql_path[0]),
+        (args.build_csharp, args.csharp_path[0]), (args.build_rust, args.rust_path[0]),
+    )
+    for enabled, path in targets:
+        if not enabled:
+            continue
+        if not os.path.isdir(path):
+            return False
+        with os.scandir(path) as entries:
+            if not any(entries):
+                return False
+    return True
 
 
 def get_hash_file_path(args):
@@ -577,7 +651,7 @@ def read_previous_hash(hash_file_path):
     """
     try:
         if os.path.exists(hash_file_path):
-            with open(hash_file_path, 'r') as f:
+            with open(hash_file_path, 'r', encoding='utf-8') as f:
                 return f.read().strip()
     except OSError:
         pass
@@ -596,7 +670,7 @@ def write_generation_hash(hash_file_path, hash_value):
     if dirname and not os.path.exists(dirname):
         os.makedirs(dirname)
 
-    with open(hash_file_path, 'w') as f:
+    with open(hash_file_path, 'w', encoding='utf-8') as f:
         f.write(hash_value)
 
 
@@ -703,7 +777,7 @@ class Enum(_Documented):
                         return False
             else:
                 if e.name in self.data:
-                    print(f"Enum Field Redclaration")
+                    print(f"Enum Field Redeclaration")
                     return False
                 entry_docs = _EntryDocs(docs.take())
                 self.data[e.name] = (e.number, entry_docs.comments)
@@ -713,6 +787,22 @@ class Enum(_Documented):
         return True
 
     def validate(self, current_package, packages, debug=False):
+        # Enums are stored in a single unsigned byte on the wire (self.size),
+        # so every entry must fit 0..255 and map to a distinct value.
+        seen = {}
+        for key, (number, _docs) in self.data.items():
+            if isinstance(number, bool) or not isinstance(number, int):
+                print(f"Enum {self.name}: entry {key} has non-integer value {number!r}")
+                return False
+            if number < 0 or number > 255:
+                print(f"Enum {self.name}: entry {key} = {number} is out of range "
+                      f"(enums are stored in 1 byte: 0..255)")
+                return False
+            if number in seen:
+                print(f"Enum {self.name}: entries {seen[number]} and {key} both have "
+                      f"value {number}; enum values must be unique")
+                return False
+            seen[number] = key
         return True
 
     def __str__(self):
@@ -725,6 +815,30 @@ class Enum(_Documented):
         for key, value in self.data.items():
             output = output + f"Key: {key}, Value: {value}" + "\n"
         return output
+
+
+_MESSAGE_OPTIONS = ('msgid', 'variable', 'discriminator', 'is_envelope', 'envelope',
+                    'extensions_start', 'magic_bytes')
+_FIELD_OPTIONS = ('flatten', 'size', 'max_size', 'element_size', 'default')
+
+
+def _did_you_mean(name, candidates):
+    """Return a ' (did you mean 'x'?)' hint, or '' when nothing is close."""
+    import difflib
+    close = difflib.get_close_matches(str(name), candidates, n=1, cutoff=0.6)
+    listing = ", ".join(candidates)
+    if close:
+        return f" (did you mean '{close[0]}'? valid options: {listing})"
+    return f" (valid options: {listing})"
+
+
+def _field_option_base(name):
+    """Strip an optional ``(sf.)``/``(struct_frame.)`` qualifier from an option name."""
+    name = str(name).strip()
+    for prefix in ('(sf.', '(struct_frame.'):
+        if name.startswith(prefix) and name.endswith(')'):
+            return name[len(prefix):-1]
+    return name
 
 
 class Field(_Documented):
@@ -781,63 +895,64 @@ class Field(_Documented):
             self.size = default_types[self.field_type]["size"]
             self.validated = True
 
-        try:
-            if hasattr(field, 'options') and field.options:
-                # options is typically a list of ast.Option
-                for opt in field.options:
-                    oname = getattr(opt, 'name', None)
-                    ovalue = getattr(opt, 'value', None)
-                    if not oname:
-                        continue
-                    lname = str(oname).strip()
-                    # Support unqualified and a couple of qualified names
-                    if lname in ('flatten', '(sf.flatten)', '(struct_frame.flatten)'):
-                        sval = str(ovalue).strip().lower()
-                        if sval in ('true', '1', 'yes', 'on') or ovalue is True:
-                            self.flatten = True
-                    elif lname in ('size', '(sf.size)', '(struct_frame.size)'):
-                        # Fixed size for arrays or strings
-                        try:
-                            self.size_option = int(ovalue)
-                            if self.size_option <= 0 or self.size_option > 65535:
-                                print(
-                                    f"Invalid size {self.size_option} for field {self.name}, must be 1-65535")
-                                return False
-                        except (ValueError, TypeError):
+        if hasattr(field, 'options') and field.options:
+            # options is typically a list of ast.Option
+            for opt in field.options:
+                oname = getattr(opt, 'name', None)
+                ovalue = getattr(opt, 'value', None)
+                if not oname:
+                    continue
+                lname = str(oname).strip()
+                if _field_option_base(lname) not in _FIELD_OPTIONS:
+                    print(f"Unknown option '{lname}' on field {self.name}"
+                          f"{_did_you_mean(_field_option_base(lname), _FIELD_OPTIONS)}")
+                    return False
+                # Support unqualified and a couple of qualified names
+                if lname in ('flatten', '(sf.flatten)', '(struct_frame.flatten)'):
+                    sval = str(ovalue).strip().lower()
+                    if sval in ('true', '1', 'yes', 'on') or ovalue is True:
+                        self.flatten = True
+                elif lname in ('size', '(sf.size)', '(struct_frame.size)'):
+                    # Fixed size for arrays or strings
+                    try:
+                        self.size_option = int(ovalue)
+                        if self.size_option <= 0 or self.size_option > 65535:
                             print(
-                                f"Invalid size value {ovalue} for field {self.name}, must be an integer")
+                                f"Invalid size {self.size_option} for field {self.name}, must be 1-65535")
                             return False
-                    elif lname in ('max_size', '(sf.max_size)', '(struct_frame.max_size)'):
-                        # Variable size for arrays or strings
-                        try:
-                            self.max_size = int(ovalue)
-                            if self.max_size <= 0 or self.max_size > 65535:
-                                print(
-                                    f"Invalid max_size {self.max_size} for field {self.name}, must be 1-65535")
-                                return False
-                        except (ValueError, TypeError):
+                    except (ValueError, TypeError):
+                        print(
+                            f"Invalid size value {ovalue} for field {self.name}, must be an integer")
+                        return False
+                elif lname in ('max_size', '(sf.max_size)', '(struct_frame.max_size)'):
+                    # Variable size for arrays or strings
+                    try:
+                        self.max_size = int(ovalue)
+                        if self.max_size <= 0 or self.max_size > 65535:
                             print(
-                                f"Invalid max_size value {ovalue} for field {self.name}, must be an integer")
+                                f"Invalid max_size {self.max_size} for field {self.name}, must be 1-65535")
                             return False
-                    elif lname in ('element_size', '(sf.element_size)', '(struct_frame.element_size)'):
-                        # Individual element size for repeated string arrays
-                        try:
-                            self.element_size = int(ovalue)
-                            if self.element_size <= 0 or self.element_size > 65535:
-                                print(
-                                    f"Invalid element_size {self.element_size} for field {self.name}, must be 1-65535")
-                                return False
-                        except (ValueError, TypeError):
+                    except (ValueError, TypeError):
+                        print(
+                            f"Invalid max_size value {ovalue} for field {self.name}, must be an integer")
+                        return False
+                elif lname in ('element_size', '(sf.element_size)', '(struct_frame.element_size)'):
+                    # Individual element size for repeated string arrays
+                    try:
+                        self.element_size = int(ovalue)
+                        if self.element_size <= 0 or self.element_size > 65535:
                             print(
-                                f"Invalid element_size value {ovalue} for field {self.name}, must be an integer")
+                                f"Invalid element_size {self.element_size} for field {self.name}, must be 1-65535")
                             return False
-                    elif lname in ('default', '(sf.default)', '(struct_frame.default)'):
-                        # Raw literal (bool/int/float/str) from the parser.
-                        # Type-checked/coerced against field_type in validate()
-                        # once the type is resolved (enum lookups need it).
-                        self.default = ovalue
-        except (AttributeError, TypeError):
-            pass
+                    except (ValueError, TypeError):
+                        print(
+                            f"Invalid element_size value {ovalue} for field {self.name}, must be an integer")
+                        return False
+                elif lname in ('default', '(sf.default)', '(struct_frame.default)'):
+                    # Raw literal (bool/int/float/str) from the parser.
+                    # Type-checked/coerced against field_type in validate()
+                    # once the type is resolved (enum lookups need it).
+                    self.default = ovalue
         return True
 
     def validate(self, current_package, packages, debug=False, current_message=None):
@@ -849,6 +964,8 @@ class Field(_Documented):
             if (current_message and '.' not in self.field_type
                     and self.field_type in current_message.enums):
                 nested_enum = current_message.enums[self.field_type]
+                if not nested_enum.validate(current_package, packages, debug):
+                    return False
                 self.is_enum = True
                 self.type_message = current_message.name
                 self.validated = True
@@ -863,29 +980,55 @@ class Field(_Documented):
                     qualified_pkg = parts[0]
                     bare_type = parts[1]
 
+                visible = [current_package.name] + [
+                    name for name in package_imports.get(current_package.name, [])
+                    if name != current_package.name]
                 if qualified_pkg:
-                    # Qualified name: search only in the named package
+                    # Qualified name: search only in the named package, which
+                    # must be this package or one it imports directly.
                     ret = None
                     source_package = None
+                    if qualified_pkg in packages and qualified_pkg not in visible:
+                        print(f"Field {self.name}: type '{self.field_type}' refers to package "
+                              f"'{qualified_pkg}', which is not imported by package "
+                              f"'{current_package.name}'")
+                        return False
                     if qualified_pkg in packages:
                         ret = packages[qualified_pkg].find_field_type(bare_type)
                         if ret:
                             source_package = packages[qualified_pkg]
                 else:
-                    # First try to find the type in the current package
+                    # A type in the current package always wins; otherwise the
+                    # name must resolve in exactly one directly imported package.
                     ret = current_package.find_field_type(self.field_type)
                     source_package = current_package
 
-                    # If not found in current package, search in all packages
                     if not ret:
-                        for pkg_name, pkg in packages.items():
-                            ret = pkg.find_field_type(self.field_type)
-                            if ret:
-                                source_package = pkg
-                                break
+                        found = []
+                        for pkg_name in visible[1:]:
+                            pkg = packages.get(pkg_name)
+                            hit = pkg.find_field_type(self.field_type) if pkg else None
+                            if hit:
+                                found.append((pkg, hit))
+                        if len(found) > 1:
+                            names = ", ".join(pkg.name for pkg, _ in found)
+                            print(f"Field {self.name}: type '{self.field_type}' is ambiguous in "
+                                  f"package '{current_package.name}' (defined in: {names}); "
+                                  f"qualify it, e.g. '{found[0][0].name}.{self.field_type}'")
+                            return False
+                        if found:
+                            source_package, ret = found[0]
+                        elif any(pkg.find_field_type(self.field_type)
+                                 for pkg in packages.values()):
+                            print(f"Field {self.name}: type '{self.field_type}' is defined in a "
+                                  f"package that '{current_package.name}' does not import")
+                            return False
 
                 if ret:
-                    if ret.validate(current_package, packages, debug):
+                    # Validate the type in the context of the package that owns
+                    # it, never the referencing package: names inside it must
+                    # resolve against its own scope.
+                    if ret.validate(source_package, packages, debug):
                         self.is_enum = ret.is_enum
                         self.validated = True
                         base_size = ret.size
@@ -904,6 +1047,16 @@ class Field(_Documented):
                     return False
         else:
             base_size = self.size
+
+        if self.size_option is not None and self.max_size is not None:
+            print(f"Field {self.name}: 'size' (fixed) and 'max_size' (variable) are "
+                  f"mutually exclusive; use one")
+            return False
+        if self.element_size is not None and not (
+                self.is_array and self.field_type in ("string", "bytes")):
+            print(f"Field {self.name}: 'element_size' only applies to repeated "
+                  f"string/bytes fields")
+            return False
 
         # Calculate size for arrays and strings
         if self.is_array:
@@ -1113,10 +1266,16 @@ class OneOf(_Documented):
         for e in oneof_element.elements:
             if type(e) == ast.Comment:
                 docs.comment(e)
-                # Detect the visual extension marker: any comment containing
-                # 'Extension::' (case-sensitive) marks the start of extension
-                # variants.  The next field encountered becomes extensions_start.
-                if 'Extension::' in e.text and self.extensions_start is None:
+                # Detect the visual extension marker: a standalone comment that
+                # begins with 'Extension::' (case-sensitive) marks the start of
+                # extension variants.  The next field encountered becomes
+                # extensions_start.  Prose that merely mentions the marker, or a
+                # trailing comment on the previous variant, must not change the
+                # wire layout.
+                marker_text = e.text.strip().lstrip('/*# ').lstrip()
+                if (marker_text.startswith('Extension::')
+                        and not getattr(e, 'inline', False)
+                        and self.extensions_start is None):
                     self._pending_extensions = True
             elif type(e) == ast.Option:
                 docs.statement(owner=self)
@@ -1231,6 +1390,17 @@ class OneOf(_Documented):
             for fval in self.fields.values():
                 fval.is_extension = (fval.number >= self.extensions_start)
 
+        if not self.fields:
+            print(f"Error: oneof '{msg_label}{self.name}' has no variants "
+                  f"(an empty union is invalid C and has no wire representation)")
+            return False
+
+        if (self.max_size_override is not None and self.min_size_override is not None
+                and self.min_size_override > self.max_size_override):
+            print(f"Error: oneof '{msg_label}{self.name}' has min_size={self.min_size_override} "
+                  f"greater than max_size={self.max_size_override}")
+            return False
+
         # Validate each field and track the largest size
         max_size = 0
         max_base_size = 0
@@ -1250,13 +1420,9 @@ class OneOf(_Documented):
 
             # Check if this field's type has a message ID
             if not field.is_default_type and not field.is_enum:
-                field_type = current_package.find_field_type(field.field_type)
-                # If not found in current package, search in all packages
-                if not field_type:
-                    for pkg_name, pkg in packages.items():
-                        field_type = pkg.find_field_type(field.field_type)
-                        if field_type:
-                            break
+                # The field was already resolved (in the right package) by
+                # Field.validate; never re-look it up by bare name.
+                field_type = field.type_ref
 
                 if field_type and hasattr(field_type, 'id') and field_type.id is not None:
                     # This message type has an ID
@@ -1355,6 +1521,18 @@ class OneOf(_Documented):
                 default_bytes = b""
             self.variant_extra.append((base, default_bytes))
 
+        if self.discriminator_type is not None:
+            seen_disc = {}
+            for disc_val, field_name, _size in self.variant_info:
+                if disc_val in seen_disc:
+                    print(f"Error: oneof '{msg_label}{self.name}': variants "
+                          f"'{seen_disc[disc_val]}' and '{field_name}' have the same "
+                          f"discriminator value {disc_val}, so a receiver cannot tell "
+                          f"them apart. Use distinct message types, or "
+                          f"'option discriminator = field_order;'")
+                    return False
+                seen_disc[disc_val] = field_name
+
         self.validated = True
         return True
 
@@ -1365,14 +1543,8 @@ class OneOf(_Documented):
             int: The discriminator value (msgid or 1-based field order index)
         """
         if self.discriminator_type == "msgid":
-            field = self.fields[field_name]
-            field_type = current_package.find_field_type(field.field_type)
-            if not field_type:
-                for pkg_name, pkg in packages.items():
-                    field_type = pkg.find_field_type(field.field_type)
-                    if field_type:
-                        break
-            return field_type.id if field_type else 0
+            field_type = self.fields[field_name].type_ref
+            return field_type.id if field_type is not None and field_type.id is not None else 0
         elif self.discriminator_type == "field_order":
             # 1-based index
             return self.field_order.index(field_name) + 1
@@ -1428,8 +1600,13 @@ class Message(_Documented):
             if type(e) == ast.Option:
                 docs.statement(owner=self)
                 if e.name == "msgid":
-                    if self.id:
-                        raise Exception(f"Redefinition of msg_id for {e.name}")
+                    if self.id is not None:
+                        print(f"Redefinition of msgid in message {self.name}")
+                        return False
+                    if isinstance(e.value, bool) or not isinstance(e.value, int):
+                        print(f"Invalid msgid {e.value!r} in message {self.name}: "
+                              f"must be an integer")
+                        return False
                     self.id = e.value
                 elif e.name == "variable":
                     sval = str(e.value).strip().lower()
@@ -1493,6 +1670,10 @@ class Message(_Documented):
                             f"magic bytes must be non-zero")
                         return False
                     self.magic_bytes_override = (b1, b2)
+                else:
+                    print(f"Unknown option '{e.name}' in message {self.name}"
+                          f"{_did_you_mean(e.name, _MESSAGE_OPTIONS)}")
+                    return False
             elif type(e) == ast.Comment:
                 docs.comment(e)
             elif type(e) == ast.OneOf:
@@ -1615,22 +1796,28 @@ class Message(_Documented):
 
         # Flatten collision detection: if a field is marked as flatten and is a message,
         # ensure none of the child field names collide with fields in this message.
-        parent_field_names = set(self.fields.keys())
+        taken = {name: name for name in self.fields.keys()}
         for key, value in self.fields.items():
             if getattr(value, 'flatten', False):
                 # Only meaningful for non-default, non-enum message types
                 if value.is_default_type or value.is_enum:
                     # Flatten has no effect on primitives/enums; skip
                     continue
-                child = current_package.find_field_type(value.field_type)
+                # Use the type resolved by Field.validate: it may live in an
+                # imported package, not in current_package.
+                child = value.type_ref
                 if not child or getattr(child, 'is_enum', False) or not hasattr(child, 'fields'):
                     # Unknown or non-message type; skip
                     continue
                 for ck in child.fields.keys():
-                    if ck in parent_field_names:
+                    if ck in taken:
+                        other = taken[ck]
+                        what = (f"existing field '{ck}'" if other == ck
+                                else f"field '{other}.{ck}' (also flattened)")
                         print(
-                            f"Flatten collision in Message {self.name}: field '{key}.{ck}' collides with existing field '{ck}'.")
+                            f"Flatten collision in Message {self.name}: field '{key}.{ck}' collides with {what}.")
                         return False
+                    taken[ck] = f"{key}"
 
         # Array validation
         for key, value in self.fields.items():
@@ -1795,7 +1982,7 @@ class Package:
 
     def addEnum(self, enum, comments, source_file=None):
         if enum.name in self.enums:
-            print(f"Enum Redclaration")
+            print(f"Enum Redeclaration")
             return False
         self.enums[enum.name] = Enum(self.name, comments)
         self.enums[enum.name].source_file = source_file
@@ -1803,7 +1990,7 @@ class Package:
 
     def addMessage(self, message, comments, source_file=None):
         if message.name in self.messages:
-            print(f"Message Redclaration")
+            print(f"Message Redeclaration")
             return False
         self.messages[message.name] = Message(self.name, comments)
         self.messages[message.name].source_file = source_file
@@ -1968,6 +2155,31 @@ parser.add_argument('--no_packed', action='store_true',
                           'have different endianness/alignment requirements.'))
 
 
+_SYNTAX_ERROR_RE = re.compile(r"^line \d+:\d+ ", re.M)
+
+
+def _parse_schema_text(text, filename):
+    """Parse schema text, treating any ANTLR syntax error as fatal.
+
+    proto-schema-parser prints syntax errors to stderr and then carries on with
+    a partial AST, which used to produce "successful" generation of a
+    truncated schema. Capture that output and fail instead. Returns the parsed
+    file, or None after printing the errors.
+    """
+    captured = io.StringIO()
+    with contextlib.redirect_stderr(captured):
+        result = Parser().parse(text)
+    errors = captured.getvalue()
+    if _SYNTAX_ERROR_RE.search(errors):
+        print(f"Error: syntax error in {filename}:")
+        for line in errors.strip().splitlines():
+            print(f"  {line}")
+        return None
+    if errors.strip():
+        sys.stderr.write(errors)
+    return result
+
+
 _parser_checked = False
 
 
@@ -2019,10 +2231,16 @@ def parseFile(filename, base_path=None, importing_package=None):
         base_path = os.path.dirname(abs_filename)
 
     try:
-        with open(abs_filename, "r") as f:
-            result = Parser().parse(f.read())
+        with open(abs_filename, "r", encoding="utf-8") as f:
+            text = f.read()
+        result = _parse_schema_text(text, filename)
+        if result is None:
+            return False
     except FileNotFoundError:
         print(f"Error: Could not find file {filename}")
+        return False
+    except UnicodeDecodeError as e:
+        print(f"Error: {filename} is not valid UTF-8: {e}")
         return False
     except (OSError, ValueError, TypeError, SyntaxError, RuntimeError) as e:
         print(f"Error parsing file {filename}: {e}")
@@ -2159,6 +2377,11 @@ def validate_package_id(package_name, new_id, filename):
     Returns:
         bool: True if valid, False if conflict detected
     """
+    if isinstance(new_id, bool) or not isinstance(new_id, int):
+        print(f"Error: Package '{package_name}' has invalid pkgid {new_id!r} in "
+              f"{filename}: must be an integer in range 0-255")
+        return False
+
     current_id = packages[package_name].package_id
 
     if current_id is not None:
@@ -2282,6 +2505,26 @@ def validate_packages(debug=False):
         if not value.validate_package(packages, debug):
             print(f"Failed To Validate Package: {key}")
             return False
+
+    # Reject effective message-ID collisions across packages. Packages that
+    # inherit a pkgid from their importer share that pkgid, so msgid 5 in the
+    # importer and msgid 5 in the inheriting package would both be 0x<pkgid>05.
+    effective_ids = {}
+    for pkg_name in sorted(packages):
+        pkg = packages[pkg_name]
+        for msg_name, msg in pkg.messages.items():
+            if msg.id is None:
+                continue
+            effective = ((pkg.package_id << 8) | msg.id) if pkg.package_id is not None else msg.id
+            if effective in effective_ids:
+                other = effective_ids[effective]
+                print(f"Error: message ID collision: {other} and {pkg_name}.{msg_name} both "
+                      f"have effective ID 0x{effective:04X} "
+                      f"(package ID {pkg.package_id}, msgid {msg.id}). Packages without their "
+                      f"own 'option pkgid' inherit their importer's, so give '{pkg_name}' an "
+                      f"explicit pkgid or renumber the message.")
+                return False
+            effective_ids[effective] = f"{pkg_name}.{msg_name}"
 
     return True
 
@@ -3122,7 +3365,9 @@ def main():
         parser.print_help()
         return 1
 
-    parseFile(args.filename)
+    if not parseFile(args.filename):
+        print("Parsing failed")
+        return 1
 
     # If --no_packed is set, mark every message as variable BEFORE validation so
     # that min_size and other variable-related metadata is computed correctly.
@@ -3166,6 +3411,10 @@ def main():
             ('c', args.build_c), ('cpp', args.build_cpp), ('ts', args.build_ts),
             ('js', args.build_js), ('py', args.build_py), ('gql', args.build_gql),
             ('csharp', args.build_csharp), ('rust', args.build_rust)) if enabled]
+        if args.validate and not target_languages:
+            # Nothing selected: validate against every target so a schema that
+            # passes here cannot fail later when a language is enabled.
+            target_languages = ['c', 'cpp', 'ts', 'js', 'py', 'gql', 'csharp', 'rust']
         validate_generated_names(packages, target_languages, name_overrides)
     except NameOverrideError as err:
         print(f"Error: {err}")
@@ -3183,7 +3432,7 @@ def main():
     hash_file_path = get_hash_file_path(args)
     previous_hash = read_previous_hash(hash_file_path)
 
-    if not args.force and previous_hash == current_hash:
+    if not args.force and previous_hash == current_hash and expected_outputs_exist(args):
         print("Generation skipped: no changes detected (hash matches previous generation)")
         print(f"  Hash file: {hash_file_path}")
         print("  Use --force to regenerate anyway")
@@ -3232,40 +3481,14 @@ def main():
 
     if (args.build_gql):
         with language_model('gql', name_overrides):
-            from struct_frame.gql_gen import _PACKAGE_DIRECTIVE_DEF
             for key, value in packages.items():
                 name = os.path.join(args.gql_path[0], value.name + '.graphql')
                 data = ''.join(FileGqlGen.generate(value))
                 files[name] = data
 
-            # Generate a stitched schema.graphql that combines all packages into
-            # one document with extend-based merging.  Each per-package file is
-            # included via a comment header so tooling can trace provenance.
-            stitched_parts = [
-                f'# Stitched schema — generated by struct-frame {get_version()}\n',
-                f'# Contains all packages: {", ".join(sorted(packages.keys()))}\n\n',
-                _PACKAGE_DIRECTIVE_DEF + '\n\n',
-            ]
-            query_fields = []
-            for key, value in packages.items():
-                stitched_parts.append(f'# --- Package: {value.name} ---\n')
-                # Re-emit enum and message types (without the per-file directive def)
-                from struct_frame.gql_gen import EnumGqlGen, MessageGqlGen, pascal_case as _pc
-                for _, enum in value.enums.items():
-                    stitched_parts.append(
-                        EnumGqlGen.generate(enum).rstrip() + '\n\n')
-                for _, msg in value.sortedMessages().items():
-                    stitched_parts.append(MessageGqlGen.generate(
-                        value, msg).rstrip() + '\n\n')
-                for _, msg in value.sortedMessages().items():
-                    type_name = f'{_pc(value.name)}{msg.name}'
-                    query_fields.append(f'  {msg.name}: {type_name}')
-            if query_fields:
-                stitched_parts.append('type Query {\n')
-                stitched_parts.append('\n'.join(query_fields) + '\n')
-                stitched_parts.append('}\n')
-            files[os.path.join(args.gql_path[0], 'schema.graphql')
-                  ] = ''.join(stitched_parts)
+            # One self-contained schema.graphql combining every package.
+            files[os.path.join(args.gql_path[0], 'schema.graphql')] = (
+                FileGqlGen.stitched(packages, get_version()))
 
     if (args.build_rust):
         with language_model('rust', name_overrides):
@@ -3378,6 +3601,17 @@ def main():
                 exclude_items = ['asio.hpp', 'asio', 'asio-repo',
                                  'network_transports.hpp', 'sdk.hpp']
 
+        # ASIO ships as a git symlink (``asio`` -> ``asio-repo/asio/include/asio``)
+        # next to the whole vendored submodule. A symlink is a 27-byte text file
+        # on Windows checkouts and is absent from built wheels, so never copy it
+        # (or the multi-megabyte submodule) verbatim; copy just the headers from
+        # their real location below.
+        asio_headers = os.path.join(sdk_src, 'asio-repo', 'asio', 'include', 'asio')
+        copy_asio = ('asio' not in exclude_items and os.path.isdir(asio_headers)
+                     and 'cpp' in src_dir)
+        if copy_asio:
+            exclude_items = list(exclude_items) + ['asio', 'asio-repo']
+
         # Copy SDK files with exclusions
         for item in os.listdir(sdk_src):
             if item in exclude_items:
@@ -3393,6 +3627,9 @@ def main():
                 shutil.copy2(src_path, dst_path)
             elif os.path.isdir(src_path):
                 shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+
+        if copy_asio:
+            shutil.copytree(asio_headers, os.path.join(sdk_dst, 'asio'), dirs_exist_ok=True)
 
     # Copy all boilerplate files (excluding SDK by default)
     # SDK is handled separately below based on --sdk or --sdk_embedded flags

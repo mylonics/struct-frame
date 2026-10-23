@@ -427,7 +427,7 @@ class FieldCSharpGen():
                     elif field.field_type in csharp_type_sizes:
                         # Primitive array - use Buffer.BlockCopy
                         lines.append(f'            if ({var_name} != null)')
-                        lines.append(f'                Buffer.BlockCopy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length * {element_size}, {total_data_size}));')
+                        lines.append(f'                WireArray.Write({var_name}, buffer, {fmt_offset(base_offset)}, {total_data_size});')
                     else:
                         # Nested struct array - serialize each element using SerializeTo
                         lines.append(f'            if ({var_name} != null)')
@@ -448,7 +448,7 @@ class FieldCSharpGen():
                     elif field.field_type in csharp_type_sizes:
                         # Primitive array
                         lines.append(f'            if ({var_name}Data != null)')
-                        lines.append(f'                Buffer.BlockCopy({var_name}Data, 0, buffer, {fmt_offset(base_offset + count_size)}, Math.Min({var_name}Data.Length * {element_size}, {total_data_size}));')
+                        lines.append(f'                WireArray.Write({var_name}Data, buffer, {fmt_offset(base_offset + count_size)}, {total_data_size});')
                     else:
                         # Nested struct array - serialize each element using SerializeTo
                         lines.append(f'            if ({var_name}Data != null)')
@@ -544,7 +544,7 @@ class FieldCSharpGen():
                         base_type = csharp_types.get(field.field_type, field.field_type)
                         total_data_size = field.size
                         lines.append(f'            msg.{var_name} = new {base_type}[{field.size_option}];')
-                        lines.append(f'            MemoryMarshal.Cast<byte, {base_type}>(data.Slice({offset}, {total_data_size})).CopyTo(msg.{var_name}.AsSpan());')
+                        lines.append(f'            WireArray.Read<{base_type}>(data.Slice({offset}, {total_data_size}), msg.{var_name}.AsSpan());')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
@@ -570,7 +570,7 @@ class FieldCSharpGen():
                         base_type = csharp_types.get(field.field_type, field.field_type)
                         total_data_size = field.size - count_size  # subtract count bytes
                         lines.append(f'            msg.{var_name}Data = new {base_type}[{field.max_size}];')
-                        lines.append(f'            MemoryMarshal.Cast<byte, {base_type}>(data.Slice({offset + count_size}, {total_data_size})).CopyTo(msg.{var_name}Data.AsSpan());')
+                        lines.append(f'            WireArray.Read<{base_type}>(data.Slice({offset + count_size}, {total_data_size}), msg.{var_name}Data.AsSpan());')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
@@ -675,7 +675,7 @@ class MessageCSharpGen():
             result += EnumCSharpGen.generate_nested(enum, name_override=renamed_enums.get(enum_name))
             result += '\n'
 
-        if msg.id:
+        if msg.id is not None:
             result += '        /// <summary>Message identifier.</summary>\n'
             if package and package.package_id is not None:
                 combined_msg_id = (package.package_id << 8) | msg.id
@@ -1148,7 +1148,7 @@ class MessageCSharpGen():
                     result += f'            offset += {n_var} * {element_size};\n'
                 elif type_name in type_sizes:
                     result += f'            if ({var_name}Data != null)\n'
-                    result += f'                Buffer.BlockCopy({var_name}Data, 0, buffer, offset, Math.Min({var_name}Data.Length, {n_var}) * {element_size});\n'
+                    result += f'                WireArray.Write({var_name}Data, buffer, offset, {n_var} * {element_size});\n'
                     result += f'            offset += {n_var} * {element_size};\n'
                 elif f.is_enum:
                     result += f'            if ({var_name}Data != null)\n'
@@ -1308,7 +1308,7 @@ class MessageCSharpGen():
                     base_type = csharp_types.get(type_name, type_name)
                     field_lines.append(f'msg.{var_name}Data = new {base_type}[{f.max_size}];')
                     field_lines.append(f'if (offset + msg.{var_name}Count * {element_size} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");')
-                    field_lines.append(f'MemoryMarshal.Cast<byte, {base_type}>(data.Slice(offset, msg.{var_name}Count * {element_size})).CopyTo(msg.{var_name}Data.AsSpan());')
+                    field_lines.append(f'WireArray.Read<{base_type}>(data.Slice(offset, msg.{var_name}Count * {element_size}), msg.{var_name}Data.AsSpan());')
                     field_lines.append(f'offset += msg.{var_name}Count * {element_size};')
                 elif f.is_enum:
                     field_lines.append(f'msg.{var_name}Data = new byte[{f.max_size}];')
@@ -1925,7 +1925,7 @@ class FileCSharpGen():
         result += '        {\n'
 
         for key, msg in package.sortedMessages().items():
-            if msg.id:
+            if msg.id is not None:
                 structName = msg.name
                 magic1 = '0'
                 magic2 = '0'
@@ -1948,7 +1948,7 @@ class FileCSharpGen():
         result += '        {\n'
 
         for key, msg in package.sortedMessages().items():
-            if msg.id:
+            if msg.id is not None:
                 structName = msg.name
                 if package.package_id is not None:
                     combined_msg_id = (package.package_id << 8) | msg.id
@@ -1966,7 +1966,7 @@ class FileCSharpGen():
         result += '        {\n'
 
         for key, msg in package.sortedMessages().items():
-            if msg.id:
+            if msg.id is not None:
                 structName = msg.name
                 if package.package_id is not None:
                     combined_msg_id = (package.package_id << 8) | msg.id
@@ -2003,7 +2003,7 @@ class FileCSharpGen():
             result += '            {\n'
 
         for key, msg in package.sortedMessages().items():
-            if msg.id:
+            if msg.id is not None:
                 structName = msg.name
                 magic1 = '0'
                 magic2 = '0'

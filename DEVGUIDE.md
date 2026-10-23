@@ -102,12 +102,14 @@ public int small_int { get; set; }  // Currently snake_case
 
 #### C++
 ```cpp
-namespace FrameParsers {
-    // Boilerplate code (parsers, encoders, utilities)
+namespace structframe {
+    // Boilerplate code (parsers, encoders, utilities); sub-namespaces:
+    //   structframe::headers, structframe::payloads, structframe::sdk
+    namespace serialization_test {
+        // Generated message structs and enums for the package
+        struct BasicTypesMessage { ... };
+    }
 }
-
-// Generated message structs in global namespace
-struct SerializationTestBasicTypesMessage { ... }
 ```
 
 #### Python
@@ -155,10 +157,10 @@ SDK helper directories follow the same naming conventions as files:
 #include "frame_base.hpp"
 #include "serialization_test.structframe.hpp"
 
-using namespace FrameParsers;
+using namespace structframe;
 
 ProfileStandardWriter writer(buffer, buffer_size);
-SerializationTestBasicTypesMessage msg;
+serialization_test::BasicTypesMessage msg;
 ```
 
 **Python:**

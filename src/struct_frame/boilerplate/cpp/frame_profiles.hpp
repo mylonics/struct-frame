@@ -122,6 +122,14 @@ class FrameEncoderWithCrc {
       payload_size = T::MAX_SIZE;
     }
 
+    // A profile without a package-id byte carries only a 1-byte message id.
+    // Fail rather than silently truncating a larger (package-qualified) id.
+    if constexpr (!Config::has_pkg_id) {
+      if constexpr (T::MSG_ID > 0xFF) {
+        return 0;
+      }
+    }
+
     size_t total_size = Config::overhead + payload_size;
 
     if (buffer_size < total_size || payload_size > Config::max_payload) {
@@ -227,6 +235,14 @@ class FrameEncoderMinimal {
   static size_t encode(uint8_t* buffer, size_t buffer_size, const T& msg) {
     // Minimal profiles ALWAYS use MAX_SIZE (no variable-length support)
     constexpr size_t payload_size = T::MAX_SIZE;
+
+    // A profile without a package-id byte carries only a 1-byte message id.
+    // Fail rather than silently truncating a larger (package-qualified) id.
+    if constexpr (!Config::has_pkg_id) {
+      if constexpr (T::MSG_ID > 0xFF) {
+        return 0;
+      }
+    }
 
     size_t total_size = Config::overhead + payload_size;
 
@@ -759,6 +775,11 @@ class AccumulatingReader {
 
   /**
    * Construct an AccumulatingReader with internal buffer for partial messages.
+   *
+   * Only usable without a callback for profiles that carry no checksum: the
+   * checksum of a CRC profile includes per-message magic bytes that only the
+   * message-info callback can supply, so such a reader would reject every real
+   * frame. Pass the callback (see the class comment) for CRC profiles.
    */
   AccumulatingReader()
       : internal_data_len_(0),
@@ -771,7 +792,12 @@ class AccumulatingReader {
         get_message_info_{},
         diagnostics_{},
         last_seq_(0),
-        last_seq_valid_(false) {}
+        last_seq_valid_(false) {
+    static_assert(!Config::has_crc || !std::is_same_v<GetMessageInfoFn, std::nullptr_t>,
+                  "A CRC profile needs the message-info callback (its checksum includes per-message "
+                  "magic bytes): use AccumulatingReader<Config, Size, decltype(&get_message_info)> "
+                  "reader(get_message_info)");
+  }
 
   /**
    * Construct an AccumulatingReader with message info callback (for minimal profiles).
@@ -1202,7 +1228,7 @@ class AccumulatingReader {
         // msg_id is at header_size - 1 position
         uint8_t msg_id = internal_buffer_[Config::header_size - 1];
         if (get_message_info_) {
-          auto info = get_message_info_(msg_id);
+          auto info = lookup_message_info(msg_id);
           if (info) {
             size_t msg_len = info.size;
             expected_frame_size_ = Config::header_size + msg_len;
@@ -1274,7 +1300,7 @@ class AccumulatingReader {
             full_msg_id = static_cast<uint16_t>(internal_buffer_[Config::header_size - 2]) << 8;
           }
           full_msg_id |= internal_buffer_[Config::header_size - 1];
-          auto info = get_message_info_(full_msg_id);
+          auto info = lookup_message_info(full_msg_id);
           // Valid frames may carry anywhere from min_size (variable messages /
           // truncated extensions) up to size bytes — only count outside that range.
           if (info && (payload_len > info.size || payload_len < info.min_size)) {
@@ -1335,7 +1361,7 @@ class AccumulatingReader {
 
   FrameMsgInfo handle_minimal_msg_id(uint8_t msg_id) {
     if (get_message_info_) {
-      auto info = get_message_info_(msg_id);
+      auto info = lookup_message_info(msg_id);
       if (info) {
         size_t msg_len = info.size;
         expected_frame_size_ = Config::header_size + msg_len;
@@ -1449,7 +1475,7 @@ class AccumulatingReader {
           full_msg_id = static_cast<uint16_t>(frame_start[Config::header_size - 2]) << 8;
         }
         full_msg_id |= frame_start[Config::header_size - 1];
-        auto info = get_message_info_(full_msg_id);
+        auto info = lookup_message_info(full_msg_id);
         if (info && (payload_len > info.size || payload_len < info.min_size)) {
           diagnostics_.cnt_len_errors++;
         }
@@ -1495,6 +1521,21 @@ class AccumulatingReader {
   const uint8_t* current_buffer_;  // Current external buffer being processed
   size_t current_size_;            // Size of current external buffer
   size_t current_offset_;          // Current position in external buffer
+
+  /**
+   * Look up message info through the configured callback. With the default
+   * (std::nullptr_t) callback type there is nothing to call, so return an empty,
+   * invalid MessageInfo; this keeps readers for profiles that carry a length
+   * (which need no callback) compilable.
+   */
+  auto lookup_message_info(uint16_t id) const {
+    if constexpr (std::is_same_v<GetMessageInfoFn, std::nullptr_t>) {
+      (void)id;
+      return MessageInfo();
+    } else {
+      return get_message_info_(id);
+    }
+  }
 
   GetMessageInfoFn get_message_info_;
 
