@@ -969,8 +969,13 @@ class TestRunner:
                         sdk_dir = self.project_root / "src" / "struct_frame" / "boilerplate" / "cpp"
                         cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{sdk_dir}" -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
                     else:
-                        cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
-                
+                        # Timing binaries are meaningless at -O0, so optimise them unless the
+                        # caller already chose a level (e.g. the sanitizer lanes set -O1).
+                        opt = ""
+                        if runner.startswith("test_profiling") and " -O" not in f" {_cxxflags()}":
+                            opt = "-O2 "
+                        cmd = f'{_cxx()} -std=c++20 {opt}{_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
+
                 ok, _, _ = self.run_cmd(cmd)
                 if not ok:
                     success = False

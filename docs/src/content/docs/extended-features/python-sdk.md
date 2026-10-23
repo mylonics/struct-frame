@@ -57,6 +57,10 @@ config = StructFrameSdkConfig(
 )
 sdk = StructFrameSdk(config)
 
+# Register a codec so handlers receive decoded messages (without one they receive raw
+# bytes). A generated message class is a valid codec: it has `msg_id` and `deserialize`.
+sdk.register_codec(Status)
+
 # Subscribe to messages by ID; subscribe() returns an unsubscribe callable
 def handle_status(msg: Status, msg_id: int):
     print(f"Status: {msg.value}")

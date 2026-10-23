@@ -147,6 +147,24 @@ be omitted from the wire" marker (`optional`-style omission is not part of this 
 > this preserves the value but can normalize unusual formatting (e.g. `"True"` becomes `"true"`).
 > Prefer defaults whose text doesn't look like another literal type if exact formatting matters.
 
+### Getting a message with its defaults, per language
+
+For `DefaultsMessage` in package `default_values` with `u8_val = 200`:
+
+| Language | Construct with defaults | Read the field |
+|----------|-------------------------|----------------|
+| C | `DefaultValuesDefaultsMessage m; DefaultValuesDefaultsMessage_init(&m);` (a bare declaration is **not** initialised) | `m.u8_val` |
+| C++ | `default_values::DefaultsMessage m;` (default member initialisers; `= {}` also works) | `m.u8_val` |
+| Python | `DefaultsMessage()`; pass a keyword to override one field, e.g. `DefaultsMessage(u8_val=5)` | `m.u8_val` |
+| TypeScript / JavaScript | `new DefaultsMessage()` or `new DefaultsMessage({ u8Val: 5 })` | `m.u8Val` |
+| C# | `new DefaultsMessage()` (property initialisers) | `m.U8Val` |
+| Rust | `DefaultsMessage::default()`, or `DefaultsMessage { u8_val: 5, ..Default::default() }` | `m.u8_val` |
+
+Decoding applies the same values: a field that a shorter, older payload did not carry is
+filled from the schema default in every language, and a field the sender did transmit is
+never replaced. In C, `Msg_deserialize` runs `Msg_init` first and then overlays the received bytes, so
+no caller-side padding is needed.
+
 ## Strings
 
 Strings require a size specification.

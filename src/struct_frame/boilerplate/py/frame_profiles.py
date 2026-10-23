@@ -572,6 +572,7 @@ def _frame_format_parse_with_crc(
     result.valid = True
     result.msg_id = msg_id
     result.msg_len = msg_len
+    result.variable_encoding = config.has_length
     result.frame_size = total_size
     result.msg_data = msg_data
     result.package_id = pkg_id
@@ -642,6 +643,7 @@ def _frame_format_parse_minimal(
     result.valid = True
     result.msg_id = msg_id
     result.msg_len = msg_len
+    result.variable_encoding = False
     result.frame_size = total_size
     result.msg_data = msg_data
     

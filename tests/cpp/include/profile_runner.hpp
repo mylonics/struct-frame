@@ -54,7 +54,9 @@ class ProfileRunner {
             using ExpType = std::decay_t<decltype(exp)>;
             if (result.msg_id != ExpType::MSG_ID) return false;
             ExpType decoded{};
-            decoded.deserialize(result);
+            // A deserialize that reports 0 bytes read decoded nothing; an all-zero
+            // expected message would otherwise still compare equal to the untouched copy.
+            if (decoded.deserialize(result) == 0 && result.msg_len > 0) return false;
             return decoded == exp;
           },
           expected);

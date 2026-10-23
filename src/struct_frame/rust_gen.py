@@ -926,6 +926,14 @@ class MessageRustGen():
             if pack_code:
                 result += pack_code + '\n'
         result = _pack_oneofs(result)
+        if is_variable and any(o.variable for o in msg.oneofs.values()):
+            # MAX_SIZE counts the wire-only length prefix of a variable oneof, which the fixed
+            # layout does not carry: top up with zeros so the frame is exactly MAX_SIZE bytes
+            # (what minimal-profile readers expect).
+            result += '        while _pos < Self::MAX_SIZE {\n'
+            result += '            buf[_pos] = 0;\n'
+            result += '            _pos += 1;\n'
+            result += '        }\n'
         result += '        _pos\n'
         result += '    }\n'
 
@@ -1013,7 +1021,7 @@ class MessageRustGen():
                             result += f'{indent}_pos += 1;\n'
                             oneof_var_names.append(f'{oneof_name}_discriminator')
                     result += f'{indent}let mut {oneof_name}_bytes = [0u8; {oneof.size}];\n'
-                    if oneof.variable:
+                    if oneof.variable and variable_mode:
                         # A1: safe read
                         result += f'{indent}let _{oneof_name}_len = u16::from_le_bytes(buf.get(_pos.._pos+2)?.try_into().ok()?) as usize;\n'
                         result += f'{indent}_pos += 2;\n'
@@ -1198,6 +1206,20 @@ class MessageRustGen():
             result += f'    fn pack(&self, buf: &mut [u8]) -> usize {{ Self::pack(self, buf) }}\n'
             result += f'    fn pack_max_size(&self, buf: &mut [u8]) -> usize {{ Self::pack_max_size(self, buf) }}\n'
             result += f'    fn unpack(buf: &[u8]) -> Option<Self> {{ Self::unpack(buf) }}\n'
+            # A variable oneof's wire form can be exactly MAX_SIZE bytes, the same length as
+            # the fixed layout minimal profiles send, so unpack() cannot tell them apart. The
+            # frame records which layout it carried; use that. (A discriminator-less variable
+            # oneof has no readable fixed layout and is always wire-decoded.)
+            has_variable_oneof = any(o.variable for o in msg.oneofs.values())
+            wire_only_oneof = any(o.variable and o.discriminator_type is None for o in msg.oneofs.values())
+            if is_variable and has_variable_oneof and not wire_only_oneof:
+                result += f'    fn unpack_frame(info: &crate::frame_base::FrameMsgInfo) -> Option<Self> {{\n'
+                result += f'        match info.variable_encoding {{\n'
+                result += f'            Some(false) => Self::_unpack_fixed(&info.msg_data),\n'
+                result += f'            Some(true) => Self::_unpack_variable(&info.msg_data),\n'
+                result += f'            None => Self::unpack(&info.msg_data),\n'
+                result += f'        }}\n'
+                result += f'    }}\n'
             result += f'}}\n\n'
 
         return result
@@ -1471,8 +1493,11 @@ class TestRustGen():
         """
         crate_name = 'struct_frame_sdk'
         mod_name = package.name.replace('-', '_').replace(' ', '_')
+        # Every message with an id is round-tripped, including messages with a ``oneof``:
+        # the discriminator selects the first variant (its payload bytes stay at the
+        # zeroed default, which is a valid value for every variant type).
         testable_messages = [(k, m) for k, m in package.sortedMessages().items()
-                             if m.id is not None and not getattr(m, 'oneofs', {})]
+                             if m.id is not None]
 
         # Collect cross-package modules referenced by any field type so we can
         # bring nested struct/enum types into scope for create_test_* helpers.
@@ -1515,6 +1540,9 @@ class TestRustGen():
                 if code:
                     yield code
                 field_index += 1
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                if oneof.auto_discriminator and oneof.variant_info:
+                    yield f'    msg.{oneof_name}_discriminator = {oneof.variant_info[0][0]} as _;\n'
             yield '    msg\n'
             yield '}\n\n'
 
@@ -1573,7 +1601,7 @@ class TestRustGen():
         yield '    if frame.msg_id != M::MSG_ID {\n'
         yield '        return Err(format!("msg_id mismatch: expected {}, got {}", M::MSG_ID, frame.msg_id));\n'
         yield '    }\n'
-        yield '    let decoded = match M::unpack(&frame.msg_data) {\n'
+        yield '    let decoded = match M::unpack_frame(&frame) {\n'
         yield '        Some(d) => d,\n'
         yield '        None => return Err("unpack returned None".to_string()),\n'
         yield '    };\n'

@@ -90,3 +90,8 @@ docs/theme_overrides/
 _codeql_detected_source_root
 *.log
 *.exe
+tests/benchmarks/c/bench
+tests/benchmarks/cpp/bench
+tests/benchmarks/generated/
+tests/benchmarks/ts/dist/
+tests/docs/_scratch/

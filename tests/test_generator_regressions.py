@@ -782,3 +782,80 @@ def test_sdk_embedded_outside_cpp_says_it_has_no_effect(tmp_path):
     r = gen(tmp_path, sf, "--build_py", "--py_path", str(tmp_path / "py"), "--sdk_embedded")
     assert r.returncode == 0, out(r)
     assert "only trims the C++ SDK" in r.stderr, r.stderr
+
+
+# ---------------------------------------------------------------------------
+# cache behaviour for every output language (previously only py and cpp)
+# ---------------------------------------------------------------------------
+
+ALL_LANG_FLAGS = [("c", "--build_c", "--c_path"), ("cpp", "--build_cpp", "--cpp_path"),
+                  ("ts", "--build_ts", "--ts_path"), ("js", "--build_js", "--js_path"),
+                  ("py", "--build_py", "--py_path"), ("gql", "--build_gql", "--gql_path"),
+                  ("csharp", "--build_csharp", "--csharp_path"), ("rust", "--build_rust", "--rust_path")]
+
+
+@pytest.mark.parametrize("lang,build,path", ALL_LANG_FLAGS, ids=[x[0] for x in ALL_LANG_FLAGS])
+def test_cache_skips_unchanged_and_regenerates_deleted_output(tmp_path, lang, build, path):
+    import shutil
+    sf = write(tmp_path, "c.sf", "package c;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    o = tmp_path / lang
+    flags = (build, path, str(o))
+    first = gen(tmp_path, sf, *flags)
+    assert first.returncode == 0, out(first)
+    assert any(o.rglob("*")), "nothing generated"
+
+    again = gen(tmp_path, sf, *flags)
+    assert again.returncode == 0, out(again)
+    assert "Generation skipped" in again.stdout, f"{lang}: unchanged schema was regenerated"
+
+    shutil.rmtree(o)
+    redo = gen(tmp_path, sf, *flags)
+    assert redo.returncode == 0, out(redo)
+    assert "Generation skipped" not in redo.stdout and any(o.rglob("*")), \
+        f"{lang}: output deleted but generation was skipped"
+
+
+# ---------------------------------------------------------------------------
+# C++: a field or oneof named `data` must not break the encoder
+# ---------------------------------------------------------------------------
+
+def test_cpp_message_with_field_and_oneof_named_data_encodes(tmp_path):
+    """The encoder used to call msg.data(); a member named `data` hides that method, so any
+    message with a `data` field or oneof failed to compile when written to a profile."""
+    import os
+    import shutil
+    gxx = shutil.which(os.environ.get("CXX", "g++"))
+    if gxx is None:
+        pytest.skip("no C++ compiler")
+    sf = write(tmp_path, "d.sf",
+               "package d;\n"
+               "message Inner { option msgid = 2; uint8 a = 1; }\n"
+               "message Plain { option msgid = 1; uint8 data = 1; }\n"
+               "message Holder { option msgid = 3; uint8 kind = 1; oneof data { Inner inner = 1; uint8 raw = 2; } }\n")
+    o = tmp_path / "cpp"
+    r = gen(tmp_path, sf, "--build_cpp", "--cpp_path", str(o))
+    assert r.returncode == 0, out(r)
+    src = write(tmp_path, "t.cpp", r'''
+#include <cstdio>
+#include "d.structframe.hpp"
+#include "frame_profiles.hpp"
+using namespace structframe;
+int main() {
+  d::Plain p{}; p.data = 7;
+  d::Holder h{}; h.kind = 1;
+  uint8_t buf[512];
+  ProfileStandardWriter w(buf, sizeof(buf));
+  if (w.write(p) == 0) return 1;
+  if (w.write(h) == 0) return 2;
+  ProfileSensorWriter s(buf, sizeof(buf));
+  if (s.write(p) == 0) return 3;
+  std::printf("ok\n");
+  return 0;
+}
+''')
+    exe = tmp_path / ("t.exe" if os.name == "nt" else "t")
+    build = subprocess.run([gxx, "-std=c++20", f"-I{o}", str(src), "-o", str(exe)],
+                           capture_output=True, text=True, timeout=300)
+    assert build.returncode == 0, build.stderr[-1500:]
+    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
+    assert run.returncode == 0 and "ok" in run.stdout, f"exit {run.returncode}"

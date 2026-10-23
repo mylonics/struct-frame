@@ -1246,6 +1246,21 @@ class TestCppGen():
         return result
     
     @staticmethod
+    def _generate_oneof_init(oneof_name, oneof, use_namespace, prefix):
+        """Populate the first variant of *oneof* and select it via the discriminator."""
+        if not oneof.fields:
+            return ""
+        variant_name, variant = next(iter(oneof.fields.items()))
+        out = ""
+        if oneof.auto_discriminator and oneof.variant_info:
+            # decltype: the discriminator is an integer for msgid oneofs and an enum
+            # class for field_order oneofs.
+            member = f"{prefix}.{oneof_name}_discriminator"
+            out += f"    {member} = static_cast<decltype({member})>({oneof.variant_info[0][0]});\n"
+        out += TestCppGen._generate_field_init(variant, use_namespace, f"{prefix}.{oneof_name}", 0)
+        return out
+
+    @staticmethod
     def generate(package):
         """Generate test code for all messages in a package."""
         yield '/* Automatically generated test code for struct-frame messages */\n'
@@ -1271,12 +1286,11 @@ class TestCppGen():
         yield f'namespace {namespace_name} {{\n'
         yield f'namespace Tests {{\n\n'
         
-        # Collect messages with IDs (can be used for round-trip testing).
-        # Messages with ``oneof`` blocks (variant/union messages) are excluded:
-        # they require special discriminator-aware encoding that the simple
-        # round-trip path here does not implement.
+        # Collect messages with IDs (can be used for round-trip testing). Messages with
+        # ``oneof`` blocks are included: the first variant of each oneof is populated
+        # and its discriminator set.
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
-                            if msg.id is not None and not getattr(msg, 'oneofs', {})]
+                            if msg.id is not None]
         
         # Generate message creation functions
         for key, msg in testable_messages:
@@ -1291,11 +1305,12 @@ class TestCppGen():
             yield f'inline {fullStructName} create_test_{camel_to_snake_case(msg.name)}() {{\n'
             yield f'    {fullStructName} msg{{}};\n'
             
-            # Generate field initializations (skip oneofs for simplicity)
             field_index = 0
             for field_key, field in msg.fields.items():
                 yield TestCppGen._generate_field_init(field, use_namespace, "msg", field_index)
                 field_index += 1
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                yield TestCppGen._generate_oneof_init(oneof_name, oneof, use_namespace, "msg")
             
             yield '    return msg;\n'
             yield '}\n\n'

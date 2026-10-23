@@ -29,6 +29,13 @@ const sdk = new StructFrameSdk({
     onError: (error) => console.error('SDK error:', error),
 });
 
+// Register a codec so handlers receive decoded messages. Without one they receive the
+// raw payload bytes (Uint8Array).
+sdk.registerCodec({
+    getMsgId: () => Status._msgid,
+    deserialize: (data) => Status.deserialize(data),
+});
+
 // Subscribe to messages by ID; subscribe() returns an unsubscribe function
 const unsubscribe = sdk.subscribe<Status>(Status._msgid, (msg) => {
     console.log(`Status: ${msg.value}`);

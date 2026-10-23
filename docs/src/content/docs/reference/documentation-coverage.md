@@ -64,7 +64,7 @@ This document maps every user-facing feature area to its documentation status, i
 | `schema-diff` (alias of `diff`) | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
 | `--sdk` / `--sdk_embedded` per-language behaviour | ✅ [CLI Reference](/reference/cli-reference/), [SDK Overview](/extended-features/sdk-overview/) | ✅ | — | — |
 | `.structframe.hash` and `--hash_path` default | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No worked example | Low |
-| Field `[default = ...]` per-language API | ✅ [Message Definitions](/basic-usage/message-definitions/) | ✅ | No per-language accessor docs | Low |
+| Field `[default = ...]` per-language API | ✅ [Message Definitions](/basic-usage/message-definitions/) | ✅ | Per-language construction table added | Low |
 | SDK request/response and error hooks | ✅ [SDK Overview](/extended-features/sdk-overview/) | ✅ | — | — |
 
 ---

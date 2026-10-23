@@ -57,6 +57,13 @@ namespace StructFrame
         public FrameMsgStatus Status { get; set; }
 
         /// <summary>
+        /// Which payload layout the frame carries: <c>true</c> for the variable-length wire form
+        /// (profiles with a length field), <c>false</c> for the fixed MaxSize form (minimal profiles),
+        /// <c>null</c> when unknown. Lets Deserialize avoid guessing the layout from the length.
+        /// </summary>
+        public bool? VariableEncoding { get; set; }
+
+        /// <summary>
         /// Optional parser diagnostics snapshot attached by stream readers.
         /// </summary>
         public ParserDiagnostics? Diagnostics { get; set; }
@@ -76,6 +83,7 @@ namespace StructFrame
             CompId = 0;
             PkgId = 0;
             Status = FrameMsgStatus.None;
+            VariableEncoding = null;
             Diagnostics = null;
         }
 

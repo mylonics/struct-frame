@@ -1233,6 +1233,18 @@ class TestCGen():
         return out
 
     @staticmethod
+    def _generate_oneof_init(oneof_name, oneof, prefix):
+        """Populate the first variant of *oneof* and select it via the discriminator."""
+        if not oneof.fields:
+            return ""
+        variant_name, variant = next(iter(oneof.fields.items()))
+        out = ""
+        if oneof.auto_discriminator and oneof.variant_info:
+            out += f'    {prefix}.{oneof_name}_discriminator = {oneof.variant_info[0][0]};\n'
+        out += TestCGen._generate_field_init(variant, f"{prefix}.{oneof_name}", 0)
+        return out
+
+    @staticmethod
     def _struct_name(msg):
         return '%s%s' % (pascal_case(msg.package), msg.name)
 
@@ -1274,10 +1286,10 @@ class TestCGen():
         yield '};\n'
         yield '#define SF_TEST_PROFILE_COUNT (sizeof(SF_TEST_PROFILES) / sizeof(SF_TEST_PROFILES[0]))\n\n'
 
-        # Skip ``oneof`` messages (variant unions) – the simple round-trip path
-        # does not encode discriminators.
+        # Every message with an id is round-tripped, including messages with a ``oneof``:
+        # the first variant of each oneof is populated and its discriminator set.
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
-                             if msg.id is not None and not getattr(msg, 'oneofs', {})]
+                             if msg.id is not None]
 
         # create_test_<msg>() factories
         for key, msg in testable_messages:
@@ -1290,6 +1302,8 @@ class TestCGen():
             for fkey, field in msg.fields.items():
                 yield TestCGen._generate_field_init(field, "msg", field_index)
                 field_index += 1
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                yield TestCGen._generate_oneof_init(oneof_name, oneof, "msg")
             yield '    return msg;\n'
             yield '}\n\n'
 

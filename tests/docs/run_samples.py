@@ -6,7 +6,7 @@ OUT=ROOT/'tests/docs/_samples'
 SCRATCH=ROOT/'tests/docs/_scratch'
 
 def run(cmd, cwd=ROOT):
-    return subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    return subprocess.run(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8', errors='replace')
 def env_skip(lang): return os.getenv(f'DOCSAMPLES_SKIP_{lang.upper()}') == '1'
 def looks_like_fragment(path):
     s=path.read_text(errors='ignore')
@@ -24,7 +24,7 @@ def command(sample, quick):
         if not shutil.which('node'): return None, 'missing-tool'
         return ['node', '--check', str(path)], None
     if lang=='ts':
-        tsc=ROOT/'tests/ts/node_modules/.bin/tsc'
+        tsc=ROOT/'tests/ts/node_modules/.bin'/('tsc.cmd' if os.name=='nt' else 'tsc')
         if not tsc.exists(): return None, 'missing-tool'
         return [str(tsc), '--noEmit', '--target', 'es2020', '--module', 'esnext', '--strict', 'false', str(path)], None
     if lang=='c':

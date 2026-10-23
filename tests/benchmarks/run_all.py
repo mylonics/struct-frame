@@ -13,6 +13,20 @@ def run(cmd, cwd=ROOT, env=None):
 def available(lang):
     return {'python': shutil.which('python3') or shutil.which('python'), 'c': shutil.which(os.environ.get('CC','gcc')), 'cpp': shutil.which(os.environ.get('CXX','g++')), 'ts': shutil.which('node') and (ROOT/'tests/ts/node_modules/.bin/tsc').exists(), 'js': shutil.which('node'), 'csharp': shutil.which('dotnet'), 'rust': shutil.which('cargo')}[lang]
 
+GEN = BENCH / 'generated'
+SCHEMA = BENCH / 'schema' / 'bench.sf'
+# Languages whose benchmark runs generated code + the real runtime (the rest are still
+# self-contained framing models; see README.md).
+GENERATED = {'python': ('--build_py', '--py_path', 'py'), 'c': ('--build_c', '--c_path', 'c')}
+
+def generate(lang):
+    flag, path_flag, sub = GENERATED[lang]
+    env = os.environ.copy()
+    env['PYTHONPATH'] = str(ROOT / 'src') + os.pathsep + env.get('PYTHONPATH', '')
+    out = GEN / sub
+    shutil.rmtree(out, ignore_errors=True)
+    return run([sys.executable, '-m', 'struct_frame', str(SCHEMA), flag, path_flag, str(out)], env=env).returncode == 0
+
 def validate(path, lang):
     data=json.loads(path.read_text())
     required={'schema_version','language','runner_version','timestamp','host','scenarios'}
@@ -27,19 +41,20 @@ def validate(path, lang):
 
 def command(lang, iterations, out):
     py=sys.executable
-    if lang=='python': return [py, 'tests/benchmarks/python/bench.py', '--iterations', str(iterations), '--output', str(out)]
+    if lang=='python': return [py, 'tests/benchmarks/python/bench.py', '--iterations', str(iterations), '--output', str(out), '--gen-dir', str(GEN/'py')]
     if lang=='js': return ['node', 'tests/benchmarks/js/bench.mjs', '--iterations', str(iterations), '--output', str(out)]
     if lang=='ts':
         js=Path('tests/benchmarks/ts/dist/bench.js')
-        return ['bash','-lc', f'cd tests/benchmarks/ts && ../../ts/node_modules/.bin/tsc bench.ts --outDir dist --module commonjs --target es2020 --types node --typeRoots ../../ts/node_modules/@types --moduleResolution node --esModuleInterop --skipLibCheck && cd ../../.. && node {js} --iterations {iterations} --output {out}']
+        return ['bash','-lc', f'cd tests/benchmarks/ts && ../../ts/node_modules/.bin/tsc bench.ts --outDir dist --module commonjs --target es2020 --types node --typeRoots ../../ts/node_modules/@types --moduleResolution node --esModuleInterop --skipLibCheck && cd ../../.. && node {js} --iterations {iterations} --output {Path(out).as_posix()}']
     if lang=='c':
-        exe=BENCH/'c/bench'
+        exe=(BENCH/'c/bench').relative_to(ROOT).as_posix()
+        cdir=(GEN/'c').relative_to(ROOT).as_posix()
         cc=os.environ.get('CC','gcc')
-        return ['bash','-lc', f'{cc} -O2 -std=c11 tests/benchmarks/c/bench.c -o {exe} && {exe} --iterations {iterations} --output {out}']
+        return ['bash','-lc', f'{cc} -O2 -std=c11 -I{cdir} tests/benchmarks/c/bench.c -o {exe} && {exe} --iterations {iterations} --output {Path(out).as_posix()}']
     if lang=='cpp':
-        exe=BENCH/'cpp/bench'
+        exe=(BENCH/'cpp/bench').relative_to(ROOT).as_posix()
         cxx=os.environ.get('CXX','g++')
-        return ['bash','-lc', f'{cxx} -O2 -std=c++17 tests/benchmarks/cpp/bench.cpp -o {exe} && {exe} --iterations {iterations} --output {out}']
+        return ['bash','-lc', f'{cxx} -O2 -std=c++17 tests/benchmarks/cpp/bench.cpp -o {exe} && {exe} --iterations {iterations} --output {Path(out).as_posix()}']
     # C and C++ are built with -O2, so build C# and Rust optimised as well; the
     # default `dotnet run` / `cargo run` produce Debug builds that are far slower.
     if lang=='csharp': return ['dotnet','run','-c','Release','--project','tests/benchmarks/csharp/Bench.csproj','--','--iterations',str(iterations),'--output',str(out)]
@@ -53,6 +68,7 @@ def main():
     all_data=[]; failures=[]
     for lang in selected:
         if not available(lang): print(f'::warning::{lang} toolchain unavailable; skipping'); continue
+        if lang in GENERATED and not generate(lang): failures.append((lang, 'code generation failed')); continue
         out=Path('tests/benchmarks/results')/f'{lang}.json'; rc=run(command(lang, iterations, out)).returncode
         if rc: failures.append((lang, f'exit {rc}')); continue
         try:

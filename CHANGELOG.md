@@ -25,9 +25,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - `wireshark/magic_table.py` and a "Magic bytes" dissector preference so the Wireshark dissector can verify checksums.
 - C# `WireArray` helper: primitive arrays use little-endian wire order on every host.
 - Examples that are built and run by the test suite (`examples/`).
+- Python and C benchmarks run the generated code and the real runtime, with warm-up, batched timing and Sensor/IPC profiles (`tests/benchmarks/`).
 
 ### Fixed
 
+- Generated Python `get_message_info` re-ran a failing relative import on every frame (about 8x slower decoding); it now resolves `MessageInfo` once.
 - Types of an imported package were resolved against the *importing* package, giving the wrong wire size when both defined a type with the same name.
 - `msgid = 0` was treated as "no message ID" by the TypeScript, JavaScript, C# and Python generators/runtimes.
 - Parse failures exited 0 and still wrote output; schemas are now read as UTF-8 on every platform.

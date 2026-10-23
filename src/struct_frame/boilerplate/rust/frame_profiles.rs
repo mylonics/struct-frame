@@ -467,6 +467,7 @@ pub fn parse_with_crc(
         system_id: sys_id,
         component_id: comp_id,
         msg_data,
+        variable_encoding: Some(config.payload.has_length),
         ..Default::default()
     }
 }
@@ -525,6 +526,7 @@ pub fn parse_minimal(
         msg_len,
         frame_size: total_size,
         msg_data,
+        variable_encoding: Some(false),
         ..Default::default()
     }
 }

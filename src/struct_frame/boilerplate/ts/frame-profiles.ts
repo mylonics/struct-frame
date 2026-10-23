@@ -436,6 +436,7 @@ export function parseFrameWithCrc(
 
     // Extract message data
     result.valid = true;
+    result.variableEncoding = config.payload.hasLength;
     result.msgId = msgId;
     result.msgLen = msgLen;
     result.msgData = buffer.subarray(headerSize, headerSize + msgLen);
@@ -503,6 +504,7 @@ export function parseFrameMinimal(
 
     // Extract message data
     result.valid = true;
+    result.variableEncoding = false;
     result.msgId = msgId;
     result.msgLen = msgLen;
     result.msgData = buffer.subarray(headerSize, headerSize + msgLen);

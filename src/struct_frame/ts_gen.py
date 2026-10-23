@@ -354,7 +354,10 @@ class MessageTsClassGen():
                 result += f'      // when the largest union variant is active. The layouts differ at that\n'
                 result += f'      // length (the wire form has the union length prefix), so a max-length wire\n'
                 result += f'      // frame must be decoded with mode="wire" / deserializeWire().\n'
-                result += f'      if (mode === "fixed" || (mode !== "wire" && buffer.msgLen === {package_msg_name}._size)) {{\n'
+                result += f'      // A frame produced by a reader carries variableEncoding, which settles the\n'
+                result += f'      // question without guessing from the length.\n'
+                result += f'      const hint = (buffer as {{ variableEncoding?: boolean }}).variableEncoding;\n'
+                result += f'      if (mode === "fixed" || (mode !== "wire" && (hint === false || (hint === undefined && buffer.msgLen === {package_msg_name}._size)))) {{\n'
             else:
                 result += f'      // msgLen heuristic: minimal profiles always send _size bytes (fixed layout);\n'
                 result += f'      // length-bearing profiles send wire-encoded size, which can equal _size when\n'
@@ -1424,9 +1427,11 @@ class TestTsGen():
         yield "    { name: 'ProfileNetwork',  config: ProfileNetworkConfig,  hasPkgId: true,  maxPayload: 65535 },\n"
         yield "];\n\n"
 
-        # Collect testable messages (skip oneof/variant messages).
+        # Every message with an id is round-tripped, including messages with a ``oneof``:
+        # the discriminator selects the first variant (its payload bytes stay at the
+        # zeroed default, which is a valid value for every variant type).
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
-                             if msg.id is not None and not getattr(msg, 'oneofs', {})]
+                             if msg.id is not None]
 
         # Per-message factory functions.
         for key, msg in testable_messages:
@@ -1438,6 +1443,9 @@ class TestTsGen():
             for field_key, field in msg.fields.items():
                 yield TestTsGen._generate_field_init(field, "msg", field_index)
                 field_index += 1
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                if oneof.auto_discriminator and oneof.variant_info:
+                    yield f'    msg.{to_camel_case(oneof_name)}Discriminator = {oneof.variant_info[0][0]};\n'
             yield '    return msg;\n'
             yield '}\n\n'
 

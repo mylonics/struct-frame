@@ -11,8 +11,8 @@ use struct_frame_sdk::envelope_test::*;
 use struct_frame_sdk::extended_test::*;
 use struct_frame_sdk::serialization_test::*;
 use struct_frame_sdk::{
-    encode_message_crc, encode_message_minimal, AccumulatingReader, ProfileConfig,
-    StructFrameSdk,
+    encode_message_crc, encode_message_minimal, AccumulatingReader, FrameMsgInfo, ProfileConfig,
+    StructFrameMessage, StructFrameSdk,
     PROFILE_BULK_CONFIG, PROFILE_IPC_CONFIG, PROFILE_NETWORK_CONFIG, PROFILE_SENSOR_CONFIG,
     PROFILE_STANDARD_CONFIG,
 };
@@ -592,16 +592,71 @@ fn encode_variable_flag(config: &ProfileConfig, output: &mut [u8]) -> usize {
 // Generic decode-and-validate
 // ============================================================================
 
-fn decode_validate_with<F, G>(
+/// Decode `frame` into message type `M` (as a real application would, with `unpack_frame`),
+/// re-encode it with the same layout the expected bytes use, and require identical bytes.
+/// This exercises the generated `unpack` path; comparing raw payload bytes alone would pass
+/// even if `unpack` were broken.
+fn unpack_repack<M: StructFrameMessage>(frame: &FrameMsgInfo, use_fixed: bool, expected: &[u8]) -> Result<(), String> {
+    let name = std::any::type_name::<M>();
+    let decoded = M::unpack_frame(frame).ok_or_else(|| format!("{}: unpack returned None", name))?;
+    let mut out = vec![0u8; BUFFER_SIZE];
+    let n = if use_fixed { decoded.pack_max_size(&mut out) } else { decoded.pack(&mut out) };
+    if out[..n] != *expected {
+        return Err(format!("{}: unpack then re-pack differs from the original ({} vs {} bytes)", name, n, expected.len()));
+    }
+    Ok(())
+}
+
+fn unpack_check_standard(frame: &FrameMsgInfo, use_fixed: bool, expected: &[u8]) -> Result<(), String> {
+    match frame.msg_id {
+        id if id == SerializationTestMessage::MSG_ID => unpack_repack::<SerializationTestMessage>(frame, use_fixed, expected),
+        id if id == BasicTypesMessage::MSG_ID => unpack_repack::<BasicTypesMessage>(frame, use_fixed, expected),
+        id if id == UnionTestMessage::MSG_ID => unpack_repack::<UnionTestMessage>(frame, use_fixed, expected),
+        id if id == Message::MSG_ID => unpack_repack::<Message>(frame, use_fixed, expected),
+        id if id == VariableSingleArray::MSG_ID => unpack_repack::<VariableSingleArray>(frame, use_fixed, expected),
+        id if id == NestedEnumMessage::MSG_ID => unpack_repack::<NestedEnumMessage>(frame, use_fixed, expected),
+        id if id == CollisionEnumMessage::MSG_ID => unpack_repack::<CollisionEnumMessage>(frame, use_fixed, expected),
+        id => Err(format!("no unpack check registered for msg_id 0x{:04x}", id)),
+    }
+}
+
+fn unpack_check_extended(frame: &FrameMsgInfo, use_fixed: bool, expected: &[u8]) -> Result<(), String> {
+    match frame.msg_id {
+        id if id == ExtendedIdMessage10::MSG_ID => unpack_repack::<ExtendedIdMessage10>(frame, use_fixed, expected),
+        id if id == ExtendedIdMessage2::MSG_ID => unpack_repack::<ExtendedIdMessage2>(frame, use_fixed, expected),
+        id if id == ExtendedIdMessage9::MSG_ID => unpack_repack::<ExtendedIdMessage9>(frame, use_fixed, expected),
+        id if id == LargePayloadMessage1::MSG_ID => unpack_repack::<LargePayloadMessage1>(frame, use_fixed, expected),
+        id if id == LargePayloadMessage2::MSG_ID => unpack_repack::<LargePayloadMessage2>(frame, use_fixed, expected),
+        id if id == ExtendedVariableSingleArray::MSG_ID => unpack_repack::<ExtendedVariableSingleArray>(frame, use_fixed, expected),
+        id => Err(format!("no unpack check registered for msg_id 0x{:04x}", id)),
+    }
+}
+
+fn unpack_check_variable_flag(frame: &FrameMsgInfo, use_fixed: bool, expected: &[u8]) -> Result<(), String> {
+    match frame.msg_id {
+        id if id == TruncationTestNonVariable::MSG_ID => unpack_repack::<TruncationTestNonVariable>(frame, use_fixed, expected),
+        id if id == TruncationTestVariable::MSG_ID => unpack_repack::<TruncationTestVariable>(frame, use_fixed, expected),
+        id if id == NestedVariableMessage::MSG_ID => unpack_repack::<NestedVariableMessage>(frame, use_fixed, expected),
+        id if id == VariableMultipleArrays::MSG_ID => unpack_repack::<VariableMultipleArrays>(frame, use_fixed, expected),
+        id if id == VariableMixedFields::MSG_ID => unpack_repack::<VariableMixedFields>(frame, use_fixed, expected),
+        id if id == VariableEnvelopeMessage::MSG_ID => unpack_repack::<VariableEnvelopeMessage>(frame, use_fixed, expected),
+        id if id == VariableEnvelopeMsgIdMessage::MSG_ID => unpack_repack::<VariableEnvelopeMsgIdMessage>(frame, use_fixed, expected),
+        id => Err(format!("no unpack check registered for msg_id 0x{:04x}", id)),
+    }
+}
+
+fn decode_validate_with<F, G, U>(
     config: ProfileConfig,
     data: &[u8],
     expected_count: usize,
     get_expected: F,
     msg_info_fn: G,
+    unpack_check: U,
 ) -> usize
 where
     F: Fn(usize, &mut [u8]) -> (u16, usize),
     G: Fn(u16) -> Option<struct_frame_sdk::MessageInfo>,
+    U: Fn(&FrameMsgInfo, &[u8]) -> Result<(), String>,
 {
     let mut reader = AccumulatingReader::new(config, 65536);
     reader.add_data(data);
@@ -629,6 +684,11 @@ where
                     break;
                 }
             }
+            break;
+        }
+
+        if let Err(e) = unpack_check(&frame, &expected_buf[..expected_len]) {
+            eprintln!("[DECODE] msg {}: {}", count, e);
             break;
         }
 
@@ -1798,7 +1858,8 @@ fn main() {
             Box::new(move |cfg, data| {
                 decode_validate_with(cfg, data, STANDARD_MESSAGE_COUNT, move |i, buf| {
                     get_expected_payload_standard(i, buf, use_fixed)
-                }, struct_frame_sdk::serialization_test::get_message_info)
+                }, struct_frame_sdk::serialization_test::get_message_info,
+                   move |f, e| unpack_check_standard(f, use_fixed, e))
             }),
         ),
         "test_extended" => (
@@ -1807,7 +1868,8 @@ fn main() {
             Box::new(|cfg, data| {
                 decode_validate_with(cfg, data, EXTENDED_MESSAGE_COUNT, |i, buf| {
                     get_expected_payload_extended(i, buf)
-                }, struct_frame_sdk::extended_test::get_message_info)
+                }, struct_frame_sdk::extended_test::get_message_info,
+                   |f, e| unpack_check_extended(f, false, e))
             }),
         ),
         "test_variable_flag" => (
@@ -1816,7 +1878,8 @@ fn main() {
             Box::new(move |cfg, data| {
                 decode_validate_with(cfg, data, VARIABLE_FLAG_MESSAGE_COUNT, move |i, buf| {
                     get_expected_payload_variable_flag(i, buf, use_fixed)
-                }, struct_frame_sdk::serialization_test::get_message_info)
+                }, struct_frame_sdk::serialization_test::get_message_info,
+                   move |f, e| unpack_check_variable_flag(f, use_fixed, e))
             }),
         ),
         _ => {

@@ -180,7 +180,8 @@ class FrameEncoderWithCrc {
       size_t written = msg.serialize(buffer + idx);
       idx += written;
     } else {
-      std::memcpy(buffer + idx, msg.data(), payload_size);
+      // Not msg.data(): a message field or oneof named `data` would hide that member.
+      std::memcpy(buffer + idx, reinterpret_cast<const uint8_t*>(&msg), payload_size);
       idx += payload_size;
     }
 
@@ -264,7 +265,8 @@ class FrameEncoderMinimal {
     buffer[idx++] = static_cast<uint8_t>(T::MSG_ID);
 
     // Write payload at MAX_SIZE (always use data() for minimal profiles)
-    std::memcpy(buffer + idx, msg.data(), payload_size);
+    // Not msg.data(): a message field or oneof named `data` would hide that member.
+    std::memcpy(buffer + idx, reinterpret_cast<const uint8_t*>(&msg), payload_size);
     idx += payload_size;
 
     return idx;
