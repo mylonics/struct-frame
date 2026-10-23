@@ -85,3 +85,8 @@ tests/docs/_samples/
 
 docs/theme_overrides/
 .claude/
+# Local artifacts
+.coverage
+_codeql_detected_source_root
+*.log
+*.exe
