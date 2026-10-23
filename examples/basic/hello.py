@@ -10,7 +10,7 @@ from struct_frame.generated.hello import Heartbeat, Pose, VehicleType, get_messa
 # ---- encode ----
 writer = BufferWriter(PROFILE_STANDARD_CONFIG, 256)
 writer.write(Pose(pitch=100.0, yaw_rate=-1.45, sample=4883))
-writer.write(Heartbeat(id=23, type=VehicleType.QUADCOPTER.value))  # enum fields hold ints
+writer.write(Heartbeat(id=23, type=VehicleType.QUADCOPTER))
 stream = writer.data()
 print(f"encoded {len(stream)} bytes")
 

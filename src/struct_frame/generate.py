@@ -2052,8 +2052,9 @@ class Package:
 
         for key, value in self.messages.items():
             if not value.validate(self, all_packages, debug):
+                where = f" ({value.source_file})" if getattr(value, 'source_file', None) else ""
                 print(
-                    f"Failed To validate Message: {key}, in Package {self.name}\n")
+                    f"Failed To validate Message: {key}, in Package {self.name}{where}\n")
                 return False
 
         return True
@@ -2131,7 +2132,8 @@ parser.add_argument('--catalog_path', nargs=1, type=str, default=['generated/'],
 parser.add_argument('--sdk', action='store_true',
                     help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
 parser.add_argument('--sdk_embedded', action='store_true',
-                    help='Include embedded SDK (serial transport only, no ASIO dependencies)')
+                    help='Include the embedded C++ SDK (serial transport only, no ASIO dependencies). '
+                         'Has no effect on other languages, which always receive the full SDK')
 parser.add_argument('--equality', action='store_true',
                     help='Generate equality comparison operators/methods for messages')
 parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame'],
@@ -3353,9 +3355,14 @@ def main():
     # schema revisions. A schema file that happens to be named "diff" still
     # generates code as before.
     argv = sys.argv[1:]
-    if argv and argv[0] in SCHEMA_DIFF_COMMANDS and not os.path.isfile(argv[0]):
+    # Leading global flags (currently only --debug) may precede the subcommand.
+    lead = 0
+    while lead < len(argv) and argv[lead] == '--debug':
+        lead += 1
+    if (lead < len(argv) and argv[lead] in SCHEMA_DIFF_COMMANDS
+            and not os.path.isfile(argv[lead])):
         from struct_frame import schema_diff
-        return schema_diff.main(argv[1:])
+        return schema_diff.main(argv[lead + 1:])
 
     args = parser.parse_args()
 
@@ -3365,9 +3372,17 @@ def main():
         parser.print_help()
         return 1
 
-    if not parseFile(args.filename):
-        print("Parsing failed")
+    # Diagnostics from parsing and validation are errors when they fail: send them to
+    # stderr so scripts and CI can separate them from normal output. On success the
+    # buffered output (warnings, --debug detail) is replayed to stdout unchanged.
+    parse_log = io.StringIO()
+    with contextlib.redirect_stdout(parse_log):
+        parsed_ok = parseFile(args.filename)
+    if not parsed_ok:
+        sys.stderr.write(parse_log.getvalue())
+        print("Parsing failed", file=sys.stderr)
         return 1
+    sys.stdout.write(parse_log.getvalue())
 
     # If --no_packed is set, mark every message as variable BEFORE validation so
     # that min_size and other variable-related metadata is computed correctly.
@@ -3389,16 +3404,22 @@ def main():
         return 1
 
     valid = False
+    validate_log = io.StringIO()
     try:
-        valid = validate_packages(args.debug)
+        with contextlib.redirect_stdout(validate_log):
+            valid = validate_packages(args.debug)
     except RecursionError as err:
+        sys.stderr.write(validate_log.getvalue())
         print(
-            f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {current_error_message} and Field: {current_error_field}')
+            f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {current_error_message} and Field: {current_error_field}',
+            file=sys.stderr)
         return 1
 
     if not valid:
-        print("Validation failed")
+        sys.stderr.write(validate_log.getvalue())
+        print("Validation failed", file=sys.stderr)
         return 1
+    sys.stdout.write(validate_log.getvalue())
 
     normalize_output_order()
 
@@ -3417,7 +3438,7 @@ def main():
             target_languages = ['c', 'cpp', 'ts', 'js', 'py', 'gql', 'csharp', 'rust']
         validate_generated_names(packages, target_languages, name_overrides)
     except NameOverrideError as err:
-        print(f"Error: {err}")
+        print(f"Error: {err}", file=sys.stderr)
         return 1
 
     if args.validate:
@@ -3682,6 +3703,13 @@ def main():
     # Copy SDK files if requested
     if args.sdk or args.sdk_embedded:
         embedded_only = args.sdk_embedded and not args.sdk
+
+        if args.sdk_embedded and (args.build_ts or args.build_js or args.build_py):
+            ignoring = ", ".join(name for name, on in (
+                ("TypeScript", args.build_ts), ("JavaScript", args.build_js),
+                ("Python", args.build_py)) if on)
+            print(f"Note: --sdk_embedded only trims the C++ SDK; the full {ignoring} SDK is copied "
+                  f"(those SDKs have no heavyweight dependency to leave out).", file=sys.stderr)
 
         if args.build_c:
             # C doesn't have SDK yet

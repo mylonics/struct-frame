@@ -175,3 +175,21 @@ def test_cpp_full_sdk_has_real_asio_headers(tmp_path):
     assert (sdk / "asio").is_dir(), "asio/ is not a directory of headers"
     assert (sdk / "asio" / "io_context.hpp").is_file()
     assert not (sdk / "asio-repo").exists(), "vendored submodule copied into the output"
+
+
+def test_python_enum_members_usable_as_field_values(tmp_path):
+    """Enum fields hold ints, so enum members must be accepted directly (IntEnum),
+    and decode must compare equal to the member."""
+    out = tmp_path / "py"
+    _generate(HELLO_SF, "--build_py", "--py_path", str(out))
+    script = tmp_path / "enum_use.py"
+    script.write_text(
+        "from struct_frame.generated.hello import Heartbeat, VehicleType\n"
+        "hb = Heartbeat(id=1, type=VehicleType.QUADCOPTER)\n"
+        "decoded = Heartbeat.deserialize(hb.serialize())\n"
+        "assert decoded.type == VehicleType.QUADCOPTER == 2\n"
+        "assert VehicleType(decoded.type).name == 'QUADCOPTER'\n"
+        "print('ok')\n", encoding="utf-8")
+    result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True,
+                            env=_env(str(out)), timeout=120)
+    assert result.returncode == 0 and "ok" in result.stdout, result.stdout + result.stderr

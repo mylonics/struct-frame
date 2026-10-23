@@ -62,7 +62,7 @@ class EnumPyGen():
         result = build_enum_leading_comments(field.comments, comment_prefix='#')
 
         enum_name = field.name
-        result += 'class %s(Enum):\n' % (enum_name)
+        result += 'class %s(IntEnum):\n' % (enum_name)
 
         def py_comment_formatter(comments):
             return ['#' + c for c in comments]
@@ -93,7 +93,7 @@ class EnumPyGen():
             return f'    {camel_to_snake_case(field_name).upper()} = {field_order}'
 
         lines = build_discriminator_enum_values(oneof, none_entry, field_entry)
-        result = f'class {enum_name}(Enum):\n'
+        result = f'class {enum_name}(IntEnum):\n'
         result += f'    """Discriminator enum for {msg_name}.{oneof.name} oneof"""\n'
         result += '\n'.join(lines) + '\n'
         return result
@@ -105,7 +105,7 @@ class EnumPyGen():
         if field.comments:
             for c in field.comments:
                 result += f'    #{c}\n'
-        result += f'    class {field.name}(Enum):\n'
+        result += f'    class {field.name}(IntEnum):\n'
         for entry_name, (value, comments) in field.data.items():
             for c in comments:
                 result += f'        #{c}\n'
@@ -1475,7 +1475,7 @@ class FilePyGen():
         yield format_file_docs(package, '# ')
 
         yield 'import struct\n'
-        yield 'from enum import Enum\n'
+        yield 'from enum import IntEnum\n'
         yield 'from typing import List, Union\n'
 
         # Import from generated files for each proto-imported package.

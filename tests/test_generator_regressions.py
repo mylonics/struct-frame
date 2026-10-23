@@ -743,3 +743,42 @@ def test_two_flattened_fields_of_the_same_type_collide(tmp_path):
                "package f;\nmessage Pos { uint8 x = 1; }\n"
                "message M { option msgid = 1; Pos a = 1 [flatten = true]; Pos b = 2 [flatten = true]; }\n")
     assert validate(sf).returncode != 0, "both flattened fields expose a child named 'x'"
+
+
+# ---------------------------------------------------------------------------
+# error routing, diff argument order, --sdk_embedded
+# ---------------------------------------------------------------------------
+
+def test_validation_errors_go_to_stderr_and_name_the_file(tmp_path):
+    sf = write(tmp_path, "bad.sf",
+               "package e;\nmessage M { option msgid = 1; uint8 x = 1 [defualt = 3]; }\n")
+    r = validate(sf)
+    assert r.returncode != 0
+    assert "defualt" in r.stderr and "bad.sf" in r.stderr, r.stderr
+    assert "defualt" not in r.stdout, "error text leaked to stdout"
+
+
+def test_validation_success_output_stays_on_stdout(tmp_path):
+    sf = write(tmp_path, "ok.sf", "package ok;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    r = validate(sf)
+    assert r.returncode == 0
+    assert "Validation successful" in r.stdout
+
+
+def test_diff_accepts_leading_debug_flag(tmp_path):
+    old = write(tmp_path, "v1.sf", "package d;\nmessage M { option msgid = 1; uint8 a = 1; }\n")
+    new = write(tmp_path, "v2.sf", "package d;\nmessage M { option msgid = 1; uint8 a = 1; }\n")
+    import os
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    r = subprocess.run([sys.executable, str(SRC_DIR / "main.py"), "--debug", "diff", str(old), str(new)],
+                       capture_output=True, text=True, env=env)
+    assert r.returncode == 0, out(r)
+    assert "no differences" in r.stdout.lower()
+
+
+def test_sdk_embedded_outside_cpp_says_it_has_no_effect(tmp_path):
+    sf = write(tmp_path, "s.sf", "package s;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    r = gen(tmp_path, sf, "--build_py", "--py_path", str(tmp_path / "py"), "--sdk_embedded")
+    assert r.returncode == 0, out(r)
+    assert "only trims the C++ SDK" in r.stderr, r.stderr

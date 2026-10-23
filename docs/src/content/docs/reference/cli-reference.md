@@ -10,7 +10,7 @@ python -m struct_frame [proto_file] [options]
 python -m struct_frame diff OLD.sf NEW.sf [options]   # wire-compatibility check (alias: schema-diff)
 ```
 
-`python -m struct_frame` is the supported entry point. The generator exits with a non-zero status when the schema cannot be parsed or fails validation (including syntax errors, duplicate declarations, unknown options and name collisions), so it is safe to use as a build step.
+`python -m struct_frame` is the supported entry point. The generator exits with a non-zero status when the schema cannot be parsed or fails validation (including syntax errors, duplicate declarations, unknown options and name collisions), so it is safe to use as a build step. Parse and validation errors are written to stderr (naming the schema file), so stdout stays clean for normal output; `--debug` may precede the `diff` subcommand.
 
 ## Code Generation Flags
 
@@ -43,7 +43,7 @@ python -m struct_frame diff OLD.sf NEW.sf [options]   # wire-compatibility check
 | Flag | Description |
 |------|-------------|
 | `--sdk` | Include the full SDK with transports. Applies to C++, Python, TypeScript and JavaScript. C# and Rust always receive their SDK core; C has no SDK. |
-| `--sdk_embedded` | Include the embedded SDK without external dependencies (serial transport only). Honoured by C++ only; for other languages the flag has no effect beyond `--sdk`. |
+| `--sdk_embedded` | Include the embedded SDK without external dependencies (serial transport only). Honoured by C++ only; for other languages the full SDK is copied and a note is printed to stderr. |
 
 ## C# Options
 
