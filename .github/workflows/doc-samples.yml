@@ -30,6 +30,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc g++ build-essential
+      - name: Install Python dependencies
+        run: pip install proto-schema-parser
       - name: Install TypeScript dependencies
         run: npm ci
         working-directory: tests/ts

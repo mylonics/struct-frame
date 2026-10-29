@@ -70,6 +70,16 @@ CRC_SEED = 0xDEADBEEF
 _EXE = ".exe" if sys.platform == "win32" else ""
 
 
+def _c_family_exe(directory: Path, name: str) -> Path:
+    """Locate a C/C++ test binary. tests/run_tests.py builds these with a ``.exe``
+    suffix on every OS, so on Linux/macOS the bare name does not exist."""
+    for suffix in (_EXE, ".exe", ""):
+        candidate = directory / f"{name}{suffix}"
+        if candidate.exists():
+            return candidate
+    return directory / f"{name}{_EXE}"
+
+
 def _generate(out_dir: Path) -> None:
     for proto in (PROTO_V1, PROTO_V2):
         result = run_generator(proto, "--build_py", "--py_path", str(out_dir / "py"), "--force")
@@ -104,12 +114,12 @@ class _Runner:
 
 
 def _cpp_runner() -> _Runner:
-    exe = REPO_ROOT / "tests" / "cpp" / "build" / f"test_wire_evolution_file_io{_EXE}"
+    exe = _c_family_exe(REPO_ROOT / "tests" / "cpp" / "build", "test_wire_evolution_file_io")
     return _Runner("cpp", [str(exe)] if exe.exists() else None)
 
 
 def _c_runner() -> _Runner:
-    exe = REPO_ROOT / "tests" / "c" / "build" / f"test_wire_evolution_file_io{_EXE}"
+    exe = _c_family_exe(REPO_ROOT / "tests" / "c" / "build", "test_wire_evolution_file_io")
     return _Runner("c", [str(exe)] if exe.exists() else None)
 
 

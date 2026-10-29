@@ -19,7 +19,8 @@ cargo-fuzz = true
 libfuzzer-sys = "0.4"
 # The runtime sources are compiled straight from src/ via the driver crate, so no generation
 # step is needed first.
-struct_frame_sdk = { path = "../../fuzz/drivers/rust" }
+# The driver package is named stream_driver (its lib target is struct_frame_sdk), so rename it here.
+struct_frame_sdk = { package = "stream_driver", path = "../../fuzz/drivers/rust" }
 
 [[bin]]
 name = "parser"

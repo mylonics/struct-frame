@@ -181,6 +181,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with: { components: miri }
       - name: Run the stream driver under Miri
+        env:
+          # The driver reads its seed stream from disk, which Miri blocks under its default isolation.
+          MIRIFLAGS: "-Zmiri-disable-isolation"
         # Miri interprets the parser and reports undefined behaviour and out-of-bounds reads
         # that a normal run would not notice. The inputs are short seed streams built from the
         # shared message table, fed at a few chunk sizes, so it stays fast.
