@@ -113,6 +113,31 @@ def _cpp_field_base_type(field, use_namespace=False):
         return '%s%s' % (pascal_case(pkg_prefix), type_name)
 
 
+def _message_has_member_initializers(msg, _seen=None):
+    """True when the generated C++ struct for *msg* has non-trivial default construction.
+
+    That is the case when a field carries a ``[default = ...]`` (emitted as a default member
+    initializer) or when a nested message-typed field or oneof variant does, transitively.
+    Such a type cannot be a member of an unnamed union (its default constructor would be
+    implicitly deleted), so a oneof holding one gets a named union with a constructor.
+    """
+    _seen = _seen if _seen is not None else set()
+    if id(msg) in _seen:
+        return False
+    _seen.add(id(msg))
+    members = list(msg.fields.values())
+    for oneof in getattr(msg, 'oneofs', {}).values():
+        members.extend(oneof.fields.values())
+    for f in members:
+        if f.default is not None:
+            return True
+        ref = getattr(f, 'type_ref', None)
+        if (not f.is_default_type and not f.is_enum and ref is not None
+                and hasattr(ref, 'fields') and _message_has_member_initializers(ref, _seen)):
+            return True
+    return False
+
+
 def _cpp_scalar_default_literal(field, use_namespace=False):
     """Render field.default as a C++ literal for a default member initializer."""
     if field.is_enum:
@@ -257,12 +282,17 @@ class OneOfCppGen():
         # type with a constructor that initializes the first variant, so the
         # enclosing message stays default-constructible.
         _first_variant = next(iter(oneof.fields.keys()), None)
-        # Any message-typed variant may (transitively) carry default member
-        # initializers (e.g. [default = 0], or a nested message with its own
-        # named union), so gate on the variant kind, not on non-zero default
-        # bytes. The constructor also zeroes the bytes past the first variant
-        # so whole-union memcmp/equality stays well defined.
-        _defaulted = any(not f.is_default_type and not f.is_enum for f in oneof.fields.values())
+        # A message-typed variant that (transitively) carries default member
+        # initializers, including [default = 0], needs the named union. Plain
+        # variants keep the unnamed union so the message stays an aggregate. The
+        # constructor also zeroes the bytes past the first variant so whole-union
+        # memcmp/equality stays well defined.
+        _defaulted = any(
+            not f.is_default_type and not f.is_enum
+            and getattr(f, 'type_ref', None) is not None
+            and hasattr(f.type_ref, 'fields')
+            and _message_has_member_initializers(f.type_ref)
+            for f in oneof.fields.values())
         if _defaulted and _first_variant is not None:
             result += f'    union {oneof.name}_union_t {{\n'
             result += f'        {oneof.name}_union_t() : {_first_variant}() {{\n'

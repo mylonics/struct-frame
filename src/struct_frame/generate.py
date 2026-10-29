@@ -294,13 +294,19 @@ HASH_FILENAME = ".structframe.hash"
 MANIFEST_FILENAME = ".structframe-manifest.json"
 
 
-def _manifest_key(schema_path, out_dir):
-    """Stable key for a root schema: its path relative to the output directory, '/'-separated."""
+def _manifest_key(schema_path, out_dir, scope=""):
+    """Stable key for a root schema: its path relative to the output directory, '/'-separated.
+
+    *scope* names the set of languages written to the directory in this run (e.g. ``c`` or
+    ``c+cpp``). Separate per-language runs into one directory therefore never see each other's
+    files as their own, and so never prune them.
+    """
     try:
         rel = os.path.relpath(os.path.abspath(schema_path), os.path.abspath(out_dir))
     except ValueError:  # different drive on Windows
         rel = os.path.abspath(schema_path)
-    return rel.replace(os.sep, "/")
+    rel = rel.replace(os.sep, "/")
+    return f"{rel}#{scope}" if scope else rel
 
 
 def _load_manifest(out_dir):
@@ -312,19 +318,20 @@ def _load_manifest(out_dir):
         return {}
 
 
-def prune_stale_outputs(out_dir, schema_path, generated_files):
+def prune_stale_outputs(out_dir, schema_path, generated_files, scope=""):
     """Delete files that *schema_path* generated into *out_dir* last time but not this time.
 
-    Only files listed for this same schema in the directory's manifest are candidates, and a file
-    another schema still claims is kept, so several schemas can share one output directory.
-    Returns the deleted paths and updates the manifest.
+    Only files listed for this same schema and *scope* in the directory's manifest are
+    candidates, and a file any other entry still claims is kept, so several schemas (or several
+    per-language runs) can share one output directory. Returns the deleted paths and updates
+    the manifest.
     """
     out_abs = os.path.abspath(out_dir)
     current = sorted({os.path.relpath(os.path.abspath(f), out_abs).replace(os.sep, "/")
                       for f in generated_files
                       if os.path.abspath(f).startswith(out_abs + os.sep)})
     manifest = _load_manifest(out_dir)
-    key = _manifest_key(schema_path, out_dir)
+    key = _manifest_key(schema_path, out_dir, scope)
     claimed_elsewhere = {f for k, files in manifest.items() if k != key for f in files}
     removed = []
     for rel in manifest.get(key, []):
@@ -1344,6 +1351,15 @@ class OneOf(_Documented):
                         and not getattr(e, 'inline', False)
                         and self.extensions_start is None):
                     self._pending_extensions = True
+                elif 'Extension::' in e.text and self.extensions_start is None:
+                    # Older versions accepted any comment containing the marker. Say that
+                    # this one is now ignored: the variants after it are base variants, and
+                    # that changes magic bytes and base sizes compared with older builds.
+                    print(f"{location(self, self.error_line)}warning: comment mentioning "
+                          f"'Extension::' in oneof '{self.name}' is not an extension marker "
+                          f"(it must be a standalone comment starting with 'Extension::', or "
+                          f"use 'option extensions_start'); the variants after it are base "
+                          f"variants", file=sys.stderr)
             elif type(e) == ast.Option:
                 docs.statement(owner=self)
                 if e.name == "extensions_start":
@@ -3677,11 +3693,16 @@ def main():
 
     # Delete files this schema generated last time but no longer produces (renamed or removed
     # messages and packages). Other schemas' outputs in the same directory are left alone.
+    shared_dirs = {}
+    for lang, enabled in lsp_build_flags.items():
+        if enabled:
+            shared_dirs.setdefault(os.path.abspath(lsp_paths[lang]), []).append(lang)
     for lang, enabled in lsp_build_flags.items():
         if not enabled:
             continue
         out_dir = lsp_paths[lang]
-        removed = prune_stale_outputs(out_dir, args.filename, files.keys())
+        scope = "+".join(sorted(shared_dirs[os.path.abspath(out_dir)]))
+        removed = prune_stale_outputs(out_dir, args.filename, files.keys(), scope)
         for path in removed:
             print(f"Removed stale output {path}")
         if lang == 'rust' and removed:

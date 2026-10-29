@@ -108,9 +108,11 @@ static inline size_t profile_encode_with_crc_ext(
     
     uint8_t header_size = profile_header_size(config);
     uint8_t footer_size = profile_footer_size(config);
-    /* The wire carries a 1-byte message id (the package id travels separately).
-     * Refuse to truncate: a larger id means the caller picked the wrong profile. */
-    if (msg_id > 0xFF) {
+    /* The wire carries a 1-byte message id. Profiles with a package-id byte take the
+     * high byte of a package-qualified id from pkg_id (the caller passes the low byte
+     * as msg_id, or the full id, which is narrowed here). Profiles without one cannot
+     * represent a larger id: refuse rather than truncate. */
+    if (!config->payload.has_pkg_id && msg_id > 0xFF) {
         return 0;
     }
 
@@ -163,15 +165,15 @@ static inline size_t profile_encode_with_crc_ext(
         buffer[idx++] = pkg_id;
     }
     
-    /* Write message ID */
-    buffer[idx++] = msg_id;
-    
+    /* Write message ID (low byte; the high byte is the package id above) */
+    buffer[idx++] = (uint8_t)(msg_id & 0xFF);
+
     /* Write payload */
     if (payload_size > 0 && payload_data != NULL) {
         memcpy(buffer + idx, payload_data, payload_size);
         idx += payload_size;
     }
-    
+
     /* Calculate and write CRC */
     if (config->payload.has_crc) {
         size_t crc_len = idx - crc_start;

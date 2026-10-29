@@ -477,7 +477,10 @@ def _validate_language_names(lang, packages):
     elif lang == 'py':
         reserved = set(keyword.kwlist) | {'self'}
     elif lang in ('ts', 'js'):
-        reserved = _JS_KEYWORDS
+        # Field, oneof and variant names only ever become property names (this.x, get x(),
+        # keys of the Init interface) or take a suffix (xCount), and reserved words are
+        # legal property names, so nothing here needs rejecting.
+        reserved = set()
     elif lang == 'rust':
         # The Rust generator escapes other keywords as r#name; these four
         # cannot be raw identifiers.

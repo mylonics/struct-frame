@@ -930,3 +930,246 @@ def test_renamed_outputs_are_pruned_without_touching_other_schemas(tmp_path):
     assert (out_dir / "c" / "pb.structframe.h").exists()
     lib_rs = (out_dir / "rs" / "lib.rs").read_text(encoding="utf-8")
     assert "pub mod pa;" not in lib_rs and "pub mod pb;" in lib_rs and "pub mod pc;" in lib_rs, lib_rs
+
+
+# ---------------------------------------------------------------------------
+# Review of branch `fixes` vs develop (Oct 2026): regressions it introduced
+# ---------------------------------------------------------------------------
+
+def _gcc():
+    import os
+    import shutil
+    exe = shutil.which(os.environ.get("CC", "gcc")) or shutil.which("cc")
+    if exe is None:
+        pytest.skip("no C compiler")
+    return exe
+
+
+def test_c_encoder_accepts_package_qualified_id_on_pkgid_profiles(tmp_path):
+    """C used to reject any msg_id > 0xFF, even on Bulk/Network where the high byte is
+    carried as the package id. Standard/Sensor/IPC must still refuse (no silent truncation)."""
+    import os
+    sf = write(tmp_path, "p.sf",
+               "package pk;\noption pkgid = 3;\nmessage M { option msgid = 7; uint8 x = 1; }\n")
+    o = tmp_path / "c"
+    r = gen(tmp_path, sf, "--build_c", "--c_path", str(o))
+    assert r.returncode == 0, out(r)
+    src = write(tmp_path, "t.c", r'''
+#include <stdio.h>
+#include "pk.structframe.h"
+#include "frame_profiles.h"
+int main(void) {
+  uint8_t buf[256];
+  PkM m; m.x = 9;
+  buffer_writer_t w;
+  buffer_writer_init(&w, &PROFILE_NETWORK_CONFIG, buf, sizeof(buf));
+  /* The documented call: the generated, package-qualified (16-bit) id. */
+  if (buffer_writer_write(&w, PK_M_MSG_ID, (const uint8_t*)&m, sizeof(m), 0, 0, 0, 3, 0, 0) == 0) return 1;
+  buffer_writer_t b;
+  buffer_writer_init(&b, &PROFILE_BULK_CONFIG, buf, sizeof(buf));
+  if (buffer_writer_write(&b, PK_M_MSG_ID, (const uint8_t*)&m, sizeof(m), 0, 0, 0, 3, 0, 0) == 0) return 2;
+  buffer_writer_t s;
+  buffer_writer_init(&s, &PROFILE_STANDARD_CONFIG, buf, sizeof(buf));
+  if (buffer_writer_write(&s, PK_M_MSG_ID, (const uint8_t*)&m, sizeof(m), 0, 0, 0, 0, 0, 0) != 0) return 3;
+  printf("ok\n");
+  return 0;
+}
+''')
+    exe = tmp_path / ("t.exe" if os.name == "nt" else "t")
+    build = subprocess.run([_gcc(), "-std=c11", f"-I{o}", str(src), "-o", str(exe)],
+                           capture_output=True, text=True, timeout=300)
+    assert build.returncode == 0, build.stderr[-1500:]
+    run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
+    assert run.returncode == 0 and "ok" in run.stdout, f"exit {run.returncode}"
+
+
+def test_per_language_runs_into_one_directory_do_not_prune_each_other(tmp_path):
+    """The prune manifest was keyed by schema only, so a C run and a later C++ run into the same
+    directory each deleted the other's files."""
+    shared = tmp_path / "shared"
+    sf = write(tmp_path, "s.sf", "package s;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    built = set()
+    for build, path, name in (("--build_c", "--c_path", "s.structframe.h"),
+                              ("--build_cpp", "--cpp_path", "s.structframe.hpp")) * 2:
+        r = gen(tmp_path, sf, build, path, str(shared), "--force")
+        assert r.returncode == 0, out(r)
+        built.add(name)
+        for expected in sorted(built):
+            assert (shared / expected).exists(), f"{expected} pruned after {build}"
+
+
+def test_same_run_sharing_a_directory_does_not_poison_a_later_single_language_run(tmp_path):
+    shared = tmp_path / "shared"
+    sf = write(tmp_path, "s.sf", "package s;\nmessage M { option msgid = 1; uint8 x = 1; }\n")
+    r = gen(tmp_path, sf, "--build_c", "--c_path", str(shared),
+            "--build_cpp", "--cpp_path", str(shared))
+    assert r.returncode == 0, out(r)
+    r = gen(tmp_path, sf, "--build_c", "--c_path", str(shared), "--force")
+    assert r.returncode == 0, out(r)
+    assert (shared / "s.structframe.hpp").exists(), "C++ file deleted by a C-only run"
+
+
+_VARIABLE_PLAIN = """package v;
+message V {
+  option msgid = 1;
+  option variable = true;
+  uint8 a = 1;
+  string name = 2 [max_size = 6];
+  repeated uint16 vals = 3 [max_size = 3];
+}
+"""
+
+
+def test_python_layout_hint_does_not_misdecode_fixed_payload_without_variable_oneof(tmp_path):
+    """variable_encoding=True made a fixed-layout MAX_SIZE payload on a length profile decode with
+    the wire decoder, which silently dropped the array. Only variable oneofs need the hint."""
+    sf = write(tmp_path, "v.sf", _VARIABLE_PLAIN)
+    o = tmp_path / "py"
+    r = gen(tmp_path, sf, "--build_py", "--py_path", str(o))
+    assert r.returncode == 0, out(r)
+    mod = load_generated_module(o / "struct_frame" / "generated" / "v.py", "v_hint_plain")
+    from types import SimpleNamespace
+    m = mod.V()
+    m.a, m.name, m.vals = 7, b"hi", [1, 2]
+    fixed = m.serialize_max_size()
+    assert len(fixed) == mod.V.MAX_SIZE
+    for hint in (None, True, False):
+        got = mod.V.deserialize(SimpleNamespace(msg_data=fixed, variable_encoding=hint))
+        assert (got.a, got.name, list(got.vals)) == (7, b"hi", [1, 2]), f"hint={hint}"
+
+
+@pytest.mark.parametrize("lang,ext,needle", [
+    ("py", "py", "variable_encoding is True"),
+    ("csharp", "cs", "VariableEncoding == true"),
+])
+def test_layout_hint_is_emitted_only_for_variable_oneof_messages(tmp_path, lang, ext, needle):
+    plain = write(tmp_path, "plain.sf", _VARIABLE_PLAIN)
+    oneof = write(tmp_path, "oneof.sf", """package w;
+message A { option msgid = 2; uint8 x = 1; }
+message B { option msgid = 3; uint16 y = 1; }
+message W {
+  option msgid = 1;
+  option variable = true;
+  uint8 k = 1;
+  oneof body { option variable = true; A a = 1; B b = 2; }
+}
+""")
+    texts = {}
+    for name, schema in (("plain", plain), ("oneof", oneof)):
+        o = tmp_path / f"{name}_{lang}"
+        r = gen(tmp_path, schema, f"--build_{lang}", f"--{lang}_path", str(o))
+        assert r.returncode == 0, out(r)
+        texts[name] = read_all(o, f"*.{ext}")
+    assert needle not in texts["plain"], "hint applied to a message without a variable oneof"
+    assert needle in texts["oneof"], "hint missing for a variable-oneof message"
+
+
+@pytest.mark.parametrize("word", ["default", "new", "delete", "in", "static", "package",
+                                  "interface", "enum", "this", "null", "class"])
+def test_js_and_ts_accept_reserved_word_field_names(tmp_path, word):
+    """Reserved words are legal property names in JS/TS and the generators only emit field names
+    as properties, so they must not be rejected (and --validate must not reject them for
+    projects that never build TS)."""
+    sf = write(tmp_path, "rw.sf",
+               f"package rw;\nmessage M {{ option msgid = 1; uint8 {word} = 1; }}\n")
+    for lang in ("ts", "js"):
+        r = gen(tmp_path, sf, f"--build_{lang}", f"--{lang}_path", str(tmp_path / lang))
+        assert r.returncode == 0, out(r)
+
+
+def test_js_reserved_word_fields_roundtrip(tmp_path):
+    import shutil
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("no node")
+    sf = write(tmp_path, "rw.sf",
+               "package rw;\nmessage M { option msgid = 1; uint8 default = 1; uint8 new = 2; uint8 delete = 3; }\n")
+    o = tmp_path / "js"
+    r = gen(tmp_path, sf, "--build_js", "--js_path", str(o))
+    assert r.returncode == 0, out(r)
+    script = write(tmp_path, "t.js", f"""
+const m = require({json.dumps(str(o / 'rw.structframe.js'))});
+const x = new m.M(); x.default = 5; x.new = 6; x.delete = 7;
+const y = m.M.deserialize(x.serialize());
+if (y.default !== 5 || y.new !== 6 || y.delete !== 7) process.exit(1);
+""")
+    run = subprocess.run([node, str(script)], capture_output=True, text=True, timeout=60)
+    assert run.returncode == 0, run.stderr
+
+
+@pytest.mark.parametrize("comment", [
+    "// --- Extension:: ---",
+    "// the Extension:: block starts here",
+])
+def test_unrecognised_extension_marker_warns(tmp_path, comment):
+    """Decorated markers used to set extensions_start and are now ignored; silently changing the
+    wire layout (magic bytes) is the worst outcome, so the generator must say so."""
+    sf = write(tmp_path, "e.sf", f"""package e;
+message A {{ option msgid = 2; uint8 x = 1; }}
+message M {{
+  option msgid = 1;
+  oneof body {{
+    A a = 1;
+    {comment}
+    uint8 b = 2;
+  }}
+}}
+""")
+    r = validate(sf)
+    assert r.returncode == 0, out(r)
+    assert "not an extension marker" in r.stderr, out(r)
+
+
+def test_standalone_extension_marker_does_not_warn(tmp_path):
+    sf = write(tmp_path, "e.sf", """package e;
+message A { option msgid = 2; uint8 x = 1; }
+message M {
+  option msgid = 1;
+  oneof body {
+    A a = 1;
+    // Extension:: variants below are optional additions
+    uint8 b = 2;
+  }
+}
+""")
+    r = validate(sf)
+    assert r.returncode == 0, out(r)
+    assert "not an extension marker" not in out(r)
+
+
+def test_cpp_plain_oneof_message_stays_an_aggregate_and_defaulted_one_constructs(tmp_path):
+    """Giving every message-typed oneof a constructor broke brace/designated initialisation of
+    messages with plain nested variants. Only variants carrying member initialisers need it."""
+    import os
+    import shutil
+    gxx = shutil.which(os.environ.get("CXX", "g++"))
+    if gxx is None:
+        pytest.skip("no C++ compiler")
+    sf = write(tmp_path, "a.sf", """package a;
+message Plain { option msgid = 1; uint8 x = 1; }
+message Other { option msgid = 2; uint16 y = 1; }
+message Defaulted { option msgid = 3; uint8 z = 1 [default = 0]; }
+message Holder { option msgid = 4; uint8 k = 1; oneof body { Plain p = 1; Other o = 2; } }
+message HolderD { option msgid = 5; uint8 k = 1; oneof body { Plain p = 1; Defaulted d = 2; } }
+""")
+    o = tmp_path / "cpp"
+    r = gen(tmp_path, sf, "--build_cpp", "--cpp_path", str(o))
+    assert r.returncode == 0, out(r)
+    src = write(tmp_path, "t.cpp", r'''
+#include <type_traits>
+#include "a.structframe.hpp"
+// Plain nested variants: the message's oneof is an unnamed union, so no user constructor.
+static_assert(std::is_trivially_default_constructible_v<structframe::a::Holder>);
+// A variant with a default member initialiser still needs a constructible union.
+static_assert(std::is_default_constructible_v<structframe::a::HolderD>);
+int main() {
+  structframe::a::Holder h{};
+  structframe::a::HolderD d{};
+  return (h.k == 0 && d.k == 0) ? 0 : 1;
+}
+''')
+    exe = tmp_path / ("t.exe" if os.name == "nt" else "t")
+    build = subprocess.run([gxx, "-std=c++20", f"-I{o}", str(src), "-o", str(exe)],
+                           capture_output=True, text=True, timeout=300)
+    assert build.returncode == 0, build.stderr[-2000:]
+    assert subprocess.run([str(exe)], timeout=60).returncode == 0

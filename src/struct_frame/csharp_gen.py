@@ -996,7 +996,11 @@ class MessageCSharpGen():
         result += '            {\n'
         result += '                return new ' + structName + '();\n'
         result += '            }\n'
-        if msg.variable and not wire_only_variable_oneof:
+        if (msg.variable and not wire_only_variable_oneof
+                and any(o.variable for o in msg.oneofs.values())):
+            # Only a variable oneof makes the wire form differ from the fixed layout at
+            # MaxSize bytes; without one, both layouts are identical there and a raw
+            # fixed-layout payload on a length profile must keep decoding.
             # The reader records which layout the frame carries, which settles the
             # case where both layouts have the same length (wire form == MaxSize).
             result += '            if (frameInfo.VariableEncoding == true)\n'

@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - **1-byte-ID profiles refuse oversized message IDs.** Encoding a message whose ID is above 255 with the Standard, Sensor or IPC profile now fails (C: returns 0; C++: returns 0; Python: `ValueError`; TypeScript/JavaScript: `RangeError`; C#: returns 0) instead of silently sending `id & 0xFF`.
 - **GraphQL.** `uint32`, `int64` and `uint64` map to the custom scalars `UInt32`, `Int64` and `UInt64` (declared in each document) instead of the 32-bit `Int`. Message-scoped enums are named `<Pkg><Message><Enum>`. `schema.graphql` is self-contained and prefixes `Query` fields with the package only when two packages share a message name.
 - **C and C++ headers refuse to compile on big-endian hosts** (`#error`), because the payload codecs copy host byte order. Define `STRUCT_FRAME_ASSUME_LITTLE_ENDIAN` to override.
+- **Python enums are `IntEnum`.** Generated enums compare equal to ints, print as numbers (`str()`/f-strings on 3.11+) and `json.dumps` emits numbers.
+- **Rust `FrameMsgInfo` has a new public field `variable_encoding`**; struct literals need it or `..Default::default()`. Use `M::unpack_frame(&frame)` to decode with the layout the reader recorded.
+- **TypeScript/JavaScript SDK.** A payload that fails to deserialize is no longer passed to handlers as raw bytes; handler and transport errors are reported through `onError`; `disconnect()` no longer triggers `autoReconnect` on serial, UDP and WebSocket transports.
+- **C# `WebSocketTransport`.** `ConnectAsync` throws when the connection fails or times out, `SendAsync` throws when not connected, only `ws://` URLs are supported, and there is a new constructor taking the config's `Url`. New file `Framework/Types/WireArray.cs`: add it to hand-maintained project file lists.
+- **Diagnostics go to stderr** with `file:line`, and each output directory gets a `.structframe-manifest.json`. Files a schema generated earlier but no longer produces are deleted (scoped per schema and per set of languages written to the directory).
+- **An `Extension::` oneof marker must be a standalone comment that begins with `Extension::`** (or use `option extensions_start`). A comment that merely mentions it is no longer a marker and the generator warns; confirm magic bytes with `struct_frame diff` against an old snapshot.
+- **C++ oneofs holding a message type with `[default = ...]` fields (transitively) get a constructed union**; other oneofs remain aggregates.
 
 ### Added
 
@@ -31,6 +38,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- The C encoder rejected package-qualified message IDs on Bulk/Network profiles (introduced by the 1-byte-ID check); it now rejects them only on profiles without a package-ID byte, like every other language.
+- Generated Python and C# `Deserialize` used the frame's layout hint for every variable message, which wire-decoded a fixed-layout payload and dropped arrays; the hint is now used only for messages with a variable oneof.
+- Separate per-language runs into one output directory no longer delete each other's files.
+- Reserved-word field names are accepted for TypeScript and JavaScript, where they are legal property names.
 - A corrupted length field in buffer mode (`add_data` / `next`) made the reader hold up to a whole buffer of good data behind a header that claimed an impossible frame size; stream mode already resynced at once. All six readers (C, C++, Python, TypeScript/JavaScript, Rust, C#) now resync as soon as the header claims a frame larger than the internal buffer. Found by the new cross-language stream test.
 - The C# SDK page showed `new TcpTransport("host", 8080)` and `new MyPackageSdkInterface(sdk)`; the constructors take a config object and the generated class is `Client`. The Advanced Features page used C++ names (`ProfileSensorWriter`, `ProfileSensorAccumulatingReader`) in its Python example.
 - Generated Python `get_message_info` re-ran a failing relative import on every frame (about 8x slower decoding); it now resolves `MessageInfo` once.

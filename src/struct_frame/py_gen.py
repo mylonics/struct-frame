@@ -902,12 +902,18 @@ class MessagePyGen():
                 result += '        return cls._deserialize_variable(data)\n'
             else:
                 result += '        # Variable message - check encoding format\n'
-                result += '        # A frame from a reader says which layout it carries; that removes the\n'
-                result += '        # length ambiguity when the wire form is exactly MAX_SIZE bytes.\n'
-                result += '        if variable_encoding is True:\n'
-                result += '            return cls._deserialize_variable(data)\n'
-                result += '        if variable_encoding is False:\n'
-                result += '            return cls._deserialize_fixed(data)\n'
+                if any(o.variable for o in msg.oneofs.values()):
+                    # Only a variable oneof makes the wire form differ from the fixed layout
+                    # at MAX_SIZE bytes (it adds a length prefix). A frame from a reader says
+                    # which layout it carries, which removes that ambiguity. Without a
+                    # variable oneof both layouts are identical at MAX_SIZE, and a raw
+                    # fixed-layout payload sent on a length profile must keep decoding.
+                    result += '        # A frame from a reader says which layout it carries; that removes the\n'
+                    result += '        # length ambiguity when the wire form is exactly MAX_SIZE bytes.\n'
+                    result += '        if variable_encoding is True:\n'
+                    result += '            return cls._deserialize_variable(data)\n'
+                    result += '        if variable_encoding is False:\n'
+                    result += '            return cls._deserialize_fixed(data)\n'
                 result += '        if len(data) == cls.MAX_SIZE:\n'
                 result += '            # Minimal profile format (MAX_SIZE encoding)\n'
                 result += '            return cls._deserialize_fixed(data)\n'
