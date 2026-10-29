@@ -27,7 +27,7 @@ Minimal footprint for embedded systems. Serial transport only.
 
 Subscribe to messages using function pointers or lambdas:
 
-```cpp
+```cpp no-compile
 #include "struct_frame_sdk/sdk_embedded.hpp"
 #include "messages.structframe.hpp"
 
@@ -55,7 +55,7 @@ int main() {
 
 You can subscribe to every complete parsed frame directly as `FrameMsgInfo`:
 
-```cpp
+```cpp no-compile
 structframe::sdk::StructFrameSdkT<structframe::ProfileStandardConfig>
     sdk(&transport, &get_message_info);
 
@@ -75,7 +75,7 @@ To bridge two SDKs, use one of two forwarding modes:
 
 Most efficient same-profile bridge:
 
-```cpp
+```cpp no-compile
 structframe::sdk::StructFrameSdkT<structframe::ProfileStandardConfig>
     source_sdk(&transport_a, &get_message_info);
 
@@ -101,7 +101,7 @@ source_sdk.Feed(wire, wire_len);
 
 Cross-profile bridge (re-encode on destination):
 
-```cpp
+```cpp no-compile
 auto forward_cross_profile = source_sdk.subscribeFrameInfo(
     [&](const structframe::FrameMsgInfo& frame) {
         target_sdk.Send(frame);  // profile-aware re-encode
@@ -110,7 +110,7 @@ auto forward_cross_profile = source_sdk.subscribeFrameInfo(
 
 Use the same type for other profiles by changing only the config:
 
-```cpp
+```cpp no-compile
 structframe::sdk::StructFrameSdkT<structframe::ProfileSensorConfig>
     sensor_sdk(&transport, &get_message_info);
 
@@ -125,7 +125,7 @@ structframe::sdk::StructFrameSdkT<structframe::ProfileBulkConfig>
 
 ### Serial
 
-```cpp
+```cpp no-compile
 #include "struct_frame_sdk/serial_transport.hpp"
 
 // SerialTransport requires a platform-specific ISerialPort implementation.
@@ -138,7 +138,7 @@ serial.Connect();
 
 ### Network (UDP, TCP)
 
-```cpp
+```cpp no-compile
 #include "struct_frame_sdk/network_transports.hpp"
 
 // UDP
@@ -156,7 +156,7 @@ tcp.Connect();
 
 Use predefined frame profiles:
 
-```cpp
+```cpp no-compile
 #include "frame_profiles.hpp"
 
 using namespace structframe;
@@ -178,7 +178,7 @@ contiguous buffer exposing `data()` and `size()`. This includes
 `std::array`, `std::span`, `etl::array`, and `etl::span` when those libraries
 are available:
 
-```cpp
+```cpp no-compile
 #include <array>
 #include <span>
 

@@ -93,7 +93,7 @@ Five pre-built profiles cover the most common framing configurations:
 
 ### Single Message
 
-```rust
+```rust no-compile
 use struct_frame_sdk::example::Status;
 use struct_frame_sdk::{encode_message_crc, PROFILE_STANDARD_CONFIG};
 
@@ -108,7 +108,7 @@ send_bytes(&buffer[..written]);
 
 ### Minimal (No CRC / No Length)
 
-```rust
+```rust no-compile
 use struct_frame_sdk::{encode_message_minimal, PROFILE_IPC_CONFIG};
 
 let written = encode_message_minimal(&PROFILE_IPC_CONFIG, &mut buffer, &msg);
@@ -116,7 +116,7 @@ let written = encode_message_minimal(&PROFILE_IPC_CONFIG, &mut buffer, &msg);
 
 ### Encoding Multiple Messages with BufferWriter
 
-```rust
+```rust no-compile
 use struct_frame_sdk::{BufferWriter, PROFILE_STANDARD_CONFIG};
 
 let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 4096);
@@ -132,9 +132,9 @@ send_bytes(writer.data());
 
 ### Buffer Mode (Recommended)
 
-`AccumulatingReader` handles partial frames across buffer boundaries:
+`AccumulatingReader` handles partial frames across buffer boundaries. It copies what you give it into an internal buffer of the capacity you pass to `new`: drain it with `try_next` after every `add_data`, and keep each chunk smaller than the capacity minus one pending partial frame. Bytes that do not fit are dropped and counted in `cnt_failed_bytes` / `cnt_sync_recoveries` (the C, C++, Python and TypeScript buffer modes read your slice in place and have no such limit):
 
-```rust
+```rust no-compile
 use struct_frame_sdk::{AccumulatingReader, MessageInfo, PROFILE_STANDARD_CONFIG};
 
 let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
@@ -162,7 +162,7 @@ while let Some(info) = reader.next(&get_info) {
 
 Useful when receiving from a serial port or UART one byte at a time:
 
-```rust
+```rust no-compile
 let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
@@ -187,7 +187,7 @@ for byte in uart.bytes() {
 
 For pre-loaded buffers containing multiple complete frames:
 
-```rust
+```rust no-compile
 use struct_frame_sdk::{BufferReader, MessageInfo, PROFILE_STANDARD_CONFIG};
 
 let get_info = |id: u16| -> Option<MessageInfo> {
@@ -234,7 +234,7 @@ pub struct FrameMsgInfo {
 
 When a buffer may contain different message types, match on `msg_id`:
 
-```rust
+```rust no-compile
 use struct_frame_sdk::example::{Status, Command};
 
 let get_info = |id: u16| -> Option<MessageInfo> {

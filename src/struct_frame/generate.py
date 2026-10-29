@@ -29,6 +29,7 @@ from struct_frame.naming import NameOverrides, NameOverrideError, validate_gener
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
+from proto_schema_parser import parser as _psp_parser
 
 import argparse
 import sys
@@ -287,6 +288,63 @@ def _compute_message_default_bytes(msg):
 
 # Generation hash file name
 HASH_FILENAME = ".structframe.hash"
+
+# Per-output-directory record of which files each root schema generated, so a later run can
+# delete the files a schema no longer produces (renamed/removed messages and packages).
+MANIFEST_FILENAME = ".structframe-manifest.json"
+
+
+def _manifest_key(schema_path, out_dir):
+    """Stable key for a root schema: its path relative to the output directory, '/'-separated."""
+    try:
+        rel = os.path.relpath(os.path.abspath(schema_path), os.path.abspath(out_dir))
+    except ValueError:  # different drive on Windows
+        rel = os.path.abspath(schema_path)
+    return rel.replace(os.sep, "/")
+
+
+def _load_manifest(out_dir):
+    try:
+        with open(os.path.join(out_dir, MANIFEST_FILENAME), "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def prune_stale_outputs(out_dir, schema_path, generated_files):
+    """Delete files that *schema_path* generated into *out_dir* last time but not this time.
+
+    Only files listed for this same schema in the directory's manifest are candidates, and a file
+    another schema still claims is kept, so several schemas can share one output directory.
+    Returns the deleted paths and updates the manifest.
+    """
+    out_abs = os.path.abspath(out_dir)
+    current = sorted({os.path.relpath(os.path.abspath(f), out_abs).replace(os.sep, "/")
+                      for f in generated_files
+                      if os.path.abspath(f).startswith(out_abs + os.sep)})
+    manifest = _load_manifest(out_dir)
+    key = _manifest_key(schema_path, out_dir)
+    claimed_elsewhere = {f for k, files in manifest.items() if k != key for f in files}
+    removed = []
+    for rel in manifest.get(key, []):
+        if rel in current or rel in claimed_elsewhere or rel.startswith("../") or os.path.isabs(rel):
+            continue
+        target = os.path.join(out_abs, *rel.split("/"))
+        if os.path.isfile(target):
+            os.remove(target)
+            removed.append(target)
+            # Drop directories the deletion left empty (C# Messages/ folders etc.).
+            parent = os.path.dirname(target)
+            while parent != out_abs and os.path.isdir(parent) and not os.listdir(parent):
+                os.rmdir(parent)
+                parent = os.path.dirname(parent)
+    manifest[key] = current
+    os.makedirs(out_abs, exist_ok=True)
+    with open(os.path.join(out_abs, MANIFEST_FILENAME), "w", encoding="utf-8", newline="\n") as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
+        f.write("\n")
+    return removed
 
 
 def get_version():
@@ -689,6 +747,8 @@ class _Documented:
     """
 
     def _init_docs(self, comments):
+        self.line = None          # source line, set by parse()
+        self.source_file = None   # schema file, set by the owning package/message
         self.leading_comments = list(comments)
         self.trailing_comments = []
         self.comments = list(comments)
@@ -761,8 +821,11 @@ class Enum(_Documented):
 
     def parse(self, enum):
         self.name = enum.name
+        self.line = getattr(enum, '_sf_line', None)
+        self.error_line = self.line
         docs = _DocCollector(owner=self)
         for e in enum.elements:
+            self.error_line = getattr(e, '_sf_line', None) or self.line
             if type(e) == ast.Comment:
                 docs.comment(e)
             elif type(e) == ast.Option:
@@ -777,7 +840,7 @@ class Enum(_Documented):
                         return False
             else:
                 if e.name in self.data:
-                    print(f"Enum Field Redeclaration")
+                    print(f"{location(self, self.error_line)}Enum entry '{e.name}' is declared twice in enum {self.name}")
                     return False
                 entry_docs = _EntryDocs(docs.take())
                 self.data[e.name] = (e.number, entry_docs.comments)
@@ -792,10 +855,10 @@ class Enum(_Documented):
         seen = {}
         for key, (number, _docs) in self.data.items():
             if isinstance(number, bool) or not isinstance(number, int):
-                print(f"Enum {self.name}: entry {key} has non-integer value {number!r}")
+                print(f"{location(self)}Enum {self.name}: entry {key} has non-integer value {number!r}")
                 return False
             if number < 0 or number > 255:
-                print(f"Enum {self.name}: entry {key} = {number} is out of range "
+                print(f"{location(self)}Enum {self.name}: entry {key} = {number} is out of range "
                       f"(enums are stored in 1 byte: 0..255)")
                 return False
             if number in seen:
@@ -883,6 +946,7 @@ class Field(_Documented):
 
     def parse(self, field):
         self.name = field.name
+        self.line = getattr(field, '_sf_line', None)
         self.field_type = field.type
         self.number = getattr(field, 'number', None)
 
@@ -1261,9 +1325,12 @@ class OneOf(_Documented):
     def parse(self, oneof_element):
         """Parse a oneof element from the AST."""
         self.name = oneof_element.name
+        self.line = getattr(oneof_element, '_sf_line', None)
+        self.error_line = self.line
         docs = _DocCollector(owner=self)
 
         for e in oneof_element.elements:
+            self.error_line = getattr(e, '_sf_line', None) or self.line
             if type(e) == ast.Comment:
                 docs.comment(e)
                 # Detect the visual extension marker: a standalone comment that
@@ -1595,8 +1662,11 @@ class Message(_Documented):
 
     def parse(self, msg):
         self.name = msg.name
+        self.line = getattr(msg, '_sf_line', None)
+        self.error_line = self.line
         docs = _DocCollector(owner=self)
         for e in msg.elements:
+            self.error_line = getattr(e, '_sf_line', None) or self.line
             if type(e) == ast.Option:
                 docs.statement(owner=self)
                 if e.name == "msgid":
@@ -1678,26 +1748,31 @@ class Message(_Documented):
                 docs.comment(e)
             elif type(e) == ast.OneOf:
                 if e.name in self.oneofs:
-                    print(f"OneOf Redeclaration")
+                    print(f"{location(self, self.error_line)}oneof '{e.name}' is declared twice in message {self.name}")
                     return False
                 self.oneofs[e.name] = OneOf(self.package, docs.take())
+                self.oneofs[e.name].source_file = self.source_file
                 docs.declared(self.oneofs[e.name])
                 if not self.oneofs[e.name].parse(e):
+                    self.error_line = self.oneofs[e.name].error_line or self.error_line
                     return False
             elif type(e) == ast.Enum:
                 if e.name in self.enums:
-                    print(f"Enum Redeclaration in message {self.name}")
+                    print(f"{location(self, self.error_line)}enum '{e.name}' is declared twice in message {self.name}")
                     return False
                 self.enums[e.name] = Enum(self.package, docs.take())
                 self.enums[e.name].message = self.name
+                self.enums[e.name].source_file = self.source_file
                 docs.declared(self.enums[e.name])
                 if not self.enums[e.name].parse(e):
+                    self.error_line = self.enums[e.name].error_line or self.error_line
                     return False
             elif type(e) == ast.Field:
                 if e.name in self.fields:
-                    print(f"Field Redeclaration")
+                    print(f"{location(self, self.error_line)}field '{e.name}' is declared twice in message {self.name}")
                     return False
                 self.fields[e.name] = Field(self.package, docs.take())
+                self.fields[e.name].source_file = self.source_file
                 docs.declared(self.fields[e.name])
                 if not self.fields[e.name].parse(e):
                     return False
@@ -1760,7 +1835,7 @@ class Message(_Documented):
         for key, value in self.fields.items():
             if not value.validate(current_package, packages, debug, current_message=self):
                 print(
-                    f"Failed To validate Field: {key}, in Message {self.name}\n")
+                    f"{location(value)}Failed To validate Field: {key}, in Message {self.name}\n")
                 return False
             self.size = self.size + value.size
             if not value.is_extension:
@@ -1775,7 +1850,7 @@ class Message(_Documented):
         for key, oneof in self.oneofs.items():
             if not oneof.validate(current_package, packages, debug, current_message=self):
                 print(
-                    f"Failed To validate OneOf: {key}, in Message {self.name}\n")
+                    f"{location(oneof)}Failed To validate OneOf: {key}, in Message {self.name}\n")
                 return False
             # Add oneof size (largest field size)
             # For variable oneof, add 2 bytes for the uint16 length prefix on the wire.
@@ -1797,6 +1872,10 @@ class Message(_Documented):
         # Flatten collision detection: if a field is marked as flatten and is a message,
         # ensure none of the child field names collide with fields in this message.
         taken = {name: name for name in self.fields.keys()}
+        # oneof members become sibling fields too (GraphQL emits them on the same type).
+        for oneof in getattr(self, 'oneofs', {}).values():
+            for member in getattr(oneof, 'fields', {}).keys():
+                taken.setdefault(member, member)
         for key, value in self.fields.items():
             if getattr(value, 'flatten', False):
                 # Only meaningful for non-default, non-enum message types
@@ -1982,7 +2061,8 @@ class Package:
 
     def addEnum(self, enum, comments, source_file=None):
         if enum.name in self.enums:
-            print(f"Enum Redeclaration")
+            where = f"{source_file}:{getattr(enum, '_sf_line', '')}: " if source_file else ""
+            print(f"{where}enum '{enum.name}' is declared twice in package {self.name}")
             return False
         self.enums[enum.name] = Enum(self.name, comments)
         self.enums[enum.name].source_file = source_file
@@ -1990,7 +2070,8 @@ class Package:
 
     def addMessage(self, message, comments, source_file=None):
         if message.name in self.messages:
-            print(f"Message Redeclaration")
+            where = f"{source_file}:{getattr(message, '_sf_line', '')}: " if source_file else ""
+            print(f"{where}message '{message.name}' is declared twice in package {self.name}")
             return False
         self.messages[message.name] = Message(self.name, comments)
         self.messages[message.name].source_file = source_file
@@ -2052,9 +2133,8 @@ class Package:
 
         for key, value in self.messages.items():
             if not value.validate(self, all_packages, debug):
-                where = f" ({value.source_file})" if getattr(value, 'source_file', None) else ""
                 print(
-                    f"Failed To validate Message: {key}, in Package {self.name}{where}\n")
+                    f"{location(value)}Failed To validate Message: {key}, in Package {self.name}\n")
                 return False
 
         return True
@@ -2160,6 +2240,41 @@ parser.add_argument('--no_packed', action='store_true',
 _SYNTAX_ERROR_RE = re.compile(r"^line \d+:\d+ ", re.M)
 
 
+def _install_line_tracking():
+    """Record the source line of every AST node the parser builds (as ``_sf_line``).
+
+    proto-schema-parser's AST carries no positions. Its visitor sees the ANTLR context of
+    each node, so wrapping ``visit`` lets error messages say ``file:line``. If a future
+    parser version changes this internal API, errors simply lose their line numbers.
+    """
+    ctor = getattr(_psp_parser, "_ASTConstructor", None)
+    if ctor is None or getattr(ctor, "_sf_line_tracking", False):
+        return
+    original = ctor.visit
+
+    def visit(self, tree):
+        node = original(self, tree)
+        start = getattr(tree, "start", None)
+        if start is not None and hasattr(node, "__dataclass_fields__") and not hasattr(node, "_sf_line"):
+            try:
+                node._sf_line = start.line
+            except (AttributeError, TypeError):
+                pass
+        return node
+
+    ctor.visit = visit
+    ctor._sf_line_tracking = True
+
+
+def location(obj, line=None):
+    """``path:line: `` for a parsed element (or just ``path: ``), for error messages."""
+    path = getattr(obj, "source_file", None)
+    line = line if line is not None else getattr(obj, "line", None)
+    if path and line:
+        return f"{path}:{line}: "
+    return f"{path}: " if path else ""
+
+
 def _parse_schema_text(text, filename):
     """Parse schema text, treating any ANTLR syntax error as fatal.
 
@@ -2168,6 +2283,7 @@ def _parse_schema_text(text, filename):
     truncated schema. Capture that output and fail instead. Returns the parsed
     file, or None after printing the errors.
     """
+    _install_line_tracking()
     captured = io.StringIO()
     with contextlib.redirect_stderr(captured):
         result = Parser().parse(text)
@@ -2338,8 +2454,10 @@ def parseFile(filename, base_path=None, importing_package=None):
                 print(f"Enum found before package declaration in {filename}")
                 return False
             if not packages[package_name].addEnum(e, docs.take(), source_file=abs_filename):
-                print(
-                    f"Enum Error in Package: {package_name}  FileName: {filename} EnumName: {e.name}")
+                enum_obj = packages[package_name].enums.get(e.name)
+                line = getattr(enum_obj, 'error_line', None) or getattr(e, '_sf_line', None)
+                print(f"{abs_filename}:{line}: error in enum {e.name} (package {package_name})"
+                      if line else f"Enum Error in Package: {package_name}  FileName: {filename} EnumName: {e.name}")
                 return False
             docs.declared(packages[package_name].enums[e.name])
 
@@ -2349,8 +2467,10 @@ def parseFile(filename, base_path=None, importing_package=None):
                     f"Message found before package declaration in {filename}")
                 return False
             if not packages[package_name].addMessage(e, docs.take(), source_file=abs_filename):
-                print(
-                    f"Message Error in Package: {package_name}  FileName: {filename} MessageName: {e.name}")
+                msg_obj = packages[package_name].messages.get(e.name)
+                line = getattr(msg_obj, 'error_line', None) or getattr(e, '_sf_line', None)
+                print(f"{abs_filename}:{line}: error in message {e.name} (package {package_name})"
+                      if line else f"Message Error in Package: {package_name}  FileName: {filename} MessageName: {e.name}")
                 return False
             docs.declared(packages[package_name].messages[e.name])
 
@@ -3180,6 +3300,17 @@ def generateRustFileStrings(path, equality=False, generate_tests=False):
             test_data = ''.join(TestRustGen.generate(value))
             out[test_name] = test_data
 
+    out.update(rust_crate_files(path, new_package_names, generate_tests))
+    return out
+
+
+def rust_crate_files(path, new_package_names, generate_tests=False):
+    """lib.rs and Cargo.toml for the generated crate.
+
+    They cover every package in the directory, including ones written by earlier runs for other
+    schemas, so they are rebuilt after stale outputs are pruned.
+    """
+    out = {}
     # Discover ALL .structframe.rs files in the output directory (from previous runs)
     all_package_names = list(new_package_names)
     if os.path.exists(path):
@@ -3202,8 +3333,8 @@ def generateRustFileStrings(path, equality=False, generate_tests=False):
         if os.path.exists(path):
             existing = {f for f in os.listdir(path)
                         if f.startswith('test_roundtrip_') and f.endswith('.rs')}
-        for key, value in packages.items():
-            fname = "test_roundtrip_" + value.name + ".rs"
+        for pkg_name in new_package_names:
+            fname = "test_roundtrip_" + pkg_name + ".rs"
             if fname not in existing:
                 bin_name = fname[:-3]
                 cargo_toml += f'\n[[bin]]\nname = "{bin_name}"\npath = "{fname}"\n'
@@ -3438,7 +3569,11 @@ def main():
             target_languages = ['c', 'cpp', 'ts', 'js', 'py', 'gql', 'csharp', 'rust']
         validate_generated_names(packages, target_languages, name_overrides)
     except NameOverrideError as err:
-        print(f"Error: {err}", file=sys.stderr)
+        # Located errors read "path:line: error: ..." (the form editors and CI annotate).
+        text = str(err)
+        located = re.match(r"^(.+?:\d+: )(.*)$", text, re.S)
+        print(f"{located.group(1)}error: {located.group(2)}" if located else f"Error: {text}",
+              file=sys.stderr)
         return 1
 
     if args.validate:
@@ -3539,6 +3674,20 @@ def main():
     }
     files.update(generate_lsp_file_strings(
         args.catalog_path[0], lsp_build_flags, lsp_paths, name_overrides))
+
+    # Delete files this schema generated last time but no longer produces (renamed or removed
+    # messages and packages). Other schemas' outputs in the same directory are left alone.
+    for lang, enabled in lsp_build_flags.items():
+        if not enabled:
+            continue
+        out_dir = lsp_paths[lang]
+        removed = prune_stale_outputs(out_dir, args.filename, files.keys())
+        for path in removed:
+            print(f"Removed stale output {path}")
+        if lang == 'rust' and removed:
+            with language_model('rust', name_overrides):
+                files.update(rust_crate_files(
+                    out_dir, [p.name for p in packages.values()], args.generate_tests))
 
     for filename, filedata in files.items():
         dirname = os.path.dirname(filename)

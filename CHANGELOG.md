@@ -25,10 +25,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - `wireshark/magic_table.py` and a "Magic bytes" dissector preference so the Wireshark dissector can verify checksums.
 - C# `WireArray` helper: primitive arrays use little-endian wire order on every host.
 - Examples that are built and run by the test suite (`examples/`).
+- Cross-language stream test (`tests/test_stream_cross_lang.py`): identical clean, corrupted and mutated streams through the Python, C, C++, JavaScript/TypeScript, Rust and C# readers at several chunk sizes.
+- Loopback transport tests for the TS/JS (TCP, UDP, WebSocket), C# (TCP, UDP) and C++ (TCP, UDP) SDKs; a C++ libFuzzer harness; fuzz harnesses now use real message info and seed corpora; Miri and AddressSanitizer jobs for the Rust parser; a big-endian (s390x) CI job; a check that `boilerplate/js` matches `tsc` output; a check that documentation code blocks only use names that exist.
 - Python and C benchmarks run the generated code and the real runtime, with warm-up, batched timing and Sensor/IPC profiles (`tests/benchmarks/`).
 
 ### Fixed
 
+- A corrupted length field in buffer mode (`add_data` / `next`) made the reader hold up to a whole buffer of good data behind a header that claimed an impossible frame size; stream mode already resynced at once. All six readers (C, C++, Python, TypeScript/JavaScript, Rust, C#) now resync as soon as the header claims a frame larger than the internal buffer. Found by the new cross-language stream test.
+- The C# SDK page showed `new TcpTransport("host", 8080)` and `new MyPackageSdkInterface(sdk)`; the constructors take a config object and the generated class is `Client`. The Advanced Features page used C++ names (`ProfileSensorWriter`, `ProfileSensorAccumulatingReader`) in its Python example.
 - Generated Python `get_message_info` re-ran a failing relative import on every frame (about 8x slower decoding); it now resolves `MessageInfo` once.
 - Types of an imported package were resolved against the *importing* package, giving the wrong wire size when both defined a type with the same name.
 - `msgid = 0` was treated as "no message ID" by the TypeScript, JavaScript, C# and Python generators/runtimes.
@@ -38,9 +42,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - The compiled JavaScript SDK was missing `onError`; it is rebuilt from the TypeScript source.
 - The full C++ SDK now copies the real ASIO headers instead of a git symlink (a text file on Windows) and no longer copies the whole ASIO repository.
 
-## [0.10.9](https://github.com/mylonics/struct-frame/releases/tag/0.10.9) - 2026-10-07
+## [v0.10.9](https://github.com/mylonics/struct-frame/releases/tag/v0.10.9) - 2026-10-07
 
-<small>[Compare with v0.10.8](https://github.com/mylonics/struct-frame/compare/v0.10.8...0.10.9)</small>
+<small>[Compare with v0.10.8](https://github.com/mylonics/struct-frame/compare/v0.10.8...v0.10.9)</small>
+
+### Added
+
+- C++ encode/decode APIs accept `std::array` and `std::span` buffers in addition to pointer + length (#373) ([3cd6601](https://github.com/mylonics/struct-frame/commit/3cd6601d3caaad42a13a548b01e45e50dc092265)).
 
 ## [v0.10.8](https://github.com/mylonics/struct-frame/releases/tag/v0.10.8) - 2026-09-08
 

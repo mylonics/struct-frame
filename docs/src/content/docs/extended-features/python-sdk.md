@@ -13,7 +13,7 @@ Generate with SDK:
 python -m struct_frame messages.sf --build_py --py_path generated/ --sdk
 ```
 
-The serial transport needs `pyserial`, and the WebSocket transports need `websockets`; install them separately if you use those transports.
+The serial transports need `pyserial`, the synchronous `WebSocketTransport` needs `websocket-client` and the asyncio `AsyncWebSocketTransport` needs `websockets`. `pip install "struct-frame[sdk]"` installs all three. A serial transport's `port` can be a device name (`COM3`, `/dev/ttyUSB0`) or any pyserial URL, such as `socket://host:port` or `loop://`.
 
 ## Parser Usage
 

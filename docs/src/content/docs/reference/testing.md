@@ -79,6 +79,30 @@ python tests/test_no_packed.py
 python tests/test_wire_evolution.py
 ```
 
+### Runtime tests that build their own programs
+
+These pytest files build a small program per language from the checked-in runtime sources (no
+generation step) and run it. A language whose toolchain is missing is skipped unless it is listed in
+`SF_REQUIRE_LANGS` (set from `--require-langs`), in which case the test fails instead.
+
+```bash
+# Python, C, C++, JavaScript (= TypeScript), Rust and C# readers fed identical clean, corrupted
+# and mutated streams at several chunk sizes; outputs must agree and recover every intact frame
+python -m pytest tests/test_stream_cross_lang.py
+
+# Concrete TCP / UDP / WebSocket transports of the TS/JS, C# and C++ SDKs over loopback sockets
+python -m pytest tests/test_sdk_transports.py
+
+# boilerplate/js must equal what tsc builds from boilerplate/ts (the JS runtime tests rely on it)
+python -m pytest tests/test_js_twin_sync.py
+
+# Every type / function name in the documentation's code blocks must exist in the runtimes
+python -m pytest tests/test_doc_api_names.py
+
+# Seed inputs for the libFuzzer / atheris / cargo-fuzz harnesses (they use the same message table)
+python tests/fuzz/make_seed_corpus.py fuzz_seeds
+```
+
 ## Test Prerequisites
 
 | Need | Install |

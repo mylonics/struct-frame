@@ -67,6 +67,14 @@ The generated `StructFrame.csproj` targets `net8.0;net9.0;net10.0`. The transpor
 | `--debug` | Enable debug output during code generation |
 | `--catalog_path PATH` | Directory for the LSP type catalog file (`sf_compile.json`); default `generated/` |
 
+### Stale outputs
+
+Each output directory also holds `.structframe-manifest.json`, which records the files every root schema generated there. When a schema is generated again, files it produced last time but no longer produces (a renamed or removed message or package) are deleted and reported as `Removed stale output ...`. Files that another schema generated into the same directory are kept, and the Rust `lib.rs` / `Cargo.toml` are rebuilt to match. Commit the manifest along with the generated code if you check generated code in.
+
+### Error messages
+
+Schema errors start with `path:line:` (for example `robot.sf:12: field 'x' is declared twice in message Pose`), the form most editors and CI log viewers turn into links. Errors go to stderr and the exit code is 1.
+
 ## Schema Diff (Wire-Compatibility Check)
 
 ```bash

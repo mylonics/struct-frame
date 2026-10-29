@@ -928,7 +928,8 @@ class AccumulatingReader {
       // buffer (still collecting with the buffer full): resync inside the
       // internal buffer instead of waiting forever.
       if (result.status == FrameMsgStatus::WaitingForStart ||
-          internal_data_len_ >= BufferSize) {
+          internal_data_len_ >= BufferSize ||
+          claims_oversize_frame(internal_buffer_, internal_data_len_)) {
         size_t discard = internal_data_len_;
         if constexpr (Config::num_start_bytes >= 1) {
           if (internal_data_len_ > 1) {
@@ -1013,6 +1014,28 @@ class AccumulatingReader {
       diagnostics_.cnt_sync_recoveries++;
       diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(r.frame_size);
       return with_diagnostics(r);
+    }
+
+    // A header that claims a frame larger than the internal buffer can never complete:
+    // resync past its start byte now rather than buffering good data behind it.
+    if constexpr (Config::num_start_bytes >= 1) {
+      if (claims_oversize_frame(current_buffer_ + current_offset_, current_size_ - current_offset_)) {
+        size_t old_offset = current_offset_;
+        size_t scan_start = current_offset_ + 1;
+        current_offset_ = current_size_;
+        if (scan_start < current_size_) {
+          const void* p = std::memchr(current_buffer_ + scan_start,
+                                      static_cast<int>(Config::computed_start_byte1()),
+                                      current_size_ - scan_start);
+          if (p) current_offset_ = static_cast<size_t>(static_cast<const uint8_t*>(p) - current_buffer_);
+        }
+        FrameMsgInfo r;
+        r.status = FrameMsgStatus::SyncRecovery;
+        r.frame_size = current_offset_ - old_offset;
+        diagnostics_.cnt_sync_recoveries++;
+        diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(r.frame_size);
+        return with_diagnostics(r);
+      }
     }
 
     // Collecting — save remaining bytes to internal buffer for next add_data() call
@@ -1147,6 +1170,26 @@ class AccumulatingReader {
   }
 
  private:
+  // True when the header at the start of data claims a frame that cannot fit in the internal
+  // buffer (typically a corrupted length field). Only profiles with a length field carry such a
+  // claim.
+  static bool claims_oversize_frame(const uint8_t* data, size_t size) {
+    if constexpr (!Config::has_length) {
+      (void)data; (void)size;
+      return false;
+    } else {
+      if (size < Config::header_size) return false;
+      size_t off = Config::num_start_bytes;
+      if constexpr (Config::has_seq) off++;
+      if constexpr (Config::has_sys_id) off++;
+      if constexpr (Config::has_comp_id) off++;
+      size_t payload_len = (Config::length_bytes == 1)
+          ? data[off]
+          : static_cast<size_t>(data[off] | (data[off + 1] << 8));
+      return Config::overhead + payload_len > BufferSize;
+    }
+  }
+
   /*=========================================================================
    * Stream Mode State Handlers
    *=========================================================================*/

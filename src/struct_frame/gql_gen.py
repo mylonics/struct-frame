@@ -2,8 +2,9 @@
 """
 GraphQL schema generator for struct-frame.
 
-This module generates GraphQL type definitions from Protocol Buffer messages,
-converting proto types to GraphQL scalars and generating type/input definitions.
+This module generates GraphQL object-type and enum definitions from struct-frame messages,
+mapping proto scalar types to GraphQL scalars (with custom scalars for the 64-bit and unsigned
+32-bit integers). It does not generate ``input`` types.
 """
 
 from struct_frame import version, pascal_case, camel_to_snake_case
@@ -174,8 +175,8 @@ class FieldGqlGen:
 
     @staticmethod
     def generate_flattened_children(field, package, parent_msg):
-        # Expand a message-typed field into its child fields.
-        # If a child field name collides, raise an error and fail generation.
+        # Expand a message-typed field into its child fields. Name collisions are rejected by
+        # Message.validate before generation; MessageGqlGen.generate re-checks the emitted type.
         t = field.field_type
         child_msg = getattr(field, 'type_ref', None)
         if child_msg is None or not hasattr(child_msg, 'fields'):
@@ -194,6 +195,31 @@ class FieldGqlGen:
 _PACKAGE_DIRECTIVE_DEF = 'directive @package(name: String!) on OBJECT | INPUT_OBJECT | ENUM'
 
 
+def _reject_duplicate_fields(type_name, entries):
+    """Raise if the field entries of one GraphQL type declare the same field twice.
+
+    Each entry is one field, possibly preceded by a description block.
+    """
+    seen = set()
+    for name in _declared_field_names(entries):
+        if name in seen:
+            raise ValueError(f"GraphQL type {type_name} would declare field '{name}' twice "
+                             f"(check fields marked flatten)")
+        seen.add(name)
+
+
+def _declared_field_names(entries):
+    """Yield the field name of every field line, skipping descriptions and comments."""
+    in_description = False
+    for line in (l.strip() for entry in entries for l in entry.splitlines()):
+        if line.startswith('"""'):
+            # A one-line """text""" opens and closes; a bare """ toggles a block.
+            if not (len(line) > 3 and line.endswith('"""')):
+                in_description = not in_description
+        elif not in_description and line and not line.startswith(("#", '"')) and ":" in line:
+            yield line.split(":", 1)[0].split("(", 1)[0].strip()
+
+
 class MessageGqlGen:
     @staticmethod
     def generate(package, msg):
@@ -204,6 +230,7 @@ class MessageGqlGen:
                 lines.append(desc)
         type_name = f"{pascal_case(msg.package)}{msg.name}"
         lines.append(f'type {type_name} @package(name: "{package.name}") {{')
+        first_field = len(lines)
         if not msg.fields and not getattr(msg, 'oneofs', {}):
             lines.append("  _empty: Boolean")
         else:
@@ -220,6 +247,7 @@ class MessageGqlGen:
                     # Oneof members are nullable since only one is populated
                     gql_type = FieldGqlGen.type_name(oneof_field)
                     lines.append(f"  {field_name}: {gql_type}")
+        _reject_duplicate_fields(type_name, lines[first_field:])
         lines.append("}\n")
         return '\n'.join(lines)
 

@@ -6,21 +6,20 @@ publish = false
 
 # Cargo-fuzz scaffold for the struct-frame Rust streaming parser.
 #
-# Setup (requires the generated SDK to exist; run `python test_all.py
-# --only-generate` once):
+# Setup:
 #     cargo install cargo-fuzz
+#     python tests/fuzz/make_seed_corpus.py tests/rust/fuzz/corpus/parser
 #     cd tests/rust/fuzz
 #     cargo +nightly fuzz run parser -- -max_len=4096 -runs=100000
-#
-# The harness imports the generated SDK exactly the way tests/rust does, so
-# any regression in the parser surfaces here before it can ship.
 
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-struct_frame_sdk = { path = "../../generated/rust" }
+# The runtime sources are compiled straight from src/ via the driver crate, so no generation
+# step is needed first.
+struct_frame_sdk = { path = "../../fuzz/drivers/rust" }
 
 [[bin]]
 name = "parser"

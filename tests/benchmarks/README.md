@@ -1,20 +1,18 @@
 # Tier D benchmarks
 
-> **What these measure.**
-> - **Python and C** run the real thing: `run_all.py` generates code from
->   `schema/bench.sf`, then encodes with the generated `serialize` plus the runtime's
->   `BufferWriter` / `buffer_writer_write` and decodes with the runtime parser plus the
->   generated `deserialize`. Standard, Sensor, IPC, Bulk and Network profiles are covered.
-> - **C++, TypeScript, JavaScript, C# and Rust** are still small, self-contained *reference
->   models* of framing (their own Fletcher-16 and frame layout). They do not call the
->   generated code, so they compare the cost of the framing arithmetic per language, not
->   struct-frame itself. Porting them to the generated code is the remaining benchmark work.
+> **What these measure.** Every language's benchmark runs the real thing: `run_all.py`
+> generates code from `schema/bench.sf` (32-, 96- and 512-byte messages), then each benchmark
+> encodes with the generated message plus the runtime's writer and decodes with the runtime's
+> parser plus the generated `deserialize`. Standard, Sensor, IPC, Bulk and Network profiles are
+> covered in Python, C, C++, TypeScript, JavaScript, C# and Rust. (The Rust message-level encoder
+> has no sequence/address arguments, so its Network frames carry zeros there.)
 >
 > **Method.** Each scenario warms up for 1,280 operations, then times batches of 64
 > operations and reports per-operation latency from the batch time, so the clock reads are
-> outside the per-message cost. C and C++ are built with `-O2`, Rust with `--release`
-> and C# with `-c Release`. JIT languages (C#, JS, TS) get no extra warm-up beyond the
-> above, so compare them with care.
+> outside the per-message cost. Latency is reported in whole nanoseconds, so very fast
+> operations show a p50 of 0. C and C++ are built with `-O2` and use a compiler barrier so
+> unread encodes are not optimised away; Rust uses `--release` and `black_box`; C# uses
+> `-c Release`.
 >
 > **Baselines.** The checked-in files in `baselines/` are placeholders
 > (`"runner_version": "placeholder-baseline"`), so `check_regression.py` skips every

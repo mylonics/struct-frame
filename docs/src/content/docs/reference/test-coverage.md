@@ -331,9 +331,9 @@ All 42 scenarios below (the 33 uniform scenarios, 4 package-corruption scenarios
 | `request()` / `RequestAsync()` (send + await response) | N/A | N/A | ✅ | ✅ | N/A | ✅ | N/A |
 | `AsyncStructFrameSdk.request()` (async request/response) | N/A | N/A | ✅ | N/A | N/A | N/A | N/A |
 | Serial transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
-| TCP transport | N/A | ❌ | ✅ | ❌ | ❌ | ❌ | N/A |
-| UDP transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
-| WebSocket transport | N/A | ❌ | ❌ | ❌ | ❌ | ❌ | N/A |
+| TCP transport | N/A | ✅ | ✅ | ✅ | ✅ | ✅ | N/A |
+| UDP transport | N/A | ✅ | ❌ | ✅ | ✅ | ✅ | N/A |
+| WebSocket transport | N/A | N/A | ❌ | ✅ | ✅ | ❌ | N/A |
 | Async transport (Python) | N/A | N/A | ❌ | N/A | N/A | N/A | N/A |
 
 > **Closed.** `StructFrameSdk` subscribe/dispatch is now tested with mock transports in six languages:
@@ -365,7 +365,9 @@ All 42 scenarios below (the 33 uniform scenarios, 4 package-corruption scenarios
 >
 > **Closed (Python TCP).** The concrete `TcpTransport` is now exercised end to end over a localhost socket in `tests/py/test_tcp_transport.py` (9 assertions: connect/is_connected lifecycle, peer->client receive, client->peer send, a full `StructFrameSdk` frame dispatch over the live socket, and peer-disconnect close-callback).
 >
-> **Gap (Low):** Serial, UDP, and WebSocket transports -- and TCP in C++/TS/JS/C# -- remain uncovered end to end. `StructFrameSdk` and `AsyncStructFrameSdk` routing are tested with mock transports, but those concrete socket/serial/WebSocket classes are not yet exercised against a live endpoint.
+> **Closed (C++, TS/JS, C#).** `tests/test_sdk_transports.py` builds and runs a loopback program per SDK: `tests/js/test_transports.js` (TCP, UDP and WebSocket against an in-test WebSocket server; the TypeScript and JavaScript SDKs share one runtime), `tests/sdk_transports/csharp/Program.cs` (TCP, UDP) and `tests/sdk_transports/cpp/test_transports.cpp` (TCP, UDP over ASIO). They cover connect state, send, receive, peer close, a refused connection and, for TypeScript, auto-reconnect.
+>
+> **Gap (Low):** Serial transports (they need a device or pty) and the C# WebSocket transport (it needs the optional NetCoreServer package) are only exercised through mock transports; Python UDP and WebSocket have no loopback test. C++ has no WebSocket transport.
 
 ---
 
@@ -483,14 +485,13 @@ Tests that verify the per-message start-byte constants (`magic1`/`magic2`) are c
 
 Every `❌` and `⚠️` cell in the tables above is converted here into a tracked, linkable GitHub issue so coverage gaps are *owned* rather than merely listed. Triage ownership, retry budgets, and quarantine rules live in the [Test Stability Policy](test-stability).
 
-Open gaps: **5**. Each **track ↗** link opens a pre-filled issue (labels `test-gap,coverage`); replace it with the real issue URL once filed. To see issues already filed, browse [`label:test-gap`](https://github.com/mylonics/struct-frame/issues?q=is%3Aissue+label%3Atest-gap).
+Open gaps: **4**. Each **track ↗** link opens a pre-filled issue (labels `test-gap,coverage`); replace it with the real issue URL once filed. To see issues already filed, browse [`label:test-gap`](https://github.com/mylonics/struct-frame/issues?q=is%3Aissue+label%3Atest-gap).
 
 | ID | Priority | Area | Section | Gap | Languages | Issue |
 |----|----------|------|---------|-----|-----------|-------|
-| `TC-6-1AA40181` | Low | WebSocket transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-1AA40181%5D+WebSocket+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-1AA40181%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+WebSocket+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
-| `TC-6-2D690115` | Low | UDP transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-2D690115%5D+UDP+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-2D690115%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+UDP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-1AA40181` | Low | WebSocket transport | §6 · 6.3 | ❌ | Python, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-1AA40181%5D+WebSocket+transport+%28Python%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-1AA40181%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+WebSocket+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Python%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
+| `TC-6-2D690115` | Low | UDP transport | §6 · 6.3 | ❌ | Python | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-2D690115%5D+UDP+transport+%28Python%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-2D690115%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+UDP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Python%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-785BEC06` | Low | Async transport (Python) | §6 · 6.3 | ❌ | Python | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-785BEC06%5D+Async+transport+%28Python%29+%28Python%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-785BEC06%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Async+transport+%28Python%29%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+Python%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
-| `TC-6-8B65C22F` | Low | TCP transport | §6 · 6.3 | ❌ | C++, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-8B65C22F%5D+TCP+transport+%28C%2B%2B%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-8B65C22F%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+TCP+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 | `TC-6-929E31A2` | Low | Serial transport | §6 · 6.3 | ❌ | C++, Python, TS, JS, C# | [track ↗](https://github.com/mylonics/struct-frame/issues/new?title=%5Btest-gap+TC-6-929E31A2%5D+Serial+transport+%28C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%29&labels=test-gap%2Ccoverage&body=Tracked+from+the+Test+Coverage+matrix+%28%60TC-6-929E31A2%60%29.%0A%0A-+%2A%2AArea%3A%2A%2A+Serial+transport%0A-+%2A%2ASection%3A%2A%2A+SDK+Classes+%2F+6.3+High-Level+SDK+%28Transport+%2B+Routing%29%0A-+%2A%2ALanguages+with+a+gap%3A%2A%2A+C%2B%2B%2C+Python%2C+TS%2C+JS%2C+C%23%0A-+%2A%2ACurrent+status%3A%2A%2A+%E2%9D%8C%0A-+%2A%2APriority%3A%2A%2A+Low%0A%0AAdd+or+extend+tests+until+every+cell+for+this+row+is+%E2%9C%85+%28or+documented+N%2FA%29%2C+then+update+%60tests%2Fcoverage_spec.py%60.) |
 
 ---
@@ -501,14 +502,14 @@ Tier B/C of the test-suite-vs-protobuf gap analysis added the following CI surfa
 
 | Workflow | Purpose |
 |----------|---------|
-| `test.yml` (extended) | Primary suite + OS matrix (Linux, macOS), Python 3.9 / 3.11 / 3.13 matrix, Node 18 / 20 / 22 matrix, .NET 8 / 10 matrix, GCC vs Clang matrix |
-| `sanitizers.yml` | ASan+UBSan and TSan jobs for the C/C++ suite, plus a Valgrind memcheck job for C binaries |
-| `fuzz.yml` | Short per-push libFuzzer run on the C parser harness; atheris run on the Python parser |
+| `test.yml` (extended) | Primary suite + OS matrix (Linux, macOS), Windows lane, a big-endian (s390x under QEMU) lane for the Python runtime, Python 3.9 / 3.11 / 3.13 matrix, Node 18 / 20 / 22 matrix, .NET 8 / 10 matrix, GCC vs Clang matrix |
+| `sanitizers.yml` | ASan+UBSan and TSan jobs for the C/C++ suite, a Valgrind memcheck job for C binaries, and Miri plus AddressSanitizer jobs that run the Rust stream parser |
+| `fuzz.yml` | Short per-push runs of the C and C++ libFuzzer harnesses, atheris on the Python parser, cargo-fuzz on the Rust parser, and the cross-language stream differential test |
 | `coverage.yml` | `coverage.py` instrumentation of the Python generator + Codecov upload |
 | `wireshark-dissector.yml` | Runs `wireshark/test_dissector.py` against the Lua dissector via `tshark` on golden pcaps |
-| `benchmark-regression.yml` | Advisory quick benchmark smoke; runs available language benchmarks and uploads results, but the job is `continue-on-error`, committed baselines are placeholders, and the benchmarks are self-contained reference models rather than the generated runtime |
+| `benchmark-regression.yml` | Advisory quick benchmark smoke; runs available language benchmarks and uploads results, but the job is `continue-on-error` and committed baselines are placeholders until they are recorded on the CI runner. All seven benchmarks run the generated code and runtime |
 | `api-stability.yml` | Public API checks for Python, npm, NuGet and crates; baselines are checked in for all four and the checks are gating |
-| `doc-samples.yml` | Doctest-style extraction plus quick sample compilation; quick mode skips C, C++, TypeScript, Rust, and C# samples, and fragment-like snippets are intentionally skipped |
+| `doc-samples.yml` | Doctest-style extraction plus full sample compilation (C, C++, TypeScript, Rust and C# included); snippets marked `no-compile` and fragment-like snippets are skipped, and `tests/test_doc_api_names.py` checks the names used in every snippet against the runtimes |
 
 Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / `CXXFLAGS` / `LDFLAGS`, which `tests/run_tests.py` honours at every C/C++ compile site. No runner changes are needed to introduce additional sanitizer or coverage jobs. The benchmark job is signal-only today (placeholder baselines, `continue-on-error`) and does not block merges until real baselines are recorded; the API-stability job is gating.
 
@@ -517,10 +518,11 @@ Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / `CXXFLAGS` /
 | Harness | File | Tooling |
 |---------|------|---------|
 | C accumulating-reader | `tests/c/fuzz_parser.c` | libFuzzer + ASan/UBSan |
+| C++ `AccumulatingReader` | `tests/cpp/fuzz_parser.cpp` | libFuzzer + ASan/UBSan |
 | Python `AccumulatingReader` | `tests/py/fuzz_parser.py` | atheris |
 | Rust `AccumulatingReader` | `tests/rust/fuzz/fuzz_targets/parser.rs` (+ `Cargo.toml`) | cargo-fuzz |
 
-The C++, TypeScript, JavaScript, and C# parsers have no dedicated fuzz harness yet; they rely on the cross-language decode matrix and their `test_negative.*` malformed-input suites for adversarial coverage. Adding native fuzzers (libFuzzer for C++, jsfuzz / fast-check for TS/JS, SharpFuzz for C#) is a tracked follow-up.
+All of them use the real message table in `tests/fuzz/corpus.py` (not a stub) and are seeded by `tests/fuzz/make_seed_corpus.py`, so mutated inputs get past the checksum. TypeScript, JavaScript and C# have no libFuzzer-style engine here; instead `tests/test_stream_cross_lang.py` feeds identical clean, corrupted and heavily mutated streams (three seeds, three chunk sizes, all five profiles) to the Python, C, C++, JavaScript (= TypeScript), Rust and C# readers and requires that they agree with each other, recover every intact frame after garbage, never report a frame that was not sent, and give the same output for any chunking.
 
 ### Property-based tests
 

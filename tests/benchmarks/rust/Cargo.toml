@@ -3,6 +3,15 @@ name = "struct_frame_bench"
 version = "0.1.0"
 edition = "2021"
 
+# The generated crate is written by run_all.py from tests/benchmarks/schema/bench.sf.
+[dependencies]
+struct_frame_sdk = { path = "../generated/rust" }
+
 [[bin]]
 name = "struct_frame_bench"
 path = "src/main.rs"
+
+[workspace]
+
+[profile.release]
+debug = false

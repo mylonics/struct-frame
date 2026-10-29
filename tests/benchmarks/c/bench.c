@@ -61,6 +61,16 @@ static const struct scen scens[] = {
 // Sink that keeps the optimiser from discarding the work being measured.
 static volatile uint64_t g_sink;
 
+/* Tell the compiler the bytes at p are used, so an encode whose output is never read again
+ * cannot be dropped. */
+static inline void escape(const void* p) {
+#if defined(__GNUC__) || defined(__clang__)
+  __asm__ volatile("" : : "g"(p) : "memory");
+#else
+  g_sink += (uintptr_t)p & 1;
+#endif
+}
+
 static size_t encode_once(const struct scen* s, const uint8_t* payload, uint8_t seq, uint8_t* out) {
   buffer_writer_t w;
   buffer_writer_init(&w, s->cfg, out, 2048);
@@ -70,6 +80,7 @@ static size_t encode_once(const struct scen* s, const uint8_t* payload, uint8_t 
     fprintf(stderr, "encode failed\n");
     exit(2);
   }
+  escape(out);
   return n;
 }
 

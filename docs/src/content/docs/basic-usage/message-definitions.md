@@ -248,27 +248,32 @@ Enums are stored as uint8 (1 byte).
 
 ### Enum to String Conversion
 
-Enums can be converted to strings using language built-in features or generated helper functions.
+Enums can be converted to strings using language built-in features or generated helper functions. The examples assume the schema above is in a file with `package sensor_system;`. Only C prefixes the type with the package name; the other languages put it in a namespace or module instead. TypeScript and JavaScript spell enum members in PascalCase, so their string is `Temperature`; the other languages give `TEMPERATURE`.
 
 **C** (generated helper function)
 ```c
-SerializationTestSensorType type = SENSOR_TYPE_TEMPERATURE;
-const char* type_str = SerializationTestSensorType_to_string(type);
+#include "sensor_system.structframe.h"
+
+SensorSystemSensorType type = SENSOR_TYPE_TEMPERATURE;
+const char* type_str = SensorSystemSensorType_to_string(type);
 // Returns: "TEMPERATURE"
 ```
 
 **C++** (generated helper function)
 ```cpp
-SerializationTestSensorType type = SerializationTestSensorType::TEMPERATURE;
-const char* type_str = SerializationTestSensorType_to_string(type);
+#include "sensor_system.structframe.hpp"
+using namespace structframe::sensor_system;
+
+SensorType type = SensorType::Temperature;
+const char* type_str = SensorType_to_string(type);
 // Returns: "TEMPERATURE"
 ```
 
 **Python** (built-in Enum)
 ```python
-from sensor_system import SerializationTestSensorType
+from struct_frame.generated.sensor_system import SensorType
 
-type = SerializationTestSensorType.TEMPERATURE
+type = SensorType.TEMPERATURE
 # Use the built-in .name property
 type_str = type.name
 # Returns: "TEMPERATURE"
@@ -276,31 +281,31 @@ type_str = type.name
 
 **TypeScript** (built-in reverse mapping)
 ```typescript
-import { SerializationTestSensorType } from './sensor_system.structframe';
+import { SensorType } from './sensor-system.structframe';
 
-const type = SerializationTestSensorType.TEMPERATURE;
+const type = SensorType.Temperature;
 // TypeScript numeric enums support reverse mapping
-const typeStr = SerializationTestSensorType[type];
-// Returns: "TEMPERATURE"
+const typeStr = SensorType[type];
+// Returns: "Temperature"
 ```
 
 **JavaScript** (Object.keys lookup)
 ```javascript
-const { SerializationTestSensorType } = require('./sensor_system.structframe');
+const { SensorType } = require('./sensor-system.structframe');
 
-const type = SerializationTestSensorType.TEMPERATURE;
+const type = SensorType.Temperature;
 // Find the key by value
-const typeStr = Object.keys(SerializationTestSensorType).find(
-  key => SerializationTestSensorType[key] === type
+const typeStr = Object.keys(SensorType).find(
+  key => SensorType[key] === type
 );
-// Returns: "TEMPERATURE"
+// Returns: "Temperature"
 ```
 
 **C#** (built-in ToString)
 ```csharp
 using StructFrame.SensorSystem;
 
-SerializationTestSensorType type = SerializationTestSensorType.TEMPERATURE;
+SensorType type = SensorType.TEMPERATURE;
 // Use the built-in enum ToString method
 string typeStr = type.ToString();
 // Returns: "TEMPERATURE"
@@ -501,7 +506,7 @@ oneof data {
 ### Using Discriminators
 
 **With msgid discriminator:**
-```cpp
+```cpp no-compile
 // C++ - check which message is active by message ID
 if (wrapper.command_discriminator == CommandA::MSG_ID) {
     // Access wrapper.command.cmd_a
@@ -512,7 +517,7 @@ if (wrapper.command_discriminator == CommandA::MSG_ID) {
 
 For `field_order` discriminators, a typed enum is generated named `{MessageName}{OneofName}Field`:
 
-```cpp
+```cpp no-compile
 // C++ - use the generated enum for type-safe discriminator checks
 if (sensor.value_discriminator == SensorValueField::TEMPERATURE) {
     // temperature is active
@@ -759,7 +764,7 @@ The discriminator is automatically set by the `wrap()` method and read during de
 The SDK generates convenient helper methods for envelope messages:
 
 **C++ (msgid discriminator)**
-```cpp
+```cpp no-compile
 // Wrap a command into an envelope - template ensures type safety
 envelope_test::ADCCommand adc_cmd{.channel = 1, .sample_rate = 1000, .enable = true};
 auto envelope = envelope_test::CommandEnvelope::wrap(
@@ -783,7 +788,7 @@ if (payload_id == envelope_test::ADCCommand::MSG_ID) {
 ```
 
 **C++ (field_order discriminator)**
-```cpp
+```cpp no-compile
 // Separate wrap() overloads for each payload type
 auto envelope = MyEnvelope::wrap(42, 1, true, adc_cmd);  // Sets discriminator to 1
 auto envelope2 = MyEnvelope::wrap(42, 1, true, dac_cmd); // Sets discriminator to 2
@@ -832,7 +837,7 @@ const payloadId = envelope.getPayloadMessageId();
 ```
 
 **C#** (namespace `StructFrame.EnvelopeTest`)
-```csharp
+```csharp no-compile
 // Wrap a command into an envelope - overloads provide type safety
 var adcCmd = new ADCCommand { Channel = 1, SampleRate = 1000, Enable = true };
 var envelope = CommandEnvelope.Wrap(adcCmd, 42, 1, true);

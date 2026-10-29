@@ -52,7 +52,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install proto-schema-parser pytest hypothesis
+          pip install proto-schema-parser pytest hypothesis graphql-core
 
       - name: Install Node.js dependencies
         run: npm ci
@@ -101,7 +101,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest hypothesis
+        run: pip install proto-schema-parser pytest hypothesis graphql-core
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -131,7 +131,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest hypothesis
+        run: pip install proto-schema-parser pytest hypothesis graphql-core
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -159,7 +159,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest hypothesis
+        run: pip install proto-schema-parser pytest hypothesis graphql-core
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -185,7 +185,7 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest hypothesis
+        run: pip install proto-schema-parser pytest hypothesis graphql-core
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -212,7 +212,7 @@ jobs:
           dotnet-version: "8.0.x"
           dotnet-quality: "ga"
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest hypothesis
+        run: pip install proto-schema-parser pytest hypothesis graphql-core
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -239,7 +239,7 @@ jobs:
           dotnet-version: "10.0.x"
           dotnet-quality: "preview"
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest hypothesis
+        run: pip install proto-schema-parser pytest hypothesis graphql-core
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts
@@ -276,7 +276,35 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ${{ matrix.pkg }} build-essential
-          pip install proto-schema-parser pytest hypothesis
+          pip install proto-schema-parser pytest hypothesis graphql-core
           (cd tests/ts && npm ci)
       - name: Run C / C++ suite under ${{ matrix.cc }}
         run: python test_all.py --skip-lang csharp --skip-lang rust --require-langs c,cpp,py,ts,js
+
+  big-endian:
+    name: Big-endian host (s390x under QEMU)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: docker/setup-qemu-action@v3
+        with: { platforms: s390x }
+      - name: Python runtime on a big-endian CPU
+        # The Python runtime encodes with explicit little-endian struct formats, so the
+        # known-answer vectors and the stream parser must give identical results on s390x.
+        run: |
+          docker run --rm --platform linux/s390x -v "$PWD":/work -w /work python:3.11-slim bash -c '
+            python -c "import sys; assert sys.byteorder == \"big\", sys.byteorder" &&
+            pip install --quiet pytest proto-schema-parser &&
+            python -m pytest tests/test_known_answer.py "tests/test_stream_cross_lang.py" -k "py or known" -q'
+      - name: C and C++ headers refuse to compile on a big-endian host
+        # The payload codecs copy host byte order, so the headers #error unless
+        # STRUCT_FRAME_ASSUME_LITTLE_ENDIAN is defined. Verify that guard actually fires.
+        run: |
+          docker run --rm --platform linux/s390x -v "$PWD":/work -w /work gcc:13 bash -c '
+            if gcc -fsyntax-only -I src/struct_frame/boilerplate/c tests/fuzz/drivers/stream_driver.c 2>/dev/null; then
+              echo "expected the C header to reject a big-endian host"; exit 1
+            fi
+            echo "C header correctly rejected s390x"'

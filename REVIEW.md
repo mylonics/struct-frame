@@ -9,6 +9,14 @@ system that can credibly compete with **Protocol Buffers** and **MAVLink**.
 > This document is a review and a roadmap. It contains **no behavioural code
 > changes** — only analysis, recommendations and a prioritised plan. Each
 > recommendation is intended to be split into its own follow-up PR.
+>
+> **Status (October 2026).** Written in May 2026; parts are now out of date. Wire
+> evolution (F7) has shipped: trailing extension fields and trimmed `oneof` variants,
+> with `struct_frame diff` to check compatibility. The wire format and the evolution rules
+> are documented, and known-answer vectors are checked against every runtime. The rows
+> in §5 below are updated accordingly. Published runtime packages (F3), reflection (F8)
+> and the plugin model (F9) are still open. For current behaviour, trust the docs site
+> and `CHANGELOG.md` over this file.
 
 ---
 
@@ -199,24 +207,23 @@ without hand-authored build glue.
 | Feature | protobuf | MAVLink v2 | **struct-frame today** | Required for parity |
 |---|---|---|---|---|
 | IDL grammar reuse | own `.proto` | own `*.xml` | reuses `.proto` ✅ | — |
-| Wire compatibility on field add/remove | tag-based, optional | trailing-zero truncation + EXTRA_CRC | none — magic bytes break on any change ❌ | F7 |
+| Wire compatibility on field add/remove | tag-based, optional | trailing-zero truncation + EXTRA_CRC | trailing extension fields (`extensions_start`) and trimmed `oneof` variants; `struct_frame diff` reports breaking changes ✅ | F7 (done) |
 | Optional/repeated/oneof | yes | limited | partial (oneof exists) | — |
 | Reflection / descriptors | `FileDescriptorProto` | XML schema available at runtime | `sf_compile.json` (IDE only) ❌ | F8 |
 | Namespacing per package | yes (deep nesting) | dialect/file | ✅ C++ `structframe::<pkg>` always; Python/TS/JS/C#/Rust all use native module system; C uses identifier prefix (expected — no namespace primitive) | F2 |
 | Cross-file imports | yes | `<include>` element | yes, recursive ✅ | — |
 | Code-gen plugin model | `protoc` plugin protocol | python jinja templates | inheritance + duck typing in-tree ❌ | F9 |
 | Distributed runtime libraries | `protobuf-runtime` per language | `pymavlink`, C library | none (copy-in only) ❌ | F3 |
-| Stable, documented wire spec | yes | yes (xml + docs site) | implicit, in code | new doc |
-| Conformance test suite | yes | yes | per-language round-trip in `tests/` only | extend |
+| Stable, documented wire spec | yes | yes (xml + docs site) | documented (Framing Details, Conformance pages) ✅ | — |
+| Conformance test suite | yes | yes | spec-derived known-answer vectors checked by all runtimes, plus a cross-language stream test; not yet a language-neutral kit | extend |
 | Field/message annotations | options | params | a few `option`s | extend |
-| Schema evolution policy | documented | documented | undocumented | new doc |
+| Schema evolution policy | documented | documented | documented (Message Definitions → Wire Evolution) ✅ | — |
 | Multi-transport SDK | grpc | serial / udp / tcp | partial across langs ✅ | unify |
 | Built-in tooling | `protoc`, `protoc-gen-*` | `mavgen`, `mavinspect` | one CLI | extend |
 
-The two most painful gaps for adoption are **F3 (no real runtime libraries)**
-and **F7 (no schema evolution policy/wire compatibility)**. Without those,
-struct-frame cannot be a credible alternative to protobuf or MAVLink for
-non-hobby use.
+When this review was written, the two most painful gaps for adoption were **F3 (no
+real runtime libraries)** and **F7 (no schema evolution policy/wire compatibility)**.
+F7 has since shipped; F3 remains the main gap.
 
 ---
 

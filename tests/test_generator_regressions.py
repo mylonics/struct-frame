@@ -745,6 +745,20 @@ def test_two_flattened_fields_of_the_same_type_collide(tmp_path):
     assert validate(sf).returncode != 0, "both flattened fields expose a child named 'x'"
 
 
+ONEOF_FLATTEN = ("package fz;\nmessage Pos {{ uint8 {child} = 1; uint8 y = 2; }}\n"
+                 "message A {{ option msgid = 2; uint8 v = 1; }}\nmessage B {{ option msgid = 3; uint8 w = 1; }}\n"
+                 "message M {{\n  option msgid = 1;\n  Pos p = 1 [flatten = true];\n"
+                 "  oneof choice {{\n    A a = 1;\n    B b = 2;\n  }}\n}}\n")
+
+
+def test_flattened_child_colliding_with_oneof_member_is_rejected(tmp_path):
+    # GraphQL emits oneof members as fields of the same type, so 'a' would be declared twice.
+    bad = write(tmp_path, "bad.sf", ONEOF_FLATTEN.format(child="a"))
+    assert validate(bad).returncode != 0, "flattened child 'a' collides with oneof member 'a'"
+    ok = write(tmp_path, "ok.sf", ONEOF_FLATTEN.format(child="q"))
+    assert validate(ok).returncode == 0, out(validate(ok))
+
+
 # ---------------------------------------------------------------------------
 # error routing, diff argument order, --sdk_embedded
 # ---------------------------------------------------------------------------
@@ -859,3 +873,60 @@ int main() {
     assert build.returncode == 0, build.stderr[-1500:]
     run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
     assert run.returncode == 0 and "ok" in run.stdout, f"exit {run.returncode}"
+
+
+# ---------------------------------------------------------------------------
+# error locations (path:line:)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("schema, line, words", [
+    # duplicate field: the second declaration
+    ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 x = 1;\n  uint8 x = 2;\n}\n", 5, "declared twice"),
+    # unknown field option
+    ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 x = 1 [defualt = 3];\n}\n", 4, "error in message M"),
+    # unresolvable type
+    ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 x = 1;\n  Nope y = 2;\n}\n", 5, "Failed To validate Field: y"),
+    # enum value out of range: reported at the enum
+    ("package a;\nenum E { A = 0; B = 300; }\nmessage M {\n  option msgid = 1;\n  E e = 1;\n}\n", 2, "out of range"),
+    # reserved word (per-language name validation)
+    ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 class = 1;\n}\n", 4, "reserved word"),
+], ids=["duplicate-field", "unknown-option", "unknown-type", "enum-range", "reserved-word"])
+def test_errors_carry_file_and_line(tmp_path, schema, line, words):
+    sf = write(tmp_path, "loc.sf", schema)
+    r = validate(sf)
+    assert r.returncode != 0
+    text = out(r)
+    assert f"loc.sf:{line}: " in text, f"expected loc.sf:{line}: in\n{text}"
+    assert words in text, text
+
+
+# ---------------------------------------------------------------------------
+# stale generated files are removed (per root schema), others are kept
+# ---------------------------------------------------------------------------
+
+def test_renamed_outputs_are_pruned_without_touching_other_schemas(tmp_path):
+    out_dir = tmp_path / "out"
+    flags = ("--build_csharp", "--csharp_path", str(out_dir / "cs"),
+             "--build_rust", "--rust_path", str(out_dir / "rs"),
+             "--build_c", "--c_path", str(out_dir / "c"))
+    a = write(tmp_path, "a.sf", "package pa;\nmessage Alpha { option msgid = 1; uint8 x = 1; }\n"
+                                "message Beta { option msgid = 2; uint8 y = 1; }\n")
+    b = write(tmp_path, "b.sf", "package pb;\nmessage Other { option msgid = 1; uint8 z = 1; }\n")
+    for schema in (a, b):
+        r = gen(tmp_path, schema, *flags)
+        assert r.returncode == 0, out(r)
+    assert (out_dir / "cs" / "Pa" / "Messages" / "Beta.cs").exists()
+
+    # Rename a message and the package: the old files must go, b.sf's files must stay.
+    write(tmp_path, "a.sf", "package pc;\nmessage Alpha { option msgid = 1; uint8 x = 1; }\n"
+                            "message Gamma { option msgid = 3; uint8 y = 1; }\n")
+    r = gen(tmp_path, a, *flags)
+    assert r.returncode == 0, out(r)
+    assert not (out_dir / "cs" / "Pa").exists(), "stale C# package folder left behind"
+    assert not (out_dir / "rs" / "pa.structframe.rs").exists()
+    assert not (out_dir / "c" / "pa.structframe.h").exists()
+    assert (out_dir / "cs" / "Pc" / "Messages" / "Gamma.cs").exists()
+    assert (out_dir / "cs" / "Pb" / "Messages" / "Other.cs").exists(), "another schema's output was deleted"
+    assert (out_dir / "c" / "pb.structframe.h").exists()
+    lib_rs = (out_dir / "rs" / "lib.rs").read_text(encoding="utf-8")
+    assert "pub mod pa;" not in lib_rs and "pub mod pb;" in lib_rs and "pub mod pc;" in lib_rs, lib_rs

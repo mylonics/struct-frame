@@ -1099,7 +1099,8 @@ class AccumulatingReader:
             # internal buffer (still collecting with the buffer full): resync
             # inside the internal buffer instead of waiting forever.
             if (result.status == FrameMsgStatus.WAITING_FOR_START
-                    or self._internal_data_len >= self._buffer_size):
+                    or self._internal_data_len >= self._buffer_size
+                    or self._claims_oversize_frame(internal_bytes)):
                 discard = self._internal_data_len
                 if self._config.num_start_bytes >= 1:
                     start1 = bytes([self._config.computed_start_byte1()])
@@ -1160,6 +1161,22 @@ class AccumulatingReader:
                 # No start bytes (e.g. IPC profile): advance one byte and retry so a
                 # single unknown msg_id doesn't discard the rest of the buffer.
                 self._current_offset += 1
+            skipped = self._current_offset - old_offset
+            self._diag.cnt_failed_bytes += skipped
+            self._diag.cnt_sync_recoveries += 1
+            r = FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
+            r.frame_size = skipped
+            return self._with_diag(r)
+
+        # A header that claims a frame larger than the internal buffer can never complete
+        # (typically a corrupted length field). Resync past its start byte now, as stream
+        # mode does, instead of buffering up to a full buffer of good data behind it.
+        if (self._config.num_start_bytes >= 1
+                and self._claims_oversize_frame(bytes(remaining[:self._config.header_size]))):
+            old_offset = self._current_offset
+            start1 = bytes([self._config.computed_start_byte1()])
+            nxt = self._current_buffer.find(start1, self._current_offset + 1, self._current_size)
+            self._current_offset = nxt if nxt != -1 else self._current_size
             skipped = self._current_offset - old_offset
             self._diag.cnt_failed_bytes += skipped
             self._diag.cnt_sync_recoveries += 1
@@ -1502,6 +1519,22 @@ class AccumulatingReader:
         
         return self._with_diag(result)
     
+    def _claims_oversize_frame(self, data) -> bool:
+        """True when the header at the start of *data* claims a frame that cannot fit in the
+        internal buffer. Only profiles with a length field carry such a claim."""
+        cfg = self._config
+        if not cfg.has_length or len(data) < cfg.header_size:
+            return False
+        off = cfg.num_start_bytes
+        if cfg.has_sequence:
+            off += 1
+        if cfg.has_system_id:
+            off += 1
+        if cfg.has_component_id:
+            off += 1
+        payload_len = data[off] if cfg.length_bytes == 1 else data[off] | (data[off + 1] << 8)
+        return cfg.overhead + payload_len > self._buffer_size
+
     def _parse_buffer(self, buffer: bytes) -> FrameMsgInfo:
         """Parse a buffer using the appropriate parser"""
         if self._config.has_crc or self._config.has_length:

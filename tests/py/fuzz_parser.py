@@ -51,12 +51,17 @@ _PROFILES = [
 ]
 
 
-def _stub_info(_msg_id: int) -> MessageInfo:
-    """Return a tiny, well-formed MessageInfo for the parser to use when the
-    profile lacks a length field.  The fuzz input dictates magic byte values,
-    so the parser must remain safe even when its callback's magic bytes do
-    not match the embedded ones (most inputs will mismatch and be dropped)."""
-    return MessageInfo(size=64, magic1=0, magic2=0)
+_TABLE = {1: (8, 11, 22), 2: (32, 33, 44), 3: (100, 55, 66), 4: (1, 77, 88), 5: (200, 99, 111)}
+
+
+def _stub_info(msg_id: int):
+    """Real message table, identical to tests/fuzz/corpus.py, so seed frames from
+    tests/fuzz/make_seed_corpus.py pass the checksum and reach the deeper parser paths."""
+    entry = _TABLE.get(msg_id)
+    if entry is None:
+        return None
+    size, m1, m2 = entry
+    return MessageInfo(size=size, magic1=m1, magic2=m2, base_size=size, min_size=size)
 
 
 def _drive(data: bytes) -> None:
@@ -68,11 +73,11 @@ def _drive(data: bytes) -> None:
         # Two-slice feed exercises the cross-buffer accumulation path.
         reader.add_data(bytes(data[:mid]))
         for _ in range(256):
-            if not reader.next().valid:
+            if reader.try_next() is None:
                 break
         reader.add_data(bytes(data[mid:]))
         for _ in range(256):
-            if not reader.next().valid:
+            if reader.try_next() is None:
                 break
 
 

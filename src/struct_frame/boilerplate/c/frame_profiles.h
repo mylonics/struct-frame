@@ -813,6 +813,25 @@ static inline void _acc_record_frame_diagnostics(
     }
 }
 
+/* True when the header at the start of data claims a frame that cannot fit in the internal
+ * buffer (typically a corrupted length field). Only profiles with a length field carry such
+ * a claim. Buffer mode uses it to resync immediately, as stream mode does, instead of
+ * swallowing a buffer's worth of good data behind the bogus header. */
+static inline bool _acc_claims_oversize_frame(
+    const accumulating_reader_t* reader, const uint8_t* data, size_t size)
+{
+    const profile_config_t* config = reader->config;
+    if (!config->payload.has_length || size < profile_header_size(config)) return false;
+    size_t off = config->header.num_start_bytes;
+    if (config->payload.has_seq) off++;
+    if (config->payload.has_sys_id) off++;
+    if (config->payload.has_comp_id) off++;
+    size_t payload_len = (config->payload.length_bytes == 1)
+        ? data[off]
+        : (size_t)(data[off] | ((size_t)data[off + 1] << 8));
+    return profile_overhead(config) + payload_len > reader->buffer_size;
+}
+
 static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
 {
     frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
@@ -879,7 +898,8 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
          * internal buffer (still collecting with the buffer full): resync
          * inside the internal buffer instead of waiting forever. */
         if (result.status == FRAME_MSG_STATUS_WAITING_FOR_START ||
-            reader->internal_data_len >= reader->buffer_size) {
+            reader->internal_data_len >= reader->buffer_size ||
+            _acc_claims_oversize_frame(reader, reader->internal_buffer, reader->internal_data_len)) {
             size_t discard = reader->internal_data_len;
             if (reader->config->header.num_start_bytes >= 1) {
                 if (reader->internal_data_len > 1) {
@@ -958,6 +978,25 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
             /* No start bytes (e.g. IPC profile): advance one byte and retry so a
              * single unknown msg_id doesn't discard the rest of the buffer. */
             reader->current_offset += 1;
+        }
+        result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+        result.frame_size = reader->current_offset - old_current_offset;
+        reader->diagnostics.cnt_sync_recoveries++;
+        reader->diagnostics.cnt_failed_bytes += (uint32_t)result.frame_size;
+        return result;
+    }
+
+    /* A header that claims a frame larger than the internal buffer can never complete:
+     * resync past its start byte now rather than buffering good data behind it. */
+    if (reader->config->header.num_start_bytes >= 1 &&
+        _acc_claims_oversize_frame(reader, cur, cur_remaining)) {
+        size_t old_current_offset = reader->current_offset;
+        size_t scan_start = reader->current_offset + 1;
+        reader->current_offset = reader->current_size;
+        if (scan_start < reader->current_size) {
+            const void* p = memchr(reader->current_buffer + scan_start, (int)sb1,
+                                   reader->current_size - scan_start);
+            if (p) reader->current_offset = (size_t)((const uint8_t*)p - reader->current_buffer);
         }
         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
         result.frame_size = reader->current_offset - old_current_offset;

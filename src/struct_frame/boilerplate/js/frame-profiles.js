@@ -660,7 +660,8 @@ class AccumulatingReader {
             // internal buffer (still collecting with the buffer full): resync
             // inside the internal buffer instead of waiting forever.
             if (result.status === frame_base_1.FrameMsgStatus.WaitingForStart ||
-                this.internalDataLen >= this.bufferSize) {
+                this.internalDataLen >= this.bufferSize ||
+                this.claimsOversizeFrame(internalBytes)) {
                 let discard = this.internalDataLen;
                 if (this.config.header.numStartBytes >= 1) {
                     const nxt = internalBytes.indexOf(this.config.startByte1, 1);
@@ -726,6 +727,20 @@ class AccumulatingReader {
                 // single unknown msg_id doesn't discard the rest of the buffer.
                 this.currentOffset += 1;
             }
+            const skipped = this.currentOffset - oldOffset;
+            this._diagnostics.cntFailedBytes += skipped;
+            this._diagnostics.cntSyncRecoveries++;
+            const r = (0, frame_base_1.createFrameMsgInfo)();
+            r.status = frame_base_1.FrameMsgStatus.SyncRecovery;
+            r.frameSize = skipped;
+            return this.withDiagnostics(r);
+        }
+        // A header that claims a frame larger than the internal buffer can never complete:
+        // resync past its start byte now rather than buffering good data behind it.
+        if (this.config.header.numStartBytes >= 1 && this.claimsOversizeFrame(remaining)) {
+            const oldOffset = this.currentOffset;
+            const nxt = this.currentBuffer.indexOf(this.config.startByte1, this.currentOffset + 1);
+            this.currentOffset = (nxt !== -1 && nxt < this.currentSize) ? nxt : this.currentSize;
             const skipped = this.currentOffset - oldOffset;
             this._diagnostics.cntFailedBytes += skipped;
             this._diagnostics.cntSyncRecoveries++;
@@ -1055,6 +1070,25 @@ class AccumulatingReader {
             this._diagnostics.cntSyncRecoveries++;
         }
         return this.withDiagnostics(result);
+    }
+    /**
+     * True when the header at the start of `data` claims a frame that cannot fit in the internal
+     * buffer (typically a corrupted length field). Only profiles with a length field carry such
+     * a claim.
+     */
+    claimsOversizeFrame(data) {
+        const payload = this.config.payload;
+        if (!payload.hasLength || data.length < this.headerSize)
+            return false;
+        let off = this.config.header.numStartBytes;
+        if (payload.hasSeq)
+            off++;
+        if (payload.hasSysId)
+            off++;
+        if (payload.hasCompId)
+            off++;
+        const payloadLen = payload.lengthBytes === 1 ? data[off] : data[off] | (data[off + 1] << 8);
+        return this.headerSize + this.footerSize + payloadLen > this.bufferSize;
     }
     parseBuffer(buffer) {
         if (this.config.payload.hasCrc || this.config.payload.hasLength) {

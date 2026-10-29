@@ -72,13 +72,13 @@ dotnet build -p:IncludeSerialTransport=true -p:IncludeNetCoreServer=true
 
 The SDK client uses the unified `FrameProfiles` infrastructure for encoding and parsing:
 
-```csharp
+```csharp no-compile
 using StructFrame;
 using StructFrame.Sdk;
 
 // Configure the SDK with required parameters
 var config = new StructFrameSdkConfig(
-    transport: new TcpTransport("192.168.1.100", 8080),
+    transport: new TcpTransport(new TcpTransportConfig { Host = "192.168.1.100", Port = 8080 }),
     getMessageInfo: MessageDefinitions.GetMessageInfo,
     profile: Profiles.Standard,  // optional, default is Standard
     debug: true                  // optional, default is false
@@ -118,7 +118,7 @@ The C# SDK has three send paths:
 Use `SendDirect(frameInfo)` only when source and destination use the same profile.
 Use `Send(frameInfo)` when forwarding between different profiles.
 
-```csharp
+```csharp no-compile
 using StructFrame;
 using StructFrame.Sdk;
 
@@ -151,20 +151,21 @@ await sdk.Send(parsed);
 
 When you generate with `--sdk`, a type-safe `SdkInterface` class is generated for each package. This provides convenience methods for sending and subscribing to specific message types:
 
-```csharp
+```csharp no-compile
 using StructFrame;
 using StructFrame.Sdk;
 using StructFrame.MyPackage.Sdk;
 
 // Create the base SDK
 var config = new StructFrameSdkConfig(
-    transport: new TcpTransport("192.168.1.100", 8080),
+    transport: new TcpTransport(new TcpTransportConfig { Host = "192.168.1.100", Port = 8080 }),
     getMessageInfo: MessageDefinitions.GetMessageInfo
 );
 var sdk = new StructFrameSdk(config);
 
-// Create the package-specific interface
-var myPackageSdk = new MyPackageSdkInterface(sdk);
+// Create the package-specific interface (the generated class is named Client, in the
+// StructFrame.<Package>.Sdk namespace)
+var myPackageSdk = new Client(sdk);
 
 // Type-safe subscribe methods for each message
 myPackageSdk.SubscribeSensorData(msg => {
@@ -176,7 +177,7 @@ myPackageSdk.SubscribeStatusUpdate(msg => {
 });
 
 // Type-safe send methods for each message
-await myPackageSdk.SendCommand(new MyPackageCommand { Action = 1 });
+await myPackageSdk.SendCommand(new Command { Action = 1 });
 
 // Or send with individual field values
 await myPackageSdk.SendCommand(action: 1);
@@ -189,7 +190,7 @@ await myPackageSdk.Sdk.ConnectAsync();
 
 Generated messages implement `IStructFrameMessage<T>` which provides:
 
-```csharp
+```csharp no-compile
 public interface IStructFrameMessage<TSelf> : IStructFrameMessage 
     where TSelf : IStructFrameMessage<TSelf>
 {
@@ -210,7 +211,7 @@ public interface IStructFrameMessage
 
 This enables compile-time dispatch for deserialization without reflection:
 
-```csharp
+```csharp no-compile
 // The SDK internally calls T.Deserialize(frame) directly
 sdk.Subscribe<SensorDataMessage>(msg => {
     // msg is already deserialized - no reflection needed
@@ -223,7 +224,7 @@ The generated code includes a `MessageDefinitions` class that provides:
 
 ### Message Lookup by ID
 
-```csharp
+```csharp no-compile
 using StructFrame.MyPackage;
 
 // Get message info by ID (required for SDK configuration)
@@ -233,7 +234,7 @@ Console.WriteLine($"Size: {info?.Size}, Magic: {info?.Magic1:X2}{info?.Magic2:X2
 
 ### Enumerate All Messages
 
-```csharp
+```csharp no-compile
 // Get all registered message types
 foreach (var entry in MessageDefinitions.GetAllMessages())
 {
@@ -245,20 +246,32 @@ foreach (var entry in MessageDefinitions.GetAllMessages())
 
 ### TCP
 
-```csharp
+```csharp no-compile
 using StructFrame.Sdk;
 
-var transport = new TcpTransport("192.168.1.100", 8080);
+var transport = new TcpTransport(new TcpTransportConfig { Host = "192.168.1.100", Port = 8080 });
 await transport.ConnectAsync();
 await transport.SendAsync(data);
 ```
 
 ### UDP
 
-```csharp
+```csharp no-compile
 using StructFrame.Sdk;
 
-var transport = new UdpTransport("192.168.1.100", 8080);
+var transport = new UdpTransport(new UdpTransportConfig { RemoteHost = "192.168.1.100", RemotePort = 8080 });
+await transport.ConnectAsync();
+await transport.SendAsync(data);
+```
+
+### WebSocket
+
+Needs the NetCoreServer package: build the generated project with `-p:IncludeNetCoreServer=true`. Only `ws://` endpoints are supported. `ConnectAsync` completes once the WebSocket handshake has finished, and throws if the connection or handshake fails within `TimeoutMs`.
+
+```csharp no-compile
+using StructFrame.Sdk;
+
+var transport = new WebSocketTransport(new WebSocketTransportConfig { Url = "ws://192.168.1.100:8080/telemetry" });
 await transport.ConnectAsync();
 await transport.SendAsync(data);
 ```
@@ -267,7 +280,7 @@ await transport.SendAsync(data);
 
 The serial transport uses `System.IO.Ports.SerialPort.BaseStream` for reliable async reading, which is more robust than the event-based `DataReceived` approach.
 
-```csharp
+```csharp no-compile
 using StructFrame.Sdk;
 
 var config = new SerialTransportConfig
@@ -286,11 +299,11 @@ await transport.SendAsync(data);
 
 ## Async/Await Patterns
 
-```csharp
+```csharp no-compile
 public async Task RunAsync()
 {
     var config = new StructFrameSdkConfig(
-        transport: new TcpTransport("localhost", 8080),
+        transport: new TcpTransport(new TcpTransportConfig { Host = "localhost", Port = 8080 }),
         getMessageInfo: MessageDefinitions.GetMessageInfo
     );
     
@@ -315,11 +328,11 @@ void HandleStatus(StatusMessage msg)
 
 When you have envelope messages (messages with `is_envelope = true`), the SDK generates convenient helper methods:
 
-```csharp
+```csharp no-compile
 using StructFrame.MyPackage.Sdk;
 
 // Create the SDK interface
-var sdk = new MyPackageSdkInterface(baseSdk);
+var sdk = new Client(baseSdk);
 
 // Send a payload wrapped in an envelope - multiple overloads available:
 

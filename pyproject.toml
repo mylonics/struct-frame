@@ -33,8 +33,11 @@ license-files = ["LICEN[CS]E*"]
 # generator itself needs neither).
 [project.optional-dependencies]
 serial = ["pyserial"]
-websocket = ["websockets"]
-sdk = ["pyserial", "websockets"]
+# WebSocketTransport uses websocket-client; AsyncWebSocketTransport uses websockets.
+websocket = ["websocket-client", "websockets"]
+sdk = ["pyserial", "websocket-client", "websockets"]
+# Everything the test suite uses beyond the generator itself.
+test = ["pytest", "hypothesis", "graphql-core", "pyserial", "websocket-client", "websockets"]
 
 [project.scripts]
 struct-frame = "struct_frame:main"

@@ -650,14 +650,14 @@ SECTIONS = [
                          {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
                           "JS": "❌", "C#": "❌", "Rust": "N/A"}),
                     _row("TCP transport",
-                         {"C": "N/A", "C++": "❌", "Python": "✅", "TS": "❌",
-                          "JS": "❌", "C#": "❌", "Rust": "N/A"}),
+                         {"C": "N/A", "C++": "✅", "Python": "✅", "TS": "✅",
+                          "JS": "✅", "C#": "✅", "Rust": "N/A"}),
                     _row("UDP transport",
-                         {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
-                          "JS": "❌", "C#": "❌", "Rust": "N/A"}),
+                         {"C": "N/A", "C++": "✅", "Python": "❌", "TS": "✅",
+                          "JS": "✅", "C#": "✅", "Rust": "N/A"}),
                     _row("WebSocket transport",
-                         {"C": "N/A", "C++": "❌", "Python": "❌", "TS": "❌",
-                          "JS": "❌", "C#": "❌", "Rust": "N/A"}),
+                         {"C": "N/A", "C++": "N/A", "Python": "❌", "TS": "✅",
+                          "JS": "✅", "C#": "❌", "Rust": "N/A"}),
                     _row("Async transport (Python)",
                          {"C": "N/A", "C++": "N/A", "Python": "❌", "TS": "N/A",
                           "JS": "N/A", "C#": "N/A", "Rust": "N/A"}),
@@ -730,11 +730,16 @@ SECTIONS = [
                     "is_connected lifecycle, peer->client receive, client->peer "
                     "send, a full `StructFrameSdk` frame dispatch over the live "
                     "socket, and peer-disconnect close-callback).\n>\n"
-                    "> **Gap (Low):** Serial, UDP, and WebSocket transports -- and "
-                    "TCP in C++/TS/JS/C# -- remain uncovered end to end. "
-                    "`StructFrameSdk` and `AsyncStructFrameSdk` routing are tested "
-                    "with mock transports, but those concrete socket/serial/"
-                    "WebSocket classes are not yet exercised against a live endpoint."
+                    "> **Closed (C++, TS/JS, C#).** `tests/test_sdk_transports.py` builds and runs a loopback "
+                    "program per SDK: `tests/js/test_transports.js` (TCP, UDP and WebSocket against an "
+                    "in-test WebSocket server; the TypeScript and JavaScript SDKs share one runtime), "
+                    "`tests/sdk_transports/csharp/Program.cs` (TCP, UDP) and `tests/sdk_transports/cpp/test_transports.cpp` (TCP, UDP "
+                    "over ASIO). They cover connect state, send, receive, peer close, a refused "
+                    "connection and, for TypeScript, auto-reconnect.\n>\n"
+                    "> **Gap (Low):** Serial transports (they need a device or pty) and the C# "
+                    "WebSocket transport (it needs the optional NetCoreServer package) are only "
+                    "exercised through mock transports; Python UDP and WebSocket have no loopback "
+                    "test. C++ has no WebSocket transport."
                 ),
             },
         ],
@@ -974,27 +979,30 @@ TRAILING_SECTIONS = [
             "following CI surfaces. Each lives in `.github/workflows/`:\n\n"
             "| Workflow | Purpose |\n"
             "|----------|---------|\n"
-            "| `test.yml` (extended) | Primary suite + OS matrix (Linux, macOS), "
+            "| `test.yml` (extended) | Primary suite + OS matrix (Linux, macOS), Windows lane, a big-endian "
+            "(s390x under QEMU) lane for the Python runtime, "
             "Python 3.9 / 3.11 / 3.13 matrix, Node 18 / 20 / 22 matrix, .NET 8 / "
             "10 matrix, GCC vs Clang matrix |\n"
-            "| `sanitizers.yml` | ASan+UBSan and TSan jobs for the C/C++ suite, "
-            "plus a Valgrind memcheck job for C binaries |\n"
-            "| `fuzz.yml` | Short per-push libFuzzer run on the C parser harness; "
-            "atheris run on the Python parser |\n"
+            "| `sanitizers.yml` | ASan+UBSan and TSan jobs for the C/C++ suite, a Valgrind memcheck job "
+            "for C binaries, and Miri plus AddressSanitizer jobs that run the Rust stream parser |\n"
+            "| `fuzz.yml` | Short per-push runs of the C and C++ libFuzzer harnesses, atheris on the "
+            "Python parser, cargo-fuzz on the Rust parser, and the cross-language stream "
+            "differential test |\n"
             "| `coverage.yml` | `coverage.py` instrumentation of the Python "
             "generator + Codecov upload |\n"
             "| `wireshark-dissector.yml` | Runs `wireshark/test_dissector.py` "
             "against the Lua dissector via `tshark` on golden pcaps |\n"
             "| `benchmark-regression.yml` | Advisory quick benchmark smoke; "
             "runs available language benchmarks and uploads results, but the "
-            "job is `continue-on-error`, committed baselines are placeholders, and the "
-            "benchmarks are self-contained reference models rather than the generated "
+            "job is `continue-on-error` and committed baselines are placeholders until they are "
+            "recorded on the CI runner. All seven benchmarks run the generated code and "
             "runtime |\n"
             "| `api-stability.yml` | Public API checks for Python, npm, NuGet and crates; "
             "baselines are checked in for all four and the checks are gating |\n"
-            "| `doc-samples.yml` | Doctest-style extraction plus quick sample "
-            "compilation; quick mode skips C, C++, TypeScript, Rust, and C# "
-            "samples, and fragment-like snippets are intentionally skipped |\n\n"
+            "| `doc-samples.yml` | Doctest-style extraction plus full sample compilation (C, C++, TypeScript, "
+            "Rust and C# included); snippets marked `no-compile` and fragment-like snippets are "
+            "skipped, and `tests/test_doc_api_names.py` checks the names used in every snippet "
+            "against the runtimes |\n\n"
             "Sanitizer flags are injected by exporting `CC` / `CXX` / `CFLAGS` / "
             "`CXXFLAGS` / `LDFLAGS`, which `tests/run_tests.py` honours at every "
             "C/C++ compile site. No runner changes are needed to introduce "
@@ -1005,17 +1013,19 @@ TRAILING_SECTIONS = [
             "### Fuzzing harnesses\n\n"
             "| Harness | File | Tooling |\n"
             "|---------|------|---------|\n"
-            "| C accumulating-reader | `tests/c/fuzz_parser.c` | libFuzzer + "
-            "ASan/UBSan |\n"
+            "| C accumulating-reader | `tests/c/fuzz_parser.c` | libFuzzer + ASan/UBSan |\n"
+            "| C++ `AccumulatingReader` | `tests/cpp/fuzz_parser.cpp` | libFuzzer + ASan/UBSan |\n"
             "| Python `AccumulatingReader` | `tests/py/fuzz_parser.py` | atheris |\n"
-            "| Rust `AccumulatingReader` | "
-            "`tests/rust/fuzz/fuzz_targets/parser.rs` (+ `Cargo.toml`) | "
+            "| Rust `AccumulatingReader` | `tests/rust/fuzz/fuzz_targets/parser.rs` (+ `Cargo.toml`) | "
             "cargo-fuzz |\n\n"
-            "The C++, TypeScript, JavaScript, and C# parsers have no dedicated "
-            "fuzz harness yet; they rely on the cross-language decode matrix and "
-            "their `test_negative.*` malformed-input suites for adversarial "
-            "coverage. Adding native fuzzers (libFuzzer for C++, jsfuzz / "
-            "fast-check for TS/JS, SharpFuzz for C#) is a tracked follow-up.\n\n"
+            "All of them use the real message table in `tests/fuzz/corpus.py` (not a stub) and are "
+            "seeded by `tests/fuzz/make_seed_corpus.py`, so mutated inputs get past the checksum. "
+            "TypeScript, JavaScript and C# have no libFuzzer-style engine here; instead "
+            "`tests/test_stream_cross_lang.py` feeds identical clean, corrupted and heavily mutated "
+            "streams (three seeds, three chunk sizes, all five profiles) to the Python, C, C++, "
+            "JavaScript (= TypeScript), Rust and C# readers and requires that they agree with each "
+            "other, recover every intact frame after garbage, never report a frame that was not "
+            "sent, and give the same output for any chunking.\n\n"
             "### Property-based tests\n\n"
             "`tests/test_property_roundtrip.py` uses Hypothesis to generate "
             "random instances of selected message classes and assert that Python "

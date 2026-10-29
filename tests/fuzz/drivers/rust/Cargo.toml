@@ -1,0 +1,15 @@
+[package]
+name = "stream_driver"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "struct_frame_sdk"
+path = "../../../../src/struct_frame/boilerplate/rust/lib.rs"
+
+[[bin]]
+name = "stream_driver"
+path = "src/main.rs"
+
+[workspace]

@@ -182,7 +182,9 @@ namespace StructFrame.Framing
                     var result = _parser.Parse(_internalBuffer, 0, _internalDataLen);
 
                     if (result.Status == FrameMsgStatus.WaitingForStart ||
-                        (result.Status == FrameMsgStatus.Collecting && _internalDataLen >= _bufferSize))
+                        (result.Status == FrameMsgStatus.Collecting &&
+                         (_internalDataLen >= _bufferSize ||
+                          ClaimsOversizeFrame(_internalBuffer, 0, _internalDataLen))))
                     {
                         // Garbage at the start of the internal buffer (byte 0 is not a
                         // valid start), or a frame that can never complete because its
@@ -278,6 +280,25 @@ namespace StructFrame.Framing
                 return AttachDiagnostics(parseResult);
             }
 
+            // A header that claims a frame larger than the internal buffer can never complete
+            // (typically a corrupted length field): resync past its start byte now rather than
+            // buffering good data behind it.
+            if (parseResult.Status == FrameMsgStatus.Collecting && _config.NumStartBytes > 0 &&
+                ClaimsOversizeFrame(_currentBuffer, _currentOffset, _currentSize - _currentOffset))
+            {
+                int oldOffset = _currentOffset;
+                int searchFrom = _currentOffset + 1;
+                int searchLen = _currentSize - searchFrom;
+                int skip = searchLen > 0
+                    ? FindStartByteOffset(_currentBuffer, searchFrom, searchLen)
+                    : searchLen;
+                _currentOffset = searchFrom + (skip < searchLen ? skip : searchLen);
+                int advanced = _currentOffset - oldOffset;
+                _diagnostics.CntSyncRecoveries++;
+                _diagnostics.CntFailedBytes += advanced;
+                return StatusResult(FrameMsgStatus.SyncRecovery, advanced);
+            }
+
             // Parse returned no frame — tail of buffer is a partial frame.
             int remaining = _currentSize - _currentOffset;
             if (remaining > 0 && parseResult.Status == FrameMsgStatus.Collecting)
@@ -299,6 +320,22 @@ namespace StructFrame.Framing
             }
 
             return AttachDiagnostics(FrameMsgInfo.Invalid);
+        }
+
+        /// <summary>
+        /// True when the header at <paramref name="offset"/> claims a frame that cannot fit in the
+        /// internal buffer (typically a corrupted length field). Only profiles with a length field
+        /// carry such a claim.
+        /// </summary>
+        private bool ClaimsOversizeFrame(byte[] data, int offset, int length)
+        {
+            if (!_config.HasLength || length < _config.HeaderSize) return false;
+            int off = offset + _config.NumStartBytes;
+            if (_config.HasSeq) off++;
+            if (_config.HasSysId) off++;
+            if (_config.HasCompId) off++;
+            int payloadLen = _config.LengthBytes == 1 ? data[off] : data[off] | (data[off + 1] << 8);
+            return _config.Overhead + payloadLen > _bufferSize;
         }
 
         /// <summary>

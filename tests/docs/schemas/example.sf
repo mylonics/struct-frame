@@ -1,0 +1,25 @@
+// Schema behind the examples in basic-usage/language-examples.mdx and the SDK pages
+// (package `example`); doc samples compile against it.
+package example;
+
+message Status {
+  option msgid = 1;
+  uint32 id = 1;
+  float value = 2;
+}
+
+message SensorData {
+  option msgid = 2;
+  repeated float readings = 1 [max_size=10];
+}
+
+message Position {
+  double lat = 1;
+  double lon = 2;
+}
+
+message Vehicle {
+  option msgid = 3;
+  uint32 id = 1;
+  Position pos = 2;
+}

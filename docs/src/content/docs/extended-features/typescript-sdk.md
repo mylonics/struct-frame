@@ -17,7 +17,7 @@ For JavaScript use `--build_js --js_path ... --sdk`; the API is identical (Commo
 
 ## Basic Usage
 
-```typescript
+```typescript no-compile
 import { StructFrameSdk, TcpTransport } from './generated/ts/struct-frame-sdk';
 import { ProfileStandardConfig } from './generated/ts/frame-profiles';
 import { Status, getMessageInfo } from './generated/ts/status.structframe';
@@ -54,7 +54,7 @@ await sdk.send(new Status({ value: 1 }));
 
 ### UDP
 
-```typescript
+```typescript no-compile
 import { UdpTransport } from './generated/ts/struct-frame-sdk';
 
 const transport = new UdpTransport({ remoteHost: '192.168.1.100', remotePort: 8080 });
@@ -63,7 +63,7 @@ await transport.connect();
 
 ### TCP
 
-```typescript
+```typescript no-compile
 import { TcpTransport } from './generated/ts/struct-frame-sdk';
 
 const transport = new TcpTransport({ host: '192.168.1.100', port: 8080 });
@@ -72,7 +72,7 @@ await transport.connect();
 
 ### WebSocket
 
-```typescript
+```typescript no-compile
 import { WebSocketTransport } from './generated/ts/struct-frame-sdk';
 
 const transport = new WebSocketTransport({ url: 'ws://localhost:8080' });
@@ -81,7 +81,7 @@ await transport.connect();
 
 ### Serial (Node.js only)
 
-```typescript
+```typescript no-compile
 import { SerialTransport } from './generated/ts/struct-frame-sdk';
 
 const transport = new SerialTransport({ path: '/dev/ttyUSB0', baudRate: 115200 });
@@ -95,7 +95,7 @@ The SDK works in both environments:
 - **Node.js**: Full support including Serial transport
 - **Browser**: WebSocket and (with polyfills) UDP/TCP
 
-```typescript
+```typescript no-compile
 // Detect environment
 if (typeof window === 'undefined') {
     // Node.js

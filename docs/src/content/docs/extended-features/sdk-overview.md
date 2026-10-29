@@ -68,12 +68,12 @@ Send a message and wait for the matching reply. The wait is bounded (default 5 s
 reply = sdk.request(Ping(seq=1), Pong, match=lambda r: r.seq == 1, timeout=2.0)
 ```
 
-```typescript
+```typescript no-compile
 // TypeScript / JavaScript (returns a Promise)
 const reply = await sdk.request<Pong>(ping, Pong._msgid, { match: r => r.seq === 1, timeout: 2 });
 ```
 
-```csharp
+```csharp no-compile
 // C#
 var reply = await sdk.RequestAsync<Ping, Pong>(ping, match: r => r.Seq == 1, timeoutSeconds: 2f);
 ```
