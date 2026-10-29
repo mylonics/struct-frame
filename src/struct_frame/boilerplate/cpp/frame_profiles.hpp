@@ -264,9 +264,18 @@ class FrameEncoderMinimal {
     // Write message ID
     buffer[idx++] = static_cast<uint8_t>(T::MSG_ID);
 
-    // Write payload at MAX_SIZE (always use data() for minimal profiles)
-    // Not msg.data(): a message field or oneof named `data` would hide that member.
-    std::memcpy(buffer + idx, reinterpret_cast<const uint8_t*>(&msg), payload_size);
+    if constexpr (is_variable_message<T>()) {
+      // A variable message's in-memory struct is smaller than its MAX_SIZE wire form
+      // (length prefixes are not stored), so serialize and zero-pad out to MAX_SIZE.
+      size_t written = msg.serialize(buffer + idx);
+      if (written > payload_size) {
+        return 0;
+      }
+      std::memset(buffer + idx + written, 0, payload_size - written);
+    } else {
+      // Not msg.data(): a message field or oneof named `data` would hide that member.
+      std::memcpy(buffer + idx, reinterpret_cast<const uint8_t*>(&msg), payload_size);
+    }
     idx += payload_size;
 
     return idx;
