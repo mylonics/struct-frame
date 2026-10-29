@@ -451,3 +451,27 @@ def test_name_overrides_package_qualified_keys():
     _check(result["plain"] == "OtherX", "plain key matches any package")
     _check(result["other_lang"] is None, "cpp override must not apply to ts")
     _check(result["invalid"] == "rejected", "invalid identifier must be rejected")
+
+
+def test_field_and_oneof_variant_may_share_a_name_except_in_csharp():
+    """Variants live in the oneof's own scope in C/C++/..., but C# flattens them into the class."""
+    schema = (
+        "package shared_name;\n"
+        "message Reading {\n"
+        "  option msgid = 1;\n"
+        "  uint32 value = 1;\n"
+        "  oneof payload {\n"
+        "    uint32 value = 1;\n"
+        "    float ratio = 2;\n"
+        "  }\n"
+        "}\n")
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        proto = tmp / "shared_name.sf"
+        proto.write_text(schema)
+        for lang in ("c", "cpp", "py", "ts", "rust"):
+            result = run_generator(proto, f"--build_{lang}", f"--{lang}_path", str(tmp / lang) + os.sep, "--force")
+            _check(result.returncode == 0, f"{lang} must accept a field and variant sharing a name:\n{result.stdout}{result.stderr}")
+        result = run_generator(proto, "--build_csharp", "--csharp_path", str(tmp / "cs") + os.sep, "--force")
+        _check(result.returncode != 0 and "collision" in (result.stdout + result.stderr),
+               f"csharp must still reject the colliding member names:\n{result.stdout}{result.stderr}")

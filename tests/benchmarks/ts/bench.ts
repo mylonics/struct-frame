@@ -1,137 +1,95 @@
-import { writeFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { arch, cpus, platform } from 'node:os';
-import { performance } from 'node:perf_hooks';
+// Tier D benchmark for TypeScript: runs the generated TypeScript message classes and runtime
+// (BufferWriter / BufferReader) from tests/benchmarks/generated/ts, built by run_all.py from
+// tests/benchmarks/schema/bench.sf and compiled with tsc. Emits results matching schema.json.
+import { writeFileSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
+import { arch, cpus, platform } from 'os';
+import { performance } from 'perf_hooks';
+import {
+  BufferReader, BufferWriter, FrameProfileConfig,
+  ProfileBulkConfig, ProfileIPCConfig, ProfileNetworkConfig, ProfileSensorConfig, ProfileStandardConfig,
+} from '../generated/ts/frame-profiles';
+import { Large, Medium, Small, getMessageInfo } from '../generated/ts/bench.structframe';
 
-type Scenario = [string, string, number, number, boolean];
+type MsgClass = typeof Small | typeof Medium | typeof Large;
 
-const scenarios: Scenario[] = [
-  ['standard', 'standard', 0x71, 32, false],
-  ['bulk',     'bulk',     0x74, 512, false],
-  ['network',  'network',  0x78, 96,  true],
+const args = process.argv.slice(2);
+const argValue = (flag: string, fallback: string): string =>
+  args.includes(flag) ? args[args.indexOf(flag) + 1] : fallback;
+const iterations = Number(argValue('--iterations', process.env.BENCH_ITERATIONS || '50000'));
+const output = argValue('--output', 'tests/benchmarks/results/ts.json');
+
+const BATCH = 64;
+const WARMUP_BATCHES = 20;
+const SCENARIOS: Array<[string, FrameProfileConfig, MsgClass, boolean]> = [
+  ['standard', ProfileStandardConfig, Small, false],
+  ['bulk', ProfileBulkConfig, Large, false],
+  ['network', ProfileNetworkConfig, Medium, true],
+  ['sensor', ProfileSensorConfig, Small, false],
+  ['ipc', ProfileIPCConfig, Small, false],
 ];
+let sink = 0;
 
-function fletcher(buf: Buffer): [number, number] {
-  let a = 0, b = 0;
-  for (const x of buf) {
-    a = (a + x) & 0xff;
-    b = (b + a) & 0xff;
-  }
-  return [a, b];
-}
-
-function verifyPayload(payload: Buffer): void {
-  const payloadLen = payload.length;
-  if (payloadLen === 0) return;
-  const checks = new Set([0, Math.floor(payloadLen / 2), payloadLen - 1]);
-  for (const i of checks) {
-    const expected = (i * 31 + payloadLen) & 0xff;
-    if (payload[i] !== expected) throw new Error('bad payload');
-  }
-}
-
-function encode(profile: string, typeByte: number, payloadLen: number, network = false, seq = 1): Buffer {
-  const payload = Buffer.alloc(payloadLen);
-  for (let i = 0; i < payloadLen; i++) {
-    payload[i] = (i * 31 + payloadLen) & 0xff;
-  }
-  const body: number[] = [];
-  if (network) {
-    body.push(seq & 0xff, 1, 42, payloadLen & 0xff, (payloadLen >> 8) & 0xff, 7, 3);
-  } else if (profile === 'bulk') {
-    body.push(payloadLen & 0xff, (payloadLen >> 8) & 0xff, 7, 3);
-  } else {
-    body.push(payloadLen & 0xff, 3);
-  }
-  const b = Buffer.concat([Buffer.from(body), payload]);
-  const [c1, c2] = fletcher(b);
-  return Buffer.concat([Buffer.from([0x90, typeByte]), b, Buffer.from([c1, c2])]);
-}
-
-function decode(frame: Buffer): Buffer {
-  if (frame[0] !== 0x90) throw new Error('bad sync');
-  let off = 2;
-  const p = frame[1] - 0x70;
-  let len = 0;
-  if (p === 8) {
-    off += 3;
-    len = frame[off] | (frame[off + 1] << 8);
-    off += 4;
-  } else if (p === 4) {
-    len = frame[off] | (frame[off + 1] << 8);
-    off += 4;
-  } else {
-    len = frame[off];
-    off += 2;
-  }
-  const end = off + len;
-  const [c1, c2] = fletcher(frame.subarray(2, end));
-  if (frame[end] !== c1 || frame[end + 1] !== c2) throw new Error('bad crc');
-  const payload = frame.subarray(off, end);
-  verifyPayload(payload);
-  return payload;
-}
-
-function pct(v: number[], q: number): number {
-  v.sort((a, b) => a - b);
+function pct(values: number[], q: number): number {
+  const v = [...values].sort((a, b) => a - b);
   return v[Math.min(v.length - 1, Math.floor((v.length - 1) * q))];
 }
 
-function encScenario(s: Scenario, seq: number): Buffer {
-  return encode(s[1], s[2], s[3], s[4], seq);
-}
+function runCase(name: string, config: FrameProfileConfig, Msg: MsgClass, addressed: boolean, op: string) {
+  const msg = new Msg({ data: Array.from({ length: Msg._size }, (_, i) => (i * 31) & 0xff) });
+  const writer = new BufferWriter(config, 2048);
+  const encodeOnce = (i: number): number => {
+    writer.reset();
+    const n = writer.write(msg, addressed ? { seq: i & 0xff, sysId: 1, compId: 42 } : {});
+    if (n === 0) throw new Error('encode failed');
+    return n;
+  };
+  const frames: Uint8Array[] = [];
+  for (let i = 0; i < 8; i++) {
+    encodeOnce(i);
+    frames.push(writer.data());
+  }
+  const decodeOnce = (i: number): number => {
+    const frame = frames[i & 7];
+    const info = new BufferReader(config, frame, getMessageInfo).next();
+    if (!info.valid) throw new Error('decode failed');
+    sink += Msg.deserialize(info).data[0];
+    return frame.length;
+  };
+  const one = op === 'encode' ? encodeOnce : decodeOnce;
 
-function runCase(name: string, profile: string, op: string, iterations: number) {
-  const scenario = scenarios.find(s => s[0] === profile)!;
-  const frames = Array.from({ length: 8 }, (_, i) => encScenario(scenario, i));
+  for (let i = 0; i < WARMUP_BATCHES * BATCH; i++) sink += one(i);
+
+  const batches = Math.max(1, Math.floor(iterations / BATCH));
   const lat: number[] = [];
   let bytes = 0;
   const start = performance.now();
-  for (let i = 0; i < iterations; i++) {
+  for (let b = 0; b < batches; b++) {
     const t0 = performance.now();
-    if (op === 'encode') {
-      const f = encScenario(scenario, i);
-      bytes += f.length;
-    } else {
-      const f = frames[i % frames.length];
-      decode(f);
-      bytes += f.length;
-    }
-    lat.push(Math.round((performance.now() - t0) * 1e6));
+    for (let j = 0; j < BATCH; j++) bytes += one(b * BATCH + j);
+    lat.push(Math.round(((performance.now() - t0) * 1e6) / BATCH));
   }
   const dur = Math.max((performance.now() - start) / 1000, 1e-9);
+  const count = batches * BATCH;
   return {
-    name, profile, operation: op,
-    msg_count: iterations, bytes_total: bytes, duration_s: dur,
-    msg_per_sec: iterations / dur,
-    mb_per_sec: bytes / dur / 1e6,
-    latency_ns: {
-      p50: pct(lat, 0.5), p95: pct(lat, 0.95),
-      p99: pct(lat, 0.99), max: Math.max(...lat),
-    },
+    name: `${name}_${op}`, profile: name, operation: op,
+    msg_count: count, bytes_total: bytes, duration_s: dur,
+    msg_per_sec: count / dur, mb_per_sec: bytes / dur / 1e6,
+    latency_ns: { p50: pct(lat, 0.5), p95: pct(lat, 0.95), p99: pct(lat, 0.99), max: Math.max(...lat) },
   };
 }
 
-const args = process.argv.slice(2);
-const iterations = Number(
-  args[args.indexOf('--iterations') + 1] || process.env.BENCH_ITERATIONS || 50000,
-);
-const output = args.includes('--output')
-  ? args[args.indexOf('--output') + 1]
-  : 'tests/benchmarks/results/ts.json';
-
-const out: any = {
+const out = {
   schema_version: '1',
   language: 'ts',
-  runner_version: 'tier-d-1',
+  runner_version: 'tier-d-2-generated',
   timestamp: new Date().toISOString(),
   host: { os: platform(), arch: arch(), cpu: cpus()[0]?.model || 'unknown' },
-  scenarios: [],
+  scenarios: [] as object[],
 };
-for (const [profile] of scenarios) {
-  for (const op of ['encode', 'decode']) {
-    out.scenarios.push(runCase(`${profile}_${op}`, profile, op, iterations));
-  }
+for (const [name, config, Msg, addressed] of SCENARIOS) {
+  for (const op of ['encode', 'decode']) out.scenarios.push(runCase(name, config, Msg, addressed, op));
 }
+if (sink === -1) console.log(sink);
 mkdirSync(dirname(output), { recursive: true });
 writeFileSync(output, JSON.stringify(out, null, 2) + '\n');

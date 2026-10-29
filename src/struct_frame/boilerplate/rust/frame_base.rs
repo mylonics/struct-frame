@@ -82,6 +82,10 @@ pub struct FrameMsgInfo {
     /// The raw message payload bytes (excluding framing overhead).
     /// Use `get_payload_span()` for a zero-copy slice or `extract_payload()` to move the data out.
     pub msg_data: Vec<u8>,
+    /// Which payload layout the frame carries: `Some(true)` for the variable-length wire form
+    /// (profiles with a length field), `Some(false)` for the fixed `MAX_SIZE` form (minimal
+    /// profiles), `None` when unknown. `unpack_frame` uses it instead of guessing from the length.
+    pub variable_encoding: Option<bool>,
     /// Status indicating the reason this result is not valid (only meaningful when valid is false).
     pub status: FrameMsgStatus,
     /// Diagnostics snapshot at the moment this result was produced. Only populated by
@@ -183,6 +187,15 @@ pub trait StructFrameMessage {
     fn unpack(buf: &[u8]) -> Option<Self>
     where
         Self: Sized;
+    /// Deserialize from a parsed frame. Variable messages override this to use the layout the
+    /// reader recorded (`variable_encoding`) rather than guessing from the payload length; for
+    /// every other message it is the same as `unpack(&info.msg_data)`.
+    fn unpack_frame(info: &FrameMsgInfo) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        Self::unpack(&info.msg_data)
+    }
 
     fn message_info() -> MessageInfo {
         MessageInfo::new(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2)

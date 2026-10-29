@@ -40,6 +40,7 @@ jobs:
           UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
         run: |
           mkdir -p tests/c/build/fuzz_corpus
+          python3 tests/fuzz/make_seed_corpus.py tests/c/build/fuzz_corpus
           tests/c/build/fuzz_parser -max_total_time=60 -max_len=4096 \
                                     tests/c/build/fuzz_corpus
       - name: Upload corpus and any crashes
@@ -69,4 +70,83 @@ jobs:
         # atheris ships a wheel for cpython 3.11 on linux/x86_64.
         run: pip install atheris
       - name: Run atheris for 60 s
-        run: python tests/py/fuzz_parser.py -max_total_time=60 -max_len=4096
+        run: |
+          python tests/fuzz/make_seed_corpus.py fuzz_seeds
+          python tests/py/fuzz_parser.py -max_total_time=60 -max_len=4096 fuzz_seeds
+
+  fuzz-cpp-parser:
+    name: libFuzzer / C++ AccumulatingReader
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Install clang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+      - name: Build C++ fuzz harness
+        run: |
+          mkdir -p tests/cpp/build
+          clang++ -std=c++20 -O1 -g -fsanitize=fuzzer,address,undefined                   -fno-sanitize-recover=all                   -I src/struct_frame/boilerplate/cpp                   tests/cpp/fuzz_parser.cpp -o tests/cpp/build/fuzz_parser_cpp
+      - name: Run libFuzzer for 60 s
+        env:
+          ASAN_OPTIONS: "abort_on_error=1:halt_on_error=1"
+          UBSAN_OPTIONS: "print_stacktrace=1:halt_on_error=1"
+        run: |
+          mkdir -p tests/cpp/build/fuzz_corpus
+          python tests/fuzz/make_seed_corpus.py tests/cpp/build/fuzz_corpus
+          tests/cpp/build/fuzz_parser_cpp -max_total_time=60 -max_len=4096 tests/cpp/build/fuzz_corpus
+
+  fuzz-rust-parser:
+    name: cargo-fuzz / Rust AccumulatingReader
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Run cargo-fuzz for 60 s
+        working-directory: tests/rust/fuzz
+        env:
+          RUSTFLAGS: "-Coverflow-checks=on"
+        run: |
+          python ../../fuzz/make_seed_corpus.py corpus/parser
+          cargo +nightly fuzz run parser -- -max_total_time=60 -max_len=4096
+
+  # JavaScript/TypeScript and C# have no libFuzzer-style engine in this repo. Their parsers
+  # are fuzzed differentially instead: the stream differential test feeds identical
+  # clean, corrupted and heavily mutated streams to every language at several chunk sizes
+  # and requires identical output.
+  stream-differential:
+    name: Cross-language stream differential
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: "8.0.x" }
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc g++
+          pip install pytest proto-schema-parser
+      - name: Run differential stream test
+        env:
+          SF_REQUIRE_LANGS: py,c,cpp,js,rust,csharp
+        run: python -m pytest tests/test_stream_cross_lang.py -v

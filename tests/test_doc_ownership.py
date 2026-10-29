@@ -174,3 +174,55 @@ def test_comments_before_options_and_at_scope_end_document_nothing():
            "A comment above an option statement must not leak onto the next field")
     _check("dangling at the end" not in everything,
            "A dangling comment at the end of a scope documents nothing")
+
+
+def _generate_with_ext(langs, extensions):
+    """Like _generate but for languages whose outputs use other file extensions."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        proto = tmp_path / "docs.sf"
+        proto.write_text(SCHEMA, encoding="utf-8")
+        flags = ["--force"]
+        for lang in langs:
+            flags += [f"--build_{lang}", f"--{lang}_path", str(tmp_path / lang) + os.sep]
+        result = run_generator(proto, *flags)
+        _check(result.returncode == 0, f"Generation failed:\n{result.stdout}\n{result.stderr}")
+        out = {}
+        for lang in langs:
+            for path in sorted((tmp_path / lang).rglob("*")):
+                if path.is_file() and path.suffix in extensions:
+                    out[f"{lang}/{path.relative_to(tmp_path / lang).as_posix()}"] = path.read_text(encoding="utf-8")
+        return out
+
+
+def test_c_and_javascript_comment_ownership():
+    """C and JavaScript were the two languages the ownership rules were not asserted for."""
+    out = _generate_with_ext(("c", "js"), {".h", ".js"})
+    c = _find(out, "c", "docs_test.structframe.h")
+    js = _find(out, "js", "docs-test.structframe.js")
+    for lang, text in (("c", c), ("js", js)):
+        _check(text.count("File header: describes this whole file") == 1, f"{lang}: file docs once")
+        _check("and spans two lines" in text, f"{lang}: full file docs emitted")
+        _check("Priority levels" in text and "Sensor reading" in text,
+               f"{lang}: declaration docs missing")
+        _check("Leading docs for second" in text and "Describes first" in text,
+               f"{lang}: field docs missing")
+        _check("dangling at the end of the message" not in text,
+               f"{lang}: a dangling comment must document nothing")
+        _check("handled by the option" not in text,
+               f"{lang}: a comment before an option must document nothing")
+
+    # The file header must not be glued onto the first declaration.
+    enum_marker = "typedef enum" if "typedef enum" in c else "enum"
+    _check("File header" not in "\n".join(_lines_before(c, enum_marker, 4)),
+           "C: file docs must not become the first enum's documentation")
+
+    # Ownership: the leading comment is directly above `second`, and `Describes first`
+    # belongs to `first`, not to the next field.
+    lines = c.splitlines()
+    second = next(i for i, line in enumerate(lines) if re.search(r"\bsecond\b", line) and ";" in line)
+    _check("Leading docs for second" in "\n".join(lines[max(0, second - 3):second + 1]),
+           "C: 'Leading docs for second' should sit next to `second`")
+    first = next(i for i, line in enumerate(lines) if re.search(r"\bfirst\b", line) and ";" in line)
+    _check("Describes first" in "\n".join(lines[first - 1:first + 2]),
+           "C: 'Describes first' should sit next to `first`")

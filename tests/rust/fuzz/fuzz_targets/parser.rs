@@ -14,11 +14,18 @@ use struct_frame_sdk::{
     PROFILE_SENSOR_CONFIG, PROFILE_STANDARD_CONFIG,
 };
 
-fn stub_info(_msg_id: u16) -> Option<MessageInfo> {
-    // Small, well-formed MessageInfo for parsers that need a length lookup.
-    // Most fuzz inputs will mismatch the embedded magic and be dropped, but
-    // the parser must remain safe regardless.
-    Some(MessageInfo::new(64, 0, 0))
+// Real message table, identical to tests/fuzz/corpus.py, so seed frames from
+// tests/fuzz/make_seed_corpus.py pass the checksum and reach the deeper parser paths.
+fn stub_info(id: u16) -> Option<MessageInfo> {
+    let (size, m1, m2) = match id {
+        1 => (8, 11, 22),
+        2 => (32, 33, 44),
+        3 => (100, 55, 66),
+        4 => (1, 77, 88),
+        5 => (200, 99, 111),
+        _ => return None,
+    };
+    Some(MessageInfo::new(size, m1, m2))
 }
 
 fn drive(cfg: ProfileConfig, data: &[u8]) {
@@ -27,11 +34,11 @@ fn drive(cfg: ProfileConfig, data: &[u8]) {
     // Two-slice feed exercises the cross-buffer accumulation path.
     reader.add_data(&data[..mid]);
     for _ in 0..256 {
-        if reader.next(&stub_info).is_none() { break; }
+        if reader.try_next(&stub_info).is_none() { break; }
     }
     reader.add_data(&data[mid..]);
     for _ in 0..256 {
-        if reader.next(&stub_info).is_none() { break; }
+        if reader.try_next(&stub_info).is_none() { break; }
     }
 }
 

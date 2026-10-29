@@ -641,13 +641,11 @@ bool test_cross_package_rejection(void) {
   buffer_reader_init(&reader, &PROFILE_BULK_CONFIG, buffer, frame_size, get_message_info);
   frame_msg_info_t result = buffer_reader_next(&reader);
 
-  /* The frame may parse as valid at the frame level, but the msg_id should be 513 (pkg_test_a)
-   * not a pkg_test_messages ID. Check that the msg_id doesn't belong to pkg_test_messages. */
-  if (!result.valid) return true;  /* If parsing failed, that's good */
-
-  /* If parsing succeeded, verify it's NOT a pkg_test_messages message */
-  uint16_t expected_pkg_id = (result.msg_id >> 8) & 0xFF;
-  return expected_pkg_id != PKG_TEST_MESSAGES_PACKAGE_ID;
+  /* get_message_info here is pkg_test_messages' own lookup, so the pkg_test_a message
+   * (full id 513) is unknown to this reader and must be rejected rather than aliased onto
+   * a pkg_test_messages id. Reject is the only acceptable outcome: a frame that parsed as
+   * valid would mean the reader accepted a message from a package it does not know. */
+  return !result.valid;
 }
 
 /**

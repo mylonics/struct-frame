@@ -5,3 +5,10 @@ version = 4
 [[package]]
 name = "struct_frame_bench"
 version = "0.1.0"
+dependencies = [
+ "struct_frame_sdk",
+]
+
+[[package]]
+name = "struct_frame_sdk"
+version = "0.1.0"

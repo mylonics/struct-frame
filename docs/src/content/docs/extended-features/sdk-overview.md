@@ -7,9 +7,11 @@ The SDK provides high-level abstractions for message communication, including tr
 
 ## What the SDK Provides
 
-- Transport abstractions (UDP, TCP, Serial, WebSocket)
+- Transport abstractions (UDP, TCP, Serial, and WebSocket where listed below)
 - Message routing and handlers
 - Observer/subscriber patterns
+- Request/response helpers (Python, TypeScript/JavaScript, C#)
+- Error reporting hooks
 - Asynchronous I/O (where supported)
 
 ## When to Use the SDK
@@ -28,7 +30,7 @@ The SDK provides high-level abstractions for message communication, including tr
 
 | Language | SDK | Transports |
 |----------|-----|------------|
-| C++ | ✓ | Serial, UDP, TCP, WebSocket (via ASIO) |
+| C++ | ✓ | Serial, UDP, TCP (via ASIO); no WebSocket |
 | TypeScript/JavaScript | ✓ | UDP, TCP, WebSocket, Serial |
 | Python | ✓ | Serial, sockets, WebSocket |
 | C# | ✓ | Serial, UDP, TCP, WebSocket |
@@ -50,9 +52,46 @@ python -m struct_frame messages.proto --build_ts --sdk
 # Python with SDK
 python -m struct_frame messages.proto --build_py --sdk
 
-# C# with transports
-python -m struct_frame messages.proto --build_csharp --csharp_sdk
+# C# (SDK core is always generated; enable transports in the .csproj with
+# -p:IncludeSerialTransport=true / -p:IncludeNetCoreServer=true)
+python -m struct_frame messages.proto --build_csharp
 ```
+
+`--sdk` applies to C++, Python, TypeScript and JavaScript. `--sdk_embedded` is only honoured for C++.
+
+## Request/Response
+
+Send a message and wait for the matching reply. The wait is bounded (default 5 seconds) and the temporary subscription is always removed, whether the request succeeds, times out or fails.
+
+```python
+# Python (blocking; the async SDK has an awaitable request())
+reply = sdk.request(Ping(seq=1), Pong, match=lambda r: r.seq == 1, timeout=2.0)
+```
+
+```typescript no-compile
+// TypeScript / JavaScript (returns a Promise)
+const reply = await sdk.request<Pong>(ping, Pong._msgid, { match: r => r.seq === 1, timeout: 2 });
+```
+
+```csharp no-compile
+// C#
+var reply = await sdk.RequestAsync<Ping, Pong>(ping, match: r => r.Seq == 1, timeoutSeconds: 2f);
+```
+
+All three throw/reject with a timeout error when no matching response arrives. `match` is optional; without it the first message with the response ID wins. The C++ and Rust SDKs have no request helper: subscribe to the response ID and correlate it yourself.
+
+## Error Reporting
+
+Transport errors, exceptions thrown by handlers and deserialization failures are delivered to an error hook instead of being swallowed:
+
+| SDK | Hook |
+|-----|------|
+| Python | `StructFrameSdkConfig(on_error=callable)` |
+| TypeScript / JavaScript | `onError` in the SDK config |
+| C# | `StructFrameSdk.ErrorOccurred` event |
+| C++ | `sdk.SetErrorCallback(fn, ctx)` (transport errors only) |
+
+Without a hook these errors are only visible when debug logging is enabled, so production code should always install one. The callback must not throw.
 
 ## Language-Specific Guides
 

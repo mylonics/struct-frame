@@ -16,6 +16,7 @@ class StructFrameSdk {
         this.getMessageInfo = config.getMessageInfo;
         this.reader = new frame_profiles_1.AccumulatingReader(config.profile, config.getMessageInfo);
         this.debug = config.debug ?? false;
+        this.onError = config.onError;
         this.transport.onData((data) => this.handleIncomingData(data));
         this.transport.onError((error) => this.handleError(error));
         this.transport.onClose(() => this.handleClose());
@@ -160,7 +161,12 @@ class StructFrameSdk {
                         message = codec.deserialize(result.msgData);
                     }
                     catch (error) {
+                        // Do not fall through with the raw payload: handlers registered
+                        // through a codec expect the decoded type, and handing them raw
+                        // bytes only turns one silent failure into two.
                         this.log(`Failed to deserialize message ID ${result.msgId}: ${error}`);
+                        this.raiseError(error);
+                        continue;
                     }
                 }
                 // Iterate a snapshot: a handler that unsubscribes during dispatch (e.g. the
@@ -172,7 +178,9 @@ class StructFrameSdk {
                         snapshot[i](message, result.msgId);
                     }
                     catch (error) {
+                        // Keep dispatching to the remaining handlers, but surface the fault.
                         this.log(`Handler error for message ID ${result.msgId}: ${error}`);
+                        this.raiseError(error);
                     }
                 }
             }
@@ -180,6 +188,18 @@ class StructFrameSdk {
     }
     handleError(error) {
         this.log(`Transport error: ${error.message}`);
+        this.raiseError(error);
+    }
+    /** Publish an error to the configured onError callback, if any. */
+    raiseError(error) {
+        if (!this.onError)
+            return;
+        try {
+            this.onError(error);
+        }
+        catch (err) {
+            this.log(`onError callback threw: ${err}`);
+        }
     }
     handleClose() {
         this.log('Transport closed');

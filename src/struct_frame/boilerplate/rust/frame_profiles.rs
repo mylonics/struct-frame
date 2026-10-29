@@ -467,6 +467,7 @@ pub fn parse_with_crc(
         system_id: sys_id,
         component_id: comp_id,
         msg_data,
+        variable_encoding: Some(config.payload.has_length),
         ..Default::default()
     }
 }
@@ -525,6 +526,7 @@ pub fn parse_minimal(
         msg_len,
         frame_size: total_size,
         msg_data,
+        variable_encoding: Some(false),
         ..Default::default()
     }
 }
@@ -977,7 +979,7 @@ impl AccumulatingReader {
     /// the reader does not wedge permanently: drain to the next start-byte
     /// candidate after the head (at least one byte).
     fn forced_resync_if_full(&mut self) -> Option<FrameMsgInfo> {
-        if self.buf().len() < self.capacity {
+        if self.buf().len() < self.capacity && !self.claims_oversize_frame() {
             return None;
         }
         let buf = self.buf();
@@ -1009,6 +1011,28 @@ impl AccumulatingReader {
         sync.status = FrameMsgStatus::SyncRecovery;
         sync.frame_size = drain;
         Some(sync)
+    }
+
+    /// True when the header at the buffer head claims a frame that cannot fit in the reader's
+    /// capacity (typically a corrupted length field). Only profiles with a length field carry
+    /// such a claim. The caller resyncs immediately, as a byte-by-byte parser would, instead of
+    /// waiting for the buffer to fill with good data behind the bogus header.
+    fn claims_oversize_frame(&self) -> bool {
+        let cfg = &self.config;
+        let buf = self.buf();
+        if !cfg.payload.has_length || buf.len() < cfg.header_size() {
+            return false;
+        }
+        let mut off = cfg.header.num_start_bytes as usize;
+        if cfg.payload.has_seq { off += 1; }
+        if cfg.payload.has_sys_id { off += 1; }
+        if cfg.payload.has_comp_id { off += 1; }
+        let payload_len = if cfg.payload.length_bytes == 1 {
+            buf[off] as usize
+        } else {
+            buf[off] as usize | ((buf[off + 1] as usize) << 8)
+        };
+        cfg.overhead() + payload_len > self.capacity
     }
 
     /// Increment cnt_len_errors when the frame at the buffer head carries a length

@@ -13,7 +13,7 @@ Proto files provide:
 - Familiar syntax for developers who know Protocol Buffers
 - Tooling support (syntax highlighting, linting)
 
-Struct Frame uses proto syntax but generates different code than Google's Protocol Buffers. Messages are fixed-size packed structs, not variable-length encoded.
+Struct Frame uses proto syntax but generates different code than Google's Protocol Buffers. By default messages are fixed-size packed structs; variable-length encoding is opt-in per message with `option variable = true` (see below).
 
 ## Packages
 
@@ -54,7 +54,7 @@ message Heartbeat {
 }
 ```
 
-Message IDs must be unique within a package (range 0-255).
+Message IDs must be unique within a package. Without a package ID the range is 0-65535; when the package sets `option pkgid`, the range is 0-255 and the full 16-bit wire ID is `(pkgid << 8) | msgid`. IDs above 255 only fit profiles that carry a package-ID byte (Bulk and Network); encoding such a message with a 1-byte-ID profile (Standard, Sensor, IPC) fails instead of truncating the ID. When several packages are compiled together, the *effective* IDs must be unique: a package without its own `pkgid` inherits its importer's, so its message IDs share that importer's ID space.
 
 **variable** (optional, enables variable-length encoding)
 
@@ -68,7 +68,7 @@ message SensorData {
 
 With variable encoding, arrays and strings only transmit actual used bytes instead of the full max_size. This reduces bandwidth when fields are partially filled.
 
-You can also enable variable-length encoding for **every** message in the project at code-generation time by passing the `--no_packed` CLI flag. This is equivalent to setting `option variable = true;` on every message and additionally drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ output. Use it on platforms that don't support packed structs or that have different endianness/alignment requirements. See the [CLI reference](/reference/cli-reference/) for details.
+You can also enable variable-length encoding for **every** message in the project at code-generation time by passing the `--no_packed` CLI flag. This is equivalent to setting `option variable = true;` on every message and additionally drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ output. Use it on platforms that don't support packed structs or that have strict alignment requirements. It does not change byte order: all multi-byte values are little-endian on the wire, and the generated C/C++ code assumes a little-endian host. See the [CLI reference](/reference/cli-reference/) for details.
 
 **pkgid** (optional package-level option)
 
@@ -94,6 +94,8 @@ Enables extended message addressing with 16-bit message IDs (256 packages × 256
 | float | 4 bytes | IEEE 754 single precision |
 | double | 8 bytes | IEEE 754 double precision |
 | bool | 1 byte | true or false |
+| string | see below | Text with `size` (fixed) or `max_size` (variable) |
+| bytes | see below | Raw bytes; same wire format and options as `string` |
 
 All types use little-endian byte order.
 
@@ -145,6 +147,24 @@ be omitted from the wire" marker (`optional`-style omission is not part of this 
 > this preserves the value but can normalize unusual formatting (e.g. `"True"` becomes `"true"`).
 > Prefer defaults whose text doesn't look like another literal type if exact formatting matters.
 
+### Getting a message with its defaults, per language
+
+For `DefaultsMessage` in package `default_values` with `u8_val = 200`:
+
+| Language | Construct with defaults | Read the field |
+|----------|-------------------------|----------------|
+| C | `DefaultValuesDefaultsMessage m; DefaultValuesDefaultsMessage_init(&m);` (a bare declaration is **not** initialised) | `m.u8_val` |
+| C++ | `default_values::DefaultsMessage m;` (default member initialisers; `= {}` also works) | `m.u8_val` |
+| Python | `DefaultsMessage()`; pass a keyword to override one field, e.g. `DefaultsMessage(u8_val=5)` | `m.u8_val` |
+| TypeScript / JavaScript | `new DefaultsMessage()` or `new DefaultsMessage({ u8Val: 5 })` | `m.u8Val` |
+| C# | `new DefaultsMessage()` (property initialisers) | `m.U8Val` |
+| Rust | `DefaultsMessage::default()`, or `DefaultsMessage { u8_val: 5, ..Default::default() }` | `m.u8_val` |
+
+Decoding applies the same values: a field that a shorter, older payload did not carry is
+filled from the schema default in every language, and a field the sender did transmit is
+never replaced. In C, `Msg_deserialize` runs `Msg_init` first and then overlays the received bytes, so
+no caller-side padding is needed.
+
 ## Strings
 
 Strings require a size specification.
@@ -163,7 +183,7 @@ Always uses 16 bytes, padded with nulls if shorter.
 string description = 1 [max_size=256];
 ```
 
-Stores up to 256 characters plus a 1-byte length prefix.
+Stores up to 256 characters plus a length prefix. The prefix is 1 byte when `max_size` ≤ 255 and 2 bytes (`uint16`) when `max_size` is larger, so this example uses a 2-byte prefix.
 
 ## Arrays
 
@@ -228,27 +248,32 @@ Enums are stored as uint8 (1 byte).
 
 ### Enum to String Conversion
 
-Enums can be converted to strings using language built-in features or generated helper functions.
+Enums can be converted to strings using language built-in features or generated helper functions. The examples assume the schema above is in a file with `package sensor_system;`. Only C prefixes the type with the package name; the other languages put it in a namespace or module instead. TypeScript and JavaScript spell enum members in PascalCase, so their string is `Temperature`; the other languages give `TEMPERATURE`.
 
 **C** (generated helper function)
 ```c
-SerializationTestSensorType type = SENSOR_TYPE_TEMPERATURE;
-const char* type_str = SerializationTestSensorType_to_string(type);
+#include "sensor_system.structframe.h"
+
+SensorSystemSensorType type = SENSOR_TYPE_TEMPERATURE;
+const char* type_str = SensorSystemSensorType_to_string(type);
 // Returns: "TEMPERATURE"
 ```
 
 **C++** (generated helper function)
 ```cpp
-SerializationTestSensorType type = SerializationTestSensorType::TEMPERATURE;
-const char* type_str = SerializationTestSensorType_to_string(type);
+#include "sensor_system.structframe.hpp"
+using namespace structframe::sensor_system;
+
+SensorType type = SensorType::Temperature;
+const char* type_str = SensorType_to_string(type);
 // Returns: "TEMPERATURE"
 ```
 
 **Python** (built-in Enum)
 ```python
-from sensor_system import SerializationTestSensorType
+from struct_frame.generated.sensor_system import SensorType
 
-type = SerializationTestSensorType.TEMPERATURE
+type = SensorType.TEMPERATURE
 # Use the built-in .name property
 type_str = type.name
 # Returns: "TEMPERATURE"
@@ -256,31 +281,31 @@ type_str = type.name
 
 **TypeScript** (built-in reverse mapping)
 ```typescript
-import { SerializationTestSensorType } from './sensor_system.structframe';
+import { SensorType } from './sensor-system.structframe';
 
-const type = SerializationTestSensorType.TEMPERATURE;
+const type = SensorType.Temperature;
 // TypeScript numeric enums support reverse mapping
-const typeStr = SerializationTestSensorType[type];
-// Returns: "TEMPERATURE"
+const typeStr = SensorType[type];
+// Returns: "Temperature"
 ```
 
 **JavaScript** (Object.keys lookup)
 ```javascript
-const { SerializationTestSensorType } = require('./sensor_system.structframe');
+const { SensorType } = require('./sensor-system.structframe');
 
-const type = SerializationTestSensorType.TEMPERATURE;
+const type = SensorType.Temperature;
 // Find the key by value
-const typeStr = Object.keys(SerializationTestSensorType).find(
-  key => SerializationTestSensorType[key] === type
+const typeStr = Object.keys(SensorType).find(
+  key => SensorType[key] === type
 );
-// Returns: "TEMPERATURE"
+// Returns: "Temperature"
 ```
 
 **C#** (built-in ToString)
 ```csharp
 using StructFrame.SensorSystem;
 
-SerializationTestSensorType type = SerializationTestSensorType.TEMPERATURE;
+SensorType type = SensorType.TEMPERATURE;
 // Use the built-in enum ToString method
 string typeStr = type.ToString();
 // Returns: "TEMPERATURE"
@@ -354,7 +379,7 @@ message Vehicle {
 
 ## Flatten Option
 
-Flatten nested message fields into the parent (Python/GraphQL only):
+Flatten nested message fields into the parent. Only the Python `to_dict()` output and the GraphQL schema are flattened; the generated classes and structs in every language keep the nested field:
 
 ```proto
 message Status {
@@ -363,7 +388,7 @@ message Status {
 }
 ```
 
-Access: `status.lat` instead of `status.pos.lat`
+In the dictionary and in GraphQL the keys are `lat`, `lon`, … instead of `pos.lat`; in code you still access `status.pos.lat`. Flattening is rejected when a child field name collides with a field of the parent.
 
 ## Oneof (Union Types)
 
@@ -481,7 +506,7 @@ oneof data {
 ### Using Discriminators
 
 **With msgid discriminator:**
-```cpp
+```cpp no-compile
 // C++ - check which message is active by message ID
 if (wrapper.command_discriminator == CommandA::MSG_ID) {
     // Access wrapper.command.cmd_a
@@ -492,7 +517,7 @@ if (wrapper.command_discriminator == CommandA::MSG_ID) {
 
 For `field_order` discriminators, a typed enum is generated named `{MessageName}{OneofName}Field`:
 
-```cpp
+```cpp no-compile
 // C++ - use the generated enum for type-safe discriminator checks
 if (sensor.value_discriminator == SensorValueField::TEMPERATURE) {
     // temperature is active
@@ -632,6 +657,12 @@ oneof data {
 - `min_size` must be ≤ the oneof's buffer size (`max(variant_sizes)`, or `max_size` if set). Use `max_size` to increase the buffer first if needed.
 - Padding bytes are always zero.
 
+**Wire evolution of variants in a trimmed oneof:**
+- A variant message may grow through its own `extensions_start` block. Older senders omit the new bytes (a newer receiver fills them with schema defaults, or zero); newer senders add bytes that an older receiver ignores.
+- This works only for the **last** oneof of a variable message: its payload runs to the end of the frame, so the receiver treats every remaining byte as the active variant. The buffer passed to `deserialize` must therefore be exactly the message payload (frame parsers already guarantee this).
+- A trimmed oneof followed by another oneof cannot evolve, because the receiver cannot tell where its payload ends. Do not add extension fields to variants of a non-trailing trimmed oneof.
+- `MIN_SIZE` is the smallest valid payload across the known variants. `struct-frame diff` reports growth of a trailing trimmed oneof through variant extension fields as wire-compatible.
+
 ### Option Summary
 
 | Option | Applies to | Effect |
@@ -733,10 +764,10 @@ The discriminator is automatically set by the `wrap()` method and read during de
 The SDK generates convenient helper methods for envelope messages:
 
 **C++ (msgid discriminator)**
-```cpp
+```cpp no-compile
 // Wrap a command into an envelope - template ensures type safety
-EnvelopeTestADCCommand adc_cmd{.channel = 1, .sample_rate = 1000, .enable = true};
-auto envelope = EnvelopeTestCommandEnvelope::wrap(
+envelope_test::ADCCommand adc_cmd{.channel = 1, .sample_rate = 1000, .enable = true};
+auto envelope = envelope_test::CommandEnvelope::wrap(
     42,      // sequence_number
     1,       // priority
     true,    // run_immediately
@@ -744,20 +775,20 @@ auto envelope = EnvelopeTestCommandEnvelope::wrap(
 );
 
 // Only valid payload types are accepted - invalid types cause compile error:
-// auto bad = EnvelopeTestCommandEnvelope::wrap(42, 1, true, some_other_msg); // Won't compile!
+// auto bad = envelope_test::CommandEnvelope::wrap(42, 1, true, some_other_msg); // Won't compile!
 
 // Get payload message ID to determine which type was wrapped
 uint16_t payload_id = envelope.getPayloadMessageId();
 
 // Access the wrapped payload directly via the oneof field
-if (payload_id == EnvelopeTestADCCommand::MSG_ID) {
+if (payload_id == envelope_test::ADCCommand::MSG_ID) {
     auto& adc = envelope.command.adc;
     // Use adc.channel, adc.sample_rate, etc.
 }
 ```
 
 **C++ (field_order discriminator)**
-```cpp
+```cpp no-compile
 // Separate wrap() overloads for each payload type
 auto envelope = MyEnvelope::wrap(42, 1, true, adc_cmd);  // Sets discriminator to 1
 auto envelope2 = MyEnvelope::wrap(42, 1, true, dac_cmd); // Sets discriminator to 2
@@ -769,8 +800,8 @@ uint8_t field_order = envelope.getPayloadFieldOrder();
 **Python**
 ```python
 # Wrap a command into an envelope
-adc_cmd = EnvelopeTestADCCommand(channel=1, sample_rate=1000, enable=True)
-envelope = EnvelopeTestCommandEnvelope.wrap(
+adc_cmd = ADCCommand(channel=1, sample_rate=1000, enable=True)
+envelope = CommandEnvelope.wrap(
     payload=adc_cmd,  # Runtime type check ensures valid payload
     sequence_number=42,
     priority=1,
@@ -778,7 +809,7 @@ envelope = EnvelopeTestCommandEnvelope.wrap(
 )
 
 # Invalid payload types raise TypeError:
-# envelope = EnvelopeTestCommandEnvelope.wrap(some_other_msg, ...)  # TypeError!
+# envelope = CommandEnvelope.wrap(some_other_msg, ...)  # TypeError!
 
 # Unwrap - returns the correct message type based on discriminator
 payload = envelope.unwrap()
@@ -787,29 +818,29 @@ if payload:
 
 # Get discriminator value (method name depends on discriminator type)
 payload_id = envelope.get_payload_message_id()  # For msgid discriminator
-# field_order = envelope.get_payload_field_order()  # For field_order discriminator
+# field_order = envelope.get_payload_field()  # For field_order discriminator
 ```
 
 **TypeScript**
 ```typescript
 // Wrap a command into an envelope - union type ensures type safety
-const adcCmd = new EnvelopeTestADCCommand();
+const adcCmd = new ADCCommand();
 adcCmd.channel = 1;
-adcCmd.sample_rate = 1000;
+adcCmd.sampleRate = 1000;
 adcCmd.enable = true;
 
-// payload type is: EnvelopeTestADCCommand | EnvelopeTestDACCommand | ...
-const envelope = EnvelopeTestCommandEnvelope.wrap(adcCmd, 42, 1, true);
+// payload type is: ADCCommand | DACCommand | ...
+const envelope = CommandEnvelope.wrap(adcCmd, 42, 1, true);
 
 // Get payload message ID to determine which type was wrapped
 const payloadId = envelope.getPayloadMessageId();
 ```
 
-**C#**
-```csharp
+**C#** (namespace `StructFrame.EnvelopeTest`)
+```csharp no-compile
 // Wrap a command into an envelope - overloads provide type safety
-var adcCmd = new EnvelopeTestADCCommand { Channel = 1, SampleRate = 1000, Enable = true };
-var envelope = EnvelopeTestCommandEnvelope.Wrap(adcCmd, 42, 1, true);
+var adcCmd = new ADCCommand { Channel = 1, SampleRate = 1000, Enable = true };
+var envelope = CommandEnvelope.Wrap(adcCmd, 42, 1, true);
 
 // Get payload message ID to determine which type was wrapped
 var payloadId = envelope.GetPayloadMessageId();
@@ -850,17 +881,35 @@ message JobStatusMessage {
 
 > **When to use this:** Prefer keeping the calculated magic bytes — they serve as automatic structural validation. Only use `magic_bytes` when you intentionally need two schema revisions to be treated as wire-compatible by existing parsers, and you have verified that the wire layout is genuinely unchanged.
 
+## Syntax Details
+
+- **One `package` per file.** Declare `package` first; `option pkgid` and `import` follow it. Several files may belong to the same package.
+- **Imports** are resolved relative to the directory of the schema given on the command line first, then relative to the importing file. A type is looked up in its own package and then in the packages that file imports directly; qualify it (`other.Type`) when two imported packages define the same name.
+- **Qualified option names.** Field options also accept the forms `(sf.size)`, `(struct_frame.size)` and likewise for `max_size`, `element_size`, `default` and `flatten`.
+- **`option envelope = true`** is accepted as an alias of `is_envelope`.
+- **Discriminator values** are `auto`, `msgid`, `field_order` and `none`; `false`, `off` and `disabled` are accepted as aliases of `none`.
+- **The extension marker.** Inside a `oneof`, a standalone comment line that *starts with* `Extension::` marks the following variant as the first extension variant (equivalent to `option extensions_start`). A trailing comment on a variant, or prose that merely mentions the marker, is ignored.
+- **Reserved words.** Field, oneof and variant names that are reserved words in a target language (for example `class`, `self`, `delete`, `fn`) are rejected with an error naming the language; rename the field or map it with `--name_overrides`.
+
 ## Validation Rules
 
 The generator enforces:
 
-- Message IDs unique within package (0-255)
-- Package IDs unique across packages (0-255)
+- The file must parse: a syntax error, a missing import or a duplicate message, enum, oneof or field name is an error (and the generator exits non-zero)
+- Message IDs unique within package (0-65535 without a package ID, 0-255 with one), and unique across packages once the package ID is applied
+- Package IDs unique across packages (0-255); every package needs one when several are compiled together, except packages that inherit their importer's
+- A type name must resolve unambiguously: types come from the current package or its directly imported packages, and a name defined in two imported packages must be qualified (`pkg.Type`)
+- Unknown options (a typo such as `[defualt = 5]` or `option msg_id`) produce a warning with a suggestion and are ignored
+- Enum values must be distinct and fit one byte (0-255)
+- `size` and `max_size` are mutually exclusive; `element_size` only applies to repeated `string`/`bytes`
+- A `oneof` needs at least one variant, and `min_size` may not exceed `max_size`
+- Variants of a `msgid`-discriminated oneof must have distinct message IDs
+- Generated names must not collide or be reserved words in the target languages (see [Generated Names](#generated-names)); use `--name_overrides` to rename
 - Field numbers must be `1..N` in declaration order (no gaps, no duplicates)
 - All arrays must have size or max_size
 - All strings must have size or max_size
 - String arrays need both max_size and element_size
-- Array max_size limited to 255 (count fits in 1 byte)
+- Array and string `max_size` up to 65535 (the count/length prefix is 1 byte up to 255, otherwise 2 bytes)
 - Envelope messages must have exactly one oneof field
 - Envelope oneof fields must be message types (not primitives/enums)
 - Envelope oneof using `msgid` discriminator must have messages with msgid
@@ -1004,7 +1053,7 @@ The generator emits a `BASE_SIZE` constant alongside `MAX_SIZE` for every messag
 from struct_frame.generated.my_package import StatusReport
 
 print(StatusReport.BASE_SIZE)  # 7  (device_id + status_code + error_flags)
-print(StatusReport.MAX_SIZE)   # 43 (+ uptime_seconds + cpu_temperature + firmware_version)
+print(StatusReport.MAX_SIZE)   # 48 (+ uptime_seconds 4 + cpu_temperature 4 + firmware_version 33)
 ```
 
 ### Checking wire compatibility
@@ -1092,6 +1141,8 @@ Source identifiers are converted to each language's conventions with one shared 
 TypeScript/JavaScript property accessors start with a lower-case letter (`gateCurrent`, `bleHostId`) but keep the remaining acronym casing (`BLEHost` stays `BLEHost`).
 
 Names written entirely in one case (`BLE_HOST_OK`, `ble_host`) carry no acronym information, so they are title-cased (`BleHostOk`) as before.
+
+> **Upgrading from 0.10.x:** acronym-aware conversion changes the generated names of identifiers that mix cases. For example a field `sensorId` is now `SensorId` in C# (previously `Sensorid`), an enum entry `GateCurrent` is `GATE_CURRENT` in C/Python/Rust/C# (previously `GATECURRENT`) and `GateCurrent` in C++ (previously `Gatecurrent`). Schemas that only use `snake_case` or `SCREAMING_SNAKE` names are unaffected. To keep an old spelling, pin it with `--name_overrides`.
 
 When no heuristic can produce the name you want, pass `--name_overrides FILE` with a JSON file. Overrides are keyed by `all` or a language (`c`, `cpp`, `ts`, `js`, `py`, `gql`, `csharp`, `rust`); each entry maps a source name path to the exact generated name:
 

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);NETCORESERVER_AVAILABLE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Same package and version range the generated StructFrame.csproj uses with
+         -p:IncludeNetCoreServer=true. -->
+    <PackageReference Include="NetCoreServer" Version="8.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\struct_frame\boilerplate\csharp\Framework\Sdk\Transport.cs" />
+    <Compile Include="..\..\..\src\struct_frame\boilerplate\csharp\Framework\Sdk\Transports\WebSocketTransport.cs" />
+  </ItemGroup>
+</Project>

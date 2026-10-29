@@ -20,7 +20,7 @@
         "required": ["name", "profile", "operation", "msg_count", "bytes_total", "duration_s", "msg_per_sec", "mb_per_sec", "latency_ns"],
         "properties": {
           "name": {"type": "string"},
-          "profile": {"enum": ["standard", "bulk", "network"]},
+          "profile": {"enum": ["standard", "sensor", "ipc", "bulk", "network"]},
           "operation": {"enum": ["encode", "decode", "roundtrip"]},
           "msg_count": {"type": "integer"},
           "bytes_total": {"type": "integer"},

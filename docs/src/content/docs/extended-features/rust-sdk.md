@@ -41,7 +41,7 @@ struct_frame_sdk = { path = "generated/rust" }
 Then in your source:
 
 ```rust
-use struct_frame_sdk::example::ExampleStatus;
+use struct_frame_sdk::example::Status;
 use struct_frame_sdk::{
     encode_message_crc, AccumulatingReader,
     PROFILE_STANDARD_CONFIG,
@@ -53,7 +53,7 @@ use struct_frame_sdk::{
 Each message is generated as a plain Rust struct implementing the `StructFrameMessage` trait:
 
 ```rust
-pub struct ExampleStatus {
+pub struct Status {
     pub id: u32,
     pub value: f32,
 }
@@ -93,11 +93,11 @@ Five pre-built profiles cover the most common framing configurations:
 
 ### Single Message
 
-```rust
-use struct_frame_sdk::example::ExampleStatus;
+```rust no-compile
+use struct_frame_sdk::example::Status;
 use struct_frame_sdk::{encode_message_crc, PROFILE_STANDARD_CONFIG};
 
-let msg = ExampleStatus { id: 42, value: 3.14 };
+let msg = Status { id: 42, value: 3.14 };
 
 let mut buffer = [0u8; 1024];
 let written = encode_message_crc(&PROFILE_STANDARD_CONFIG, &mut buffer, &msg, 0);
@@ -108,7 +108,7 @@ send_bytes(&buffer[..written]);
 
 ### Minimal (No CRC / No Length)
 
-```rust
+```rust no-compile
 use struct_frame_sdk::{encode_message_minimal, PROFILE_IPC_CONFIG};
 
 let written = encode_message_minimal(&PROFILE_IPC_CONFIG, &mut buffer, &msg);
@@ -116,7 +116,7 @@ let written = encode_message_minimal(&PROFILE_IPC_CONFIG, &mut buffer, &msg);
 
 ### Encoding Multiple Messages with BufferWriter
 
-```rust
+```rust no-compile
 use struct_frame_sdk::{BufferWriter, PROFILE_STANDARD_CONFIG};
 
 let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 4096);
@@ -132,9 +132,9 @@ send_bytes(writer.data());
 
 ### Buffer Mode (Recommended)
 
-`AccumulatingReader` handles partial frames across buffer boundaries:
+`AccumulatingReader` handles partial frames across buffer boundaries. It copies what you give it into an internal buffer of the capacity you pass to `new`: drain it with `try_next` after every `add_data`, and keep each chunk smaller than the capacity minus one pending partial frame. Bytes that do not fit are dropped and counted in `cnt_failed_bytes` / `cnt_sync_recoveries` (the C, C++, Python and TypeScript buffer modes read your slice in place and have no such limit):
 
-```rust
+```rust no-compile
 use struct_frame_sdk::{AccumulatingReader, MessageInfo, PROFILE_STANDARD_CONFIG};
 
 let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
@@ -145,13 +145,13 @@ reader.add_data(&received_bytes);
 // Drain all complete messages
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        Status::MSG_ID => Some(Status::message_info()),
         _ => None,
     }
 };
 while let Some(info) = reader.next(&get_info) {
     if info.valid {
-        if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+        if let Some(msg) = Status::unpack(&info.msg_data) {
             println!("ID: {}, Value: {}", msg.id, msg.value);
         }
     }
@@ -162,11 +162,11 @@ while let Some(info) = reader.next(&get_info) {
 
 Useful when receiving from a serial port or UART one byte at a time:
 
-```rust
+```rust no-compile
 let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        Status::MSG_ID => Some(Status::message_info()),
         _ => None,
     }
 };
@@ -175,7 +175,7 @@ for byte in uart.bytes() {
     reader.add_data(&[byte?]);
     if let Some(info) = reader.next(&get_info) {
         if info.valid {
-            if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+            if let Some(msg) = Status::unpack(&info.msg_data) {
                 // handle message
             }
         }
@@ -187,12 +187,12 @@ for byte in uart.bytes() {
 
 For pre-loaded buffers containing multiple complete frames:
 
-```rust
+```rust no-compile
 use struct_frame_sdk::{BufferReader, MessageInfo, PROFILE_STANDARD_CONFIG};
 
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        ExampleStatus::MSG_ID => Some(ExampleStatus::message_info()),
+        Status::MSG_ID => Some(Status::message_info()),
         _ => None,
     }
 };
@@ -201,8 +201,8 @@ let mut reader = BufferReader::new(PROFILE_STANDARD_CONFIG, data.to_vec());
 while let Some(info) = reader.next(&get_info) {
     if info.valid {
         match info.msg_id {
-            ExampleStatus::MSG_ID => {
-                if let Some(msg) = ExampleStatus::unpack(&info.payload) {
+            Status::MSG_ID => {
+                if let Some(msg) = Status::unpack(&info.msg_data) {
                     // handle
                 }
             }
@@ -234,24 +234,24 @@ pub struct FrameMsgInfo {
 
 When a buffer may contain different message types, match on `msg_id`:
 
-```rust
-use struct_frame_sdk::example::{ExampleStatus, ExampleCommand};
+```rust no-compile
+use struct_frame_sdk::example::{Status, Command};
 
 let get_info = |id: u16| -> Option<MessageInfo> {
     match id {
-        ExampleStatus::MSG_ID  => Some(ExampleStatus::message_info()),
-        ExampleCommand::MSG_ID => Some(ExampleCommand::message_info()),
+        Status::MSG_ID  => Some(Status::message_info()),
+        Command::MSG_ID => Some(Command::message_info()),
         _ => None,
     }
 };
 while let Some(info) = reader.next(&get_info) {
     if !info.valid { continue; }
     match info.msg_id {
-        ExampleStatus::MSG_ID  => {
-            if let Some(msg) = ExampleStatus::unpack(&info.payload) { handle_status(msg); }
+        Status::MSG_ID  => {
+            if let Some(msg) = Status::unpack(&info.msg_data) { handle_status(msg); }
         }
-        ExampleCommand::MSG_ID => {
-            if let Some(msg) = ExampleCommand::unpack(&info.payload) { handle_command(msg); }
+        Command::MSG_ID => {
+            if let Some(msg) = Command::unpack(&info.msg_data) { handle_command(msg); }
         }
         _ => { /* unknown message */ }
     }

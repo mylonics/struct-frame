@@ -146,7 +146,7 @@ class MessageJsGen():
             package_msg_name, package_msg_name)
         
         # Add message ID if present
-        if msg.id:
+        if msg.id is not None:
             result += '.msgId(%d)' % msg.id
 
         result += '\n'
@@ -215,7 +215,7 @@ class MessageJsClassGen():
         
         # Static properties
         result += f'  static _size = {total_size};\n'
-        if msg.id:
+        if msg.id is not None:
             result += f'  static _msgid = {msg.id};\n'
         
         # Add magic numbers for checksum
@@ -351,7 +351,10 @@ class MessageJsClassGen():
                 result += f'      // A length-bearing wire frame can also be exactly _size bytes (largest union\n'
                 result += f'      // variant active); the layouts differ at that length, so decode it with\n'
                 result += f'      // mode="wire" / deserializeWire(). mode="fixed": force fixed-layout decode.\n'
-                result += f'      if (mode === "fixed" || (mode !== "wire" && buffer.msgLen === {package_msg_name}._size)) {{\n'
+                result += f'      // A frame produced by a reader carries variableEncoding, which settles the\n'
+                result += f'      // question without guessing from the length.\n'
+                result += f'      const hint = buffer.variableEncoding;\n'
+                result += f'      if (mode === "fixed" || (mode !== "wire" && (hint === false || (hint === undefined && buffer.msgLen === {package_msg_name}._size)))) {{\n'
             else:
                 result += f'      // mode="auto" (default): use msgLen heuristic — minimal profiles always send _size bytes.\n'
                 result += f'      // mode="wire": force wire decode for length-bearing profiles at max capacity.\n'
@@ -672,11 +675,13 @@ class MessageJsClassGen():
                 result += f'    // {oneof_name}: {_trim_label}\n'
                 result += f'    const _{oneof_name}TrimDisc = this._buffer.{disc_read_method}({disc_offset});\n'
                 result += f'    let _{oneof_name}TrimLen = 0;\n'
+                result += f'    let _{oneof_name}VarLen = 0;\n'
                 for disc_val, field_name, field_size in oneof.variant_info:
-                    result += f'    if (_{oneof_name}TrimDisc === {disc_val}) _{oneof_name}TrimLen = {field_size};\n'
+                    result += f'    if (_{oneof_name}TrimDisc === {disc_val}) {{ _{oneof_name}TrimLen = {field_size}; _{oneof_name}VarLen = {field_size}; }}\n'
                 if oneof.min_size_override:
                     result += f'    if (_{oneof_name}TrimLen < {oneof.min_size_override}) _{oneof_name}TrimLen = {oneof.min_size_override};\n'
-                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset} + _{oneof_name}TrimLen);\n'
+                result += f'    this._buffer.copy(buffer, offset, {msg_offset}, {msg_offset} + _{oneof_name}VarLen);\n'
+                result += f'    buffer.fill(0, offset + _{oneof_name}VarLen, offset + _{oneof_name}TrimLen); // zero min_size padding\n'
                 result += f'    offset += _{oneof_name}TrimLen;\n'
                 msg_offset += oneof.size
             else:
@@ -1294,8 +1299,11 @@ class TestJsGen():
         yield "    { name: 'ProfileNetwork',  config: ProfileNetworkConfig,  hasPkgId: true,  maxPayload: 65535 },\n"
         yield "];\n\n"
 
+        # Every message with an id is round-tripped, including messages with a ``oneof``:
+        # the discriminator selects the first variant (its payload bytes stay at the
+        # zeroed default, which is a valid value for every variant type).
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
-                             if msg.id is not None and not getattr(msg, 'oneofs', {})]
+                             if msg.id is not None]
 
         for key, msg in testable_messages:
             struct_name = msg.name
@@ -1306,6 +1314,9 @@ class TestJsGen():
             for field_key, field in msg.fields.items():
                 yield TestJsGen._generate_field_init(field, "msg", field_index)
                 field_index += 1
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                if oneof.auto_discriminator and oneof.variant_info:
+                    yield f'    msg.{to_camel_case(oneof_name)}Discriminator = {oneof.variant_info[0][0]};\n'
             yield '    return msg;\n'
             yield '}\n'
             yield f'module.exports.{func_name} = {func_name};\n\n'

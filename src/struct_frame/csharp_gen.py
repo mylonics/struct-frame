@@ -427,7 +427,7 @@ class FieldCSharpGen():
                     elif field.field_type in csharp_type_sizes:
                         # Primitive array - use Buffer.BlockCopy
                         lines.append(f'            if ({var_name} != null)')
-                        lines.append(f'                Buffer.BlockCopy({var_name}, 0, buffer, {fmt_offset(base_offset)}, Math.Min({var_name}.Length * {element_size}, {total_data_size}));')
+                        lines.append(f'                WireArray.Write({var_name}, buffer, {fmt_offset(base_offset)}, {total_data_size});')
                     else:
                         # Nested struct array - serialize each element using SerializeTo
                         lines.append(f'            if ({var_name} != null)')
@@ -448,7 +448,7 @@ class FieldCSharpGen():
                     elif field.field_type in csharp_type_sizes:
                         # Primitive array
                         lines.append(f'            if ({var_name}Data != null)')
-                        lines.append(f'                Buffer.BlockCopy({var_name}Data, 0, buffer, {fmt_offset(base_offset + count_size)}, Math.Min({var_name}Data.Length * {element_size}, {total_data_size}));')
+                        lines.append(f'                WireArray.Write({var_name}Data, buffer, {fmt_offset(base_offset + count_size)}, {total_data_size});')
                     else:
                         # Nested struct array - serialize each element using SerializeTo
                         lines.append(f'            if ({var_name}Data != null)')
@@ -544,7 +544,7 @@ class FieldCSharpGen():
                         base_type = csharp_types.get(field.field_type, field.field_type)
                         total_data_size = field.size
                         lines.append(f'            msg.{var_name} = new {base_type}[{field.size_option}];')
-                        lines.append(f'            MemoryMarshal.Cast<byte, {base_type}>(data.Slice({offset}, {total_data_size})).CopyTo(msg.{var_name}.AsSpan());')
+                        lines.append(f'            WireArray.Read<{base_type}>(data.Slice({offset}, {total_data_size}), msg.{var_name}.AsSpan());')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
@@ -570,7 +570,7 @@ class FieldCSharpGen():
                         base_type = csharp_types.get(field.field_type, field.field_type)
                         total_data_size = field.size - count_size  # subtract count bytes
                         lines.append(f'            msg.{var_name}Data = new {base_type}[{field.max_size}];')
-                        lines.append(f'            MemoryMarshal.Cast<byte, {base_type}>(data.Slice({offset + count_size}, {total_data_size})).CopyTo(msg.{var_name}Data.AsSpan());')
+                        lines.append(f'            WireArray.Read<{base_type}>(data.Slice({offset + count_size}, {total_data_size}), msg.{var_name}Data.AsSpan());')
                     else:
                         # Nested struct array
                         type_pkg = field.type_package if field.type_package else field.package
@@ -675,7 +675,7 @@ class MessageCSharpGen():
             result += EnumCSharpGen.generate_nested(enum, name_override=renamed_enums.get(enum_name))
             result += '\n'
 
-        if msg.id:
+        if msg.id is not None:
             result += '        /// <summary>Message identifier.</summary>\n'
             if package and package.package_id is not None:
                 combined_msg_id = (package.package_id << 8) | msg.id
@@ -996,6 +996,21 @@ class MessageCSharpGen():
         result += '            {\n'
         result += '                return new ' + structName + '();\n'
         result += '            }\n'
+        if (msg.variable and not wire_only_variable_oneof
+                and any(o.variable for o in msg.oneofs.values())):
+            # Only a variable oneof makes the wire form differ from the fixed layout at
+            # MaxSize bytes; without one, both layouts are identical there and a raw
+            # fixed-layout payload on a length profile must keep decoding.
+            # The reader records which layout the frame carries, which settles the
+            # case where both layouts have the same length (wire form == MaxSize).
+            result += '            if (frameInfo.VariableEncoding == true)\n'
+            result += '            {\n'
+            result += '                return DeserializeVariable(frameInfo.GetPayloadSpan());\n'
+            result += '            }\n'
+            result += '            if (frameInfo.VariableEncoding == false)\n'
+            result += '            {\n'
+            result += '                return DeserializeFixed(frameInfo.GetPayloadSpan());\n'
+            result += '            }\n'
         result += '            return Deserialize(frameInfo.GetPayloadSpan());\n'
         result += '        }\n'
 
@@ -1148,7 +1163,7 @@ class MessageCSharpGen():
                     result += f'            offset += {n_var} * {element_size};\n'
                 elif type_name in type_sizes:
                     result += f'            if ({var_name}Data != null)\n'
-                    result += f'                Buffer.BlockCopy({var_name}Data, 0, buffer, offset, Math.Min({var_name}Data.Length, {n_var}) * {element_size});\n'
+                    result += f'                WireArray.Write({var_name}Data, buffer, offset, {n_var} * {element_size});\n'
                     result += f'            offset += {n_var} * {element_size};\n'
                 elif f.is_enum:
                     result += f'            if ({var_name}Data != null)\n'
@@ -1308,7 +1323,7 @@ class MessageCSharpGen():
                     base_type = csharp_types.get(type_name, type_name)
                     field_lines.append(f'msg.{var_name}Data = new {base_type}[{f.max_size}];')
                     field_lines.append(f'if (offset + msg.{var_name}Count * {element_size} > data.Length) throw new System.IO.InvalidDataException("Truncated data reading {f.name} array");')
-                    field_lines.append(f'MemoryMarshal.Cast<byte, {base_type}>(data.Slice(offset, msg.{var_name}Count * {element_size})).CopyTo(msg.{var_name}Data.AsSpan());')
+                    field_lines.append(f'WireArray.Read<{base_type}>(data.Slice(offset, msg.{var_name}Count * {element_size}), msg.{var_name}Data.AsSpan());')
                     field_lines.append(f'offset += msg.{var_name}Count * {element_size};')
                 elif f.is_enum:
                     field_lines.append(f'msg.{var_name}Data = new byte[{f.max_size}];')
@@ -1925,7 +1940,7 @@ class FileCSharpGen():
         result += '        {\n'
 
         for key, msg in package.sortedMessages().items():
-            if msg.id:
+            if msg.id is not None:
                 structName = msg.name
                 magic1 = '0'
                 magic2 = '0'
@@ -1948,7 +1963,7 @@ class FileCSharpGen():
         result += '        {\n'
 
         for key, msg in package.sortedMessages().items():
-            if msg.id:
+            if msg.id is not None:
                 structName = msg.name
                 if package.package_id is not None:
                     combined_msg_id = (package.package_id << 8) | msg.id
@@ -1966,7 +1981,7 @@ class FileCSharpGen():
         result += '        {\n'
 
         for key, msg in package.sortedMessages().items():
-            if msg.id:
+            if msg.id is not None:
                 structName = msg.name
                 if package.package_id is not None:
                     combined_msg_id = (package.package_id << 8) | msg.id
@@ -2003,7 +2018,7 @@ class FileCSharpGen():
             result += '            {\n'
 
         for key, msg in package.sortedMessages().items():
-            if msg.id:
+            if msg.id is not None:
                 structName = msg.name
                 magic1 = '0'
                 magic2 = '0'
@@ -2233,6 +2248,21 @@ class TestCSharpGen():
         return 'new byte[] { ' + ', '.join(str(b) for b in data) + ' }'
 
     @staticmethod
+    def _generate_oneof_init(oneof_name, oneof, prefix, msg_name):
+        """Populate the first variant of *oneof* and select it via the discriminator."""
+        if not oneof.fields:
+            return ""
+        variant_name, variant = next(iter(oneof.fields.items()))
+        out = ""
+        if oneof.auto_discriminator and oneof.variant_info:
+            member = f"{pascal_case(oneof_name)}Discriminator"
+            # msgid oneofs use a ushort discriminator, field_order oneofs an enum.
+            cast = "ushort" if oneof.discriminator_type == "msgid" else get_discriminator_enum_name(oneof, msg_name)
+            out += f'            {prefix}.{member} = ({cast}){oneof.variant_info[0][0]};\n'
+        out += TestCSharpGen._generate_field_init(variant, prefix, 0)
+        return out
+
+    @staticmethod
     def _generate_field_init(field, prefix="msg", index=0):
         """Generate C# field init lines for a deterministic test value."""
         var_name = pascal_case(field.name)
@@ -2312,9 +2342,10 @@ class TestCSharpGen():
     def generate(package, namespace='StructFrame.Generated'):
         """Generate the ``test_roundtrip_<pkg>.cs`` file content."""
         pkg_pascal = pascal_case(package.name)
-        # Skip oneof messages and messages without IDs
+        # Every message with an id is round-tripped, including messages with a ``oneof``:
+        # the first variant of each oneof is populated and its discriminator set.
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
-                             if msg.id is not None and not getattr(msg, 'oneofs', {})]
+                             if msg.id is not None]
 
         # Collect referenced packages for using directives (for nested-message field types)
         referenced_packages = set()
@@ -2377,6 +2408,8 @@ class TestCSharpGen():
             for fkey, field in msg.fields.items():
                 yield TestCSharpGen._generate_field_init(field, "msg", field_index)
                 field_index += 1
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                yield TestCSharpGen._generate_oneof_init(oneof_name, oneof, "msg", msg.name)
             yield '            return msg;\n'
             yield '        }\n\n'
 

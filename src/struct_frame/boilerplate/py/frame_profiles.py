@@ -53,6 +53,16 @@ except ImportError:
 # MessageInfo - Unified message information type
 # =============================================================================
 
+def _msg_id_of(obj):
+    """Return the message id of *obj* (a message instance or class).
+
+    Uses an explicit None check: ``option msgid = 0`` is a legitimate id and
+    must not be mistaken for "missing" by a truthiness test.
+    """
+    value = getattr(obj, 'MSG_ID', None)
+    return value if value is not None else getattr(obj, 'msg_id', None)
+
+
 class MessageInfo(NamedTuple):
     """
     Unified message information for parsing.
@@ -291,7 +301,7 @@ def _frame_format_encode_with_crc(
         Encoded frame as bytes
     """
     # Get message ID
-    msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
+    msg_id = _msg_id_of(msg)
     if msg_id is None:
         raise ValueError("Message object must have MSG_ID or msg_id attribute")
     
@@ -357,8 +367,13 @@ def _frame_format_encode_with_crc(
         output.append(pkg_id)
         output.append(local_msg_id)
     else:
-        # Write message ID only
-        output.append(msg_id & 0xFF)
+        # Write message ID only: this profile has a 1-byte id, so a larger id
+        # (e.g. a package-qualified one) cannot be represented. Never truncate.
+        if msg_id > 0xFF:
+            raise ValueError(
+                f"message id {msg_id} does not fit the 1-byte id of {config.name}; "
+                f"use a profile with a package id (Bulk/Network)")
+        output.append(msg_id)
     
     # Write payload
     output.extend(payload)
@@ -398,7 +413,7 @@ def _frame_format_encode_minimal(
         Encoded frame as bytes
     """
     # Get message ID
-    msg_id = getattr(msg, 'MSG_ID', None) or getattr(msg, 'msg_id', None)
+    msg_id = _msg_id_of(msg)
     if msg_id is None:
         raise ValueError("Message object must have MSG_ID or msg_id attribute")
     
@@ -421,8 +436,12 @@ def _frame_format_encode_minimal(
     if config.num_start_bytes >= 2:
         output.append(config.computed_start_byte2())
 
-    # Write message ID
-    output.append(msg_id & 0xFF)
+    # Write message ID (1 byte; never silently truncate a larger id)
+    if msg_id > 0xFF:
+        raise ValueError(
+            f"message id {msg_id} does not fit the 1-byte id of {config.name}; "
+            f"use a profile with a package id (Bulk/Network)")
+    output.append(msg_id)
     
     # Write payload
     output.extend(payload)
@@ -553,6 +572,7 @@ def _frame_format_parse_with_crc(
     result.valid = True
     result.msg_id = msg_id
     result.msg_len = msg_len
+    result.variable_encoding = config.has_length
     result.frame_size = total_size
     result.msg_data = msg_data
     result.package_id = pkg_id
@@ -623,6 +643,7 @@ def _frame_format_parse_minimal(
     result.valid = True
     result.msg_id = msg_id
     result.msg_len = msg_len
+    result.variable_encoding = False
     result.frame_size = total_size
     result.msg_data = msg_data
     
@@ -1078,7 +1099,8 @@ class AccumulatingReader:
             # internal buffer (still collecting with the buffer full): resync
             # inside the internal buffer instead of waiting forever.
             if (result.status == FrameMsgStatus.WAITING_FOR_START
-                    or self._internal_data_len >= self._buffer_size):
+                    or self._internal_data_len >= self._buffer_size
+                    or self._claims_oversize_frame(internal_bytes)):
                 discard = self._internal_data_len
                 if self._config.num_start_bytes >= 1:
                     start1 = bytes([self._config.computed_start_byte1()])
@@ -1139,6 +1161,22 @@ class AccumulatingReader:
                 # No start bytes (e.g. IPC profile): advance one byte and retry so a
                 # single unknown msg_id doesn't discard the rest of the buffer.
                 self._current_offset += 1
+            skipped = self._current_offset - old_offset
+            self._diag.cnt_failed_bytes += skipped
+            self._diag.cnt_sync_recoveries += 1
+            r = FrameMsgInfo(status=FrameMsgStatus.SYNC_RECOVERY)
+            r.frame_size = skipped
+            return self._with_diag(r)
+
+        # A header that claims a frame larger than the internal buffer can never complete
+        # (typically a corrupted length field). Resync past its start byte now, as stream
+        # mode does, instead of buffering up to a full buffer of good data behind it.
+        if (self._config.num_start_bytes >= 1
+                and self._claims_oversize_frame(bytes(remaining[:self._config.header_size]))):
+            old_offset = self._current_offset
+            start1 = bytes([self._config.computed_start_byte1()])
+            nxt = self._current_buffer.find(start1, self._current_offset + 1, self._current_size)
+            self._current_offset = nxt if nxt != -1 else self._current_size
             skipped = self._current_offset - old_offset
             self._diag.cnt_failed_bytes += skipped
             self._diag.cnt_sync_recoveries += 1
@@ -1481,6 +1519,22 @@ class AccumulatingReader:
         
         return self._with_diag(result)
     
+    def _claims_oversize_frame(self, data) -> bool:
+        """True when the header at the start of *data* claims a frame that cannot fit in the
+        internal buffer. Only profiles with a length field carry such a claim."""
+        cfg = self._config
+        if not cfg.has_length or len(data) < cfg.header_size:
+            return False
+        off = cfg.num_start_bytes
+        if cfg.has_sequence:
+            off += 1
+        if cfg.has_system_id:
+            off += 1
+        if cfg.has_component_id:
+            off += 1
+        payload_len = data[off] if cfg.length_bytes == 1 else data[off] | (data[off + 1] << 8)
+        return cfg.overhead + payload_len > self._buffer_size
+
     def _parse_buffer(self, buffer: bytes) -> FrameMsgInfo:
         """Parse a buffer using the appropriate parser"""
         if self._config.has_crc or self._config.has_length:

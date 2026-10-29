@@ -101,12 +101,9 @@ jobs:
           sudo apt-get install -y valgrind gcc build-essential
           pip install proto-schema-parser
       - name: Build C binaries (compile only, no run)
-        # --only-compile produces all language artifacts; we only execute the
-        # C ones below under Valgrind.  Other languages' compile failures are
-        # not relevant to this job, so we tolerate a non-zero exit here and
-        # rely on the subsequent "no C binaries produced" guard to fail loudly
-        # if the C portion didn't build.
-        run: python test_all.py --only-compile || echo "non-C languages may have failed; continuing"
+        # Only the C binaries are executed under Valgrind, so build only C and let any
+        # failure fail the job (the previous "|| echo" swallowed every build error).
+        run: python test_all.py --only-compile --skip-lang cpp --skip-lang py --skip-lang ts --skip-lang js --skip-lang csharp --skip-lang rust --skip-lang gql --require-langs c
       - name: Run C binaries under Valgrind
         # Run every produced C test binary under memcheck.  --error-exitcode=1
         # converts any leak / invalid-access into a non-zero CI status.
@@ -170,3 +167,60 @@ jobs:
             echo "No C test binaries were built; nothing to check." >&2
             exit 1
           fi
+
+  rust-miri:
+    name: Miri / Rust stream parser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: dtolnay/rust-toolchain@nightly
+        with: { components: miri }
+      - name: Run the stream driver under Miri
+        env:
+          # The driver reads its seed stream from disk, which Miri blocks under its default isolation.
+          MIRIFLAGS: "-Zmiri-disable-isolation"
+        # Miri interprets the parser and reports undefined behaviour and out-of-bounds reads
+        # that a normal run would not notice. The inputs are short seed streams built from the
+        # shared message table, fed at a few chunk sizes, so it stays fast.
+        run: |
+          set -e
+          python tests/fuzz/make_seed_corpus.py "$RUNNER_TEMP/seeds"
+          cargo +nightly miri setup
+          for f in standard_clean_1 standard_noisy_2 bulk_corrupt_1 network_noisy_3 sensor_clean_1 ipc_noisy_2; do
+            profile="${f%%_*}"
+            for chunk in 1 13; do
+              cargo +nightly miri run --quiet --manifest-path tests/fuzz/drivers/rust/Cargo.toml \
+                -- "$profile" "$RUNNER_TEMP/seeds/$f.bin" "$chunk" > /dev/null
+            done
+          done
+
+  rust-asan:
+    name: AddressSanitizer / Rust stream parser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Run the stream driver with AddressSanitizer and overflow checks
+        env:
+          RUSTFLAGS: "-Zsanitizer=address -Coverflow-checks=on"
+        run: |
+          set -e
+          python tests/fuzz/make_seed_corpus.py "$RUNNER_TEMP/seeds"
+          cargo +nightly build --manifest-path tests/fuzz/drivers/rust/Cargo.toml \
+            --target x86_64-unknown-linux-gnu --target-dir "$RUNNER_TEMP/target"
+          for f in "$RUNNER_TEMP"/seeds/*.bin; do
+            base="$(basename "$f" .bin)"
+            for chunk in 1 13 512; do
+              "$RUNNER_TEMP/target/x86_64-unknown-linux-gnu/debug/stream_driver" "${base%%_*}" "$f" "$chunk" > /dev/null
+            done
+          done

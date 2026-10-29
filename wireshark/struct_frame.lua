@@ -149,8 +149,31 @@ local payload_structures = {
     }
 }
 
--- Fletcher-16 checksum calculation
-function fletcher16(data)
+-- Per-message checksum magic bytes.
+--
+-- struct-frame appends two schema-derived "magic" bytes (MAGIC1, MAGIC2) to the
+-- Fletcher-16 input of every framed message, so the checksum can only be checked
+-- when the magic bytes of that message are known. They come from the schema, not
+-- from the wire. Fill the "Magic bytes" preference with the output of
+-- `python wireshark/magic_table.py your_schema.sf` (entries look like
+-- `pkg:msg=magic1,magic2;...`, with pkg 0 for packages without a package id).
+struct_frame_proto.prefs.magic_table = Pref.string(
+    "Magic bytes", "",
+    "Per-message checksum magic bytes, e.g. 0:1=27,55;1:2=17,19 (see wireshark/magic_table.py)")
+
+local function lookup_magic(pkg_id, msg_id)
+    local table_text = struct_frame_proto.prefs.magic_table or ""
+    for pkg, msg, m1, m2 in string.gmatch(table_text, "(%d+):(%d+)=(%d+),(%d+)") do
+        if tonumber(pkg) == pkg_id and tonumber(msg) == msg_id then
+            return tonumber(m1), tonumber(m2)
+        end
+    end
+    return nil, nil
+end
+
+-- Fletcher-16 checksum calculation. When magic1/magic2 are given they are
+-- appended to the data, exactly as every struct-frame runtime does.
+function fletcher16(data, magic1, magic2)
     local sum1 = 0
     local sum2 = 0
     
@@ -162,6 +185,13 @@ function fletcher16(data)
             byte = data(i, 1):uint()
         end
         sum1 = (sum1 + byte) % 256
+        sum2 = (sum2 + sum1) % 256
+    end
+
+    if magic1 ~= nil and magic2 ~= nil then
+        sum1 = (sum1 + magic1) % 256
+        sum2 = (sum2 + sum1) % 256
+        sum1 = (sum1 + magic2) % 256
         sum2 = (sum2 + sum1) % 256
     end
     
@@ -282,9 +312,11 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
     end
     
     -- Package ID
+    local pkg_id_value = 0
     if structure.has_package_id then
         if offset + 1 > length then return end
         subtree:add(f_package_id, buffer(offset, 1))
+        pkg_id_value = buffer(offset, 1):uint()
         offset = offset + 1
     end
     
@@ -339,10 +371,17 @@ function struct_frame_proto.dissector(buffer, pinfo, tree)
         if crc_start_offset then
             local crc_data_len = offset - crc_start_offset
             local crc_data = buffer(crc_start_offset, crc_data_len)
-            local calc_crc1, calc_crc2 = fletcher16(crc_data)
+            local magic1, magic2 = lookup_magic(pkg_id_value, msg_id)
+            local calc_crc1, calc_crc2 = fletcher16(crc_data, magic1, magic2)
             
             if calc_crc1 == received_crc1 and calc_crc2 == received_crc2 then
                 subtree:add(f_crc_status, "Valid"):set_generated()
+            elseif magic1 == nil then
+                -- The checksum depends on schema-derived magic bytes we were not
+                -- given, so a mismatch proves nothing about the frame.
+                subtree:add(f_crc_status, string.format(
+                    "Unverified (no magic bytes configured for package %d, message %d)",
+                    pkg_id_value, msg_id)):set_generated()
             else
                 subtree:add(f_crc_status, string.format("Invalid (expected: 0x%02X 0x%02X)", calc_crc1, calc_crc2)):set_generated()
             end

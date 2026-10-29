@@ -57,8 +57,12 @@ class SerialTransport extends transport_1.BaseTransport {
     async disconnect() {
         return new Promise((resolve, reject) => {
             if (this.port && this.port.isOpen) {
+                // The port's 'close' event runs handleClose(); mark this close as intentional so
+                // autoReconnect does not reopen the port (as TcpTransport does).
+                this._intentionalClose = true;
                 this.port.close((err) => {
                     if (err) {
+                        this._intentionalClose = false;
                         reject(err);
                     }
                     else {

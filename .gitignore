@@ -85,3 +85,29 @@ tests/docs/_samples/
 
 docs/theme_overrides/
 .claude/
+# Local artifacts
+.coverage
+_codeql_detected_source_root
+*.log
+*.exe
+tests/benchmarks/c/bench
+tests/benchmarks/cpp/bench
+tests/benchmarks/generated/
+tests/benchmarks/ts/dist/
+tests/docs/_scratch/
+tests/rust/fuzz/corpus/
+tests/rust/fuzz/target/
+tests/rust/fuzz/artifacts/
+tests/fuzz/drivers/rust/target/
+tests/fuzz/drivers/csharp/bin/
+tests/fuzz/drivers/csharp/obj/
+tests/fuzz/drivers/rust/Cargo.lock
+tests/sdk_transports/csharp/bin/
+tests/sdk_transports/csharp/obj/
+tests/sdk_transports/csharp_ws/bin/
+tests/sdk_transports/csharp_ws/obj/
+tests/sdk_transports/csharp_serial/bin/
+tests/sdk_transports/csharp_serial/obj/
+tests/benchmarks/c/bench.exe
+tests/benchmarks/cpp/bench.exe
+tests/benchmarks/rust/Cargo.lock

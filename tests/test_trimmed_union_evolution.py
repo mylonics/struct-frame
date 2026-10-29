@@ -19,6 +19,7 @@ compiled with a tiny harness and fed frames encoded by the Python encoder.
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -459,7 +460,8 @@ def test_js_trimmed_union_evolution(gen):
 
 
 def test_ts_trimmed_union_evolution(gen, tmp_path):
-    ts_node = REPO_ROOT / "tests" / "ts" / "node_modules" / ".bin" / "ts-node"
+    ts_node = REPO_ROOT / "tests" / "ts" / "node_modules" / ".bin" / (
+        "ts-node.cmd" if os.name == "nt" else "ts-node")
     if not ts_node.exists():
         pytest.skip("ts-node not installed; run npm ci in tests/ts")
     gen_dir, frames = _interop_args(gen)

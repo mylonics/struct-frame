@@ -133,6 +133,10 @@ class FrameMsgInfo:
     msg_len: int = 0          # Payload length (message data only)
     frame_size: int = 0       # Total frame size (header + payload + footer)
     msg_data: bytes = b''     # Pointer to message data
+    # Which payload layout the frame carries: True for the variable-length wire form
+    # (profiles with a length field), False for the fixed MAX_SIZE form (minimal
+    # profiles), None when unknown. Lets deserialize() avoid guessing from the length.
+    variable_encoding: Optional[bool] = None
     
     # Optional extended fields (for profiles that support them)
     package_id: int = 0
