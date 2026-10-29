@@ -264,15 +264,18 @@ class FrameEncoderMinimal {
     // Write message ID
     buffer[idx++] = static_cast<uint8_t>(T::MSG_ID);
 
-    if constexpr (is_variable_message<T>()) {
-      // A variable message's in-memory struct is smaller than its MAX_SIZE wire form
-      // (length prefixes are not stored), so serialize and zero-pad out to MAX_SIZE.
+    if constexpr (is_variable_message<T>() && sizeof(T) != payload_size) {
+      // Variable oneofs carry a wire-only length prefix that is not stored in the struct,
+      // so the struct is smaller than MAX_SIZE: copying MAX_SIZE bytes would over-read it.
+      // Serialize and zero-pad out to MAX_SIZE instead.
       size_t written = msg.serialize(buffer + idx);
       if (written > payload_size) {
         return 0;
       }
       std::memset(buffer + idx + written, 0, payload_size - written);
     } else {
+      // Fixed messages and array-only variable messages: the in-memory struct is already
+      // the MAX_SIZE wire layout (arrays are stored as count + full-capacity data).
       // Not msg.data(): a message field or oneof named `data` would hide that member.
       std::memcpy(buffer + idx, reinterpret_cast<const uint8_t*>(&msg), payload_size);
     }
