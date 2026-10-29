@@ -227,14 +227,18 @@ def test_msgid_redefinition_rejected(tmp_path):
     "uint8 x = 1 [defualt = 5];",
     "repeated uint8 x = 1 [size = 4, max_sise = 4];",
 ])
-def test_unknown_field_option_rejected(tmp_path, decl):
+def test_unknown_field_option_warns(tmp_path, decl):
     sf = write(tmp_path, "o.sf", f"package o;\nmessage M {{ option msgid = 1; {decl} }}\n")
-    assert validate(sf).returncode != 0
+    r = validate(sf)
+    assert r.returncode == 0, r.stderr
+    assert "warning: unknown option" in r.stderr and "o.sf" in r.stderr, r.stderr
 
 
-def test_unknown_message_option_rejected(tmp_path):
+def test_unknown_message_option_warns(tmp_path):
     sf = write(tmp_path, "o.sf", "package o;\nmessage M { option msg_id = 1; uint8 x = 1; }\n")
-    assert validate(sf).returncode != 0
+    r = validate(sf)
+    assert r.returncode == 0, r.stderr
+    assert "warning: unknown option 'msg_id'" in r.stderr, r.stderr
 
 
 # ---------------------------------------------------------------------------
@@ -765,11 +769,11 @@ def test_flattened_child_colliding_with_oneof_member_is_rejected(tmp_path):
 
 def test_validation_errors_go_to_stderr_and_name_the_file(tmp_path):
     sf = write(tmp_path, "bad.sf",
-               "package e;\nmessage M { option msgid = 1; uint8 x = 1 [defualt = 3]; }\n")
+               "package e;\nmessage M { option msgid = 1; uint8 x = 1; uint8 x = 2; }\n")
     r = validate(sf)
     assert r.returncode != 0
-    assert "defualt" in r.stderr and "bad.sf" in r.stderr, r.stderr
-    assert "defualt" not in r.stdout, "error text leaked to stdout"
+    assert "declared twice" in r.stderr and "bad.sf" in r.stderr, r.stderr
+    assert "declared twice" not in r.stdout, "error text leaked to stdout"
 
 
 def test_validation_success_output_stays_on_stdout(tmp_path):
@@ -882,15 +886,13 @@ int main() {
 @pytest.mark.parametrize("schema, line, words", [
     # duplicate field: the second declaration
     ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 x = 1;\n  uint8 x = 2;\n}\n", 5, "declared twice"),
-    # unknown field option
-    ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 x = 1 [defualt = 3];\n}\n", 4, "error in message M"),
     # unresolvable type
     ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 x = 1;\n  Nope y = 2;\n}\n", 5, "Failed To validate Field: y"),
     # enum value out of range: reported at the enum
     ("package a;\nenum E { A = 0; B = 300; }\nmessage M {\n  option msgid = 1;\n  E e = 1;\n}\n", 2, "out of range"),
     # reserved word (per-language name validation)
     ("package a;\nmessage M {\n  option msgid = 1;\n  uint8 class = 1;\n}\n", 4, "reserved word"),
-], ids=["duplicate-field", "unknown-option", "unknown-type", "enum-range", "reserved-word"])
+], ids=["duplicate-field", "unknown-type", "enum-range", "reserved-word"])
 def test_errors_carry_file_and_line(tmp_path, schema, line, words):
     sf = write(tmp_path, "loc.sf", schema)
     r = validate(sf)

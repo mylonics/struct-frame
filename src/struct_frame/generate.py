@@ -975,9 +975,10 @@ class Field(_Documented):
                     continue
                 lname = str(oname).strip()
                 if _field_option_base(lname) not in _FIELD_OPTIONS:
-                    print(f"Unknown option '{lname}' on field {self.name}"
-                          f"{_did_you_mean(_field_option_base(lname), _FIELD_OPTIONS)}")
-                    return False
+                    print(f"{location(self)}warning: unknown option '{lname}' on field {self.name}, ignored"
+                          f"{_did_you_mean(_field_option_base(lname), _FIELD_OPTIONS)}",
+                          file=sys.stderr)
+                    continue
                 # Support unqualified and a couple of qualified names
                 if lname in ('flatten', '(sf.flatten)', '(struct_frame.flatten)'):
                     sval = str(ovalue).strip().lower()
@@ -1757,9 +1758,9 @@ class Message(_Documented):
                         return False
                     self.magic_bytes_override = (b1, b2)
                 else:
-                    print(f"Unknown option '{e.name}' in message {self.name}"
-                          f"{_did_you_mean(e.name, _MESSAGE_OPTIONS)}")
-                    return False
+                    print(f"{location(self, self.error_line)}warning: unknown option '{e.name}' in message "
+                          f"{self.name}, ignored{_did_you_mean(e.name, _MESSAGE_OPTIONS)}",
+                          file=sys.stderr)
             elif type(e) == ast.Comment:
                 docs.comment(e)
             elif type(e) == ast.OneOf:

@@ -899,7 +899,7 @@ The generator enforces:
 - Message IDs unique within package (0-65535 without a package ID, 0-255 with one), and unique across packages once the package ID is applied
 - Package IDs unique across packages (0-255); every package needs one when several are compiled together, except packages that inherit their importer's
 - A type name must resolve unambiguously: types come from the current package or its directly imported packages, and a name defined in two imported packages must be qualified (`pkg.Type`)
-- Unknown options (a typo such as `[defualt = 5]` or `option msg_id`) are errors, with a suggestion
+- Unknown options (a typo such as `[defualt = 5]` or `option msg_id`) produce a warning with a suggestion and are ignored
 - Enum values must be distinct and fit one byte (0-255)
 - `size` and `max_size` are mutually exclusive; `element_size` only applies to repeated `string`/`bytes`
 - A `oneof` needs at least one variant, and `min_size` may not exceed `max_size`
