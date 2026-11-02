@@ -1,0 +1,14 @@
+// Schema behind the enum examples in basic-usage/message-definitions.md; doc samples compile against it.
+package sensor_system;
+
+enum SensorType {
+  TEMPERATURE = 0;
+  HUMIDITY = 1;
+  PRESSURE = 2;
+}
+
+message SensorReading {
+  option msgid = 1;
+  SensorType type = 1;
+  float value = 2;
+}

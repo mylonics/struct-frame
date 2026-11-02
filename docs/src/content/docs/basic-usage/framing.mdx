@@ -61,20 +61,20 @@ The Standard profile (recommended for most uses):
 <Tabs>
   <TabItem label="Python">
   ```python
-  from frame_profiles import ProfileStandardWriter, ProfileStandardAccumulatingReader
+  from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
   from struct_frame.generated.messages import MyMessage, get_message_info
 
   # Encode
   msg = MyMessage(value=42)
-  writer = ProfileStandardWriter(1024)
+  writer = BufferWriter(PROFILE_STANDARD_CONFIG, 1024)
   writer.write(msg)
   frame = writer.data()
 
   # Decode
-  reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
+  reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
   for byte in frame:
       result = reader.push_byte(byte)
-      if result and result.valid:
+      if result.valid:
           print(f"Message {result.msg_id}: {result.msg_data}")
   ```
   </TabItem>
@@ -85,16 +85,17 @@ The Standard profile (recommended for most uses):
   ```cpp
   #include "frame_profiles.hpp"
 
-  using namespace FrameParsers;
+  using namespace structframe;
 
   // Encode
   uint8_t buffer[1024];
   ProfileStandardWriter writer(buffer, sizeof(buffer));
   writer.write(msg);
 
-  // Decode
-  ProfileStandardAccumulatingReader reader;
-  reader.add_data(buffer, buffer_size);
+  // Decode (CRC profiles need the message-info callback)
+  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)>
+      reader(get_message_info);
+  reader.add_data(buffer, writer.size());
   while (auto result = reader.next()) {
       // Process message - result is valid due to operator bool()
   }

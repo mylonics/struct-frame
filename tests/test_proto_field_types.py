@@ -428,24 +428,49 @@ def _cpp_oneof(cpp_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Single collected pytest entry point
+# Collected pytest entry points: one generation shared by independent tests, so
+# a missing toolchain (e.g. no g++) skips only the tests that need it.
 # ---------------------------------------------------------------------------
 
-def test_proto_field_types(tmp_path: Path) -> None:
-    """Proto field type coverage: enums, flatten, discriminator=none, multi-oneof."""
-    _generate(tmp_path)
+@pytest.fixture(scope="module")
+def generated(tmp_path_factory) -> Path:
+    out = tmp_path_factory.mktemp("proto_field_types")
+    _generate(out)
+    return out
 
-    py_dir = tmp_path / "py"
-    c_dir = tmp_path / "c"
-    cpp_dir = tmp_path / "cpp"
 
-    mod = _import_generated_module(py_dir)
+@pytest.fixture(scope="module")
+def py_mod(generated: Path):
+    return _import_generated_module(generated / "py")
 
-    _python_enum_to_string(mod)
-    _c_enum_to_string(c_dir)
-    _cpp_enum_to_string(cpp_dir)
-    _python_flatten(mod)
-    _python_discriminator_none(mod)
-    _python_multi_oneof(mod)
-    _c_oneof(c_dir)
-    _cpp_oneof(cpp_dir)
+
+def test_python_enum_to_string(py_mod) -> None:
+    _python_enum_to_string(py_mod)
+
+
+def test_c_enum_to_string(generated: Path) -> None:
+    _c_enum_to_string(generated / "c")
+
+
+def test_cpp_enum_to_string(generated: Path) -> None:
+    _cpp_enum_to_string(generated / "cpp")
+
+
+def test_python_flatten(py_mod) -> None:
+    _python_flatten(py_mod)
+
+
+def test_python_discriminator_none(py_mod) -> None:
+    _python_discriminator_none(py_mod)
+
+
+def test_python_multi_oneof(py_mod) -> None:
+    _python_multi_oneof(py_mod)
+
+
+def test_c_oneof(generated: Path) -> None:
+    _c_oneof(generated / "c")
+
+
+def test_cpp_oneof(generated: Path) -> None:
+    _cpp_oneof(generated / "cpp")

@@ -751,7 +751,22 @@ class TestRunner:
             if lang.compiler:
                 check_cmd = lang.compiler_check or f"{lang.compiler} --version"
                 cwd = self.project_root / lang.test_dir if lang.test_dir else None
-                success, stdout, stderr = self.run_cmd(check_cmd, cwd=cwd, timeout=10)
+                # Builds honour $CC/$CXX, so the availability check must too
+                # (otherwise a clang-only runner reports gcc as missing).
+                if lang.id == "c" and os.environ.get("CC"):
+                    check_cmd = f'{os.environ["CC"]} --version'
+                elif lang.id == "cpp" and os.environ.get("CXX"):
+                    check_cmd = f'{os.environ["CXX"]} --version'
+                elif lang.id == "ts":
+                    # Prefer the project-local compiler: a cold `npx` start can take
+                    # longer than the check timeout and used to mark TypeScript as
+                    # unavailable, silently skipping every TS test.
+                    local_tsc = self.project_root / "tests" / "ts" / "node_modules" / ".bin" / "tsc"
+                    if local_tsc.exists() or local_tsc.with_suffix(".cmd").exists():
+                        check_cmd = f'"{local_tsc}" --version'
+                # npx may need to start node and resolve packages; give it room.
+                check_timeout = 60 if check_cmd.startswith("npx") else 10
+                success, stdout, stderr = self.run_cmd(check_cmd, cwd=cwd, timeout=check_timeout)
                 version = (stdout or stderr).strip().split('\n')[0] if success else ""
                 info["compiler"] = {"name": lang.compiler, "available": success, "version": version}
                 if not success:
@@ -954,8 +969,13 @@ class TestRunner:
                         sdk_dir = self.project_root / "src" / "struct_frame" / "boilerplate" / "cpp"
                         cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{sdk_dir}" -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
                     else:
-                        cmd = f'{_cxx()} -std=c++20 {_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
-                
+                        # Timing binaries are meaningless at -O0, so optimise them unless the
+                        # caller already chose a level (e.g. the sanitizer lanes set -O1).
+                        opt = ""
+                        if runner.startswith("test_profiling") and " -O" not in f" {_cxxflags()}":
+                            opt = "-O2 "
+                        cmd = f'{_cxx()} -std=c++20 {opt}{_cxxflags()} -I"{gen_dir}" -I"{include_dir}" -o "{output}" "{source}" {_ldflags()}'
+
                 ok, _, _ = self.run_cmd(cmd)
                 if not ok:
                     success = False
@@ -2415,10 +2435,6 @@ class TestRunner:
         render_results_table(table_data, testable, row_label="Wire Evolution Test")
         return all_success
 
-    def _run_wire_evolution_interop(self, results: dict) -> bool:
-        """Deprecated stub — interop tests are now run inside run_wire_evolution_tests()."""
-        return True
-
     def run_roundtrip_tests(self) -> bool:
         """Phase: round-trip tests for every message across all 5 frame profiles.
 
@@ -3215,6 +3231,9 @@ Examples:
     require_langs = None
     if args.require_langs:
         require_langs = [l.strip() for l in args.require_langs.split(",") if l.strip()]
+        # Child processes (the pytest phase) use this to fail instead of skip a
+        # language that was declared mandatory.
+        os.environ["SF_REQUIRE_LANGS"] = ",".join(require_langs)
 
     success = runner.run(
         generate_only=args.only_generate,

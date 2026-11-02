@@ -437,6 +437,15 @@ def validate_generated_names(packages, languages, overrides=None):
         _validate_language_names(lang, language_packages)
 
 
+def _where(obj):
+    """``path:line: `` for a parsed schema element, or '' when its position is unknown."""
+    path = getattr(obj, "source_file", None)
+    line = getattr(obj, "line", None)
+    if path and line:
+        return f"{path}:{line}: "
+    return f"{path}: " if path else ""
+
+
 def _validate_language_names(lang, packages):
     def record(scope, name, source, seen):
         previous = seen.get(name)
@@ -454,33 +463,115 @@ def _validate_language_names(lang, packages):
             return to_pascal_case(name)
         return to_screaming_snake_case(name)
 
+    def member_name(name):
+        if lang == 'csharp':
+            return to_pascal_case(name)
+        if lang in ('ts', 'js'):
+            return to_camel_case(name)
+        return name
+
+    # Names a generated member can never take. C headers must stay includable
+    # from C++, so C is checked against the C++ keyword set.
+    if lang in ('c', 'cpp'):
+        reserved = _CPP_KEYWORDS
+    elif lang == 'py':
+        reserved = set(keyword.kwlist) | {'self'}
+    elif lang in ('ts', 'js'):
+        # Field, oneof and variant names only ever become property names (this.x, get x(),
+        # keys of the Init interface) or take a suffix (xCount), and reserved words are
+        # legal property names, so nothing here needs rejecting.
+        reserved = set()
+    elif lang == 'rust':
+        # The Rust generator escapes other keywords as r#name; these four
+        # cannot be raw identifiers.
+        reserved = {'self', 'Self', 'super', 'crate'}
+    else:
+        reserved = set()
+
+    def check_reserved(emitted, what):
+        if emitted in reserved:
+            raise NameOverrideError(
+                f"{lang}: {what} is named '{emitted}', which is a reserved word in {lang}; "
+                f"rename it in the schema or map it with --name_overrides")
+
+    def check_class_member(emitted, class_name, source):
+        # C#: a member cannot share the name of its enclosing type (CS0542).
+        if lang == 'csharp' and emitted == to_pascal_case(class_name):
+            raise NameOverrideError(
+                f"{lang}: member '{emitted}' ({source}) has the same name as its "
+                f"enclosing class '{class_name}'; rename the field or the message")
+
+    c_constants = {}
     for pkg_name, pkg in packages.items():
         types = {}
         for enum_name in pkg.enums:
             record(f"package '{pkg_name}'", enum_name, f"{pkg_name}.{enum_name}", types)
+        if lang == 'c':
+            # Enum values are unprefixed globals in C (ENUM_ENTRY).
+            for enum_name, enum in pkg.enums.items():
+                for entry in enum.data:
+                    constant = f"{to_screaming_snake_case(enum_name)}_{to_screaming_snake_case(entry)}"
+                    record("the C global namespace", constant,
+                           f"{pkg_name}.{enum_name}.{entry}", c_constants)
         for msg_name, msg in pkg.messages.items():
-            record(f"package '{pkg_name}'", msg_name, f"{pkg_name}.{msg_name}", types)
+            site = msg
+            try:
+                record(f"package '{pkg_name}'", msg_name, f"{pkg_name}.{msg_name}", types)
+                if lang == 'c':
+                    # C has no nested types: Foo.Bar is flattened to the type FooBar.
+                    for nested in msg.enums:
+                        record(f"package '{pkg_name}'", f"{msg_name}{nested}",
+                               f"{pkg_name}.{msg_name}.{nested} (flattened nested enum)", types)
 
-            members = {}
-            for field_name in msg.fields:
-                if lang == 'csharp':
-                    emitted = to_pascal_case(field_name)
-                elif lang in ('ts', 'js'):
-                    emitted = to_camel_case(field_name)
-                else:
-                    emitted = field_name
-                record(f"message '{pkg_name}.{msg_name}'", emitted,
-                       f"{pkg_name}.{msg_name}.{field_name}", members)
-            for oneof_name, oneof in msg.oneofs.items():
-                for field_name in oneof.fields:
-                    if lang == 'csharp':
-                        emitted = to_pascal_case(field_name)
-                    elif lang in ('ts', 'js'):
-                        emitted = to_camel_case(field_name)
-                    else:
-                        emitted = field_name
+                members = {}
+                for field_name in msg.fields:
+                    site = msg.fields[field_name]
+                    emitted = member_name(field_name)
+                    check_reserved(emitted, f"field '{pkg_name}.{msg_name}.{field_name}'")
                     record(f"message '{pkg_name}.{msg_name}'", emitted,
-                           f"{pkg_name}.{msg_name}.{oneof_name}.{field_name}", members)
+                           f"{pkg_name}.{msg_name}.{field_name}", members)
+                    check_class_member(emitted, msg_name, f"{pkg_name}.{msg_name}.{field_name}")
+                for oneof_name, oneof in msg.oneofs.items():
+                    site = oneof
+                    # The oneof itself is a member (union/accessor), and the
+                    # generators add a "<oneof>_discriminator" member next to it.
+                    check_reserved(member_name(oneof_name), f"oneof '{pkg_name}.{msg_name}.{oneof_name}'")
+                    # In the C family the oneof union and its discriminator are
+                    # struct members; elsewhere (e.g. C#, where a variant may share
+                    # its oneof's name) they live in their own scope.
+                    if lang in ('c', 'cpp'):
+                        record(f"message '{pkg_name}.{msg_name}'", member_name(oneof_name),
+                               f"{pkg_name}.{msg_name}.{oneof_name} (oneof)", members)
+                        if oneof.auto_discriminator:
+                            record(f"message '{pkg_name}.{msg_name}'",
+                                   member_name(f"{oneof_name}_discriminator"),
+                                   f"{pkg_name}.{msg_name}.{oneof_name} (oneof discriminator)", members)
+                    if oneof.discriminator_type == "field_order":
+                        # field_order oneofs get an enum with a NONE = 0 entry plus
+                        # one entry per variant, in a single flat scope.
+                        entries = {}
+                        record(f"discriminator enum of '{pkg_name}.{msg_name}.{oneof_name}'",
+                               enum_entry_name('none'), "the implicit 'none' entry", entries)
+                        for variant in oneof.fields:
+                            record(f"discriminator enum of '{pkg_name}.{msg_name}.{oneof_name}'",
+                                   enum_entry_name(variant),
+                                   f"{pkg_name}.{msg_name}.{oneof_name}.{variant}", entries)
+                    # Variants live in the message's member scope only where the
+                    # generator flattens them into the class (C#). Elsewhere they
+                    # sit inside the oneof's own union/dict/accessor namespace, so
+                    # sharing a name with a plain field is valid (and compiled
+                    # before name validation existed).
+                    variant_scope = members if lang == 'csharp' else {}
+                    for field_name in oneof.fields:
+                        emitted = member_name(field_name)
+                        check_reserved(emitted, f"variant '{pkg_name}.{msg_name}.{oneof_name}.{field_name}'")
+                        record(f"message '{pkg_name}.{msg_name}'", emitted,
+                               f"{pkg_name}.{msg_name}.{oneof_name}.{field_name}", variant_scope)
+                        check_class_member(emitted, msg_name,
+                                           f"{pkg_name}.{msg_name}.{oneof_name}.{field_name}")
+            except NameOverrideError as err:
+                # Point at the declaration: path:line of the field/oneof (or message).
+                raise NameOverrideError(f"{_where(site)}{err}") from None
 
         for enum_name, enum in pkg.enums.items():
             entries = {}

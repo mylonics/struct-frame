@@ -68,6 +68,8 @@ export class UdpTransport extends BaseTransport {
   async disconnect(): Promise<void> {
     return new Promise((resolve) => {
       if (this.socket) {
+        // The socket's 'close' event runs handleClose(); keep autoReconnect from reopening it.
+        this._intentionalClose = true;
         this.socket.close(() => {
           this.connected = false;
           resolve();

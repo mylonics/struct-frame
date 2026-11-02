@@ -1,0 +1,21 @@
+// Minimal schema used by the hello.c, hello.py and hello.ts examples.
+package hello;
+
+enum VehicleType {
+  UNKNOWN = 0;
+  FIXED_WING = 1;
+  QUADCOPTER = 2;
+}
+
+message Pose {
+  option msgid = 1;
+  float pitch = 1;
+  float yaw_rate = 2;
+  uint32 sample = 3;
+}
+
+message Heartbeat {
+  option msgid = 2;
+  uint8 id = 1;
+  VehicleType type = 2;
+}

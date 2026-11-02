@@ -19,7 +19,7 @@ from pathlib import Path
 from test_utils import _check, run_generator
 
 ALL_LANGS = ["c", "cpp", "ts", "js", "py", "gql", "csharp", "rust"]
-IGNORED = {".structframe.hash", "sf_compile.json"}
+IGNORED = {".structframe.hash", ".structframe-manifest.json", "sf_compile.json"}
 
 
 def _generate_all(workdir: Path, main_file: str, files: dict[str, str]) -> dict[str, str]:

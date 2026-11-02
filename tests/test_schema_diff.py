@@ -546,3 +546,37 @@ def test_schema_file_named_diff_still_generates():
                                 capture_output=True, text=True, env=env, cwd=tmp)
     _check(result.returncode == 0 and "Validation successful" in result.stdout,
            f"a schema file named 'diff' must still be a schema: {result.stdout}{result.stderr}")
+
+
+TRIMMED_OLD = """\
+package demo;
+message Scan {
+  option extensions_start = 2;
+  uint32 a = 1;
+  uint32 b = 2;
+}
+message Env {
+  option msgid = 9;
+  option variable = true;
+  uint8 flag = 1;
+  oneof task {
+    option discriminator = "field_order";
+    Scan scan = 1;
+  }
+}
+"""
+
+
+def test_trimmed_trailing_oneof_variant_growth_is_compatible():
+    new = TRIMMED_OLD.replace("  uint32 b = 2;\n", "  uint32 b = 2;\n  uint64 c = 3;\n")
+    code, report = _report(TRIMMED_OLD, new)
+    _check(code == 0, f"extension growth inside a trailing trimmed oneof must be compatible: {report}")
+    _check(_kinds(report, "breaking") == [], f"unexpected breaking changes: {report['changes']}")
+
+
+def test_fixed_message_nested_growth_is_still_breaking():
+    old = TRIMMED_OLD.replace("  option variable = true;\n", "")
+    new = old.replace("  uint32 b = 2;\n", "  uint32 b = 2;\n  uint64 c = 3;\n")
+    code, report = _report(old, new)
+    _check(code == 1, f"growth in a fixed (non-variable) message must stay breaking: {report}")
+    _find(report, "oneof_size_changed", "demo.Env.task")

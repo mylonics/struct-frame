@@ -1,0 +1,17 @@
+// Common definitions that can be reused across packages.
+package common;
+
+option pkgid = 1;
+
+enum Priority {
+  LOW = 0;
+  MEDIUM = 1;
+  HIGH = 2;
+  CRITICAL = 3;
+}
+
+message Timestamp {
+  option msgid = 1;
+  uint64 seconds = 1;
+  uint32 nanoseconds = 2;
+}

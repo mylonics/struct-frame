@@ -65,8 +65,9 @@ message RobotStatus {
 
 message RobotStatusEntry{
   int32 time = 1;
-  uint32 mac_id = 2;
-  RobotStatus status = 3 [flatten=true]; 
+  // RobotStatus already carries mac_id, so it is not repeated here: a flattened
+  // child field may not share a name with a field of the parent.
+  RobotStatus status = 2 [flatten=true];
 }
 
 message BaseStationStatusEntry{

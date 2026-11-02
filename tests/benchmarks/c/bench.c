@@ -1,5 +1,6 @@
-// Tier D shared-schema benchmark for C (sibling of tests/benchmarks/cpp/bench.cpp).
-// Self-contained: emits tests/benchmarks/results/c.json matching schema.json.
+// Tier D benchmark for C: runs the generated serialize/deserialize code and the real
+// frame_profiles.h encoder/parser against tests/benchmarks/schema/bench.sf.
+// Build with -I<generated c dir> (run_all.py does this). Emits results matching schema.json.
 #define _POSIX_C_SOURCE 200809L
 
 #include <stdint.h>
@@ -10,6 +11,12 @@
 #ifndef _WIN32
 #include <sys/utsname.h>
 #endif
+
+#include "bench.structframe.h"
+#include "frame_profiles.h"
+
+#define BATCH 64
+#define WARMUP_BATCHES 20
 
 static uint64_t now_ns(void) {
   struct timespec ts;
@@ -30,137 +37,129 @@ static uint64_t pct(uint64_t* v, int n, double q) {
   return v[i];
 }
 
-static void fletcher(const uint8_t* d, size_t n, uint8_t* o1, uint8_t* o2) {
-  unsigned a = 0, b = 0;
-  for (size_t i = 0; i < n; i++) {
-    a = (a + d[i]) & 0xff;
-    b = (b + a) & 0xff;
-  }
-  *o1 = (uint8_t)a;
-  *o2 = (uint8_t)b;
-}
-
-static void verify_payload(const uint8_t* payload, size_t len) {
-  if (len == 0) return;
-  size_t checks[3] = {0, len / 2, len - 1};
-  for (size_t i = 0; i < 3; i++) {
-    size_t idx = checks[i];
-    uint8_t expected = (uint8_t)((idx * 31 + len) & 0xff);
-    if (payload[idx] != expected) {
-      fprintf(stderr, "bad payload\n");
-      exit(3);
-    }
-  }
-}
-
-static size_t encode(const char* profile, uint8_t type, size_t payload_len,
-                     int network, uint8_t seq, uint8_t* out) {
-  size_t b = 2;
-  out[0] = 0x90;
-  out[1] = type;
-  if (network) {
-    out[b++] = seq;
-    out[b++] = 1;
-    out[b++] = 42;
-    out[b++] = payload_len & 0xff;
-    out[b++] = (payload_len >> 8) & 0xff;
-    out[b++] = 7;
-    out[b++] = 3;
-  } else if (strcmp(profile, "bulk") == 0) {
-    out[b++] = payload_len & 0xff;
-    out[b++] = (payload_len >> 8) & 0xff;
-    out[b++] = 7;
-    out[b++] = 3;
-  } else {
-    out[b++] = payload_len & 0xff;
-    out[b++] = 3;
-  }
-  for (size_t i = 0; i < payload_len; i++) {
-    out[b++] = (uint8_t)((i * 31 + payload_len) & 0xff);
-  }
-  uint8_t c1, c2;
-  fletcher(out + 2, b - 2, &c1, &c2);
-  out[b++] = c1;
-  out[b++] = c2;
-  return b;
-}
-
-static size_t decode(const uint8_t* f) {
-  size_t off = 2, len = 0;
-  int p = f[1] - 0x70;
-  if (p == 8) {
-    off += 3;
-    len = f[off] | (f[off + 1] << 8);
-    off += 4;
-  } else if (p == 4) {
-    len = f[off] | (f[off + 1] << 8);
-    off += 4;
-  } else {
-    len = f[off];
-    off += 2;
-  }
-  uint8_t c1, c2;
-  fletcher(f + 2, off + len - 2, &c1, &c2);
-  if (f[off + len] != c1 || f[off + len + 1] != c2) {
-    fprintf(stderr, "bad crc\n");
-    exit(2);
-  }
-  verify_payload(f + off, len);
-  return len;
-}
-
 struct scen {
   const char* name;
-  const char* profile;
-  uint8_t type;
-  size_t len;
-  int network;
+  const profile_config_t* cfg;
+  uint16_t msg_id;
+  size_t size;
+  uint8_t magic1, magic2;
 };
 
-static struct scen scens[] = {
-  {"standard", "standard", 0x71, 32,  0},
-  {"bulk",     "bulk",     0x74, 512, 0},
-  {"network",  "network",  0x78, 96,  1},
+static const struct scen scens[] = {
+  {"standard", &PROFILE_STANDARD_CONFIG, BENCH_SMALL_MSG_ID,  BENCH_SMALL_MAX_SIZE,
+   BENCH_SMALL_MAGIC1,  BENCH_SMALL_MAGIC2},
+  {"bulk",     &PROFILE_BULK_CONFIG,     BENCH_LARGE_MSG_ID,  BENCH_LARGE_MAX_SIZE,
+   BENCH_LARGE_MAGIC1,  BENCH_LARGE_MAGIC2},
+  {"network",  &PROFILE_NETWORK_CONFIG,  BENCH_MEDIUM_MSG_ID, BENCH_MEDIUM_MAX_SIZE,
+   BENCH_MEDIUM_MAGIC1, BENCH_MEDIUM_MAGIC2},
+  {"sensor",   &PROFILE_SENSOR_CONFIG,   BENCH_SMALL_MSG_ID,  BENCH_SMALL_MAX_SIZE,
+   BENCH_SMALL_MAGIC1,  BENCH_SMALL_MAGIC2},
+  {"ipc",      &PROFILE_IPC_CONFIG,      BENCH_SMALL_MSG_ID,  BENCH_SMALL_MAX_SIZE,
+   BENCH_SMALL_MAGIC1,  BENCH_SMALL_MAGIC2},
 };
 
-static void run(FILE* fp, struct scen* s, const char* op, int iters, int comma) {
-  uint8_t frame[2048];
+// Sink that keeps the optimiser from discarding the work being measured.
+static volatile uint64_t g_sink;
+
+/* Tell the compiler the bytes at p are used, so an encode whose output is never read again
+ * cannot be dropped. */
+static inline void escape(const void* p) {
+#if defined(__GNUC__) || defined(__clang__)
+  __asm__ volatile("" : : "g"(p) : "memory");
+#else
+  g_sink += (uintptr_t)p & 1;
+#endif
+}
+
+static size_t encode_once(const struct scen* s, const uint8_t* payload, uint8_t seq, uint8_t* out) {
+  buffer_writer_t w;
+  buffer_writer_init(&w, s->cfg, out, 2048);
+  size_t n = buffer_writer_write(&w, s->msg_id, payload, s->size, seq, 1, 42, 0,
+                                 s->magic1, s->magic2);
+  if (n == 0) {
+    fprintf(stderr, "encode failed\n");
+    exit(2);
+  }
+  escape(out);
+  return n;
+}
+
+static size_t decode_once(const struct scen* s, const uint8_t* frame, size_t flen) {
+  frame_msg_info_t info = profile_parse(s->cfg, frame, flen, bench_get_message_info);
+  if (!info.valid) {
+    fprintf(stderr, "decode failed\n");
+    exit(3);
+  }
+  uint8_t sink;
+  switch (s->msg_id) {
+    case BENCH_SMALL_MSG_ID: {
+      BenchSmall m;
+      BenchSmall_deserialize(info.msg_data, info.msg_len, &m);
+      sink = m.data[0];
+      break;
+    }
+    case BENCH_LARGE_MSG_ID: {
+      BenchLarge m;
+      BenchLarge_deserialize(info.msg_data, info.msg_len, &m);
+      sink = m.data[0];
+      break;
+    }
+    default: {
+      BenchMedium m;
+      BenchMedium_deserialize(info.msg_data, info.msg_len, &m);
+      sink = m.data[0];
+      break;
+    }
+  }
+  g_sink += sink;
+  return flen;
+}
+
+static void run(FILE* fp, const struct scen* s, const char* op, int iters, int comma) {
+  uint8_t payload[600];
+  for (size_t i = 0; i < s->size; i++) payload[i] = (uint8_t)(i * 31);
   uint8_t frames[8][2048];
   size_t flen[8];
-  for (int i = 0; i < 8; i++) {
-    flen[i] = encode(s->profile, s->type, s->len, s->network,
-                     (uint8_t)i, frames[i]);
+  uint8_t frame[2048];
+  for (int i = 0; i < 8; i++) flen[i] = encode_once(s, payload, (uint8_t)i, frames[i]);
+  int is_encode = strcmp(op, "encode") == 0;
+
+  for (int i = 0; i < WARMUP_BATCHES * BATCH; i++) {
+    if (is_encode) g_sink += encode_once(s, payload, (uint8_t)i, frame);
+    else g_sink += decode_once(s, frames[i & 7], flen[i & 7]);
   }
-  uint64_t* lat = (uint64_t*)calloc((size_t)iters, sizeof(uint64_t));
+
+  int batches = iters / BATCH;
+  if (batches < 1) batches = 1;
+  uint64_t* lat = (uint64_t*)calloc((size_t)batches, sizeof(uint64_t));
   size_t bytes = 0;
   uint64_t start = now_ns();
-  for (int i = 0; i < iters; i++) {
+  for (int b = 0; b < batches; b++) {
     uint64_t t = now_ns();
-    if (strcmp(op, "encode") == 0) {
-      bytes += encode(s->profile, s->type, s->len, s->network,
-                      (uint8_t)i, frame);
-    } else {
-      decode(frames[i & 7]);
-      bytes += flen[i & 7];
+    for (int j = 0; j < BATCH; j++) {
+      int i = b * BATCH + j;
+      if (is_encode) bytes += encode_once(s, payload, (uint8_t)i, frame);
+      else bytes += decode_once(s, frames[i & 7], flen[i & 7]);
     }
-    lat[i] = now_ns() - t;
+    lat[b] = (now_ns() - t) / BATCH;
   }
   double dur = (now_ns() - start) / 1e9;
   if (dur <= 0) dur = 1e-9;
+  int count = batches * BATCH;
   uint64_t max = 0;
-  for (int i = 0; i < iters; i++) {
+  for (int i = 0; i < batches; i++) {
     if (lat[i] > max) max = lat[i];
   }
-  uint64_t p50 = pct(lat, iters, 0.50);
-  uint64_t p95 = pct(lat, iters, 0.95);
-  uint64_t p99 = pct(lat, iters, 0.99);
+  uint64_t p50 = pct(lat, batches, 0.50);
+  uint64_t p95 = pct(lat, batches, 0.95);
+  uint64_t p99 = pct(lat, batches, 0.99);
   fprintf(fp,
           "%s{\"name\":\"%s_%s\",\"profile\":\"%s\",\"operation\":\"%s\","
           "\"msg_count\":%d,\"bytes_total\":%zu,\"duration_s\":%.9f,"
           "\"msg_per_sec\":%.3f,\"mb_per_sec\":%.3f,"
           "\"latency_ns\":{\"p50\":%llu,\"p95\":%llu,\"p99\":%llu,\"max\":%llu}}",
-          comma ? "," : "", s->name, op, s->profile, op,
-          iters, bytes, dur, iters / dur, bytes / dur / 1e6,
+          comma ? "," : "", s->name, op, s->name, op,
+          count, bytes, dur, count / dur, bytes / dur / 1e6,
           (unsigned long long)p50, (unsigned long long)p95,
           (unsigned long long)p99, (unsigned long long)max);
   free(lat);
@@ -196,7 +195,7 @@ int main(int argc, char** argv) {
 #endif
   fprintf(fp,
           "{\"schema_version\":\"1\",\"language\":\"c\","
-          "\"runner_version\":\"tier-d-1\",\"timestamp\":\"%s\","
+          "\"runner_version\":\"tier-d-2-generated\",\"timestamp\":\"%s\","
           "\"host\":{\"os\":\"%s\",\"arch\":\"%s\",\"cpu\":\"unknown\"},"
           "\"scenarios\":[",
           ts, os, arch);

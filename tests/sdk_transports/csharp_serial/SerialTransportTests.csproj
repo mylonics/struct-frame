@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Same package the generated StructFrame.csproj uses with -p:IncludeSerialTransport=true. -->
+    <PackageReference Include="System.IO.Ports" Version="8.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\struct_frame\boilerplate\csharp\Framework\Sdk\Transport.cs" />
+    <Compile Include="..\..\..\src\struct_frame\boilerplate\csharp\Framework\Sdk\Transports\SerialTransport.cs" />
+  </ItemGroup>
+</Project>

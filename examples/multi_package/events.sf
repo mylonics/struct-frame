@@ -1,0 +1,13 @@
+// Event messages that use a type from another package.
+package events;
+
+option pkgid = 3;
+
+import "common_defs.sf";
+
+message SystemEvent {
+  option msgid = 1;
+  string event_name = 1 [size=32];
+  Priority priority = 2;          // declared in package "common"
+  string description = 3 [max_size=128];
+}

@@ -30,10 +30,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc g++ build-essential
+      - name: Install Python dependencies
+        run: pip install proto-schema-parser
       - name: Install TypeScript dependencies
         run: npm ci
         working-directory: tests/ts
       - name: Extract samples
         run: python tests/docs/extract_samples.py
+      - uses: dtolnay/rust-toolchain@stable
       - name: Compile documentation samples
-        run: python tests/docs/run_samples.py --quick
+        # Full mode: C, C++, TypeScript, Rust and C# samples are compiled too. Snippets that depend
+        # on the reader's own code carry a `no-compile` marker in their code fence.
+        run: python tests/docs/run_samples.py

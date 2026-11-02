@@ -353,3 +353,26 @@ def test_oneof_variant_order_change_invalidates_hash():
         )
         v2 = v1.replace("uint32 alpha = 1;\n    uint32 beta = 2;", "uint32 beta = 1;\n    uint32 alpha = 2;")
         _assert_regenerates(Path(tmp), v1, v2, "oneof variant order")
+
+
+def test_oneof_declaration_order_change_invalidates_hash():
+    """Oneofs are laid out in declaration order, so swapping them changes the wire."""
+    with tempfile.TemporaryDirectory() as tmp:
+        one = "  oneof first { option discriminator = field_order; uint8 a = 1; }\n"
+        two = "  oneof second { option discriminator = field_order; uint32 c = 1; }\n"
+        head = "package doc_cache_test;\nmessage M {\n  option msgid = 1;\n  option variable = true;\n"
+        _assert_regenerates(Path(tmp), head + one + two + "}\n", head + two + one + "}\n",
+                            "oneof declaration order")
+
+
+def test_generate_tests_flag_invalidates_hash():
+    """Toggling --generate_tests changes the generated output, so it is part of the key."""
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "gen"
+        base = ["--build_py", "--py_path", str(out) + os.sep]
+        r1 = run_generator(PROTO_FILE, *base, "--force")
+        _check(r1.returncode == 0, r1.stdout + r1.stderr)
+        r2 = run_generator(PROTO_FILE, *base, "--generate_tests")
+        _check(r2.returncode == 0, r2.stdout + r2.stderr)
+        _check("no changes" not in (r2.stdout + r2.stderr).lower(),
+               "--generate_tests toggle must not hit the cache")

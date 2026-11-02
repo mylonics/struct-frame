@@ -113,6 +113,31 @@ def _cpp_field_base_type(field, use_namespace=False):
         return '%s%s' % (pascal_case(pkg_prefix), type_name)
 
 
+def _message_has_member_initializers(msg, _seen=None):
+    """True when the generated C++ struct for *msg* has non-trivial default construction.
+
+    That is the case when a field carries a ``[default = ...]`` (emitted as a default member
+    initializer) or when a nested message-typed field or oneof variant does, transitively.
+    Such a type cannot be a member of an unnamed union (its default constructor would be
+    implicitly deleted), so a oneof holding one gets a named union with a constructor.
+    """
+    _seen = _seen if _seen is not None else set()
+    if id(msg) in _seen:
+        return False
+    _seen.add(id(msg))
+    members = list(msg.fields.values())
+    for oneof in getattr(msg, 'oneofs', {}).values():
+        members.extend(oneof.fields.values())
+    for f in members:
+        if f.default is not None:
+            return True
+        ref = getattr(f, 'type_ref', None)
+        if (not f.is_default_type and not f.is_enum and ref is not None
+                and hasattr(ref, 'fields') and _message_has_member_initializers(ref, _seen)):
+            return True
+    return False
+
+
 def _cpp_scalar_default_literal(field, use_namespace=False):
     """Render field.default as a C++ literal for a default member initializer."""
     if field.is_enum:
@@ -257,10 +282,23 @@ class OneOfCppGen():
         # type with a constructor that initializes the first variant, so the
         # enclosing message stays default-constructible.
         _first_variant = next(iter(oneof.fields.keys()), None)
-        _defaulted = any(extra[1] for extra in oneof.variant_extra)
+        # A message-typed variant that (transitively) carries default member
+        # initializers, including [default = 0], needs the named union. Plain
+        # variants keep the unnamed union so the message stays an aggregate. The
+        # constructor also zeroes the bytes past the first variant so whole-union
+        # memcmp/equality stays well defined.
+        _defaulted = any(
+            not f.is_default_type and not f.is_enum
+            and getattr(f, 'type_ref', None) is not None
+            and hasattr(f.type_ref, 'fields')
+            and _message_has_member_initializers(f.type_ref)
+            for f in oneof.fields.values())
         if _defaulted and _first_variant is not None:
             result += f'    union {oneof.name}_union_t {{\n'
-            result += f'        {oneof.name}_union_t() : {_first_variant}() {{}}\n'
+            result += f'        {oneof.name}_union_t() : {_first_variant}() {{\n'
+            result += f'            if (sizeof(*this) > sizeof({_first_variant}))\n'
+            result += f'                std::memset(reinterpret_cast<unsigned char*>(this) + sizeof({_first_variant}), 0, sizeof(*this) - sizeof({_first_variant}));\n'
+            result += f'        }}\n'
         else:
             result += f'    union {{\n'
         
@@ -644,7 +682,10 @@ class MessageCppGen():
         result += f'     */\n'
         result += f'    size_t _deserialize_variable(const uint8_t* buffer, size_t buffer_size) {{\n'
         result += f'        size_t offset = 0;\n'
-        result += f'        *this = {{}};  // Reset to schema defaults (or zero) before reading\n'
+        # `T()` value-initializes: zero-fill the whole object, then apply default member
+        # initializers. `T{}` is aggregate init, which only initializes a union's first
+        # member, leaving the rest of a oneof's bytes indeterminate (clang does not zero them).
+        result += f'        *this = {structName}();  // Reset to schema defaults (or zero) before reading\n'
         
         for key, field in msg.fields.items():
             var_name = field.name
@@ -710,7 +751,7 @@ class MessageCppGen():
                 for disc_val, field_name, field_size in oneof.variant_info:
                     result += f'            if (static_cast<int>({oneof_name}_discriminator) == {disc_val}) {{\n'
                     result += f'                size_t _copy = _{oneof_name}_len < {field_size} ? _{oneof_name}_len : {field_size};\n'
-                    result += f'                std::memcpy(&{oneof_name}, buffer + offset, _copy);\n'
+                    result += f'                std::memcpy(static_cast<void*>(&{oneof_name}), buffer + offset, _copy);\n'
                     result += f'            }}\n'
                 result += f'            offset += _{oneof_name}_len;  // Always skip full payload\n'
                 result += f'        }}\n'
@@ -729,9 +770,16 @@ class MessageCppGen():
                     result += f'            {_kw} (static_cast<int>({oneof_name}_discriminator) == {disc_val}) {{\n'
                     if _min_w:
                         result += f'                if (_{oneof_name}_avail < {_min_w}) return 0;\n'
-                    result += f'                {oneof_name}.{field_name} = decltype({oneof_name}.{field_name}){{}};  // apply schema defaults\n'
+                    # Zero the whole union (never assign to array/class members),
+                    # then lay down this variant's schema-default bytes, if any.
+                    result += f'                std::memset(static_cast<void*>(&{oneof_name}), 0, sizeof({oneof_name}));\n'
+                    _def = oneof.variant_extra[_i][1]
+                    if _def:
+                        _arr = ', '.join(f'0x{b:02x}' for b in _def)
+                        result += f'                static const uint8_t _{oneof_name}_def[{len(_def)}] = {{{_arr}}};\n'
+                        result += f'                std::memcpy(static_cast<void*>(&{oneof_name}), _{oneof_name}_def, {len(_def)});  // apply schema defaults\n'
                     result += f'                size_t _copy = _{oneof_name}_avail < {field_size} ? _{oneof_name}_avail : {field_size};\n'
-                    result += f'                std::memcpy(&{oneof_name}, buffer + offset, _copy);\n'
+                    result += f'                std::memcpy(static_cast<void*>(&{oneof_name}), buffer + offset, _copy);\n'
                     if _trailing:
                         result += f'                _{oneof_name}_adv = _{oneof_name}_avail;\n'
                     else:
@@ -799,13 +847,15 @@ class MessageCppGen():
             # longer than MAX_SIZE (newer sender) has its trailing extension
             # bytes ignored. Callers never need to pad or truncate.
             #
-            # `*this = {}` (not std::memset) so it respects each field's
+            # `*this = T()` (not std::memset) so it respects each field's
             # default member initializer, correctly regardless of whether this
             # package's structs are #pragma pack(1)'d -- an all-variable
             # package skips packing (see `packed_structs` in FileCppGen), so a
             # raw byte-blob memcpy of the struct wouldn't be layout-safe there.
+            # Value-init `T()`, not aggregate-init `T{}`: only the former zeroes
+            # the bytes of a oneof union beyond its first member.
             result += f'        size_t copy_len = buffer_size < MAX_SIZE ? buffer_size : MAX_SIZE;\n'
-            result += f'        *this = {{}};\n'
+            result += f'        *this = {structName}();\n'
             result += f'        if (copy_len > 0) std::memcpy(this, buffer, copy_len);\n'
             result += f'        return copy_len;\n'
         
@@ -1231,6 +1281,21 @@ class TestCppGen():
         return result
     
     @staticmethod
+    def _generate_oneof_init(oneof_name, oneof, use_namespace, prefix):
+        """Populate the first variant of *oneof* and select it via the discriminator."""
+        if not oneof.fields:
+            return ""
+        variant_name, variant = next(iter(oneof.fields.items()))
+        out = ""
+        if oneof.auto_discriminator and oneof.variant_info:
+            # decltype: the discriminator is an integer for msgid oneofs and an enum
+            # class for field_order oneofs.
+            member = f"{prefix}.{oneof_name}_discriminator"
+            out += f"    {member} = static_cast<decltype({member})>({oneof.variant_info[0][0]});\n"
+        out += TestCppGen._generate_field_init(variant, use_namespace, f"{prefix}.{oneof_name}", 0)
+        return out
+
+    @staticmethod
     def generate(package):
         """Generate test code for all messages in a package."""
         yield '/* Automatically generated test code for struct-frame messages */\n'
@@ -1256,12 +1321,11 @@ class TestCppGen():
         yield f'namespace {namespace_name} {{\n'
         yield f'namespace Tests {{\n\n'
         
-        # Collect messages with IDs (can be used for round-trip testing).
-        # Messages with ``oneof`` blocks (variant/union messages) are excluded:
-        # they require special discriminator-aware encoding that the simple
-        # round-trip path here does not implement.
+        # Collect messages with IDs (can be used for round-trip testing). Messages with
+        # ``oneof`` blocks are included: the first variant of each oneof is populated
+        # and its discriminator set.
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
-                            if msg.id is not None and not getattr(msg, 'oneofs', {})]
+                            if msg.id is not None]
         
         # Generate message creation functions
         for key, msg in testable_messages:
@@ -1274,13 +1338,16 @@ class TestCppGen():
             
             yield f'/* Create a test instance of {structName} */\n'
             yield f'inline {fullStructName} create_test_{camel_to_snake_case(msg.name)}() {{\n'
-            yield f'    {fullStructName} msg{{}};\n'
-            
-            # Generate field initializations (skip oneofs for simplicity)
+            # Value-init (not `msg{}`) so every byte of a oneof union is zero: the
+            # round-trip check memcmp()s the whole object.
+            yield f'    {fullStructName} msg = {fullStructName}();\n'
+
             field_index = 0
             for field_key, field in msg.fields.items():
                 yield TestCppGen._generate_field_init(field, use_namespace, "msg", field_index)
                 field_index += 1
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                yield TestCppGen._generate_oneof_init(oneof_name, oneof, use_namespace, "msg")
             
             yield '    return msg;\n'
             yield '}\n\n'

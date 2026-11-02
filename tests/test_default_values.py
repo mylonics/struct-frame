@@ -219,24 +219,45 @@ def _rust_defaults(rust_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Single collected pytest entry point
+# Collected pytest entry points: one generation shared by independent tests, so
+# a missing toolchain (e.g. no gcc or cargo) skips only the tests that need it.
 # ---------------------------------------------------------------------------
 
-def test_default_values(tmp_path: Path) -> None:
-    """Schema-defined field default values: parsing, construction, override,
-    decode fallback, and cross-language generation."""
-    _generate(tmp_path)
+@pytest.fixture(scope="module")
+def generated(tmp_path_factory) -> Path:
+    out = tmp_path_factory.mktemp("default_values")
+    _generate(out)
+    return out
 
-    py_dir = tmp_path / "py"
-    c_dir = tmp_path / "c"
-    rust_dir = tmp_path / "rust"
 
-    mod = _import_generated_module(py_dir)
+@pytest.fixture(scope="module")
+def py_mod(generated: Path):
+    return _import_generated_module(generated / "py")
 
-    _python_construction_defaults(mod)
-    _python_explicit_overrides(mod)
-    _python_round_trip(mod)
-    _python_decode_missing_trailing_field(mod)
-    _python_no_defaults_control(mod)
-    _c_defaults(c_dir)
-    _rust_defaults(rust_dir)
+
+def test_python_construction_defaults(py_mod) -> None:
+    _python_construction_defaults(py_mod)
+
+
+def test_python_explicit_overrides(py_mod) -> None:
+    _python_explicit_overrides(py_mod)
+
+
+def test_python_round_trip(py_mod) -> None:
+    _python_round_trip(py_mod)
+
+
+def test_python_decode_missing_trailing_field(py_mod) -> None:
+    _python_decode_missing_trailing_field(py_mod)
+
+
+def test_python_no_defaults_control(py_mod) -> None:
+    _python_no_defaults_control(py_mod)
+
+
+def test_c_defaults(generated: Path) -> None:
+    _c_defaults(generated / "c")
+
+
+def test_rust_defaults(generated: Path) -> None:
+    _rust_defaults(generated / "rust")

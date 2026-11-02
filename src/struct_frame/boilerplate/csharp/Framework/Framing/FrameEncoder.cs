@@ -57,6 +57,13 @@ namespace StructFrame.Framing
                 return 0;
             }
 
+            // Profiles without a package-id byte carry a 1-byte message id; refuse to
+            // silently truncate a larger (package-qualified) id.
+            if (!_config.HasPkgId && msgId > 0xFF)
+            {
+                return 0;
+            }
+
             int idx = offset;
 
             // Write start bytes
@@ -151,6 +158,13 @@ namespace StructFrame.Framing
             }
 
             if (_config.HasLength && payloadSize > _config.MaxPayload)
+            {
+                return 0;
+            }
+
+            // Profiles without a package-id byte carry a 1-byte message id; refuse to
+            // silently truncate a larger (package-qualified) id.
+            if (!_config.HasPkgId && msgId > 0xFF)
             {
                 return 0;
             }

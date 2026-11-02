@@ -27,10 +27,10 @@ pip install struct-frame
 ### Basic Usage
 ```bash
 # Generate code for Python
-python -m struct_frame examples/robot.proto --build_py --py_path generated/py
+python -m struct_frame examples/basic/hello.sf --build_py --py_path generated/py
 
 # Generate code for multiple languages
-python -m struct_frame examples/robot.proto --build_c --build_cpp --build_ts --build_py
+python -m struct_frame examples/basic/hello.sf --build_c --build_cpp --build_ts --build_py
 
 # Get help
 python -m struct_frame --help
@@ -38,7 +38,7 @@ python -m struct_frame --help
 
 ### For Contributors
 
-If you want to contribute or modify the code generator itself, see the [Development Guide](docs/reference/development.md) for instructions on cloning the repository and setting up a development environment.
+If you want to contribute or modify the code generator itself, see the [Development Guide](docs/src/content/docs/reference/development.md) for instructions on cloning the repository and setting up a development environment.
 
 ### Test Suite
 
@@ -92,7 +92,7 @@ Struct Frame provides high-level SDKs for simplified message communication:
 - **TypeScript/JavaScript**: Promise-based with UDP, TCP, WebSocket, and Serial transports
 - **Python**: Both sync and async implementations with socket, pyserial, websockets support
 - **C++**: Header-only with observer/subscriber pattern, ideal for embedded systems
-- **C#**: Async/await-based for .NET Core, Xamarin, and MAUI applications
+- **C#**: Async/await-based for .NET 8+ applications
 
 See the [SDK Overview](https://struct-frame.mylonics.com/extended-features/sdk-overview/) for details.
 
@@ -182,38 +182,34 @@ This design handles common real-world issues like:
 
 ### Language-Specific Examples
 
+The programs in [`examples/basic/`](examples/basic/) encode two messages and decode them again.
+They are built and run by the test suite, so they always match the current generated API.
+
 #### Python
 ```bash
-python -m struct_frame examples/myl_vehicle.proto --build_py
-# Use generated Python classes directly
+python -m struct_frame examples/basic/hello.sf --build_py --py_path out/py
+PYTHONPATH=out/py python examples/basic/hello.py
 ```
 
 #### TypeScript
 ```bash
-python -m struct_frame examples/myl_vehicle.proto --build_ts
-npx tsc examples/index.ts --outDir generated/
-node generated/examples/index.js
+python -m struct_frame examples/basic/hello.sf --build_ts --ts_path out/ts
+cp examples/basic/hello.ts out/ts/ && cd out/ts && npx ts-node hello.ts
 ```
 
 #### C
 ```bash
-python -m struct_frame examples/myl_vehicle.proto --build_c
-gcc examples/main.c -I generated/c -o main
-./main
-```
-
-#### C++
-```bash
-python -m struct_frame examples/myl_vehicle.proto --build_cpp
-g++ -std=c++20 examples/main.cpp -I generated/cpp -o main
-./main
+python -m struct_frame examples/basic/hello.sf --build_c --c_path out/c
+gcc -std=c11 -Iout/c examples/basic/hello.c -o hello && ./hello
 ```
 
 #### GraphQL
 ```bash
-python -m struct_frame examples/myl_vehicle.proto --build_gql
-# Use generated .graphql schema files
+python -m struct_frame examples/basic/hello.sf --build_gql --gql_path out/gql
+# Use the generated <package>.graphql files, or the combined schema.graphql
 ```
+
+See [`examples/README.md`](examples/README.md) for multi-file and multi-package schemas.
 
 ## Feature Compatibility Matrix
 
@@ -367,116 +363,21 @@ Result: [0x7E, 0xC9]
 
 ### Language-Specific Usage Examples
 
-#### Python Frame Handling
+Complete, tested encode/decode programs for C, Python and TypeScript are in
+[`examples/basic/`](examples/basic/); the documentation site has the same pattern for every
+language (C, C++, Python, TypeScript, JavaScript, C# and Rust) under
+[Language Examples](docs/src/content/docs/basic-usage/language-examples.mdx). The shape is the same
+everywhere: a *writer* encodes messages into a frame buffer, and an *accumulating reader* turns
+incoming bytes into validated frames that you deserialize.
 
-```python
-import sys
-sys.path.insert(0, 'generated/py/')  # py_path
+Two things to know:
 
-from struct_frame.generated.myl_vehicle import MylVehicleVehicleStatus, get_message_info
-from frame_profiles import ProfileStandardWriter, ProfileStandardAccumulatingReader
-
-# Create message
-msg = MylVehicleVehicleStatus(vehicle_id=1234, speed=65.5, engine_on=True)
-
-# Encode to frame
-writer = ProfileStandardWriter(1024)
-writer.write(msg)
-frame_bytes = writer.data()
-print(f"Frame: {[hex(b) for b in frame_bytes]}")
-
-# Parse frame (byte-by-byte)
-reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
-for byte in frame_bytes:
-    result = reader.push_byte(byte)
-    if result and result.valid:
-        parsed = MylVehicleVehicleStatus.deserialize(result)
-        print(f"Parsed: vehicle_id={parsed.vehicle_id}, speed={parsed.speed}")
-```
-
-#### TypeScript Frame Handling
-
-```typescript
-import { MylVehicleVehicleStatus } from './generated/ts/myl_vehicle.structframe';
-import { ProfileStandardWriter, ProfileStandardAccumulatingReader } from './generated/ts/frame-profiles';
-
-// Create and encode message
-const msg = new MylVehicleVehicleStatus();
-msg.vehicle_id = 1234;
-msg.speed = 65.5;
-msg.engine_on = true;
-
-const writer = new ProfileStandardWriter(256);
-writer.write(msg);
-const frameData = writer.data();
-
-// Parse frame
-const reader = new ProfileStandardAccumulatingReader();
-reader.addData(frameData);
-const result = reader.next();
-if (result && result.valid) {
-    const parsed = MylVehicleVehicleStatus.deserialize(result);
-    console.log(`Parsed: vehicle_id=${parsed.vehicle_id}, speed=${parsed.speed}`);
-}
-```
-
-#### C Frame Handling
-
-```c
-#include "myl_vehicle.structframe.h"
-#include "frame_profiles.h"
-
-// Create message
-MylVehicleVehicleStatus msg = {0};
-msg.vehicle_id = 1234;
-msg.speed = 65.5f;
-msg.engine_on = true;
-
-// Encode to frame
-uint8_t frame_buffer[256];
-ProfileStandardWriter writer = profile_standard_writer_init(frame_buffer, sizeof(frame_buffer));
-profile_standard_writer_write(&writer, MYL_VEHICLE_VEHICLE_STATUS_MSG_ID,
-                               (uint8_t*)&msg, sizeof(msg));
-
-// Parse frame byte-by-byte
-ProfileStandardAccumulatingReader reader = profile_standard_accumulating_reader_init(get_message_info);
-for (size_t i = 0; i < writer.size; i++) {
-    FrameMsgInfo info = profile_standard_accumulating_reader_push_byte(&reader, frame_buffer[i]);
-    if (info.valid) {
-        MylVehicleVehicleStatus* parsed = (MylVehicleVehicleStatus*)info.msg_data;
-        printf("Parsed: vehicle_id=%d, speed=%.1f\n", parsed->vehicle_id, parsed->speed);
-    }
-}
-```
-
-#### C++ Frame Handling
-
-```cpp
-#include "myl_vehicle.structframe.hpp"
-#include "frame_profiles.hpp"
-
-// Create message
-MylVehicleVehicleStatus msg{};
-msg.vehicle_id = 1234;
-msg.speed = 65.5f;
-msg.engine_on = true;
-
-// Encode to frame
-uint8_t buffer[256];
-FrameParsers::ProfileStandardWriter writer(buffer, sizeof(buffer));
-writer.write(msg);
-
-// Parse frame byte-by-byte
-FrameParsers::ProfileStandardAccumulatingReader reader;
-for (size_t i = 0; i < writer.size(); i++) {
-    if (auto info = reader.push_byte(buffer[i])) {
-        MylVehicleVehicleStatus parsed;
-        parsed.deserialize(info);
-        std::cout << "Parsed: vehicle_id=" << parsed.vehicle_id
-                  << ", speed=" << parsed.speed << "\n";
-    }
-}
-```
+- **Names.** Only C prefixes the package name onto type names (`HelloPose`). C++ uses
+  `structframe::hello::Pose`, C# `StructFrame.Hello.Pose`, Rust `hello::Pose`, and Python,
+  TypeScript and JavaScript the bare name `Pose`.
+- **Readers need the message-info function.** The checksum of CRC profiles includes two
+  per-message magic bytes, so pass the generated `get_message_info` to the reader, or every
+  real frame will fail its checksum.
 
 ### Real-World Integration Patterns
 
@@ -487,11 +388,11 @@ import serial
 sys.path.insert(0, 'generated/py/')
 
 from struct_frame.generated.messages import MyMessage, get_message_info
-from frame_profiles import ProfileStandardAccumulatingReader
+from frame_profiles import AccumulatingReader, PROFILE_STANDARD_CONFIG
 
 # Setup serial connection
 ser = serial.Serial('/dev/ttyUSB0', 115200)
-reader = ProfileStandardAccumulatingReader(get_message_info=get_message_info)
+reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
 
 # Continuous parsing loop
 while True:
@@ -499,21 +400,21 @@ while True:
         data = ser.read(ser.in_waiting)
         reader.add_data(data)
         result = reader.next()
-        if result and result.valid:
+        if result.valid:
             handle_message(result)
 ```
 
 #### TCP Socket Communication
 ```typescript
 import * as net from 'net';
-import { ProfileStandardAccumulatingReader } from './generated/ts/frame-profiles';
-import { MyMessage } from './generated/ts/messages.structframe';
+import { AccumulatingReader, ProfileStandardConfig } from './generated/ts/frame-profiles';
+import { MyMessage, getMessageInfo } from './generated/ts/messages.structframe';
 
 const client = net.createConnection({ port: 8080 }, () => {
   console.log('Connected to server');
 });
 
-const reader = new ProfileStandardAccumulatingReader();
+const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
 client.on('data', (data: Buffer) => {
   reader.addData(data);
   let result;
@@ -530,10 +431,9 @@ client.on('data', (data: Buffer) => {
   - `generate.py` - Main parser and validation logic
   - `*_gen.py` - Language-specific code generators
   - `boilerplate/` - Runtime libraries for each language
-- `examples/` - Example .proto files and usage demos
-  - `main.c` - C API demonstration (encoding/decoding, parsing)
-  - `index.ts` - TypeScript API demonstration (similar functionality)  
-  - `*.proto` - Protocol Buffer definitions for examples
+- `examples/` - Example schemas and tested usage programs (see `examples/README.md`)
+  - `basic/` - `hello.sf` with C, Python and TypeScript encode/decode programs
+  - `multi_package/`, `package_ids/` - multi-file and multi-package schemas
 - `generated/` - Output directory for generated code (git-ignored)
 
 ## Protocol Buffer Schema Reference
@@ -741,7 +641,7 @@ The C++ implementation provides modern C++ features while maintaining compatibil
 ```proto
 package robot;
 
-enum RobotStatus : uint8_t {
+enum RobotStatus {
   IDLE = 0;
   MOVING = 1;
   ERROR = 2;
@@ -755,52 +655,38 @@ message RobotState {
 }
 ```
 
-**Generated C++ Code:**
+**Generated C++ Code (abridged):**
 
 ```cpp
-#pragma pack(push, 1)
+namespace structframe {
+namespace robot {
 
-// Enum class instead of plain enum
-enum class RobotRobotStatus : uint8_t {
-    IDLE = 0,
-    MOVING = 1,
-    ERROR = 2
+// Enum class; entries are PascalCase in C++
+enum class RobotStatus : uint8_t {
+    Idle = 0,
+    Moving = 1,
+    Error = 2
 };
 
-// Struct inheriting from MessageBase<Derived, MSG_ID, MAX_SIZE, MAGIC1, MAGIC2>.
-// All template parameters are auto-generated; users do not specify them manually.
-struct RobotRobotState : FrameParsers::MessageBase<RobotRobotState, 10, 9, 0xAB, 0xCD> {
+#pragma pack(push, 1)
+// Struct inheriting from MessageBase. The template arguments (message ID, sizes and the
+// checksum magic bytes) are generated; you never write them by hand.
+struct RobotState : structframe::MessageBase<RobotState, 10, 9, 32, 59, 9> {
     uint32_t robot_id;
-    RobotRobotStatus status;
+    RobotStatus status;
     float battery_level;
 
     size_t deserialize(const uint8_t* buffer, size_t buffer_size);
-    size_t deserialize(const FrameParsers::FrameMsgInfo& frame_info);
+    size_t deserialize(const structframe::FrameMsgInfo& frame_info);
     size_t serialize(uint8_t* buffer) const;
 };
-
 #pragma pack(pop)
 
-namespace FrameParsers {
-inline bool get_message_length(size_t msg_id, size_t* size) {
-    switch (msg_id) {
-        case RobotRobotState::MSG_ID:
-            *size = RobotRobotState::MAX_SIZE;
-            return true;
-        default: break;
-    }
-    return false;
-}
+// Lookup used by the readers: message ID -> size and checksum magic bytes
+inline MessageInfo get_message_info(uint16_t msg_id);
 
-inline MessageInfo get_message_info(uint16_t msg_id) {
-    switch (msg_id) {
-        case RobotRobotState::MSG_ID:
-            return MessageInfo{RobotRobotState::MAX_SIZE, RobotRobotState::MAGIC1, RobotRobotState::MAGIC2};
-        default: break;
-    }
-    return MessageInfo{};
-}
-}  // namespace FrameParsers
+}  // namespace robot
+}  // namespace structframe
 ```
 
 **Usage:**
@@ -809,22 +695,25 @@ inline MessageInfo get_message_info(uint16_t msg_id) {
 #include "robot.structframe.hpp"
 #include "frame_profiles.hpp"
 
+using namespace structframe;
+
 // Create and initialize message
-RobotRobotState state{};
+robot::RobotState state{};
 state.robot_id = 123;
-state.status = RobotRobotStatus::MOVING;  // Type-safe enum class
+state.status = robot::RobotStatus::Moving;  // Type-safe enum class
 state.battery_level = 85.5f;
 
 // Encode with frame profile
 uint8_t buffer[256];
-FrameParsers::ProfileStandardWriter writer(buffer, sizeof(buffer));
+ProfileStandardWriter writer(buffer, sizeof(buffer));
 writer.write(state);
 
-// Parse byte-by-byte with AccumulatingReader
-FrameParsers::ProfileStandardAccumulatingReader reader;
+// Parse byte-by-byte. CRC profiles need the message-info callback.
+AccumulatingReader<ProfileStandardConfig, 1024, decltype(&robot::get_message_info)>
+    reader(robot::get_message_info);
 for (size_t i = 0; i < writer.size(); i++) {
     if (auto info = reader.push_byte(buffer[i])) {
-        RobotRobotState msg;
+        robot::RobotState msg;
         msg.deserialize(info);
         std::cout << "Robot ID: " << msg.robot_id
                   << ", Status: " << static_cast<int>(msg.status) << "\n";
@@ -838,4 +727,6 @@ An experimental Wireshark Lua dissector is available for protocol analysis and d
 
 ## Additional Documentation
 
-- **[Array Implementation Guide](ARRAY_IMPLEMENTATION.md)** - Documentation of array features, syntax, and generated code examples across all languages
+- **[Documentation site sources](docs/src/content/docs/)** - Message definitions (including arrays), framing, CLI reference, SDK guides
+- **[Examples](examples/README.md)** - Tested example schemas and programs
+- **[Changelog](CHANGELOG.md)**

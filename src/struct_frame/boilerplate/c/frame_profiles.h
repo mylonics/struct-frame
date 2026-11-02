@@ -101,13 +101,21 @@ static inline size_t profile_encode_with_crc_ext(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
     uint8_t seq, uint8_t sys_id, uint8_t comp_id,
-    uint8_t pkg_id, uint8_t msg_id,
+    uint8_t pkg_id, uint16_t msg_id,
     const uint8_t* payload_data, size_t payload_size,
     size_t base_size,
     uint8_t magic1, uint8_t magic2) {
     
     uint8_t header_size = profile_header_size(config);
     uint8_t footer_size = profile_footer_size(config);
+    /* The wire carries a 1-byte message id. Profiles with a package-id byte take the
+     * high byte of a package-qualified id from pkg_id (the caller passes the low byte
+     * as msg_id, or the full id, which is narrowed here). Profiles without one cannot
+     * represent a larger id: refuse rather than truncate. */
+    if (!config->payload.has_pkg_id && msg_id > 0xFF) {
+        return 0;
+    }
+
     size_t overhead = header_size + footer_size;
     size_t total_size = overhead + payload_size;
     size_t max_payload = (config->payload.length_bytes == 1) ? 255 : 65535;
@@ -157,15 +165,15 @@ static inline size_t profile_encode_with_crc_ext(
         buffer[idx++] = pkg_id;
     }
     
-    /* Write message ID */
-    buffer[idx++] = msg_id;
-    
+    /* Write message ID (low byte; the high byte is the package id above) */
+    buffer[idx++] = (uint8_t)(msg_id & 0xFF);
+
     /* Write payload */
     if (payload_size > 0 && payload_data != NULL) {
         memcpy(buffer + idx, payload_data, payload_size);
         idx += payload_size;
     }
-    
+
     /* Calculate and write CRC */
     if (config->payload.has_crc) {
         size_t crc_len = idx - crc_start;
@@ -199,7 +207,7 @@ static inline size_t profile_encode_with_crc(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
     uint8_t seq, uint8_t sys_id, uint8_t comp_id,
-    uint8_t pkg_id, uint8_t msg_id,
+    uint8_t pkg_id, uint16_t msg_id,
     const uint8_t* payload_data, size_t payload_size,
     uint8_t magic1, uint8_t magic2) {
     return profile_encode_with_crc_ext(
@@ -215,9 +223,15 @@ static inline size_t profile_encode_with_crc(
 static inline size_t profile_encode_minimal(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
-    uint8_t msg_id,
+    uint16_t msg_id,
     const uint8_t* payload_data, size_t payload_size) {
     
+    /* The wire carries a 1-byte message id (the package id travels separately).
+     * Refuse to truncate: a larger id means the caller picked the wrong profile. */
+    if (msg_id > 0xFF) {
+        return 0;
+    }
+
     uint8_t header_size = profile_header_size(config);
     size_t total_size = header_size + payload_size;
     
@@ -435,7 +449,7 @@ static inline size_t profile_encode_message(
     const profile_config_t* config,
     uint8_t* buffer, size_t buffer_size,
     uint8_t seq, uint8_t sys_id, uint8_t comp_id, uint8_t pkg_id,
-    uint8_t msg_id, const uint8_t* payload_data, size_t payload_size,
+    uint16_t msg_id, const uint8_t* payload_data, size_t payload_size,
     size_t base_size, uint8_t magic1, uint8_t magic2)
 {
     if (config->payload.has_crc) {
@@ -594,7 +608,7 @@ static inline void buffer_writer_init(
 
 static inline size_t buffer_writer_write_ext(
     buffer_writer_t* writer,
-    uint8_t msg_id,
+    uint16_t msg_id,
     const uint8_t* payload,
     size_t payload_size,
     uint8_t seq,
@@ -635,7 +649,7 @@ static inline size_t buffer_writer_write_ext(
  * the extension-aware variant for messages without extensions. */
 static inline size_t buffer_writer_write(
     buffer_writer_t* writer,
-    uint8_t msg_id,
+    uint16_t msg_id,
     const uint8_t* payload,
     size_t payload_size,
     uint8_t seq,
@@ -801,6 +815,25 @@ static inline void _acc_record_frame_diagnostics(
     }
 }
 
+/* True when the header at the start of data claims a frame that cannot fit in the internal
+ * buffer (typically a corrupted length field). Only profiles with a length field carry such
+ * a claim. Buffer mode uses it to resync immediately, as stream mode does, instead of
+ * swallowing a buffer's worth of good data behind the bogus header. */
+static inline bool _acc_claims_oversize_frame(
+    const accumulating_reader_t* reader, const uint8_t* data, size_t size)
+{
+    const profile_config_t* config = reader->config;
+    if (!config->payload.has_length || size < profile_header_size(config)) return false;
+    size_t off = config->header.num_start_bytes;
+    if (config->payload.has_seq) off++;
+    if (config->payload.has_sys_id) off++;
+    if (config->payload.has_comp_id) off++;
+    size_t payload_len = (config->payload.length_bytes == 1)
+        ? data[off]
+        : (size_t)(data[off] | ((size_t)data[off + 1] << 8));
+    return profile_overhead(config) + payload_len > reader->buffer_size;
+}
+
 static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* reader)
 {
     frame_msg_info_t result = {false, 0, 0, NULL, FRAME_MSG_STATUS_NONE, 0, NULL};
@@ -867,7 +900,8 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
          * internal buffer (still collecting with the buffer full): resync
          * inside the internal buffer instead of waiting forever. */
         if (result.status == FRAME_MSG_STATUS_WAITING_FOR_START ||
-            reader->internal_data_len >= reader->buffer_size) {
+            reader->internal_data_len >= reader->buffer_size ||
+            _acc_claims_oversize_frame(reader, reader->internal_buffer, reader->internal_data_len)) {
             size_t discard = reader->internal_data_len;
             if (reader->config->header.num_start_bytes >= 1) {
                 if (reader->internal_data_len > 1) {
@@ -946,6 +980,25 @@ static inline frame_msg_info_t accumulating_reader_next(accumulating_reader_t* r
             /* No start bytes (e.g. IPC profile): advance one byte and retry so a
              * single unknown msg_id doesn't discard the rest of the buffer. */
             reader->current_offset += 1;
+        }
+        result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
+        result.frame_size = reader->current_offset - old_current_offset;
+        reader->diagnostics.cnt_sync_recoveries++;
+        reader->diagnostics.cnt_failed_bytes += (uint32_t)result.frame_size;
+        return result;
+    }
+
+    /* A header that claims a frame larger than the internal buffer can never complete:
+     * resync past its start byte now rather than buffering good data behind it. */
+    if (reader->config->header.num_start_bytes >= 1 &&
+        _acc_claims_oversize_frame(reader, cur, cur_remaining)) {
+        size_t old_current_offset = reader->current_offset;
+        size_t scan_start = reader->current_offset + 1;
+        reader->current_offset = reader->current_size;
+        if (scan_start < reader->current_size) {
+            const void* p = memchr(reader->current_buffer + scan_start, (int)sb1,
+                                   reader->current_size - scan_start);
+            if (p) reader->current_offset = (size_t)((const uint8_t*)p - reader->current_buffer);
         }
         result.status = FRAME_MSG_STATUS_SYNC_RECOVERY;
         result.frame_size = reader->current_offset - old_current_offset;

@@ -7,6 +7,19 @@
 #include <stdint.h>
 #include <string.h>
 
+/*
+ * The C payload codecs copy multi-byte values in host byte order, while the wire
+ * format is little-endian. On a big-endian host that would silently corrupt every
+ * multi-byte field, so refuse to compile instead. Define
+ * STRUCT_FRAME_ASSUME_LITTLE_ENDIAN to override (e.g. for a toolchain that does not
+ * define the byte-order macros) if you know the target is little-endian.
+ */
+#if !defined(STRUCT_FRAME_ASSUME_LITTLE_ENDIAN) && defined(__BYTE_ORDER__) && \
+    defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+#error "struct-frame C/C++ payload codecs require a little-endian host (see docs: Conformance)"
+#endif
+
+
 /*===========================================================================
  * Checksum Calculation
  *===========================================================================*/

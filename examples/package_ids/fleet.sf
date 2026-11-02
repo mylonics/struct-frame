@@ -1,0 +1,19 @@
+// Entry point for the package-id example:
+//
+//   python -m struct_frame examples/package_ids/fleet.sf --build_py --py_path out/
+//
+// Messages from packages with a package id need a profile that carries the
+// package-id byte on the wire: ProfileBulk or ProfileNetwork. The Standard,
+// Sensor and IPC profiles only have a 1-byte id.
+package fleet;
+
+option pkgid = 3;
+
+import "sensor_data.sf";
+import "actuator_control.sf";
+
+message FleetSummary {
+  option msgid = 1;
+  uint16 sensors = 1;
+  uint16 actuators = 2;
+}

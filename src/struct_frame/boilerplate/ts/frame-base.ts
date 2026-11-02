@@ -85,6 +85,12 @@ export interface FrameMsgInfo {
     msgData: Uint8Array;
     status: FrameMsgStatus;
     frameSize?: number;
+    /**
+     * Which payload layout the frame carries: true for the variable-length wire form
+     * (profiles with a length field), false for the fixed _size form (minimal profiles),
+     * undefined when unknown. Lets deserialize() avoid guessing from the length.
+     */
+    variableEncoding?: boolean;
     diagnostics?: FrameParserDiagnostics;
 }
 

@@ -52,10 +52,10 @@ jobs:
         run: |
           coverage run --source=src/struct_frame --branch \
               -m pytest tests/test_property_roundtrip.py -v
+          # These files have no ``__main__`` block, so they must run under
+          # pytest; invoking them as scripts would execute zero tests.
           coverage run --source=src/struct_frame --branch --append \
-              tests/test_generator_validation.py
-          coverage run --source=src/struct_frame --branch --append \
-              tests/test_magic_bytes.py
+              -m pytest tests/test_generator_validation.py tests/test_magic_bytes.py -v
           coverage xml -o coverage.xml
           coverage report --skip-covered --skip-empty
       - name: Upload to Codecov

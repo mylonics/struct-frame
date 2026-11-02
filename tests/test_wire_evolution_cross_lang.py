@@ -49,6 +49,7 @@ fully enforced there.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -67,6 +68,16 @@ SEQ = 42
 CRC_SEED = 0xDEADBEEF
 
 _EXE = ".exe" if sys.platform == "win32" else ""
+
+
+def _c_family_exe(directory: Path, name: str) -> Path:
+    """Locate a C/C++ test binary. tests/run_tests.py builds these with a ``.exe``
+    suffix on every OS, so on Linux/macOS the bare name does not exist."""
+    for suffix in (_EXE, ".exe", ""):
+        candidate = directory / f"{name}{suffix}"
+        if candidate.exists():
+            return candidate
+    return directory / f"{name}{_EXE}"
 
 
 def _generate(out_dir: Path) -> None:
@@ -103,12 +114,12 @@ class _Runner:
 
 
 def _cpp_runner() -> _Runner:
-    exe = REPO_ROOT / "tests" / "cpp" / "build" / f"test_wire_evolution_file_io{_EXE}"
+    exe = _c_family_exe(REPO_ROOT / "tests" / "cpp" / "build", "test_wire_evolution_file_io")
     return _Runner("cpp", [str(exe)] if exe.exists() else None)
 
 
 def _c_runner() -> _Runner:
-    exe = REPO_ROOT / "tests" / "c" / "build" / f"test_wire_evolution_file_io{_EXE}"
+    exe = _c_family_exe(REPO_ROOT / "tests" / "c" / "build", "test_wire_evolution_file_io")
     return _Runner("c", [str(exe)] if exe.exists() else None)
 
 
@@ -143,8 +154,11 @@ def _csharp_runner() -> _Runner:
 
 def test_wire_evolution_cross_lang_matrix(tmp_path: Path) -> None:
     """Hub-based cross-language x cross-version matrix, anchored on C++."""
+    required = {l for l in os.environ.get("SF_REQUIRE_LANGS", "").split(",") if l}
     cpp = _cpp_runner()
     if not cpp.available:
+        if "cpp" in required:
+            pytest.fail("C++ test_wire_evolution_file_io not built but C++ is required (--require-langs)")
         pytest.skip("C++ test_wire_evolution_file_io not built -- run test_all.py or run_tests.py first")
 
     _generate(tmp_path)
@@ -166,6 +180,9 @@ def test_wire_evolution_cross_lang_matrix(tmp_path: Path) -> None:
 
     for runner in (_c_runner(), _ts_runner(), _js_runner(), _csharp_runner(), _rust_runner()):
         if not runner.available:
+            if runner.lang_id in required:
+                pytest.fail(f"{runner.lang_id} wire-evolution helper not built but the language is "
+                            f"required (--require-langs)")
             skipped.append(runner.lang_id)
             continue
         checked.append(runner.lang_id)

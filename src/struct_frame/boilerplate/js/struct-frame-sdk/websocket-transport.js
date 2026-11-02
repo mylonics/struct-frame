@@ -58,6 +58,8 @@ class WebSocketTransport extends transport_1.BaseTransport {
         return new Promise((resolve) => {
             if (this.ws) {
                 if (this.ws.readyState === WebSocket.OPEN) {
+                    // onclose runs handleClose(); keep autoReconnect from reopening the connection.
+                    this._intentionalClose = true;
                     this.ws.close();
                 }
                 this.connected = false;

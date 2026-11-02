@@ -122,6 +122,14 @@ class FrameEncoderWithCrc {
       payload_size = T::MAX_SIZE;
     }
 
+    // A profile without a package-id byte carries only a 1-byte message id.
+    // Fail rather than silently truncating a larger (package-qualified) id.
+    if constexpr (!Config::has_pkg_id) {
+      if constexpr (T::MSG_ID > 0xFF) {
+        return 0;
+      }
+    }
+
     size_t total_size = Config::overhead + payload_size;
 
     if (buffer_size < total_size || payload_size > Config::max_payload) {
@@ -172,7 +180,8 @@ class FrameEncoderWithCrc {
       size_t written = msg.serialize(buffer + idx);
       idx += written;
     } else {
-      std::memcpy(buffer + idx, msg.data(), payload_size);
+      // Not msg.data(): a message field or oneof named `data` would hide that member.
+      std::memcpy(buffer + idx, reinterpret_cast<const uint8_t*>(&msg), payload_size);
       idx += payload_size;
     }
 
@@ -228,6 +237,14 @@ class FrameEncoderMinimal {
     // Minimal profiles ALWAYS use MAX_SIZE (no variable-length support)
     constexpr size_t payload_size = T::MAX_SIZE;
 
+    // A profile without a package-id byte carries only a 1-byte message id.
+    // Fail rather than silently truncating a larger (package-qualified) id.
+    if constexpr (!Config::has_pkg_id) {
+      if constexpr (T::MSG_ID > 0xFF) {
+        return 0;
+      }
+    }
+
     size_t total_size = Config::overhead + payload_size;
 
     if (buffer_size < total_size) {
@@ -247,8 +264,21 @@ class FrameEncoderMinimal {
     // Write message ID
     buffer[idx++] = static_cast<uint8_t>(T::MSG_ID);
 
-    // Write payload at MAX_SIZE (always use data() for minimal profiles)
-    std::memcpy(buffer + idx, msg.data(), payload_size);
+    if constexpr (is_variable_message<T>() && sizeof(T) != payload_size) {
+      // Variable oneofs carry a wire-only length prefix that is not stored in the struct,
+      // so the struct is smaller than MAX_SIZE: copying MAX_SIZE bytes would over-read it.
+      // Serialize and zero-pad out to MAX_SIZE instead.
+      size_t written = msg.serialize(buffer + idx);
+      if (written > payload_size) {
+        return 0;
+      }
+      std::memset(buffer + idx + written, 0, payload_size - written);
+    } else {
+      // Fixed messages and array-only variable messages: the in-memory struct is already
+      // the MAX_SIZE wire layout (arrays are stored as count + full-capacity data).
+      // Not msg.data(): a message field or oneof named `data` would hide that member.
+      std::memcpy(buffer + idx, reinterpret_cast<const uint8_t*>(&msg), payload_size);
+    }
     idx += payload_size;
 
     return idx;
@@ -759,6 +789,11 @@ class AccumulatingReader {
 
   /**
    * Construct an AccumulatingReader with internal buffer for partial messages.
+   *
+   * Only usable without a callback for profiles that carry no checksum: the
+   * checksum of a CRC profile includes per-message magic bytes that only the
+   * message-info callback can supply, so such a reader would reject every real
+   * frame. Pass the callback (see the class comment) for CRC profiles.
    */
   AccumulatingReader()
       : internal_data_len_(0),
@@ -771,7 +806,12 @@ class AccumulatingReader {
         get_message_info_{},
         diagnostics_{},
         last_seq_(0),
-        last_seq_valid_(false) {}
+        last_seq_valid_(false) {
+    static_assert(!Config::has_crc || !std::is_same_v<GetMessageInfoFn, std::nullptr_t>,
+                  "A CRC profile needs the message-info callback (its checksum includes per-message "
+                  "magic bytes): use AccumulatingReader<Config, Size, decltype(&get_message_info)> "
+                  "reader(get_message_info)");
+  }
 
   /**
    * Construct an AccumulatingReader with message info callback (for minimal profiles).
@@ -900,7 +940,8 @@ class AccumulatingReader {
       // buffer (still collecting with the buffer full): resync inside the
       // internal buffer instead of waiting forever.
       if (result.status == FrameMsgStatus::WaitingForStart ||
-          internal_data_len_ >= BufferSize) {
+          internal_data_len_ >= BufferSize ||
+          claims_oversize_frame(internal_buffer_, internal_data_len_)) {
         size_t discard = internal_data_len_;
         if constexpr (Config::num_start_bytes >= 1) {
           if (internal_data_len_ > 1) {
@@ -985,6 +1026,28 @@ class AccumulatingReader {
       diagnostics_.cnt_sync_recoveries++;
       diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(r.frame_size);
       return with_diagnostics(r);
+    }
+
+    // A header that claims a frame larger than the internal buffer can never complete:
+    // resync past its start byte now rather than buffering good data behind it.
+    if constexpr (Config::num_start_bytes >= 1) {
+      if (claims_oversize_frame(current_buffer_ + current_offset_, current_size_ - current_offset_)) {
+        size_t old_offset = current_offset_;
+        size_t scan_start = current_offset_ + 1;
+        current_offset_ = current_size_;
+        if (scan_start < current_size_) {
+          const void* p = std::memchr(current_buffer_ + scan_start,
+                                      static_cast<int>(Config::computed_start_byte1()),
+                                      current_size_ - scan_start);
+          if (p) current_offset_ = static_cast<size_t>(static_cast<const uint8_t*>(p) - current_buffer_);
+        }
+        FrameMsgInfo r;
+        r.status = FrameMsgStatus::SyncRecovery;
+        r.frame_size = current_offset_ - old_offset;
+        diagnostics_.cnt_sync_recoveries++;
+        diagnostics_.cnt_failed_bytes += static_cast<uint32_t>(r.frame_size);
+        return with_diagnostics(r);
+      }
     }
 
     // Collecting — save remaining bytes to internal buffer for next add_data() call
@@ -1119,6 +1182,26 @@ class AccumulatingReader {
   }
 
  private:
+  // True when the header at the start of data claims a frame that cannot fit in the internal
+  // buffer (typically a corrupted length field). Only profiles with a length field carry such a
+  // claim.
+  static bool claims_oversize_frame(const uint8_t* data, size_t size) {
+    if constexpr (!Config::has_length) {
+      (void)data; (void)size;
+      return false;
+    } else {
+      if (size < Config::header_size) return false;
+      size_t off = Config::num_start_bytes;
+      if constexpr (Config::has_seq) off++;
+      if constexpr (Config::has_sys_id) off++;
+      if constexpr (Config::has_comp_id) off++;
+      size_t payload_len = (Config::length_bytes == 1)
+          ? data[off]
+          : static_cast<size_t>(data[off] | (data[off + 1] << 8));
+      return Config::overhead + payload_len > BufferSize;
+    }
+  }
+
   /*=========================================================================
    * Stream Mode State Handlers
    *=========================================================================*/
@@ -1202,7 +1285,7 @@ class AccumulatingReader {
         // msg_id is at header_size - 1 position
         uint8_t msg_id = internal_buffer_[Config::header_size - 1];
         if (get_message_info_) {
-          auto info = get_message_info_(msg_id);
+          auto info = lookup_message_info(msg_id);
           if (info) {
             size_t msg_len = info.size;
             expected_frame_size_ = Config::header_size + msg_len;
@@ -1274,7 +1357,7 @@ class AccumulatingReader {
             full_msg_id = static_cast<uint16_t>(internal_buffer_[Config::header_size - 2]) << 8;
           }
           full_msg_id |= internal_buffer_[Config::header_size - 1];
-          auto info = get_message_info_(full_msg_id);
+          auto info = lookup_message_info(full_msg_id);
           // Valid frames may carry anywhere from min_size (variable messages /
           // truncated extensions) up to size bytes — only count outside that range.
           if (info && (payload_len > info.size || payload_len < info.min_size)) {
@@ -1335,7 +1418,7 @@ class AccumulatingReader {
 
   FrameMsgInfo handle_minimal_msg_id(uint8_t msg_id) {
     if (get_message_info_) {
-      auto info = get_message_info_(msg_id);
+      auto info = lookup_message_info(msg_id);
       if (info) {
         size_t msg_len = info.size;
         expected_frame_size_ = Config::header_size + msg_len;
@@ -1449,7 +1532,7 @@ class AccumulatingReader {
           full_msg_id = static_cast<uint16_t>(frame_start[Config::header_size - 2]) << 8;
         }
         full_msg_id |= frame_start[Config::header_size - 1];
-        auto info = get_message_info_(full_msg_id);
+        auto info = lookup_message_info(full_msg_id);
         if (info && (payload_len > info.size || payload_len < info.min_size)) {
           diagnostics_.cnt_len_errors++;
         }
@@ -1495,6 +1578,21 @@ class AccumulatingReader {
   const uint8_t* current_buffer_;  // Current external buffer being processed
   size_t current_size_;            // Size of current external buffer
   size_t current_offset_;          // Current position in external buffer
+
+  /**
+   * Look up message info through the configured callback. With the default
+   * (std::nullptr_t) callback type there is nothing to call, so return an empty,
+   * invalid MessageInfo; this keeps readers for profiles that carry a length
+   * (which need no callback) compilable.
+   */
+  auto lookup_message_info(uint16_t id) const {
+    if constexpr (std::is_same_v<GetMessageInfoFn, std::nullptr_t>) {
+      (void)id;
+      return MessageInfo();
+    } else {
+      return get_message_info_(id);
+    }
+  }
 
   GetMessageInfoFn get_message_info_;
 

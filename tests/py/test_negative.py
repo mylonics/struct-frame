@@ -984,6 +984,15 @@ def test_cross_package_rejection():
     if frame_size < 10:
         return False
 
+    # Positive control: the untouched frame must decode, otherwise "rejected" below
+    # would only prove the reader rejects everything.
+    control = AccumulatingReader(PROFILE_BULK_CONFIG, get_message_info=pkg_get_message_info, buffer_size=2048)
+    control.add_data(bytes(buffer[:frame_size]))
+    control_result = control.next()
+    if not (control_result is not None and control_result.valid
+            and control_result.msg_id == (PKG_PACKAGE_ID << 8 | 1)):
+        return False
+
     # Bulk frame: [start1][start2][len_lo][len_hi][pkg_id][msg_id][payload...][crc1][crc2]
     # pkg_id is at byte 4. Original value is 1. Change to 2.
     buffer[4] = 2
@@ -992,12 +1001,9 @@ def test_cross_package_rejection():
     reader.add_data(bytes(buffer[:frame_size]))
     result = reader.next()
 
-    # The parser should either reject (CRC fail due to pkgid change) or
-    # get_message_info returns None for the wrong pkgid.
-    # Either way, we should NOT get a valid frame with the original msgid.
-    if result is not None and result.valid and result.msg_id == (PKG_PACKAGE_ID << 8 | 1):
-        return False  # Should NOT have decoded as PackageTestMessage
-    return True  # Correctly rejected
+    # The package id is covered by the checksum (and selects a different message
+    # layout), so the tampered frame must not be accepted as a valid frame at all.
+    return not (result is not None and result.valid)
 
 
 def test_bulk_corrupted_msg_id_low_byte():

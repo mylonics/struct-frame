@@ -62,7 +62,7 @@ class EnumPyGen():
         result = build_enum_leading_comments(field.comments, comment_prefix='#')
 
         enum_name = field.name
-        result += 'class %s(Enum):\n' % (enum_name)
+        result += 'class %s(IntEnum):\n' % (enum_name)
 
         def py_comment_formatter(comments):
             return ['#' + c for c in comments]
@@ -93,7 +93,7 @@ class EnumPyGen():
             return f'    {camel_to_snake_case(field_name).upper()} = {field_order}'
 
         lines = build_discriminator_enum_values(oneof, none_entry, field_entry)
-        result = f'class {enum_name}(Enum):\n'
+        result = f'class {enum_name}(IntEnum):\n'
         result += f'    """Discriminator enum for {msg_name}.{oneof.name} oneof"""\n'
         result += '\n'.join(lines) + '\n'
         return result
@@ -105,7 +105,7 @@ class EnumPyGen():
         if field.comments:
             for c in field.comments:
                 result += f'    #{c}\n'
-        result += f'    class {field.name}(Enum):\n'
+        result += f'    class {field.name}(IntEnum):\n'
         for entry_name, (value, comments) in field.data.items():
             for c in comments:
                 result += f'        #{c}\n'
@@ -563,6 +563,7 @@ class MessagePyGen():
                             result += f'        fields["{f.name}"] = list(_all[:min(count, {f.max_size})])\n'
                         else:
                             # Nested messages
+                            type_name = f.field_type
                             result += f'        # Bounded nested message array: {f.name}\n'
                             result += f'        count = struct.unpack_from("<{count_fmt}", data, offset)[0]\n'
                             result += f'        offset += {count_size}\n'
@@ -862,7 +863,10 @@ class MessagePyGen():
         result += '            Deserialized message instance\n'
         result += '        """\n'
         result += '        # Check if data is FrameMsgInfo (duck typing - has msg_data attribute)\n'
+        result += '        variable_encoding = None\n'
         result += '        if hasattr(data, "msg_data"):\n'
+        result += '            # The reader records which layout the frame used (None when unknown).\n'
+        result += '            variable_encoding = getattr(data, "variable_encoding", None)\n'
         result += '            data = data.msg_data\n'
         result += '        \n'
         
@@ -898,6 +902,18 @@ class MessagePyGen():
                 result += '        return cls._deserialize_variable(data)\n'
             else:
                 result += '        # Variable message - check encoding format\n'
+                if any(o.variable for o in msg.oneofs.values()):
+                    # Only a variable oneof makes the wire form differ from the fixed layout
+                    # at MAX_SIZE bytes (it adds a length prefix). A frame from a reader says
+                    # which layout it carries, which removes that ambiguity. Without a
+                    # variable oneof both layouts are identical at MAX_SIZE, and a raw
+                    # fixed-layout payload sent on a length profile must keep decoding.
+                    result += '        # A frame from a reader says which layout it carries; that removes the\n'
+                    result += '        # length ambiguity when the wire form is exactly MAX_SIZE bytes.\n'
+                    result += '        if variable_encoding is True:\n'
+                    result += '            return cls._deserialize_variable(data)\n'
+                    result += '        if variable_encoding is False:\n'
+                    result += '            return cls._deserialize_fixed(data)\n'
                 result += '        if len(data) == cls.MAX_SIZE:\n'
                 result += '            # Minimal profile format (MAX_SIZE encoding)\n'
                 result += '            return cls._deserialize_fixed(data)\n'
@@ -1474,7 +1490,7 @@ class FilePyGen():
         yield format_file_docs(package, '# ')
 
         yield 'import struct\n'
-        yield 'from enum import Enum\n'
+        yield 'from enum import IntEnum\n'
         yield 'from typing import List, Union\n'
 
         # Import from generated files for each proto-imported package.
@@ -1576,6 +1592,17 @@ class FilePyGen():
                 yield f'get_msg_length = get_message_size\n\n'
                 
                 # Add unified get_message_info function
+                yield f'_MessageInfo = None\n\n'
+                yield f'def _message_info_class():\n'
+                yield f'    # Resolve once: a failed relative import costs a filesystem lookup on every call.\n'
+                yield f'    global _MessageInfo\n'
+                yield f'    if _MessageInfo is None:\n'
+                yield f'        try:\n'
+                yield f'            from .frame_profiles import MessageInfo as _cls\n'
+                yield f'        except ImportError:\n'
+                yield f'            from frame_profiles import MessageInfo as _cls\n'
+                yield f'        _MessageInfo = _cls\n'
+                yield f'    return _MessageInfo\n\n'
                 yield f'def get_message_info(msg_id: int):\n'
                 yield f'    """\n'
                 yield f'    Get unified message info (size and magic numbers) for a 16-bit message ID.\n'
@@ -1586,10 +1613,7 @@ class FilePyGen():
                 yield f'    Returns:\n'
                 yield f'        MessageInfo(size, magic1, magic2) or None if message not found\n'
                 yield f'    """\n'
-                yield f'    try:\n'
-                yield f'        from .frame_profiles import MessageInfo\n'
-                yield f'    except ImportError:\n'
-                yield f'        from frame_profiles import MessageInfo\n'
+                yield f'    MessageInfo = _message_info_class()\n'
                 yield f'    msg_class = get_message_class(msg_id)\n'
                 yield f'    if not msg_class:\n'
                 yield f'        return None\n'
@@ -1618,6 +1642,17 @@ class FilePyGen():
                 yield f'    return msg_class.msg_size if msg_class else 0\n\n'
                 
                 # Add unified get_message_info function
+                yield f'_MessageInfo = None\n\n'
+                yield f'def _message_info_class():\n'
+                yield f'    # Resolve once: a failed relative import costs a filesystem lookup on every call.\n'
+                yield f'    global _MessageInfo\n'
+                yield f'    if _MessageInfo is None:\n'
+                yield f'        try:\n'
+                yield f'            from .frame_profiles import MessageInfo as _cls\n'
+                yield f'        except ImportError:\n'
+                yield f'            from frame_profiles import MessageInfo as _cls\n'
+                yield f'        _MessageInfo = _cls\n'
+                yield f'    return _MessageInfo\n\n'
                 yield f'def get_message_info(msg_id: int):\n'
                 yield f'    """\n'
                 yield f'    Get unified message info (size and magic numbers) for a message ID.\n'
@@ -1628,10 +1663,7 @@ class FilePyGen():
                 yield f'    Returns:\n'
                 yield f'        MessageInfo(size, magic1, magic2) or None if message not found\n'
                 yield f'    """\n'
-                yield f'    try:\n'
-                yield f'        from .frame_profiles import MessageInfo\n'
-                yield f'    except ImportError:\n'
-                yield f'        from frame_profiles import MessageInfo\n'
+                yield f'    MessageInfo = _message_info_class()\n'
                 yield f'    msg_class = get_message_class(msg_id)\n'
                 yield f'    if not msg_class:\n'
                 yield f'        return None\n'
@@ -1724,6 +1756,24 @@ class TestPyGen():
         return result
     
     @staticmethod
+    def _generate_oneof_init(oneof_name, oneof, prefix):
+        """Populate the first variant of *oneof* and select it via ``_which``/discriminator."""
+        if not oneof.fields:
+            return ""
+        variant_name, variant = next(iter(oneof.fields.items()))
+        if variant.is_array:
+            value = "[]"
+        elif variant.field_type in ("string", "bytes"):
+            value = 'b"test_string"'
+        else:
+            value = TestPyGen._get_dummy_value(variant, 0)
+        out = f"    {prefix}.{oneof_name} = {{'{variant_name}': {value}}}\n"
+        out += f"    {prefix}.{oneof_name}_which = '{variant_name}'\n"
+        if oneof.auto_discriminator and oneof.variant_info:
+            out += f"    {prefix}.{oneof_name}_discriminator = {oneof.variant_info[0][0]}\n"
+        return out
+
+    @staticmethod
     def generate(package, imported_packages=None):
         """Generate test code for all messages in a package."""
         yield '"""\n'
@@ -1747,9 +1797,10 @@ class TestPyGen():
         yield '    PROFILE_BULK_CONFIG, PROFILE_NETWORK_CONFIG,\n'
         yield ')\n\n'
         
-        # Collect testable messages (skip variant/oneof messages)
+        # Every message with an id is round-tripped, including messages with a ``oneof``:
+        # the first variant of each oneof is populated and its discriminator set.
         testable_messages = [(key, msg) for key, msg in package.sortedMessages().items()
-                            if msg.id is not None and not getattr(msg, 'oneofs', {})]
+                            if msg.id is not None]
         
         # Generate message creation functions
         for key, msg in testable_messages:
@@ -1760,11 +1811,12 @@ class TestPyGen():
             yield f'    """Create a test instance of {struct_name}."""\n'
             yield f'    msg = {struct_name}()\n'
             
-            # Generate field initializations (skip oneofs)
             field_index = 0
             for field_key, field in msg.fields.items():
                 yield TestPyGen._generate_field_init(field, "msg", field_index)
                 field_index += 1
+            for oneof_name, oneof in getattr(msg, 'oneofs', {}).items():
+                yield TestPyGen._generate_oneof_init(oneof_name, oneof, "msg")
             
             yield '    return msg\n\n'
         
@@ -1793,7 +1845,7 @@ class TestPyGen():
         yield '        if result.msg_id != msg.MSG_ID:\n'
         yield '            return (False, f"msg_id mismatch: expected {msg.MSG_ID}, got {result.msg_id}")\n'
         yield '        \n'
-        yield '        decoded = type(msg).deserialize(result.msg_data)\n'
+        yield '        decoded = type(msg).deserialize(result)  # the frame carries its layout hint\n'
         yield '        if decoded is None:\n'
         yield '            return (False, "deserialize returned None")\n'
         yield '        \n'

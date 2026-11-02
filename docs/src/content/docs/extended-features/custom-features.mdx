@@ -35,41 +35,47 @@ Minimal frames remove length and checksum fields for lowest overhead.
 - All messages must be fixed-size (no max_size, only size)
 - Parser needs message length lookup function
 
-The generator creates a `get_msg_info` function automatically:
+The generator creates a `get_message_info` function automatically:
 
 <Tabs>
-  <TabItem label="Python">
-  ```python
-  from frame_profiles import ProfileSensorWriter, ProfileSensorAccumulatingReader
-  from struct_frame.generated.messages import get_message_info
+<TabItem label="Python">
 
-# Encode using sensor profile (Tiny + Minimal)
+```python
+from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_SENSOR_CONFIG
+from struct_frame.generated.messages import get_message_info
 
-writer = ProfileSensorWriter(1024)
+# Encode using the sensor profile (Tiny + Minimal)
+writer = BufferWriter(PROFILE_SENSOR_CONFIG, 1024)
 writer.write(msg)
 frame = writer.data()
 
-# Parser requires get_message_info callback for minimal profiles
-
-reader = ProfileSensorAccumulatingReader(get_message_info=get_message_info)
+# Minimal profiles have no length or checksum, so the reader needs the callback
+reader = AccumulatingReader(PROFILE_SENSOR_CONFIG, get_message_info=get_message_info)
 reader.add_data(frame)
 result = reader.next()
+```
 
-````
 </TabItem>
-</Tabs>
-
-<Tabs>
 <TabItem label="C++">
-```cpp
+
+```cpp no-compile
 #include "frame_profiles.hpp"
 #include "messages.structframe.hpp"
 
-// Use sensor profile with minimal frames (requires message info callback)
-ProfileSensorAccumulatingReader reader(get_message_info);
-````
+using namespace structframe;
 
-  </TabItem>
+// Encode using the sensor profile (Tiny + Minimal)
+uint8_t buffer[1024];
+ProfileSensorWriter writer(buffer, sizeof(buffer));
+writer.write(msg);
+
+// Minimal profiles need the message-info callback; pass its type to the reader
+AccumulatingReader<ProfileSensorConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+reader.add_data(buffer, writer.size());
+FrameMsgInfo result = reader.next();
+```
+
+</TabItem>
 </Tabs>
 
 See [Framing](/basic-usage/framing/) for more on minimal frames.

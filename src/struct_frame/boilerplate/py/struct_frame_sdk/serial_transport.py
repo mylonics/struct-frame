@@ -40,8 +40,10 @@ class SerialTransport(BaseTransport):
     def connect(self) -> None:
         """Connect serial port"""
         try:
-            self.serial_port = serial.Serial(
-                port=self.serial_config.port,
+            # serial_for_url accepts a device name (COM3, /dev/ttyUSB0) exactly like serial.Serial,
+            # plus pyserial URLs such as socket://host:port, rfc2217://... and loop://.
+            self.serial_port = serial.serial_for_url(
+                self.serial_config.port,
                 baudrate=self.serial_config.baudrate,
                 bytesize=self.serial_config.bytesize,
                 parity=self.serial_config.parity,

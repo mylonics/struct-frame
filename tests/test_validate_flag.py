@@ -47,15 +47,16 @@ def test_validate_success():
 
 def test_validate_no_output_files():
     """--validate must not create any output files in a target directory."""
-    # Run validate with an output path pointing to a temp directory.
-    # If --validate is working correctly, no files should be written there.
+    # Run validate with build flags AND output paths pointing at a temp
+    # directory. Without the --build_* flags nothing would be written even if
+    # --validate were ignored, which would make this assertion vacuous.
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         code, stdout, stderr = _run_validate(
             PROTO_FILE,
-            extra_args=["--py_path", str(tmp_path / "py"),
-                        "--c_path", str(tmp_path / "c"),
-                        "--cpp_path", str(tmp_path / "cpp")],
+            extra_args=["--build_py", "--py_path", str(tmp_path / "py"),
+                        "--build_c", "--c_path", str(tmp_path / "c"),
+                        "--build_cpp", "--cpp_path", str(tmp_path / "cpp")],
         )
         # Even though output paths were provided, --validate must not write files.
         written = list(tmp_path.rglob("*"))

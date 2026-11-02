@@ -28,18 +28,21 @@
 #include "frame_headers.h"
 #include "frame_profiles.h"
 
-/* Stub message-info callback.  The fuzzer doesn't care about valid msg_ids;
- * we just need a callback that never crashes so the parser can route Tiny
- * and None header profiles through it. */
+/* Real message table, identical to tests/fuzz/corpus.py, so seed frames from
+ * tests/fuzz/make_seed_corpus.py pass the checksum and reach the deeper parser paths. */
 static bool fuzz_get_message_info(uint16_t msg_id, message_info_t* info) {
-    (void)msg_id;
-    if (info) {
-        info->size = 64;
-        info->base_size = 64;
-        info->magic1 = 0;
-        info->magic2 = 0;
+    static const struct { uint16_t id; size_t size; uint8_t m1, m2; } T[] = {
+        {1, 8, 11, 22}, {2, 32, 33, 44}, {3, 100, 55, 66}, {4, 1, 77, 88}, {5, 200, 99, 111},
+    };
+    for (size_t i = 0; i < sizeof(T) / sizeof(T[0]); i++) {
+        if (T[i].id == msg_id) {
+            info->size = info->base_size = info->min_size = T[i].size;
+            info->magic1 = T[i].m1;
+            info->magic2 = T[i].m2;
+            return true;
+        }
     }
-    return true;
+    return false;
 }
 
 static void fuzz_one_profile(const profile_config_t* cfg,
@@ -53,14 +56,14 @@ static void fuzz_one_profile(const profile_config_t* cfg,
      * accumulation path, which is the historically-buggy code path. */
     size_t mid = size / 2;
     accumulating_reader_add_data(&reader, data, mid);
-    while (1) {
-        frame_msg_info_t msg = accumulating_reader_next(&reader);
-        if (!msg.valid) break;
+    for (int guard = 0; guard < 100000; guard++) {
+        frame_msg_info_t msg;
+        if (!accumulating_reader_try_next(&reader, &msg)) break;
     }
     accumulating_reader_add_data(&reader, data + mid, size - mid);
-    while (1) {
-        frame_msg_info_t msg = accumulating_reader_next(&reader);
-        if (!msg.valid) break;
+    for (int guard = 0; guard < 100000; guard++) {
+        frame_msg_info_t msg;
+        if (!accumulating_reader_try_next(&reader, &msg)) break;
     }
 }
 

@@ -6,9 +6,60 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
-## [0.10.9](https://github.com/mylonics/struct-frame/releases/tag/0.10.9) - 2026-10-07
+## Unreleased
 
-<small>[Compare with v0.10.8](https://github.com/mylonics/struct-frame/compare/v0.10.8...0.10.9)</small>
+### Changed (breaking)
+
+- **Acronym-aware generated names.** Identifiers that mix cases are converted with acronym awareness, which changes some generated names: a field `sensorId` is now `SensorId` in C# (was `Sensorid`), and an enum entry `GateCurrent` is `GATE_CURRENT` in C/Python/Rust/C# (was `GATECURRENT`) and `GateCurrent` in C++ (was `Gatecurrent`). Schemas that only use `snake_case` or `SCREAMING_SNAKE` names are unaffected. Pin an old spelling with `--name_overrides` (#376).
+- **Stricter validation.** The generator now rejects input it used to accept silently: syntax errors and missing files (the generator now exits non-zero), duplicate messages/fields/enums/oneofs, enum values outside 0-255 or duplicated, a type name defined in two imported packages (qualify it), a type from a package that is not imported, effective message IDs that collide across packages, duplicate `msgid` discriminator values, empty oneofs, `size` together with `max_size`, `element_size` on non-string arrays, and field/oneof/variant names that are reserved words in a target language. `--validate` now checks names for every language.
+- **1-byte-ID profiles refuse oversized message IDs.** Encoding a message whose ID is above 255 with the Standard, Sensor or IPC profile now fails (C: returns 0; C++: returns 0; Python: `ValueError`; TypeScript/JavaScript: `RangeError`; C#: returns 0) instead of silently sending `id & 0xFF`.
+- **GraphQL.** `uint32`, `int64` and `uint64` map to the custom scalars `UInt32`, `Int64` and `UInt64` (declared in each document) instead of the 32-bit `Int`. Message-scoped enums are named `<Pkg><Message><Enum>`. `schema.graphql` is self-contained and prefixes `Query` fields with the package only when two packages share a message name.
+- **C and C++ headers refuse to compile on big-endian hosts** (`#error`), because the payload codecs copy host byte order. Define `STRUCT_FRAME_ASSUME_LITTLE_ENDIAN` to override.
+- **Python enums are `IntEnum`.** Generated enums compare equal to ints, print as numbers (`str()`/f-strings on 3.11+) and `json.dumps` emits numbers.
+- **Rust `FrameMsgInfo` has a new public field `variable_encoding`**; struct literals need it or `..Default::default()`. Use `M::unpack_frame(&frame)` to decode with the layout the reader recorded.
+- **TypeScript/JavaScript SDK.** A payload that fails to deserialize is no longer passed to handlers as raw bytes; handler and transport errors are reported through `onError`; `disconnect()` no longer triggers `autoReconnect` on serial, UDP and WebSocket transports.
+- **C# `WebSocketTransport`.** `ConnectAsync` throws when the connection fails or times out, `SendAsync` throws when not connected, only `ws://` URLs are supported, and there is a new constructor taking the config's `Url`. New file `Framework/Types/WireArray.cs`: add it to hand-maintained project file lists.
+- **Diagnostics go to stderr** with `file:line`, and each output directory gets a `.structframe-manifest.json`. Files a schema generated earlier but no longer produces are deleted (scoped per schema and per set of languages written to the directory).
+- **An `Extension::` oneof marker must be a standalone comment that begins with `Extension::`** (or use `option extensions_start`). A comment that merely mentions it is no longer a marker and the generator warns; confirm magic bytes with `struct_frame diff` against an old snapshot.
+- **C++ oneofs holding a message type with `[default = ...]` fields (transitively) get a constructed union**; other oneofs remain aggregates.
+
+### Added
+
+- Wire-evolution of variants inside trailing trimmed `oneof` unions (#377).
+- `struct_frame diff` (alias `schema-diff`): wire-compatibility check between two schema revisions (#376). It now treats a changed `min_size` on a variable or trimmed oneof as breaking, and reports an enum that moved between message and package scope as a source-only move.
+- Generation cache is docs-aware, covers the import graph and the generator/runtime sources, and regenerates when an output directory is missing (#376).
+- Console script `struct-frame`, optional extras `serial`, `websocket` and `sdk` for the Python SDK transports.
+- `wireshark/magic_table.py` and a "Magic bytes" dissector preference so the Wireshark dissector can verify checksums.
+- C# `WireArray` helper: primitive arrays use little-endian wire order on every host.
+- Examples that are built and run by the test suite (`examples/`).
+- Cross-language stream test (`tests/test_stream_cross_lang.py`): identical clean, corrupted and mutated streams through the Python, C, C++, JavaScript/TypeScript, Rust and C# readers at several chunk sizes.
+- Loopback transport tests for the TS/JS (TCP, UDP, WebSocket), C# (TCP, UDP) and C++ (TCP, UDP) SDKs; a C++ libFuzzer harness; fuzz harnesses now use real message info and seed corpora; Miri and AddressSanitizer jobs for the Rust parser; a big-endian (s390x) CI job; a check that `boilerplate/js` matches `tsc` output; a check that documentation code blocks only use names that exist.
+- Python and C benchmarks run the generated code and the real runtime, with warm-up, batched timing and Sensor/IPC profiles (`tests/benchmarks/`).
+
+### Fixed
+
+- The C encoder rejected package-qualified message IDs on Bulk/Network profiles (introduced by the 1-byte-ID check); it now rejects them only on profiles without a package-ID byte, like every other language.
+- Generated Python and C# `Deserialize` used the frame's layout hint for every variable message, which wire-decoded a fixed-layout payload and dropped arrays; the hint is now used only for messages with a variable oneof.
+- Separate per-language runs into one output directory no longer delete each other's files.
+- Reserved-word field names are accepted for TypeScript and JavaScript, where they are legal property names.
+- A corrupted length field in buffer mode (`add_data` / `next`) made the reader hold up to a whole buffer of good data behind a header that claimed an impossible frame size; stream mode already resynced at once. All six readers (C, C++, Python, TypeScript/JavaScript, Rust, C#) now resync as soon as the header claims a frame larger than the internal buffer. Found by the new cross-language stream test.
+- The C# SDK page showed `new TcpTransport("host", 8080)` and `new MyPackageSdkInterface(sdk)`; the constructors take a config object and the generated class is `Client`. The Advanced Features page used C++ names (`ProfileSensorWriter`, `ProfileSensorAccumulatingReader`) in its Python example.
+- Generated Python `get_message_info` re-ran a failing relative import on every frame (about 8x slower decoding); it now resolves `MessageInfo` once.
+- Types of an imported package were resolved against the *importing* package, giving the wrong wire size when both defined a type with the same name.
+- `msgid = 0` was treated as "no message ID" by the TypeScript, JavaScript, C# and Python generators/runtimes.
+- Parse failures exited 0 and still wrote output; schemas are now read as UTF-8 on every platform.
+- Python generator crashed on a bounded array of nested messages.
+- The Wireshark dissector reported every real frame as having an invalid checksum (the magic bytes were not part of its checksum).
+- The compiled JavaScript SDK was missing `onError`; it is rebuilt from the TypeScript source.
+- The full C++ SDK now copies the real ASIO headers instead of a git symlink (a text file on Windows) and no longer copies the whole ASIO repository.
+
+## [v0.10.9](https://github.com/mylonics/struct-frame/releases/tag/v0.10.9) - 2026-10-07
+
+<small>[Compare with v0.10.8](https://github.com/mylonics/struct-frame/compare/v0.10.8...v0.10.9)</small>
+
+### Added
+
+- C++ encode/decode APIs accept `std::array` and `std::span` buffers in addition to pointer + length (#373) ([3cd6601](https://github.com/mylonics/struct-frame/commit/3cd6601d3caaad42a13a548b01e45e50dc092265)).
 
 ## [v0.10.8](https://github.com/mylonics/struct-frame/releases/tag/v0.10.8) - 2026-09-08
 

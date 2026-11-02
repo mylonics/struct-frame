@@ -199,6 +199,40 @@ def spec_text():
     return "\n".join(chunks)
 
 
+_TEST_SUFFIXES = {".py", ".c", ".cpp", ".ts", ".js", ".cs", ".rs"}
+
+
+def _looks_like_test(path: Path) -> bool:
+    """Test sources (not helpers, headers, schemas or project files)."""
+    return path.suffix in _TEST_SUFFIXES and (
+        path.name.lower().startswith("test") or path.parent.name in ("cpp", "csharp") and "Test" in path.name)
+
+
+def _runner_text() -> str:
+    """Everything that launches tests: the runner, workflows and pytest files."""
+    parts = [(REPO_ROOT / "tests" / "run_tests.py").read_text(encoding="utf-8", errors="ignore"),
+             (REPO_ROOT / "test_all.py").read_text(encoding="utf-8", errors="ignore")]
+    parts += [p.read_text(encoding="utf-8", errors="ignore")
+              for p in (REPO_ROOT / ".github" / "workflows").glob("*.yml")]
+    parts += [p.read_text(encoding="utf-8", errors="ignore")
+              for p in (REPO_ROOT / "tests").glob("test_*.py")]
+    # The C# test runner dispatches its suites by class/method name.
+    runner_cs = REPO_ROOT / "tests" / "csharp" / "TestRunner.cs"
+    if runner_cs.exists():
+        parts.append(runner_cs.read_text(encoding="utf-8", errors="ignore"))
+    return "\n".join(parts)
+
+
+def _test_tree_text() -> str:
+    parts = []
+    for p in (REPO_ROOT / "tests").rglob("*"):
+        if p.is_file() and p.suffix in _TEST_SUFFIXES and "generated" not in p.parts \
+                and "node_modules" not in p.parts and "build" not in p.parts:
+            parts.append(p.name)
+            parts.append(p.read_text(encoding="utf-8", errors="ignore"))
+    return "\n".join(parts)
+
+
 def validate():
     """Cross-check the spec against the live tests/ tree and generator.
 
@@ -259,6 +293,29 @@ def validate():
             continue
         if ref not in present:
             problems.append(f"spec references missing test file: {ref}")
+
+    # 3b. ...and must actually run. A pytest file counts when it defines test functions;
+    #     anything else (C/C++/TS/JS/C#/Rust programs, script-style Python) must be named by
+    #     the runner, a workflow, or a pytest wrapper. This catches a test that is cited as
+    #     coverage but compiled-and-never-run.
+    runners = _runner_text()
+    for ref in sorted(referenced):
+        if any(ch in ref for ch in "{}*<>") or ref.endswith("/") or ref.startswith("tests/generated/"):
+            continue
+        path = REPO_ROOT / ref
+        if not path.is_file() or not _looks_like_test(path):
+            continue
+        if path.suffix == ".py" and path.name.startswith("test_") and \
+                re.search(r"^def test_\w+\(", path.read_text(encoding="utf-8", errors="ignore"), re.M):
+            continue  # collected by pytest
+        if path.stem not in runners and path.name not in runners:
+            problems.append(f"spec cites {ref} but no runner, workflow or pytest wrapper runs it")
+
+    # 3c. Every test function the spec names (``test_*`` in backticks) must exist.
+    test_tree = _test_tree_text()
+    for name in sorted(set(re.findall(r"`(test_[A-Za-z0-9_]+)`", blob))):
+        if not re.search(rf"\b{re.escape(name)}\b", test_tree):
+            problems.append(f"spec names {name} but nothing under tests/ defines it")
 
     # 4. Every scenario listed as ✅ in the §5 negative-test table must appear
     #    in the corresponding language's test_negative.* registration array.

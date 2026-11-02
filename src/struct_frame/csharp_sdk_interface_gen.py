@@ -154,7 +154,7 @@ class SdkInterfaceGen:
         
         # Generate send and subscribe methods for each message with msgid
         for key, msg in package.sortedMessages().items():
-            if msg.id:  # Only generate for messages with a message ID
+            if msg.id is not None:  # Only generate for messages with a message ID
                 yield from SdkInterfaceGen._generate_send_methods(msg, package.name, package)
                 yield from SdkInterfaceGen._generate_subscribe_method(msg, package.name)
                 # For extension messages, also generate the deprecated NonExtension send helper

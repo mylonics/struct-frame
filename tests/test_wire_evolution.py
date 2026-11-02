@@ -285,12 +285,45 @@ def _python_legacy_compat(py_dir: Path) -> None:
     _check(base_sz < Cls.MAX_SIZE,
            f"BASE_SIZE ({base_sz}) should be < MAX_SIZE ({Cls.MAX_SIZE})")
 
-    # Deserialize a payload trimmed to base_size -- extension fields zero-fill
-    raw_trimmed = raw_full[:base_sz] + b'\x00' * (Cls.MAX_SIZE - base_sz)
-    parsed = Cls.deserialize(raw_trimmed)
+    # Deserialize the genuinely short payload (no caller-side padding): the decoder
+    # must zero-fill the extension fields itself.
+    parsed = Cls.deserialize(raw_full[:base_sz])
     _check(parsed.header == 0x1234, f"header mismatch in legacy frame: {parsed.header}")
     _check(parsed.seq    == 7,      f"seq mismatch in legacy frame: {parsed.seq}")
     _check(parsed.crc_seed == 0,    f"crc_seed should be 0 in legacy frame, got {parsed.crc_seed}")
+
+
+def _python_legacy_frame_passes_crc(py_dir: Path) -> None:
+    """A frame from a legacy (extension-unaware) sender is accepted by a new reader.
+
+    The frame is assembled by hand, byte for byte, the way an old sender would write
+    it: Standard profile, a payload of only BASE_SIZE bytes, and a checksum over
+    [LEN, MSG_ID, base payload] followed by the message's magic bytes. This exercises
+    the length / CRC / extension-aware path, not just deserialize().
+    """
+    mod = _import_module(py_dir, "wire_evolution")
+    profiles = load_generated_module(py_dir / "frame_profiles.py", "frame_profiles")
+    Cls = mod.BaseExtensionMessage
+
+    payload = Cls(header=0x1234, seq=7, crc_seed=0xABCDEF01).serialize()[:Cls.BASE_SIZE]
+    _check(len(payload) < Cls.MAX_SIZE, "legacy payload must be shorter than MAX_SIZE")
+    body = bytes([len(payload), Cls.MSG_ID & 0xFF]) + payload
+    sum1 = sum2 = 0
+    for byte in body + bytes([Cls.MAGIC1, Cls.MAGIC2]):
+        sum1 = (sum1 + byte) & 0xFF
+        sum2 = (sum2 + sum1) & 0xFF
+    frame = bytes([0x90, 0x71]) + body + bytes([sum1, sum2])
+
+    reader = profiles.AccumulatingReader(profiles.PROFILE_STANDARD_CONFIG,
+                                         get_message_info=mod.get_message_info)
+    result = None
+    for byte in frame:
+        result = reader.push_byte(byte)
+    _check(result is not None and result.valid,
+           "a base-size frame from a legacy sender was rejected by the extension-aware reader")
+    parsed = Cls.deserialize(result.msg_data)
+    _check(parsed.header == 0x1234 and parsed.seq == 7 and parsed.crc_seed == 0,
+           f"legacy frame decoded wrongly: header={parsed.header:#x} seq={parsed.seq} crc_seed={parsed.crc_seed}")
 
 
 # ---------------------------------------------------------------------------
@@ -324,21 +357,44 @@ def _c_compiles(c_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Single collected pytest entry point
+# Collected pytest entry points
 # ---------------------------------------------------------------------------
 
-def test_wire_evolution(tmp_path: Path) -> None:
-    """Wire-evolution extension field tests: model + Python round-trip + C compile."""
-    # Phase 1: model-level tests (no codegen needed)
-    pkg = _load_model()
-    _model_base_sizes(pkg)
-    _model_extension_flags(pkg)
-    _model_magic_stability(pkg)
+@pytest.fixture(scope="module")
+def model():
+    return _load_model()
 
-    # Phase 2: generated code tests
-    out = tmp_path
+
+@pytest.fixture(scope="module")
+def generated(tmp_path_factory) -> Path:
+    out = tmp_path_factory.mktemp("wire_evolution")
     _generate(out)
+    return out
 
-    _python_roundtrip(out / "py")
-    _python_legacy_compat(out / "py")
-    _c_compiles(out / "c")
+
+def test_model_base_sizes(model) -> None:
+    _model_base_sizes(model)
+
+
+def test_model_extension_flags(model) -> None:
+    _model_extension_flags(model)
+
+
+def test_model_magic_stability(model) -> None:
+    _model_magic_stability(model)
+
+
+def test_python_roundtrip(generated: Path) -> None:
+    _python_roundtrip(generated / "py")
+
+
+def test_python_legacy_compat(generated: Path) -> None:
+    _python_legacy_compat(generated / "py")
+
+
+def test_python_legacy_frame_passes_crc(generated: Path) -> None:
+    _python_legacy_frame_passes_crc(generated / "py")
+
+
+def test_c_compiles(generated: Path) -> None:
+    _c_compiles(generated / "c")

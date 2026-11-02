@@ -150,6 +150,7 @@ namespace StructFrame.Framing
             result.SysId = sysId;
             result.CompId = compId;
             result.PkgId = pkgId;
+            result.VariableEncoding = _config.HasLength;
             return result;
         }
 
@@ -201,7 +202,8 @@ namespace StructFrame.Framing
 
             return new FrameMsgInfo(true, msgId, msgInfo.Value.Size, totalSize, buffer, offset + _config.HeaderSize)
             {
-                FrameData = buffer.AsMemory(offset, totalSize)
+                FrameData = buffer.AsMemory(offset, totalSize),
+                VariableEncoding = false
             };
         }
 
