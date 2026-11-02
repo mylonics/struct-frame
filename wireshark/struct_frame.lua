@@ -171,20 +171,17 @@ local function lookup_magic(pkg_id, msg_id)
     return nil, nil
 end
 
--- Fletcher-16 checksum calculation. When magic1/magic2 are given they are
--- appended to the data, exactly as every struct-frame runtime does.
-function fletcher16(data, magic1, magic2)
+-- Fletcher-16 checksum calculation over a TvbRange. When magic1/magic2 are
+-- given they are appended to the data, exactly as every struct-frame runtime does.
+function fletcher16(range, magic1, magic2)
+    -- Copy into a ByteArray once. Do not probe for methods (e.g. `range.get_index`):
+    -- wslua objects raise "No such ... function/property" on unknown members.
+    local data = range:bytes()
     local sum1 = 0
     local sum2 = 0
-    
+
     for i = 0, data:len() - 1 do
-        local byte
-        if data.get_index then
-            byte = data:get_index(i)
-        else
-            byte = data(i, 1):uint()
-        end
-        sum1 = (sum1 + byte) % 256
+        sum1 = (sum1 + data:get_index(i)) % 256
         sum2 = (sum2 + sum1) % 256
     end
 

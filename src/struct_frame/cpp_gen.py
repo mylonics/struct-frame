@@ -682,7 +682,10 @@ class MessageCppGen():
         result += f'     */\n'
         result += f'    size_t _deserialize_variable(const uint8_t* buffer, size_t buffer_size) {{\n'
         result += f'        size_t offset = 0;\n'
-        result += f'        *this = {{}};  // Reset to schema defaults (or zero) before reading\n'
+        # `T()` value-initializes: zero-fill the whole object, then apply default member
+        # initializers. `T{}` is aggregate init, which only initializes a union's first
+        # member, leaving the rest of a oneof's bytes indeterminate (clang does not zero them).
+        result += f'        *this = {structName}();  // Reset to schema defaults (or zero) before reading\n'
         
         for key, field in msg.fields.items():
             var_name = field.name
@@ -844,13 +847,15 @@ class MessageCppGen():
             # longer than MAX_SIZE (newer sender) has its trailing extension
             # bytes ignored. Callers never need to pad or truncate.
             #
-            # `*this = {}` (not std::memset) so it respects each field's
+            # `*this = T()` (not std::memset) so it respects each field's
             # default member initializer, correctly regardless of whether this
             # package's structs are #pragma pack(1)'d -- an all-variable
             # package skips packing (see `packed_structs` in FileCppGen), so a
             # raw byte-blob memcpy of the struct wouldn't be layout-safe there.
+            # Value-init `T()`, not aggregate-init `T{}`: only the former zeroes
+            # the bytes of a oneof union beyond its first member.
             result += f'        size_t copy_len = buffer_size < MAX_SIZE ? buffer_size : MAX_SIZE;\n'
-            result += f'        *this = {{}};\n'
+            result += f'        *this = {structName}();\n'
             result += f'        if (copy_len > 0) std::memcpy(this, buffer, copy_len);\n'
             result += f'        return copy_len;\n'
         
@@ -1333,8 +1338,10 @@ class TestCppGen():
             
             yield f'/* Create a test instance of {structName} */\n'
             yield f'inline {fullStructName} create_test_{camel_to_snake_case(msg.name)}() {{\n'
-            yield f'    {fullStructName} msg{{}};\n'
-            
+            # Value-init (not `msg{}`) so every byte of a oneof union is zero: the
+            # round-trip check memcmp()s the whole object.
+            yield f'    {fullStructName} msg = {fullStructName}();\n'
+
             field_index = 0
             for field_key, field in msg.fields.items():
                 yield TestCppGen._generate_field_init(field, use_namespace, "msg", field_index)
