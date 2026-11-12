@@ -1,0 +1,619 @@
+{
+  "messages": [
+    {
+      "name": "BaseCommandA",
+      "package": "wire_evolution",
+      "source_file": "wire_evolution_messages.sf",
+      "msgid": null,
+      "max_size": 6,
+      "base_size": 6,
+      "min_size": 6,
+      "is_variable": false,
+      "is_envelope": false,
+      "extensions_start": null,
+      "magic_bytes": [
+        11,
+        17
+      ],
+      "oneofs": null,
+      "generated_files": {
+        "c": {
+          "path": "c/wire_evolution.structframe.h",
+          "namespace": null,
+          "element": "WireEvolutionBaseCommandA",
+          "qualified_element": "WireEvolutionBaseCommandA"
+        },
+        "cpp": {
+          "path": "cpp/wire_evolution.structframe.hpp",
+          "namespace": "structframe::wire_evolution",
+          "element": "BaseCommandA",
+          "qualified_element": "structframe::wire_evolution::BaseCommandA"
+        },
+        "ts": {
+          "path": "ts/wire-evolution.structframe.ts",
+          "namespace": null,
+          "element": "BaseCommandA",
+          "qualified_element": "BaseCommandA"
+        },
+        "js": {
+          "path": "js/wire-evolution.structframe.js",
+          "namespace": null,
+          "element": "BaseCommandA",
+          "qualified_element": "BaseCommandA"
+        },
+        "py": {
+          "path": "py/struct_frame/generated/wire_evolution.py",
+          "namespace": "struct_frame.generated.wire_evolution",
+          "element": "BaseCommandA",
+          "qualified_element": "struct_frame.generated.wire_evolution.BaseCommandA"
+        },
+        "gql": {
+          "path": "gql/wire_evolution.graphql",
+          "namespace": null,
+          "element": "WireEvolutionBaseCommandA",
+          "qualified_element": "WireEvolutionBaseCommandA"
+        },
+        "rust": {
+          "path": "rust/wire_evolution.structframe.rs",
+          "namespace": "wire_evolution",
+          "element": "BaseCommandA",
+          "qualified_element": "wire_evolution::BaseCommandA"
+        },
+        "csharp": {
+          "path": "csharp/WireEvolution/Messages/BaseCommandA.cs",
+          "namespace": "StructFrame.WireEvolution",
+          "element": "BaseCommandA",
+          "qualified_element": "StructFrame.WireEvolution.BaseCommandA"
+        }
+      }
+    },
+    {
+      "name": "BaseCommandB",
+      "package": "wire_evolution",
+      "source_file": "wire_evolution_messages.sf",
+      "msgid": null,
+      "max_size": 3,
+      "base_size": 3,
+      "min_size": 3,
+      "is_variable": false,
+      "is_envelope": false,
+      "extensions_start": null,
+      "magic_bytes": [
+        14,
+        19
+      ],
+      "oneofs": null,
+      "generated_files": {
+        "c": {
+          "path": "c/wire_evolution.structframe.h",
+          "namespace": null,
+          "element": "WireEvolutionBaseCommandB",
+          "qualified_element": "WireEvolutionBaseCommandB"
+        },
+        "cpp": {
+          "path": "cpp/wire_evolution.structframe.hpp",
+          "namespace": "structframe::wire_evolution",
+          "element": "BaseCommandB",
+          "qualified_element": "structframe::wire_evolution::BaseCommandB"
+        },
+        "ts": {
+          "path": "ts/wire-evolution.structframe.ts",
+          "namespace": null,
+          "element": "BaseCommandB",
+          "qualified_element": "BaseCommandB"
+        },
+        "js": {
+          "path": "js/wire-evolution.structframe.js",
+          "namespace": null,
+          "element": "BaseCommandB",
+          "qualified_element": "BaseCommandB"
+        },
+        "py": {
+          "path": "py/struct_frame/generated/wire_evolution.py",
+          "namespace": "struct_frame.generated.wire_evolution",
+          "element": "BaseCommandB",
+          "qualified_element": "struct_frame.generated.wire_evolution.BaseCommandB"
+        },
+        "gql": {
+          "path": "gql/wire_evolution.graphql",
+          "namespace": null,
+          "element": "WireEvolutionBaseCommandB",
+          "qualified_element": "WireEvolutionBaseCommandB"
+        },
+        "rust": {
+          "path": "rust/wire_evolution.structframe.rs",
+          "namespace": "wire_evolution",
+          "element": "BaseCommandB",
+          "qualified_element": "wire_evolution::BaseCommandB"
+        },
+        "csharp": {
+          "path": "csharp/WireEvolution/Messages/BaseCommandB.cs",
+          "namespace": "StructFrame.WireEvolution",
+          "element": "BaseCommandB",
+          "qualified_element": "StructFrame.WireEvolution.BaseCommandB"
+        }
+      }
+    },
+    {
+      "name": "ExtCommandC",
+      "package": "wire_evolution",
+      "source_file": "wire_evolution_messages.sf",
+      "msgid": null,
+      "max_size": 5,
+      "base_size": 5,
+      "min_size": 5,
+      "is_variable": false,
+      "is_envelope": false,
+      "extensions_start": null,
+      "magic_bytes": [
+        12,
+        21
+      ],
+      "oneofs": null,
+      "generated_files": {
+        "c": {
+          "path": "c/wire_evolution.structframe.h",
+          "namespace": null,
+          "element": "WireEvolutionExtCommandC",
+          "qualified_element": "WireEvolutionExtCommandC"
+        },
+        "cpp": {
+          "path": "cpp/wire_evolution.structframe.hpp",
+          "namespace": "structframe::wire_evolution",
+          "element": "ExtCommandC",
+          "qualified_element": "structframe::wire_evolution::ExtCommandC"
+        },
+        "ts": {
+          "path": "ts/wire-evolution.structframe.ts",
+          "namespace": null,
+          "element": "ExtCommandC",
+          "qualified_element": "ExtCommandC"
+        },
+        "js": {
+          "path": "js/wire-evolution.structframe.js",
+          "namespace": null,
+          "element": "ExtCommandC",
+          "qualified_element": "ExtCommandC"
+        },
+        "py": {
+          "path": "py/struct_frame/generated/wire_evolution.py",
+          "namespace": "struct_frame.generated.wire_evolution",
+          "element": "ExtCommandC",
+          "qualified_element": "struct_frame.generated.wire_evolution.ExtCommandC"
+        },
+        "gql": {
+          "path": "gql/wire_evolution.graphql",
+          "namespace": null,
+          "element": "WireEvolutionExtCommandC",
+          "qualified_element": "WireEvolutionExtCommandC"
+        },
+        "rust": {
+          "path": "rust/wire_evolution.structframe.rs",
+          "namespace": "wire_evolution",
+          "element": "ExtCommandC",
+          "qualified_element": "wire_evolution::ExtCommandC"
+        },
+        "csharp": {
+          "path": "csharp/WireEvolution/Messages/ExtCommandC.cs",
+          "namespace": "StructFrame.WireEvolution",
+          "element": "ExtCommandC",
+          "qualified_element": "StructFrame.WireEvolution.ExtCommandC"
+        }
+      }
+    },
+    {
+      "name": "ExtCommandD",
+      "package": "wire_evolution",
+      "source_file": "wire_evolution_messages.sf",
+      "msgid": null,
+      "max_size": 8,
+      "base_size": 8,
+      "min_size": 8,
+      "is_variable": false,
+      "is_envelope": false,
+      "extensions_start": null,
+      "magic_bytes": [
+        10,
+        10
+      ],
+      "oneofs": null,
+      "generated_files": {
+        "c": {
+          "path": "c/wire_evolution.structframe.h",
+          "namespace": null,
+          "element": "WireEvolutionExtCommandD",
+          "qualified_element": "WireEvolutionExtCommandD"
+        },
+        "cpp": {
+          "path": "cpp/wire_evolution.structframe.hpp",
+          "namespace": "structframe::wire_evolution",
+          "element": "ExtCommandD",
+          "qualified_element": "structframe::wire_evolution::ExtCommandD"
+        },
+        "ts": {
+          "path": "ts/wire-evolution.structframe.ts",
+          "namespace": null,
+          "element": "ExtCommandD",
+          "qualified_element": "ExtCommandD"
+        },
+        "js": {
+          "path": "js/wire-evolution.structframe.js",
+          "namespace": null,
+          "element": "ExtCommandD",
+          "qualified_element": "ExtCommandD"
+        },
+        "py": {
+          "path": "py/struct_frame/generated/wire_evolution.py",
+          "namespace": "struct_frame.generated.wire_evolution",
+          "element": "ExtCommandD",
+          "qualified_element": "struct_frame.generated.wire_evolution.ExtCommandD"
+        },
+        "gql": {
+          "path": "gql/wire_evolution.graphql",
+          "namespace": null,
+          "element": "WireEvolutionExtCommandD",
+          "qualified_element": "WireEvolutionExtCommandD"
+        },
+        "rust": {
+          "path": "rust/wire_evolution.structframe.rs",
+          "namespace": "wire_evolution",
+          "element": "ExtCommandD",
+          "qualified_element": "wire_evolution::ExtCommandD"
+        },
+        "csharp": {
+          "path": "csharp/WireEvolution/Messages/ExtCommandD.cs",
+          "namespace": "StructFrame.WireEvolution",
+          "element": "ExtCommandD",
+          "qualified_element": "StructFrame.WireEvolution.ExtCommandD"
+        }
+      }
+    },
+    {
+      "name": "BaseExtensionMessage",
+      "package": "wire_evolution",
+      "source_file": "wire_evolution_messages.sf",
+      "msgid": 1,
+      "max_size": 7,
+      "base_size": 3,
+      "min_size": 7,
+      "is_variable": false,
+      "is_envelope": false,
+      "extensions_start": 3,
+      "magic_bytes": [
+        7,
+        11
+      ],
+      "oneofs": null,
+      "generated_files": {
+        "c": {
+          "path": "c/wire_evolution.structframe.h",
+          "namespace": null,
+          "element": "WireEvolutionBaseExtensionMessage",
+          "qualified_element": "WireEvolutionBaseExtensionMessage"
+        },
+        "cpp": {
+          "path": "cpp/wire_evolution.structframe.hpp",
+          "namespace": "structframe::wire_evolution",
+          "element": "BaseExtensionMessage",
+          "qualified_element": "structframe::wire_evolution::BaseExtensionMessage"
+        },
+        "ts": {
+          "path": "ts/wire-evolution.structframe.ts",
+          "namespace": null,
+          "element": "BaseExtensionMessage",
+          "qualified_element": "BaseExtensionMessage"
+        },
+        "js": {
+          "path": "js/wire-evolution.structframe.js",
+          "namespace": null,
+          "element": "BaseExtensionMessage",
+          "qualified_element": "BaseExtensionMessage"
+        },
+        "py": {
+          "path": "py/struct_frame/generated/wire_evolution.py",
+          "namespace": "struct_frame.generated.wire_evolution",
+          "element": "BaseExtensionMessage",
+          "qualified_element": "struct_frame.generated.wire_evolution.BaseExtensionMessage"
+        },
+        "gql": {
+          "path": "gql/wire_evolution.graphql",
+          "namespace": null,
+          "element": "WireEvolutionBaseExtensionMessage",
+          "qualified_element": "WireEvolutionBaseExtensionMessage"
+        },
+        "rust": {
+          "path": "rust/wire_evolution.structframe.rs",
+          "namespace": "wire_evolution",
+          "element": "BaseExtensionMessage",
+          "qualified_element": "wire_evolution::BaseExtensionMessage"
+        },
+        "csharp": {
+          "path": "csharp/WireEvolution/Messages/BaseExtensionMessage.cs",
+          "namespace": "StructFrame.WireEvolution",
+          "element": "BaseExtensionMessage",
+          "qualified_element": "StructFrame.WireEvolution.BaseExtensionMessage"
+        }
+      }
+    },
+    {
+      "name": "VariableExtensionMessage",
+      "package": "wire_evolution",
+      "source_file": "wire_evolution_messages.sf",
+      "msgid": 2,
+      "max_size": 38,
+      "base_size": 34,
+      "min_size": 6,
+      "is_variable": true,
+      "is_envelope": false,
+      "extensions_start": 3,
+      "magic_bytes": [
+        7,
+        9
+      ],
+      "oneofs": null,
+      "generated_files": {
+        "c": {
+          "path": "c/wire_evolution.structframe.h",
+          "namespace": null,
+          "element": "WireEvolutionVariableExtensionMessage",
+          "qualified_element": "WireEvolutionVariableExtensionMessage"
+        },
+        "cpp": {
+          "path": "cpp/wire_evolution.structframe.hpp",
+          "namespace": "structframe::wire_evolution",
+          "element": "VariableExtensionMessage",
+          "qualified_element": "structframe::wire_evolution::VariableExtensionMessage"
+        },
+        "ts": {
+          "path": "ts/wire-evolution.structframe.ts",
+          "namespace": null,
+          "element": "VariableExtensionMessage",
+          "qualified_element": "VariableExtensionMessage"
+        },
+        "js": {
+          "path": "js/wire-evolution.structframe.js",
+          "namespace": null,
+          "element": "VariableExtensionMessage",
+          "qualified_element": "VariableExtensionMessage"
+        },
+        "py": {
+          "path": "py/struct_frame/generated/wire_evolution.py",
+          "namespace": "struct_frame.generated.wire_evolution",
+          "element": "VariableExtensionMessage",
+          "qualified_element": "struct_frame.generated.wire_evolution.VariableExtensionMessage"
+        },
+        "gql": {
+          "path": "gql/wire_evolution.graphql",
+          "namespace": null,
+          "element": "WireEvolutionVariableExtensionMessage",
+          "qualified_element": "WireEvolutionVariableExtensionMessage"
+        },
+        "rust": {
+          "path": "rust/wire_evolution.structframe.rs",
+          "namespace": "wire_evolution",
+          "element": "VariableExtensionMessage",
+          "qualified_element": "wire_evolution::VariableExtensionMessage"
+        },
+        "csharp": {
+          "path": "csharp/WireEvolution/Messages/VariableExtensionMessage.cs",
+          "namespace": "StructFrame.WireEvolution",
+          "element": "VariableExtensionMessage",
+          "qualified_element": "StructFrame.WireEvolution.VariableExtensionMessage"
+        }
+      }
+    },
+    {
+      "name": "OneOfExtensionMessage",
+      "package": "wire_evolution",
+      "source_file": "wire_evolution_messages.sf",
+      "msgid": 3,
+      "max_size": 10,
+      "base_size": 8,
+      "min_size": 10,
+      "is_variable": false,
+      "is_envelope": false,
+      "extensions_start": null,
+      "magic_bytes": [
+        254,
+        127
+      ],
+      "oneofs": [
+        {
+          "name": "command",
+          "size": 8,
+          "base_size": 6,
+          "variable": false,
+          "auto_discriminator": true,
+          "discriminator_type": "field_order",
+          "min_size_override": null,
+          "max_size_override": null,
+          "variants": [
+            {
+              "disc_val": 1,
+              "field_name": "cmd_a",
+              "field_size": 6
+            },
+            {
+              "disc_val": 2,
+              "field_name": "cmd_b",
+              "field_size": 3
+            },
+            {
+              "disc_val": 3,
+              "field_name": "cmd_c",
+              "field_size": 5
+            },
+            {
+              "disc_val": 4,
+              "field_name": "cmd_d",
+              "field_size": 8
+            }
+          ]
+        }
+      ],
+      "generated_files": {
+        "c": {
+          "path": "c/wire_evolution.structframe.h",
+          "namespace": null,
+          "element": "WireEvolutionOneOfExtensionMessage",
+          "qualified_element": "WireEvolutionOneOfExtensionMessage"
+        },
+        "cpp": {
+          "path": "cpp/wire_evolution.structframe.hpp",
+          "namespace": "structframe::wire_evolution",
+          "element": "OneOfExtensionMessage",
+          "qualified_element": "structframe::wire_evolution::OneOfExtensionMessage"
+        },
+        "ts": {
+          "path": "ts/wire-evolution.structframe.ts",
+          "namespace": null,
+          "element": "OneOfExtensionMessage",
+          "qualified_element": "OneOfExtensionMessage"
+        },
+        "js": {
+          "path": "js/wire-evolution.structframe.js",
+          "namespace": null,
+          "element": "OneOfExtensionMessage",
+          "qualified_element": "OneOfExtensionMessage"
+        },
+        "py": {
+          "path": "py/struct_frame/generated/wire_evolution.py",
+          "namespace": "struct_frame.generated.wire_evolution",
+          "element": "OneOfExtensionMessage",
+          "qualified_element": "struct_frame.generated.wire_evolution.OneOfExtensionMessage"
+        },
+        "gql": {
+          "path": "gql/wire_evolution.graphql",
+          "namespace": null,
+          "element": "WireEvolutionOneOfExtensionMessage",
+          "qualified_element": "WireEvolutionOneOfExtensionMessage"
+        },
+        "rust": {
+          "path": "rust/wire_evolution.structframe.rs",
+          "namespace": "wire_evolution",
+          "element": "OneOfExtensionMessage",
+          "qualified_element": "wire_evolution::OneOfExtensionMessage"
+        },
+        "csharp": {
+          "path": "csharp/WireEvolution/Messages/OneOfExtensionMessage.cs",
+          "namespace": "StructFrame.WireEvolution",
+          "element": "OneOfExtensionMessage",
+          "qualified_element": "StructFrame.WireEvolution.OneOfExtensionMessage"
+        }
+      }
+    },
+    {
+      "name": "MultiOneOfExtensionMessage",
+      "package": "wire_evolution",
+      "source_file": "wire_evolution_messages.sf",
+      "msgid": 4,
+      "max_size": 15,
+      "base_size": 15,
+      "min_size": 15,
+      "is_variable": false,
+      "is_envelope": false,
+      "extensions_start": null,
+      "magic_bytes": [
+        125,
+        252
+      ],
+      "oneofs": [
+        {
+          "name": "base_union",
+          "size": 6,
+          "base_size": 6,
+          "variable": false,
+          "auto_discriminator": true,
+          "discriminator_type": "field_order",
+          "min_size_override": null,
+          "max_size_override": null,
+          "variants": [
+            {
+              "disc_val": 1,
+              "field_name": "first_a",
+              "field_size": 6
+            },
+            {
+              "disc_val": 2,
+              "field_name": "first_b",
+              "field_size": 3
+            }
+          ]
+        },
+        {
+          "name": "ext_union",
+          "size": 6,
+          "base_size": 6,
+          "variable": false,
+          "auto_discriminator": true,
+          "discriminator_type": "field_order",
+          "min_size_override": null,
+          "max_size_override": null,
+          "variants": [
+            {
+              "disc_val": 1,
+              "field_name": "second_a",
+              "field_size": 6
+            },
+            {
+              "disc_val": 2,
+              "field_name": "second_ext",
+              "field_size": 5
+            }
+          ]
+        }
+      ],
+      "generated_files": {
+        "c": {
+          "path": "c/wire_evolution.structframe.h",
+          "namespace": null,
+          "element": "WireEvolutionMultiOneOfExtensionMessage",
+          "qualified_element": "WireEvolutionMultiOneOfExtensionMessage"
+        },
+        "cpp": {
+          "path": "cpp/wire_evolution.structframe.hpp",
+          "namespace": "structframe::wire_evolution",
+          "element": "MultiOneOfExtensionMessage",
+          "qualified_element": "structframe::wire_evolution::MultiOneOfExtensionMessage"
+        },
+        "ts": {
+          "path": "ts/wire-evolution.structframe.ts",
+          "namespace": null,
+          "element": "MultiOneOfExtensionMessage",
+          "qualified_element": "MultiOneOfExtensionMessage"
+        },
+        "js": {
+          "path": "js/wire-evolution.structframe.js",
+          "namespace": null,
+          "element": "MultiOneOfExtensionMessage",
+          "qualified_element": "MultiOneOfExtensionMessage"
+        },
+        "py": {
+          "path": "py/struct_frame/generated/wire_evolution.py",
+          "namespace": "struct_frame.generated.wire_evolution",
+          "element": "MultiOneOfExtensionMessage",
+          "qualified_element": "struct_frame.generated.wire_evolution.MultiOneOfExtensionMessage"
+        },
+        "gql": {
+          "path": "gql/wire_evolution.graphql",
+          "namespace": null,
+          "element": "WireEvolutionMultiOneOfExtensionMessage",
+          "qualified_element": "WireEvolutionMultiOneOfExtensionMessage"
+        },
+        "rust": {
+          "path": "rust/wire_evolution.structframe.rs",
+          "namespace": "wire_evolution",
+          "element": "MultiOneOfExtensionMessage",
+          "qualified_element": "wire_evolution::MultiOneOfExtensionMessage"
+        },
+        "csharp": {
+          "path": "csharp/WireEvolution/Messages/MultiOneOfExtensionMessage.cs",
+          "namespace": "StructFrame.WireEvolution",
+          "element": "MultiOneOfExtensionMessage",
+          "qualified_element": "StructFrame.WireEvolution.MultiOneOfExtensionMessage"
+        }
+      }
+    }
+  ],
+  "enums": []
+}

@@ -1,0 +1,160 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Struct Frame",
+  "scopeName": "source.sf",
+  "fileTypes": ["sf"],
+  "patterns": [
+    { "include": "#line-comment" },
+    { "include": "#block-comment" },
+    { "include": "#string" },
+    { "include": "#message-definition" },
+    { "include": "#enum-definition" },
+    { "include": "#oneof-definition" },
+    { "include": "#package-declaration" },
+    { "include": "#keywords" },
+    { "include": "#primitive-types" },
+    { "include": "#boolean-literals" },
+    { "include": "#numbers" },
+    { "include": "#field-options" },
+    { "include": "#enum-value" },
+    { "include": "#field-declaration-primitive" },
+    { "include": "#field-declaration" }
+  ],
+  "repository": {
+    "line-comment": {
+      "name": "comment.line.double-slash.sf",
+      "match": "//.*$"
+    },
+    "block-comment": {
+      "name": "comment.block.sf",
+      "begin": "/\\*",
+      "end": "\\*/",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.comment.begin.sf" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.comment.end.sf" }
+      }
+    },
+    "string": {
+      "name": "string.quoted.double.sf",
+      "begin": "\"",
+      "end": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.sf" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.sf" }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.sf",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "keywords": {
+      "name": "keyword.control.sf",
+      "match": "\\b(package|import|option|message|enum|repeated|oneof)\\b"
+    },
+    "primitive-types": {
+      "name": "storage.type.sf",
+      "match": "\\b(int8|int16|int32|int64|uint8|uint16|uint32|uint64|float|double|bool|string|bytes)\\b"
+    },
+    "boolean-literals": {
+      "name": "constant.language.sf",
+      "match": "\\b(true|false)\\b"
+    },
+    "numbers": {
+      "name": "constant.numeric.sf",
+      "match": "\\b[0-9]+(\\.[0-9]+)?\\b"
+    },
+    "message-definition": {
+      "match": "\\b(message)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.sf" },
+        "2": { "name": "entity.name.type.sf" }
+      }
+    },
+    "enum-definition": {
+      "match": "\\b(enum)\\s+([A-Z][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.sf" },
+        "2": { "name": "entity.name.type.sf" }
+      }
+    },
+    "oneof-definition": {
+      "match": "\\b(oneof)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.sf" },
+        "2": { "name": "entity.name.type.sf" }
+      }
+    },
+    "package-declaration": {
+      "match": "\\b(package)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.sf" },
+        "2": { "name": "entity.name.namespace.sf" }
+      }
+    },
+    "field-options": {
+      "name": "meta.field.options.sf",
+      "begin": "\\[",
+      "end": "\\]",
+      "applyEndPatternLast": true,
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.field-options.begin.sf" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.field-options.end.sf" }
+      },
+      "patterns": [
+        { "include": "#string" },
+        {
+          "name": "support.type.property-name.sf",
+          "match": "\\b(size|max_size|element_size|flatten|default)\\b"
+        },
+        {
+          "name": "variable.other.enummember.sf",
+          "match": "(?<==\\s*)[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+          "name": "constant.numeric.sf",
+          "match": "(?:-?[0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?|0[xX][0-9a-fA-F]+)\\b"
+        },
+        {
+          "name": "constant.language.sf",
+          "match": "\\b(true|false)\\b"
+        }
+      ]
+    },
+    "enum-value": {
+      "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(=)\\s*([0-9]+)\\s*;",
+      "captures": {
+        "1": { "name": "variable.other.constant.sf" },
+        "2": { "name": "keyword.operator.assignment.sf" },
+        "3": { "name": "constant.numeric.sf" }
+      }
+    },
+    "field-declaration-primitive": {
+      "match": "^\\s*(?:(repeated)\\s+)?(int8|int16|int32|int64|uint8|uint16|uint32|uint64|float|double|bool|string|bytes)\\s+([a-z_][a-zA-Z0-9_]*)\\s*(=)\\s*([0-9]+)",
+      "captures": {
+        "1": { "name": "keyword.control.sf" },
+        "2": { "name": "storage.type.sf" },
+        "3": { "name": "variable.other.readwrite.sf" },
+        "4": { "name": "keyword.operator.assignment.sf" },
+        "5": { "name": "constant.numeric.sf" }
+      }
+    },
+    "field-declaration": {
+      "match": "^\\s*(?:(repeated)\\s+)?([A-Z][a-zA-Z0-9_]*)\\s+([a-z_][a-zA-Z0-9_]*)\\s*(=)\\s*([0-9]+)",
+      "captures": {
+        "1": { "name": "keyword.control.sf" },
+        "2": { "name": "entity.name.type.sf" },
+        "3": { "name": "variable.other.readwrite.sf" },
+        "4": { "name": "keyword.operator.assignment.sf" },
+        "5": { "name": "constant.numeric.sf" }
+      }
+    }
+  }
+}

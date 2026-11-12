@@ -41,6 +41,7 @@ struct-frame/
     main.py                 # CLI entry point
     struct_frame/
       generate.py           # Proto parsing and validation
+      language_facts.py     # Primitive types, option names, limits (shared with the VS Code extension)
       c_gen.py              # C code generator
       cpp_gen.py            # C++ code generator
       ts_gen.py             # TypeScript code generator
@@ -66,8 +67,25 @@ struct-frame/
     test_*.py               # pytest suites for the generator itself
   examples/                 # Example schemas and tested programs
   wireshark/                # Lua dissector (see wireshark/README.md)
+  editors/vscode/           # VS Code extension + language server for .sf files
   docs/                     # Documentation site sources
 ```
+
+### Adding or changing a schema option
+
+The compiler and the VS Code extension read the language's primitive types, option names, accepted
+values and numeric limits from one place, `src/struct_frame/language_facts.py`:
+
+1. Change the table in `language_facts.py` and the compiler code that uses it in `generate.py`.
+2. Regenerate the extension's copy: `python src/struct_frame/language_facts.py --write`. CI runs
+   `--check` and fails if it is stale.
+3. Add hover text for any new name in `editors/vscode/server/src/docs.ts`, plus any new validation
+   in `server.ts`. `npm test` in `editors/vscode` fails until every name is documented.
+4. The extension's corpus test requires zero language-server errors on every schema the compiler
+   accepts (`tests/proto`, `examples`, `tests/benchmarks/schema`, `tests/docs/schemas`).
+
+Changes under `editors/vscode` are published as a new extension version with the next PyPI release
+(see `docs/dev/RELEASE.md`).
 
 ## Code Generation Pipeline
 

@@ -73,6 +73,9 @@ jobs:
       - name: Check test-coverage doc is up to date
         run: python tests/gen_test_coverage.py --check
 
+      - name: Check editor language facts are up to date
+        run: python src/struct_frame/language_facts.py --check
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

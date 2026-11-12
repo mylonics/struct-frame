@@ -234,6 +234,7 @@ The pipeline will automatically:
 - Create a git tag (e.g., `v0.0.51`)
 - Build the Python package
 - Publish to PyPI
+- Publish the VS Code extension (`editors/vscode`) with the same version, if it changed since its last release
 
 **Note:** This workflow requires PyPI trusted publisher to be configured on PyPI.org (not GitHub secrets). See RELEASE.md for setup instructions.
 

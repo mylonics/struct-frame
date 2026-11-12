@@ -29,6 +29,8 @@ import json
 import os
 import sys
 
+from struct_frame import language_facts as _facts
+
 SNAPSHOT_VERSION = 1
 
 BREAKING = "breaking"
@@ -57,9 +59,7 @@ EXIT_CHANGES = 1
 EXIT_ERROR = 2
 
 _SCALAR_SIZES = {
-    "uint8": 1, "int8": 1, "bool": 1, "uint16": 2, "int16": 2,
-    "uint32": 4, "int32": 4, "float": 4, "uint64": 8, "int64": 8,
-    "double": 8,
+    name: size for name, (_kind, size) in _facts.PRIMITIVES.items() if size is not None
 }
 
 

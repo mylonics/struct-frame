@@ -12,13 +12,18 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 jobs:
   publish:
     name: Create Tag and Publish
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+      released: ${{ steps.check_tag.outputs.exists == 'false' }}
 
     steps:
       - name: Checkout code
@@ -89,3 +94,16 @@ jobs:
             --title "v$VERSION" \
             --generate-notes \
             dist/*
+
+  # The VS Code extension (editors/vscode) ships with the same version, but only when
+  # it changed since its last release; see publish-vscode.yml.
+  vscode:
+    name: Publish VS Code Extension
+    needs: publish
+    if: needs.publish.outputs.released == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-vscode.yml
+    with:
+      version: ${{ needs.publish.outputs.version }}
+    secrets: inherit

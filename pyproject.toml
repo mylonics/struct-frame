@@ -57,6 +57,10 @@ Documentation = "https://struct-frame.mylonics.com"
 Changelog = "https://github.com/mylonics/struct-frame/blob/main/CHANGELOG.md"
 Issues = "https://github.com/mylonics/struct-frame/issues"
 
+[tool.hatch.build.targets.sdist]
+# The VS Code extension ships to the VS Marketplace / Open VSX, not PyPI.
+exclude = ["/editors"]
+
 [tool.hatch.build.targets.sdist.force-include]
 "src/struct_frame/boilerplate" = "src/struct_frame/boilerplate"
 "src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo/asio/include/asio" = "src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo/asio/include/asio"

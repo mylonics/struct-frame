@@ -1,0 +1,80 @@
+# Builds and tests the VS Code extension in editors/vscode.
+#
+# Not path-filtered on purpose: the extension's tests also run against the compiler's
+# language facts (src/struct_frame/language_facts.py) and every compiler-valid schema in
+# the repo, so a compiler or schema change can break the extension without touching
+# editors/vscode.
+
+name: VS Code Extension
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: vscode-extension-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+        working-directory: editors/vscode
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check language facts are up to date
+        working-directory: .
+        run: python src/struct_frame/language_facts.py --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Package VSIX
+        run: |
+          VERSION=$(grep '^version = ' ../../pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          npm pkg set version="$VERSION"
+          npx vsce package --no-dependencies -o struct-frame-ls.vsix
+
+      - name: Check VSIX contents
+        run: |
+          npx vsce ls --no-dependencies | tee vsix-files.txt
+          if grep -E '(^|/)(src|__tests__|examples)/|\.map$|\.tsbuildinfo$|package-lock\.json$|sf_compile\.json$' vsix-files.txt; then
+            echo "::error::Unexpected files in the VSIX (see .vscodeignore)"
+            exit 1
+          fi
+
+      - name: Upload VSIX
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: struct-frame-ls-vsix
+          path: editors/vscode/struct-frame-ls.vsix
+          retention-days: 14

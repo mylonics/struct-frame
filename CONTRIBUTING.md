@@ -37,6 +37,7 @@ python test_all.py                                    # generate, compile and te
 python test_all.py --require-langs c,cpp,py,ts,js     # fail instead of skipping a missing toolchain
 python -m pytest tests                                # generator-level suites only (fast)
 python tests/gen_test_coverage.py --check             # coverage doc is up to date
+python src/struct_frame/language_facts.py --check     # editor language facts are up to date
 ```
 
 ## Making changes
@@ -52,6 +53,13 @@ python tests/gen_test_coverage.py --check             # coverage doc is up to da
   `tests/test_doc_api_names.py`; programs in `examples/` are built and run by `tests/test_examples.py`.
 - **New CLI options** need a row in `tests/coverage_spec.py` (then `python tests/gen_test_coverage.py`)
   and an entry in the [CLI reference](docs/src/content/docs/reference/cli-reference.md).
+- **Schema language** (primitive types, options, accepted values, limits): change the tables in
+  `src/struct_frame/language_facts.py`, which both the compiler and the VS Code extension read. Then
+  run `python src/struct_frame/language_facts.py --write` and add hover text for any new name in
+  `editors/vscode/server/src/docs.ts`. The extension's tests fail until every name is documented.
+- **VS Code extension** (`editors/vscode/`, Node.js 22+): `cd editors/vscode && npm ci && npm test`.
+  The tests include a check that the language server reports no errors on any schema the compiler
+  accepts. To debug, open the `editors/vscode` folder in VS Code and press F5.
 
 More detail on the layout, naming conventions and release process is in
 [docs/src/content/docs/reference/development.md](docs/src/content/docs/reference/development.md)

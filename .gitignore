@@ -3,6 +3,8 @@ ts_out/
 tests/ts_out/
 node_modules/
 .vscode/
+# ...but keep the VS Code extension's debug configs (F5 from editors/vscode)
+!editors/vscode/.vscode/
 main.exe
 dist/
 __pycache__/
