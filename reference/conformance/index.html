@@ -203,9 +203,17 @@ order, with no per-field tag or length prefix.</p>
 
 
 <table><thead><tr><th>Type</th><th>Wire encoding</th></tr></thead><tbody><tr><td><code dir="auto">int8</code> / <code dir="auto">uint8</code> / <code dir="auto">bool</code></td><td>1 byte</td></tr><tr><td><code dir="auto">int16</code> / <code dir="auto">uint16</code></td><td>2 bytes, little-endian</td></tr><tr><td><code dir="auto">int32</code> / <code dir="auto">uint32</code> / <code dir="auto">float</code></td><td>4 bytes, little-endian (IEEE-754 for <code dir="auto">float</code>)</td></tr><tr><td><code dir="auto">int64</code> / <code dir="auto">uint64</code> / <code dir="auto">double</code></td><td>8 bytes, little-endian (IEEE-754 for <code dir="auto">double</code>)</td></tr><tr><td><code dir="auto">enum</code></td><td>Stored as the underlying integer type (default <code dir="auto">int32</code>)</td></tr><tr><td>Fixed <code dir="auto">string size = N</code></td><td>Exactly N bytes, NUL-terminated, NUL-padded</td></tr><tr><td>Variable <code dir="auto">string max_size = N</code></td><td>1 length byte (≤ N), then N bytes (length-prefixed; trailing bytes are unspecified)</td></tr><tr><td>Fixed array <code dir="auto">size = N</code></td><td>N elements packed back-to-back</td></tr><tr><td>Bounded array <code dir="auto">max_size = N</code></td><td>1 count byte (≤ N), then N elements</td></tr><tr><td>Nested message</td><td>The nested struct, packed inline (no header, no CRC)</td></tr><tr><td><code dir="auto">oneof</code> (envelope)</td><td>A 1-byte discriminator followed by the selected variant. The discriminator is the <em>field number</em> of the active variant (default), or the <em>msgid</em> of the active variant when <code dir="auto">option discriminator = msgid</code>, or absent when <code dir="auto">option discriminator = none</code> (in which case the active variant is implied by message length / context).</td></tr><tr><td>Extension fields (<code dir="auto">option extensions_start = N</code>)</td><td>Encoded after the base fields, in declaration order. Older parsers MAY truncate the payload to <code dir="auto">base_size</code> and still decode successfully (see <a href="#5-wire-evolution">§ 5</a>).</td></tr></tbody></table>
-<p>Multi-byte integers are little-endian in <em>all</em> reference implementations.
+<p>Multi-byte integers are little-endian on the wire in <em>all</em> reference implementations.
 Structs are packed with no implicit padding; the generator emits
 <code dir="auto">#pragma pack(push, 1)</code> in C/C++ unless <code dir="auto">--no_packed</code> is passed.</p>
+<p><strong>Host byte order.</strong> The Python, TypeScript/JavaScript, Rust and C# runtimes encode
+multi-byte values explicitly and are correct on any host (C# arrays are byte-swapped
+on big-endian hosts). The generated <strong>C and C++</strong> payload codecs copy values in host
+byte order, so they require a little-endian host; <code dir="auto">--no_packed</code> changes alignment
+handling only, not byte order. The C/C++ runtime headers refuse to compile on a
+big-endian target (<code dir="auto">#error</code>) rather than silently corrupt data; define
+<code dir="auto">STRUCT_FRAME_ASSUME_LITTLE_ENDIAN</code> to override the check on a toolchain that does
+not expose the byte-order macros.</p>
 <h2 id="3-message-ids-and-package-ids">3. Message IDs and package IDs</h2>
 <ul>
 <li>For <code dir="auto">Standard</code> / <code dir="auto">Sensor</code> / <code dir="auto">IPC</code> profiles, <code dir="auto">MSG_ID</code> is a single byte in the
