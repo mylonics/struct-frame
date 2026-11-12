@@ -134,6 +134,8 @@ Always reference these instructions first and fallback to search or bash command
 ├── wireshark/               # Wireshark dissector plugin
 │   ├── struct_frame.lua     # Lua dissector
 │   └── README.md
+├── editors/vscode/          # VS Code extension + language server (TypeScript, own npm root)
+│   └── server/src/facts/    # language-facts.json, generated from src/struct_frame/language_facts.py
 ├── gen/                     # Generated code output directory
 ├── test_all.py              # Test suite wrapper script
 ├── mkdocs.yml               # MkDocs configuration

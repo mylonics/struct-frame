@@ -1,0 +1,6 @@
+package fixtures;
+
+enum ImportedState {
+  READY = 1;
+  FAILED = 2;
+}

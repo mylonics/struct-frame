@@ -1,6 +1,7 @@
 # Release Process
 
-This document describes how to release new versions of struct-frame to PyPI.
+This document describes how to release new versions of struct-frame to PyPI, and how the
+VS Code extension in `editors/vscode` is released alongside it.
 
 ## Automated Release Pipeline
 
@@ -31,6 +32,18 @@ The release process has been consolidated into a streamlined workflow that requi
      - Builds the Python package (wheel and sdist)
      - Publishes to PyPI via OIDC trusted publishing
      - Creates a GitHub Release with release notes
+     - Then calls `publish-vscode.yml` for the extension
+
+4. **`publish-vscode.yml`** (Publish VS Code Extension) — Releases the `mylonics.struct-frame-ls` extension
+   - **Trigger**: Called by `publish.yml` after a new PyPI release; or manual `workflow_dispatch` on `main`
+     (inputs `force`, and `dry_run`, which defaults to true)
+   - **Actions**:
+     - Skips the release if nothing under `editors/vscode` changed since the last `vscode-v*` tag.
+       The extension therefore uses the same version as the Python package, but versions are
+       skipped when the extension didn't change (e.g. 0.10.11 → 0.10.14)
+     - Runs the extension tests, stamps the version into `package.json` (never committed) and packages the VSIX
+     - Publishes to the VS Marketplace, then to Open VSX (best effort)
+     - Pushes a `vscode-vX.Y.Z` tag and attaches the VSIX to the `vX.Y.Z` GitHub Release
 
 ### Release Flow
 
@@ -70,6 +83,14 @@ The release process has been consolidated into a streamlined workflow that requi
 │    - Builds Python package                                     │
 │    - Publishes to PyPI                                         │
 │    - Creates GitHub Release                                    │
+└────────────────────────┬────────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│ 6. publish-vscode.yml (called by publish.yml)                   │
+│    - Skips unless editors/vscode changed since last vscode-v*  │
+│    - Tests, packages and publishes the extension as X.Y.Z      │
+│    - Tags vscode-vX.Y.Z, attaches the VSIX to the release      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -98,6 +119,8 @@ The following secrets must be configured in the GitHub repository settings:
 | Secret | Purpose |
 |--------|---------|
 | `PAT_GITHUB` | GitHub PAT with `repo` + `workflow` scopes. Required for auto-merge and to trigger downstream workflows (pushes with `GITHUB_TOKEN` do not trigger other workflows). |
+| `VSCE_TOKEN` | Azure DevOps PAT with the **Marketplace (Manage)** scope for the `mylonics` publisher. Used by `publish-vscode.yml`. These PATs expire; note the date. |
+| `OPEN_VSIX_TOKEN` | Open VSX access token for the `mylonics` namespace. Publishing to Open VSX is best effort (a failure doesn't fail the release). |
 
 #### Repository Settings
 
@@ -238,6 +261,19 @@ If you try to release a version that already exists on PyPI, the workflow will f
 2. Manually update the tag if one was created
 3. Run the workflow again with the new version
 
+### VS Code Extension Publish Fails
+
+The extension is published after PyPI, so a failure there (usually an expired `VSCE_TOKEN`)
+leaves the Python release intact. To recover:
+
+1. Renew the token and update the `VSCE_TOKEN` secret.
+2. Run [Publish VS Code Extension](https://github.com/mylonics/struct-frame/actions/workflows/publish-vscode.yml)
+   on `main` with `dry_run` unchecked. It publishes the current `pyproject.toml` version if its
+   `vscode-v*` tag doesn't exist yet. Check `force` to publish even when `editors/vscode` is unchanged.
+
+Run it with `dry_run` checked to build and package the VSIX (uploaded as a workflow artifact)
+without publishing.
+
 ### Changelog Update Fails
 
 If the changelog update step fails, it might be because:
@@ -268,3 +304,5 @@ You can manually update the changelog and re-run the workflow, or manually creat
 - [ ] Verify the git tag was created
 - [ ] Verify the new version appears on PyPI
 - [ ] Test installing the new version: `pip install struct-frame==X.Y.Z`
+- [ ] If `editors/vscode` changed: verify the `Publish VS Code Extension` job ran and the
+      extension appears on the [VS Marketplace](https://marketplace.visualstudio.com/items?itemName=mylonics.struct-frame-ls)

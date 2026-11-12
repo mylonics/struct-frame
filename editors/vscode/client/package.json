@@ -1,0 +1,18 @@
+{
+  "name": "struct-frame-ls-client",
+  "version": "0.1.0",
+  "description": "Client for struct-frame language server",
+  "main": "out/extension",
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json -w"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.75.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

@@ -27,6 +27,8 @@ from struct_frame import TestCSharpGen
 from struct_frame import pascal_case
 from struct_frame import camel_to_snake_case
 from struct_frame.naming import NameOverrides, NameOverrideError, validate_generated_names
+from struct_frame import language_facts as facts
+from struct_frame.language_facts import INTEGER_RANGES
 from proto_schema_parser.parser import Parser
 from proto_schema_parser import ast
 from proto_schema_parser.ast import FieldCardinality
@@ -38,20 +40,11 @@ import sys
 current_error_field = ""
 current_error_message = ""
 
+# Built-in types (from language_facts.PRIMITIVES). string/bytes have no fixed size; the
+# 4 here is a placeholder that Field.validate replaces with the [size]/[max_size] size.
 default_types = {
-    "uint8": {"size": 1},
-    "int8": {"size": 1},
-    "uint16": {"size": 2},
-    "int16": {"size": 2},
-    "uint32": {"size": 4},
-    "int32": {"size": 4},
-    "bool": {"size": 1},
-    "float": {"size": 4},
-    "double": {"size": 8},
-    "int64": {"size": 8},
-    "uint64": {"size": 8},
-    "string": {"size": 4},  # Variable length, estimated size for length prefix
-    "bytes": {"size": 4},   # Variable length byte array, same wire format as string
+    name: {"size": size if size is not None else 4}
+    for name, (_kind, size) in facts.PRIMITIVES.items()
 }
 
 # Type codes for magic number calculation
@@ -90,19 +83,8 @@ wire_struct_format = {
     "double": "d",
 }
 
-# Inclusive (min, max) value ranges for integer field types, used to validate
-# [default = N] literals. Unlike the flat 1-65535 range used for size/max_size
-# options, these are the true representable ranges of each wire integer type.
-INTEGER_RANGES = {
-    "uint8": (0, 0xFF),
-    "int8": (-0x80, 0x7F),
-    "uint16": (0, 0xFFFF),
-    "int16": (-0x8000, 0x7FFF),
-    "uint32": (0, 0xFFFFFFFF),
-    "int32": (-0x80000000, 0x7FFFFFFF),
-    "uint64": (0, 0xFFFFFFFFFFFFFFFF),
-    "int64": (-0x8000000000000000, 0x7FFFFFFFFFFFFFFF),
-}
+# INTEGER_RANGES (imported from language_facts above): inclusive (min, max) value
+# ranges for integer field types, used to validate [default = N] literals.
 
 
 def calculate_magic_numbers(message):
@@ -205,10 +187,10 @@ def _coerce_scalar_default(field_type, raw_value):
         if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
             return False, f"default value must be a numeric literal for type {field_type}, got {raw_value!r}"
         value = float(raw_value)
-        if field_type == "float" and abs(value) > 3.4028234663852886e38 \
+        if field_type == "float" and abs(value) > facts.FLOAT_MAX \
                 and value != float("inf") and value != float("-inf"):
             return False, (f"default value {raw_value} out of range for float "
-                           f"(max 3.4028234663852886e+38)")
+                           f"(max {facts.FLOAT_MAX!r})")
         return True, value
 
     if field_type in ("string", "bytes"):
@@ -246,7 +228,7 @@ def _field_default_bytes(field):
             if field.size_option is not None:
                 return text_bytes.ljust(field.size_option, b"\x00")[:field.size_option]
             else:
-                count_fmt = "<H" if field.max_size > 255 else "<B"
+                count_fmt = "<H" if _prefix_bytes(field.max_size) == 2 else "<B"
                 payload = text_bytes.ljust(field.max_size, b"\x00")
                 return struct.pack(count_fmt, len(text_bytes)) + payload
 
@@ -871,9 +853,10 @@ class Enum(_Documented):
             if isinstance(number, bool) or not isinstance(number, int):
                 print(f"{location(self)}Enum {self.name}: entry {key} has non-integer value {number!r}")
                 return False
-            if number < 0 or number > 255:
+            lo, hi = facts.ENUM_VALUE_RANGE
+            if number < lo or number > hi:
                 print(f"{location(self)}Enum {self.name}: entry {key} = {number} is out of range "
-                      f"(enums are stored in 1 byte: 0..255)")
+                      f"(enums are stored in 1 byte: {lo}..{hi})")
                 return False
             if number in seen:
                 print(f"Enum {self.name}: entries {seen[number]} and {key} both have "
@@ -894,9 +877,15 @@ class Enum(_Documented):
         return output
 
 
-_MESSAGE_OPTIONS = ('msgid', 'variable', 'discriminator', 'is_envelope', 'envelope',
-                    'extensions_start', 'magic_bytes')
-_FIELD_OPTIONS = ('flatten', 'size', 'max_size', 'element_size', 'default')
+_MESSAGE_OPTIONS = tuple(facts.MESSAGE_OPTIONS) + tuple(facts.MESSAGE_OPTION_ALIASES)
+_ONEOF_OPTIONS = tuple(facts.ONEOF_OPTIONS)
+_FIELD_OPTIONS = tuple(facts.FIELD_OPTIONS)
+_SIZE_MIN, _SIZE_MAX = facts.SIZE_OPTION_RANGE
+
+
+def _prefix_bytes(max_size):
+    """Width of the length/count prefix of a [max_size=N] field."""
+    return 2 if max_size > facts.ONE_BYTE_PREFIX_MAX else 1
 
 
 def _did_you_mean(name, candidates):
@@ -909,13 +898,7 @@ def _did_you_mean(name, candidates):
     return f" (valid options: {listing})"
 
 
-def _field_option_base(name):
-    """Strip an optional ``(sf.)``/``(struct_frame.)`` qualifier from an option name."""
-    name = str(name).strip()
-    for prefix in ('(sf.', '(struct_frame.'):
-        if name.startswith(prefix) and name.endswith(')'):
-            return name[len(prefix):-1]
-    return name
+_field_option_base = facts.option_base_name
 
 
 class Field(_Documented):
@@ -981,53 +964,35 @@ class Field(_Documented):
                 if not oname:
                     continue
                 lname = str(oname).strip()
-                if _field_option_base(lname) not in _FIELD_OPTIONS:
+                base = _field_option_base(lname)
+                if base not in _FIELD_OPTIONS:
                     print(f"{location(self)}warning: unknown option '{lname}' on field {self.name}, ignored"
-                          f"{_did_you_mean(_field_option_base(lname), _FIELD_OPTIONS)}",
+                          f"{_did_you_mean(base, _FIELD_OPTIONS)}",
                           file=sys.stderr)
                     continue
-                # Support unqualified and a couple of qualified names
-                if lname in ('flatten', '(sf.flatten)', '(struct_frame.flatten)'):
-                    sval = str(ovalue).strip().lower()
-                    if sval in ('true', '1', 'yes', 'on') or ovalue is True:
+                if base == 'flatten':
+                    if facts.is_true(ovalue):
                         self.flatten = True
-                elif lname in ('size', '(sf.size)', '(struct_frame.size)'):
-                    # Fixed size for arrays or strings
+                elif base in ('size', 'max_size', 'element_size'):
+                    # size: fixed size for arrays or strings; max_size: variable size;
+                    # element_size: individual element size for repeated string arrays.
                     try:
-                        self.size_option = int(ovalue)
-                        if self.size_option <= 0 or self.size_option > 65535:
-                            print(
-                                f"Invalid size {self.size_option} for field {self.name}, must be 1-65535")
-                            return False
+                        value = int(ovalue)
                     except (ValueError, TypeError):
                         print(
-                            f"Invalid size value {ovalue} for field {self.name}, must be an integer")
+                            f"Invalid {base} value {ovalue} for field {self.name}, must be an integer")
                         return False
-                elif lname in ('max_size', '(sf.max_size)', '(struct_frame.max_size)'):
-                    # Variable size for arrays or strings
-                    try:
-                        self.max_size = int(ovalue)
-                        if self.max_size <= 0 or self.max_size > 65535:
-                            print(
-                                f"Invalid max_size {self.max_size} for field {self.name}, must be 1-65535")
-                            return False
-                    except (ValueError, TypeError):
+                    if value < _SIZE_MIN or value > _SIZE_MAX:
                         print(
-                            f"Invalid max_size value {ovalue} for field {self.name}, must be an integer")
+                            f"Invalid {base} {value} for field {self.name}, must be {_SIZE_MIN}-{_SIZE_MAX}")
                         return False
-                elif lname in ('element_size', '(sf.element_size)', '(struct_frame.element_size)'):
-                    # Individual element size for repeated string arrays
-                    try:
-                        self.element_size = int(ovalue)
-                        if self.element_size <= 0 or self.element_size > 65535:
-                            print(
-                                f"Invalid element_size {self.element_size} for field {self.name}, must be 1-65535")
-                            return False
-                    except (ValueError, TypeError):
-                        print(
-                            f"Invalid element_size value {ovalue} for field {self.name}, must be an integer")
-                        return False
-                elif lname in ('default', '(sf.default)', '(struct_frame.default)'):
+                    if base == 'size':
+                        self.size_option = value
+                    elif base == 'max_size':
+                        self.max_size = value
+                    else:
+                        self.element_size = value
+                elif base == 'default':
                     # Raw literal (bool/int/float/str) from the parser.
                     # Type-checked/coerced against field_type in validate()
                     # once the type is resolved (enum lookups need it).
@@ -1151,7 +1116,7 @@ class Field(_Documented):
                     self.size = self.size_option * self.element_size
                 elif self.max_size is not None:
                     # Variable string array: count bytes (1 or 2) + max_size strings of element_size bytes each
-                    count_bytes = 2 if self.max_size > 255 else 1
+                    count_bytes = _prefix_bytes(self.max_size)
                     self.size = count_bytes + \
                         (self.max_size * self.element_size)
                 else:
@@ -1165,7 +1130,7 @@ class Field(_Documented):
                     self.size = base_size * self.size_option
                 elif self.max_size is not None:
                     # Variable array: count bytes (1 or 2) + max space
-                    count_bytes = 2 if self.max_size > 255 else 1
+                    count_bytes = _prefix_bytes(self.max_size)
                     self.size = count_bytes + (base_size * self.max_size)
                 else:
                     print(
@@ -1177,7 +1142,7 @@ class Field(_Documented):
                 self.size = self.size_option
             elif self.max_size is not None:
                 # Variable string: length bytes (1 or 2) + max characters
-                length_bytes = 2 if self.max_size > 255 else 1
+                length_bytes = _prefix_bytes(self.max_size)
                 self.size = length_bytes + self.max_size
             else:
                 print(
@@ -1378,34 +1343,25 @@ class OneOf(_Documented):
                             f"Invalid extensions_start value '{e.value}' in "
                             f"oneof {self.name}: must be an integer field number")
                         return False
-                    if self.extensions_start < 2:
+                    if self.extensions_start < facts.EXTENSIONS_START_MIN:
                         print(
-                            f"extensions_start in oneof {self.name} must be >= 2 "
+                            f"extensions_start in oneof {self.name} must be >= {facts.EXTENSIONS_START_MIN} "
                             f"(at least one base variant is required)")
                         return False
                 elif e.name == "discriminator":
-                    # Handle both string values and identifier values
-                    val = e.value
-                    if hasattr(val, 'name'):
-                        # It's an Identifier object (unquoted value like 'none')
-                        sval = val.name.lower()
-                    else:
-                        sval = str(val).strip().lower().strip('"\'')
-                    if sval in ('auto', 'msgid', 'field_order', 'none', 'false', 'off', 'disabled'):
-                        if sval in ('false', 'off', 'disabled'):
-                            sval = 'none'
-                        self.discriminator_mode = sval
-                    else:
+                    mode = facts.normalize_discriminator(e.value)
+                    if mode is None:
                         print(f"Invalid discriminator option '{e.value}' in oneof {self.name}. "
-                              f"Valid values: auto, msgid, field_order, none")
+                              f"Valid values: {', '.join(facts.DISCRIMINATOR_MODES)}")
                         return False
+                    self.discriminator_mode = mode
                 elif e.name == "max_size":
                     try:
                         self.max_size_override = int(e.value)
                     except (TypeError, ValueError):
                         print(f"Invalid max_size value '{e.value}' in oneof {self.name}: must be an integer")
                         return False
-                    if self.max_size_override <= 0:
+                    if self.max_size_override < facts.ONEOF_SIZE_MIN:
                         print(f"max_size in oneof {self.name} must be > 0")
                         return False
                 elif e.name == "min_size":
@@ -1414,16 +1370,15 @@ class OneOf(_Documented):
                     except (TypeError, ValueError):
                         print(f"Invalid min_size value '{e.value}' in oneof {self.name}: must be an integer")
                         return False
-                    if self.min_size_override <= 0:
+                    if self.min_size_override < facts.ONEOF_SIZE_MIN:
                         print(f"min_size in oneof {self.name} must be > 0")
                         return False
                 elif e.name == "variable":
-                    val = e.value
-                    if hasattr(val, 'name'):
-                        sval = val.name.lower()
-                    else:
-                        sval = str(val).strip().lower().strip('"\'')
-                    self.variable = sval in ('true', '1', 'yes')
+                    self.variable = facts.is_true(e.value)
+                else:
+                    print(f"{location(self, self.error_line)}warning: unknown option '{e.name}' in oneof "
+                          f"{self.name}, ignored{_did_you_mean(e.name, _ONEOF_OPTIONS)}",
+                          file=sys.stderr)
             elif type(e) == ast.Field:
                 if e.name in self.fields:
                     print(f"Field Redeclaration in oneof {self.name}")
@@ -1473,10 +1428,10 @@ class OneOf(_Documented):
                     f"{msg_label}{self.name} must equal the field number of an "
                     f"existing variant (have {field_numbers}).")
                 return False
-            if self.extensions_start < 2:
+            if self.extensions_start < facts.EXTENSIONS_START_MIN:
                 print(
                     f"extensions_start in oneof {msg_label}{self.name} must be "
-                    f">= 2 (at least one base variant required).")
+                    f">= {facts.EXTENSIONS_START_MIN} (at least one base variant required).")
                 return False
             for fval in self.fields.values():
                 fval.is_extension = (fval.number >= self.extensions_start)
@@ -1703,26 +1658,17 @@ class Message(_Documented):
                         return False
                     self.id = e.value
                 elif e.name == "variable":
-                    sval = str(e.value).strip().lower()
-                    if sval in ('true', '1', 'yes', 'on') or e.value is True:
+                    if facts.is_true(e.value):
                         self.variable = True
                 elif e.name == "discriminator":
-                    val = e.value
-                    if hasattr(val, 'name'):
-                        sval = val.name.lower()
-                    else:
-                        sval = str(val).strip().lower().strip('"\'')
-                    if sval in ('auto', 'msgid', 'field_order', 'none', 'false', 'off', 'disabled'):
-                        if sval in ('false', 'off', 'disabled'):
-                            sval = 'none'
-                        self.discriminator_mode = sval
-                    else:
+                    mode = facts.normalize_discriminator(e.value)
+                    if mode is None:
                         print(f"Invalid discriminator option '{e.value}' in message {self.name}. "
-                              f"Valid values: auto, msgid, field_order, none")
+                              f"Valid values: {', '.join(facts.DISCRIMINATOR_MODES)}")
                         return False
-                elif e.name in ("is_envelope", "envelope"):
-                    sval = str(e.value).strip().lower()
-                    if sval in ('true', '1', 'yes', 'on') or e.value is True:
+                    self.discriminator_mode = mode
+                elif facts.MESSAGE_OPTION_ALIASES.get(e.name, e.name) == "is_envelope":
+                    if facts.is_true(e.value):
                         self.is_envelope = True
                 elif e.name == "extensions_start":
                     try:
@@ -1732,15 +1678,15 @@ class Message(_Documented):
                             f"Invalid extensions_start value '{e.value}' in "
                             f"message {self.name}: must be an integer field number")
                         return False
-                    if self.extensions_start < 2:
+                    if self.extensions_start < facts.EXTENSIONS_START_MIN:
                         print(
-                            f"extensions_start in message {self.name} must be >= 2 "
+                            f"extensions_start in message {self.name} must be >= {facts.EXTENSIONS_START_MIN} "
                             f"(at least one base field is required)")
                         return False
                 elif e.name == "magic_bytes":
                     raw = str(e.value).strip()
                     parts = [p.strip() for p in raw.split(',')]
-                    if len(parts) != 2:
+                    if len(parts) != facts.MAGIC_BYTES_COUNT:
                         print(
                             f"Invalid magic_bytes value '{raw}' in message {self.name}: "
                             f"expected two comma-separated byte values, e.g. \"0xAB, 0xCD\"")
@@ -1758,7 +1704,7 @@ class Message(_Documented):
                             f"Invalid magic_bytes value '{raw}' in message {self.name}: "
                             f"each byte must be in range 0-255")
                         return False
-                    if b1 == 0 or b2 == 0:
+                    if min(b1, b2) < facts.MAGIC_BYTE_RANGE[0]:
                         print(
                             f"Invalid magic_bytes value '{raw}' in message {self.name}: "
                             f"magic bytes must be non-zero")
@@ -2001,11 +1947,11 @@ class Message(_Documented):
                     continue
                 if value.is_array and value.max_size is not None:
                     # Bounded array: only the count bytes (1 or 2, no data when empty)
-                    count_bytes = 2 if value.max_size > 255 else 1
+                    count_bytes = _prefix_bytes(value.max_size)
                     self.min_size += count_bytes
                 elif value.field_type in ("string", "bytes") and value.max_size is not None:
                     # Variable string: only the length bytes (1 or 2, no data when empty)
-                    length_bytes = 2 if value.max_size > 255 else 1
+                    length_bytes = _prefix_bytes(value.max_size)
                     self.min_size += length_bytes
                 else:
                     # Fixed-size fields use their full size
@@ -2118,9 +2064,10 @@ class Package:
 
         # Validate package ID if specified
         if self.package_id is not None:
-            if self.package_id < 0 or self.package_id > 255:
+            lo, hi = facts.PKGID_RANGE
+            if self.package_id < lo or self.package_id > hi:
                 print(
-                    f"Package ID {self.package_id} for package {self.name} out of range (0-255)")
+                    f"Package ID {self.package_id} for package {self.name} out of range ({lo}-{hi})")
                 return False
 
             # Note: We allow different packages to share the same package ID if one inherited
@@ -2139,20 +2086,21 @@ class Package:
                 seen_msg_ids[value.id] = value.name
 
                 if self.package_id is not None:
-                    # If package has a package ID, message IDs must be < 256
-                    if value.id < 0 or value.id >= 256:
+                    # With a package ID the wire id is (pkgid << 8) | msgid, so msgid is one byte
+                    lo, hi = facts.MSGID_RANGE_WITH_PKGID
+                    if value.id < lo or value.id > hi:
                         print(
                             f"Error: Message '{value.name}' in package '{self.name}' has msgid={value.id}")
                         print(
-                            f"  When package has 'option pkgid={self.package_id}', all message IDs must be in range [0, 255]")
+                            f"  When package has 'option pkgid={self.package_id}', all message IDs must be in range [{lo}, {hi}]")
                         return False
                 else:
-                    # If no package ID, message IDs must be < 65536
-                    if value.id < 0 or value.id >= 65536:
+                    lo, hi = facts.MSGID_RANGE
+                    if value.id < lo or value.id > hi:
                         print(
                             f"Error: Message '{value.name}' in package '{self.name}' has msgid={value.id}")
                         print(
-                            f"  Without package ID, message IDs must be in range [0, 65535]")
+                            f"  Without package ID, message IDs must be in range [{lo}, {hi}]")
                         return False
 
         for key, value in self.messages.items():

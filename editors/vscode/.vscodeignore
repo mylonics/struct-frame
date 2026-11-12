@@ -1,0 +1,18 @@
+# Only the two esbuild bundles, the manifest, grammar, icons, README and LICENSE ship.
+.vscode/**
+.gitignore
+esbuild.js
+**/tsconfig.json
+**/*.tsbuildinfo
+**/package-lock.json
+**/src/**
+**/*.map
+node_modules/**
+client/node_modules/**
+server/node_modules/**
+**/out/**
+!client/out/extension.js
+!server/out/server.js
+examples/**
+sf_compile.json
+*.vsix

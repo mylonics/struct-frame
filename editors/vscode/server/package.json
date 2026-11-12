@@ -1,0 +1,18 @@
+{
+  "name": "struct-frame-ls-server",
+  "version": "0.1.0",
+  "description": "Language server for struct-frame",
+  "main": "out/server",
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "watch": "tsc -p tsconfig.json -w"
+  },
+  "dependencies": {
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}

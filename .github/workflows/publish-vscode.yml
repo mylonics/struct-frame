@@ -1,0 +1,173 @@
+# Publishes the VS Code extension (editors/vscode, marketplace id mylonics.struct-frame-ls).
+#
+# The extension version tracks the struct-frame Python version. publish.yml calls this
+# workflow after each PyPI release; the extension is only published when something under
+# editors/vscode changed since the last `vscode-v*` tag (otherwise the release is skipped,
+# so marketplace versions may jump, e.g. 0.10.11 -> 0.10.14).
+#
+# The version is stamped into package.json at publish time and never committed: if every
+# release bumped editors/vscode/package.json, the change check below would always fire.
+#
+# Manual run (Actions -> Publish VS Code Extension -> Run workflow, on main): re-publish the
+# current pyproject version, e.g. after an expired token. `dry_run` (default) builds and
+# packages without publishing; `force` publishes even when nothing changed.
+#
+# Required secrets:
+# - VSCE_TOKEN: Azure DevOps PAT with Marketplace (Manage) scope for publisher "mylonics".
+# - OPEN_VSIX_TOKEN: Open VSX access token (publishing there is best effort).
+
+name: Publish VS Code Extension
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "struct-frame version that was just released"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Publish even if editors/vscode is unchanged since the last vscode-v* tag"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Build and package only; do not publish or tag"
+        type: boolean
+        default: true
+
+concurrency:
+  group: publish-vscode
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Package and publish
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(grep '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Extension version: $VERSION"
+
+      - name: Decide whether to publish
+        id: decide
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          FORCE: ${{ inputs.force && 'true' || 'false' }}
+        run: |
+          TAG="vscode-v$VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null && [ "$FORCE" != "true" ]; then
+            echo "$TAG already exists; nothing to do."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Use the tag list rather than `git describe`: main is rebased onto develop on
+          # release, so earlier tags are not necessarily reachable from HEAD.
+          LAST=$(git tag --list 'vscode-v*' --sort=-v:refname | grep -vx "$TAG" | head -n1 || true)
+          if [ "$FORCE" = "true" ]; then
+            echo "Forced publish."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "$LAST" ]; then
+            echo "No previous vscode-v* tag; first publish from this repository."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$LAST" HEAD -- editors/vscode \
+                 ':(exclude)editors/vscode/server/src/__tests__' ':(exclude)editors/vscode/.vscode'; then
+            echo "editors/vscode is unchanged since $LAST; skipping the extension release."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "editors/vscode changed since $LAST:"
+            git diff --stat "$LAST" HEAD -- editors/vscode
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.decide.outputs.publish == 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Check language facts are up to date
+        if: steps.decide.outputs.publish == 'true'
+        run: python src/struct_frame/language_facts.py --check
+
+      - uses: actions/setup-node@v4
+        if: steps.decide.outputs.publish == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Build, test and package
+        if: steps.decide.outputs.publish == 'true'
+        working-directory: editors/vscode
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm ci
+          npm test
+          npm pkg set version="$VERSION"
+          npx vsce package --no-dependencies \
+            --baseContentUrl "https://github.com/${{ github.repository }}/blob/main/editors/vscode" \
+            --baseImagesUrl "https://github.com/${{ github.repository }}/raw/main/editors/vscode" \
+            -o "struct-frame-ls-$VERSION.vsix"
+
+      - name: Upload VSIX
+        if: steps.decide.outputs.publish == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: struct-frame-ls-${{ steps.version.outputs.version }}
+          path: editors/vscode/struct-frame-ls-${{ steps.version.outputs.version }}.vsix
+
+      - name: Publish to VS Marketplace
+        if: steps.decide.outputs.publish == 'true' && !inputs.dry_run
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.VSCE_TOKEN }}
+          registryUrl: https://marketplace.visualstudio.com
+          extensionFile: editors/vscode/struct-frame-ls-${{ steps.version.outputs.version }}.vsix
+          skipDuplicate: true
+
+      - name: Publish to Open VSX
+        if: steps.decide.outputs.publish == 'true' && !inputs.dry_run
+        continue-on-error: true
+        uses: HaaLeo/publish-vscode-extension@v2
+        with:
+          pat: ${{ secrets.OPEN_VSIX_TOKEN }}
+          extensionFile: editors/vscode/struct-frame-ls-${{ steps.version.outputs.version }}.vsix
+          skipDuplicate: true
+
+      - name: Tag and attach to the GitHub release
+        if: steps.decide.outputs.publish == 'true' && !inputs.dry_run
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="vscode-v$VERSION"
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "$TAG"
+          fi
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" "editors/vscode/struct-frame-ls-$VERSION.vsix" --clobber
+          else
+            echo "No GitHub release v$VERSION to attach the VSIX to."
+          fi
