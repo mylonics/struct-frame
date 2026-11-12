@@ -9,27 +9,27 @@ Generate serialization code from proto files using the struct-frame command-line
 
 ```bash
 # Generate Python code
-python -m struct_frame messages.proto --build_py
+struct-frame messages.proto --build-py
 
 # Generate C code
-python -m struct_frame messages.proto --build_c
+struct-frame messages.proto --build-c
 
 # Generate multiple languages
-python -m struct_frame messages.proto --build_c --build_cpp --build_py --build_ts
+struct-frame messages.proto --build-c --build-cpp --build-py --build-ts
 ```
 
 ## Language Flags
 
 | Flag | Language | Output |
 |------|----------|--------|
-| `--build_c` | C | `<name>.structframe.h` |
-| `--build_cpp` | C++ | `<name>.structframe.hpp` |
-| `--build_ts` | TypeScript | `<name>.structframe.ts` (kebab-case file names, e.g. `pkg-test-a.structframe.ts`) |
-| `--build_py` | Python | `<name>.py` (in `struct_frame/generated/`) |
-| `--build_js` | JavaScript | `<name>.structframe.js` (kebab-case file names) |
-| `--build_csharp` | C# | `<PackageName>/Messages/*.cs`, `<PackageName>/Enums/*.cs` |
-| `--build_gql` | GraphQL | `<package>.graphql` per package, plus a combined `schema.graphql` |
-| `--build_rust` | Rust | `<name>.structframe.rs` |
+| `--build-c` | C | `<name>.structframe.h` |
+| `--build-cpp` | C++ | `<name>.structframe.hpp` |
+| `--build-ts` | TypeScript | `<name>.structframe.ts` (kebab-case file names, e.g. `pkg-test-a.structframe.ts`) |
+| `--build-py` | Python | `<name>.py` (in the `structframe/` package) |
+| `--build-js` | JavaScript | `<name>.structframe.js` (kebab-case file names) |
+| `--build-csharp` | C# | `<PackageName>/Messages/*.cs`, `<PackageName>/Enums/*.cs` |
+| `--build-gql` | GraphQL | `<package>.graphql` per package, plus a combined `schema.graphql` |
+| `--build-rust` | Rust | `<name>.structframe.rs` |
 
 ### GraphQL type mapping
 
@@ -41,12 +41,12 @@ Default output is `generated/<language>/`. Customize with path options:
 
 ```bash
 # Custom C output
-python -m struct_frame messages.proto --build_c --c_path src/generated/
+struct-frame messages.proto --build-c --c-path src/generated/
 
 # Multiple languages, different paths
-python -m struct_frame messages.proto \
-  --build_c --c_path firmware/generated/ \
-  --build_py --py_path server/generated/
+struct-frame messages.proto \
+  --build-c --c-path firmware/generated/ \
+  --build-py --py-path server/generated/
 ```
 
 ## Common Patterns
@@ -54,30 +54,30 @@ python -m struct_frame messages.proto \
 ### Single Language
 
 ```bash
-python -m struct_frame robot.proto --build_cpp --cpp_path include/
+struct-frame robot.proto --build-cpp --cpp-path include/
 ```
 
 ### Embedded + Server
 
 ```bash
-python -m struct_frame messages.proto \
-  --build_c --c_path embedded/messages/ \
-  --build_py --py_path server/messages/
+struct-frame messages.proto \
+  --build-c --c-path embedded/messages/ \
+  --build-py --py-path server/messages/
 ```
 
 ### Frontend + Backend
 
 ```bash
-python -m struct_frame api.proto \
-  --build_ts --ts_path frontend/src/generated/ \
-  --build_py --py_path backend/generated/
+struct-frame api.proto \
+  --build-ts --ts-path frontend/src/generated/ \
+  --build-py --py-path backend/generated/
 ```
 
 ### All Languages
 
 ```bash
-python -m struct_frame messages.proto \
-  --build_c --build_cpp --build_ts --build_py --build_js --build_csharp --build_gql
+struct-frame messages.proto \
+  --build-c --build-cpp --build-ts --build-py --build-js --build-csharp --build-gql
 ```
 
 ## Generated Files

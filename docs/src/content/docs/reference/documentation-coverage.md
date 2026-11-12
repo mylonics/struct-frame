@@ -22,48 +22,48 @@ This document maps every user-facing feature area to its documentation status, i
 
 | Feature | Docs | Examples | Gap | Priority |
 |---------|------|----------|-----|----------|
-| `--build_c` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
-| `--build_cpp` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
-| `--build_ts` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
-| `--build_py` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
-| `--build_js` | ✅ [CLI Reference](/reference/cli-reference/) | ⚠️ | JS has no dedicated language guide beyond the CLI table | Medium |
-| `--build_csharp` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
-| `--build_gql` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No GraphQL usage guide or example | Medium |
-| `--build_rust` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ [Rust SDK](/extended-features/rust-sdk/) | — | — |
+| `--build-c` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
+| `--build-cpp` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
+| `--build-ts` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
+| `--build-py` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
+| `--build-js` | ✅ [CLI Reference](/reference/cli-reference/) | ⚠️ | JS has no dedicated language guide beyond the CLI table | Medium |
+| `--build-csharp` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
+| `--build-gql` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No GraphQL usage guide or example | Medium |
+| `--build-rust` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ [Rust SDK](/extended-features/rust-sdk/) | — | — |
 
 ### 1.2 Output Path Options
 
 | Feature | Docs | Examples | Gap | Priority |
 |---------|------|----------|-----|----------|
-| `--c_path` | ✅ | ✅ | — | — |
-| `--cpp_path` | ✅ | ✅ | — | — |
-| `--ts_path` | ✅ | ✅ | — | — |
-| `--py_path` | ✅ | ✅ | — | — |
-| `--js_path` | ✅ | ⚠️ | No dedicated JS guide | Medium |
-| `--gql_path` | ✅ | ❌ | No GraphQL guide | Medium |
-| `--csharp_path` | ✅ | ✅ | — | — |
-| `--rust_path` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ [Rust SDK](/extended-features/rust-sdk/) | — | — |
-| `--catalog_path` | ✅ [CLI Reference](/reference/cli-reference/) | 📄 | `sf_compile.json` catalog mentioned; full schema not documented | Low |
+| `--c-path` | ✅ | ✅ | — | — |
+| `--cpp-path` | ✅ | ✅ | — | — |
+| `--ts-path` | ✅ | ✅ | — | — |
+| `--py-path` | ✅ | ✅ | — | — |
+| `--js-path` | ✅ | ⚠️ | No dedicated JS guide | Medium |
+| `--gql-path` | ✅ | ❌ | No GraphQL guide | Medium |
+| `--csharp-path` | ✅ | ✅ | — | — |
+| `--rust-path` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ [Rust SDK](/extended-features/rust-sdk/) | — | — |
+| `--catalog-path` | ✅ [CLI Reference](/reference/cli-reference/) | 📄 | `sf_compile.json` catalog mentioned; full schema not documented | Low |
 
 ### 1.3 SDK & Advanced Flags
 
 | Feature | Docs | Examples | Gap | Priority |
 |---------|------|----------|-----|----------|
 | `--sdk` | ✅ [SDK Overview](/extended-features/sdk-overview/) | ✅ | — | — |
-| `--sdk_embedded` | ✅ [C++ SDK](/extended-features/cpp-sdk/) | ✅ | — | — |
+| `--sdk-embedded` | ✅ [C++ SDK](/extended-features/cpp-sdk/) | ✅ | — | — |
 | `--equality` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No usage example showing equality operator output | Low |
 | `--force` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | Example showing hash-based caching would help | Low |
-| `--hash_path` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example | Low |
-| `--generate_tests` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No explanation of output format | Medium |
+| `--hash-path` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example | Low |
+| `--generate-tests` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No explanation of output format | Medium |
 | `--validate` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example showing validation errors | Low |
 | `--debug` | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No example of debug output | Low |
-| `--no_packed` | ✅ [CLI Reference](/reference/cli-reference/), [Message Definitions](/basic-usage/message-definitions/) | ✅ | — | — |
-| `--name_overrides` | ✅ [CLI Reference](/reference/cli-reference/), [Message Definitions](/basic-usage/message-definitions/#generated-names) | ✅ | — | — |
+| `--no-packed` | ✅ [CLI Reference](/reference/cli-reference/), [Message Definitions](/basic-usage/message-definitions/) | ✅ | — | — |
+| `--name-overrides` | ✅ [CLI Reference](/reference/cli-reference/), [Message Definitions](/basic-usage/message-definitions/#generated-names) | ✅ | — | — |
 | `diff` subcommand | ✅ [CLI Reference](/reference/cli-reference/#schema-diff-wire-compatibility-check), [Message Definitions](/basic-usage/message-definitions/#checking-wire-compatibility) | ✅ | — | — |
-| `--csharp_namespace` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
+| `--csharp-namespace` | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
 | `schema-diff` (alias of `diff`) | ✅ [CLI Reference](/reference/cli-reference/) | ✅ | — | — |
-| `--sdk` / `--sdk_embedded` per-language behaviour | ✅ [CLI Reference](/reference/cli-reference/), [SDK Overview](/extended-features/sdk-overview/) | ✅ | — | — |
-| `.structframe.hash` and `--hash_path` default | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No worked example | Low |
+| `--sdk` / `--sdk-embedded` per-language behaviour | ✅ [CLI Reference](/reference/cli-reference/), [SDK Overview](/extended-features/sdk-overview/) | ✅ | — | — |
+| `.structframe.hash` and `--hash-path` default | ✅ [CLI Reference](/reference/cli-reference/) | ❌ | No worked example | Low |
 | Field `[default = ...]` per-language API | ✅ [Message Definitions](/basic-usage/message-definitions/) | ✅ | Per-language construction table added | Low |
 | SDK request/response and error hooks | ✅ [SDK Overview](/extended-features/sdk-overview/) | ✅ | — | — |
 
@@ -240,13 +240,13 @@ This document maps every user-facing feature area to its documentation status, i
 
 1. **JavaScript guide** — JS generation is documented only via the CLI table; there is no language usage guide comparable to the Python/TypeScript pages.
 
-2. **GraphQL guide** — No usage guide or example for `--build_gql` / GraphQL schema output.
+2. **GraphQL guide** — No usage guide or example for `--build-gql` / GraphQL schema output.
 
 ### Medium Priority
 
 3. **`--csharp_legacy_enum_names`** — Migration flag not documented anywhere.
 
-4. **`--generate_tests` output format** — Flag is listed but the format of the generated test code is not explained.
+4. **`--generate-tests` output format** — Flag is listed but the format of the generated test code is not explained.
 
 5. **`BufferParserWithCrc` / `BufferParserMinimal`** — These lower-level C++ parser classes are not described by name or exemplified.
 
@@ -262,13 +262,13 @@ This document maps every user-facing feature area to its documentation status, i
 
 10. **Custom payload variants** — `SysComp`, `Seq`, and other non-profile payload types in `payload_types.hpp` are not documented.
 
-11. **`sf_compile.json` full schema** — The `--catalog_path` flag is now documented in the CLI reference but the full JSON schema is not described.
+11. **`sf_compile.json` full schema** — The `--catalog-path` flag is now documented in the CLI reference but the full JSON schema is not described.
 
 12. **Wireshark dissector** — The `wireshark/struct_frame.lua` dissector is present but not linked from the docs site.
 
 13. **Fletcher-16 walkthrough** — Algorithm is named but no byte-level walkthrough is provided.
 
-14. **`--equality`, `--force`, `--hash_path`, `--validate`, `--debug`** — Each of these flags lacks a code example showing the effect.
+14. **`--equality`, `--force`, `--hash-path`, `--validate`, `--debug`** — Each of these flags lacks a code example showing the effect.
 
 ---
 

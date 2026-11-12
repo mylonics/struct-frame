@@ -16,15 +16,15 @@ Run the commands from the repository root.
 
 ```bash
 # Python
-python -m struct_frame examples/basic/hello.sf --build_py --py_path out/py
+struct-frame examples/basic/hello.sf --build-py --py-path out/py
 PYTHONPATH=out/py python examples/basic/hello.py
 
 # C
-python -m struct_frame examples/basic/hello.sf --build_c --c_path out/c
+struct-frame examples/basic/hello.sf --build-c --c-path out/c
 gcc -std=c11 -Iout/c examples/basic/hello.c -o hello && ./hello
 
 # TypeScript
-python -m struct_frame examples/basic/hello.sf --build_ts --ts_path out/ts
+struct-frame examples/basic/hello.sf --build-ts --ts-path out/ts
 cp examples/basic/hello.ts out/ts/ && cd out/ts && npx ts-node hello.ts
 ```
 
@@ -36,8 +36,8 @@ A file declares exactly one `package`. To use several packages, write an entry
 file that `import`s the others and compile that:
 
 ```bash
-python -m struct_frame examples/multi_package/system.sf --build_py --py_path out/py
-python -m struct_frame examples/package_ids/fleet.sf --build_c --c_path out/c
+struct-frame examples/multi_package/system.sf --build-py --py-path out/py
+struct-frame examples/package_ids/fleet.sf --build-c --c-path out/c
 ```
 
 When more than one package is compiled, the 16-bit message IDs

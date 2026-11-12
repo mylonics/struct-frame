@@ -65,6 +65,7 @@ namespace StructFrame.Sdk
         /// <summary>Opens the UDP socket and starts receiving datagrams.</summary>
         public override async Task ConnectAsync()
         {
+            _disconnectRequested = false;
             try
             {
                 _client = new UdpClient(_udpConfig.LocalPort);
@@ -96,6 +97,7 @@ namespace StructFrame.Sdk
         /// <summary>Stops receiving datagrams and closes the UDP socket.</summary>
         public override async Task DisconnectAsync()
         {
+            _disconnectRequested = true;  // an intentional disconnect never auto-reconnects
             _connected = false;
             _client?.Close();
             _client?.Dispose();

@@ -5,9 +5,9 @@ description: Create a simple message, generate code, and use it in C++.
 
 This guide shows you how to create a simple message, generate code, and use it in C++.
 
-## 1. Create a Proto File
+## 1. Create a Schema File
 
-Create a file called `status.proto`:
+Create a file called `status.sf` (`.sf` is the usual extension; a `.proto` file with the same content works too):
 
 ```proto
 package example;
@@ -21,10 +21,10 @@ message Status {
 
 ## 2. Generate Code
 
-Generate C++ code from the proto file:
+Generate C++ code from the schema:
 
 ```bash
-python -m struct_frame status.proto --build_cpp --cpp_path generated/
+struct-frame status.sf --build-cpp --cpp-path generated/
 ```
 
 This creates `generated/example.structframe.hpp`. In C++ the types live in the `structframe::example` namespace (in C the package name is prefixed to the type name instead, e.g. `ExampleStatus`).

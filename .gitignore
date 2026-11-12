@@ -24,17 +24,6 @@ generated/
 gen/
 tests/generated/
 
-# Generated boilerplate files in tests
-tests/ts/struct_base.ts
-tests/ts/struct_frame.ts
-tests/ts/struct_frame_gen.ts
-tests/ts/struct_frame_parser.ts
-tests/ts/struct_frame_types.ts
-tests/ts/*.sf.ts
-tests/c/*.sf.h
-tests/cpp/*.sf.hpp
-tests/py/*.sf.py
-
 # Build directories (executables and binaries)
 tests/c/build/
 tests/cpp/build/
@@ -70,8 +59,6 @@ Thumbs.db
 *.swo
 *~
 *.bak
-node_modules/
-/package-lock.json
 
 # Rust build artifacts
 tests/rust/target/

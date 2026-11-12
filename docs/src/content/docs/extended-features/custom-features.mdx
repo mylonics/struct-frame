@@ -41,8 +41,8 @@ The generator creates a `get_message_info` function automatically:
 <TabItem label="Python">
 
 ```python
-from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_SENSOR_CONFIG
-from struct_frame.generated.messages import get_message_info
+from structframe.frame_profiles import BufferWriter, AccumulatingReader, PROFILE_SENSOR_CONFIG
+from structframe.messages import get_message_info
 
 # Encode using the sensor profile (Tiny + Minimal)
 writer = BufferWriter(PROFILE_SENSOR_CONFIG, 1024)
@@ -69,8 +69,8 @@ uint8_t buffer[1024];
 ProfileSensorWriter writer(buffer, sizeof(buffer));
 writer.write(msg);
 
-// Minimal profiles need the message-info callback; pass its type to the reader
-AccumulatingReader<ProfileSensorConfig, 1024, decltype(&get_message_info)> reader(get_message_info);
+// Minimal profiles need the message-info callback (they carry no length field)
+ProfileSensorAccumulatingReader reader(get_message_info);
 reader.add_data(buffer, writer.size());
 FrameMsgInfo result = reader.next();
 ```
@@ -85,7 +85,7 @@ See [Framing](/basic-usage/framing/) for more on minimal frames.
 For messages > 255 bytes, use Extended payload type:
 
 ```bash
-python -m struct_frame large.proto --build_c
+struct-frame large.proto --build-c
 ```
 
 Use BasicExtended or Network frame profile when encoding.

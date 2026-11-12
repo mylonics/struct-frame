@@ -168,9 +168,12 @@ static inline size_t profile_encode_with_crc_ext(
     /* Write message ID (low byte; the high byte is the package id above) */
     buffer[idx++] = (uint8_t)(msg_id & 0xFF);
 
-    /* Write payload */
+    /* Write payload (already in place when it was serialized into
+     * buffer_writer_payload_slot) */
     if (payload_size > 0 && payload_data != NULL) {
-        memcpy(buffer + idx, payload_data, payload_size);
+        if (payload_data != buffer + idx) {
+            memcpy(buffer + idx, payload_data, payload_size);
+        }
         idx += payload_size;
     }
 
@@ -257,9 +260,12 @@ static inline size_t profile_encode_minimal(
     /* Write message ID */
     buffer[idx++] = msg_id;
     
-    /* Write payload */
+    /* Write payload (already in place when it was serialized into
+     * buffer_writer_payload_slot) */
     if (payload_size > 0 && payload_data != NULL) {
-        memcpy(buffer + idx, payload_data, payload_size);
+        if (payload_data != buffer + idx) {
+            memcpy(buffer + idx, payload_data, payload_size);
+        }
         idx += payload_size;
     }
     
@@ -662,6 +668,18 @@ static inline size_t buffer_writer_write(
     return buffer_writer_write_ext(writer, msg_id, payload, payload_size,
                                    seq, sys_id, comp_id, pkg_id,
                                    payload_size, magic1, magic2);
+}
+
+/* Where the payload of the next frame goes, so a message can be serialized straight into
+ * the writer's buffer (the generated <Type>_write helpers do this). Returns NULL when a frame
+ * carrying max_payload bytes would not fit. Pass the returned pointer as the payload of
+ * buffer_writer_write_ext; it is not copied again. */
+static inline uint8_t* buffer_writer_payload_slot(buffer_writer_t* writer, size_t max_payload) {
+    size_t needed = (size_t)profile_overhead(writer->config) + max_payload;
+    if (writer->offset > writer->capacity || writer->capacity - writer->offset < needed) {
+        return NULL;
+    }
+    return writer->buffer + writer->offset + profile_header_size(writer->config);
 }
 
 static inline void buffer_writer_reset(buffer_writer_t* writer) { writer->offset = 0; }

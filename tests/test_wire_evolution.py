@@ -55,7 +55,7 @@ def _generate(out_dir: Path) -> None:
 def _import_module(py_dir: Path, module_name: str):
     """Import a generated Python module by file path."""
     return load_generated_module(
-        py_dir / "struct_frame" / "generated" / f"{module_name}.py",
+        py_dir / "structframe" / f"{module_name}.py",
         module_name,
     )
 
@@ -302,7 +302,7 @@ def _python_legacy_frame_passes_crc(py_dir: Path) -> None:
     the length / CRC / extension-aware path, not just deserialize().
     """
     mod = _import_module(py_dir, "wire_evolution")
-    profiles = load_generated_module(py_dir / "frame_profiles.py", "frame_profiles")
+    profiles = load_generated_module(py_dir / "structframe" / "frame_profiles.py", "frame_profiles")
     Cls = mod.BaseExtensionMessage
 
     payload = Cls(header=0x1234, seq=7, crc_seed=0xABCDEF01).serialize()[:Cls.BASE_SIZE]

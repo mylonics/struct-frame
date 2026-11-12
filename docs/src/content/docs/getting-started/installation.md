@@ -9,10 +9,11 @@ Install via pip:
 pip install struct-frame
 ```
 
-The package name is `struct-frame`, but the Python module uses `struct_frame`:
+This installs the `struct-frame` command. The same program runs as `python -m struct_frame` (the Python module is `struct_frame`, with an underscore):
 
 ```bash
-python -m struct_frame --help
+struct-frame --version
+struct-frame --help
 ```
 
 ## VS Code Extension

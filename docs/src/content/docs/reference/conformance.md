@@ -75,12 +75,12 @@ order, with no per-field tag or length prefix.
 
 Multi-byte integers are little-endian on the wire in *all* reference implementations.
 Structs are packed with no implicit padding; the generator emits
-`#pragma pack(push, 1)` in C/C++ unless `--no_packed` is passed.
+`#pragma pack(push, 1)` in C/C++ unless `--no-packed` is passed.
 
 **Host byte order.** The Python, TypeScript/JavaScript, Rust and C# runtimes encode
 multi-byte values explicitly and are correct on any host (C# arrays are byte-swapped
 on big-endian hosts). The generated **C and C++** payload codecs copy values in host
-byte order, so they require a little-endian host; `--no_packed` changes alignment
+byte order, so they require a little-endian host; `--no-packed` changes alignment
 handling only, not byte order. The C/C++ runtime headers refuse to compile on a
 big-endian target (`#error`) rather than silently corrupt data; define
 `STRUCT_FRAME_ASSUME_LITTLE_ENDIAN` to override the check on a toolchain that does

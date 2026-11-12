@@ -10,7 +10,7 @@ The C++ SDK provides transport layers and message routing with an observer/subsc
 ### Full SDK (with network transports)
 
 ```bash
-python -m struct_frame messages.proto --build_cpp --cpp_path generated/ --sdk
+struct-frame messages.proto --build-cpp --cpp-path generated/ --sdk
 ```
 
 Includes ASIO for UDP, TCP and Serial transports. (There is no WebSocket transport in the C++ SDK; use the Python, TypeScript, JavaScript or C# SDK for WebSocket.)
@@ -18,7 +18,7 @@ Includes ASIO for UDP, TCP and Serial transports. (There is no WebSocket transpo
 ### Embedded SDK (no external dependencies)
 
 ```bash
-python -m struct_frame messages.proto --build_cpp --cpp_path generated/ --sdk_embedded
+struct-frame messages.proto --build-cpp --cpp-path generated/ --sdk-embedded
 ```
 
 Minimal footprint for embedded systems. Serial transport only.

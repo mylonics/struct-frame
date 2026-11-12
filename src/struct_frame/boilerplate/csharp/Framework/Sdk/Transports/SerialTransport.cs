@@ -46,6 +46,7 @@ namespace StructFrame.Sdk
         /// <summary>Opens the serial port and starts receiving data.</summary>
         public override async Task ConnectAsync()
         {
+            _disconnectRequested = false;
             try
             {
                 _serialPort = new System.IO.Ports.SerialPort
@@ -80,6 +81,7 @@ namespace StructFrame.Sdk
         /// <summary>Stops receiving data and closes the serial port.</summary>
         public override async Task DisconnectAsync()
         {
+            _disconnectRequested = true;  // an intentional disconnect never auto-reconnects
             _connected = false;
 
             // Cancel the read loop
@@ -235,6 +237,7 @@ namespace StructFrame.Sdk
         /// <summary>Opens the platform-specific serial port and starts receiving data.</summary>
         public override async Task ConnectAsync()
         {
+            _disconnectRequested = false;
             try
             {
                 bool success = await _serialPort.OpenAsync();
@@ -257,6 +260,7 @@ namespace StructFrame.Sdk
         /// <summary>Stops receiving data and closes the platform-specific serial port.</summary>
         public override async Task DisconnectAsync()
         {
+            _disconnectRequested = true;  // an intentional disconnect never auto-reconnects
             _connected = false;
             if (_serialPort.IsOpen)
             {

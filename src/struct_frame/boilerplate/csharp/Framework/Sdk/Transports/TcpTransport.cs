@@ -67,6 +67,7 @@ namespace StructFrame.Sdk
         /// <summary>Connects to the configured TCP endpoint and starts receiving data.</summary>
         public override async Task ConnectAsync()
         {
+            _disconnectRequested = false;
             try
             {
                 _client = new TcpClient();
@@ -75,7 +76,7 @@ namespace StructFrame.Sdk
                 _connected = true;
 
                 // Start receive loop; route any unhandled exception through OnErrorOccurred.
-                _ = RunReceiveLoopAsync();
+                _ = RunReceiveLoopAsync(_stream);
             }
             catch (Exception ex)
             {
@@ -87,6 +88,9 @@ namespace StructFrame.Sdk
         /// <summary>Stops receiving data and closes the TCP connection.</summary>
         public override async Task DisconnectAsync()
         {
+            // Set before closing: on Linux the pending read then completes with 0 bytes,
+            // which must not be mistaken for the peer closing the connection.
+            _disconnectRequested = true;
             _connected = false;
             _stream?.Close();
             _client?.Close();
@@ -117,15 +121,22 @@ namespace StructFrame.Sdk
             }
         }
 
-        private async Task RunReceiveLoopAsync()
+        // A receive loop belongs to one connection: it only reports a close or an error while
+        // its stream is still the current one and no disconnect was requested. Otherwise a
+        // local DisconnectAsync, or a loop left over from a previous connection, would be
+        // reported as the peer dropping the link (and trigger AutoReconnect).
+        private bool IsCurrent(NetworkStream stream)
+            => _connected && !_disconnectRequested && ReferenceEquals(_stream, stream);
+
+        private async Task RunReceiveLoopAsync(NetworkStream stream)
         {
             try
             {
-                await ReceiveLoopAsync();
+                await ReceiveLoopAsync(stream);
             }
             catch (Exception ex)
             {
-                if (_connected)
+                if (IsCurrent(stream))
                 {
                     OnErrorOccurred(ex);
                     OnConnectionClosed();
@@ -133,25 +144,30 @@ namespace StructFrame.Sdk
             }
         }
 
-        private async Task ReceiveLoopAsync()
+        private async Task ReceiveLoopAsync(NetworkStream stream)
         {
-            while (_connected && _stream != null)
+            while (IsCurrent(stream))
             {
                 int bytesRead;
                 try
                 {
-                    bytesRead = await _stream.ReadAsync(_receiveBuffer, 0, _receiveBuffer.Length);
+                    bytesRead = await stream.ReadAsync(_receiveBuffer, 0, _receiveBuffer.Length);
                 }
                 catch (Exception ex)
                 {
-                    if (_connected)
+                    // A read error (e.g. connection reset) ends the connection too.
+                    if (IsCurrent(stream))
+                    {
                         OnErrorOccurred(ex);
+                        OnConnectionClosed();
+                    }
                     break;
                 }
 
                 if (bytesRead == 0)
                 {
-                    OnConnectionClosed();
+                    if (IsCurrent(stream))
+                        OnConnectionClosed();
                     break;
                 }
 

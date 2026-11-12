@@ -11,7 +11,7 @@ from typing import Union
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
 
-from struct_frame.generated.extended_test import (
+from structframe.extended_test import (
     ExtendedIdMessage2,
     ExtendedIdMessage9,
     ExtendedIdMessage10,

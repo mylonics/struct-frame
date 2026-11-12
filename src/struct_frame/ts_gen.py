@@ -216,10 +216,19 @@ class MessageTsClassGen():
         # Generate class declaration
         result += f'export class {package_msg_name} extends MessageBase {{\n'
         
-        # Static properties
+        # Package-qualified ID ((PACKAGE_ID << 8) | msgid) when the package has an ID,
+        # as in C, C++, Python and C#: the writer takes the package byte from it and
+        # frame.msgId reports it, so dispatching on _msgid / MSG_ID works for every profile.
+        effective_msg_id = msg.id
+        if msg.id is not None and package is not None and package.package_id is not None:
+            effective_msg_id = (package.package_id << 8) | msg.id
+        # Static properties. MSG_ID / MAX_SIZE are the public names; the underscore
+        # forms are kept for existing code.
         result += f'  static readonly _size: number = {total_size};\n'
+        result += f'  static readonly MAX_SIZE: number = {total_size};\n'
         if msg.id is not None:
-            result += f'  static readonly _msgid: number = {msg.id};\n'
+            result += f'  static readonly _msgid: number = {effective_msg_id};\n'
+            result += f'  static readonly MSG_ID: number = {effective_msg_id};\n'
         
         # Add magic numbers for checksum
         if msg.id is not None and msg.magic_bytes:
@@ -1002,6 +1011,10 @@ class MessageTsClassGen():
                         return f'ArrayLike<{elem_type}>'
                     return typed_arr
                 return f'{TS_ARRAY_TYPE_ANNOTATIONS.get(field_type, "number")}[]'
+        elif field_info.is_nested:
+            if for_init:
+                return f'{field_info.nested_type} | Record<string, unknown>'
+            return field_info.nested_type
         elif field_type in ("string", "bytes"):
             return 'string'
         else:
@@ -1023,6 +1036,8 @@ class MessageTsClassGen():
         
         if field_info.is_array:
             result += MessageTsClassGen._generate_array_accessors(field_info)
+        elif field_info.is_nested:
+            result += MessageTsClassGen._generate_nested_accessors(field_info)
         elif field_type in ("string", "bytes"):
             result += MessageTsClassGen._generate_string_accessors(field_info)
         elif field_info.is_enum or field_type in TYPE_SIZES:
@@ -1099,6 +1114,26 @@ class MessageTsClassGen():
 
         return result
     
+    @staticmethod
+    def _generate_nested_accessors(field_info):
+        """Accessors for a singular nested message field.
+
+        The getter returns a view into this message's buffer, so `msg.pos.lat = 1` writes
+        through; the setter copies a message or a plain object.
+        """
+        name = field_info.name
+        offset = field_info.offset
+        size = field_info.element_size
+        nested_type = field_info.nested_type
+        result = f'  get {name}(): {nested_type} {{\n'
+        result += f'    return new {nested_type}(this._buffer.subarray({offset}, {offset + size}));\n'
+        result += f'  }}\n'
+        result += f'  set {name}(value: {nested_type} | Record<string, unknown>) {{\n'
+        result += f'    if (Array.isArray(value)) throw new TypeError("{name} is a single {nested_type}, not an array");\n'
+        result += f'    this._writeStructArray({offset}, 1, {size}, [value], {nested_type});\n'
+        result += f'  }}\n\n'
+        return result
+
     @staticmethod
     def _generate_array_accessors(field_info):
         """Generate accessors for array types."""
@@ -1240,7 +1275,7 @@ class FileTsGen():
         if package.messages:
             # Only generate getMessageInfo if there are messages with IDs
             messages_with_id = [
-                msg for key, msg in package.sortedMessages().items() if msg.id]
+                msg for key, msg in package.sortedMessages().items() if msg.id is not None]
             if messages_with_id:
                 # Import MessageInfo type
                 yield 'import { MessageInfo } from \'./frame-profiles\';\n\n'
@@ -1271,17 +1306,49 @@ class FileTsGen():
                     # messages, BASE_SIZE otherwise (extensions may be truncated) — matches c_gen
                     min_size = msg.min_size if msg.variable else msg.base_size
                     is_variable = 'true' if msg.variable else 'false'
+                    # With a package ID the switch is on the local ID; _msgid is package-qualified.
+                    case = str(msg.id) if package.package_id is not None else f'{package_msg_name}._msgid'
                     if use_class_based:
-                        yield '        case %s._msgid: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (
-                            package_msg_name, package_msg_name, min_size, is_variable, package_msg_name, package_msg_name, package_msg_name)
+                        yield '        case %s: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (
+                            case, package_msg_name, min_size, is_variable, package_msg_name, package_msg_name, package_msg_name)
                     else:
-                        yield '        case %s._msgid: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %d, magic2: %d, baseSize: %d };\n' % (
-                            package_msg_name, package_msg_name, min_size, is_variable, magic1, magic2, msg.base_size)
+                        yield '        case %s: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %d, magic2: %d, baseSize: %d };\n' % (
+                            case, package_msg_name, min_size, is_variable, magic1, magic2, msg.base_size)
 
                 yield '        default: return undefined;\n'
                 yield '    }\n'
                 yield '}\n'
+                if use_class_based:
+                    yield from FileTsGen._decode_message(messages_with_id, typed=True)
             yield '\n'
+
+    @staticmethod
+    def _decode_message(messages, typed):
+        """Emit decodeMessage(frame): deserialize a reader's frame into its message class.
+
+        Shared by the TS (typed) and JS generators. Dispatches on the package-qualified
+        _msgid, which is what frame.msgId reports.
+        """
+        names = [m.name for m in messages]
+        yield '\n/**\n'
+        yield ' * Decode a frame from a reader into the message class for its ID.\n'
+        yield ' * Returns undefined for an invalid frame or an ID this package does not define,\n'
+        yield ' * so one reader can feed several packages\' decodeMessage in turn.\n'
+        yield ' */\n'
+        if typed:
+            yield ('export function decodeMessage(frame: { valid?: boolean; msgId: number; '
+                   'msgData: Uint8Array; msgLen: number }): ' + ' | '.join(names) + ' | undefined {\n')
+        else:
+            yield 'function decodeMessage(frame) {\n'
+        yield '    if (frame.valid === false) return undefined;\n'
+        yield '    switch (frame.msgId) {\n'
+        for name in names:
+            yield f'        case {name}._msgid: return {name}.deserialize(frame);\n'
+        yield '        default: return undefined;\n'
+        yield '    }\n'
+        yield '}\n'
+        if not typed:
+            yield 'module.exports.decodeMessage = decodeMessage;\n'
 
 
 # =============================================================================
@@ -1374,9 +1441,8 @@ class TestTsGen():
             else:
                 result += f'    {prefix}.{var_name} = "test_string";\n'
         elif type_name not in _TS_PRIM_TYPES and not field.is_enum:
-            # Single nested struct - the TS layout wraps it as a 1-element
-            # struct array, so the setter accepts ``[{}]``.
-            result += f"    {prefix}.{var_name} = [{{}}];\n"
+            # Single nested message: the setter accepts a plain object.
+            result += f"    {prefix}.{var_name} = {{}};\n"
         else:
             result += f"    {prefix}.{var_name} = {TestTsGen._get_dummy_value(field, index)};\n"
 

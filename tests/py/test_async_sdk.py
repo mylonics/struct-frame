@@ -36,7 +36,7 @@ from frame_profiles import (
     parse_frame_buffer,
     encode_message,
 )
-from struct_frame.generated.serialization_test import (
+from structframe.serialization_test import (
     BasicTypesMessage,
     get_message_info,
 )

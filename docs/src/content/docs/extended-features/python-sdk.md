@@ -10,7 +10,7 @@ The Python SDK provides both synchronous and asynchronous interfaces for message
 Generate with SDK:
 
 ```bash
-python -m struct_frame messages.sf --build_py --py_path generated/ --sdk
+struct-frame messages.sf --build-py --py-path generated/ --sdk
 ```
 
 The serial transports need `pyserial`, the synchronous `WebSocketTransport` needs `websocket-client` and the asyncio `AsyncWebSocketTransport` needs `websockets`. `pip install "struct-frame[sdk]"` installs all three. A serial transport's `port` can be a device name (`COM3`, `/dev/ttyUSB0`) or any pyserial URL, such as `socket://host:port` or `loop://`.
@@ -20,8 +20,8 @@ The serial transports need `pyserial`, the synchronous `WebSocketTransport` need
 Python profiles are configuration objects (`PROFILE_STANDARD_CONFIG`, `PROFILE_SENSOR_CONFIG`, `PROFILE_IPC_CONFIG`, `PROFILE_BULK_CONFIG`, `PROFILE_NETWORK_CONFIG`) that you pass to `BufferWriter` and `AccumulatingReader`:
 
 ```python
-from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
-from struct_frame.generated.messages import Status, get_message_info
+from structframe.frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
+from structframe.messages import Status, get_message_info
 
 # Encode
 msg = Status(value=42)
@@ -43,10 +43,10 @@ A message whose ID does not fit the profile (an ID above 255 on the Standard, Se
 ## Message Router
 
 ```python
-from struct_frame_sdk.struct_frame_sdk import StructFrameSdk, StructFrameSdkConfig
-from struct_frame_sdk.tcp_transport import TcpTransport, TcpTransportConfig
-from frame_profiles import PROFILE_STANDARD_CONFIG
-from struct_frame.generated.messages import Status, get_message_info
+from structframe.struct_frame_sdk.struct_frame_sdk import StructFrameSdk, StructFrameSdkConfig
+from structframe.struct_frame_sdk.tcp_transport import TcpTransport, TcpTransportConfig
+from structframe.frame_profiles import PROFILE_STANDARD_CONFIG
+from structframe.messages import Status, get_message_info
 
 # Configure SDK with transport and frame profile
 config = StructFrameSdkConfig(
@@ -82,7 +82,7 @@ sdk.send(Status(value=1))
 ### Serial
 
 ```python
-from struct_frame_sdk.serial_transport import SerialTransport, SerialTransportConfig
+from structframe.struct_frame_sdk.serial_transport import SerialTransport, SerialTransportConfig
 
 config = SerialTransportConfig(port='/dev/ttyUSB0', baudrate=115200)
 transport = SerialTransport(config)
@@ -92,7 +92,7 @@ transport.connect()
 ### TCP
 
 ```python
-from struct_frame_sdk.tcp_transport import TcpTransport, TcpTransportConfig
+from structframe.struct_frame_sdk.tcp_transport import TcpTransport, TcpTransportConfig
 
 config = TcpTransportConfig(host='192.168.1.100', port=8080)
 transport = TcpTransport(config)
@@ -102,7 +102,7 @@ transport.connect()
 ### UDP
 
 ```python
-from struct_frame_sdk.udp_transport import UdpTransport, UdpTransportConfig
+from structframe.struct_frame_sdk.udp_transport import UdpTransport, UdpTransportConfig
 
 config = UdpTransportConfig(remote_host='192.168.1.100', remote_port=8080)
 transport = UdpTransport(config)
@@ -117,7 +117,7 @@ transport.connect()
 
 ```python
 import asyncio
-from struct_frame_sdk.async_serial_transport import AsyncSerialTransport, AsyncSerialTransportConfig
+from structframe.struct_frame_sdk.async_serial_transport import AsyncSerialTransport, AsyncSerialTransportConfig
 
 async def main():
     config = AsyncSerialTransportConfig(port='/dev/ttyUSB0', baudrate=115200)

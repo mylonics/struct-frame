@@ -69,7 +69,7 @@ function createNestedVariable(): NestedVariableMessage {
   });
   return new NestedVariableMessage({
     sequence: 0x12345678,
-    payload: [nestedPayload],
+    payload: nestedPayload,
     descriptionLength: 20,
     descriptionData: 'nested variable test',
   });

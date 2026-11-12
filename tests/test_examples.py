@@ -27,9 +27,8 @@ EXPECTED = ("pose: pitch=100.0", "sample=4883", "heartbeat: id=23 type=2")
 def _env(generated_dir: str) -> dict:
     """Environment for running *generated* Python.
 
-    The generated package is also called ``struct_frame`` (``struct_frame/generated``),
-    which is the generator's own package name. Put only the generated directory on
-    the path, never the generator's ``src``, or the generator shadows the output.
+    Only the generated directory goes on the path: the generated code lives in the
+    ``structframe`` package there, and running it must not depend on the generator.
     """
     env = os.environ.copy()
     env["PYTHONPATH"] = generated_dir
@@ -119,8 +118,8 @@ def test_multi_package_python_imports(tmp_path):
     every cross-package type has to be imported by the module that uses it."""
     out = tmp_path / "py"
     _generate(EXAMPLES / "multi_package" / "system.sf", "--build_py", "--py_path", str(out))
-    code = ("import struct_frame.generated.system, struct_frame.generated.events, "
-            "struct_frame.generated.sensors, struct_frame.generated.common; print('ok')")
+    code = ("import structframe.system, structframe.events, "
+            "structframe.sensors, structframe.common; print('ok')")
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
                             env=_env(str(out)), timeout=120)
     assert result.returncode == 0 and "ok" in result.stdout, result.stdout + result.stderr
@@ -134,7 +133,7 @@ def test_python_nested_message_array_round_trip(tmp_path):
     _generate(EXAMPLES / "array_test.sf", "--build_py", "--py_path", str(out))
     script = tmp_path / "roundtrip.py"
     script.write_text(
-        "from struct_frame.generated.array_test import ArrayTestMessage, SubMessage\n"
+        "from structframe.array_test import ArrayTestMessage, SubMessage\n"
         "msg = ArrayTestMessage()\n"
         "msg.messages = [SubMessage(id=7, name=b'first'), SubMessage(id=9, name=b'second')]\n"
         "msg.measurements = [1, 2, 3]\n"
@@ -184,7 +183,7 @@ def test_python_enum_members_usable_as_field_values(tmp_path):
     _generate(HELLO_SF, "--build_py", "--py_path", str(out))
     script = tmp_path / "enum_use.py"
     script.write_text(
-        "from struct_frame.generated.hello import Heartbeat, VehicleType\n"
+        "from structframe.hello import Heartbeat, VehicleType\n"
         "hb = Heartbeat(id=1, type=VehicleType.QUADCOPTER)\n"
         "decoded = Heartbeat.deserialize(hb.serialize())\n"
         "assert decoded.type == VehicleType.QUADCOPTER == 2\n"
@@ -307,7 +306,7 @@ def test_python_message_str_lists_fields(tmp_path):
     _generate(HELLO_SF, "--build_py", "--py_path", str(out))
     script = tmp_path / "str_use.py"
     script.write_text(
-        "from struct_frame.generated.hello import Pose\n"
+        "from structframe.hello import Pose\n"
         "text = str(Pose(pitch=1.5, yaw_rate=-2.0, sample=42))\n"
         "assert 'Pose' in text and 'ID 1' in text, text\n"
         "for needle in ('pitch', 'yaw_rate', 'sample', '42', '1.5'):\n"
@@ -390,10 +389,10 @@ def test_python_sdk_subscribe_and_request_response(tmp_path):
     _generate(HELLO_SF, "--build_py", "--py_path", str(out), "--sdk")
     script = tmp_path / "sdk_use.py"
     script.write_text('''
-from frame_profiles import BufferWriter, PROFILE_STANDARD_CONFIG
-from struct_frame.generated.hello import Pose, Heartbeat, get_message_info
-from struct_frame_sdk.struct_frame_sdk import StructFrameSdk, StructFrameSdkConfig
-from struct_frame_sdk.transport import ITransport
+from structframe.frame_profiles import BufferWriter, PROFILE_STANDARD_CONFIG
+from structframe.hello import Pose, Heartbeat, get_message_info
+from structframe.struct_frame_sdk.struct_frame_sdk import StructFrameSdk, StructFrameSdkConfig
+from structframe.struct_frame_sdk.transport import ITransport
 
 class Mock(ITransport):
     def __init__(self): self.on_data = None; self.on_reply = None; self.sent = []

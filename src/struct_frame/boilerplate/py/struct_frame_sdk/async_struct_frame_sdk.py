@@ -14,10 +14,12 @@ from dataclasses import dataclass
 from .async_transport import IAsyncTransport
 from .transport import SendResult
 
+# frame_profiles lives in the parent package; fall back to a top-level module when the SDK
+# is used on its own as a top-level package.
 try:
-    from frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message, _msg_id_of
-except ImportError:  # pragma: no cover - import shim for packaged layout
     from ..frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message, _msg_id_of
+except ImportError:  # pragma: no cover - SDK used as a top-level package
+    from frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message, _msg_id_of
 
 
 GetMessageInfo = Callable[[int], Optional[MessageInfo]]

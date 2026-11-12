@@ -65,7 +65,7 @@ def _generate(out_dir: Path) -> None:
 
 def _load_gen(py_dir: Path, module_name: str):
     return load_generated_module(
-        py_dir / "struct_frame" / "generated" / f"{module_name}.py",
+        py_dir / "structframe" / f"{module_name}.py",
         module_name,
     )
 
@@ -284,7 +284,7 @@ def test_wire_evolution_interop(tmp_path: Path) -> None:
     _generate(out)
     py_dir = out / "py"
 
-    fp = load_generated_module(py_dir / "frame_profiles.py", "frame_profiles")
+    fp = load_generated_module(py_dir / "structframe" / "frame_profiles.py", "frame_profiles")
     fr = Framing(fp)
     v1 = _load_gen(py_dir, "wire_evolution_v1")
     v2 = _load_gen(py_dir, "wire_evolution_v2")

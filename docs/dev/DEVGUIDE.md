@@ -20,7 +20,7 @@ Generated message definitions use the `.structframe.` pattern to clearly disting
 - **TypeScript**: `{package_name}.structframe.ts` (e.g., `serialization_test.structframe.ts`)
 - **JavaScript**: `{package_name}.structframe.js` (e.g., `serialization_test.structframe.js`)
 - **C#**: `{package_name}.structframe.cs` (e.g., `serialization_test.structframe.cs`)
-- **Python**: `{package_name}.py` in `struct_frame/generated/` directory (uses directory structure instead)
+- **Python**: `{package_name}.py` in the generated `structframe/` package, next to the runtime
 
 The `.structframe.` extension makes it immediately obvious that a file contains struct-frame generated code.
 
@@ -115,10 +115,10 @@ namespace structframe {
 #### Python
 ```python
 # Boilerplate package
-from frame_profiles import ProfileStandardWriter
+from structframe.frame_profiles import ProfileStandardWriter
 
 # Generated code in nested package
-from struct_frame.generated.serialization_test import SerializationTest_BasicTypesMessage
+from structframe.serialization_test import SerializationTest_BasicTypesMessage
 ```
 
 #### C#
@@ -165,8 +165,8 @@ serialization_test::BasicTypesMessage msg;
 
 **Python:**
 ```python
-from frame_profiles import ProfileStandardWriter
-from struct_frame.generated.serialization_test import (
+from structframe.frame_profiles import ProfileStandardWriter
+from structframe.serialization_test import (
     SerializationTest_BasicTypesMessage,
     SerializationTestPriority
 )

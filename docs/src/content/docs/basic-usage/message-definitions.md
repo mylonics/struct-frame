@@ -68,7 +68,7 @@ message SensorData {
 
 With variable encoding, arrays and strings only transmit actual used bytes instead of the full max_size. This reduces bandwidth when fields are partially filled.
 
-You can also enable variable-length encoding for **every** message in the project at code-generation time by passing the `--no_packed` CLI flag. This is equivalent to setting `option variable = true;` on every message and additionally drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ output. Use it on platforms that don't support packed structs or that have strict alignment requirements. It does not change byte order: all multi-byte values are little-endian on the wire, and the generated C/C++ code assumes a little-endian host. See the [CLI reference](/reference/cli-reference/) for details.
+You can also enable variable-length encoding for **every** message in the project at code-generation time by passing the `--no-packed` CLI flag. This is equivalent to setting `option variable = true;` on every message and additionally drops the packed-struct (`#pragma pack(1)`) wrappers in the generated C/C++ output. Use it on platforms that don't support packed structs or that have strict alignment requirements. It does not change byte order: all multi-byte values are little-endian on the wire, and the generated C/C++ code assumes a little-endian host. See the [CLI reference](/reference/cli-reference/) for details.
 
 **pkgid** (optional package-level option)
 
@@ -183,7 +183,14 @@ Always uses 16 bytes, padded with nulls if shorter.
 string description = 1 [max_size=256];
 ```
 
-Stores up to 256 characters plus a length prefix. The prefix is 1 byte when `max_size` ≤ 255 and 2 bytes (`uint16`) when `max_size` is larger, so this example uses a 2-byte prefix.
+Stores up to 256 bytes plus a length prefix. The prefix is 1 byte when `max_size` ≤ 255 and 2 bytes (`uint16`) when `max_size` is larger, so this example uses a 2-byte prefix.
+
+Sizes count bytes of UTF-8, not characters, and longer values are truncated to fit. In Python, string fields accept `str` (encoded as UTF-8) or `bytes` and always hold `bytes`; decoded messages return `bytes`, so call `.decode()` (and `.rstrip(b"\0")` for fixed-size strings) to get text:
+
+```python no-compile
+msg = Status(device_name="sensor-1")      # or b"sensor-1"
+name = Status.deserialize(data).device_name.rstrip(b"\0").decode()
+```
 
 ## Arrays
 
@@ -271,7 +278,7 @@ const char* type_str = SensorType_to_string(type);
 
 **Python** (built-in Enum)
 ```python
-from struct_frame.generated.sensor_system import SensorType
+from structframe.sensor_system import SensorType
 
 type = SensorType.TEMPERATURE
 # Use the built-in .name property
@@ -889,7 +896,7 @@ message JobStatusMessage {
 - **`option envelope = true`** is accepted as an alias of `is_envelope`.
 - **Discriminator values** are `auto`, `msgid`, `field_order` and `none`; `false`, `off` and `disabled` are accepted as aliases of `none`.
 - **The extension marker.** Inside a `oneof`, a standalone comment line that *starts with* `Extension::` marks the following variant as the first extension variant (equivalent to `option extensions_start`). A trailing comment on a variant, or prose that merely mentions the marker, is ignored.
-- **Reserved words.** Field, oneof and variant names that are reserved words in a target language (for example `class`, `self`, `delete`, `fn`) are rejected with an error naming the language; rename the field or map it with `--name_overrides`.
+- **Reserved words.** Field, oneof and variant names that are reserved words in a target language (for example `class`, `self`, `delete`, `fn`) are rejected with an error naming the language; rename the field or map it with `--name-overrides`.
 
 ## Validation Rules
 
@@ -904,7 +911,7 @@ The generator enforces:
 - `size` and `max_size` are mutually exclusive; `element_size` only applies to repeated `string`/`bytes`
 - A `oneof` needs at least one variant, and `min_size` may not exceed `max_size`
 - Variants of a `msgid`-discriminated oneof must have distinct message IDs
-- Generated names must not collide or be reserved words in the target languages (see [Generated Names](#generated-names)); use `--name_overrides` to rename
+- Generated names must not collide or be reserved words in the target languages (see [Generated Names](#generated-names)); use `--name-overrides` to rename
 - Field numbers must be `1..N` in declaration order (no gaps, no duplicates)
 - All arrays must have size or max_size
 - All strings must have size or max_size
@@ -1050,7 +1057,7 @@ The generator emits a `BASE_SIZE` constant alongside `MAX_SIZE` for every messag
 
 **Python**
 ```python
-from struct_frame.generated.my_package import StatusReport
+from structframe.my_package import StatusReport
 
 print(StatusReport.BASE_SIZE)  # 7  (device_id + status_code + error_flags)
 print(StatusReport.MAX_SIZE)   # 48 (+ uptime_seconds 4 + cpu_temperature 4 + firmware_version 33)
@@ -1142,9 +1149,9 @@ TypeScript/JavaScript property accessors start with a lower-case letter (`gateCu
 
 Names written entirely in one case (`BLE_HOST_OK`, `ble_host`) carry no acronym information, so they are title-cased (`BleHostOk`) as before.
 
-> **Upgrading from 0.10.x:** acronym-aware conversion changes the generated names of identifiers that mix cases. For example a field `sensorId` is now `SensorId` in C# (previously `Sensorid`), an enum entry `GateCurrent` is `GATE_CURRENT` in C/Python/Rust/C# (previously `GATECURRENT`) and `GateCurrent` in C++ (previously `Gatecurrent`). Schemas that only use `snake_case` or `SCREAMING_SNAKE` names are unaffected. To keep an old spelling, pin it with `--name_overrides`.
+> **Upgrading from 0.10.x:** acronym-aware conversion changes the generated names of identifiers that mix cases. For example a field `sensorId` is now `SensorId` in C# (previously `Sensorid`), an enum entry `GateCurrent` is `GATE_CURRENT` in C/Python/Rust/C# (previously `GATECURRENT`) and `GateCurrent` in C++ (previously `Gatecurrent`). Schemas that only use `snake_case` or `SCREAMING_SNAKE` names are unaffected. To keep an old spelling, pin it with `--name-overrides`.
 
-When no heuristic can produce the name you want, pass `--name_overrides FILE` with a JSON file. Overrides are keyed by `all` or a language (`c`, `cpp`, `ts`, `js`, `py`, `gql`, `csharp`, `rust`); each entry maps a source name path to the exact generated name:
+When no heuristic can produce the name you want, pass `--name-overrides FILE` with a JSON file. Overrides are keyed by `all` or a language (`c`, `cpp`, `ts`, `js`, `py`, `gql`, `csharp`, `rust`); each entry maps a source name path to the exact generated name:
 
 ```json
 {

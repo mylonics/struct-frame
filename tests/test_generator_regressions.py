@@ -105,8 +105,8 @@ def test_msgid_above_255_never_silently_truncated(tmp_path):
     r = gen(tmp_path, sf, "--build_py", "--py_path", str(o))
     if r.returncode != 0:
         return  # rejected at generate time: fine
-    mod = load_generated_module(o / "struct_frame" / "generated" / "big.py", "big_msgid")
-    frames = load_generated_module(o / "frame_profiles.py", "big_frame_profiles")
+    mod = load_generated_module(o / "structframe" / "big.py", "big_msgid")
+    frames = load_generated_module(o / "structframe" / "frame_profiles.py", "big_frame_profiles")
     msg = mod.M()
     try:
         frame = frames.encode_message(frames.PROFILE_STANDARD_CONFIG, msg)
@@ -129,7 +129,7 @@ def test_reserved_word_field_is_rejected_or_escaped_in_python(tmp_path, word):
     if r.returncode != 0:
         assert no_traceback(r)
         return
-    src = (o / "struct_frame" / "generated" / "kw.py").read_text(encoding="utf-8")
+    src = (o / "structframe" / "kw.py").read_text(encoding="utf-8")
     compile(src, "kw.py", "exec")  # must at least be valid Python
 
 
@@ -403,7 +403,7 @@ def test_cache_key_includes_import_graph(tmp_path):
     write(tmp_path, "pa.sf",
           "package pa;\noption pkgid = 1;\nmessage A { option msgid = 1; uint8 x = 1; }\n")
     assert gen(tmp_path, a, *flags).returncode == 0
-    src = (o / "struct_frame" / "generated" / "pa.py").read_text(encoding="utf-8")
+    src = (o / "structframe" / "pa.py").read_text(encoding="utf-8")
     assert "pc" not in src, "stale output: removed import still present (cache key ignores import graph)"
 
 
@@ -415,7 +415,7 @@ def test_cache_hit_regenerates_missing_outputs(tmp_path):
     import shutil
     shutil.rmtree(py_out)
     assert gen(tmp_path, sf, *flags).returncode == 0
-    assert (py_out / "struct_frame" / "generated" / "c.py").exists(), \
+    assert (py_out / "structframe" / "c.py").exists(), \
         "generation skipped on hash match although the Python output was deleted"
 
 
@@ -664,7 +664,12 @@ def _argparse_flags() -> set[str]:
     env["PYTHONPATH"] = str(SRC_DIR) + os.pathsep + env.get("PYTHONPATH", "")
     r = subprocess.run([sys.executable, str(SRC_DIR / "main.py"), "--help"],
                        capture_output=True, text=True, env=env)
-    return set(re.findall(r"(--[a-z][a-z0-9_]*)", r.stdout)) - {"--help"}
+    return set(re.findall(r"(--[a-z][a-z0-9_-]*[a-z0-9])", r.stdout)) - {"--help"}
+
+
+def _with_snake_spellings(flags: set[str]) -> set[str]:
+    """--help lists the kebab-case spelling; the historical snake_case one is still accepted."""
+    return flags | {"--" + f[2:].replace("-", "_") for f in flags}
 
 
 def test_cli_reference_documents_only_real_flags():
@@ -673,7 +678,7 @@ def test_cli_reference_documents_only_real_flags():
     documented = set(re.findall(r"`(--[a-z][a-z0-9_-]*)", doc))
     # flags owned by `diff` are documented in the same page
     documented -= {"--format", "--fail-on", "--write-snapshot"}
-    unknown = sorted(documented - _argparse_flags())
+    unknown = sorted(documented - _with_snake_spellings(_argparse_flags()))
     assert not unknown, f"cli-reference.md documents flags that do not exist: {unknown}"
 
 
@@ -685,7 +690,7 @@ def test_every_cli_flag_is_documented():
 
 
 def test_name_overrides_flag_is_listed_in_help():
-    assert "--name_overrides" in _argparse_flags()
+    assert "--name-overrides" in _argparse_flags()
 
 
 def test_cpp_sdk_docs_do_not_claim_websocket_without_a_transport():
@@ -1029,7 +1034,7 @@ def test_python_layout_hint_does_not_misdecode_fixed_payload_without_variable_on
     o = tmp_path / "py"
     r = gen(tmp_path, sf, "--build_py", "--py_path", str(o))
     assert r.returncode == 0, out(r)
-    mod = load_generated_module(o / "struct_frame" / "generated" / "v.py", "v_hint_plain")
+    mod = load_generated_module(o / "structframe" / "v.py", "v_hint_plain")
     from types import SimpleNamespace
     m = mod.V()
     m.a, m.name, m.vals = 7, b"hi", [1, 2]

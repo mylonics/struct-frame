@@ -94,10 +94,21 @@ internal static class Program
         // only the peer-close behaviour above is asserted.
 
         // With AutoReconnect on, an intentional DisconnectAsync must not reconnect.
+        // (On Linux closing the socket completes the pending read with 0 bytes, which used to
+        // be reported as a peer close and reconnected.)
         int accepted = 0;
+        var acceptedClients = new System.Collections.Concurrent.ConcurrentQueue<TcpClient>();
         var acceptLoop = Task.Run(async () =>
         {
-            try { while (true) { var c = await listener.AcceptTcpClientAsync(); Interlocked.Increment(ref accepted); } }
+            try
+            {
+                while (true)
+                {
+                    var c = await listener.AcceptTcpClientAsync();
+                    acceptedClients.Enqueue(c);
+                    Interlocked.Increment(ref accepted);
+                }
+            }
             catch (Exception) { }
         });
         var t4 = new TcpTransport(new TcpTransportConfig { Host = "127.0.0.1", Port = port, AutoReconnect = true, ReconnectDelayMs = 30 });
@@ -105,7 +116,32 @@ internal static class Program
         await Until(() => accepted == 1);
         await t4.DisconnectAsync();
         await Task.Delay(300);
-        Check("an intentional DisconnectAsync does not reconnect (AutoReconnect)", accepted == 1 && !t4.IsConnected);
+        Check("an intentional DisconnectAsync does not reconnect (AutoReconnect)", accepted == 1 && !t4.IsConnected,
+              $"accepted={accepted} connected={t4.IsConnected}");
+
+        // A peer close schedules a reconnect; DisconnectAsync during the delay cancels it.
+        var t5 = new TcpTransport(new TcpTransportConfig { Host = "127.0.0.1", Port = port, AutoReconnect = true, ReconnectDelayMs = 300 });
+        await t5.ConnectAsync();
+        await Until(() => accepted == 2);
+        foreach (var c in acceptedClients) c.Close();
+        bool dropped = await Until(() => !t5.IsConnected);
+        await t5.DisconnectAsync();
+        await Task.Delay(600);
+        Check("DisconnectAsync cancels a pending reconnect (AutoReconnect)", dropped && accepted == 2 && !t5.IsConnected,
+              $"dropped={dropped} accepted={accepted} connected={t5.IsConnected}");
+
+        // Connecting again right after DisconnectAsync: the old receive loop must not tear
+        // down the new connection.
+        var t6 = new TcpTransport(new TcpTransportConfig { Host = "127.0.0.1", Port = port, AutoReconnect = true, ReconnectDelayMs = 30 });
+        await t6.ConnectAsync();
+        await Until(() => accepted == 3);
+        await t6.DisconnectAsync();
+        await t6.ConnectAsync();
+        await Until(() => accepted == 4);
+        await Task.Delay(300);
+        Check("ConnectAsync right after DisconnectAsync stays connected", accepted == 4 && t6.IsConnected,
+              $"accepted={accepted} connected={t6.IsConnected}");
+        await t6.DisconnectAsync();
 
         listener.Stop();
         var t3 = new TcpTransport(new TcpTransportConfig { Host = "127.0.0.1", Port = port, TimeoutMs = 1000 });

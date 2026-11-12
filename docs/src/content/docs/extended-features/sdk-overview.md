@@ -41,23 +41,23 @@ The SDK provides high-level abstractions for message communication, including tr
 
 ```bash
 # C++ with full SDK (includes ASIO)
-python -m struct_frame messages.proto --build_cpp --sdk
+struct-frame messages.proto --build-cpp --sdk
 
 # C++ embedded SDK (no external dependencies)
-python -m struct_frame messages.proto --build_cpp --sdk_embedded
+struct-frame messages.proto --build-cpp --sdk-embedded
 
 # TypeScript with SDK
-python -m struct_frame messages.proto --build_ts --sdk
+struct-frame messages.proto --build-ts --sdk
 
 # Python with SDK
-python -m struct_frame messages.proto --build_py --sdk
+struct-frame messages.proto --build-py --sdk
 
 # C# (SDK core is always generated; enable transports in the .csproj with
 # -p:IncludeSerialTransport=true / -p:IncludeNetCoreServer=true)
-python -m struct_frame messages.proto --build_csharp
+struct-frame messages.proto --build-csharp
 ```
 
-`--sdk` applies to C++, Python, TypeScript and JavaScript. `--sdk_embedded` is only honoured for C++.
+`--sdk` applies to C++, Python, TypeScript and JavaScript. `--sdk-embedded` is only honoured for C++.
 
 ## Request/Response
 
@@ -70,7 +70,7 @@ reply = sdk.request(Ping(seq=1), Pong, match=lambda r: r.seq == 1, timeout=2.0)
 
 ```typescript no-compile
 // TypeScript / JavaScript (returns a Promise)
-const reply = await sdk.request<Pong>(ping, Pong._msgid, { match: r => r.seq === 1, timeout: 2 });
+const reply = await sdk.request<Pong>(ping, Pong.MSG_ID, { match: r => r.seq === 1, timeout: 2 });
 ```
 
 ```csharp no-compile

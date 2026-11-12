@@ -48,9 +48,8 @@ message BleHostStatus {
 # ---------------------------------------------------------------------------
 # Converter unit tests
 #
-# The converters are exercised in a subprocess: importing the ``struct_frame``
-# source package into the pytest process would shadow the generated
-# ``struct_frame.generated`` packages other tests import.
+# The converters are exercised in a subprocess so the generator's ``struct_frame``
+# source package is not imported into the pytest process.
 # ---------------------------------------------------------------------------
 
 _PROBE = r"""
@@ -261,7 +260,7 @@ def test_generated_names_c_python_rust():
             _check(expected in c, f"C output should contain {expected!r}")
         _check("GATECURRENT" not in c and "BLEMCUHOST" not in c, "C output must not contain flattened names")
 
-        py = _read(dirs["py"] / "struct_frame" / "generated" / "names_test.py")
+        py = _read(dirs["py"] / "structframe" / "names_test.py")
         for expected in ("BLE_HOST_OK = 0", "GATE_CURRENT = 1", "BLE_M_CU_HOST = 2", "BLE_HOST = 3"):
             _check(expected in py, f"Python output should contain {expected!r}")
 

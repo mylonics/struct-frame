@@ -16,7 +16,7 @@ The C# SDK provides async/await-based transport layers for .NET applications usi
 Generate C# code (messages, framing, SDK core, and `.csproj`):
 
 ```bash
-python -m struct_frame messages.sf --build_csharp --csharp_path Generated/
+struct-frame messages.sf --build-csharp --csharp-path Generated/
 ```
 
 The Serial, TCP, UDP and WebSocket transport implementations are always copied to `Framework/Sdk/Transports/`; they are compiled only when you enable them in the build (see [Transport Compilation](#transport-compilation)).
@@ -25,10 +25,10 @@ The Serial, TCP, UDP and WebSocket transport implementations are always copied t
 
 ```bash
 # With custom namespace (default: StructFrame)
-python -m struct_frame messages.sf --build_csharp --csharp_namespace MyApp.Protocol
+struct-frame messages.sf --build-csharp --csharp-namespace MyApp.Protocol
 
 # With equality operators
-python -m struct_frame messages.sf --build_csharp --equality
+struct-frame messages.sf --build-csharp --equality
 ```
 
 ### Generated Output Structure

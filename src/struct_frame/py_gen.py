@@ -120,8 +120,12 @@ class EnumPyGen():
 
 class FieldPyGen():
     @staticmethod
-    def get_type_hint(field):
-        """Get Python type hint for a field"""
+    def get_type_hint(field, parameter=False):
+        """Get Python type hint for a field.
+
+        parameter=True gives the hint for a constructor parameter: string fields also accept
+        str (encoded as UTF-8); the stored value is always bytes.
+        """
         type_name = field.field_type
         
         if type_name in py_type_hints:
@@ -134,13 +138,14 @@ class FieldPyGen():
             base_hint = type_name
         
         # Handle arrays
+        str_hint = "Union[str, bytes]" if parameter and field.field_type == "string" else "bytes"
         if field.is_array:
             if field.field_type in ("string", "bytes"):
-                return "List[bytes]"
+                return f"List[{str_hint}]"
             else:
                 return f"List[{base_hint}]"
         elif field.field_type in ("string", "bytes"):
-            return "bytes"
+            return str_hint
         else:
             return base_hint
     
@@ -298,12 +303,12 @@ class MessagePyGen():
                 if f.size_option is not None:
                     # Fixed string
                     result += f'        # Fixed string: {f.name}\n'
-                    result += f'        data += struct.pack("<{f.size_option}s", self.{f.name}[:{f.size_option}])\n'
+                    result += f'        data += struct.pack("<{f.size_option}s", _to_bytes(self.{f.name})[:{f.size_option}])\n'
                 elif f.max_size is not None:
                     # Variable string with length prefix
                     count_fmt = "H" if f.max_size > 255 else "B"
                     result += f'        # Variable string: {f.name}\n'
-                    result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
+                    result += f'        str_data = _to_bytes(self.{f.name})[:{f.max_size}]\n'
                     result += f'        data += struct.pack("<{count_fmt}{f.max_size}s", len(str_data), str_data)\n'
             elif f.is_array:
                 _flush_scalars()
@@ -315,7 +320,7 @@ class MessagePyGen():
                         element_size = f.element_size if f.element_size else 16
                         bulk_fmt = ("%ds" % element_size) * f.size_option
                         result += f'        # Fixed string array: {f.name}\n'
-                        result += f'        _elems = [self.{f.name}[i][:{element_size}] if i < len(self.{f.name}) else b"" for i in range({f.size_option})]\n'
+                        result += f'        _elems = [_to_bytes(self.{f.name}[i])[:{element_size}] if i < len(self.{f.name}) else b"" for i in range({f.size_option})]\n'
                         result += f'        data += struct.pack("<{bulk_fmt}", *_elems)\n'
                     elif f.max_size is not None:
                         # Bounded string array
@@ -323,7 +328,7 @@ class MessagePyGen():
                         element_size = f.element_size if f.element_size else 16
                         bulk_fmt = ("%ds" % element_size) * f.max_size
                         result += f'        # Bounded string array: {f.name}\n'
-                        result += f'        _elems = [self.{f.name}[i][:{element_size}] if i < len(self.{f.name}) else b"" for i in range({f.max_size})]\n'
+                        result += f'        _elems = [_to_bytes(self.{f.name}[i])[:{element_size}] if i < len(self.{f.name}) else b"" for i in range({f.max_size})]\n'
                         result += f'        data += struct.pack("<{count_fmt}{bulk_fmt}", min(len(self.{f.name}), {f.max_size}), *_elems)\n'
                 else:
                     # Numeric/enum/struct array
@@ -726,7 +731,7 @@ class MessagePyGen():
         result += '    def __init__(self'
         init_params = []
         for key, f in msg.fields.items():
-            type_hint = FieldPyGen.get_type_hint(f)
+            type_hint = FieldPyGen.get_type_hint(f, parameter=True)
             init_params.append(f'{f.name}: {type_hint} = None')
         
         # Add oneof parameters
@@ -746,11 +751,13 @@ class MessagePyGen():
                 # For float32 arrays, truncate each element to 32-bit precision
                 if f.field_type == "float":
                     result += f'        self.{f.name} = [_truncate_float32(v) for v in {f.name}] if {f.name} is not None else []\n'
+                elif f.field_type in ("string", "bytes"):
+                    result += f'        self.{f.name} = [_to_bytes(v) for v in {f.name}] if {f.name} is not None else []\n'
                 else:
                     result += f'        self.{f.name} = {f.name} if {f.name} is not None else []\n'
             elif f.field_type in ("string", "bytes"):
                 fallback = repr(f.default.encode('utf-8')) if f.default is not None else 'b""'
-                result += f'        self.{f.name} = {f.name} if {f.name} is not None else {fallback}\n'
+                result += f'        self.{f.name} = _to_bytes({f.name}) if {f.name} is not None else {fallback}\n'
             elif f.field_type in py_type_hints:
                 if f.field_type == "bool":
                     fallback = repr(f.default) if f.default is not None else 'False'
@@ -953,7 +960,7 @@ class MessagePyGen():
             elif f.field_type in ("string", "bytes") and f.max_size is not None:
                 # Variable string
                 count_size = 2 if f.max_size > 255 else 1
-                result += f'        size += {count_size} + min(len(self.{f.name}), {f.max_size})  # {f.name}\n'
+                result += f'        size += {count_size} + min(len(_to_bytes(self.{f.name})), {f.max_size})  # {f.name}\n'
             else:
                 result += f'        size += {f.size}  # {f.name}\n'
         
@@ -989,11 +996,11 @@ class MessagePyGen():
             if f.field_type in ("string", "bytes") and not f.is_array:
                 if f.size_option is not None:
                     result += f'        # Fixed string: {f.name}\n'
-                    result += f'        data += struct.pack("<{f.size_option}s", self.{f.name}[:{f.size_option}])\n'
+                    result += f'        data += struct.pack("<{f.size_option}s", _to_bytes(self.{f.name})[:{f.size_option}])\n'
                 elif f.max_size is not None:
                     count_fmt = "H" if f.max_size > 255 else "B"
                     result += f'        # Variable string: {f.name}\n'
-                    result += f'        str_data = self.{f.name}[:{f.max_size}]\n'
+                    result += f'        str_data = _to_bytes(self.{f.name})[:{f.max_size}]\n'
                     result += f'        data += struct.pack("<{count_fmt}", len(str_data))\n'
                     result += '        data += struct.pack(f"<{len(str_data)}s", str_data)\n'
             elif f.is_array:
@@ -1006,14 +1013,14 @@ class MessagePyGen():
                     if f.size_option is not None:
                         result += f'        # Fixed string array: {f.name}\n'
                         result += f'        for i in range({f.size_option}):\n'
-                        result += f'            item = self.{f.name}[i][: {element_size}] if i < len(self.{f.name}) else b""\n'
+                        result += f'            item = _to_bytes(self.{f.name}[i])[: {element_size}] if i < len(self.{f.name}) else b""\n'
                         result += f'            data += struct.pack("<{element_size}s", item)\n'
                     elif f.max_size is not None:
                         count_fmt = "H" if f.max_size > 255 else "B"
                         result += f'        # Bounded string array: {f.name}\n'
                         result += f'        data += struct.pack("<{count_fmt}", min(len(self.{f.name}), {f.max_size}))\n'
                         result += f'        for i in range(min(len(self.{f.name}), {f.max_size})):\n'
-                        result += f'            item = self.{f.name}[i][: {element_size}]\n'
+                        result += f'            item = _to_bytes(self.{f.name}[i])[: {element_size}]\n'
                         result += f'            data += struct.pack("<{element_size}s", item)\n'
                 else:
                     fmt = MessagePyGen.get_struct_format(f)
@@ -1346,7 +1353,7 @@ class MessagePyGen():
         field_params = []
         field_inits = []
         for f_name, f in msg.fields.items():
-            type_hint = FieldPyGen.get_type_hint(f)
+            type_hint = FieldPyGen.get_type_hint(f, parameter=True)
             if f.is_array or f.field_type in ("string", "bytes"):
                 field_params.append(f'{f.name}: {type_hint} = None')
             else:
@@ -1511,6 +1518,9 @@ class FilePyGen():
                 yield 'from .%s import *\n' % pkg_name
         
         yield '\n'
+        yield '# String fields accept str (encoded as UTF-8) or bytes\n'
+        yield 'def _to_bytes(val) -> bytes:\n'
+        yield '    return val.encode("utf-8") if isinstance(val, str) else val\n\n'
         yield '# Helper function to truncate float64 to float32 precision\n'
         yield 'def _truncate_float32(val: float) -> float:\n'
         yield '    """Truncate a Python float (float64) to float32 precision"""\n'
@@ -1673,6 +1683,25 @@ class FilePyGen():
                 yield f'    min_size = getattr(msg_class, "MIN_SIZE", base_size)\n'
                 yield f'    return MessageInfo(size=msg_class.msg_size, magic1=magic1, magic2=magic2, base_size=base_size, min_size=min_size)\n'
 
+            yield from FilePyGen._decode_message()
+
+    @staticmethod
+    def _decode_message():
+        yield '\n\n'
+        yield 'def decode_message(frame):\n'
+        yield '    """Decode a frame from a reader into the message class for its ID.\n'
+        yield '\n'
+        yield '    Returns None for an invalid frame or an ID this package does not define, so\n'
+        yield '    one reader can feed several packages\' decode_message in turn::\n'
+        yield '\n'
+        yield '        msg = decode_message(frame)\n'
+        yield '        if isinstance(msg, Status): ...\n'
+        yield '    """\n'
+        yield '    if not getattr(frame, "valid", True):\n'
+        yield '        return None\n'
+        yield '    msg_class = get_message_class(frame.msg_id)\n'
+        yield '    return msg_class.deserialize(frame) if msg_class is not None else None\n'
+
 
 class TestPyGen():
     """Generator for Python test code with dummy values for round-trip verification."""
@@ -1784,14 +1813,16 @@ class TestPyGen():
         
         yield 'import sys\n'
         yield 'from typing import List, Tuple, Optional\n'
-        yield f'from struct_frame.generated.{package.name} import *\n'
-        yield f'from struct_frame.generated.{package.name} import get_message_info\n'
+        # This module lives in the generated package next to the package modules and
+        # the runtime, so every import is relative.
+        yield f'from .{package.name} import *\n'
+        yield f'from .{package.name} import get_message_info\n'
         # Re-export names from imported packages so create_test_* functions can
         # construct cross-package nested-message fields by their bare type name.
         if imported_packages:
             for imp in imported_packages:
-                yield f'from struct_frame.generated.{imp} import *\n'
-        yield 'from frame_profiles import (\n'
+                yield f'from .{imp} import *\n'
+        yield 'from .frame_profiles import (\n'
         yield '    BufferWriter, AccumulatingReader,\n'
         yield '    PROFILE_STANDARD_CONFIG, PROFILE_SENSOR_CONFIG, PROFILE_IPC_CONFIG,\n'
         yield '    PROFILE_BULK_CONFIG, PROFILE_NETWORK_CONFIG,\n'
