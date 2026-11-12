@@ -16,14 +16,14 @@ import os
 # Add paths
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'generated', 'py'))
 
-from struct_frame.generated.serialization_test import BasicTypesMessage as BasicTypesMessage, get_message_info
-from struct_frame.generated.pkg_test_messages import (
+from structframe.serialization_test import BasicTypesMessage as BasicTypesMessage, get_message_info
+from structframe.pkg_test_messages import (
     PackageTestMessage, CrossPackageMessage, get_message_info as pkg_get_message_info,
     PACKAGE_ID as PKG_PACKAGE_ID,
 )
-from struct_frame.generated.common_types import Timestamp, Status
-from struct_frame.generated.pkg_test_a import ActionType
-from frame_profiles import (
+from structframe.common_types import Timestamp, Status
+from structframe.pkg_test_a import ActionType
+from structframe.frame_profiles import (
     BufferWriter,
     BufferReader,
     AccumulatingReader,

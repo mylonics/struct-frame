@@ -631,7 +631,7 @@ def calculate_field_layout(msg, package, packages):
                 ))
                 offset += type_size
             else:
-                # Nested message type - treated as single element struct array
+                # Nested message type: a single message, exposed as a view into the parent
                 nested_msg = _find_message_type(field_type, package, packages)
                 if nested_msg is None:
                     raise ValueError(f"Unknown nested message type '{field_type}' for field '{field.name}'")
@@ -641,8 +641,6 @@ def calculate_field_layout(msg, package, packages):
                     offset=offset,
                     size=nested_size,
                     field_type=field_type,
-                    is_array=True,
-                    array_length=1,
                     element_size=nested_size,
                     is_nested=True,
                     nested_type=_get_nested_type_name(field, package),

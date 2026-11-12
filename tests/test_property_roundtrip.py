@@ -65,14 +65,14 @@ sys.path.insert(0, str(GEN_PY))
 # classes here: they require careful strategy construction and are covered
 # by the deterministic round-trip suite already.
 try:
-    from frame_profiles import (  # type: ignore  # noqa: E402
+    from structframe.frame_profiles import (  # type: ignore  # noqa: E402
         AccumulatingReader,
         PROFILE_BULK_CONFIG,
         PROFILE_NETWORK_CONFIG,
         PROFILE_STANDARD_CONFIG,
         encode_message,
     )
-    from struct_frame.generated.serialization_test import (  # type: ignore  # noqa: E402
+    from structframe.serialization_test import (  # type: ignore  # noqa: E402
         BasicTypesMessage,
         get_message_info,
     )

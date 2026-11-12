@@ -37,7 +37,7 @@ from frame_profiles import (
     BufferWriter,
     PROFILE_STANDARD_CONFIG,
 )
-from struct_frame.generated.serialization_test import (
+from structframe.serialization_test import (
     BasicTypesMessage,
     SerializationTestMessage,
     get_message_info,

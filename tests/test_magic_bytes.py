@@ -282,7 +282,7 @@ def test_codegen_preserves_override():
         ok = _generate_py(sf, out)
         _check(ok, "code generation failed")
 
-        mod = load_generated_module(out / "py" / "struct_frame" / "generated" / "gen_magic.py", "gen_magic")
+        mod = load_generated_module(out / "py" / "structframe" / "gen_magic.py", "gen_magic")
         cls = mod.OverrideGenMsg
         _check(hasattr(cls, "MAGIC1") and hasattr(cls, "MAGIC2"),
                f"generated class missing MAGIC1/MAGIC2 attributes; found: {[x for x in dir(cls) if 'magic' in x.lower() or 'MAGIC' in x]}")

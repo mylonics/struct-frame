@@ -61,8 +61,8 @@ The Standard profile (recommended for most uses):
 <Tabs>
   <TabItem label="Python">
   ```python
-  from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
-  from struct_frame.generated.messages import MyMessage, get_message_info
+  from structframe.frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
+  from structframe.messages import MyMessage, get_message_info
 
   # Encode
   msg = MyMessage(value=42)
@@ -93,11 +93,13 @@ The Standard profile (recommended for most uses):
   writer.write(msg);
 
   // Decode (CRC profiles need the message-info callback)
-  AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)>
-      reader(get_message_info);
+  ProfileStandardAccumulatingReader reader(get_message_info);
   reader.add_data(buffer, writer.size());
-  while (auto result = reader.next()) {
-      // Process message - result is valid due to operator bool()
+  FrameMsgInfo result;
+  while (reader.try_next(result)) {
+      if (result.valid) {
+          // Process message; invalid results are corrupt frames that were skipped
+      }
   }
   ```
   </TabItem>

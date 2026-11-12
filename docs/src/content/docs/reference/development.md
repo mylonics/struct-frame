@@ -134,7 +134,7 @@ PYTHONPATH=src python src/main.py examples/generic_robot.sf \
 PYTHONPATH=src python src/main.py examples/array_test.sf --build_py --py_path generated/py
 
 # Import generated code
-python -c "import sys; sys.path.insert(0, 'generated/py'); from struct_frame.generated.array_test import get_message_info"
+python -c "import sys; sys.path.insert(0, 'generated/py'); from structframe.array_test import get_message_info"
 ```
 
 ## Running the Tests

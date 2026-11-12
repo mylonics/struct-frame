@@ -10,8 +10,11 @@ authors = [
 ]
 dependencies = [
     "proto-schema-parser>=2.0.0",
+    # structframe.toml support (tomllib is in the standard library from Python 3.11)
+    "tomli>=1.1.0; python_version < '3.11'",
 ]
-description = "A framework for serializing data with headers"
+description = "Generate fixed-layout messages and framing code for C, C++, Python, TypeScript, JavaScript, C# and Rust from one schema"
+keywords = ["serialization", "code-generator", "framing", "embedded", "serial", "protocol", "uart", "mavlink", "protobuf"]
 readme = "README.md"
 requires-python = ">=3.9"
 classifiers = [
@@ -24,6 +27,12 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: C",
+    "Programming Language :: C++",
+    "Programming Language :: C#",
+    "Programming Language :: Rust",
+    "Topic :: Communications",
+    "Topic :: Software Development :: Embedded Systems",
     "Operating System :: OS Independent",
 ]
 license = "MIT"
@@ -44,16 +53,14 @@ struct-frame = "struct_frame:main"
 
 [project.urls]
 Homepage = "https://github.com/mylonics/struct-frame"
+Documentation = "https://struct-frame.mylonics.com"
+Changelog = "https://github.com/mylonics/struct-frame/blob/main/CHANGELOG.md"
 Issues = "https://github.com/mylonics/struct-frame/issues"
-
-
 
 [tool.hatch.build.targets.sdist.force-include]
 "src/struct_frame/boilerplate" = "src/struct_frame/boilerplate"
 "src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo/asio/include/asio" = "src/struct_frame/boilerplate/cpp/struct_frame_sdk/asio-repo/asio/include/asio"
 
-#[tool.hatch.build.targets.wheel.force-include]
-#"src/struct_frame/boilerplate" = "struct_frame/boilerplate"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -28,7 +28,7 @@ from struct_frame_sdk.tcp_transport import TcpTransport, TcpTransportConfig
 from struct_frame_sdk.struct_frame_sdk import StructFrameSdk, StructFrameSdkConfig
 
 from frame_profiles import BufferWriter, PROFILE_STANDARD_CONFIG
-from struct_frame.generated.serialization_test import (
+from structframe.serialization_test import (
     BasicTypesMessage,
     get_message_info,
 )

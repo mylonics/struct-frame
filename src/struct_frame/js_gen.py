@@ -213,10 +213,19 @@ class MessageJsClassGen():
         # Generate class declaration
         result += f'class {package_msg_name} extends MessageBase {{\n'
         
-        # Static properties
+        # Package-qualified ID ((PACKAGE_ID << 8) | msgid) when the package has an ID,
+        # as in C, C++, Python and C#: the writer takes the package byte from it and
+        # frame.msgId reports it, so dispatching on _msgid / MSG_ID works for every profile.
+        effective_msg_id = msg.id
+        if msg.id is not None and package is not None and package.package_id is not None:
+            effective_msg_id = (package.package_id << 8) | msg.id
+        # Static properties. MSG_ID / MAX_SIZE are the public names; the underscore
+        # forms are kept for existing code.
         result += f'  static _size = {total_size};\n'
+        result += f'  static MAX_SIZE = {total_size};\n'
         if msg.id is not None:
-            result += f'  static _msgid = {msg.id};\n'
+            result += f'  static _msgid = {effective_msg_id};\n'
+            result += f'  static MSG_ID = {effective_msg_id};\n'
         
         # Add magic numbers for checksum
         if msg.id is not None and msg.magic_bytes:
@@ -869,6 +878,8 @@ class MessageJsClassGen():
         
         if field_info.is_array:
             result += MessageJsClassGen._generate_array_accessors(field_info)
+        elif field_info.is_nested:
+            result += MessageJsClassGen._generate_nested_accessors(field_info)
         elif field_type in ("string", "bytes"):
             result += MessageJsClassGen._generate_string_accessors(field_info)
         elif field_info.is_enum or field_type in TYPE_SIZES:
@@ -979,6 +990,22 @@ class MessageJsClassGen():
 
         return result
     
+    @staticmethod
+    def _generate_nested_accessors(field_info):
+        """Accessors for a singular nested message field (a view into this message's buffer)."""
+        name = field_info.name
+        offset = field_info.offset
+        size = field_info.element_size
+        nested_type = field_info.nested_type
+        result = f'  get {name}() {{\n'
+        result += f'    return new {nested_type}(this._buffer.subarray({offset}, {offset + size}));\n'
+        result += f'  }}\n'
+        result += f'  set {name}(value) {{\n'
+        result += f'    if (Array.isArray(value)) throw new TypeError("{name} is a single {nested_type}, not an array");\n'
+        result += f'    this._writeStructArray({offset}, 1, {size}, [value], {nested_type});\n'
+        result += f'  }}\n\n'
+        return result
+
     @staticmethod
     def _generate_array_accessors(field_info):
         """Generate accessors for array types."""
@@ -1118,7 +1145,7 @@ class FileJsGen():
         if package.messages:
             # Only generate getMessageInfo if there are messages with IDs
             messages_with_id = [
-                msg for key, msg in package.sortedMessages().items() if msg.id]
+                msg for key, msg in package.sortedMessages().items() if msg.id is not None]
             if messages_with_id:
                 # Generate unified getMessageInfo function
                 # Returns { size, magic1, magic2 } for a given message ID
@@ -1156,14 +1183,19 @@ class FileJsGen():
                     # messages, BASE_SIZE otherwise (extensions may be truncated) — matches c_gen
                     min_size = msg.min_size if msg.variable else msg.base_size
                     is_variable = 'true' if msg.variable else 'false'
-                    yield '    case %s._msgid: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (
-                        package_msg_name, package_msg_name, min_size, is_variable, package_msg_name, package_msg_name, package_msg_name)
+                    # With a package ID the switch is on the local ID; _msgid is package-qualified.
+                    case = str(msg.id) if package.package_id is not None else f'{package_msg_name}._msgid'
+                    yield '    case %s: return { size: %s._size, minSize: %d, isVariable: %s, magic1: %s._magic1, magic2: %s._magic2, baseSize: %s._baseSize };\n' % (
+                        case, package_msg_name, min_size, is_variable, package_msg_name, package_msg_name, package_msg_name)
 
                 yield '    default: break;\n'
                 yield '  }\n'
                 yield '  return undefined;\n'
                 yield '}\n'
                 yield 'module.exports.getMessageInfo = getMessageInfo;\n'
+                if use_class_based:
+                    from .ts_gen import FileTsGen
+                    yield from FileTsGen._decode_message(messages_with_id, typed=False)
             yield '\n'
 
 
@@ -1251,9 +1283,8 @@ class TestJsGen():
             else:
                 result += f'    {prefix}.{var_name} = "test_string";\n'
         elif type_name not in TestJsGen._PRIM_TYPES and not field.is_enum:
-            # Single nested struct - the JS layout wraps it as a 1-element
-            # struct array, so the setter accepts ``[{}]``.
-            result += f"    {prefix}.{var_name} = [{{}}];\n"
+            # Single nested message: the setter accepts a plain object.
+            result += f"    {prefix}.{var_name} = {{}};\n"
         else:
             result += f"    {prefix}.{var_name} = {TestJsGen._get_dummy_value(field, index)};\n"
 

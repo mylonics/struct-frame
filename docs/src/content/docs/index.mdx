@@ -44,7 +44,7 @@ pip install struct-frame
 
 ## Quick Start
 
-Create a `.proto` file:
+Create a schema, `status.sf`:
 
 ```proto
 package example;
@@ -59,67 +59,57 @@ message Status {
 Generate code:
 
 ```bash
-# Python
-python -m struct_frame status.proto --build_py --py_path generated/
+# Python and C into generated/py and generated/c
+struct-frame status.sf --lang py,c
 
-# C
-python -m struct_frame status.proto --build_c --c_path generated/
-
-# Multiple languages
-python -m struct_frame status.proto --build_c --build_py --build_ts
+# Every language, under build/gen/<lang>
+struct-frame status.sf --lang all --out build/gen
 ```
 
 ## Quick Language Reference
 
 <Tabs>
   <TabItem label="C++">
-  ```cpp
+  ```cpp no-compile
   #include "example.structframe.hpp"
+  #include "frame_profiles.hpp"
 
-  // Create a message
-  ExampleStatus msg;
+  structframe::example::Status msg{};
   msg.id = 42;
   msg.value = 3.14f;
 
-  // No encoding needed - use directly as bytes
-  uint8_t* data = (uint8_t*)&msg;
-  size_t size = sizeof(ExampleStatus);
+  // Fixed messages are packed structs; the writer frames them with a checksum
+  uint8_t buffer[64];
+  structframe::ProfileStandardWriter writer(buffer, sizeof(buffer));
+  writer.write(msg);
   ```
   </TabItem>
   <TabItem label="Python">
-  ```python
-  from struct_frame.generated.example import ExampleStatus
+  ```python no-compile
+  from structframe.example import Status
 
-  # Create a message
-  msg = ExampleStatus(id=42, value=3.14)
-
-  # Serialize to bytes
+  msg = Status(id=42, value=3.14)
   data = msg.serialize()
   ```
   </TabItem>
   <TabItem label="TypeScript">
-  ```typescript
-  import { ExampleStatus } from './example.structframe';
+  ```typescript no-compile
+  import { Status } from './example.structframe';
 
-  // Create a message
-  const msg = new ExampleStatus();
-  msg.id = 42;
-  msg.value = 3.14;
-
-  // Serialize to buffer
+  const msg = new Status({ id: 42, value: 3.14 });
   const data = msg.serialize();
   ```
   </TabItem>
   <TabItem label="C">
-  ```c
+  ```c no-compile
   #include "example.structframe.h"
 
-  // Create a message
   ExampleStatus msg = { .id = 42, .value = 3.14f };
 
-  // Use directly as bytes
-  uint8_t* data = (uint8_t*)&msg;
-  size_t size = sizeof(ExampleStatus);
+  uint8_t buffer[64];
+  buffer_writer_t writer;
+  buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
+  ExampleStatus_write(&writer, &msg);   /* frame + checksum */
   ```
   </TabItem>
 </Tabs>

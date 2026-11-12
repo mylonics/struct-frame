@@ -11,11 +11,11 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'generated', 'py'))
 
-from struct_frame.generated.envelope_test import (
+from structframe.envelope_test import (
     CommandEnvelope, ADCCommand, RawDataEnvelope, RawSamplePayload,
     RawDataEnvelopePayloadField, get_message_info,
 )
-from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG, PROFILE_BULK_CONFIG
+from structframe.frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG, PROFILE_BULK_CONFIG
 
 _passed = 0
 _failed = 0

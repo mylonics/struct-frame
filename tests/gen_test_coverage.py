@@ -59,9 +59,20 @@ TRIAGE_LABELS = "test-gap,coverage"
 # Introspection of the generator feature set + tests/ tree
 # ---------------------------------------------------------------------------
 def discover_cli_flags():
-    """Return the set of long-form CLI flags declared by the generator."""
-    text = GENERATE_PY.read_text(encoding="utf-8")
-    return set(re.findall(r"add_argument\(\s*'(--[a-zA-Z0-9_]+)'", text))
+    """Return the set of long-form CLI flags the generator accepts (every spelling)."""
+    src = str(REPO_ROOT / "src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    from struct_frame.generate import build_parser
+    flags = set()
+    for action in build_parser()._actions:
+        flags.update(opt for opt in action.option_strings if opt.startswith("--"))
+    return flags
+
+
+def _flag_key(flag):
+    """``--no-packed`` and ``--no_packed`` are the same option."""
+    return flag.replace("-", "_")
 
 
 def discover_profiles():
@@ -249,9 +260,17 @@ def validate():
         "--c_path", "--cpp_path", "--ts_path", "--js_path", "--py_path",
         "--csharp_path", "--gql_path", "--rust_path", "--catalog_path",
         "--hash_path", "--csharp_namespace", "--sdk", "--sdk_embedded",
+        "--help", "--version",
     }
-    for flag in sorted(discover_cli_flags() - ignore_flags):
-        if flag not in blob:
+    ignore_keys = {_flag_key(f) for f in ignore_flags}
+    seen = set()
+    for flag in sorted(discover_cli_flags()):
+        key = _flag_key(flag)
+        if key in ignore_keys or key in seen:
+            continue
+        seen.add(key)
+        spellings = {flag, flag[:2] + flag[2:].replace("_", "-"), flag[:2] + flag[2:].replace("-", "_")}
+        if not any(s in blob for s in spellings):
             problems.append(
                 f"generator CLI flag {flag} is not referenced in coverage_spec.py "
                 f"(add a row to section 1)"
@@ -266,7 +285,7 @@ def validate():
             continue
         for table in section["tables"]:
             for row in table["rows"]:
-                for flag in re.findall(r"`(--[a-zA-Z0-9_]+)`", row["label"]):
+                for flag in re.findall(r"`(--[a-zA-Z0-9_-]+)`", row["label"]):
                     if flag not in known_flags:
                         problems.append(
                             f"spec section 1 references unknown generator flag "

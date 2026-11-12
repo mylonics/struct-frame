@@ -13,7 +13,7 @@ from typing import Union
 # Add generated directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
 
-from struct_frame.generated.serialization_test import (
+from structframe.serialization_test import (
     TruncationTestNonVariable,
     TruncationTestVariable,
     NestedPayload,

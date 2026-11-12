@@ -10,11 +10,11 @@
 
 | If you want to… | Read |
 | --- | --- |
-| Run the test suite | [`tests/README.md`](tests/README.md) |
-| See what every language tests today | [`docs/src/content/docs/reference/test-coverage.md`](docs/src/content/docs/reference/test-coverage.md) |
-| Understand the wire format and the canonical test vectors | [`docs/src/content/docs/reference/conformance.md`](docs/src/content/docs/reference/conformance.md) |
-| Add or debug negative / malformed-frame tests | [`tests/NEGATIVE_TESTS.md`](tests/NEGATIVE_TESTS.md) |
-| See user-facing testing docs (rendered on the site) | [`docs/src/content/docs/reference/testing.md`](docs/src/content/docs/reference/testing.md) |
+| Run the test suite | [`tests/README.md`](../../tests/README.md) |
+| See what every language tests today | [`docs/src/content/docs/reference/test-coverage.md`](../src/content/docs/reference/test-coverage.md) |
+| Understand the wire format and the canonical test vectors | [`docs/src/content/docs/reference/conformance.md`](../src/content/docs/reference/conformance.md) |
+| Add or debug negative / malformed-frame tests | [`tests/NEGATIVE_TESTS.md`](../../tests/NEGATIVE_TESTS.md) |
+| See user-facing testing docs (rendered on the site) | [`docs/src/content/docs/reference/testing.md`](../src/content/docs/reference/testing.md) |
 | Understand the generator and codebase layout | [`DEVGUIDE.md`](DEVGUIDE.md), [`REVIEW.md`](REVIEW.md) |
 
 ## Cardinal rules for agents working on tests

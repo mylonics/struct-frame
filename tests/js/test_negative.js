@@ -395,7 +395,7 @@ function testNetworkSysIdCompId() {
  */
 function testBulkCorruptedPkgId() {
   const msg = new PackageTestMessage();
-  msg.createdAt = [{ seconds: BigInt(12345), nanoseconds: 67890 }];
+  msg.createdAt = { seconds: BigInt(12345), nanoseconds: 67890 };
   msg.currentStatus = 1; // Active
   msg.name = 'TestDevice';
 
@@ -421,7 +421,7 @@ function testBulkCorruptedPkgId() {
  */
 function testNetworkCorruptedPkgId() {
   const msg = new PackageTestMessage();
-  msg.createdAt = [{ seconds: BigInt(12345), nanoseconds: 67890 }];
+  msg.createdAt = { seconds: BigInt(12345), nanoseconds: 67890 };
   msg.currentStatus = 1; // Active
   msg.name = 'TestDevice';
 
@@ -480,7 +480,7 @@ function testCrossPackageRejection() {
  */
 function testBulkCorruptedMsgIdLowByte() {
   const msg = new PackageTestMessage();
-  msg.createdAt = [{ seconds: BigInt(12345), nanoseconds: 67890 }];
+  msg.createdAt = { seconds: BigInt(12345), nanoseconds: 67890 };
   msg.currentStatus = 1; // Active
   msg.name = 'TestDevice';
 

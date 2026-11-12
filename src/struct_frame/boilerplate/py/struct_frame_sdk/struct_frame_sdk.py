@@ -14,13 +14,12 @@ from dataclasses import dataclass
 
 from .transport import ITransport, SendResult
 
-# frame_profiles lives in the parent boilerplate directory. Depending on how the
-# generated package is laid out on sys.path it is reachable either as a
-# top-level module or as a sibling package; try both.
+# frame_profiles lives in the parent package (the generated output package). When the SDK
+# is used on its own as a top-level package, fall back to a top-level frame_profiles.
 try:
-    from frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message, _msg_id_of
-except ImportError:  # pragma: no cover - import shim for packaged layout
     from ..frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message, _msg_id_of
+except ImportError:  # pragma: no cover - SDK used as a top-level package
+    from frame_profiles import ProfileConfig, MessageInfo, AccumulatingReader, encode_message, _msg_id_of
 
 
 # Callback that returns message metadata (size, magic numbers) for a message ID.

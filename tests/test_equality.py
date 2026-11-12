@@ -57,7 +57,7 @@ def _python_equality(gen_dir: Path) -> None:
     py_root = gen_dir / "py"
     sys.path.insert(0, str(py_root))
     try:
-        from struct_frame.generated.serialization_test import BasicTypesMessage  # type: ignore
+        from structframe.serialization_test import BasicTypesMessage  # type: ignore
     except ImportError as exc:
         _check(False, f"failed to import generated Python module: {exc}")
         return

@@ -75,7 +75,7 @@ PROTOS = [
 
 def _ensure_generated(verbose: bool) -> None:
     """Run the Python code generator if generated output is missing."""
-    target = GEN_PY_DIR / "struct_frame" / "generated" / "serialization_test.py"
+    target = GEN_PY_DIR / "structframe" / "serialization_test.py"
     if target.exists():
         if verbose:
             print(f"[skip] generated code already present at {target.parent}")

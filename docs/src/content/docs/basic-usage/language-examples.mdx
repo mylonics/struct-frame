@@ -1,15 +1,15 @@
 ---
 title: Language Examples
-description: How to use generated code in each language with the standardized serialize/deserialize API.
+description: How to encode, frame, parse and decode generated messages in every language.
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-This page shows how to use generated code in each language with the standardized serialize/deserialize API.
+This page shows the same steps in every language: create a message, write it into a frame, feed received bytes to a reader, and decode the frames that come out.
 
 ## Proto Definition
 
-Examples use this proto file:
+Examples use this schema (`example.sf`):
 
 ```proto
 package example;
@@ -21,9 +21,10 @@ message Status {
 }
 ```
 
-Generate code:
+Generate code for every language under `generated/<lang>`:
+
 ```bash
-python -m struct_frame status.proto --build_c --build_cpp --build_ts --build_py --build_js --build_csharp --build_rust
+struct-frame example.sf --lang all --out generated
 ```
 
 ## Using Frame Profiles
@@ -31,22 +32,26 @@ python -m struct_frame status.proto --build_c --build_cpp --build_ts --build_py 
 Frame profiles provide complete framing and parsing functionality. This is the **recommended approach** for most applications.
 
 :::note[Generated names]
-Only C prefixes the package name onto type names (`ExampleStatus`). C++ puts types in `structframe::example`, C# in `StructFrame.Example`, Rust in the `example` module, and Python, TypeScript and JavaScript use the bare name (`Status`). Fields use each language's convention (`snake_case` in C, C++, Python and Rust; `camelCase` in TypeScript and JavaScript; `PascalCase` in C#).
+Only C prefixes the package name onto type names (`ExampleStatus`). C++ puts types in `structframe::example`, C# in `StructFrame.Example`, Rust in the `example` module, and Python, TypeScript and JavaScript use the bare name (`Status`) inside the package's module. Fields use each language's convention (`snake_case` in C, C++, Python and Rust; `camelCase` in TypeScript and JavaScript; `PascalCase` in C#).
 :::
 
 :::tip[Why the readers take a message-info function]
-The checksum of every CRC profile (Standard, Bulk, Network) includes two per-message "magic" bytes derived from the message layout. The reader gets them from the generated `get_message_info` function, so pass it to the reader; without it every real frame fails its checksum.
+The checksum of every CRC profile (Standard, Bulk, Network) includes two per-message "magic" bytes derived from the message layout, and the minimal profiles (Sensor, IPC) have no length field, so the reader needs each message's size. It gets both from the generated `get_message_info` function, so pass it to the reader; without it no real frame is accepted.
+:::
+
+:::tip[Draining a reader]
+Every reader has `try_next` (or an equivalent), which keeps returning results until the buffered data is used up: valid frames, and invalid ones for corrupt frames and skipped noise. Loop on it and check `valid`. A loop that stops at the first invalid result stops at the first corrupt frame.
 :::
 
 ### Python with Profiles
 
 ```python
-# Add py_path to sys.path before importing
+# The --py-path directory must be on sys.path
 import sys
-sys.path.insert(0, 'generated/')  # py_path
+sys.path.insert(0, 'generated/py')
 
-from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
-from struct_frame.generated.example import Status, get_message_info
+from structframe.frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
+from structframe.example import Status, get_message_info, decode_message
 
 # Create and encode a message with a frame profile
 msg = Status(id=42, value=3.14)
@@ -58,17 +63,19 @@ frame_data = writer.data()
 reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
 reader.add_data(frame_data)
 
-result = reader.next()
-if result.valid:
-    decoded = Status.deserialize(result.msg_data)
-    print(f"ID: {decoded.id}, Value: {decoded.value}")
+while (frame := reader.try_next()) is not None:
+    decoded = decode_message(frame)   # None for corrupt frames and other packages' IDs
+    if isinstance(decoded, Status):
+        print(f"ID: {decoded.id}, Value: {decoded.value}")
 ```
+
+`Status.deserialize(frame)` decodes one known type directly; `decode_message` picks the class from the frame's message ID.
 
 ### TypeScript with Profiles
 
 ```typescript
-import { Status, getMessageInfo } from './generated/example.structframe';
-import { BufferWriter, AccumulatingReader, ProfileStandardConfig } from './generated/frame-profiles';
+import { Status, getMessageInfo, decodeMessage } from './generated/ts/example.structframe';
+import { BufferWriter, AccumulatingReader, ProfileStandardConfig } from './generated/ts/frame-profiles';
 
 // Create and encode a message with a frame profile
 const msg = new Status({ id: 42, value: 3.14 });
@@ -80,23 +87,28 @@ const frameData = writer.data();
 const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
 reader.addData(frameData);
 
-const result = reader.next();
-if (result.valid) {
-    const decoded = Status.deserialize(result);  // pass the frame directly
-    console.log(`ID: ${decoded.id}, Value: ${decoded.value}`);
+let frame;
+while ((frame = reader.tryNext()) !== null) {
+    const decoded = decodeMessage(frame);   // undefined for corrupt frames and other IDs
+    if (decoded instanceof Status) {
+        console.log(`ID: ${decoded.id}, Value: ${decoded.value}`);
+    }
 }
 ```
+
+The output folder's `index.ts` re-exports the runtime and one namespace per package, so `import { example, BufferWriter } from './generated/ts'` also works (`new example.Status(...)`). Compare `frame.msgId` with `Status.MSG_ID` to dispatch by hand.
 
 ### C++ with Profiles
 
 ```cpp
+#include <iostream>
 #include "example.structframe.hpp"
 #include "frame_profiles.hpp"
 
 using namespace structframe;
 
 // Create a message
-example::Status msg;
+example::Status msg{};
 msg.id = 42;
 msg.value = 3.14f;
 
@@ -105,35 +117,38 @@ uint8_t buffer[1024];
 ProfileStandardWriter writer(buffer, sizeof(buffer));
 writer.write(msg);
 
-// Parse received frames. CRC profiles need the message-info callback, so use the
-// explicit template form rather than the ProfileStandardAccumulatingReader alias.
-AccumulatingReader<ProfileStandardConfig, 1024, decltype(&example::get_message_info)>
-    reader(example::get_message_info);
+// Parse received frames. The Profile*AccumulatingReader aliases take the
+// generated message-info function.
+ProfileStandardAccumulatingReader reader(example::get_message_info);
 reader.add_data(buffer, writer.size());
 
-auto result = reader.next();
-if (result.valid) {
-    example::Status decoded;
-    decoded.deserialize(result.msg_data, result.msg_len);
-    std::cout << "ID: " << decoded.id << ", Value: " << decoded.value << std::endl;
+FrameMsgInfo result;
+while (reader.try_next(result)) {
+    if (result.valid && result.msg_id == example::Status::MSG_ID) {
+        example::Status decoded;
+        decoded.deserialize(result);
+        std::cout << "ID: " << decoded.id << ", Value: " << decoded.value << std::endl;
+    }
 }
 ```
+
+`ProfileReader<ProfileBulkConfig, 4096>` gives a reader with a different buffer size. With several packages, include `structframe_all.hpp` and pass `structframe::get_message_info`, which knows every package.
 
 ### C with Profiles
 
 ```c
-#include "frame_profiles.h"
-#include "example.structframe.h"
+#include <stdio.h>
+#include "example.structframe.h"   /* includes frame_profiles.h */
 
 /* Create a message */
 ExampleStatus msg = {.id = 42, .value = 3.14f};
 
-/* Encode with a frame profile */
+/* Encode with a frame profile. ExampleStatus_write fills in the message ID,
+ * package ID and checksum magic bytes. */
 uint8_t buffer[1024];
 buffer_writer_t writer;
 buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, buffer, sizeof(buffer));
-buffer_writer_write(&writer, EXAMPLE_STATUS_MSG_ID, (const uint8_t*)&msg, sizeof(msg),
-                    0, 0, 0, 0, EXAMPLE_STATUS_MAGIC1, EXAMPLE_STATUS_MAGIC2);
+ExampleStatus_write(&writer, &msg);
 
 /* Parse received frames */
 uint8_t internal[1024];
@@ -142,13 +157,17 @@ accumulating_reader_init(&reader, &PROFILE_STANDARD_CONFIG, internal, sizeof(int
                          example_get_message_info);
 accumulating_reader_add_data(&reader, buffer, buffer_writer_size(&writer));
 
-frame_msg_info_t result = accumulating_reader_next(&reader);
-if (result.valid) {
-    ExampleStatus decoded;
-    ExampleStatus_deserialize(result.msg_data, result.msg_len, &decoded);
-    printf("ID: %u, Value: %f\n", (unsigned)decoded.id, decoded.value);
+frame_msg_info_t result;
+while (accumulating_reader_try_next(&reader, &result)) {
+    if (result.valid && result.msg_id == EXAMPLE_STATUS_MSG_ID) {
+        ExampleStatus decoded;
+        ExampleStatus_deserialize(result.msg_data, result.msg_len, &decoded);
+        printf("ID: %u, Value: %f\n", (unsigned)decoded.id, decoded.value);
+    }
 }
 ```
+
+`ExampleStatus_write_ext(&writer, &msg, seq, sys_id, comp_id)` sets the sequence number and routing IDs on the profiles that carry them. With several packages, include `structframe_all.h` and pass `structframe_all_get_message_info` to the reader.
 
 ### C# with Profiles
 
@@ -162,8 +181,7 @@ using StructFrame.Example;
 var msg = new Status { Id = 42, Value = 3.14f };
 
 // Encode with a frame profile
-var writer = new BufferWriter<StandardProfile>();
-writer.SetBuffer(new byte[1024]);
+var writer = new BufferWriter<StandardProfile>(1024);
 writer.Write(msg);
 byte[] frameData = writer.GetData();
 
@@ -173,16 +191,20 @@ reader.AddData(frameData);
 
 while (reader.TryNext(out var result))
 {
-    var decoded = Status.Deserialize(result.MsgData!.AsSpan(result.MsgDataOffset, result.MsgLen));
-    Console.WriteLine($"ID: {decoded.Id}, Value: {decoded.Value}");
+    if (result.Valid && MessageDefinitions.Deserialize(result) is Status decoded)
+    {
+        Console.WriteLine($"ID: {decoded.Id}, Value: {decoded.Value}");
+    }
 }
 ```
+
+`Status.Deserialize(result)` decodes one known type directly.
 
 ### JavaScript with Profiles
 
 ```javascript
-const { Status, getMessageInfo } = require('./generated/example.structframe');
-const { BufferWriter, AccumulatingReader, ProfileStandardConfig } = require('./generated/frame-profiles');
+const { Status, getMessageInfo, decodeMessage } = require('./generated/js/example.structframe');
+const { BufferWriter, AccumulatingReader, ProfileStandardConfig } = require('./generated/js/frame-profiles');
 
 // Create and encode a message with a frame profile
 const msg = new Status({ id: 42, value: 3.14 });
@@ -194,10 +216,12 @@ const frameData = writer.data();
 const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
 reader.addData(frameData);
 
-const result = reader.next();
-if (result.valid) {
-    const decoded = Status.deserialize(result);  // pass the frame directly
-    console.log(`ID: ${decoded.id}, Value: ${decoded.value}`);
+let frame;
+while ((frame = reader.tryNext()) !== null) {
+    const decoded = decodeMessage(frame);
+    if (decoded instanceof Status) {
+        console.log(`ID: ${decoded.id}, Value: ${decoded.value}`);
+    }
 }
 ```
 
@@ -209,47 +233,41 @@ use struct_frame_sdk::prelude::*;
 
 // Create and encode a message with a frame profile
 let msg = Status { id: 42, value: 3.14 };
-let mut buffer = [0u8; 1024];
-let written = encode_message_crc(&PROFILE_STANDARD_CONFIG, &mut buffer, &msg, 0);
-let frame_data = &buffer[..written];
+let mut writer = BufferWriter::new(PROFILE_STANDARD_CONFIG, 1024);
+writer.write(&msg);
 
-// Parse received frames
-let mut reader = AccumulatingReader::new(PROFILE_STANDARD_CONFIG, 4096);
-reader.add_data(frame_data);
+// Parse received frames. with_message_info stores the lookup function, so frames()
+// and next_frame() need no argument.
+let mut reader = AccumulatingReader::with_message_info(PROFILE_STANDARD_CONFIG, 4096,
+                                                       struct_frame_sdk::get_message_info);
+reader.add_data(writer.data());
 
-let get_info = struct_frame_sdk::get_message_info;
-while let Some(info) = reader.next(&get_info) {
-    if info.valid {
-        if let Some(decoded) = Status::unpack(&info.msg_data) {
+for frame in reader.frames().filter(|f| f.valid) {
+    if frame.msg_id == Status::MSG_ID {
+        if let Some(decoded) = Status::deserialize(&frame) {
             println!("ID: {}, Value: {}", decoded.id, decoded.value);
         }
     }
 }
 ```
 
+`writer.write_ext(&msg, seq, sys_id, comp_id)` sets the sequence number and routing IDs on the profiles that carry them.
+
 ## Direct Message Serialization
 
-For cases where you need direct access to message bytes without framing:
+For cases where you need the message bytes without framing:
 
 ### Python
 
 ```python
-# Add py_path to sys.path before importing
 import sys
-sys.path.insert(0, 'generated/')  # py_path
+sys.path.insert(0, 'generated/py')
 
-from struct_frame.generated.example import Status
+from structframe.example import Status
 
-# Create a message
 msg = Status(id=42, value=3.14)
-
-# Serialize to bytes
 data = msg.serialize()
 
-# Send data over serial, network, etc.
-# ...
-
-# Deserialize from bytes
 received = Status.deserialize(data)
 print(f"ID: {received.id}, Value: {received.value}")
 ```
@@ -257,20 +275,11 @@ print(f"ID: {received.id}, Value: {received.value}")
 ### TypeScript
 
 ```typescript
-import { Status } from './generated/example.structframe';
+import { Status } from './generated/ts/example.structframe';
 
-// Create a message
-const msg = new Status();
-msg.id = 42;
-msg.value = 3.14;
-
-// Serialize to buffer
+const msg = new Status({ id: 42, value: 3.14 });
 const data = msg.serialize();
 
-// Send data over network, etc.
-// ...
-
-// Deserialize from buffer
 const received = Status.deserialize(data);
 console.log(`ID: ${received.id}, Value: ${received.value}`);
 ```
@@ -278,20 +287,11 @@ console.log(`ID: ${received.id}, Value: ${received.value}`);
 ### JavaScript
 
 ```javascript
-const { Status } = require('./generated/example.structframe');
+const { Status } = require('./generated/js/example.structframe');
 
-// Create a message
-const msg = new Status();
-msg.id = 42;
-msg.value = 3.14;
-
-// Serialize to buffer
+const msg = new Status({ id: 42, value: 3.14 });
 const data = msg.serialize();
 
-// Send data over network, etc.
-// ...
-
-// Deserialize from buffer
 const received = Status.deserialize(data);
 console.log(`ID: ${received.id}, Value: ${received.value}`);
 ```
@@ -303,24 +303,35 @@ console.log(`ID: ${received.id}, Value: ${received.value}`);
 #include <iostream>
 
 int main() {
-    // Create a message
-    example::Status msg;
+    structframe::example::Status msg{};
     msg.id = 42;
     msg.value = 3.14f;
-    
-    // Serialize to buffer
-    uint8_t buffer[1024];
-    msg.serialize(buffer);
-    size_t size = sizeof(example::Status);
-    
-    // Send data over serial, network, etc.
-    // ...
-    
-    // Deserialize from buffer
-    example::Status received;
+
+    uint8_t buffer[structframe::example::Status::MAX_SIZE];
+    size_t size = msg.serialize(buffer);
+
+    structframe::example::Status received;
     received.deserialize(buffer, size);
     std::cout << "ID: " << received.id << ", Value: " << received.value << std::endl;
-    
+    return 0;
+}
+```
+
+### C
+
+```c
+#include <stdio.h>
+#include "example.structframe.h"
+
+int main(void) {
+    ExampleStatus msg = {.id = 42, .value = 3.14f};
+
+    uint8_t buffer[EXAMPLE_STATUS_MAX_SIZE];
+    size_t size = ExampleStatus_serialize(&msg, buffer);
+
+    ExampleStatus received;
+    ExampleStatus_deserialize(buffer, size, &received);
+    printf("ID: %u, Value: %f\n", (unsigned)received.id, received.value);
     return 0;
 }
 ```
@@ -330,25 +341,11 @@ int main() {
 ```csharp
 using StructFrame.Example;
 
-class Program {
-    static void Main() {
-        // Create a message
-        var msg = new Status {
-            Id = 42,
-            Value = 3.14f
-        };
-        
-        // Serialize to bytes
-        byte[] data = msg.Serialize();
-        
-        // Send data over network, etc.
-        // ...
-        
-        // Deserialize from bytes
-        var received = Status.Deserialize(data);
-        Console.WriteLine($"ID: {received.Id}, Value: {received.Value}");
-    }
-}
+var msg = new Status { Id = 42, Value = 3.14f };
+byte[] data = msg.Serialize();
+
+var received = Status.Deserialize(data);
+Console.WriteLine($"ID: {received.Id}, Value: {received.Value}");
 ```
 
 ## Communication Examples
@@ -358,28 +355,19 @@ class Program {
 ```python
 import sys
 import serial
-sys.path.insert(0, 'generated/')  # py_path
+sys.path.insert(0, 'generated/py')
 
-from struct_frame.generated.example import Status, get_message_info
-from frame_profiles import AccumulatingReader, PROFILE_STANDARD_CONFIG
+from structframe.example import Status, get_message_info
+from structframe.frame_profiles import AccumulatingReader, PROFILE_STANDARD_CONFIG
 
-# Setup serial connection
 ser = serial.Serial('/dev/ttyUSB0', 115200)
 reader = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
 
 while True:
-    if ser.in_waiting:
-        # Read available data
-        data = ser.read(ser.in_waiting)
-        reader.add_data(data)
-        
-        # Process all complete frames
-        while True:
-            result = reader.next()
-            if not result.valid:
-                break
-
-            msg = Status.deserialize(result.msg_data)
+    reader.add_data(ser.read(ser.in_waiting or 1))
+    while (frame := reader.try_next()) is not None:
+        if frame.valid and frame.msg_id == Status.MSG_ID:
+            msg = Status.deserialize(frame)
             print(f"Received: ID={msg.id}, Value={msg.value}")
 ```
 
@@ -391,16 +379,13 @@ while True:
 
 using namespace structframe;
 
-// Byte-by-byte streaming parser for UART/serial. CRC profiles need the
-// message-info callback, so use the explicit template form.
-AccumulatingReader<ProfileStandardConfig, 1024, decltype(&example::get_message_info)>
-    reader(example::get_message_info);
+// Byte-by-byte streaming parser for UART/serial.
+ProfileStandardAccumulatingReader reader(example::get_message_info);
 
 void on_byte_received(uint8_t byte) {
-    auto result = reader.push_byte(byte);
-    if (result.valid) {
+    if (auto result = reader.push_byte(byte)) {
         example::Status msg;
-        msg.deserialize(result.msg_data, result.msg_len);
+        msg.deserialize(result);
         std::cout << "ID: " << msg.id << std::endl;
     }
 }
@@ -410,19 +395,20 @@ void on_byte_received(uint8_t byte) {
 
 ```typescript
 import * as net from 'net';
-import { Status, getMessageInfo } from './generated/example.structframe';
-import { AccumulatingReader, ProfileStandardConfig } from './generated/frame-profiles';
+import { Status, getMessageInfo } from './generated/ts/example.structframe';
+import { AccumulatingReader, ProfileStandardConfig } from './generated/ts/frame-profiles';
 
 const client = net.createConnection({ port: 8080 });
 const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
 
 client.on('data', (data: Buffer) => {
     reader.addData(data);
-    
-    let result;
-    while ((result = reader.next()) && result.valid) {
-        const msg = Status.deserialize(result);
-        console.log(`ID: ${msg.id}, Value: ${msg.value}`);
+    let frame;
+    while ((frame = reader.tryNext()) !== null) {
+        if (frame.valid && frame.msgId === Status.MSG_ID) {
+            const msg = Status.deserialize(frame);
+            console.log(`ID: ${msg.id}, Value: ${msg.value}`);
+        }
     }
 });
 ```
@@ -430,8 +416,8 @@ client.on('data', (data: Buffer) => {
 ### WebSocket (JavaScript)
 
 ```javascript
-const { Status, getMessageInfo } = require('./generated/example.structframe');
-const { AccumulatingReader, ProfileStandardConfig } = require('./generated/frame-profiles');
+const { Status, getMessageInfo } = require('./generated/js/example.structframe');
+const { AccumulatingReader, ProfileStandardConfig } = require('./generated/js/frame-profiles');
 const WebSocket = require('ws');
 
 const ws = new WebSocket('ws://localhost:8080');
@@ -439,11 +425,12 @@ const reader = new AccumulatingReader(ProfileStandardConfig, getMessageInfo);
 
 ws.on('message', (data) => {
     reader.addData(Buffer.from(data));
-    
-    let result;
-    while ((result = reader.next()) && result.valid) {
-        const msg = Status.deserialize(result);
-        console.log(`ID: ${msg.id}, Value: ${msg.value}`);
+    let frame;
+    while ((frame = reader.tryNext()) !== null) {
+        if (frame.valid && frame.msgId === Status.MSG_ID) {
+            const msg = Status.deserialize(frame);
+            console.log(`ID: ${msg.id}, Value: ${msg.value}`);
+        }
     }
 });
 ```
@@ -458,11 +445,11 @@ Different profiles for different use cases:
 - **ProfileBulk**: Large data transfers (Basic header + Extended payload)
 - **ProfileNetwork**: Multi-system networks (Basic header + Extended Multi-System Stream payload)
 
-All profiles support the same API: pass a different profile configuration (`PROFILE_SENSOR_CONFIG`, `ProfileSensorConfig`, `StandardProfile` → `SensorProfile`, and so on) to the same writer and reader types. C++ also offers aliases such as `ProfileSensorWriter`.
+All profiles support the same API: pass a different profile configuration (`PROFILE_SENSOR_CONFIG`, `ProfileSensorConfig`, `StandardProfile` → `SensorProfile`, and so on) to the same writer and reader types. C++ also offers aliases such as `ProfileSensorWriter` and `ProfileSensorAccumulatingReader`.
 
 ## Arrays
 
-Example with arrays:
+Example with a bounded array:
 
 ```proto
 message SensorData {
@@ -471,87 +458,58 @@ message SensorData {
 }
 ```
 
-Creating messages with arrays works the same way across languages:
+A bounded array carries its element count. Each language exposes it as follows:
 
 <Tabs>
   <TabItem label="C">
   ```c no-compile
-  ExampleSensorData data;
-  data.readings_count = 3;
-  data.readings[0] = 1.1f;
-  data.readings[1] = 2.2f;
-  data.readings[2] = 3.3f;
-
-  // Serialize/deserialize works the same as simple messages
-  // Just use msg.serialize() / deserialize(data)
+  ExampleSensorData data = {0};
+  data.readings.count = 3;
+  data.readings.data[0] = 1.1f;
+  data.readings.data[1] = 2.2f;
+  data.readings.data[2] = 3.3f;
   ```
   </TabItem>
-</Tabs>
-
-<Tabs>
   <TabItem label="C++">
-  ```cpp
-  ExampleSensorData data;
-  data.readings_count = 3;
-  data.readings[0] = 1.1f;
-  data.readings[1] = 2.2f;
-  data.readings[2] = 3.3f;
-
-  // Serialize/deserialize works the same as simple messages
-  // Just use msg.serialize() / deserialize(data)
+  ```cpp no-compile
+  structframe::example::SensorData data{};
+  data.readings.count = 3;
+  data.readings.data[0] = 1.1f;
+  data.readings.data[1] = 2.2f;
+  data.readings.data[2] = 3.3f;
   ```
   </TabItem>
-</Tabs>
-
-<Tabs>
   <TabItem label="Python">
-  ```python
-  data = ExampleSensorData()
-  data.readings_count = 3
-  data.readings[0] = 1.1
-  data.readings[1] = 2.2
-  data.readings[2] = 3.3
-
-  # Serialize/deserialize works the same as simple messages
-  # Just use msg.serialize() / deserialize(data)
+  ```python no-compile
+  data = SensorData(readings=[1.1, 2.2, 3.3])   # the count is the list length
   ```
   </TabItem>
-</Tabs>
-
-<Tabs>
   <TabItem label="TypeScript">
-  ```typescript
-  const data = new ExampleSensorData();
-  data.readings_count = 3;
-  data.readings[0] = 1.1;
-  data.readings[1] = 2.2;
-  data.readings[2] = 3.3;
-
-  // Serialize/deserialize works the same as simple messages
-  // Just use msg.serialize() / deserialize(data)
+  ```typescript no-compile
+  const data = new SensorData({ readingsCount: 3, readingsData: [1.1, 2.2, 3.3] });
   ```
   </TabItem>
-</Tabs>
-
-<Tabs>
   <TabItem label="C#">
-  ```csharp
-  var data = new ExampleSensorData {
-      ReadingsCount = 3
-  };
-  data.Readings[0] = 1.1f;
-  data.Readings[1] = 2.2f;
-  data.Readings[2] = 3.3f;
-
-  // Serialize/deserialize works the same as simple messages
-  // Just use msg.Serialize() / Deserialize(data)
+  ```csharp no-compile
+  var data = new SensorData { ReadingsCount = 3 };
+  data.ReadingsData[0] = 1.1f;
+  data.ReadingsData[1] = 2.2f;
+  data.ReadingsData[2] = 3.3f;
+  ```
+  </TabItem>
+  <TabItem label="Rust">
+  ```rust no-compile
+  let mut data = SensorData { readings_count: 3, readings: [0.0; 10] };
+  data.readings[..3].copy_from_slice(&[1.1, 2.2, 3.3]);
   ```
   </TabItem>
 </Tabs>
+
+Serialization is the same as for any other message; variable messages encode only the used elements.
 
 ## Nested Messages
 
-Example with nested messages:
+Example with a nested message:
 
 ```proto
 message Position {
@@ -566,79 +524,55 @@ message Vehicle {
 }
 ```
 
-Nested messages are accessed naturally in all languages:
-
 <Tabs>
   <TabItem label="C">
-  ```c
-  ExampleVehicle v;
+  ```c no-compile
+  ExampleVehicle v = {0};
   v.id = 1;
   v.pos.lat = 37.7749;
   v.pos.lon = -122.4194;
-
-  // Serialize/deserialize works the same - nested messages are handled automatically
   ```
   </TabItem>
-</Tabs>
-
-<Tabs>
   <TabItem label="C++">
-  ```cpp
-  ExampleVehicle v;
+  ```cpp no-compile
+  structframe::example::Vehicle v{};
   v.id = 1;
   v.pos.lat = 37.7749;
   v.pos.lon = -122.4194;
-
-  // Serialize/deserialize works the same - nested messages are handled automatically
   ```
   </TabItem>
-</Tabs>
-
-<Tabs>
   <TabItem label="Python">
-  ```python
-  v = ExampleVehicle(id=1)
-  v.pos.lat = 37.7749
-  v.pos.lon = -122.4194
-
-  # Serialize/deserialize works the same - nested messages are handled automatically
+  ```python no-compile
+  v = Vehicle(id=1, pos=Position(lat=37.7749, lon=-122.4194))
   ```
   </TabItem>
-</Tabs>
-
-<Tabs>
   <TabItem label="TypeScript">
-  ```typescript
-  const v = new ExampleVehicle();
-  v.id = 1;
-  v.pos.lat = 37.7749;
-  v.pos.lon = -122.4194;
-
-  // Serialize/deserialize works the same - nested messages are handled automatically
+  ```typescript no-compile
+  // v.pos is a view into v's buffer, so assigning its fields writes through.
+  const v = new Vehicle({ id: 1, pos: { lat: 37.7749, lon: -122.4194 } });
+  v.pos.lat = 37.8;
+  v.pos = new Position({ lat: 0, lon: 0 });   // or replace it
   ```
   </TabItem>
-</Tabs>
-
-<Tabs>
   <TabItem label="C#">
-  ```csharp
-  var v = new ExampleVehicle {
+  ```csharp no-compile
+  var v = new Vehicle {
       Id = 1,
-      Pos = new ExamplePosition {
-          Lat = 37.7749,
-          Lon = -122.4194
-      }
+      Pos = new Position { Lat = 37.7749, Lon = -122.4194 }
   };
-
-  // Serialize/deserialize works the same - nested messages are handled automatically
+  ```
+  </TabItem>
+  <TabItem label="Rust">
+  ```rust no-compile
+  let v = Vehicle { id: 1, pos: Position { lat: 37.7749, lon: -122.4194 } };
   ```
   </TabItem>
 </Tabs>
 
 ## Key Takeaways
 
-1. **Consistent API**: All languages use `serialize()` / `deserialize()` (case varies by language convention)
-2. **Frame Profiles**: Use a profile configuration with the BufferWriter and AccumulatingReader types for complete framing and parsing
-3. **FrameMsgInfo**: Pass frame parser results directly to `deserialize()` - no manual extraction needed
-4. **Variable Messages**: Transparent handling - same API for fixed and variable-length messages
-5. **Arrays & Nested Messages**: Automatically handled by serialize/deserialize
+1. **Consistent API**: Every language has a writer that frames a message (`write`), a reader that takes the generated message-info function, and `deserialize` (case varies by language convention).
+2. **Frame Profiles**: Use a profile configuration with the BufferWriter and AccumulatingReader types for complete framing and parsing.
+3. **Drain with `try_next`**: It returns every frame and every corrupt-frame event; check `valid`.
+4. **Decode by ID**: Python `decode_message`, TypeScript/JavaScript `decodeMessage` and C# `MessageDefinitions.Deserialize` return the typed message for a frame; elsewhere compare `msg_id` with the type's `MSG_ID`.
+5. **Variable Messages**: Transparent handling - same API for fixed and variable-length messages.

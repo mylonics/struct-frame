@@ -1145,6 +1145,58 @@ class FileCGen():
         yield '}\n'
         yield '#endif\n'
 
+        writable = [m for m in package.sortedMessages().values() if m.id is not None]
+        if writable:
+            yield from FileCGen._typed_writers(writable)
+
+    @staticmethod
+    def _typed_writers(messages):
+        """Emit <Type>_write / <Type>_write_ext: frame one message with a buffer_writer_t.
+
+        They fill in the message ID, package ID, base size and checksum magic bytes, which
+        callers of buffer_writer_write otherwise pass by hand. C only: C++ code uses the C++
+        generator, and the C profile header uses designated initializers.
+        """
+        yield '\n#ifndef __cplusplus\n'
+        yield '#include "frame_profiles.h"\n\n'
+        yield '/* Typed frame writers. Each serializes the message straight into the writer\'s\n'
+        yield ' * buffer and frames it with the writer\'s profile, filling in the message ID,\n'
+        yield ' * package ID and checksum magic bytes. They return the number of bytes written,\n'
+        yield ' * or 0 when the frame does not fit or the profile cannot carry the message ID. */\n'
+        for msg in messages:
+            struct_name = '%s%s' % (pascal_case(msg.package), msg.name)
+            define = '%s_%s' % (camel_to_snake_case(msg.package).upper(),
+                                camel_to_snake_case(msg.name).upper())
+            magic1 = f'{define}_MAGIC1' if msg.magic_bytes else '0'
+            magic2 = f'{define}_MAGIC2' if msg.magic_bytes else '0'
+            yield (f'static inline size_t {struct_name}_write_ext(buffer_writer_t* writer, '
+                   f'const {struct_name}* msg,\n'
+                   f'        uint8_t seq, uint8_t sys_id, uint8_t comp_id) {{\n')
+            yield f'    uint8_t* payload = buffer_writer_payload_slot(writer, {define}_MAX_SIZE);\n'
+            yield '    size_t size;\n'
+            yield '    if (payload == NULL) return 0;\n'
+            if msg.variable:
+                yield '    if (writer->config->payload.has_length) {\n'
+                yield f'        size = {struct_name}_serialize(msg, payload);\n'
+                yield '    } else {\n'
+                yield '        /* No length field: receivers read MAX_SIZE bytes, the packed struct.\n'
+                yield '         * A struct laid out differently (oneof, --no_packed) cannot be sent. */\n'
+                yield f'        if (sizeof(*msg) != {define}_MAX_SIZE) return 0;\n'
+                yield f'        memcpy(payload, msg, {define}_MAX_SIZE);\n'
+                yield f'        size = {define}_MAX_SIZE;\n'
+                yield '    }\n'
+            else:
+                yield f'    size = {struct_name}_serialize(msg, payload);\n'
+            yield (f'    return buffer_writer_write_ext(writer, {define}_MSG_ID, payload, size,\n'
+                   f'        seq, sys_id, comp_id, (uint8_t)(({define}_MSG_ID >> 8) & 0xFF),\n'
+                   f'        {define}_BASE_SIZE, {magic1}, {magic2});\n')
+            yield '}\n'
+            yield (f'static inline size_t {struct_name}_write(buffer_writer_t* writer, '
+                   f'const {struct_name}* msg) {{\n')
+            yield f'    return {struct_name}_write_ext(writer, msg, 0, 0, 0);\n'
+            yield '}\n'
+        yield '#endif /* !__cplusplus */\n'
+
 
 class TestCGen():
     """Generator for C round-trip test code with deterministic dummy values.

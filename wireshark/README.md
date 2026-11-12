@@ -235,8 +235,8 @@ To create test PCAP files for validation:
 Example Python code to generate test packets with the real runtime (after generating
 Python for your schema with `--build_py`):
 ```python
-from frame_profiles import BufferWriter, PROFILE_STANDARD_CONFIG
-from struct_frame.generated.messages import Status
+from structframe.frame_profiles import BufferWriter, PROFILE_STANDARD_CONFIG
+from structframe.messages import Status
 
 writer = BufferWriter(PROFILE_STANDARD_CONFIG, 256)
 writer.write(Status(value=42))

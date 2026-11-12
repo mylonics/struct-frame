@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'include'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'generated', 'py'))
 
 from variable_flag_messages import MESSAGE_COUNT, get_message, check_message
-from struct_frame.generated.serialization_test import get_message_info
+from structframe.serialization_test import get_message_info
 from test_harness import run
 
 TEST_NAME = "VariableFlagMessages"

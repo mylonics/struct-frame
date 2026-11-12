@@ -52,9 +52,9 @@ def fletcher_with_magic(data, magic1, magic2):
 
 FRAME_SCRIPT = '''
 import sys
-from frame_profiles import (BufferWriter, PROFILE_STANDARD_CONFIG, PROFILE_BULK_CONFIG,
+from structframe.frame_profiles import (BufferWriter, PROFILE_STANDARD_CONFIG, PROFILE_BULK_CONFIG,
                             PROFILE_NETWORK_CONFIG)
-from struct_frame.generated import sensor_data, actuator_control
+from structframe import sensor_data, actuator_control
 reading = sensor_data.SensorReading(type=1, value=2.5, timestamp=123456, sensor_id=b"s-1")
 command = actuator_control.ActuatorCommand(actuator_id=b"a-7", desired_state=1, target_value=3.0)
 status = sensor_data.SensorStatus(sensor_id=b"s-1", online=1, battery_percent=50.0, error_count=2)

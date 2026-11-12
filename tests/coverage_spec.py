@@ -120,6 +120,13 @@ SECTIONS = [
                           "JS": "N/A", "C#": "N/A", "Rust": "N/A"},
                          "Verified by `tests/test_no_packed.py` (CLI generation, "
                          "absence of `#pragma pack`, round-trip parity)"),
+                    _full("Command line: `--lang`, `--out`, `--config`, `--quiet`, `--py-package`", "✅",
+                          "Verified by `tests/test_cli.py` (old and new option spellings give "
+                          "identical output, `--out` layout, `structframe.toml` merging and "
+                          "path resolution, catalog location, usage errors exit 2 on stderr, "
+                          "`--version`, repeated `main()` calls in one process, the Python output package and "
+                          "its rejected names). "
+                          "Generator-level: the language does not affect the CLI"),
                     _full("Hash / `--force` caching", "✅",
                           "Verified by `tests/test_caching.py` (hash file creation, "
                           "skip-on-match, `--force` bypass, structural change invalidation, "

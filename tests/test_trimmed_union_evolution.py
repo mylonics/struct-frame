@@ -135,9 +135,9 @@ function rejects(fn) {
 
 const fromOlder = scan(v3.TaskEnvelope.deserializeWire(olderBytes), v3);
 assert.strictEqual(fromOlder.windowBeginPct, 85);
-assert.strictEqual(fromOlder.warmup[0].stageId, 0);
+assert.strictEqual(fromOlder.warmup.stageId, 0);
 const fromNewer = scan(v3.TaskEnvelope.deserializeWire(newerBytes), v3);
-assert.strictEqual(fromNewer.warmup[0].stageId, 1);
+assert.strictEqual(fromNewer.warmup.stageId, 1);
 const withDefault = scan(v4.TaskEnvelope.deserializeWire(currentBytes), v4);
 assert.strictEqual(withDefault.scaleFactor, 1.5);
 rejects(() => v3.TaskEnvelope.deserializeWire(malformedBytes));
@@ -237,7 +237,7 @@ def gen(tmp_path_factory):
         assert result.returncode == 0, result.stdout + result.stderr
     mods = {
         v: load_generated_module(
-            out / "py" / "struct_frame" / "generated" / f"trimmed_union_v{v}.py",
+            out / "py" / "structframe" / f"trimmed_union_v{v}.py",
             f"trimmed_union_v{v}")
         for v in VERSIONS
     }

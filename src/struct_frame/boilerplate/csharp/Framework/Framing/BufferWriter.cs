@@ -17,11 +17,20 @@ namespace StructFrame.Framing
         private int _offset;
         private int _capacity;
 
-        /// <summary>Creates a writer for the supplied profile.</summary>
+        /// <summary>
+        /// Creates a writer for the supplied profile. Call <see cref="SetBuffer(byte[])"/>
+        /// before writing, or use the constructor that takes a capacity.
+        /// </summary>
         public BufferWriter(ProfileConfig config)
         {
             _config = config;
             _encoder = new FrameEncoder(config);
+        }
+
+        /// <summary>Creates a writer for the supplied profile with its own buffer of <paramref name="capacity"/> bytes.</summary>
+        public BufferWriter(ProfileConfig config, int capacity) : this(config)
+        {
+            SetBuffer(new byte[capacity]);
         }
 
         /// <summary>
@@ -45,6 +54,7 @@ namespace StructFrame.Framing
         /// <summary>
         /// Write a message implementing IStructFrameMessage to the buffer.
         /// Magic numbers for checksum are automatically extracted from the message.
+        /// Returns the bytes written, or 0 when no buffer is set or the frame does not fit.
         /// </summary>
         public int Write(IStructFrameMessage message, byte seq = 0, byte sysId = 0, byte compId = 0)
         {
@@ -114,7 +124,10 @@ namespace StructFrame.Framing
     /// </summary>
     public class BufferWriter<TProfile> : BufferWriter where TProfile : struct, IProfileProvider
     {
-        /// <summary>Creates a writer for the compile-time profile.</summary>
+        /// <summary>Creates a writer for the compile-time profile (call SetBuffer before writing).</summary>
         public BufferWriter() : base(TProfile.Profile) { }
+
+        /// <summary>Creates a writer for the compile-time profile with its own buffer of <paramref name="capacity"/> bytes.</summary>
+        public BufferWriter(int capacity) : base(TProfile.Profile, capacity) { }
     }
 }

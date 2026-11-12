@@ -43,7 +43,7 @@ def _generate(out_dir: Path) -> None:
 
 def _import_generated_module(py_dir: Path):
     return load_generated_module(
-        py_dir / "struct_frame" / "generated" / "default_values.py",
+        py_dir / "structframe" / "default_values.py",
         "default_values",
     )
 

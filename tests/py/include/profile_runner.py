@@ -15,7 +15,7 @@ from typing import Callable, Tuple
 # Add generated directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'generated', 'py'))
 
-from frame_profiles import (
+from structframe.frame_profiles import (
     BufferWriter,
     AccumulatingReader,
     PROFILE_STANDARD_CONFIG,

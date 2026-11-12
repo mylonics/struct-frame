@@ -10,10 +10,10 @@ The TypeScript/JavaScript SDK provides promise-based transport layers for Node.j
 Generate with SDK:
 
 ```bash
-python -m struct_frame messages.sf --build_ts --ts_path src/generated/ --sdk
+struct-frame messages.sf --build-ts --ts-path src/generated/ --sdk
 ```
 
-For JavaScript use `--build_js --js_path ... --sdk`; the API is identical (CommonJS `require`).
+For JavaScript use `--build-js --js-path ... --sdk`; the API is identical (CommonJS `require`).
 
 ## Basic Usage
 
@@ -32,12 +32,12 @@ const sdk = new StructFrameSdk({
 // Register a codec so handlers receive decoded messages. Without one they receive the
 // raw payload bytes (Uint8Array).
 sdk.registerCodec({
-    getMsgId: () => Status._msgid,
+    getMsgId: () => Status.MSG_ID,
     deserialize: (data) => Status.deserialize(data),
 });
 
 // Subscribe to messages by ID; subscribe() returns an unsubscribe function
-const unsubscribe = sdk.subscribe<Status>(Status._msgid, (msg) => {
+const unsubscribe = sdk.subscribe<Status>(Status.MSG_ID, (msg) => {
     console.log(`Status: ${msg.value}`);
 });
 
@@ -45,7 +45,7 @@ await sdk.connect();
 
 // Send a message, or send a request and await the matching reply
 await sdk.send(new Status({ value: 1 }));
-// const reply = await sdk.request<Pong>(ping, Pong._msgid, { timeout: 2 });
+// const reply = await sdk.request<Pong>(ping, Pong.MSG_ID, { timeout: 2 });
 ```
 
 `onError` receives transport errors, exceptions thrown by handlers and deserialization failures; without it they are only logged when `debug: true`.

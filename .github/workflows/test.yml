@@ -159,7 +159,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: Install Python deps
-        run: pip install proto-schema-parser pytest hypothesis graphql-core pyserial websocket-client websockets
+        run: pip install proto-schema-parser "tomli; python_version < '3.11'" pytest hypothesis graphql-core pyserial websocket-client websockets
       - name: Install Node deps
         run: npm ci
         working-directory: tests/ts

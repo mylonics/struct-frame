@@ -750,27 +750,26 @@ using ProfileNetworkWriter = BufferWriter<ProfileNetworkConfig>;
  * Template parameters:
  *   Config - The frame profile configuration (e.g., ProfileStandardConfig)
  *   BufferSize - Size of internal buffer for partial messages (default: 1024)
- *   GetMessageInfoFn - Callable type for minimal profiles (default: nullptr_t for non-minimal)
+ *   GetMessageInfoFn - Type of the message-info callback (the generated
+ *     get_message_info, a function pointer or a lambda). Every profile with a
+ *     checksum or without a length field needs it.
+ *
+ * The Profile*AccumulatingReader aliases below take the generated function directly:
+ *   ProfileStandardAccumulatingReader reader(mypkg::get_message_info);
  *
  * Buffer mode usage:
- *   AccumulatingReader<ProfileStandardConfig> reader;
  *   reader.add_data(chunk1, chunk1_size);
- *   while (auto result = reader.next()) {
- *     // Process complete messages
+ *   FrameMsgInfo result;
+ *   while (reader.try_next(result)) {
+ *     if (result.valid) { ... }   // else a corrupt frame was skipped
  *   }
  *
  * Stream mode usage:
- *   AccumulatingReader<ProfileStandardConfig> reader;
  *   while (receiving) {
- *     uint8_t byte = read_byte();
- *     if (auto result = reader.push_byte(byte)) {
+ *     if (auto result = reader.push_byte(read_byte())) {
  *       // Process complete message
  *     }
  *   }
- *
- * For minimal profiles:
- *   auto getter = [](uint16_t id) { return get_message_info(id); };
- *   AccumulatingReader<ProfileSensorConfig, 1024, decltype(getter)> reader(getter);
  */
 template <typename Config, size_t BufferSize = 1024, typename GetMessageInfoFn = std::nullptr_t>
 class AccumulatingReader {
@@ -807,10 +806,11 @@ class AccumulatingReader {
         diagnostics_{},
         last_seq_(0),
         last_seq_valid_(false) {
-    static_assert(!Config::has_crc || !std::is_same_v<GetMessageInfoFn, std::nullptr_t>,
+    // A default-constructed function pointer is null, which is no better than no callback.
+    static_assert(!Config::has_crc || std::is_class_v<GetMessageInfoFn>,
                   "A CRC profile needs the message-info callback (its checksum includes per-message "
-                  "magic bytes): use AccumulatingReader<Config, Size, decltype(&get_message_info)> "
-                  "reader(get_message_info)");
+                  "magic bytes): construct the reader with it, e.g. "
+                  "ProfileStandardAccumulatingReader reader(mypkg::get_message_info)");
   }
 
   /**
@@ -1626,11 +1626,20 @@ auto make_buffer_reader(const uint8_t* buffer, size_t size, GetMessageInfoFn get
   return BufferReader<Config, GetMessageInfoFn>(buffer, size, get_message_info);
 }
 
-/* Convenience type aliases for AccumulatingReader with standard profiles (default 1024 byte buffer) */
-using ProfileStandardAccumulatingReader = AccumulatingReader<ProfileStandardConfig>;
-using ProfileSensorAccumulatingReader = AccumulatingReader<ProfileSensorConfig>;
-using ProfileIPCAccumulatingReader = AccumulatingReader<ProfileIPCConfig>;
-using ProfileBulkAccumulatingReader = AccumulatingReader<ProfileBulkConfig>;
-using ProfileNetworkAccumulatingReader = AccumulatingReader<ProfileNetworkConfig>;
+/* Type of the generated get_message_info functions (structframe::<pkg>::get_message_info). */
+using MessageInfoFn = MessageInfo (*)(uint16_t);
+
+/* AccumulatingReader for a profile, constructed with the generated message-info function:
+ *   ProfileStandardAccumulatingReader reader(mypkg::get_message_info);
+ *   ProfileReader<ProfileBulkConfig, 4096> big_reader(mypkg::get_message_info);
+ * The aliases use a 1024-byte buffer. */
+template <typename Config, size_t BufferSize = 1024>
+using ProfileReader = AccumulatingReader<Config, BufferSize, MessageInfoFn>;
+
+using ProfileStandardAccumulatingReader = ProfileReader<ProfileStandardConfig>;
+using ProfileSensorAccumulatingReader = ProfileReader<ProfileSensorConfig>;
+using ProfileIPCAccumulatingReader = ProfileReader<ProfileIPCConfig>;
+using ProfileBulkAccumulatingReader = ProfileReader<ProfileBulkConfig>;
+using ProfileNetworkAccumulatingReader = ProfileReader<ProfileNetworkConfig>;
 
 }  // namespace structframe

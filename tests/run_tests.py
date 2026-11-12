@@ -1702,7 +1702,9 @@ class TestRunner:
         success, stdout, stderr = self.run_cmd(
             f'python -m pytest "{self.tests_dir}" -q --tb=short',
             cwd=self.project_root,
-            timeout=300,
+            # The suite compiles and runs programs in every language (about 3-5 minutes
+            # locally); leave room for slower CI machines.
+            timeout=900,
         )
         if stdout:
             print(stdout)

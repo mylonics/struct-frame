@@ -1,7 +1,7 @@
 /*
  * Encode two messages into a Standard-profile byte stream and decode them again.
  *
- *   python -m struct_frame examples/basic/hello.sf --build_c --c_path out/c
+ *   struct-frame examples/basic/hello.sf --build-c --c-path out/c
  *   gcc -std=c11 -Iout/c examples/basic/hello.c -o hello && ./hello
  */
 #include <stdio.h>
@@ -15,13 +15,12 @@ int main(void) {
   buffer_writer_t writer;
   buffer_writer_init(&writer, &PROFILE_STANDARD_CONFIG, tx, sizeof(tx));
 
+  /* The generated <Type>_write functions fill in the message ID and checksum magic bytes. */
   HelloPose pose = {.pitch = 100.0f, .yaw_rate = -1.45f, .sample = 4883};
-  buffer_writer_write(&writer, HELLO_POSE_MSG_ID, (const uint8_t*)&pose, sizeof(pose), 0, 0, 0, 0,
-                      HELLO_POSE_MAGIC1, HELLO_POSE_MAGIC2);
+  HelloPose_write(&writer, &pose);
 
   HelloHeartbeat hb = {.id = 23, .type = VEHICLE_TYPE_QUADCOPTER};
-  buffer_writer_write(&writer, HELLO_HEARTBEAT_MSG_ID, (const uint8_t*)&hb, sizeof(hb), 0, 0, 0, 0,
-                      HELLO_HEARTBEAT_MAGIC1, HELLO_HEARTBEAT_MAGIC2);
+  HelloHeartbeat_write(&writer, &hb);
 
   size_t encoded = buffer_writer_size(&writer);
   printf("encoded %zu bytes\n", encoded);
@@ -33,8 +32,10 @@ int main(void) {
                            hello_get_message_info);
   accumulating_reader_add_data(&reader, tx, encoded);
 
+  /* try_next keeps going past corrupt frames; it stops when the data is used up. */
   frame_msg_info_t frame;
-  while ((frame = accumulating_reader_next(&reader)).valid) {
+  while (accumulating_reader_try_next(&reader, &frame)) {
+    if (!frame.valid) continue;
     if (frame.msg_id == HELLO_POSE_MSG_ID) {
       HelloPose decoded;
       HelloPose_deserialize(frame.msg_data, frame.msg_len, &decoded);

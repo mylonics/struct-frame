@@ -33,7 +33,7 @@ def _generate(out_dir: Path) -> None:
 def _import_generated_module(py_dir: Path):
     """Import the generated serialization_test Python module."""
     return load_generated_module(
-        py_dir / "struct_frame" / "generated" / "serialization_test.py",
+        py_dir / "structframe" / "serialization_test.py",
         "serialization_test",
     )
 

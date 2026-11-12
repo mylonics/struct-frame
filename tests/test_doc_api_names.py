@@ -57,14 +57,16 @@ USER_DEFINED = {
     "handle_message", "send_data", "setup",
     # placeholders from the documentation's example schemas
     # (C names, which carry the package prefix)
-    "ExampleSensorData", "ExampleStatus_deserialize", "SensorSystemSensorType_to_string",
+    "ExampleSensorData", "ExampleStatus_deserialize", "ExampleStatus_serialize",
+    "ExampleStatus_write", "SensorSystemSensorType_to_string",
     "SensorType_to_string",
     "asyncio", "sleep", "create_task", "gather", "time", "threading", "Thread", "Event", "Lock",
 }
 
 IDENT = re.compile(r"(?<![\w.])(?:new\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^>\n]*>)?\s*\(")
 QUALIFIED = re.compile(r"\b([A-Z][A-Za-z0-9_]*(?:Transport|Config|Reader|Writer|Sdk|Subscription)[A-Za-z0-9_]*)\b")
-FENCE = re.compile(r"```([^\n`]*)\n(.*?)\n```", re.S)
+# Fences may be indented (inside <Tabs>/<TabItem>); the closing fence has the same indent.
+FENCE = re.compile(r"^([ \t]*)```([^\n`]*)\n(.*?)\n\1```", re.S | re.M)
 KEYWORDS = {"if", "for", "while", "switch", "catch", "return", "foreach", "using", "lock", "sizeof", "nameof",
             "typeof", "fn", "def", "match", "when", "with", "assert", "else", "elif", "function", "async"}
 
@@ -87,13 +89,14 @@ def _names(page: Path, langs):
     text = page.read_text(encoding="utf-8")
     found = set()
     for m in FENCE.finditer(text):
-        info = m.group(1).split()
+        info = m.group(2).split()
         if not info or info[0].lower() not in langs:
             continue
-        body = m.group(2)
+        body = m.group(3)
         # Names declared inside the snippet itself are the reader's own.
         declared = set(re.findall(r"\b(?:class|struct|def|fn|function|interface|enum|let|var|const|auto|record)\s+([A-Za-z_]\w*)", body))
         declared |= set(re.findall(r"\b(?:int|string|bool|float|double|uint\d*_t|byte|void)\s+([A-Za-z_]\w*)", body))
+        declared |= set(re.findall(r"\busing\s+([A-Za-z_]\w*)\s*=", body))  # C++ type alias
         # Comments mention names that are not code.
         code = re.sub(r"(//[^\n]*|#[^\n]*|/\*.*?\*/)", "", body, flags=re.S)
         for name in IDENT.findall(code):
@@ -158,10 +161,10 @@ def test_no_c_style_package_prefixed_names_outside_c():
     problems = {}
     for page in _pages():
         for m in FENCE.finditer(page.read_text(encoding="utf-8")):
-            info = m.group(1).split()
+            info = m.group(2).split()
             if not info or info[0].lower() not in NON_C_TAGS:
                 continue
-            hits = sorted(set(rx.findall(m.group(2))))
+            hits = sorted(set(rx.findall(m.group(3))))
             if hits:
                 problems.setdefault(str(page.relative_to(DOCS)).replace(chr(92), "/"), set()).update(hits)
     assert not problems, (

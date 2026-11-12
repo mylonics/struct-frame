@@ -116,8 +116,7 @@ using namespace structframe;
 // Using profiles. CRC profiles need the message-info callback on the reader.
 uint8_t buffer[1024];
 ProfileStandardWriter writer(buffer, sizeof(buffer));
-AccumulatingReader<ProfileStandardConfig, 1024, decltype(&get_message_info)>
-    reader(get_message_info);
+ProfileStandardAccumulatingReader reader(get_message_info);
 
 // Encode
 writer.write(msg);
@@ -130,18 +129,22 @@ while (receiving) {
     }
 }
 
-// Decode (buffer)
+// Decode (buffer). try_next also returns corrupt frames (valid == false), so a
+// damaged frame does not stop the loop.
 reader.add_data(buffer, buffer_size);
-while (auto result = reader.next()) {
-    handle_message(result.msg_id, result.msg_data, result.msg_len);
+FrameMsgInfo result;
+while (reader.try_next(result)) {
+    if (result.valid) {
+        handle_message(result.msg_id, result.msg_data, result.msg_len);
+    }
 }
 ```
 
 ## Usage in Python
 
 ```python
-from frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
-from struct_frame.generated.messages import MyMessage, get_message_info
+from structframe.frame_profiles import BufferWriter, AccumulatingReader, PROFILE_STANDARD_CONFIG
+from structframe.messages import MyMessage, get_message_info
 
 # Encode
 msg = MyMessage(value=42)
@@ -159,9 +162,9 @@ for byte in frame:
 # Decode (buffer mode)
 reader2 = AccumulatingReader(PROFILE_STANDARD_CONFIG, get_message_info=get_message_info)
 reader2.add_data(frame)
-result = reader2.next()
-if result.valid:
-    handle_message(result)
+while (result := reader2.try_next()) is not None:
+    if result.valid:
+        handle_message(result)
 ```
 
 ## Custom Profiles
@@ -171,14 +174,14 @@ Create custom frame formats by combining header and payload types:
 <Tabs>
   <TabItem label="C++">
   ```cpp
-  // Custom: Tiny header with Extended payload
-  using CustomConfig = FrameConfig<
-      HeaderTiny,
-      PayloadExtended
-  >;
+  using namespace structframe;
 
-  FrameEncoderWithCrc<CustomConfig> encoder;
-  BufferParserWithCrc<CustomConfig> parser;
+  // Custom: Tiny header with Extended payload
+  using CustomConfig = ProfileConfig<headers::HEADER_TINY_CONFIG, payloads::PAYLOAD_EXTENDED_CONFIG>;
+
+  uint8_t buffer[1024];
+  BufferWriter<CustomConfig> writer(buffer, sizeof(buffer));
+  ProfileReader<CustomConfig> reader(mypkg::get_message_info);
   ```
   </TabItem>
 </Tabs>
@@ -186,12 +189,12 @@ Create custom frame formats by combining header and payload types:
 <Tabs>
   <TabItem label="Python">
   ```python
-  from frame_profiles import ProfileConfig, HEADER_TINY_CONFIG, PAYLOAD_EXTENDED_CONFIG
-  from frame_profiles import BufferWriter, AccumulatingReader
+  from structframe.frame_profiles import ProfileConfig, HEADER_TINY_CONFIG, PAYLOAD_EXTENDED_CONFIG
+  from structframe.frame_profiles import BufferWriter, AccumulatingReader
 
   custom_config = ProfileConfig(HEADER_TINY_CONFIG, PAYLOAD_EXTENDED_CONFIG, name="TinyExtended")
   writer = BufferWriter(custom_config, 1024)
-  reader = AccumulatingReader(custom_config)
+  reader = AccumulatingReader(custom_config, get_message_info=get_message_info)
   ```
   </TabItem>
 </Tabs>

@@ -197,6 +197,15 @@ pub trait StructFrameMessage {
         Self::unpack(&info.msg_data)
     }
 
+    /// Decode a parsed frame; the same as `unpack_frame`, under the name the other
+    /// runtimes use.
+    fn deserialize(info: &FrameMsgInfo) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        Self::unpack_frame(info)
+    }
+
     fn message_info() -> MessageInfo {
         MessageInfo::new(Self::MAX_SIZE, Self::MAGIC1, Self::MAGIC2)
     }

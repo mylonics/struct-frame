@@ -77,8 +77,8 @@ def main():
     ap.add_argument("--gen-dir", default="tests/benchmarks/generated/py")
     args = ap.parse_args()
     sys.path.insert(0, str(Path(args.gen_dir).resolve()))
-    import frame_profiles as fp
-    from struct_frame.generated import bench as gen
+    from structframe import frame_profiles as fp
+    from structframe import bench as gen
 
     scenarios = [run_case(fp, gen, s, op, args.iterations) for s in SCENARIOS for op in ("encode", "decode")]
     result = {"schema_version": "1", "language": "python", "runner_version": "tier-d-2-generated",

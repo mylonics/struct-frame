@@ -17,6 +17,11 @@ system that can credibly compete with **Protocol Buffers** and **MAVLink**.
 > in §5 below are updated accordingly. Published runtime packages (F3), reflection (F8)
 > and the plugin model (F9) are still open. For current behaviour, trust the docs site
 > and `CHANGELOG.md` over this file.
+>
+> **November 2026.** Umbrella headers (`structframe_all.h` / `structframe_all.hpp`, with a
+> cross-package `get_message_info`) are now generated, and the TS/JS `index` barrels
+> really export the generated packages (they were overwritten by the runtime's own
+> barrel before). The CLI has kebab-case options, `--lang`, `--out` and `structframe.toml`.
 
 ---
 

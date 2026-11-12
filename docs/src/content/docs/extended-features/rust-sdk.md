@@ -13,7 +13,7 @@ struct-frame can generate Rust message structs and a complete frame parsing SDK.
 ## Generating Rust Code
 
 ```bash
-python -m struct_frame messages.proto --build_rust --rust_path generated/rust/
+struct-frame messages.proto --build-rust --rust-path generated/rust/
 ```
 
 ### Generated Output
@@ -268,7 +268,7 @@ fn main() {
     println!("cargo:rerun-if-changed=proto/messages.proto");
     std::process::Command::new("python")
         .args(["-m", "struct_frame", "proto/messages.proto",
-               "--build_rust", "--rust_path", "generated/rust/"])
+               "--build-rust", "--rust-path", "generated/rust/"])
         .status()
         .expect("struct-frame code generation failed");
 }

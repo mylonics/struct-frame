@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Encode two messages into a Standard-profile byte stream and decode them again.
 
-    python -m struct_frame examples/basic/hello.sf --build_py --py_path out/py
+    struct-frame examples/basic/hello.sf --build-py --py-path out/py
     PYTHONPATH=out/py python examples/basic/hello.py
 """
-from frame_profiles import AccumulatingReader, BufferWriter, PROFILE_STANDARD_CONFIG
-from struct_frame.generated.hello import Heartbeat, Pose, VehicleType, get_message_info
+from structframe.frame_profiles import AccumulatingReader, BufferWriter, PROFILE_STANDARD_CONFIG
+from structframe.hello import Heartbeat, Pose, VehicleType, get_message_info
 
 # ---- encode ----
 writer = BufferWriter(PROFILE_STANDARD_CONFIG, 256)

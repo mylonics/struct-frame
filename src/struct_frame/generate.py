@@ -11,6 +11,7 @@ import json
 import struct
 import time
 import contextlib
+import keyword
 from struct_frame import FileCGen
 from struct_frame import FileTsGen, TestTsGen
 from struct_frame import FileJsGen, TestJsGen
@@ -286,6 +287,41 @@ def _compute_message_default_bytes(msg):
     return b"".join(parts)
 
 
+# Output languages as (key, display name). The key names the CLI flags
+# (--build-<key>, --<key>-path) and the default output subdirectory. The order
+# picks the default directory for the generation hash (get_hash_file_path).
+LANGUAGES = (
+    ('c', 'C'), ('cpp', 'C++'), ('py', 'Python'), ('ts', 'TypeScript'),
+    ('js', 'JavaScript'), ('csharp', 'C#'), ('gql', 'GraphQL'), ('rust', 'Rust'),
+)
+LANG_KEYS = tuple(key for key, _ in LANGUAGES)
+LANG_NAMES = dict(LANGUAGES)
+# Extra spellings accepted by --lang.
+_LANG_ALIASES = {
+    'python': 'py', 'typescript': 'ts', 'javascript': 'js', 'c++': 'cpp', 'cxx': 'cpp',
+    'cs': 'csharp', 'c#': 'csharp', 'dotnet': 'csharp', 'graphql': 'gql', 'rs': 'rust',
+}
+
+
+def enabled_languages(args):
+    """Languages selected on the command line, in LANGUAGES order."""
+    return [lang for lang in LANG_KEYS if getattr(args, 'build_' + lang)]
+
+
+def output_path(args, lang):
+    """Resolved output directory for one language."""
+    return getattr(args, lang + '_path')
+
+
+# Python output: one importable package holding the runtime and a module per schema
+# package (PY_PATH/<py-package>/...). Its name must not be `struct_frame`, the
+# generator's own package.
+DEFAULT_PY_PACKAGE = 'structframe'
+# Modules of the Python runtime inside that package; schema packages cannot reuse them.
+PY_RUNTIME_MODULES = ('frame_base', 'frame_headers', 'payload_types', 'frame_profiles',
+                      'struct_frame_sdk')
+
+
 # Generation hash file name
 HASH_FILENAME = ".structframe.hash"
 
@@ -355,31 +391,36 @@ def prune_stale_outputs(out_dir, schema_path, generated_files, scope=""):
 
 
 def get_version():
-    """Get the struct-frame version from pyproject.toml or package metadata."""
-    try:
-        # Try to get version from importlib.metadata (Python 3.8+)
-        from importlib.metadata import PackageNotFoundError, version as get_pkg_version
-        return get_pkg_version('struct-frame')
-    except (ImportError, ModuleNotFoundError, PackageNotFoundError):
-        pass
+    """The struct-frame version of the code that is running.
 
-    # Fallback: try to read from pyproject.toml
+    A source checkout (``src/struct_frame`` next to ``pyproject.toml``) reports its own
+    version, so running from ``src`` with an older release installed does not report the
+    installed release. Otherwise the installed package metadata is used.
+    """
     try:
         import pathlib
-        pyproject_path = pathlib.Path(
-            __file__).parent.parent.parent / "pyproject.toml"
-        if pyproject_path.exists():
-            with open(pyproject_path, 'r') as f:
+        src_dir = pathlib.Path(__file__).resolve().parent.parent
+        pyproject_path = src_dir.parent / "pyproject.toml"
+        if src_dir.name == 'src' and pyproject_path.exists():
+            with open(pyproject_path, 'r', encoding='utf-8') as f:
+                in_project = False
                 for line in f:
-                    if line.strip().startswith('version'):
+                    stripped = line.strip()
+                    if stripped.startswith('['):
+                        in_project = stripped == '[project]'
+                    elif in_project and stripped.startswith('version'):
                         # Parse: version = "0.6.3"
-                        parts = line.split('=', 1)
+                        parts = stripped.split('=', 1)
                         if len(parts) == 2:
                             return parts[1].strip().strip('"\'')
     except (OSError, UnicodeDecodeError):
         pass
 
-    # Last fallback
+    try:
+        from importlib.metadata import PackageNotFoundError, version as get_pkg_version
+        return get_pkg_version('struct-frame')
+    except (ImportError, PackageNotFoundError):
+        pass
     return "unknown"
 
 
@@ -602,32 +643,22 @@ def compute_generation_hash(args, packages_dict, name_overrides=None):
     _hash_line(hasher, f"generator:{generator_fingerprint()}")
 
     # 2. Add relevant CLI parameters (sorted for consistency)
-    cli_params = {
-        'build_c': args.build_c,
-        'build_ts': args.build_ts,
-        'build_js': args.build_js,
-        'build_py': args.build_py,
-        'build_cpp': args.build_cpp,
-        'build_csharp': args.build_csharp,
-        'build_gql': args.build_gql,
-        'build_rust': args.build_rust,
-        'c_path': args.c_path[0] if args.build_c else None,
-        'ts_path': args.ts_path[0] if args.build_ts else None,
-        'js_path': args.js_path[0] if args.build_js else None,
-        'py_path': args.py_path[0] if args.build_py else None,
-        'cpp_path': args.cpp_path[0] if args.build_cpp else None,
-        'csharp_path': args.csharp_path[0] if args.build_csharp else None,
-        'gql_path': args.gql_path[0] if args.build_gql else None,
-        'rust_path': args.rust_path[0] if args.build_rust else None,
+    cli_params = {}
+    for lang in LANG_KEYS:
+        enabled = getattr(args, 'build_' + lang)
+        cli_params['build_' + lang] = enabled
+        cli_params[lang + '_path'] = output_path(args, lang) if enabled else None
+    cli_params.update({
         'generate_tests': args.generate_tests,
-        'catalog_path': args.catalog_path[0],
+        'catalog_path': args.catalog_path,
         'sdk': args.sdk,
         'sdk_embedded': args.sdk_embedded,
         'equality': args.equality,
-        'csharp_namespace': args.csharp_namespace[0],
+        'csharp_namespace': args.csharp_namespace,
+        'py_package': args.py_package if args.build_py else None,
         'no_packed': args.no_packed,
         'name_overrides': name_overrides.fingerprint() if name_overrides else None,
-    }
+    })
     _hash_line(hasher, f"cli:{json.dumps(cli_params, sort_keys=True)}")
 
     # 3. Schema structure and 4. documentation, hashed separately and combined
@@ -649,15 +680,8 @@ def expected_outputs_exist(args):
     nothing about the others: deleting e.g. the Python output must trigger
     regeneration instead of being skipped as "unchanged".
     """
-    targets = (
-        (args.build_c, args.c_path[0]), (args.build_cpp, args.cpp_path[0]),
-        (args.build_ts, args.ts_path[0]), (args.build_js, args.js_path[0]),
-        (args.build_py, args.py_path[0]), (args.build_gql, args.gql_path[0]),
-        (args.build_csharp, args.csharp_path[0]), (args.build_rust, args.rust_path[0]),
-    )
-    for enabled, path in targets:
-        if not enabled:
-            continue
+    for lang in enabled_languages(args):
+        path = output_path(args, lang)
         if not os.path.isdir(path):
             return False
         with os.scandir(path) as entries:
@@ -676,30 +700,13 @@ def get_hash_file_path(args):
     Returns:
         str: Path to the hash file
     """
-    # Use explicit hash_path if provided
-    if args.hash_path[0] is not None:
-        hash_dir = args.hash_path[0]
+    # Use explicit hash_path if provided, else the first enabled output path
+    # (in LANGUAGES order), else the current directory.
+    if args.hash_path is not None:
+        hash_dir = args.hash_path
     else:
-        # Use the first enabled output path
-        if args.build_c:
-            hash_dir = args.c_path[0]
-        elif args.build_cpp:
-            hash_dir = args.cpp_path[0]
-        elif args.build_py:
-            hash_dir = args.py_path[0]
-        elif args.build_ts:
-            hash_dir = args.ts_path[0]
-        elif args.build_js:
-            hash_dir = args.js_path[0]
-        elif args.build_csharp:
-            hash_dir = args.csharp_path[0]
-        elif args.build_gql:
-            hash_dir = args.gql_path[0]
-        elif args.build_rust:
-            hash_dir = args.rust_path[0]
-        else:
-            # Fallback to current directory
-            hash_dir = "."
+        langs = enabled_languages(args)
+        hash_dir = output_path(args, langs[0]) if langs else "."
 
     return os.path.join(hash_dir, HASH_FILENAME)
 
@@ -2193,65 +2200,271 @@ pending_package_imports = []
 # contribute package-level edges even when parseFile short-circuits.
 file_to_package = {}
 
-parser = argparse.ArgumentParser(
-    prog='struct_frame',
-    description='Message serialization and header generation program',
-    epilog=('Wire-compatibility check between two schema revisions: '
-            'struct_frame diff OLD.sf NEW.sf  (see "struct_frame diff --help")'))
+def reset_parse_state():
+    """Forget every schema parsed so far, so ``main()`` can run more than once per process.
 
-parser.add_argument('filename', nargs='?', default=None,
-                    help='Proto file to process')
-parser.add_argument('--debug', action='store_true')
-parser.add_argument('--validate', action='store_true',
-                    help='Validate the proto file without generating any output files')
-parser.add_argument('--build_c', action='store_true')
-parser.add_argument('--build_ts', action='store_true')
-parser.add_argument('--build_js', action='store_true')
-parser.add_argument('--build_py', action='store_true')
-parser.add_argument('--build_cpp', action='store_true')
-parser.add_argument('--build_csharp', action='store_true')
-parser.add_argument('--c_path', nargs=1, type=str, default=['generated/c/'])
-parser.add_argument('--ts_path', nargs=1, type=str, default=['generated/ts/'])
-parser.add_argument('--js_path', nargs=1, type=str, default=['generated/js/'])
-parser.add_argument('--py_path', nargs=1, type=str, default=['generated/py/'])
-parser.add_argument('--cpp_path', nargs=1, type=str,
-                    default=['generated/cpp/'])
-parser.add_argument('--csharp_path', nargs=1, type=str,
-                    default=['generated/csharp/'])
-parser.add_argument('--build_gql', action='store_true')
-parser.add_argument('--gql_path', nargs=1, type=str,
-                    default=['generated/gql/'])
-parser.add_argument('--build_rust', action='store_true')
-parser.add_argument('--rust_path', nargs=1, type=str,
-                    default=['generated/rust/'])
-parser.add_argument('--catalog_path', nargs=1, type=str, default=['generated/'],
-                    help='Directory for the LSP type catalog file (sf_compile.json)')
-parser.add_argument('--sdk', action='store_true',
-                    help='Include full SDK with all transports (UDP, TCP, WebSocket, Serial)')
-parser.add_argument('--sdk_embedded', action='store_true',
-                    help='Include the embedded C++ SDK (serial transport only, no ASIO dependencies). '
-                         'Has no effect on other languages, which always receive the full SDK')
-parser.add_argument('--equality', action='store_true',
-                    help='Generate equality comparison operators/methods for messages')
-parser.add_argument('--csharp_namespace', nargs=1, type=str, default=['StructFrame'],
-                    help='Root namespace for generated C# code (default: StructFrame)')
-parser.add_argument('--force', action='store_true',
-                    help='Force regeneration even if hash matches previous generation')
-parser.add_argument('--hash_path', nargs=1, type=str, default=[None],
-                    help='Path to store the generation hash file (default: first output path)')
-parser.add_argument('--generate_tests', action='store_true',
-                    help='Generate test code with dummy values for all messages (round-trip encode/decode verification)')
-parser.add_argument('--name_overrides', nargs=1, type=str, default=[None],
-                    help=('JSON file with explicit per-language name overrides, e.g. '
-                          '{"csharp": {"BleMCuHost": "BleMcuHost"}}. Keys are source names '
-                          '(Message, Message.field, Message.oneof.variant, Enum.ENTRY, ...), '
-                          'optionally package-qualified; "all" applies to every language. '
-                          'Wire layout is unaffected.'))
-parser.add_argument('--no_packed', action='store_true',
-                    help=('Generate code without packed structs. All messages are treated as variable, '
-                          'so serialization/deserialization is performed field-by-field instead of relying on '
-                          'packed memory layout. Useful on platforms that do not support struct packing or '
-                          'have different endianness/alignment requirements.'))
+    The containers are cleared in place: other modules and the tests hold references to them.
+    """
+    packages.clear()
+    processed_file.clear()
+    required_file.clear()
+    package_imports.clear()
+    pending_package_imports.clear()
+    file_to_package.clear()
+
+
+# ---------------------------------------------------------------------------
+# Command line
+# ---------------------------------------------------------------------------
+
+DEFAULT_OUT = 'generated'
+CONFIG_FILENAME = 'structframe.toml'
+
+# Options whose values are paths. Relative paths in a config file are resolved against the
+# directory of that file, so a build can run from anywhere.
+_PATH_DESTS = frozenset({'filename', 'out', 'catalog_path', 'hash_path', 'name_overrides'}
+                        | {lang + '_path' for lang in LANG_KEYS})
+
+
+class ConfigError(Exception):
+    """A structframe.toml file could not be read or contains an unknown or mistyped key."""
+
+
+def _add_option(group, name, **kwargs):
+    """Register ``--kebab-name`` plus the historical ``--snake_name`` spelling.
+
+    Both set the same destination; only the kebab-case form is listed in ``--help``.
+    """
+    kebab = '--' + name.replace('_', '-')
+    group.add_argument(kebab, dest=name, **kwargs)
+    snake = '--' + name
+    if snake != kebab:
+        hidden = dict(kwargs, help=argparse.SUPPRESS, default=argparse.SUPPRESS)
+        group.add_argument(snake, dest=name, **hidden)
+
+
+def build_parser():
+    """Return the argument parser for code generation (``diff`` has its own parser)."""
+    parser = argparse.ArgumentParser(
+        prog='struct-frame',
+        usage='%(prog)s [options] [SCHEMA]\n       %(prog)s diff OLD NEW [options]',
+        description=('Generate message code and framing runtimes from a struct-frame schema '
+                     '(.sf, or .proto with struct-frame options).'),
+        epilog=('examples:\n'
+                '  struct-frame robot.sf --lang c,py --out build/gen\n'
+                '  struct-frame robot.sf --build-cpp --cpp-path firmware/gen\n'
+                '  struct-frame robot.sf --validate\n'
+                '  struct-frame                      (reads ./structframe.toml)\n'
+                '  struct-frame diff old.sf new.sf   (wire-compatibility check; see '
+                '"struct-frame diff --help")\n\n'
+                'Older snake_case spellings of every option (--build_c, --c_path, ...) are '
+                'still accepted.'),
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    parser.add_argument('filename', nargs='?', default=None, metavar='SCHEMA',
+                        help='Schema file to compile; its imports are followed. Optional when a '
+                             'config file names it.')
+    parser.add_argument('--version', action='version', version=f'%(prog)s {get_version()}')
+
+    langs = parser.add_argument_group('languages')
+    langs.add_argument('--lang', action='append', default=None, metavar='LANGS',
+                       help=f'Comma-separated languages to generate: {", ".join(LANG_KEYS)} or '
+                            'all. May be repeated.')
+    for lang, name in LANGUAGES:
+        _add_option(langs, 'build_' + lang, action='store_true', help=f'Generate {name}')
+
+    out = parser.add_argument_group('output locations')
+    out.add_argument('--out', default=None, metavar='DIR',
+                     help=f'Root output directory: each language is written to DIR/<lang> unless '
+                          f'its --<lang>-path is given (default: {DEFAULT_OUT})')
+    for lang, name in LANGUAGES:
+        _add_option(out, lang + '_path', default=None, metavar='DIR',
+                    help=f'Output directory for {name} (default: OUT/{lang})')
+    _add_option(out, 'catalog_path', default=None, metavar='DIR',
+                help='Directory for the editor type catalog sf_compile.json (default: the '
+                     'directory shared by the enabled outputs)')
+    _add_option(out, 'hash_path', default=None, metavar='DIR',
+                help='Directory for the generation hash .structframe.hash (default: the first '
+                     'enabled output directory)')
+
+    gen = parser.add_argument_group('generated code')
+    _add_option(gen, 'sdk', action='store_true',
+                help='Also copy the SDK (transports, message router) for C++, Python, '
+                     'TypeScript and JavaScript')
+    _add_option(gen, 'sdk_embedded', action='store_true',
+                help='Copy the embedded C++ SDK only (serial transport, no ASIO). Other '
+                     'languages receive the full SDK')
+    _add_option(gen, 'equality', action='store_true',
+                help='Generate equality operators/methods for messages')
+    _add_option(gen, 'generate_tests', action='store_true',
+                help='Generate round-trip test programs with dummy values for every message')
+    _add_option(gen, 'no_packed', action='store_true',
+                help='Treat every message as variable so C/C++ encode field by field instead of '
+                     'relying on packed struct layout (for targets without struct packing)')
+    _add_option(gen, 'csharp_namespace', default='StructFrame', metavar='NS',
+                help='Root namespace for generated C# code (default: StructFrame)')
+    _add_option(gen, 'py_package', default=DEFAULT_PY_PACKAGE, metavar='NAME',
+                help=f'Python package that holds the generated modules and the runtime, '
+                     f'created inside the Python output directory (default: {DEFAULT_PY_PACKAGE})')
+    _add_option(gen, 'name_overrides', default=None, metavar='FILE',
+                help=('JSON file with explicit per-language name overrides, e.g. '
+                      '{"csharp": {"BleMCuHost": "BleMcuHost"}}. Keys are source names '
+                      '(Message, Message.field, Message.oneof.variant, Enum.ENTRY, ...), '
+                      'optionally package-qualified; "all" applies to every language. '
+                      'Wire layout is unaffected.'))
+
+    run = parser.add_argument_group('run control')
+    run.add_argument('--validate', action='store_true',
+                     help='Check the schema (against every language unless some are selected) '
+                          'without writing files')
+    run.add_argument('--force', action='store_true',
+                     help='Regenerate even when the schema, options and generator are unchanged')
+    run.add_argument('--config', default=None, metavar='FILE',
+                     help=f'Read options from a TOML file (default: ./{CONFIG_FILENAME} when no '
+                          f'SCHEMA is given). Command-line options override it.')
+    run.add_argument('-q', '--quiet', action='store_true',
+                     help='Print only warnings and errors')
+    run.add_argument('--debug', action='store_true',
+                     help='Print the parsed model and cache decisions')
+    return parser
+
+
+def _option_dests(parser):
+    """Map every option spelling (without dashes, '-' and '_' both accepted) to its dest."""
+    dests = {'schema': 'filename'}
+    for action in parser._actions:
+        for opt in action.option_strings:
+            if opt.startswith('--'):
+                key = opt[2:].replace('-', '_')
+                dests[key] = action.dest
+    for key in ('help', 'version', 'config'):
+        dests.pop(key, None)
+    return dests
+
+
+def load_config(path, parser):
+    """Read a structframe.toml file into ``{dest: value}`` for ``parser.set_defaults``.
+
+    Keys are the long option names (``lang``, ``out``, ``c-path``, ``equality``, ...) plus
+    ``schema``; ``-`` and ``_`` are interchangeable. Relative paths are resolved against the
+    file's directory.
+    """
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python < 3.11
+        try:
+            import tomli as tomllib
+        except ModuleNotFoundError:
+            raise ConfigError(f"{path}: reading TOML needs Python 3.11+ or the 'tomli' package "
+                              "(pip install tomli)") from None
+    try:
+        with open(path, 'rb') as f:
+            data = tomllib.load(f)
+    except OSError as err:
+        raise ConfigError(f"{path}: {err.strerror or err}") from None
+    except tomllib.TOMLDecodeError as err:
+        raise ConfigError(f"{path}: {err}") from None
+
+    dests = _option_dests(parser)
+    flags = {a.dest for a in parser._actions if isinstance(a, argparse._StoreTrueAction)}
+    base = os.path.dirname(os.path.abspath(path))
+    result = {}
+    for key, value in data.items():
+        norm = key.replace('-', '_')
+        dest = dests.get(norm)
+        if dest is None:
+            hint = _did_you_mean(norm, [k.replace('_', '-') for k in dests])
+            raise ConfigError(f"{path}: unknown key '{key}'{hint}")
+        if dest == 'lang':
+            if isinstance(value, str):
+                value = [value]
+            if not (isinstance(value, list) and all(isinstance(v, str) for v in value)):
+                raise ConfigError(f"{path}: '{key}' must be a string or a list of strings")
+            value = [','.join(value)]
+        elif dest in flags:
+            if not isinstance(value, bool):
+                raise ConfigError(f"{path}: '{key}' must be true or false")
+        else:
+            if not isinstance(value, str):
+                raise ConfigError(f"{path}: '{key}' must be a string")
+            if dest in _PATH_DESTS and not os.path.isabs(value):
+                value = os.path.normpath(os.path.join(base, value))
+        result[dest] = value
+    return result
+
+
+def _default_catalog_dir(args, default_langs):
+    """Where sf_compile.json goes when --catalog-path is not given.
+
+    The directory shared by the enabled outputs (``generated/`` for the default layout,
+    ``OUT`` with ``--out``). When the outputs share nothing narrower than the working
+    directory, the first output directory is used instead of writing into the working
+    directory.
+    """
+    langs = enabled_languages(args)
+    if args.out is not None:
+        return args.out
+    if not langs or all(lang in default_langs for lang in langs):
+        return DEFAULT_OUT + '/'
+    dirs = [os.path.abspath(DEFAULT_OUT if lang in default_langs else output_path(args, lang))
+            for lang in langs]
+    try:
+        common = os.path.commonpath(dirs)
+    except ValueError:  # different drives
+        common = None
+    cwd = os.path.abspath(os.getcwd())
+    if common is None or common == cwd or cwd.startswith(common.rstrip(os.sep) + os.sep):
+        return output_path(args, langs[0])
+    return common
+
+
+def resolve_args(parser, args):
+    """Apply --lang and --out, and fill in default paths. Reports usage errors via parser."""
+    for value in args.lang or []:
+        for item in value.split(','):
+            item = item.strip().lower()
+            if not item:
+                continue
+            if item == 'all':
+                for lang in LANG_KEYS:
+                    setattr(args, 'build_' + lang, True)
+                continue
+            lang = _LANG_ALIASES.get(item, item)
+            if lang not in LANG_KEYS:
+                parser.error(f"unknown language '{item}' in --lang "
+                             f"(choose from {', '.join(LANG_KEYS)}, all)")
+            setattr(args, 'build_' + lang, True)
+
+    default_langs = set()
+    for lang in LANG_KEYS:
+        if output_path(args, lang) is None:
+            if args.out is None:
+                # Same spelling as before --out existed, so the generation hash is unchanged.
+                path = f'{DEFAULT_OUT}/{lang}/'
+                default_langs.add(lang)
+            else:
+                path = os.path.join(args.out, lang)
+            setattr(args, lang + '_path', path)
+    if args.catalog_path is None:
+        args.catalog_path = _default_catalog_dir(args, default_langs)
+    return args
+
+
+def parse_args(parser, argv):
+    """Parse argv, merging a config file (explicit --config, or ./structframe.toml when no
+    schema is given) underneath the command line."""
+    args = parser.parse_args(argv)
+    config_path = args.config
+    if config_path is None and args.filename is None and os.path.isfile(CONFIG_FILENAME):
+        config_path = CONFIG_FILENAME
+    if config_path is not None:
+        parser.set_defaults(**load_config(config_path, parser))
+        args = parser.parse_args(argv)
+    return resolve_args(parser, args)
+
+
+# Kept for code that imported the module-level parser.
+parser = build_parser()
 
 
 _SYNTAX_ERROR_RE = re.compile(r"^line \d+:\d+ ", re.M)
@@ -2853,7 +3066,8 @@ def topological_sort_packages(pkgs, pkg_imports):
     return result
 
 
-def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None, name_overrides=None):
+def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None, name_overrides=None,
+                              py_package=DEFAULT_PY_PACKAGE):
     """Generate a single JSON catalog file for language-server navigation.
 
     Produces one language-agnostic ``sf_compile.json`` that lists
@@ -2903,8 +3117,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None, name_o
                                                  f'{pkg_name.replace("_", "-")}.structframe.js'))
         if build_flags.get('py'):
             result['py'] = _relpath(os.path.join(os.path.abspath(paths['py']),
-                                                 'struct_frame', 'generated',
-                                                 f'{pkg_name}.py'))
+                                                 py_package, f'{pkg_name}.py'))
         if build_flags.get('gql'):
             result['gql'] = _relpath(os.path.join(os.path.abspath(paths['gql']),
                                                   f'{pkg_name}.graphql'))
@@ -2944,7 +3157,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None, name_o
             return None, element, element
 
         if lang == 'py':
-            namespace = f'struct_frame.generated.{pkg_name}'
+            namespace = f'{py_package}.{pkg_name}'
             element = symbol_name
             return namespace, element, f'{namespace}.{element}'
 
@@ -3059,7 +3272,7 @@ def generate_lsp_file_strings(catalog_path, build_flags=None, paths=None, name_o
                         return ns, element, f'{ns}::{msg_name_}::{enum_name_}'
 
                     if lang == 'py':
-                        ns = f'struct_frame.generated.{pkg_name_}'
+                        ns = f'{py_package}.{pkg_name_}'
                         return ns, enum_name_, f'{ns}.{msg_name_}.{enum_name_}'
 
                     if lang in ('ts', 'js'):
@@ -3142,7 +3355,64 @@ def generateCFileStrings(path, equality=False, generate_tests=False):
             roundtrip_name = os.path.join(path, "test_roundtrip_" + value.name + ".c")
             out[roundtrip_name] = ''.join(TestCGen.generate_roundtrip_main(value))
 
+    if 'structframe_all' not in {camel_to_snake_case(p.name) for p in packages.values()}:
+        out[os.path.join(path, UMBRELLA_BASENAME + ".h")] = _umbrella_c_header()
     return out
+
+
+# Umbrella header that includes every generated package header (C and C++).
+UMBRELLA_BASENAME = "structframe_all"
+
+
+def _umbrella_c_header():
+    with_info = [p for p in packages.values() if p.messages]
+    lines = ['/* Automatically generated struct frame header */\n',
+             f'/* Generated by struct-frame {get_version()}. */\n\n',
+             '/* Includes every package header generated together and looks message IDs up\n',
+             ' * across all of them. */\n\n',
+             '#pragma once\n']
+    lines += [f'#include "{p.name}.structframe.h"\n' for p in packages.values()]
+    lines += ['\n#ifdef __cplusplus\nextern "C" {\n#endif\n\n',
+              '/* Message info (size, checksum magic bytes) for an ID from any package above.\n',
+              ' * Effective IDs are unique across packages, so at most one package knows an ID.\n',
+              ' * Pass this to the readers when frames of several packages share a stream. */\n',
+              f'static inline bool {UMBRELLA_BASENAME}_get_message_info(uint16_t msg_id, '
+              'message_info_t* info) {\n']
+    if with_info:
+        calls = [f'{camel_to_snake_case(p.name)}_get_message_info(msg_id, info)' for p in with_info]
+        lines.append('    return ' + '\n        || '.join(calls) + ';\n')
+    else:
+        lines.append('    (void)msg_id;\n    (void)info;\n    return false;\n')
+    lines += ['}\n\n#ifdef __cplusplus\n}\n#endif\n']
+    return ''.join(lines)
+
+
+def _umbrella_cpp_header():
+    with_info = [p for p in packages.values() if p.messages]
+    lines = ['/* Automatically generated struct frame header for C++ */\n',
+             f'/* Generated by struct-frame {get_version()}. */\n\n',
+             '/* Includes every package header generated together and looks message IDs up\n',
+             ' * across all of them. */\n\n',
+             '#pragma once\n',
+             '#include <frame_base.hpp>\n']
+    lines += [f'#include "{p.name}.structframe.hpp"\n' for p in packages.values()]
+    lines += ['\nnamespace structframe {\n\n',
+              '/* Message info (size, checksum magic bytes) for an ID from any package above.\n',
+              ' * Effective IDs are unique across packages, so at most one package knows an ID.\n',
+              ' * Pass it to the readers when frames of several packages share a stream:\n',
+              ' *   ProfileStandardAccumulatingReader reader(structframe::get_message_info); */\n',
+              'inline MessageInfo get_message_info(uint16_t msg_id) {\n']
+    if with_info:
+        lines.append('    MessageInfo info;\n')
+        for p in with_info:
+            ns = camel_to_snake_case(p.name)
+            lines.append(f'    info = {ns}::get_message_info(msg_id);\n')
+            lines.append('    if (info.valid) return info;\n')
+        lines.append('    return info;\n')
+    else:
+        lines.append('    (void)msg_id;\n    return MessageInfo{};\n')
+    lines += ['}\n\n}  // namespace structframe\n']
+    return ''.join(lines)
 
 
 def generateTsFileStrings(path, equality=False, generate_tests=False):
@@ -3167,16 +3437,13 @@ def generateTsFileStrings(path, equality=False, generate_tests=False):
             test_data = ''.join(TestTsGen.generate(value, imported_packages=imported))
             out[test_name] = test_data
 
-    # Generate index.ts barrel so the output folder is a self-contained ESM package
+    # index.ts barrel: the runtime's exports plus one namespace per generated package
+    # (`export * as hello from ...`), so the output folder is a self-contained package.
+    # Namespaces, because every package exports getMessageInfo / decodeMessage.
+    out[os.path.join(path, 'index.ts')] = _barrel('ts', [
+        f"export * as {value.name} from './{value.name.replace('_', '-')}.structframe';"
+        for value in sorted(packages.values(), key=lambda p: p.name)])
     if pkg_names:
-        sf_ver = get_version()
-        lines = [
-            '/* Auto-generated barrel index — re-exports all generated packages */',
-            f'/* Generated by struct-frame {sf_ver} */\n',
-        ]
-        for pkg in sorted(pkg_names):
-            lines.append(f"export * from './{pkg}.structframe';")
-        out[os.path.join(path, 'index.ts')] = '\n'.join(lines) + '\n'
 
         pkg_json = {
             "exports": {
@@ -3214,34 +3481,38 @@ def generateJsFileStrings(path, equality=False, generate_tests=False):
             test_data = ''.join(TestJsGen.generate(value, imported_packages=imported))
             out[test_name] = test_data
 
-    # Generate index.js barrel so the output folder is a self-contained CJS package
-    if pkg_names:
-        sf_ver = get_version()
-        lines = [
-            '/* Auto-generated barrel index — re-exports all generated packages */',
-            f'/* Generated by struct-frame {sf_ver} */\n',
-        ]
-        for pkg in sorted(pkg_names):
-            lines.append(
-                f"Object.assign(module.exports, require('./{pkg}.structframe'));")
-        out[os.path.join(path, 'index.js')] = '\n'.join(lines) + '\n'
+    # index.js barrel: the runtime's exports plus one property per generated package.
+    out[os.path.join(path, 'index.js')] = _barrel('js', [
+        f"exports.{value.name} = require('./{value.name.replace('_', '-')}.structframe');"
+        for value in sorted(packages.values(), key=lambda p: p.name)])
 
     return out
 
 
-def generatePyFileStrings(path, equality=False, generate_tests=False):
+def _barrel(lang, package_lines):
+    """The runtime's index.ts / index.js followed by the generated packages' exports."""
+    runtime_index = os.path.join(_BOILERPLATE_ROOT, lang, 'index.' + lang)
+    with open(runtime_index, 'r', encoding='utf-8') as f:
+        text = f.read().rstrip('\n') + '\n'
+    if package_lines:
+        text += ('\n// Generated packages (struct-frame %s), one namespace per package:\n'
+                 % get_version())
+        text += '\n'.join(package_lines) + '\n'
+    return text
+
+
+def generatePyFileStrings(path, equality=False, generate_tests=False,
+                          py_package=DEFAULT_PY_PACKAGE):
     out = {}
 
-    # Create package structure: struct_frame/generated/
-    generated_path = os.path.join(path, "struct_frame", "generated")
+    # One package, PATH/<py_package>/, holds the runtime (copied in by main) and one module
+    # per schema package. Everything inside imports relatively, so the package also works
+    # nested inside the user's own package.
+    generated_path = os.path.join(path, py_package)
 
-    # Create __init__.py for struct_frame package
-    struct_frame_init = os.path.join(path, "struct_frame", "__init__.py")
-    out[struct_frame_init] = '"""StructFrame generated code package."""\n'
-
-    # Create __init__.py for generated subpackage
-    generated_init = os.path.join(generated_path, "__init__.py")
-    out[generated_init] = '"""StructFrame generated message definitions."""\n'
+    # __init__.py: the runtime's exports plus each schema package as a submodule.
+    module_names = sorted(p.name for p in packages.values())
+    out[os.path.join(generated_path, "__init__.py")] = _py_package_init(module_names)
 
     # Generate message files in the generated package
     for key, value in packages.items():
@@ -3269,12 +3540,43 @@ def generatePyFileStrings(path, equality=False, generate_tests=False):
                 'Generated by struct-frame %s. Exercises every message across all 5 frame profiles."""\n'
                 'import os, runpy, sys\n'
                 'HERE = os.path.dirname(os.path.abspath(__file__))\n'
-                'sys.path.insert(0, os.path.join(HERE, "struct_frame", "generated"))\n'
                 'sys.path.insert(0, HERE)\n'
-                'runpy.run_module("struct_frame.generated.%s_tests", run_name="__main__")\n'
-            ) % (value.name, get_version(), value.name)
+                'runpy.run_module("%s.%s_tests", run_name="__main__")\n'
+            ) % (value.name, get_version(), py_package, value.name)
 
     return out
+
+
+def _py_package_init(module_names):
+    """The runtime's __init__.py followed by imports of the generated modules."""
+    runtime_init = os.path.join(_BOILERPLATE_ROOT, 'py', '__init__.py')
+    with open(runtime_init, 'r', encoding='utf-8') as f:
+        text = f.read().rstrip('\n') + '\n'
+    if module_names:
+        text += ('\n# Generated packages (struct-frame %s): `from <this package> import robot`, '
+                 'then robot.Status.\n' % get_version())
+        text += 'from . import %s\n' % ', '.join(module_names)
+        text += '__all__ += [%s]\n' % ', '.join(repr(n) for n in module_names)
+    return text
+
+
+def check_python_package_names(py_package, generate_tests=False):
+    """Errors for a --py-package value or schema package names the Python output cannot use."""
+    errors = []
+    if not py_package.isidentifier() or keyword.iskeyword(py_package):
+        errors.append(f"--py-package '{py_package}' is not a valid Python identifier")
+    elif py_package == 'struct_frame':
+        errors.append("--py-package 'struct_frame' would shadow the struct-frame generator's own "
+                      "package; choose another name")
+    for pkg in packages.values():
+        if pkg.name in PY_RUNTIME_MODULES:
+            errors.append(f"package '{pkg.name}' has the same name as a module of the Python "
+                          f"runtime ({', '.join(PY_RUNTIME_MODULES)}); rename the package")
+        elif generate_tests and pkg.name.endswith('_tests') and pkg.name[:-6] in {
+                p.name for p in packages.values()}:
+            errors.append(f"package '{pkg.name}' collides with the generated test module of "
+                          f"package '{pkg.name[:-6]}'")
+    return errors
 
 
 def generateCppFileStrings(path, equality=False, generate_tests=False):
@@ -3297,6 +3599,7 @@ def generateCppFileStrings(path, equality=False, generate_tests=False):
             roundtrip_name = os.path.join(path, "test_roundtrip_" + value.name + ".cpp")
             roundtrip_data = ''.join(TestCppGen.generate_roundtrip_main(value))
             out[roundtrip_name] = roundtrip_data
+    out[os.path.join(path, UMBRELLA_BASENAME + ".hpp")] = _umbrella_cpp_header()
     return out
 
 
@@ -3496,13 +3799,155 @@ def _generateCSharpProjectFile(namespace):
 
 SCHEMA_DIFF_COMMANDS = ('diff', 'schema-diff')
 
+# Order in which languages are generated and their runtimes copied.
+_GENERATION_ORDER = ('c', 'ts', 'js', 'py', 'cpp', 'csharp', 'gql', 'rust')
 
-def main():
+_SDK_DIRS = ['struct_frame_sdk', 'Sdk']
+
+# Runtime ("boilerplate") copied next to each language's generated code:
+# lang -> names never copied (at any depth). GraphQL has no runtime. The optional SDK
+# directory is copied separately, for _SDK_LANGS, by --sdk / --sdk-embedded.
+_BOILERPLATE_EXCLUDES = {
+    'c': _SDK_DIRS,
+    # index.ts / index.js are generated (runtime barrel + the generated packages).
+    'ts': _SDK_DIRS + ['index.ts'],
+    # boilerplate/js/ is compiled from boilerplate/ts/ via:
+    #   node_modules/.bin/tsc -p src/struct_frame/boilerplate/ts/tsconfig.cjs.json
+    # Do not hand-edit boilerplate/js/; edit boilerplate/ts/ and recompile.
+    'js': _SDK_DIRS + ['index.js'],
+    # __init__.py is generated (runtime exports + the generated modules).
+    'py': _SDK_DIRS + ['__init__.py'],
+    'cpp': _SDK_DIRS,
+    # C# always gets Framework/Sdk/Transports; the .csproj decides what compiles:
+    #   -p:IncludeSerialTransport=true -> Serial (System.IO.Ports)
+    #   -p:IncludeNetCoreServer=true   -> TCP, UDP, WebSocket (NetCoreServer)
+    'csharp': [],
+    # lib.rs and Cargo.toml are generated.
+    'rust': _SDK_DIRS + ['lib.rs', 'Cargo.toml'],
+}
+_SDK_LANGS = ('ts', 'js', 'py', 'cpp')
+
+_BOILERPLATE_ROOT = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'boilerplate')
+
+
+def _generate_language(lang, path, args):
+    """Return {filename: content} for one language."""
+    opts = dict(equality=args.equality, generate_tests=args.generate_tests)
+    if lang == 'c':
+        return generateCFileStrings(path, **opts)
+    if lang == 'ts':
+        return generateTsFileStrings(path, **opts)
+    if lang == 'js':
+        return generateJsFileStrings(path, **opts)
+    if lang == 'py':
+        return generatePyFileStrings(path, py_package=args.py_package, **opts)
+    if lang == 'cpp':
+        return generateCppFileStrings(path, **opts)
+    if lang == 'csharp':
+        return generateCSharpFileStrings(path, namespace=args.csharp_namespace, **opts)
+    if lang == 'rust':
+        return generateRustFileStrings(path, **opts)
+    if lang == 'gql':
+        files = {}
+        for value in packages.values():
+            files[os.path.join(path, value.name + '.graphql')] = ''.join(FileGqlGen.generate(value))
+        # One self-contained schema.graphql combining every package.
+        files[os.path.join(path, 'schema.graphql')] = FileGqlGen.stitched(packages, get_version())
+        return files
+    raise ValueError(f"unknown language {lang!r}")
+
+
+def _write_file(filename, filedata):
+    dirname = os.path.dirname(filename)
+    if dirname and not os.path.exists(dirname):
+        os.makedirs(dirname)
+    # Retry on transient PermissionError (e.g. Windows file lock from
+    # the .NET build server or an IDE holding the .csproj open briefly).
+    for attempt in range(5):
+        try:
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(filedata)
+            return
+        except PermissionError:
+            if attempt == 4:
+                raise
+            time.sleep(0.5)
+
+
+def copy_all_files(src_dir, dst_dir, exclude_dirs=None):
+    """Copy every file and directory from src_dir to dst_dir.
+
+    exclude_dirs: names skipped at any depth (e.g. ['struct_frame_sdk', 'Sdk']).
+    """
+    exclude_dirs = exclude_dirs or []
+    if not os.path.exists(dst_dir):
+        os.makedirs(dst_dir)
+    if not os.path.exists(src_dir):
+        return
+    ignore_fn = shutil.ignore_patterns(*exclude_dirs) if exclude_dirs else None
+    for item in os.listdir(src_dir):
+        if item in exclude_dirs:
+            continue
+        src_path = os.path.join(src_dir, item)
+        dst_path = os.path.join(dst_dir, item)
+        if os.path.isdir(src_path):
+            shutil.copytree(src_path, dst_path, dirs_exist_ok=True, ignore=ignore_fn)
+        elif os.path.isfile(src_path):
+            shutil.copy2(src_path, dst_path)
+
+
+def copy_sdk_files(lang, src_dir, dst_dir, embedded=False, include_asio=False):
+    """Copy a language's SDK directory (struct_frame_sdk/, or Sdk/ for C#).
+
+    For C++, ``embedded`` (or no ``include_asio``) leaves out ASIO and the network transports.
+    """
+    sdk_src = os.path.join(src_dir, "struct_frame_sdk")
+    sdk_dst = os.path.join(dst_dir, "struct_frame_sdk")
+    if not os.path.exists(sdk_src):
+        sdk_src = os.path.join(src_dir, "Sdk")
+        sdk_dst = os.path.join(dst_dir, "Sdk")
+    if not os.path.exists(sdk_src):
+        return
+    if not os.path.exists(sdk_dst):
+        os.makedirs(sdk_dst)
+
+    exclude_items = []
+    if lang == 'cpp' and (embedded or not include_asio):
+        exclude_items = ['asio.hpp', 'asio', 'asio-repo', 'network_transports.hpp', 'sdk.hpp']
+
+    # ASIO ships as a git submodule. Never copy the symlink or the multi-megabyte submodule
+    # verbatim; copy just the headers from their real location below.
+    asio_headers = os.path.join(sdk_src, 'asio-repo', 'asio', 'include', 'asio')
+    copy_asio = lang == 'cpp' and 'asio' not in exclude_items and os.path.isdir(asio_headers)
+    if copy_asio:
+        exclude_items = list(exclude_items) + ['asio', 'asio-repo']
+
+    for item in os.listdir(sdk_src):
+        if item in exclude_items:
+            continue
+        src_path = os.path.join(sdk_src, item)
+        dst_path = os.path.join(sdk_dst, item)
+        if os.path.islink(src_path) and not os.path.exists(os.path.realpath(src_path)):
+            continue  # broken symlink
+        if os.path.isfile(src_path):
+            shutil.copy2(src_path, dst_path)
+        elif os.path.isdir(src_path):
+            shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
+
+    if copy_asio:
+        shutil.copytree(asio_headers, os.path.join(sdk_dst, 'asio'), dirs_exist_ok=True)
+
+
+def main(argv=None):
+    """Run the command line. ``argv`` defaults to ``sys.argv[1:]``; returns the exit status.
+
+    Can be called repeatedly from Python, e.g. ``main(["robot.sf", "--lang", "py"])``.
+    """
+    argv = list(sys.argv[1:] if argv is None else argv)
 
     # ``struct-frame diff OLD NEW``: wire-compatibility check between two
     # schema revisions. A schema file that happens to be named "diff" still
     # generates code as before.
-    argv = sys.argv[1:]
     # Leading global flags (currently only --debug) may precede the subcommand.
     lead = 0
     while lead < len(argv) and argv[lead] == '--debug':
@@ -3512,13 +3957,23 @@ def main():
         from struct_frame import schema_diff
         return schema_diff.main(argv[lead + 1:])
 
-    args = parser.parse_args()
+    reset_parse_state()
+    cli = build_parser()
+    try:
+        args = parse_args(cli, argv)
+    except ConfigError as err:
+        print(f"struct-frame: error: {err}", file=sys.stderr)
+        return 2
 
-    # Normal mode requires a filename
     if not args.filename:
-        print("Error: filename is required")
-        parser.print_help()
-        return 1
+        cli.error(f"no schema given: pass SCHEMA, or set 'schema' in {CONFIG_FILENAME}")
+    langs = enabled_languages(args)
+    if not args.validate and not langs:
+        cli.error("no language selected: use --lang (e.g. --lang c,py) or --build-<lang>")
+
+    def info(*items):
+        if not args.quiet:
+            print(*items)
 
     # Diagnostics from parsing and validation are errors when they fail: send them to
     # stderr so scripts and CI can separate them from normal output. On success the
@@ -3535,8 +3990,7 @@ def main():
     # If --no_packed is set, mark every message as variable BEFORE validation so
     # that min_size and other variable-related metadata is computed correctly.
     # This causes serialization to be performed field-by-field instead of relying
-    # on packed memory layout. Useful on platforms that don't support struct
-    # packing or have different endianness/alignment requirements.
+    # on packed memory layout.
     if args.no_packed:
         for pkg in packages.values():
             for msg in pkg.messages.values():
@@ -3544,19 +3998,15 @@ def main():
         if args.debug:
             print("--no_packed: all messages marked as variable")
 
-    # If validate mode is specified, skip build argument check and file generation
     if args.validate:
-        print("Running in validate mode - no files will be generated")
-    elif (not args.build_c and not args.build_ts and not args.build_js and not args.build_py and not args.build_cpp and not args.build_csharp and not args.build_gql and not args.build_rust):
-        print("Select at least one build argument")
-        return 1
+        info("Running in validate mode - no files will be generated")
 
     valid = False
     validate_log = io.StringIO()
     try:
         with contextlib.redirect_stdout(validate_log):
             valid = validate_packages(args.debug)
-    except RecursionError as err:
+    except RecursionError:
         sys.stderr.write(validate_log.getvalue())
         print(
             f'Recursion Error. Messages most likely have a cyclical dependancy. Check Message: {current_error_message} and Field: {current_error_field}',
@@ -3571,19 +4021,21 @@ def main():
 
     normalize_output_order()
 
+    if 'py' in langs or (args.validate and not langs):
+        py_errors = check_python_package_names(args.py_package, args.generate_tests)
+        if py_errors:
+            for message in py_errors:
+                print(f"Error: {message}", file=sys.stderr)
+            return 1
+
     name_overrides = None
     try:
-        if args.name_overrides[0]:
-            name_overrides = NameOverrides.load(args.name_overrides[0])
+        if args.name_overrides:
+            name_overrides = NameOverrides.load(args.name_overrides)
             name_overrides.validate(packages)
-        target_languages = [lang for lang, enabled in (
-            ('c', args.build_c), ('cpp', args.build_cpp), ('ts', args.build_ts),
-            ('js', args.build_js), ('py', args.build_py), ('gql', args.build_gql),
-            ('csharp', args.build_csharp), ('rust', args.build_rust)) if enabled]
-        if args.validate and not target_languages:
-            # Nothing selected: validate against every target so a schema that
-            # passes here cannot fail later when a language is enabled.
-            target_languages = ['c', 'cpp', 'ts', 'js', 'py', 'gql', 'csharp', 'rust']
+        # Nothing selected in validate mode: validate against every target so a schema
+        # that passes here cannot fail later when a language is enabled.
+        target_languages = langs if langs else list(LANG_KEYS)
         validate_generated_names(packages, target_languages, name_overrides)
     except NameOverrideError as err:
         # Located errors read "path:line: error: ..." (the form editors and CI annotate).
@@ -3594,8 +4046,7 @@ def main():
         return 1
 
     if args.validate:
-        # In validate mode, only perform validation - no file generation
-        print("Validation successful")
+        info("Validation successful")
         if args.debug:
             printPackages()
         return 0
@@ -3606,318 +4057,85 @@ def main():
     previous_hash = read_previous_hash(hash_file_path)
 
     if not args.force and previous_hash == current_hash and expected_outputs_exist(args):
-        print("Generation skipped: no changes detected (hash matches previous generation)")
-        print(f"  Hash file: {hash_file_path}")
-        print("  Use --force to regenerate anyway")
-        return
+        info("Generation skipped: no changes detected (hash matches previous generation)")
+        info(f"  Hash file: {hash_file_path}")
+        info("  Use --force to regenerate anyway")
+        return 0
 
     if args.debug:
         if previous_hash is None:
             print(f"No previous hash found at {hash_file_path}")
         elif previous_hash != current_hash:
-            print(
-                f"Hash changed: {previous_hash[:16]}... -> {current_hash[:16]}...")
+            print(f"Hash changed: {previous_hash[:16]}... -> {current_hash[:16]}...")
 
-    # Normal mode: generate files
     files = {}
-    if (args.build_c):
-        with language_model('c', name_overrides):
-            files.update(generateCFileStrings(
-                args.c_path[0], equality=args.equality, generate_tests=args.generate_tests))
+    for lang in _GENERATION_ORDER:
+        if lang in langs:
+            with language_model(lang, name_overrides):
+                files.update(_generate_language(lang, output_path(args, lang), args))
 
-    if (args.build_ts):
-        with language_model('ts', name_overrides):
-            files.update(generateTsFileStrings(
-                args.ts_path[0], equality=args.equality, generate_tests=args.generate_tests))
-
-    if (args.build_js):
-        with language_model('js', name_overrides):
-            files.update(generateJsFileStrings(
-                args.js_path[0], equality=args.equality, generate_tests=args.generate_tests))
-
-    if (args.build_py):
-        with language_model('py', name_overrides):
-            files.update(generatePyFileStrings(
-                args.py_path[0], equality=args.equality, generate_tests=args.generate_tests))
-
-    if (args.build_cpp):
-        with language_model('cpp', name_overrides):
-            files.update(generateCppFileStrings(
-                args.cpp_path[0], equality=args.equality, generate_tests=args.generate_tests))
-
-    if (args.build_csharp):
-        with language_model('csharp', name_overrides):
-            files.update(generateCSharpFileStrings(args.csharp_path[0],
-                                                   equality=args.equality,
-                                                   namespace=args.csharp_namespace[0],
-                                                   generate_tests=args.generate_tests))
-
-    if (args.build_gql):
-        with language_model('gql', name_overrides):
-            for key, value in packages.items():
-                name = os.path.join(args.gql_path[0], value.name + '.graphql')
-                data = ''.join(FileGqlGen.generate(value))
-                files[name] = data
-
-            # One self-contained schema.graphql combining every package.
-            files[os.path.join(args.gql_path[0], 'schema.graphql')] = (
-                FileGqlGen.stitched(packages, get_version()))
-
-    if (args.build_rust):
-        with language_model('rust', name_overrides):
-            files.update(generateRustFileStrings(
-                args.rust_path[0], equality=args.equality, generate_tests=args.generate_tests))
-
-    # Generate LSP type catalog (single language-agnostic JSON file)
-    lsp_build_flags = {
-        'c':      args.build_c,
-        'cpp':    args.build_cpp,
-        'ts':     args.build_ts,
-        'js':     args.build_js,
-        'py':     args.build_py,
-        'gql':    args.build_gql,
-        'csharp': args.build_csharp,
-        'rust':   args.build_rust,
-    }
-    lsp_paths = {
-        'c':      args.c_path[0],
-        'cpp':    args.cpp_path[0],
-        'ts':     args.ts_path[0],
-        'js':     args.js_path[0],
-        'py':     args.py_path[0],
-        'gql':    args.gql_path[0],
-        'csharp': args.csharp_path[0],
-        'rust':   args.rust_path[0],
-    }
-    files.update(generate_lsp_file_strings(
-        args.catalog_path[0], lsp_build_flags, lsp_paths, name_overrides))
+    # Editor type catalog (single language-agnostic JSON file). Key order matters for
+    # byte-identical output.
+    catalog_order = ('c', 'cpp', 'ts', 'js', 'py', 'gql', 'csharp', 'rust')
+    build_flags = {lang: lang in langs for lang in catalog_order}
+    paths = {lang: output_path(args, lang) for lang in catalog_order}
+    files.update(generate_lsp_file_strings(args.catalog_path, build_flags, paths, name_overrides,
+                                           py_package=args.py_package))
 
     # Delete files this schema generated last time but no longer produces (renamed or removed
     # messages and packages). Other schemas' outputs in the same directory are left alone.
     shared_dirs = {}
-    for lang, enabled in lsp_build_flags.items():
-        if enabled:
-            shared_dirs.setdefault(os.path.abspath(lsp_paths[lang]), []).append(lang)
-    for lang, enabled in lsp_build_flags.items():
-        if not enabled:
+    for lang in catalog_order:
+        if lang in langs:
+            shared_dirs.setdefault(os.path.abspath(paths[lang]), []).append(lang)
+    for lang in catalog_order:
+        if lang not in langs:
             continue
-        out_dir = lsp_paths[lang]
+        out_dir = paths[lang]
         scope = "+".join(sorted(shared_dirs[os.path.abspath(out_dir)]))
         removed = prune_stale_outputs(out_dir, args.filename, files.keys(), scope)
         for path in removed:
-            print(f"Removed stale output {path}")
+            info(f"Removed stale output {path}")
         if lang == 'rust' and removed:
             with language_model('rust', name_overrides):
                 files.update(rust_crate_files(
                     out_dir, [p.name for p in packages.values()], args.generate_tests))
 
     for filename, filedata in files.items():
-        dirname = os.path.dirname(filename)
-        if dirname and not os.path.exists(dirname):
-            os.makedirs(dirname)
+        _write_file(filename, filedata)
 
-        # Retry on transient PermissionError (e.g. Windows file lock from
-        # the .NET build server or an IDE holding the .csproj open briefly).
-        for _attempt in range(5):
-            try:
-                with open(filename, 'w', encoding='utf-8') as f:
-                    f.write(filedata)
-                break
-            except PermissionError:
-                if _attempt == 4:
-                    raise
-                time.sleep(0.5)
+    # Copy the runtime next to the generated code (for Python, into the generated package).
+    # The SDK is handled below.
+    def runtime_dir(lang):
+        if lang == 'py':
+            return os.path.join(output_path(args, lang), args.py_package)
+        return output_path(args, lang)
 
-    dir_path = os.path.dirname(os.path.realpath(__file__))
+    for lang in _GENERATION_ORDER:
+        if lang in langs and lang in _BOILERPLATE_EXCLUDES:
+            copy_all_files(os.path.join(_BOILERPLATE_ROOT, lang), runtime_dir(lang),
+                           _BOILERPLATE_EXCLUDES[lang])
 
-    def copy_all_files(src_dir, dst_dir, exclude_dirs=None):
-        """Copy all files and directories from src_dir to dst_dir
-
-        Args:
-            src_dir: Source directory
-            dst_dir: Destination directory  
-            exclude_dirs: List of directory names to exclude at any level (e.g., ['struct_frame_sdk', 'Transports'])
-        """
-        if exclude_dirs is None:
-            exclude_dirs = []
-
-        if not os.path.exists(dst_dir):
-            os.makedirs(dst_dir)
-        if os.path.exists(src_dir):
-            ignore_fn = shutil.ignore_patterns(
-                *exclude_dirs) if exclude_dirs else None
-            for item in os.listdir(src_dir):
-                # Skip excluded directories
-                if item in exclude_dirs:
-                    continue
-
-                src_path = os.path.join(src_dir, item)
-                dst_path = os.path.join(dst_dir, item)
-                if os.path.isdir(src_path):
-                    # Recursively copy directories
-                    shutil.copytree(src_path, dst_path,
-                                    dirs_exist_ok=True, ignore=ignore_fn)
-                elif os.path.isfile(src_path):
-                    shutil.copy2(src_path, dst_path)
-
-    def copy_sdk_files(src_dir, dst_dir, embedded=False, include_asio=False):
-        """Copy SDK files (struct_frame_sdk directory)
-
-        Args:
-            src_dir: Source boilerplate directory
-            dst_dir: Destination directory
-            embedded: If True, copy only embedded-safe files (no ASIO)
-            include_asio: If True, include ASIO files for full SDK (default: False)
-        """
-        sdk_src = os.path.join(src_dir, "struct_frame_sdk")
-        sdk_dst = os.path.join(dst_dir, "struct_frame_sdk")
-
-        # Handle PascalCase naming for C# boilerplate
-        if not os.path.exists(sdk_src):
-            sdk_src = os.path.join(src_dir, "Sdk")
-            sdk_dst = os.path.join(dst_dir, "Sdk")
-
-        if not os.path.exists(sdk_src):
-            return
-
-        if not os.path.exists(sdk_dst):
-            os.makedirs(sdk_dst)
-
-        # Determine which files to exclude
-        exclude_items = []
-
-        # For C++, handle embedded vs full SDK differently
-        if 'cpp' in src_dir:
-            if embedded or not include_asio:
-                # Exclude ASIO and network transports for embedded SDK or when ASIO not requested
-                exclude_items = ['asio.hpp', 'asio', 'asio-repo',
-                                 'network_transports.hpp', 'sdk.hpp']
-
-        # ASIO ships as a git symlink (``asio`` -> ``asio-repo/asio/include/asio``)
-        # next to the whole vendored submodule. A symlink is a 27-byte text file
-        # on Windows checkouts and is absent from built wheels, so never copy it
-        # (or the multi-megabyte submodule) verbatim; copy just the headers from
-        # their real location below.
-        asio_headers = os.path.join(sdk_src, 'asio-repo', 'asio', 'include', 'asio')
-        copy_asio = ('asio' not in exclude_items and os.path.isdir(asio_headers)
-                     and 'cpp' in src_dir)
-        if copy_asio:
-            exclude_items = list(exclude_items) + ['asio', 'asio-repo']
-
-        # Copy SDK files with exclusions
-        for item in os.listdir(sdk_src):
-            if item in exclude_items:
-                continue
-            src_path = os.path.join(sdk_src, item)
-            dst_path = os.path.join(sdk_dst, item)
-
-            # Skip broken symlinks
-            if os.path.islink(src_path) and not os.path.exists(os.path.realpath(src_path)):
-                continue
-
-            if os.path.isfile(src_path):
-                shutil.copy2(src_path, dst_path)
-            elif os.path.isdir(src_path):
-                shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-
-        if copy_asio:
-            shutil.copytree(asio_headers, os.path.join(sdk_dst, 'asio'), dirs_exist_ok=True)
-
-    # Copy all boilerplate files (excluding SDK by default)
-    # SDK is handled separately below based on --sdk or --sdk_embedded flags
-    exclude_sdk = ['struct_frame_sdk', 'Sdk']
-
-    if (args.build_c):
-        copy_all_files(
-            os.path.join(dir_path, "boilerplate/c"),
-            args.c_path[0], exclude_sdk)
-
-    if (args.build_ts):
-        copy_all_files(
-            os.path.join(dir_path, "boilerplate/ts"),
-            args.ts_path[0], exclude_sdk)
-
-    if (args.build_js):
-        # boilerplate/js/ is compiled from boilerplate/ts/ via:
-        #   node_modules/.bin/tsc -p src/struct_frame/boilerplate/ts/tsconfig.cjs.json
-        # Do not hand-edit boilerplate/js/ — edit boilerplate/ts/ and recompile.
-        copy_all_files(
-            os.path.join(dir_path, "boilerplate/js"),
-            args.js_path[0], exclude_sdk)
-
-    if (args.build_py):
-        copy_all_files(
-            os.path.join(dir_path, "boilerplate/py"),
-            args.py_path[0], exclude_sdk)
-
-    if (args.build_cpp):
-        copy_all_files(
-            os.path.join(dir_path, "boilerplate/cpp"),
-            args.cpp_path[0], exclude_sdk)
-
-    if (args.build_csharp):
-        # C# boilerplate uses Framework/ structure.
-        # Transports/ is always copied; the .csproj controls conditional
-        # compilation of transport implementations at build time:
-        #   -p:IncludeSerialTransport=true   → Serial (System.IO.Ports)
-        #   -p:IncludeNetCoreServer=true     → TCP, UDP, WebSocket (NetCoreServer)
-        copy_all_files(
-            os.path.join(dir_path, "boilerplate/csharp"),
-            args.csharp_path[0], [])
-
-    if (args.build_rust):
-        # Exclude lib.rs and Cargo.toml from boilerplate copy - they are generated
-        copy_all_files(
-            os.path.join(dir_path, "boilerplate/rust"),
-            args.rust_path[0], exclude_sdk + ['lib.rs', 'Cargo.toml'])
-
-    # Copy SDK files if requested
     if args.sdk or args.sdk_embedded:
         embedded_only = args.sdk_embedded and not args.sdk
+        if args.sdk_embedded:
+            ignoring = ", ".join(LANG_NAMES[lang] for lang in ('ts', 'js', 'py') if lang in langs)
+            if ignoring:
+                print(f"Note: --sdk_embedded only trims the C++ SDK; the full {ignoring} SDK is "
+                      f"copied (those SDKs have no heavyweight dependency to leave out).",
+                      file=sys.stderr)
+        for lang in _GENERATION_ORDER:
+            if lang in langs and lang in _SDK_LANGS:
+                # ASIO is only included for C++ when the full SDK is requested.
+                copy_sdk_files(lang, os.path.join(_BOILERPLATE_ROOT, lang),
+                               runtime_dir(lang), embedded_only,
+                               include_asio=args.sdk and not args.sdk_embedded)
 
-        if args.sdk_embedded and (args.build_ts or args.build_js or args.build_py):
-            ignoring = ", ".join(name for name, on in (
-                ("TypeScript", args.build_ts), ("JavaScript", args.build_js),
-                ("Python", args.build_py)) if on)
-            print(f"Note: --sdk_embedded only trims the C++ SDK; the full {ignoring} SDK is copied "
-                  f"(those SDKs have no heavyweight dependency to leave out).", file=sys.stderr)
-
-        if args.build_c:
-            # C doesn't have SDK yet
-            pass
-
-        if args.build_ts:
-            copy_sdk_files(
-                os.path.join(dir_path, "boilerplate/ts"),
-                args.ts_path[0], embedded_only)
-
-        if args.build_js:
-            copy_sdk_files(
-                os.path.join(dir_path, "boilerplate/js"),
-                args.js_path[0], embedded_only)
-
-        if args.build_py:
-            copy_sdk_files(
-                os.path.join(dir_path, "boilerplate/py"),
-                args.py_path[0], embedded_only)
-
-        if args.build_cpp:
-            # ASIO is only included for C++ when full SDK is requested (not embedded)
-            include_asio = args.sdk and not args.sdk_embedded
-            copy_sdk_files(
-                os.path.join(dir_path, "boilerplate/cpp"),
-                args.cpp_path[0], embedded_only, include_asio=include_asio)
-
-    # No boilerplate for GraphQL currently
-
-    # Write generation hash after successful generation
     write_generation_hash(hash_file_path, current_hash)
     if args.debug:
         print(f"Generation hash written to {hash_file_path}")
-
-    if args.debug:
         printPackages()
-    print("Struct Frame successfully completed")
+    info("Struct Frame successfully completed")
     return 0
 
 

@@ -538,22 +538,36 @@ pub fn parse_minimal(
 /// High-level: encode any StructFrameMessage with CRC using a profile config.
 /// Uses variable-length pack() for variable messages (for profiles with length field).
 /// C1: packs directly into the output buffer — no intermediate Vec allocation.
+///
+/// `pkg_id` is ignored: the package byte comes from the high byte of `M::MSG_ID`, as in
+/// every other runtime. Sequence, system and component IDs are written as 0; use
+/// `encode_message_crc_ext` to set them.
 pub fn encode_message_crc<M: StructFrameMessage>(
     config: &ProfileConfig,
     buffer: &mut [u8],
     msg: &M,
     pkg_id: u8,
 ) -> usize {
+    let _ = pkg_id;
+    encode_message_crc_ext(config, buffer, msg, 0, 0, 0)
+}
+
+/// `encode_message_crc` with the sequence number and system/component IDs carried by
+/// the profiles that have those fields (e.g. Network); ignored by the others.
+pub fn encode_message_crc_ext<M: StructFrameMessage>(
+    config: &ProfileConfig,
+    buffer: &mut [u8],
+    msg: &M,
+    seq: u8,
+    sys_id: u8,
+    comp_id: u8,
+) -> usize {
     // A2: reject msg_id > 255 on profiles that have no pkg_id field
     if !config.payload.has_pkg_id && M::MSG_ID > 255 {
         return 0;
     }
 
-    let actual_pkg_id = if config.payload.has_pkg_id {
-        (M::MSG_ID >> 8) as u8
-    } else {
-        pkg_id
-    };
+    let actual_pkg_id = (M::MSG_ID >> 8) as u8;
     let msg_id_byte = (M::MSG_ID & 0xFF) as u8;
 
     // Compute header/footer to find where the payload window starts
@@ -596,9 +610,9 @@ pub fn encode_message_crc<M: StructFrameMessage>(
 
     let crc_start = idx;
 
-    if config.payload.has_seq { buffer[idx] = 0; idx += 1; }
-    if config.payload.has_sys_id { buffer[idx] = 0; idx += 1; }
-    if config.payload.has_comp_id { buffer[idx] = 0; idx += 1; }
+    if config.payload.has_seq { buffer[idx] = seq; idx += 1; }
+    if config.payload.has_sys_id { buffer[idx] = sys_id; idx += 1; }
+    if config.payload.has_comp_id { buffer[idx] = comp_id; idx += 1; }
 
     if config.payload.has_length {
         if config.payload.length_bytes == 1 {
@@ -733,7 +747,33 @@ impl BufferWriter {
         }
     }
 
-    /// Write a message (with CRC) to the buffer
+    /// Write one frame using the writer's profile (checksummed or minimal, whichever the
+    /// profile is). Returns the bytes written, or 0 when the frame does not fit or the
+    /// profile cannot carry the message ID.
+    pub fn write<M: StructFrameMessage>(&mut self, msg: &M) -> usize {
+        self.write_ext(msg, 0, 0, 0)
+    }
+
+    /// `write` with the sequence number and system/component IDs (used by profiles that
+    /// carry them, such as Network).
+    pub fn write_ext<M: StructFrameMessage>(&mut self, msg: &M, seq: u8, sys_id: u8, comp_id: u8) -> usize {
+        let buf = &mut self.data[self.offset..];
+        let written = if self.config.payload.has_crc || self.config.payload.has_length {
+            encode_message_crc_ext(&self.config, buf, msg, seq, sys_id, comp_id)
+        } else {
+            encode_message_minimal(&self.config, buf, msg)
+        };
+        self.offset += written;
+        written
+    }
+
+    /// Discard everything written so far.
+    pub fn reset(&mut self) {
+        self.offset = 0;
+    }
+
+    /// Write a message (with CRC) to the buffer. Prefer `write`, which picks the encoding
+    /// from the profile.
     pub fn write_crc<M: StructFrameMessage>(&mut self, msg: &M, pkg_id: u8) -> usize {
         let buf = &mut self.data[self.offset..];
         let written = encode_message_crc(&self.config, buf, msg, pkg_id);
@@ -863,7 +903,21 @@ impl BufferReader {
 // A7: buffer overflow cap + early-reject on corrupted length
 // =============================================================================
 
+/// Type of the generated `get_message_info` functions.
+pub type MessageInfoFn = fn(u16) -> Option<MessageInfo>;
+
 /// Accumulating reader that handles partial messages across buffer boundaries.
+///
+/// Create it with `with_message_info` to use `frames()`, `next_frame()` and `push()`, which
+/// need no callback argument:
+///
+/// ```ignore
+/// let mut reader = AccumulatingReader::with_message_info(PROFILE_STANDARD_CONFIG, 4096, get_message_info);
+/// reader.add_data(&bytes);
+/// for frame in reader.frames().filter(|f| f.valid) {
+///     if frame.msg_id == Status::MSG_ID { let s = Status::deserialize(&frame); }
+/// }
+/// ```
 pub struct AccumulatingReader {
     config: ProfileConfig,
     buffer: Vec<u8>,
@@ -877,6 +931,21 @@ pub struct AccumulatingReader {
     last_seq: Option<u8>,
     /// True when the buffered bytes represent an incomplete frame awaiting more data.
     partial_pending: bool,
+    /// Message-info function used by `frames()`, `next_frame()` and `push()`.
+    message_info: Option<MessageInfoFn>,
+}
+
+/// Iterator over the frames buffered in an `AccumulatingReader`; see `AccumulatingReader::frames`.
+pub struct Frames<'a> {
+    reader: &'a mut AccumulatingReader,
+}
+
+impl<'a> Iterator for Frames<'a> {
+    type Item = FrameMsgInfo;
+
+    fn next(&mut self) -> Option<FrameMsgInfo> {
+        self.reader.next_frame()
+    }
 }
 
 impl AccumulatingReader {
@@ -889,7 +958,44 @@ impl AccumulatingReader {
             diagnostics: ParserDiagnostics::default(),
             last_seq: None,
             partial_pending: false,
+            message_info: None,
         }
+    }
+
+    /// A reader that remembers the message-info function (normally the generated
+    /// `get_message_info`), so `frames()`, `next_frame()` and `push()` need no argument.
+    pub fn with_message_info(config: ProfileConfig, capacity: usize, message_info: MessageInfoFn) -> Self {
+        let mut reader = Self::new(config, capacity);
+        reader.message_info = Some(message_info);
+        reader
+    }
+
+    /// Set or replace the function used by `frames()`, `next_frame()` and `push()`.
+    pub fn set_message_info(&mut self, message_info: MessageInfoFn) {
+        self.message_info = Some(message_info);
+    }
+
+    /// `try_next` with the stored message-info function. Without one, every checksummed
+    /// frame fails its checksum (the checksum includes per-message magic bytes).
+    pub fn next_frame(&mut self) -> Option<FrameMsgInfo> {
+        match self.message_info {
+            Some(f) => self.next(&f),
+            None => self.next(&|_| None),
+        }
+    }
+
+    /// `push_byte` with the stored message-info function.
+    pub fn push(&mut self, byte: u8) -> Option<FrameMsgInfo> {
+        match self.message_info {
+            Some(f) => self.push_byte(byte, &f),
+            None => self.push_byte(byte, &|_| None),
+        }
+    }
+
+    /// Drain the buffered frames. Yields corrupt-frame and resync events too (with
+    /// `valid == false`), like `try_next`, so filter on `valid`.
+    pub fn frames(&mut self) -> Frames<'_> {
+        Frames { reader: self }
     }
 
     /// Get a snapshot of the current diagnostic counters.
