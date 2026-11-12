@@ -120,6 +120,11 @@ namespace StructFrame.Sdk
         protected TransportConfig _config;
         /// <summary>Number of reconnect attempts made.</summary>
         protected int _reconnectAttempts;
+        /// <summary>
+        /// Set by DisconnectAsync and cleared by ConnectAsync. While set, closes and errors
+        /// (including the ones the transport's own close causes) never start a reconnect.
+        /// </summary>
+        protected volatile bool _disconnectRequested;
         private readonly SemaphoreSlim _sendSemaphore = new SemaphoreSlim(1, 1);
         private int _reconnectInProgress;
         private bool _disposed;
@@ -232,7 +237,7 @@ namespace StructFrame.Sdk
         protected void OnErrorOccurred(Exception error)
         {
             ErrorOccurred?.Invoke(this, error);
-            if (_config.AutoReconnect && _connected)
+            if (_config.AutoReconnect && _connected && !_disconnectRequested)
             {
                 _ = AttemptReconnectAsync();
             }
@@ -243,7 +248,7 @@ namespace StructFrame.Sdk
         {
             _connected = false;
             ConnectionClosed?.Invoke(this, EventArgs.Empty);
-            if (_config.AutoReconnect)
+            if (_config.AutoReconnect && !_disconnectRequested)
             {
                 _ = AttemptReconnectAsync();
             }
@@ -267,12 +272,17 @@ namespace StructFrame.Sdk
 
             try
             {
-                while (!_connected && !_disposed &&
+                while (!_connected && !_disposed && !_disconnectRequested &&
                        (_config.MaxReconnectAttempts == 0 ||
                         _reconnectAttempts < _config.MaxReconnectAttempts))
                 {
                     _reconnectAttempts++;
                     await Task.Delay(_config.ReconnectDelayMs).ConfigureAwait(false);
+                    // DisconnectAsync during the delay cancels the reconnect.
+                    if (_disconnectRequested || _disposed)
+                    {
+                        return;
+                    }
 
                     try
                     {
