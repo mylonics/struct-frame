@@ -158,7 +158,7 @@ def command(sample, quick):
         lib = (GEN / 'csharp' / 'StructFrame.csproj').resolve()
         (proj / 'DocSample.csproj').write_text(
             '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType>'
-            '<TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>'
+            '<TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings>'
             '<Nullable>enable</Nullable></PropertyGroup>'
             # Build the generated library with its optional transports (NetCoreServer, System.IO.Ports).
             f'<ItemGroup><ProjectReference Include="{lib}" '

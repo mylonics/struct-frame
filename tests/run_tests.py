@@ -440,16 +440,14 @@ class TestRunner:
         }
 
     def _resolve_dotnet_framework(self, explicit_framework: Optional[str]) -> str:
-        """Resolve the C# framework used by the test runner."""
+        """Resolve the C# framework used by the test runner.
+
+        The generated library and tests/csharp target net10.0 only. Newer SDKs
+        build net10.0 fine, so this is not derived from `dotnet --version` (an
+        SDK 11 host would otherwise pick net11.0, which no project declares).
+        """
         tfm = (explicit_framework or os.environ.get("SF_DOTNET_TFM", "")).strip().lower()
-        if tfm:
-            return tfm
-        ok, stdout, _ = self.run_cmd("dotnet --version", timeout=10)
-        if ok and stdout:
-            major = stdout.strip().split(".")[0]
-            if major.isdigit():
-                return f"net{major}.0"
-        return "net8.0"
+        return tfm or "net10.0"
     
     def _init_languages(self) -> Dict[str, Language]:
         """Initialize language configurations."""
@@ -3204,7 +3202,7 @@ Examples:
     parser.add_argument("--profiling", action="store_true", 
                         help="Run only time profiling tests (skips standard/extended/variable tests)")
     parser.add_argument("--dotnet-framework", default=None,
-                        help="C# target framework moniker (e.g., net8.0, net10.0). Overrides SF_DOTNET_TFM.")
+                        help="C# target framework moniker (default net10.0). Overrides SF_DOTNET_TFM.")
     parser.add_argument("--require-langs", default=None, metavar="LANG[,LANG...]",
                         help="Comma-separated languages that MUST have toolchains available; "
                              "fail (rather than silently skip) if any is missing. Use in CI to "

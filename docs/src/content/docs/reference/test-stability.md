@@ -76,8 +76,7 @@ How to quarantine:
   `QUARANTINE: <issue-url>` comment adjacent to the skip, so the reason is
   discoverable in code review and greppable in CI logs.
 - A quarantined test still runs in **non-gating** mode where practical (e.g. a
-  `continue-on-error` matrix leg, mirroring how `test.yml` already tolerates
-  the .NET 8 leg) so we keep collecting signal on the flake.
+  `continue-on-error` matrix leg) so we keep collecting signal on the flake.
 
 Quarantine has a **maximum lifetime of 14 days**. If the tracking issue is not
 resolved by then, the owner must either (a) delete the test if it provides no

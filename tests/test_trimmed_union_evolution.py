@@ -498,9 +498,9 @@ def test_csharp_trimmed_union_evolution(gen, tmp_path):
         ["dotnet", "--version"], capture_output=True, text=True, check=True
     ).stdout.strip()
     sdk_major = int(sdk_version.split(".", 1)[0])
-    if sdk_major < 8:
-        pytest.skip("a .NET 8 or newer SDK is required")
-    target_framework = f"net{min(sdk_major, 10)}.0"
+    if sdk_major < 10:
+        pytest.skip("a .NET 10 or newer SDK is required")
+    target_framework = "net10.0"
     gen_dir, frames = _interop_args(gen)
     project = tmp_path / "TrimmedUnionRegression.csproj"
     project.write_text(

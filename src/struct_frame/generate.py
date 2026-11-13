@@ -3652,36 +3652,45 @@ def _generateCSharpProjectFile(namespace):
       dotnet build -p:IncludeSerialTransport=true    # Serial (System.IO.Ports)
       dotnet build -p:IncludeNetCoreServer=true      # TCP, UDP, WebSocket (NetCoreServer)
 
-    Both flags can be combined. The target framework defaults to net8.0 and can
-    be overridden via a Directory.Build.props file in the consuming project:
+    Both flags can be combined. The target framework defaults to net10.0 (net11.0+
+    apps consume it as is). To build for other frameworks, pass
+    -p:TargetFrameworks=net11.0 (plural: NuGet restore ignores a global
+    TargetFramework, so -p:TargetFramework fails with NETSDK1005), or set
+    TargetFramework/TargetFrameworks in a Directory.Build.props in the consuming
+    repository:
 
       <Project>
         <PropertyGroup>
-          <TargetFramework>net6.0</TargetFramework>
+          <TargetFrameworks>net10.0;net11.0</TargetFrameworks>
         </PropertyGroup>
       </Project>
     """
     project_content = f'''<Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Core library settings -->
+  <!-- Core library settings. TargetFramework is a default, not a pin: pass
+       -p:TargetFrameworks=... (plural), or set TargetFramework or TargetFrameworks
+       in a Directory.Build.props, to build for other frameworks. net11.0 and later
+       apps consume the net10.0 build as is. The C# language version follows the
+       target framework (C# 14 for net10.0) rather than the installed SDK. -->
   <PropertyGroup>
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <TargetFramework Condition="'$(TargetFramework)' == '' and '$(TargetFrameworks)' == ''">net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>{namespace}</RootNamespace>
-    <LangVersion>latest</LangVersion>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Ship StructFrame.xml so consumers get IntelliSense for the generated API.
+         Not every generated member has a doc comment, so CS1591 is not reported. -->
+    <GenerateDocumentationFile Condition="'$(GenerateDocumentationFile)' == ''">true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <IncludeSerialTransport Condition="'$(IncludeSerialTransport)' == ''">false</IncludeSerialTransport>
     <IncludeNetCoreServer Condition="'$(IncludeNetCoreServer)' == ''">false</IncludeNetCoreServer>
   </PropertyGroup>
 
-  <!-- NuGet package metadata
+  <!-- NuGet package metadata. Version and IsPackable keep the SDK defaults (1.0.0, true).
        Override these at pack time:  dotnet pack -p:Version=1.2.3 -p:PackageId=MyMessages
        Or set them in a Directory.Build.props in the consuming repository. -->
   <PropertyGroup>
-    <IsPackable>true</IsPackable>
     <PackageId Condition="'$(PackageId)' == ''">{namespace}</PackageId>
-    <Version Condition="'$(Version)' == ''">1.0.0</Version>
     <Authors Condition="'$(Authors)' == ''">{namespace}</Authors>
     <Description Condition="'$(Description)' == ''">Generated message serialization library produced by struct-frame.</Description>
     <PackageTags Condition="'$(PackageTags)' == ''">struct-frame;serialization;generated</PackageTags>
@@ -3689,10 +3698,15 @@ def _generateCSharpProjectFile(namespace):
     <RepositoryType Condition="'$(RepositoryType)' == ''">git</RepositoryType>
   </PropertyGroup>
 
-  <!-- Reproducible builds and symbol packages -->
+  <!-- Reproducible builds, symbol packages and Source Link. Builds are deterministic
+       by default. ContinuousIntegrationBuild also normalizes source paths; CI=true
+       covers GitHub Actions and most CI services, TF_BUILD covers Azure Pipelines.
+       Source Link needs no PackageReference: the .NET SDK has it built in (GitHub,
+       Azure Repos, GitLab, Bitbucket). Adding a Microsoft.SourceLink.* 8.x package
+       replaces the SDK's copy and pulls in Microsoft.Build.Tasks.Git 8.0.0, which is
+       flagged by GHSA-23fw-v26w-5fgq. -->
   <PropertyGroup>
-    <Deterministic>true</Deterministic>
-    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(TF_BUILD)' == 'true'">true</ContinuousIntegrationBuild>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
@@ -3703,12 +3717,6 @@ def _generateCSharpProjectFile(namespace):
   <PropertyGroup Condition="'$(IncludeNetCoreServer)' == 'true'">
     <DefineConstants>$(DefineConstants);NETCORESERVER_AVAILABLE</DefineConstants>
   </PropertyGroup>
-
-  <!-- Source Link: enables IDE/debugger to navigate to source at the exact commit.
-       Set $(RepositoryUrl) (e.g. https://github.com/org/repo) to activate. -->
-  <ItemGroup Condition="'$(RepositoryUrl)' != '' and '$(RepositoryType)' == 'git'">
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.*" PrivateAssets="All" />
-  </ItemGroup>
 
   <!-- Never compile build intermediates or outputs. The SDK already excludes the
        default obj/ and bin/ via DefaultItemExcludes, so this is a no-op in a normal
@@ -3729,7 +3737,7 @@ def _generateCSharpProjectFile(namespace):
   <!-- Serial transport: SerialTransport.cs + System.IO.Ports package -->
   <ItemGroup Condition="'$(IncludeSerialTransport)' == 'true'">
     <Compile Include="Framework\\Sdk\\Transports\\SerialTransport.cs" />
-    <PackageReference Include="System.IO.Ports" Version="8.*" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
   </ItemGroup>
 
   <!-- Network transports: TCP, UDP, WebSocket + NetCoreServer package -->
@@ -3737,7 +3745,7 @@ def _generateCSharpProjectFile(namespace):
     <Compile Include="Framework\\Sdk\\Transports\\TcpTransport.cs" />
     <Compile Include="Framework\\Sdk\\Transports\\UdpTransport.cs" />
     <Compile Include="Framework\\Sdk\\Transports\\WebSocketTransport.cs" />
-    <PackageReference Include="NetCoreServer" Version="8.*" />
+    <PackageReference Include="NetCoreServer" Version="8.0.7" />
   </ItemGroup>
 
 </Project>

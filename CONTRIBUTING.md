@@ -23,7 +23,7 @@ pip install -e ".[test]"   # the generator in editable mode, plus the test depen
 npm ci                     # TypeScript compiler and linters
 ```
 
-The full suite also uses gcc/g++ (C++20), the .NET 8+ SDK and a Rust toolchain; languages whose
+The full suite also uses gcc/g++ (C++20), the .NET 10+ SDK and a Rust toolchain; languages whose
 toolchain is missing are skipped. `git submodule update --init` fetches the vendored ASIO headers
 used by the C++ SDK.
 

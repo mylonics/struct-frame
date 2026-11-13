@@ -142,7 +142,7 @@ def _csharp_runner() -> _Runner:
     base = REPO_ROOT / "tests" / "csharp" / "bin" / "Release"
     dll = None
     if base.exists():
-        # Multiple TFM dirs (net8.0, net10.0, ...) may exist; any built DLL works.
+        # Multiple TFM dirs (net10.0, net11.0, ...) may exist; any built DLL works.
         for candidate in sorted(base.iterdir()):
             if (candidate / "StructFrameTests.dll").exists():
                 dll = candidate / "StructFrameTests.dll"

@@ -503,7 +503,7 @@ Tier B/C of the test-suite-vs-protobuf gap analysis added the following CI surfa
 
 | Workflow | Purpose |
 |----------|---------|
-| `test.yml` (extended) | Primary suite + OS matrix (Linux, macOS), Windows lane, a big-endian (s390x under QEMU) lane for the Python runtime, Python 3.9 / 3.11 / 3.13 matrix, Node 18 / 20 / 22 matrix, .NET 8 / 10 matrix, GCC vs Clang matrix |
+| `test.yml` (extended) | Primary suite + OS matrix (Linux, macOS), Windows lane, a big-endian (s390x under QEMU) lane for the Python runtime, Python 3.9 / 3.11 / 3.13 matrix, Node 18 / 20 / 22 matrix, GCC vs Clang matrix |
 | `sanitizers.yml` | ASan+UBSan and TSan jobs for the C/C++ suite, a Valgrind memcheck job for C binaries, and Miri plus AddressSanitizer jobs that run the Rust stream parser |
 | `fuzz.yml` | Short per-push runs of the C and C++ libFuzzer harnesses, atheris on the Python parser, cargo-fuzz on the Rust parser, and the cross-language stream differential test |
 | `coverage.yml` | `coverage.py` instrumentation of the Python generator + Codecov upload |
