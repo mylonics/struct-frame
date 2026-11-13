@@ -7,7 +7,7 @@ The C# SDK provides async/await-based transport layers for .NET applications usi
 
 ## Requirements
 
-- .NET 8.0+ (the generated project targets `net8.0;net9.0;net10.0`)
+- .NET 10 SDK or newer (the generated project targets `net10.0`)
 - For serial port support: `System.IO.Ports` NuGet package
 - For network transports: `NetCoreServer` NuGet package
 
@@ -360,9 +360,7 @@ The naming convention is `Send{PayloadType}Via{EnvelopeName}`. This pattern:
 
 ## .NET Platform Support
 
-The SDK requires .NET 7.0+ due to the use of C# 11 static abstract interface members:
+The generated `StructFrame.csproj` targets `net10.0`, and .NET 11 and later apps consume that build as is. To build for other frameworks, pass `-p:TargetFrameworks=net11.0` (plural: NuGet restore ignores a global `TargetFramework`, so `-p:TargetFramework` fails with NETSDK1005), or set `TargetFramework` or `TargetFrameworks` (for example `net10.0;net11.0`) in a `Directory.Build.props` in the consuming repository. Only `net10.0` is built and tested.
 
-- .NET 7.0+
-- .NET 8.0+ (default target framework)
-- .NET 9.0+
+The project also generates `StructFrame.xml` for IntelliSense (turn it off with `GenerateDocumentationFile=false`), and gets Source Link from the .NET SDK. Do not add a `Microsoft.SourceLink.*` 8.x package: it replaces the SDK's copy and pulls in `Microsoft.Build.Tasks.Git` 8.0.0, which is flagged by GHSA-23fw-v26w-5fgq.
 

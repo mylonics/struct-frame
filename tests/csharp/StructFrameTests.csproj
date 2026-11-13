@@ -1,11 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <!-- Keep this a superset of the generated library's TargetFrameworks
-         (see _generateCSharpProjectFile in src/struct_frame/generate.py).
-         run_tests.py picks one TFM from the installed .NET SDK version unless
-         SF_DOTNET_TFM overrides it, and building a TFM this project does not
-         declare fails with NETSDK1047. -->
-    <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+    <!-- Match the generated library's TargetFramework (see
+         _generateCSharpProjectFile in src/struct_frame/generate.py). run_tests.py
+         builds with framework net10.0 unless SF_DOTNET_TFM overrides it, and
+         building a TFM this project does not declare fails with NETSDK1047. -->
+    <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <Nullable>disable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>

@@ -6,9 +6,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
-## [0.11.0](https://github.com/mylonics/struct-frame/releases/tag/0.11.0) - 2026-11-12
+## [v0.11.0](https://github.com/mylonics/struct-frame/releases/tag/v0.11.0) - 2026-11-12
 
-<small>[Compare with v0.10.10](https://github.com/mylonics/struct-frame/compare/v0.10.10...0.11.0)</small>
+<small>[Compare with v0.10.10](https://github.com/mylonics/struct-frame/compare/v0.10.10...v0.11.0)</small>
+
+### Features
+
+- bring the VS Code extension into the repo and share language facts with it (#382) ([94a6e34](https://github.com/mylonics/struct-frame/commit/94a6e3421756c7fd3676b30523c2ab8f4a5585c5) by Rijesh Augustine).
+- **Breaking:** CLI overhaul, cross-language API helpers, Python package layout (#381) ([c716c08](https://github.com/mylonics/struct-frame/commit/c716c085e09d46ea101e0119d1f55e45b519d8bf) by Rijesh Augustine).
 
 ## [v0.10.10](https://github.com/mylonics/struct-frame/releases/tag/v0.10.10) - 2026-11-12
 

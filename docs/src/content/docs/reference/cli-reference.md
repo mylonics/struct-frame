@@ -71,7 +71,7 @@ struct-frame robot.sf --lang c,py --out build/gen --c-path fw   # C goes to fw/ 
 | `--py-package NAME` | Name of the Python package that holds the generated modules and the runtime, created inside the Python output directory (default `structframe`). It cannot be `struct_frame`, the generator's own package. |
 | `--name-overrides FILE` | JSON file with explicit per-language name overrides for generated identifiers (see [Generated Names](/basic-usage/message-definitions/#generated-names)) |
 
-The generated `StructFrame.csproj` targets `net8.0;net9.0;net10.0`. The transport implementations under `Framework/Sdk/Transports/` are always copied but only compiled when the matching MSBuild property is set: `-p:IncludeSerialTransport=true` adds the serial transport (and `System.IO.Ports`), and `-p:IncludeNetCoreServer=true` adds the TCP/UDP/WebSocket transports.
+The generated `StructFrame.csproj` targets `net10.0` (override with `-p:TargetFrameworks=...`, plural, or a `Directory.Build.props`). The transport implementations under `Framework/Sdk/Transports/` are always copied but only compiled when the matching MSBuild property is set: `-p:IncludeSerialTransport=true` adds the serial transport (and `System.IO.Ports`), and `-p:IncludeNetCoreServer=true` adds the TCP/UDP/WebSocket transports.
 
 ## Run Control
 
