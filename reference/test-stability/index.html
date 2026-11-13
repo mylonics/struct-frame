@@ -165,8 +165,7 @@ language phase; an explicit early <code dir="auto">return</code>/skip with a <co
 <code dir="auto">QUARANTINE: &#x3C;issue-url></code> comment adjacent to the skip, so the reason is
 discoverable in code review and greppable in CI logs.</li>
 <li>A quarantined test still runs in <strong>non-gating</strong> mode where practical (e.g. a
-<code dir="auto">continue-on-error</code> matrix leg, mirroring how <code dir="auto">test.yml</code> already tolerates
-the .NET 8 leg) so we keep collecting signal on the flake.</li>
+<code dir="auto">continue-on-error</code> matrix leg) so we keep collecting signal on the flake.</li>
 </ul>
 <p>Quarantine has a <strong>maximum lifetime of 14 days</strong>. If the tracking issue is not
 resolved by then, the owner must either (a) delete the test if it provides no
