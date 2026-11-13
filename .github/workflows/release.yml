@@ -105,14 +105,25 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" pyproject.toml
           echo "Updated pyproject.toml to version $NEW_VERSION"
 
-          # Generate changelog using git-changelog
-          git-changelog --output CHANGELOG.md --provider github --bump "$NEW_VERSION"
+          # Add this release's section to CHANGELOG.md.
+          # --in-place: insert only the new version at the insertion marker. Without
+          #   it, git-changelog rebuilds the whole file, so hand edits to past
+          #   entries are lost and older non-conventional entries disappear.
+          # --convention conventional: PR titles use feat:/fix:/feat!:. The default
+          #   "basic" convention only matches subjects starting with Add/Fix/...,
+          #   which left the v0.11.0 entry with no changes listed.
+          # --bump "v...": publish.yml tags v$VERSION; the heading and its links
+          #   must name that tag, and --in-place matches existing headings by it.
+          git-changelog --in-place --output CHANGELOG.md --convention conventional \
+            --provider github --bump "v$NEW_VERSION"
           echo "Updated CHANGELOG.md with version $NEW_VERSION using git-changelog"
 
-          # Commit and push to bump branch
+          # Commit and push to bump branch. "chore:" keeps this commit out of the
+          # changelog (the release tag points at it, so it falls inside the
+          # release's range). release-to-main.yml only looks for [release].
           git checkout -b "bump-version-${NEW_VERSION}"
           git add pyproject.toml CHANGELOG.md
-          git commit -m "feat: Bump version to ${NEW_VERSION} [release]"
+          git commit -m "chore: Bump version to ${NEW_VERSION} [release]"
           git push --set-upstream origin "bump-version-${NEW_VERSION}"
 
       - name: Create Pull Request
@@ -123,7 +134,7 @@ jobs:
             const { owner, repo } = context.repo;
             const version = '${{ steps.calc_version.outputs.new_version }}';
             const branchName = `bump-version-${version}`;
-            const title = `feat: Bump version to ${version} [release]`;
+            const title = `chore: Bump version to ${version} [release]`;
 
             const pr = await github.rest.pulls.create({
               owner,
